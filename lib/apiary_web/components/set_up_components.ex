@@ -15,16 +15,14 @@ defmodule ApiaryWeb.SetUpComponents do
   `:instance`, is set up once, by the instance admin: Your account, one step for each
   adapter, then Mail, each of the group `:connect`. The organisation's, `:organisation`,
   is the flow that sets up a workspace (the list of Apiary.WorkspaceSetup), after Your
-  account: the steps of the group `:organisation`, which the organisation does once
-  (Work sources, Work destinations, Model), then those of the group `:workspace`, which
-  each workspace does (Name, Work sources used, Destinations used, Harness, Machines, Test
-  run).
+  account: Name, Work sources, Destinations, Model, Harness, Machines and Test run, with
+  no group.
   Invitation and Your account belong to the instance's progress for an instance admin and
   on the set-up link's page, and to the organisation's for everyone else. A step without
   `:progress`, such as one an edition adds or renames, is the organisation's. The
   indicator and Back show the current step's progress alone, counted from 1. Finishing
   or skipping the instance's last step on `/instance/set-up` leads to the first step of
-  the organisation's progress that is not done and has a page, such as Work sources;
+  the organisation's progress that is not done and has a page, such as Name;
   with none left, to `/`, which sends the admin on as a sign-in does
   (`ApiaryWeb.UserAuth.signed_in_path/1`).
   """
@@ -60,8 +58,7 @@ defmodule ApiaryWeb.SetUpComponents do
      (`Apiary.Mail.source/0` is `:env`), there is no Mail step: nothing is left to
      configure. With no adapter either, the list has no step under Connect.
   4. The flow's steps (the list of Apiary.WorkspaceSetup), of the organisation's progress
-     (`progress: :organisation`), each of its group, `:organisation` or `:workspace`,
-     with the group's heading as `heading`, and each done by its rule in
+     (`progress: :organisation`), with no group, each done by its rule in
      Apiary.WorkspaceSetup: every step with the `factory` feature, Model with
      the `secrets` feature too; without `factory`, Name alone. `flow:` is the flow the
      page sets up (`flow/5`). Without it, the flow of the workspace the scope has once
@@ -198,16 +195,15 @@ defmodule ApiaryWeb.SetUpComponents do
         []
 
       flow ->
-        for {id, group} <- flow_ids(scope) do
-          id
-          |> step(
+        for id <- flow_ids(scope) do
+          step(
+            id,
             step_label(id),
-            group,
+            nil,
             WorkspaceSetup.done?(id, flow.organisation, {flow.domain, flow.workspace}),
             flow_path(flow, id),
             :organisation
           )
-          |> Map.put(:heading, group_heading_text(group, flow))
         end
     end
   end
@@ -221,11 +217,10 @@ defmodule ApiaryWeb.SetUpComponents do
   defp flow_steps(_scope, invitation, false, _opts) do
     cond do
       is_nil(invitation) ->
-        for {id, group} <- flow_ids(nil),
-            do: step(id, step_label(id), group, false, nil, :organisation)
+        for id <- flow_ids(nil), do: step(id, step_label(id), nil, false, nil, :organisation)
 
       not Organisations.has_workspace?(invitation.organisation) ->
-        [step(:name, step_label(:name), :workspace, false, nil, :organisation)]
+        [step(:name, step_label(:name), nil, false, nil, :organisation)]
 
       true ->
         []
@@ -306,10 +301,10 @@ defmodule ApiaryWeb.SetUpComponents do
     factory? = shown?(scope, :factory)
     secrets? = shown?(scope, :secrets)
 
-    for {id, group} <- WorkspaceSetup.flow(),
+    for id <- WorkspaceSetup.flow(),
         factory? or id == :name,
         id != :model or secrets?,
-        do: {id, group}
+        do: id
   end
 
   defp shown?(%Scope{} = scope, feature), do: Features.visible?(scope, feature)
@@ -319,24 +314,13 @@ defmodule ApiaryWeb.SetUpComponents do
   step_label/1 is the name of the flow's step `id` in the indicator.
   """
   @spec step_label(atom) :: String.t()
-  def step_label(:sources), do: gettext("Work sources")
-  def step_label(:destinations), do: gettext("Work destinations")
-  def step_label(:model), do: gettext("Model")
   def step_label(:name), do: gettext("Name")
-  def step_label(:sources_used), do: gettext("Work sources used")
-  def step_label(:destinations_used), do: gettext("Destinations used")
+  def step_label(:sources), do: gettext("Work sources")
+  def step_label(:destinations), do: gettext("Destinations")
+  def step_label(:model), do: gettext("Model")
   def step_label(:harness), do: gettext("Harness")
   def step_label(:machines), do: gettext("Machines")
   def step_label(:test), do: gettext("Test run")
-
-  # The heading of a group of the flow's steps in the indicator.
-  defp group_heading_text(:organisation, flow),
-    do: gettext("For %{organisation}", organisation: flow.organisation.name)
-
-  defp group_heading_text(:workspace, %{workspace: %Workspace{name: name}}),
-    do: gettext("For %{workspace}", workspace: name)
-
-  defp group_heading_text(:workspace, _flow), do: gettext("For the new workspace")
 
   @doc """
   flow_title/1 is the line above the indicator's count: "Set up Payments · Software
@@ -399,7 +383,7 @@ defmodule ApiaryWeb.SetUpComponents do
 
   @doc """
   set_up_path/1 is where a link to the scope's workspace leads while its set-up is not
-  finished: the first step of the group `:workspace` that is not done, on `/:org/set-up`
+  finished: the first step of the flow that is not done, on `/:org/set-up`
   (`flow_path/2`). The set-up is finished once the test run passed, the Test run step's
   rule in Apiary.WorkspaceSetup. Nil once it is, where the reader sees no Test run step
   (without the `factory` feature), and for a scope without a workspace.
@@ -414,20 +398,15 @@ defmodule ApiaryWeb.SetUpComponents do
       ) do
     ids = flow_ids(scope)
 
-    if Keyword.has_key?(ids, :test) and not WorkspaceSetup.test?(workspace) do
+    if :test in ids and not WorkspaceSetup.test?(workspace) do
       domain = Domain.for_workspace(workspace)
 
       next =
-        Enum.find_value(ids, :test, fn
-          {:test, _group} ->
-            nil
-
-          {_id, :organisation} ->
-            nil
-
-          {id, :workspace} ->
-            if not WorkspaceSetup.done?(id, organisation, {domain, workspace}), do: id
-        end)
+        Enum.find(
+          ids,
+          :test,
+          &(&1 != :test and not WorkspaceSetup.done?(&1, organisation, {domain, workspace}))
+        )
 
       flow_path(flow(organisation, domain, workspace, :set_up), next)
     end
@@ -492,13 +471,12 @@ defmodule ApiaryWeb.SetUpComponents do
   steps/1 is the progress indicator of the current step's progress alone, the instance's
   or the organisation's, with no current step the last step's: `title` where given, then
   "Step 1 of 2" and a progress bar of the same value, counted from 1 in each progress,
-  then the list of that progress's steps, under their groups' headings, each with its
-  mark: done, a filled circle with a check; skipped, an empty circle with a dash and
-  "Skipped"; current, a ring, `aria-current="step"`; to come, an empty circle. A step
-  that is done or skipped and has a path is a link, after the current one too: a patch
-  where its path is `page`, else a navigation. A group's heading is its first step's
-  `heading`, "Connect Qory Apiary" for the instance's steps; a group with neither has no
-  heading.
+  then the list of that progress's steps, each with its mark: done, a filled circle with
+  a check; skipped, an empty circle with a dash and "Skipped"; current, a ring,
+  `aria-current="step"`; to come, an empty circle. A step that is done or skipped and has
+  a path is a link, after the current one too: a patch where its path is `page`, else a
+  navigation. The instance's steps (`group: :connect`) are listed under the heading
+  "Connect Qory Apiary"; every other step has no heading.
 
   Below 1280 px it is a bar, "Step 1 of 2: Workspace", whose **All steps** opens the list
   in place, a disclosure that Escape closes.
@@ -579,7 +557,7 @@ defmodule ApiaryWeb.SetUpComponents do
   defp group_heading(%{group: :connect}),
     do: gettext("Connect %{name}", name: Apiary.ProductName.name())
 
-  defp group_heading(step), do: Map.get(step, :heading)
+  defp group_heading(_step), do: nil
 
   attr :step, :map, required: true
   attr :page, :string, default: nil
@@ -646,7 +624,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   back/1 is the Back button at the foot of a step's form: a ghost button to the step
   before the current one in its progress, a patch where its path is `page`. None on the
-  first step of a progress, such as Workspace, which leads back to no step of the
+  first step of a progress, such as Name, which leads back to no step of the
   instance's, nor where the step before has no page, such as Your account.
   """
   def back(assigns) do

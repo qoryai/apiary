@@ -81,7 +81,7 @@ defmodule Apiary.Edition do
     exists;
   - `label`, its name in the list, translated;
   - `group`, the heading it is listed under: nil for none, `:connect` for
-    "Connect Qory Apiary", `:workspace` for "Set up your workspace";
+    "Connect Qory Apiary";
   - `state`: `:done`, `:skipped` (before the current step and not done; an
     `{:installing, name}` step only where the current step is in `:connect`), `:current`
     or `:to_come`;
@@ -104,7 +104,7 @@ defmodule Apiary.Edition do
           optional(:progress) => :instance | :organisation,
           id: term,
           label: String.t(),
-          group: nil | :connect | :workspace,
+          group: nil | :connect,
           state: :done | :skipped | :current | :to_come,
           path: String.t() | nil,
           note: String.t() | nil

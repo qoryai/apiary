@@ -3,22 +3,21 @@ defmodule Apiary.WorkspaceSetup do
   # here, and the state of a workspace's test run. The set-up page
   # (`ApiaryWeb.WorkspaceSetupLive`) reads them.
   #
-  # The flow's steps, in order, each of a group: for the organisation, Work sources,
-  # Work destinations and Model; for the workspace, Name, Work sources used, Destinations
-  # used, Harness, Machines and Test run. A step is done by its rule:
+  # The flow's steps, in order: Name, Work sources, Destinations, Model, Harness, Machines
+  # and Test run. Every step after Name is not done while the workspace does not exist. A
+  # step is done by its rule:
   #
-  #   * `sources?/2`: the organisation has a connected connection of an adapter in use
-  #     with items that serves the workspace's type (`Apiary.Lingo.Domain`);
-  #   * `destinations?/2`: the same, for an adapter with `targets` true;
+  #   * `name?/1`: the workspace exists;
+  #   * `sources?/2`: a row of the workspace's work-source tick list is ticked: a
+  #     collection of the list (`collections/3`, `:sources`) assigned to the workspace
+  #     with its Backlog on;
+  #   * `destinations?/2`: a row of the workspace's destination tick list is ticked: a
+  #     collection of the list (`collections/3`, `:destinations`) assigned to the
+  #     workspace;
   #   * `model?/1`: on the chain of model choices that resolves for the organisation's
   #     runs (`Apiary.ModelChoices.chain_owner/1`), a model provider with at least one
   #     key, and the organisation's default (level 6). The runtime is checked when the
   #     choice is saved, so the rule resolves none;
-  #   * `name?/1`: the workspace exists;
-  #   * `sources_used?/2`: a row of its tick list is ticked: a collection assigned to
-  #     the workspace with its Backlog on;
-  #   * `destinations_used?/2`: a row of its tick list is ticked: a collection with a
-  #     target assigned to the workspace;
   #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`);
   #   * Machines: `machines/1` finds a ready pool. The step reads the pools that serve the
   #     workspace's runs, each with its state, and for a pool that is not ready the reason
@@ -48,8 +47,8 @@ defmodule Apiary.WorkspaceSetup do
   #     registered run `completed`.
   #
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
-  # line. `collections/3` is the rows of the tick lists of Work sources used and
-  # Destinations used, to a person who may read the instance's adapters, and `tick/5` one
+  # line. `collections/3` is the rows of the tick lists of Work sources and Destinations,
+  # to a person who may read the instance's adapters, and `tick/5` one
   # tick or untick of a row: the set-up's steps and Workspace settings › Work sources and
   # › Destinations show and tick the same lists. `tick/5` changes a collection through
   # `Apiary.Adapters.Collections`, which checks access. None of the others checks access:
@@ -75,31 +74,12 @@ defmodule Apiary.WorkspaceSetup do
   # How long the test run may wait for a machine before the step says so.
   @machine_wait_seconds 300
 
-  # The steps of the set-up flow, in order, each with its group. A step is one entry
-  # here, its rule in `done?/3`, and its page (`ApiaryWeb.WorkspaceSetupLive`).
-  @flow [
-    sources: :organisation,
-    destinations: :organisation,
-    model: :organisation,
-    name: :workspace,
-    sources_used: :workspace,
-    destinations_used: :workspace,
-    harness: :workspace,
-    machines: :workspace,
-    test: :workspace
-  ]
+  # The steps of the set-up flow, in order. A step is one entry here, its rule in
+  # `done?/3`, and its page (`ApiaryWeb.WorkspaceSetupLive`).
+  @flow [:name, :sources, :destinations, :model, :harness, :machines, :test]
 
   @typedoc "A step of the set-up flow (`flow/0`)."
-  @type step ::
-          :sources
-          | :destinations
-          | :model
-          | :name
-          | :sources_used
-          | :destinations_used
-          | :harness
-          | :machines
-          | :test
+  @type step :: :name | :sources | :destinations | :model | :harness | :machines | :test
 
   @typedoc """
   A row of a tick list (`collections/3`): a live collection with its connection, and the
@@ -174,47 +154,26 @@ defmodule Apiary.WorkspaceSetup do
   ## The flow
 
   @doc false
-  # flow/0 is the steps of the set-up flow, in order, each `{step, group}`: `:organisation`
-  # for the steps the organisation does once, `:workspace` for each workspace's.
-  @spec flow() :: [{step, :organisation | :workspace}]
+  # flow/0 is the ids of the set-up flow's steps, in order.
+  @spec flow() :: [step]
   def flow, do: @flow
 
   @doc false
   # done?/3 is whether `step` is done, by its rule, for `organisation`, a workspace of the
-  # type `domain` (`Apiary.Lingo.Domain`), and `workspace`, nil before it exists.
+  # type `domain` (`Apiary.Lingo.Domain`), and `workspace`, nil before it exists. Every
+  # step after Name is not done while the workspace does not exist.
   @spec done?(step, Organisation.t(), {module, Workspace.t() | nil}) :: boolean
-  def done?(:sources, organisation, {domain, _workspace}), do: sources?(organisation, domain)
-
-  def done?(:destinations, organisation, {domain, _workspace}),
-    do: destinations?(organisation, domain)
-
-  def done?(:model, organisation, _type), do: model?(organisation)
   def done?(:name, _organisation, {_domain, workspace}), do: name?(workspace)
   def done?(_step, _organisation, {_domain, nil}), do: false
+  def done?(:sources, _organisation, {domain, workspace}), do: sources?(workspace, domain)
 
-  def done?(:sources_used, _organisation, {domain, workspace}),
-    do: sources_used?(workspace, domain)
+  def done?(:destinations, _organisation, {domain, workspace}),
+    do: destinations?(workspace, domain)
 
-  def done?(:destinations_used, _organisation, {domain, workspace}),
-    do: destinations_used?(workspace, domain)
-
+  def done?(:model, organisation, _type), do: model?(organisation)
   def done?(:harness, _organisation, {_domain, workspace}), do: harness?(workspace)
   def done?(:machines, _organisation, {_domain, workspace}), do: machines(workspace) != nil
   def done?(:test, _organisation, {_domain, workspace}), do: test?(workspace)
-
-  @doc false
-  # sources?/2 is whether `organisation` has a connected connection of an adapter in use
-  # with items that serves `domain`.
-  @spec sources?(Organisation.t(), module) :: boolean
-  def sources?(%Organisation{id: organisation_id}, domain),
-    do: Repo.exists?(connected_adapters(organisation_id, domain, :items))
-
-  @doc false
-  # destinations?/2 is whether `organisation` has a connected connection of an adapter in
-  # use with `targets` true that serves `domain`.
-  @spec destinations?(Organisation.t(), module) :: boolean
-  def destinations?(%Organisation{id: organisation_id}, domain),
-    do: Repo.exists?(connected_adapters(organisation_id, domain, :targets))
 
   @doc false
   # connected_ids/3 is the ids of the adapters in use with items (`:items`) or with
@@ -269,11 +228,11 @@ defmodule Apiary.WorkspaceSetup do
   def name?(workspace), do: match?(%Workspace{}, workspace)
 
   @doc false
-  # sources_used?/2 is whether a row of the tick list Work sources used, of `workspace` of
-  # the type `domain`, is ticked: a collection of the list (`collections/3`, `:sources`)
-  # assigned to `workspace` with its Backlog on.
-  @spec sources_used?(Workspace.t(), module) :: boolean
-  def sources_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+  # sources?/2 is whether a row of the work-source tick list of `workspace` of the type
+  # `domain` is ticked: a collection of the list (`collections/3`, `:sources`) assigned to
+  # `workspace` with its Backlog on.
+  @spec sources?(Workspace.t(), module) :: boolean
+  def sources?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
     organisation_id
     |> list_query(domain, :sources)
     |> where([c], c.workspace_id == ^workspace_id and c.backlog)
@@ -281,11 +240,11 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   @doc false
-  # destinations_used?/2 is whether a row of the tick list Destinations used, of
-  # `workspace` of the type `domain`, is ticked: a collection of the list
-  # (`collections/3`, `:destinations`) assigned to `workspace`.
-  @spec destinations_used?(Workspace.t(), module) :: boolean
-  def destinations_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+  # destinations?/2 is whether a row of the destination tick list of `workspace` of the
+  # type `domain` is ticked: a collection of the list (`collections/3`, `:destinations`)
+  # assigned to `workspace`.
+  @spec destinations?(Workspace.t(), module) :: boolean
+  def destinations?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
     organisation_id
     |> list_query(domain, :destinations)
     |> where([c], c.workspace_id == ^workspace_id)
