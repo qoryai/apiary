@@ -64,17 +64,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     any other (`Apiary.Organisations.create_workspace/2`); once the workspace exists,
   #     its name, read only, with Continue;
   #   * Work sources used and Destinations used, with the `factory` feature: tick lists of
-  #     the organisation's collections (`Apiary.WorkspaceSetup.collections/3`). Ticking a
-  #     work source assigns the collection and turns its Backlog on; ticking a destination
-  #     assigns it with its Backlog off, unless it is ticked as a work source. Unticking a
-  #     work source turns its Backlog off, and unassigns a collection that is no
-  #     destination; unticking a destination turns its Backlog off and unassigns it
-  #     (`Apiary.Adapters.Collections.assign_collections/4`,
-  #     `Apiary.Adapters.Collections.set_collection_backlog/4`). A collection in another
-  #     workspace shows that workspace's name and has no checkbox. A tick reads the list
-  #     again first, and changes nothing for a collection that is now in another
-  #     workspace. A person whom `collection.assign` does not allow sees the boxes
-  #     disabled, and who may;
+  #     the organisation's collections (`ApiaryWeb.TickListComponents`), which Workspace
+  #     settings › Work sources and › Destinations show too. A tick
+  #     (`Apiary.WorkspaceSetup.tick/5`) reads the list again first, and changes nothing
+  #     for a collection that is now in another workspace. A person whom
+  #     `collection.assign` does not allow sees the boxes disabled, and who may;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
@@ -112,7 +106,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
   alias Apiary.Runs.Run
-  alias ApiaryWeb.{IntegrationComponents, OverviewComponents, SetUpComponents, SourceComponents}
+  alias ApiaryWeb.{IntegrationComponents, OverviewComponents, SetUpComponents, TickListComponents}
   alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
 
   @impl true
@@ -447,35 +441,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp load_step(%{assigns: %{step: step}} = socket)
        when step in [:sources_used, :destinations_used] do
-    %{current_scope: scope, flow: flow} = socket.assigns
-    list = if step == :sources_used, do: :sources, else: :destinations
-    groups = WorkspaceSetup.collections(scope, flow.domain, list)
+    %{current_scope: scope, flow: flow, steps: steps} = socket.assigns
+    list = tick_list(step)
 
-    nouns =
-      groups |> Enum.map(fn {adapter, _rows} -> Adapters.collection_noun(adapter) end)
-
-    assign(socket,
-      groups: groups,
-      may: Access.can?(scope, :"collection.assign", scope.organisation),
-      may_connect: Access.can?(scope, :"adapter.connect", scope.organisation),
-      who_may:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"collection.assign",
-          gettext(
-            "Only owners and admins of %{organisation} assign %{collections} to workspaces.",
-            organisation: scope.organisation.name,
-            collections: SourceComponents.collections(nouns, :and)
-          )
-        ),
-      who_connects:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"adapter.connect",
-          gettext("Only owners and admins change the integrations of the organisation.")
-        ),
-      connect_path:
-        Enum.find_value(socket.assigns.steps, fn step -> step.id == list && step.path end)
+    assign(
+      socket,
+      TickListComponents.load(
+        scope,
+        flow.domain,
+        list,
+        Enum.find_value(steps, fn step -> step.id == list && step.path end)
+      )
     )
   end
 
@@ -754,28 +730,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_event("tick", %{"id" => id}, %{assigns: %{step: step, may: true}} = socket)
       when step in [:sources_used, :destinations_used] do
     %{current_scope: scope, flow: flow} = socket.assigns
-    workspace_id = flow.workspace.id
-    list = if step == :sources_used, do: :sources, else: :destinations
+    ticked = WorkspaceSetup.tick(scope, flow.workspace, flow.domain, tick_list(step), id)
 
-    # The list as it stands now, not as the page last showed it: a collection in another
-    # workspace has no checkbox, and is not moved from here.
-    case scope
-         |> WorkspaceSetup.collections(flow.domain, list)
-         |> Enum.find_value(fn {adapter, rows} ->
-           Enum.find_value(rows, &(&1.collection.id == id && {adapter, &1}))
-         end) do
-      {adapter, %{workspace: workspace} = row} ->
-        socket =
-          case is_nil(workspace) or workspace.id == workspace_id do
-            true -> socket |> tick(step, adapter, row) |> ticked(socket)
-            false -> socket
-          end
-
-        {:noreply, reload(socket)}
-
-      nil ->
-        {:noreply, reload(socket)}
-    end
+    {:noreply,
+     socket |> TickListComponents.put_tick_flash(ticked, socket.assigns.who_may) |> reload()}
   end
 
   def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket) do
@@ -844,64 +802,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp ticked(:ok, socket), do: socket
-  defp ticked({:error, :forbidden}, socket), do: put_flash(socket, :error, socket.assigns.who_may)
-
-  defp ticked({:error, _reason}, socket),
-    do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
-
-  # One tick or untick of `row`, a collection of `adapter`, in the list of `step`.
-  defp tick(socket, step, adapter, %{collection: collection, connection: connection} = row) do
-    %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
-    here? = collection.workspace_id == workspace.id
-    switch? = collection.items and Adapters.items?(adapter)
-    destination? = adapter.targets == true and not is_nil(collection.target_system)
-
-    case {step, ticked?(step, row, workspace)} do
-      {:sources_used, false} ->
-        with :ok <- assign_to(scope, connection, collection, workspace, here?),
-             do: backlog(scope, connection, collection, switch?, true)
-
-      {:sources_used, true} ->
-        with :ok <- backlog(scope, connection, collection, switch?, false) do
-          if destination?, do: :ok, else: assign_to(scope, connection, collection, nil, false)
-        end
-
-      {:destinations_used, false} ->
-        with :ok <- assign_to(scope, connection, collection, workspace, here?),
-             do: backlog(scope, connection, collection, switch? and not here?, false)
-
-      {:destinations_used, true} ->
-        with :ok <- backlog(scope, connection, collection, switch?, false),
-             do: assign_to(scope, connection, collection, nil, false)
-    end
-  end
-
-  defp assign_to(_scope, _connection, _collection, _workspace, true), do: :ok
-
-  defp assign_to(scope, connection, collection, workspace, false) do
-    case Collections.assign_collections(scope, connection, [collection.id], workspace) do
-      {:ok, _count} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp backlog(_scope, _connection, _collection, false, _on), do: :ok
-
-  defp backlog(scope, connection, collection, true, on) do
-    case Collections.set_collection_backlog(scope, connection, collection.id, on) do
-      {:ok, _count} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # A work source is ticked while it is the workspace's with its Backlog on; a destination
-  # while it is the workspace's.
-  defp ticked?(:sources_used, %{collection: c}, workspace),
-    do: c.workspace_id == workspace.id and c.backlog
-
-  defp ticked?(:destinations_used, %{collection: c}, workspace),
-    do: c.workspace_id == workspace.id
+  # The tick list of a step: Work sources used's, `:sources`; Destinations used's,
+  # `:destinations`.
+  defp tick_list(:sources_used), do: :sources
+  defp tick_list(:destinations_used), do: :destinations
 
   defp run_test(socket, line) do
     scope = socket.assigns.current_scope
@@ -1356,109 +1260,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp flow_step(%{step: step} = assigns) when step in [:sources_used, :destinations_used] do
-    assigns =
-      assign(assigns,
-        workspace: assigns.flow.workspace,
-        tickets?:
-          step == :destinations_used and
-            Enum.any?(assigns.groups, fn {adapter, rows} ->
-              Enum.any?(rows, &tickets_in?(&1, adapter, assigns.flow.workspace))
-            end)
-      )
-
     ~H"""
     <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <div :if={@groups != []} id="set-up-ticks" class="grid gap-3">
-        <section
-          :for={{adapter, rows} <- @groups}
-          id={"set-up-ticks-#{adapter.public_id}"}
-          class="grid gap-1 rounded-box border border-line bg-base-100 px-4 py-3"
-        >
-          <h2 class="flex items-center gap-2 font-medium">
-            <IntegrationComponents.mark class="size-5" />{Adapters.title(adapter)}
-          </h2>
-          <ul class="grid gap-1 pl-7">
-            <li
-              :for={row <- rows}
-              id={"set-up-tick-#{row.collection.public_id}"}
-              class="flex items-center gap-2 text-[13.5px]/5"
-            >
-              <label
-                :if={is_nil(row.workspace) or row.workspace.id == @workspace.id}
-                class="flex min-w-0 flex-1 items-center gap-2"
-              >
-                <input
-                  type="checkbox"
-                  class="checkbox checkbox-sm"
-                  checked={ticked?(@step, row, @workspace)}
-                  disabled={!@may}
-                  phx-click="tick"
-                  phx-value-id={row.collection.id}
-                />
-                <span class="truncate">{row.collection.title}</span>
-              </label>
-              <span
-                :if={row.workspace && row.workspace.id != @workspace.id}
-                class="flex min-w-0 flex-1 items-center gap-2 text-muted"
-              >
-                <span class="inline-block size-4" aria-hidden="true"></span>
-                <span class="truncate">{row.collection.title}</span>
-              </span>
-              <span
-                :if={row.workspace && row.workspace.id != @workspace.id}
-                id={"set-up-tick-#{row.collection.public_id}-elsewhere"}
-                class="text-[12.5px]/4 text-muted"
-              >
-                {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
-              </span>
-              <span
-                :if={@step == :destinations_used and tickets_in?(row, adapter, @workspace)}
-                id={"set-up-tick-#{row.collection.public_id}-tickets"}
-                class="text-[12.5px]/4 text-muted"
-              >
-                {gettext("tickets come in")}
-              </span>
-            </li>
-          </ul>
-        </section>
-      </div>
-
-      <p :if={@tickets?} id="set-up-untick" class="text-[13px]/5 text-muted">
-        {gettext("Unticking also stops its tickets coming in.")}
-      </p>
-
-      <div
-        :if={@groups == []}
-        id="set-up-none"
-        class="grid gap-1 rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
-      >
-        <p :if={@step == :sources_used}>
-          {gettext("%{organisation} has no work source connected yet.",
-            organisation: @flow.organisation.name
-          )}
-        </p>
-        <p :if={@step == :destinations_used}>
-          {gettext("%{organisation} has no work destination connected yet.",
-            organisation: @flow.organisation.name
-          )}
-        </p>
-        <p :if={@may_connect and @connect_path}>
-          <.link id="set-up-none-connect" patch={@connect_path} class="q-link">
-            {SetUpComponents.step_label(if @step == :sources_used, do: :sources, else: :destinations)}
-          </.link>
-        </p>
-        <p :if={!@may_connect} id="set-up-none-who">{@who_connects}</p>
-      </div>
-
-      <p
-        :if={!@may and @groups != []}
-        id="set-up-who-may"
-        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
-      >
-        {@who_may}
-      </p>
+      <TickListComponents.tick_list
+        id="set-up"
+        list={tick_list(@step)}
+        groups={@groups}
+        workspace={@flow.workspace}
+        organisation={@flow.organisation}
+        may={@may}
+        who_may={@who_may}
+        may_connect={@may_connect}
+        who_connects={@who_connects}
+        connect_path={@connect_path}
+      />
 
       <p id="set-up-later" class="text-[13px]/5 text-muted">
         <span :if={@step == :sources_used}>
@@ -1617,11 +1434,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp patch?(path, page), do: URI.parse(path).path == page
-
-  # Whether `row`'s tickets come in to `workspace`: it is the workspace's, with its
-  # Backlog on, and it and its adapter have items.
-  defp tickets_in?(%{collection: c}, adapter, workspace),
-    do: c.workspace_id == workspace.id and c.backlog and c.items and Adapters.items?(adapter)
 
   # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide has
   # steps for connecting it, with them.
