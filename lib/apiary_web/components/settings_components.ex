@@ -112,7 +112,6 @@ defmodule ApiaryWeb.SettingsComponents do
 
   def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
     secrets? = Features.visible?(scope, :secrets)
-    factory? = Features.visible?(scope, :factory)
 
     [
       %Entry{
@@ -155,10 +154,10 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-cpu-chip",
           path: ~p"/#{organisation}/#{workspace}/settings/model"
         },
-      # The tick lists of what the workspace uses, as the set-up's steps have them, with
-      # the `factory` feature, for whoever may read the instance's adapters; each tick
-      # there asks its action again.
-      factory? && Access.can?(scope, :"adapter.read", organisation) &&
+      # The tick lists of what the workspace uses, as the set-up's steps have them, for
+      # whoever may read the instance's adapters (`adapter.read`, an action of the
+      # `factory` feature); each tick checks `collection.assign` again.
+      Access.can?(scope, :"adapter.read", organisation) &&
         %Entry{
           section: :main,
           key: :work_sources,
@@ -166,7 +165,7 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-inbox-arrow-down",
           path: ~p"/#{organisation}/#{workspace}/settings/work-sources"
         },
-      factory? && Access.can?(scope, :"adapter.read", organisation) &&
+      Access.can?(scope, :"adapter.read", organisation) &&
         %Entry{
           section: :main,
           key: :destinations,
