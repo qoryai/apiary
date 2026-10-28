@@ -11,7 +11,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   @typedoc """
   The harness members of an explore run's documents, from its harness walk: the target's
   version, nil for none; the workflow and `harness_hidden`; the access level the walk
-  resolved; and the stacks' harness document, nil where the target's harness file
+  resolved; and the harness document the walk took, nil where the target's harness file
   applies.
   """
   @type harness :: %{

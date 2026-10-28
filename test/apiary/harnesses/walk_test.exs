@@ -2443,7 +2443,8 @@ defmodule Apiary.Harnesses.WalkTest do
       covered = covering(ctx, %{@tools => {"G_run", "R_tools"}})
 
       walk = fn files ->
-        serve([ctx.run], covered: covered, files: files) && Walk.run(ctx.input)
+        :ok = serve([ctx.run], covered: covered, files: files)
+        Walk.run(ctx.input)
       end
 
       target_reads = fn -> Enum.filter(reads(calls()), &match?({"R_app", _path, _at}, &1)) end

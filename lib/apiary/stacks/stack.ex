@@ -1,11 +1,11 @@
 defmodule Apiary.Stacks.Stack do
   # A stack set at a level of an organisation: `harness`, a harness document, the
   # contents of the `harness` section of qory's format written in YAML
-  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow or the choice;
-  # and `owner_organisation_id`, the organisation that owns the row, which the edition
-  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once
-  # that organisation is deleted. A row has a document, a workflow or a choice, or more
-  # than one of them.
+  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow; and
+  # `owner_organisation_id`, the organisation that owns the row, which the edition gives
+  # for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once that
+  # organisation is deleted. A row has a document, a workflow or both; a row with a
+  # choice has its document.
   #
   # Its level is read from the columns it has set (`level/1`):
   #

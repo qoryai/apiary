@@ -867,7 +867,8 @@ defmodule Apiary.Stacks.Sources do
 
   @typedoc """
   A stack to choose for a target: the target's default (the workspace's choice, else the
-  organisation's shared harness, else the target's harness file, else the Qory harness),
+  organisation's shared harness, with the target's harness file first under the Qory
+  harness and with no choice, then the Qory harness),
   the Qory harness, or a stack of `read/2` of a source of `linked/1`, `assigned/1` or
   `address/1`, with a branch or tag.
   """

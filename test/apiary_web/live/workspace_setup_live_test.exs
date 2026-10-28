@@ -1252,6 +1252,34 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n  stack: \"triage\"\n"
     end
 
+    test "a stack saved at a branch, as an assigned source's is, shows its ref as not pinned",
+         ctx do
+      destination = destination!(ctx)
+      target = target_of(destination)
+
+      :ok =
+        Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [target])
+
+      row =
+        Repo.get_by!(Apiary.Runs.Target, workspace_id: ctx.scope.workspace.id, path: target.path)
+
+      for {narrowing, line} <- [
+            {"  stack: \"triage\"\n", "acme/harness · triage · at main, not pinned"},
+            {"", "acme/harness · at main, not pinned"}
+          ] do
+        {:ok, _stack} =
+          Apiary.Stacks.put_stack(
+            ctx.scope,
+            {:target, row},
+            "extends:\n  git: \"#{@harness_git}\"\n  ref: \"main\"\n" <> narrowing,
+            choice: :repository
+          )
+
+        {:ok, lv, _html} = live(ctx.conn, ctx.path)
+        assert words(lv, "#harness-target-#{destination.public_id}-line") == line
+      end
+    end
+
     test "Change to a stack at a branch or tag that cannot be read: the refusal, and nothing saved",
          ctx do
       linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})

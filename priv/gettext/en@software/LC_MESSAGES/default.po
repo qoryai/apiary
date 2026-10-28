@@ -354,7 +354,17 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{harness} · %{stack} · at %{ref}, not pinned"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{harness} · %{stack} · pinned at %{commit}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{harness} · at %{ref}, not pinned"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex

@@ -355,7 +355,9 @@ defmodule ApiaryWeb.HarnessComponents do
   end
 
   # The stack chosen for a destination: Workspace default for none, the Qory harness with
-  # its pin, or a harness source's repository, the stack it narrows to, and its pin.
+  # its pin, or a harness source's repository, the stack it narrows to, and its pin. A
+  # stack of an assigned source is saved at the assignment's ref, which is no pin where it
+  # is a branch or a tag: the line says so.
   defp target_line(nil), do: gettext("Workspace default")
 
   defp target_line(%{choice: :qory, pin: pin}),
@@ -366,15 +368,28 @@ defmodule ApiaryWeb.HarnessComponents do
       )
 
   defp target_line(%{choice: :repository, git: git, narrowing: narrowing, pin: pin}) do
-    case narrowing["stack"] || narrowing["path"] do
-      nil ->
-        gettext("%{harness} · pinned at %{commit}", harness: repository(git), commit: commit(pin))
+    harness = repository(git)
+    stack = narrowing["stack"] || narrowing["path"]
 
-      stack ->
+    case {stack, commit?(pin)} do
+      {nil, true} ->
+        gettext("%{harness} · pinned at %{commit}", harness: harness, commit: short(pin))
+
+      {nil, false} ->
+        gettext("%{harness} · at %{ref}, not pinned", harness: harness, ref: pin)
+
+      {stack, true} ->
         gettext("%{harness} · %{stack} · pinned at %{commit}",
-          harness: repository(git),
+          harness: harness,
           stack: stack,
-          commit: commit(pin)
+          commit: short(pin)
+        )
+
+      {stack, false} ->
+        gettext("%{harness} · %{stack} · at %{ref}, not pinned",
+          harness: harness,
+          stack: stack,
+          ref: pin
         )
     end
   end
@@ -627,13 +642,11 @@ defmodule ApiaryWeb.HarnessComponents do
 
   defp repository(_git), do: ""
 
-  # A full commit id's first 7 characters; any other ref, such as an assignment's tag,
-  # whole.
-  defp commit(pin) when is_binary(pin) do
-    if String.match?(pin, ~r/\A[0-9a-f]{40}\z/), do: short(pin), else: pin
-  end
+  # Whether `ref` is a full commit id, 40 or 64 lower-case hex digits, as a pin is.
+  defp commit?(ref) when is_binary(ref),
+    do: String.match?(ref, ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/)
 
-  defp commit(_pin), do: ""
+  defp commit?(_ref), do: false
 
   defp short(pin) when is_binary(pin), do: String.slice(pin, 0, @short)
   defp short(_pin), do: ""
