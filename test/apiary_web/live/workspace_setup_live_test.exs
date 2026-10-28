@@ -1148,8 +1148,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#harness-ref[value=main]")
 
       assert words(lv, "#harness-ref-hint") ==
-               "Read through #{ctx.organisation.name}'s #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "connection."
+               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
+                 "#{ctx.organisation.name}."
 
       # The root has no stack: the walk's reason, and nothing saved.
       lv |> form("#set-up-harness-form") |> render_submit()
@@ -1655,8 +1655,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
 
+    assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
+             "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-model-form input[type=password][aria-describedby$="-hint"]}
+           )
+
     assert words(lv, "#set-up-context #set-up-what") ==
-             "A model provider's key lets the agents of #{organisation.name}'s runs call a model."
+             "A model provider's key lets runs in #{organisation.name} call a model."
 
     lv
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
@@ -1687,6 +1695,34 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     refute has_element?(lv, "input[name='model[key]']")
     assert {"Model", :current} in steps(lv)
+  end
+
+  test "the Claude subscription's help shows its command on a line with Copy", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "claude-subscription"})
+    |> render_change()
+
+    assert words(lv, "#set-up-context #set-up-get-key-run") ==
+             "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+
+    assert words(lv, "#set-up-context #set-up-get-key-command-text") == "claude setup-token"
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-get-key-command-copy[data-copy="claude setup-token"]}
+           )
+
+    assert words(lv, "#set-up-context #set-up-get-key-copy-token") ==
+             "Then copy the token it prints. Anthropic's terms (opens in a new tab) allow this for personal use only."
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-get-key-copy-token a[href="https://code.claude.com/docs/en/legal-and-compliance"]},
+             "Anthropic's terms"
+           )
   end
 
   test "the form is sent with POST, before the page connects and after", %{conn: conn} do

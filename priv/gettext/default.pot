@@ -2773,11 +2773,6 @@ msgstr[1] ""
 msgid "%{workspace} is this instance's only workspace."
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace}'s mode, now %{mode}. It changes when %{workspace}'s does."
@@ -2786,12 +2781,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace}'s policy"
-msgstr ""
-
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "%{workspace}'s runs follow the workflow you choose here, from a harness repository."
 msgstr ""
 
 #: lib/apiary/sources/body.ex
@@ -3094,7 +3083,7 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "A model provider's key lets the agents of %{organisation}'s runs call a model."
+msgid "A model provider's key lets runs in %{organisation} call a model."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3135,7 +3124,7 @@ msgstr ""
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown."
+msgid "A release image builds it and serves it here. In a checkout, run:"
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -3838,7 +3827,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "After you save, choose %{workspace}'s model in Workspace settings › Model."
+msgid "After you save, choose the model for %{workspace} in Workspace settings › Model."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -4157,11 +4146,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses whatever the policy says, and the machine's addresses unless the policy allows that host by name."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/gateways.ex
-#, elixir-autogen, elixir-format
-msgid "An address that runs of nodes and node pools in %{organisation}'s workspaces go through, when they choose it."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -5713,6 +5697,7 @@ msgstr ""
 msgid "Copy block"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -7823,6 +7808,11 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create a DeepSeek API key."
 msgstr ""
 
@@ -7834,11 +7824,6 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Get the key from the provider first: run %{command} in a terminal where Claude Code is installed, and copy the token it prints. %{terms} allow this for personal use only."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -9221,7 +9206,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides %{workspace}'s rule for the same host, unless that rule is locked."
+msgid "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides the rule of %{workspace} for the same host, unless that rule is locked."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -12523,6 +12508,12 @@ msgstr ""
 msgid "Qory Apiary serves the policy now."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary stores the key encrypted, and nobody can view it again."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary tells the adapter nothing."
@@ -12762,7 +12753,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Read through %{organisation}'s %{adapter} connection."
+msgid "Read through the %{adapter} connection of %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13724,6 +13715,12 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Runs handed over"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Runs in %{workspace} use the workflow you choose here, from a harness repository."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -15431,6 +15428,11 @@ msgstr ""
 msgid "The address email comes from. Empty: %{address}."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/gateways.ex
+#, elixir-autogen, elixir-format
+msgid "The address that runs go through when their node or node pool in a workspace of %{organisation} is set to this gateway."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The agent answers the line in run %{attempt} of %{of}."
@@ -15546,6 +15548,11 @@ msgstr ""
 #: lib/apiary_web/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "The default gateway for workspaces in %{organisation} that don't set one."
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "The default model for runs in %{workspace}. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -16454,6 +16461,17 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Theme"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Then copy the token it prints. %{terms} allow this for personal use only."
+msgstr ""
+
+#: lib/apiary_web/controllers/docs_html/not_built.html.heex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Then reload this page. The guides are also in the %{directory} directory of the repository, as Markdown."
 msgstr ""
 
 #: lib/apiary/policy.ex

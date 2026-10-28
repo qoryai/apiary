@@ -482,6 +482,46 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
+  command_line/1 shows a terminal command that the reader runs, on a separate line in
+  code font, with an icon Copy beside it, in the look of a link shown once
+  (`one_time_link/1`). Copy writes `command` to the clipboard with leading and trailing
+  whitespace trimmed; the component adds no prompt sign, so pass the command without
+  one. `id` must be unique on the page; the command is `<id>-text` and Copy is
+  `<id>-copy`.
+
+      <.command_line id="get-key-command" command="claude setup-token" />
+  """
+  attr :id, :string, required: true
+  attr :command, :string, required: true, doc: "the command, as the reader types it"
+  attr :class, :any, default: nil
+
+  def command_line(assigns) do
+    assigns = update(assigns, :command, &String.trim/1)
+
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "flex min-w-0 items-start gap-2 rounded-box border border-line bg-base-200 py-1.5 pr-1.5 pl-3 text-left",
+        @class
+      ]}
+    >
+      <code
+        id={"#{@id}-text"}
+        class="q-mono min-w-0 flex-1 py-0.5 text-[12.5px]/5 break-all text-base-content"
+      >{@command}</code>
+      <.copy_button
+        id={"#{@id}-copy"}
+        text={@command}
+        label={gettext("Copy command")}
+        icon_only
+        done_tip
+      />
+    </div>
+    """
+  end
+
+  @doc """
   one_time_link/1 shows a link that works once, the one time it is shown: an invitation's,
   made without mail (`Apiary.Organisations.invite_member/3`,
   `Apiary.Organisations.renew_invitation/3`), or a password link

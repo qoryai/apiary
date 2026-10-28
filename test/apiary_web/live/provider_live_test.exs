@@ -38,6 +38,17 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
   defp title(name), do: (Providers.fetch(name) |> elem(1)).title
 
+  # The text of the element `selector` selects, its whitespace collapsed.
+  defp text(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
   # New model provider's form in `html` is sent with POST, and its key's field has no value.
   defp assert_posts_without_key(html) do
     form = LazyHTML.query(html, "#new-provider-form")
@@ -121,8 +132,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#page-context #new-provider-what",
-               "A model provider's key lets the agents of #{scope.organisation.name}'s runs " <>
-                 "call a model."
+               "A model provider's key lets runs in #{scope.organisation.name} call a model."
              )
 
       assert has_element?(
@@ -134,7 +144,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#new-provider-next",
-               "After you save, choose #{scope.workspace.name}'s model in Workspace settings › Model."
+               "After you save, choose the model for #{scope.workspace.name} in Workspace settings › Model."
              )
 
       # The help that repeated the form is gone.
@@ -145,11 +155,22 @@ defmodule ApiaryWeb.ProviderLiveTest do
       |> form("#new-provider-form", provider: %{provider: "claude-subscription"})
       |> render_change()
 
-      assert has_element?(lv, "#new-provider-get-key", "claude setup-token")
+      assert text(lv, "#page-context #new-provider-get-key-run") ==
+               "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+
+      assert text(lv, "#new-provider-get-key-command-text") == "claude setup-token"
 
       assert has_element?(
                lv,
-               ~s{#new-provider-get-key a[href="https://code.claude.com/docs/en/legal-and-compliance"][target="_blank"]},
+               ~s{#new-provider-get-key-command-copy[data-copy="claude setup-token"]}
+             )
+
+      assert text(lv, "#new-provider-get-key-copy-token") ==
+               "Then copy the token it prints. Anthropic's terms (opens in a new tab) allow this for personal use only."
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-get-key-copy-token a[href="https://code.claude.com/docs/en/legal-and-compliance"][target="_blank"]},
                "Anthropic's terms"
              )
 
@@ -166,6 +187,19 @@ defmodule ApiaryWeb.ProviderLiveTest do
                lv,
                "#new-provider-address-hint",
                "The proxy's https address without /v1."
+             )
+    end
+
+    test "the Key field's hint says the key is stored encrypted and never shown again", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) ==
+               "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-form input[type=password][aria-describedby$="-hint"]}
              )
     end
 
