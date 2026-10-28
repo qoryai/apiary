@@ -150,15 +150,15 @@ defmodule ApiaryWeb.WorkflowLive do
     do: put_flash(socket, :error, harness_who_may(socket.assigns.current_scope))
 
   defp harness_saved(socket, choice, {:error, reason}) do
-    source =
+    {source, ref} =
       case choice do
-        {:repository, source, _ref} -> source
-        _other -> nil
+        {:repository, source, ref} -> {source, ref}
+        _other -> {nil, nil}
       end
 
     organisation = socket.assigns.current_scope.organisation.name
 
-    case HarnessComponents.refusal_words(reason, source, organisation) do
+    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
       nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
       words -> assign(socket, :harness_refusal, words)
     end

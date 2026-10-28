@@ -5785,6 +5785,11 @@ msgstr ""
 msgid "Correct %{source}, then run Explore again. It breaks the harness format: %{rule}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Cost"

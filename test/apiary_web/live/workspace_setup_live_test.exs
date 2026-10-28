@@ -1150,6 +1150,54 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
     end
 
+    test "a harness repository at a branch or tag that cannot be read: correct it", ctx do
+      adapter = linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      # A ref under refs/ that is no branch or tag breaks the save rule of refs.
+      lv
+      |> form("#set-up-harness-form", harness: %{ref: "refs/pull/1/head"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read refs/pull/1/head in acme/harness: write the ref " <>
+                 "refs/pull/1/head as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                 "refs/tags/<name> or a full commit id: people without write access can " <>
+                 "change other refs, such as a pull request's."
+
+      # A ref that is no version a read takes.
+      lv |> form("#set-up-harness-form", harness: %{ref: "v 9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read v 9 in acme/harness: the ref v 9 is not a version: 1 to 255 " <>
+                 "letters, digits, dots, underscores, slashes and hyphens."
+
+      # The read returns c-R_harness for v9, which is no commit.
+      Apiary.HarnessReadsFixtures.serve_calls([adapter],
+        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
+        files: %{{"R_harness", "qory-stack.yaml"} => @root_stack}
+      )
+
+      lv |> form("#set-up-harness-form", harness: %{ref: "v9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read v9 in acme/harness: its ref is no version of its source."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
     test "a member sees the choices disabled and who may; a save sent changes nothing", ctx do
       member = joined(ctx.organisation, :member)
       {:ok, lv, _html} = build_conn() |> log_in_user(member) |> live(ctx.path)

@@ -943,13 +943,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     do: socket |> load_step() |> put_flash(:error, socket.assigns.who_may)
 
   defp harness_saved(socket, choice, {:error, reason}) do
-    source =
+    {source, ref} =
       case choice do
-        {:repository, source, _ref} -> source
-        _other -> nil
+        {:repository, source, ref} -> {source, ref}
+        _other -> {nil, nil}
       end
 
-    case HarnessComponents.refusal_words(reason, source, socket.assigns.flow.organisation.name) do
+    organisation = socket.assigns.flow.organisation.name
+
+    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
       nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
       words -> assign(socket, :harness_refusal, {reason, words})
     end
