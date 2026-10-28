@@ -26,15 +26,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   setup :register_and_log_in_user
 
-  defmodule SetUpFinished do
-    @moduledoc false
-    # The workspace's test run passed: its set-up is finished, and with the `factory`
-    # feature the Overview opens (`ApiaryWeb.SetUpComponents.set_up_path/1`).
-    def test_run_passed?(_workspace), do: true
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
   end
 
-  setup do
-    :ok = Apiary.Edition.put_test_stub(SetUpFinished)
+  # The edition's words for who may lock, as `Apiary.EditionStubs.LockWorded` has them, on
+  # a workspace whose set-up is finished.
+  defmodule LockWordedFinished do
+    @moduledoc false
+    defdelegate who_may_sentence(about, scope), to: Apiary.EditionStubs.LockWorded
+    defdelegate test_run_passed?(workspace), to: Apiary.EditionStubs.SetUpFinished
   end
 
   # No coalescing and no throttling here, so a broadcast is followed by its read as the
@@ -1336,7 +1338,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "A locked workspace rule denies *.paste.example. Only an owner can change it."
              ]
 
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      :ok = Apiary.Edition.put_test_stub(LockWordedFinished)
       sentence = Apiary.EditionStubs.LockWorded.sentence()
       assert title.() == ["A locked workspace rule denies *.paste.example. #{sentence}"]
     end
