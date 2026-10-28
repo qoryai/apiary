@@ -254,7 +254,7 @@ defmodule Apiary.Harnesses.Walk do
       sources(%{"extends" => base}, organisation, nil)
 
       at = Map.get(get(:pins), {git, ref})
-      if commit?(at), do: at, else: fail(:invalid, Document.shown(git), rule("version"))
+      if commit?(at), do: at, else: fail(:invalid, Document.shown(git), rule("version", ref: ref))
     end)
   end
 
@@ -812,7 +812,7 @@ defmodule Apiary.Harnesses.Walk do
   defp resolve_at(adapter, addresses) do
     case call(adapter, &Calls.resolve(&1, addresses, &2)) do
       {:ok, results} -> results
-      {:error, %CallFailure{} = failure} -> call_failed(failure, nil)
+      {:error, %CallFailure{} = failure} -> call_failed(failure, nil, nil)
     end
   end
 
@@ -973,7 +973,7 @@ defmodule Apiary.Harnesses.Walk do
     case call(location.adapter, &Calls.read_at(&1, request, &2)) do
       {:ok, %{found: true, content: content, resolved_at: version}} -> {content, version}
       {:ok, %{found: false, resolved_at: version}} -> {nil, version}
-      {:error, %CallFailure{} = failure} -> call_failed(failure, location)
+      {:error, %CallFailure{} = failure} -> call_failed(failure, location, at)
     end
   end
 
@@ -1000,21 +1000,22 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
-  defp call_failed(%CallFailure{cause: cause} = failure, _location)
+  defp call_failed(%CallFailure{cause: cause} = failure, _location, _at)
        when cause in [:timeout, :unreachable],
        do: retry(%{id: failure.adapter_id, name: failure.adapter_name})
 
-  defp call_failed(%CallFailure{cause: :refused, code: code}, %{} = location)
+  defp call_failed(%CallFailure{cause: :refused, code: code}, %{} = location, _at)
        when code in ["grant_unknown", "resource_not_covered", "resource_not_public"],
        do: fail(:not_covered, location.source)
 
-  defp call_failed(%CallFailure{cause: :refused, code: "version_not_found"}, %{} = location),
-    do: fail(:invalid, location.source, rule("version"))
+  # The version a read did not find is the ref it read at, `at`.
+  defp call_failed(%CallFailure{cause: :refused, code: "version_not_found"}, %{} = location, at),
+    do: fail(:invalid, location.source, rule("version", ref: at))
 
-  defp call_failed(%CallFailure{cause: :refused, code: "document_not_text"}, %{} = location),
+  defp call_failed(%CallFailure{cause: :refused, code: "document_not_text"}, %{} = location, _at),
     do: fail(:invalid, location.source, rule("not_text"))
 
-  defp call_failed(%CallFailure{} = failure, location) do
+  defp call_failed(%CallFailure{} = failure, location, _at) do
     throw(
       {__MODULE__, :failed,
        %{

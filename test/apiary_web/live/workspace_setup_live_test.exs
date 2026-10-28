@@ -867,7 +867,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} =
         live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
 
-      assert has_element?(lv, "h1", "Which repositories may Main's runs change?")
+      assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
 
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Destinations."
@@ -1048,7 +1048,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       workspace = ctx.scope.workspace
 
-      assert has_element?(lv, "h1", "Which harness do #{workspace.name}'s runs use?")
+      assert has_element?(lv, "h1", "Which harness do runs in #{workspace.name} use?")
 
       assert [
                {"Destinations used", _state},
@@ -1148,6 +1148,99 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert %{choice: :repository, harness: harness} = Apiary.Stacks.choice(ctx.scope.workspace)
       assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
+    end
+
+    test "a harness repository at a branch or tag that cannot be read: correct it", ctx do
+      adapter = linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      # A ref under refs/ that is no branch or tag breaks the save rule of refs.
+      lv
+      |> form("#set-up-harness-form", harness: %{ref: "refs/pull/1/head"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read refs/pull/1/head in acme/harness: write the ref " <>
+                 "refs/pull/1/head as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                 "refs/tags/<name> or a full commit id: people without write access can " <>
+                 "change other refs, such as a pull request's."
+
+      # A ref that is no version a read takes.
+      lv |> form("#set-up-harness-form", harness: %{ref: "v 9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read v 9 in acme/harness: the ref v 9 is not a version: 1 to 255 " <>
+                 "letters, digits, dots, underscores, slashes and hyphens."
+
+      # The read finds no version v9.
+      Apiary.HarnessReadsFixtures.serve_calls([adapter],
+        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
+        files: %{{"R_harness", "qory-stack.yaml"} => @root_stack},
+        versions: %{"R_harness" => @pin},
+        refuse_at: %{"v9" => "version_not_found"}
+      )
+
+      lv |> form("#set-up-harness-form", harness: %{ref: "v9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read v9 in acme/harness: its ref is no version of its source."
+
+      # The read returns c-R_harness for v9, which is no commit.
+      Apiary.HarnessReadsFixtures.serve_calls([adapter],
+        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
+        files: %{{"R_harness", "qory-stack.yaml"} => @root_stack}
+      )
+
+      lv |> form("#set-up-harness-form", harness: %{ref: "v9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read v9 in acme/harness: its ref is no version of its source."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a module of the harness repository at a ref the read does not find: the read's line",
+         ctx do
+      stack = "modules:\n  - source: {git: \"#{@harness_git}\", ref: no-such-tag}\n"
+      adapter = linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => stack})
+
+      Apiary.HarnessReadsFixtures.serve_calls([adapter],
+        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
+        files: %{{"R_harness", "qory-stack.yaml"} => stack},
+        versions: %{"R_harness" => @pin},
+        refuse_at: %{"no-such-tag" => "version_not_found"}
+      )
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      # main reads: the person's ref is not the one to correct.
+      lv |> form("#set-up-harness-form", harness: %{ref: "main"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Reload the page to read acme/harness again, or choose another source. Qory " <>
+                 "Apiary could not read its stack: the call to its integration failed, or a " <>
+                 "file in it is not valid."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
     test "a member sees the choices disabled and who may; a save sent changes nothing", ctx do
@@ -1780,7 +1873,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     _pool = ready_instance!()
     lv = open(ctx)
 
-    assert has_element?(lv, "h1", "Which machines run #{ctx.scope.workspace.name}'s runs?")
+    assert has_element?(lv, "h1", "Which machines run the runs in #{ctx.scope.workspace.name}?")
 
     assert [{"Harness", _state}, {"Machines", :current}, {"Test run", :to_come}] =
              lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
@@ -1798,7 +1891,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-back")
   end
 
-  test "the instance's pool not ready: no pool, no active key, no gateway, then ready", ctx do
+  test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
+       ctx do
     line = "Only an instance admin checks the instance's pool and gateway."
 
     lv = open(ctx)
@@ -1818,17 +1912,47 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-pool-instance-who-may") == line
 
     _pool_key = installed_key_fixture(pool)
-    gateway = instance_gateway_fixture(name: "instance gateway")
     lv = open(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no gateway"
     assert words(lv, "#set-up-pool-instance-who-may") == line
     assert has_element?(lv, "#set-up-skip")
+
+    gateway = instance_gateway_fixture(name: "instance gateway")
+    lv = open(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: the gateway has no active key"
+    assert words(lv, "#set-up-pool-instance-who-may") == line
 
     _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
     lv = open(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
     assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "the instance's pool not ready for its gateway choice: Direct, or a gateway its runs may not go through",
+       ctx do
+    gateway = gateway_fixture(ctx.scope)
+    _gateway_key = node_key_fixture(ctx.scope, gateway)
+
+    pool = instance_pool_fixture(gateway_choice: :direct)
+    _pool_key = installed_key_fixture(pool)
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-state") ==
+             "Not ready: the pool is set to Direct, and runs need a gateway"
+
+    # The instance's pool names a gateway of the workspace: its runs go through the
+    # instance's gateway alone.
+    pool
+    |> Ecto.Changeset.change(gateway_choice: :named, gateway_id: gateway.id)
+    |> Repo.update!()
+
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-state") ==
+             "Not ready: the pool's runs may not go through the chosen gateway"
+
+    assert has_element?(lv, "#set-up-skip")
   end
 
   test "an instance admin sees Check the nodes; a member reads who acts", ctx do
@@ -1886,6 +2010,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#{id}-name a")
     refute has_element?(lv, "#{id}-who-may")
     assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "a pool of the workspace whose runs may not go through the gateway it is set to", ctx do
+    # A gateway of another workspace, which the pool's runs are not in.
+    other = %{ctx.scope | workspace: workspace_fixture(ctx.organisation)}
+    gateway = gateway_fixture(other)
+    _gateway_key = node_key_fixture(other, gateway)
+
+    pool = pool_fixture(ctx.scope)
+    _pool_key = enrolled_key_fixture(ctx.scope, pool)
+
+    pool
+    |> Ecto.Changeset.change(gateway_choice: :named, gateway_id: gateway.id)
+    |> Repo.update!()
+
+    assert words(open(ctx), "#set-up-pool-#{pool.public_id}-state") ==
+             "Not ready: the pool's runs may not go through the chosen gateway"
   end
 
   test "two pools of the workspace: each with its state, neither shown chosen", ctx do

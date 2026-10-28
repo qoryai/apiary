@@ -115,7 +115,7 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     assert row(collection) == {nil, true}
 
     {:ok, lv, _html} = live(conn, ctx.destinations)
-    assert has_element?(lv, ".q-settings-head-sub", "Which repositories may Main's runs change?")
+    assert has_element?(lv, ".q-settings-head-sub", "Which repositories may runs in Main change?")
     assert has_element?(lv, "#destinations-tick-#{collection.public_id} input[disabled]")
     assert has_element?(lv, "#destinations-who-may")
 

@@ -600,5 +600,35 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert words(view, "#harness-line") == "Qory harness · pinned at fe3b3ab"
       assert Stacks.choice(scope.workspace) == nil
     end
+
+    test "a branch or tag the read finds no version for: correct it, and the choice stays", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      adapter: adapter,
+      covered: covered
+    } do
+      # The read returns c-R_harness, which is no commit.
+      files = Map.put(@files, {"R_harness", "qory-stack.yaml"}, @root_stack)
+      serve_calls([adapter], covered: covered, files: files)
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository", ref: "v9"})
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      assert words(view, "#workflow-harness-refusal") ==
+               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+                 "could not read v9 in acme/harness: its ref is no version of its source."
+
+      assert words(view, "#harness-line") == "Qory harness · pinned at fe3b3ab"
+      assert Stacks.choice(scope.workspace) == nil
+    end
   end
 end

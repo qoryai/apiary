@@ -12,6 +12,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
+    "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
     "Proposed what to do",

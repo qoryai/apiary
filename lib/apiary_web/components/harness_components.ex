@@ -11,7 +11,7 @@ defmodule ApiaryWeb.HarnessComponents do
   # under Branch or tag, the organisation's connection it is read through. `line/1` is the
   # choice with its pin, as Workflow shows it. `form_params/2` is the form's values for a
   # saved choice, `choice/2` the choice the form's values come to, and
-  # `refusal_words/3` why a save was refused. `qory/2` is the Qory harness the choices
+  # `refusal_words/4` why a save was refused. `qory/2` is the Qory harness the choices
   # show.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -217,10 +217,12 @@ defmodule ApiaryWeb.HarnessComponents do
   def unchanged?(_choice, _chosen), do: false
 
   @doc false
-  # refusal_words/3 is why the save of a harness repository, `source`, was refused, in the
-  # words of Workflow's reads of a source; nil for a refusal those words do not cover.
-  @spec refusal_words(term, map | nil, String.t()) :: String.t() | nil
-  def refusal_words({:limited, seconds}, source, _organisation),
+  # refusal_words/4 is why the save of a harness repository, `source` at `ref`, was
+  # refused, in the words of Workflow's reads of a source; nil for a refusal those words
+  # do not cover. A ref the walk could not read (`unreadable_ref?/3`) gets the line
+  # "Correct the harness version, …".
+  @spec refusal_words(term, map | nil, String.t() | nil, String.t()) :: String.t() | nil
+  def refusal_words({:limited, seconds}, source, _ref, _organisation),
     do:
       ngettext(
         "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
@@ -229,7 +231,7 @@ defmodule ApiaryWeb.HarnessComponents do
         source: label(source)
       )
 
-  def refusal_words({:walk, %{failure: failure}}, source, organisation)
+  def refusal_words({:walk, %{failure: failure}}, source, _ref, organisation)
       when failure in [:not_covered, :not_allowed],
       do:
         pgettext(
@@ -239,14 +241,49 @@ defmodule ApiaryWeb.HarnessComponents do
           organisation: organisation
         )
 
-  def refusal_words({:walk, _failure}, source, _organisation),
+  def refusal_words({:walk, failure}, source, ref, _organisation) do
+    if unreadable_ref?(failure, source, ref),
+      do:
+        gettext(
+          "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}.",
+          ref: ref,
+          source: label(source),
+          rule: ApiaryWeb.WorkItemComponents.harness_rule_words(failure.rule)
+        ),
+      else: unread_words(source)
+  end
+
+  def refusal_words(_reason, _source, _ref, _organisation), do: nil
+
+  defp unread_words(source),
     do:
       gettext(
         "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid.",
         source: label(source)
       )
 
-  def refusal_words(_reason, _source, _organisation), do: nil
+  # Whether the walk's `failure` is about `ref` of `source`, the version the person gave:
+  # the read found no version for it, it is no version a read takes, or it breaks the
+  # save rule of refs (`Apiary.Stacks.Document.ref_error/1`).
+  defp unreadable_ref?(%{failure: :invalid, source: shown, rule: rule}, %{git: git}, ref)
+       when is_binary(git) and is_binary(ref) do
+    shown == Document.shown(git) and
+      case rule do
+        %{"rule" => "version", "values" => %{"ref" => ^ref}} ->
+          true
+
+        %{"rule" => "ref", "values" => %{"ref" => ^ref}} ->
+          true
+
+        %{"message" => message, "values" => %{"ref" => ^ref}} ->
+          match?({^message, _values}, Document.ref_error(ref))
+
+        _other ->
+          false
+      end
+  end
+
+  defp unreadable_ref?(_failure, _source, _ref), do: false
 
   defp label(%{label: label}), do: label
   defp label(_none), do: ""
