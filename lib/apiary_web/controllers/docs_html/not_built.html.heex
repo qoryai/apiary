@@ -6,14 +6,21 @@
       heading="h1"
       title={gettext("The documentation is not built")}
     >
-      <.rich text={
-        rich_pgettext(
-          "plain",
-          "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown.",
-          command: {:code, "mix docs"},
-          directory: {:code, "guides"}
-        )
-      } />
+      <div class="grid gap-2.5">
+        <p id="docs-not-built-run">
+          {pgettext("plain", "A release image builds it and serves it here. In a checkout, run:")}
+        </p>
+        <.command_line id="docs-not-built-command" command="mix docs" />
+        <p id="docs-not-built-reload">
+          <.rich text={
+            rich_pgettext(
+              "plain",
+              "Then reload this page. The guides are also in the %{directory} directory of the repository, as Markdown.",
+              directory: {:code, "guides"}
+            )
+          } />
+        </p>
+      </div>
       <:actions>
         <.button navigate={~p"/"}>
           {gettext("Back to %{name}", name: Apiary.ProductName.name())}

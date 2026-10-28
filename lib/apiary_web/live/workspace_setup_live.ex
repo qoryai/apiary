@@ -1391,17 +1391,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <:context>
         <p id="set-up-what">
-          {gettext("A model provider's key lets the agents of %{organisation}'s runs call a model.",
+          {gettext("A model provider's key lets runs in %{organisation} call a model.",
             organisation: @flow.organisation.name
           )}
         </p>
-        <p :if={@may and !@existing and ProviderPage.get_key(@chosen)} id="set-up-get-key">
-          <.rich text={ProviderPage.get_key(@chosen)}>
-            <:part name={:terms}>
-              <ProviderPage.terms href={ProviderPage.terms_url(@chosen)} />
-            </:part>
-          </.rich>
-        </p>
+        <ProviderPage.get_key :if={@may and !@existing} id="set-up-get-key" chosen={@chosen} />
       </:context>
     </SetUpComponents.frame>
     """

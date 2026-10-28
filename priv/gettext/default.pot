@@ -3099,7 +3099,7 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "A model provider's key lets the agents of %{organisation}'s runs call a model."
+msgid "A model provider's key lets runs in %{organisation} call a model."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3140,7 +3140,7 @@ msgstr ""
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown."
+msgid "A release image builds it and serves it here. In a checkout, run:"
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -5718,6 +5718,7 @@ msgstr ""
 msgid "Copy block"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -7847,6 +7848,11 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create a DeepSeek API key."
 msgstr ""
 
@@ -7858,11 +7864,6 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Get the key from the provider first: run %{command} in a terminal where Claude Code is installed, and copy the token it prints. %{terms} allow this for personal use only."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -16474,6 +16475,17 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Theme"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Then copy the token it prints. %{terms} allow this for personal use only."
+msgstr ""
+
+#: lib/apiary_web/controllers/docs_html/not_built.html.heex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Then reload this page. The guides are also in the %{directory} directory of the repository, as Markdown."
 msgstr ""
 
 #: lib/apiary/policy.ex
