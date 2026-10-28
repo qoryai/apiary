@@ -744,6 +744,30 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule EndsCollectionAtAssign do
+    @moduledoc """
+    The organisation's live collections titled `ends-at-assign` end as `collection.assign`
+    is checked, as if a listing ended them between a page's read and its change:
+    `Apiary.Adapters.Collections.assign_collections/4` then finds the collection ended and
+    returns `{:error, :not_found}`. A test sets the title after its page has read the list.
+    """
+    import Ecto.Query, only: [from: 2]
+
+    def check(scope, :"collection.assign", subject) do
+      Apiary.Repo.update_all(
+        from(c in Apiary.Adapters.Collection,
+          where: c.organisation_id == ^scope.organisation.id,
+          where: c.title == "ends-at-assign" and is_nil(c.ended_at)
+        ),
+        set: [ended_at: DateTime.utc_now(:second), ended_reason: "not_listed"]
+      )
+
+      Apiary.Edition.module().check(scope, :"collection.assign", subject)
+    end
+
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}

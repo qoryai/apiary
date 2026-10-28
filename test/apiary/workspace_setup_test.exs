@@ -553,10 +553,10 @@ defmodule Apiary.WorkspaceSetupTest do
       assert row.(elsewhere) == {other.id, true}
 
       assert WorkspaceSetup.tick(scope, main, @software, :sources, theirs.id) ==
-               {:error, :not_found}
+               {:error, :unlisted}
 
       assert WorkspaceSetup.tick(scope, main, @software, :sources, "not an id") ==
-               {:error, :not_found}
+               {:error, :unlisted}
 
       %{scope: member} = member_fixture(scope, :member)
       member = %{member | workspace: main}

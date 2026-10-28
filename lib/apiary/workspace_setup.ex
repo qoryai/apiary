@@ -357,12 +357,15 @@ defmodule Apiary.WorkspaceSetup do
   #     no destination;
   #   * unticking a destination turns its Backlog off and unassigns it.
   #
-  # `{:error, :not_found}` for a collection the list does not have, and
+  # `{:error, :unlisted}` for a collection the list does not have, and
   # `{:error, :elsewhere}` for one in another workspace, which changes nothing: moving it
-  # stays on the organisation's integration page. Else the answer of
+  # stays on the organisation's integration page. `Apiary.Adapters.Collections` returns
+  # neither atom. Else the answer of
   # `Apiary.Adapters.Collections.assign_collections/4` and
-  # `Apiary.Adapters.Collections.set_collection_backlog/4`, `{:error, :forbidden}` to a
-  # person whom `collection.assign` or `collection.set_backlog` does not allow.
+  # `Apiary.Adapters.Collections.set_collection_backlog/4`: `{:error, :forbidden}` to a
+  # person whom `collection.assign` or `collection.set_backlog` does not allow, and
+  # `{:error, :not_found}` where the connection, the workspace or the collection ended
+  # after the read.
   @spec tick(Scope.t(), Workspace.t(), module, :sources | :destinations, term) ::
           :ok | {:error, term}
   def tick(%Scope{} = scope, %Workspace{} = workspace, domain, list, collection_id) do
@@ -375,7 +378,7 @@ defmodule Apiary.WorkspaceSetup do
 
     case found do
       nil ->
-        {:error, :not_found}
+        {:error, :unlisted}
 
       {_adapter, %{workspace: %Workspace{id: id}}} when id != workspace.id ->
         {:error, :elsewhere}

@@ -913,6 +913,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "In Second (cannot be ticked)"
     end
 
+    test "a tick on a collection that ends after the tick read the list says nothing changed",
+         ctx do
+      free = collection_fixture(ctx.scope, workspace_id: nil)
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.EndsCollectionAtAssign)
+
+      {1, _} =
+        Repo.update_all(from(c in Collection, where: c.id == ^free.id),
+          set: [title: "ends-at-assign"]
+        )
+
+      tick(lv, free)
+
+      assert has_element?(lv, "#flash-error", "Nothing was changed. Try again.")
+      assert Repo.get!(Collection, free.id).workspace_id == nil
+    end
+
     test "a tick on a collection of another organisation changes nothing", ctx do
       %{scope: theirs} = sign_up_fixture()
       collection = collection_fixture(theirs, workspace_id: nil)

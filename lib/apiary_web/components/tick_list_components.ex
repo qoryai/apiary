@@ -60,14 +60,15 @@ defmodule ApiaryWeb.TickListComponents do
 
   @doc false
   # put_tick_flash/3 is `socket` with the flash for a tick's answer (`result`): none where
-  # the tick changed a collection, or where the collection is gone from the list or in
-  # another workspace, which the list shows once read again; `who_may` where it was
-  # refused; else that nothing changed.
+  # the tick changed a collection, or where the list read for the tick did not have the
+  # collection (`:unlisted`) or had it in another workspace (`:elsewhere`), which the list
+  # shows once read again; `who_may` where it was refused; else, for any other refusal,
+  # such as a collection that ended after the read, that nothing changed.
   @spec put_tick_flash(Phoenix.LiveView.Socket.t(), :ok | {:error, term}, String.t()) ::
           Phoenix.LiveView.Socket.t()
   def put_tick_flash(socket, :ok, _who_may), do: socket
 
-  def put_tick_flash(socket, {:error, reason}, _who_may) when reason in [:not_found, :elsewhere],
+  def put_tick_flash(socket, {:error, reason}, _who_may) when reason in [:unlisted, :elsewhere],
     do: socket
 
   def put_tick_flash(socket, {:error, :forbidden}, who_may),
