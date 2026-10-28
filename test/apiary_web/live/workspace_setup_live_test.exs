@@ -1609,6 +1609,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
   @key "sk-ant-set-up-test-0123456789abcdef"
 
+  @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+  @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+
   defp words(lv, selector) do
     lv
     |> element(selector)
@@ -1695,7 +1698,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-model-form", "Runtime")
 
     assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
-             "Qory Apiary stores the key encrypted, and nobody can view it again."
+             "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+
+    assert words(lv, "#set-up-model-later") == @workspace_later
 
     assert has_element?(
              lv,
@@ -1748,6 +1753,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "input[name='model[key]']")
     refute has_element?(lv, "#set-up-get-key")
+    # The provider reused links the workspace's secret.
+    assert words(lv, "#set-up-model-later") == @workspace_later
     assert {"Model", :current} in steps(lv)
     refute render(lv) =~ @key
   end
@@ -1762,15 +1769,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "#set-up-model-add")
     refute has_element?(lv, "input[name='model[key]']")
+    # The provider's key is a secret of the organisation.
+    assert words(lv, "#set-up-model-later") == @organisation_later
 
     # Add a key opens Provider and Key, and the provider to reuse closes them again.
     lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
     assert {"Add a key", true} in key_options(lv)
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-context #set-up-get-key")
+    assert words(lv, "#set-up-model-later") == @workspace_later
 
     lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
     refute has_element?(lv, "#set-up-model-add")
+    assert words(lv, "#set-up-model-later") == @organisation_later
 
     lv
     |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})

@@ -68,11 +68,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     Default model, the models suggested for the provider and runtime
   #     (`Apiary.ModelChoices.suggestions/2`). Continue saves the workspace's choice
   #     (level 5, `Apiary.ModelChoices.put_choice/4`) with the provider, its default key,
-  #     the runtime and the model. The key is never kept in an assign: its field is left
-  #     out of the page's patches (`phx-update="ignore"`). A save needs
-  #     `model_choice.write` on the workspace, and Add a key needs `provider.write` too. A
-  #     person who may not save, or who may not add a key where there is none to reuse,
-  #     sees who may;
+  #     the runtime and the model. The line under the form shows where to change the
+  #     model and the key: Workspace settings for a key that is a secret of the workspace,
+  #     Organisation settings for one of the organisation. The key is never kept in an
+  #     assign: its field is left out of the page's patches (`phx-update="ignore"`). A
+  #     save needs `model_choice.write` on the workspace, and Add a key needs
+  #     `provider.write` too. A person who may not save, or who may not add a key where
+  #     there is none to reuse, sees who may;
   #   * Harness, with the `factory` feature: the three harness choices
   #     (`ApiaryWeb.HarnessComponents.choices/1`), the saved one chosen, else the Qory
   #     harness. The linked repositories of a harness repository are read once the step
@@ -708,6 +710,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       models: models
     )
   end
+
+  # Whether the key `source` chose is a secret of the workspace: Add a key adds one, and a
+  # provider to reuse links one or the organisation's secret.
+  defp workspace_key?(:add), do: true
+  defp workspace_key?(%{secret: %{workspace_id: workspace_id}}), do: is_binary(workspace_id)
+  defp workspace_key?(_provider), do: false
 
   # The value of Key's option for `source`.
   defp source_value(:add), do: "add"
@@ -1385,7 +1393,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             type="password"
             value={nil}
             label={gettext("Key")}
-            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
+            hint={
+              gettext(
+                "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+              )
+            }
             autocomplete="off"
             spellcheck="false"
             phx-update="ignore"
@@ -1423,10 +1435,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           label={gettext("Default model")}
           options={for model <- @models, do: {model.title || model.id, model.id}}
         />
-        <p class="text-[13px]/5 text-muted">
-          {gettext(
-            "You can change these or add more later in Organisation settings › Model providers."
-          )}
+        <p id="set-up-model-later" class="text-[13px]/5 text-muted">
+          {if workspace_key?(@source),
+            do:
+              gettext(
+                "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+              ),
+            else:
+              gettext(
+                "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+              )}
         </p>
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={@page_path} />

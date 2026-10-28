@@ -12519,9 +12519,13 @@ msgid "Qory Apiary serves the policy now."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -18333,14 +18337,19 @@ msgstr ""
 msgid "You can change or unlock it on the workspace's policy page."
 msgstr ""
 
-#: lib/apiary/accounts/user_notifier.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change the email address of your %{name} account by visiting the URL below:"
+msgid "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change these or add more later in Organisation settings › Model providers."
+msgid "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You can change the email address of your %{name} account by visiting the URL below:"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
