@@ -244,7 +244,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     # collections leave, are deleted as the release's races delete them: the organisation
     # first, then what outlives it.
     setup ctx do
-      started = DateTime.utc_now()
+      started = database_now()
       place = handover_place_fixture(ctx.scope)
       {gateway_key, _seed} = place.gateway_key
       {:ok, made} = Agent.start(fn -> [] end)
@@ -605,7 +605,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     setup :attach_deadlocks
 
     setup ctx do
-      started = DateTime.utc_now()
+      started = database_now()
       {:ok, made} = Agent.start(fn -> [] end)
 
       on_exit(fn ->

@@ -793,7 +793,10 @@ defmodule Apiary.AdaptersTest do
       assert details["revoked_key_ids"] == [key.key_id]
 
       assert [%Entry{organisation_id: ^trail}] =
-               Repo.all(from e in Entry, where: e.action == "access_key.revoke")
+               Repo.all(
+                 from e in Entry,
+                   where: e.action == "access_key.revoke" and e.subject_id == ^key.id
+               )
     end
 
     test "only an instance admin deletes one", %{scope: scope} do

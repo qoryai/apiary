@@ -39,7 +39,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
   # the `environment_ref` `env-1`, whose record for the pool was queued for that ref and
   # target, with no prebuild waiting: a Rebuild queues one. All committed.
   setup do
-    started = DateTime.utc_now()
+    started = database_now()
     %{scope: scope} = sign_up()
     pool = pool_fixture(scope, name: "mac-pool")
 
