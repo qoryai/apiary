@@ -9,9 +9,10 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # when the person comes back from it, it first takes the return
   # (`Apiary.Adapters.Connections.complete_return/4`) with the nonce the person's session
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
-  # ended there. Where the session keeps "set-up" beside that nonce, an install started at
-  # the workspace set-up, the return leads to its Work source step,
-  # `/<org>/set-up?step=source`, in place of the integration's page. A return the person
+  # ended there. Where the session keeps a step of the workspace set-up beside that nonce
+  # (`ApiaryWeb.ConnectSession.back?/1`), an install started there, the return leads to
+  # that step, such as `/<org>/set-up?step=sources&type=software`, in place of the
+  # integration's page. A return the person
   # did not start in this browser is answered with a page that says so; a link that names
   # no connection they reach, and a return that is bad, expired or used, as a path that
   # does not exist, whoever asks, so the link does not tell whether one exists. Behind
@@ -59,8 +60,8 @@ defmodule ApiaryWeb.AdapterRedirectController do
       {:ok, outcome} ->
         to =
           case ConnectSession.back(conn, connection.public_id) do
-            "set-up" -> ~p"/#{organisation}/set-up?step=source"
             nil -> path
+            back -> back_path(organisation, back)
           end
 
         conn
@@ -139,5 +140,26 @@ defmodule ApiaryWeb.AdapterRedirectController do
     gettext(
       "Only the person who started this install can finish it, in the browser they started it in. To install it yourself, start again from Integrations."
     )
+  end
+
+  # The path of the workspace set-up's step that `back` is set to
+  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug, or the type picked.
+  defp back_path(organisation, "set-up"), do: ~p"/#{organisation}/set-up?step=sources"
+
+  defp back_path(organisation, back) do
+    [page, step | rest] = String.split(back, ":")
+
+    query =
+      [step: step] ++
+        case rest do
+          ["workspace=" <> slug] -> [workspace: slug]
+          [type] -> [type: type]
+          [] -> []
+        end
+
+    case page do
+      "set-up" -> ~p"/#{organisation}/set-up?#{query}"
+      "new-workspace" -> ~p"/#{organisation}/workspaces/new?#{query}"
+    end
   end
 end

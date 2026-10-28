@@ -1,11 +1,31 @@
 defmodule Apiary.WorkspaceSetup do
-  # What the Overview's setup list reads of a workspace, with the `factory` feature: its
-  # four steps, each done by its rule, and the state of its test run.
+  # What the set-up reads: the steps of the set-up flow (`flow/0`), each done by its rule
+  # here, and the state of a workspace's test run. The set-up page
+  # (`ApiaryWeb.WorkspaceSetupLive`) and the Overview's setup list read the same rules.
   #
-  # Each rule is asked of the edition (`c:Apiary.Edition.work_source_ready/1`,
-  # `c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1`,
-  # `c:Apiary.Edition.test_run_passed?/1`), which may count what serves the workspace from
-  # another organisation. The core's edition answers with the functions here:
+  # The flow's steps, in order, each of a group: for the organisation, Work sources,
+  # Work destinations and Model; for the workspace, Name, Work sources used, Destinations
+  # used and Test run. A step is done by its rule:
+  #
+  #   * `sources?/2`: the organisation has a connected connection of an adapter in use
+  #     with items that serves the workspace's type (`Apiary.Lingo.Domain`);
+  #   * `destinations?/2`: the same, for an adapter with `targets` true;
+  #   * `model?/1`: on the chain of model choices that resolves for the organisation's
+  #     runs (`Apiary.ModelChoices.chain_owner/1`), a model provider with at least one
+  #     key, and the organisation's default (level 6). The runtime is checked when the
+  #     choice is saved, so the rule resolves none;
+  #   * `name?/1`: the workspace exists;
+  #   * `sources_used?/2`: a row of its tick list is ticked: a collection assigned to
+  #     the workspace with its Backlog on;
+  #   * `destinations_used?/2`: a row of its tick list is ticked: a collection with a
+  #     target assigned to the workspace;
+  #   * `test?/1`: the edition's `test_run_passed?/1`.
+  #
+  # The Overview's setup list reads the edition's four rules (`read/2`):
+  # `c:Apiary.Edition.work_source_ready/1`, `c:Apiary.Edition.machines_ready/1`,
+  # `c:Apiary.Edition.model_key_ready?/1` and `c:Apiary.Edition.test_run_passed?/1`, which
+  # may count what serves the workspace from another organisation. The core's edition
+  # answers with the functions here:
   #
   #   * `work_source/1`: the live collections assigned to the workspace, of a connection
   #     of its organisation that is connected and that an adapter's listing has named
@@ -25,26 +45,55 @@ defmodule Apiary.WorkspaceSetup do
   #     registered run `completed`.
   #
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
-  # line. None of them asks access: the Overview's reader reads them.
+  # line. `collections/3` is the rows of the tick lists of Work sources used and
+  # Destinations used, to a person who may read the instance's adapters. None of the
+  # others checks access: the page's reader reads them.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{AccessKeys, Edition, Gateways, ModelChoices, Repo}
+  alias Apiary.{Access, AccessKeys, Edition, Gateways, ModelChoices, Repo}
+  alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Connections.Connection, as: ModelProvider
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Nodes.{Installed, Node}
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
   alias Apiary.Secrets.Value
   alias Apiary.WorkItems.WorkItem
 
   # How long the test run may wait for a machine before the step says so.
   @machine_wait_seconds 300
+
+  # The steps of the set-up flow, in order, each with its group. A step is one entry
+  # here, its rule in `done?/3`, and its page (`ApiaryWeb.WorkspaceSetupLive`).
+  @flow [
+    sources: :organisation,
+    destinations: :organisation,
+    model: :organisation,
+    name: :workspace,
+    sources_used: :workspace,
+    destinations_used: :workspace,
+    test: :workspace
+  ]
+
+  @typedoc "A step of the set-up flow (`flow/0`)."
+  @type step ::
+          :sources | :destinations | :model | :name | :sources_used | :destinations_used | :test
+
+  @typedoc """
+  A row of a tick list (`collections/3`): a live collection with its connection, and the
+  workspace it is assigned to, nil for none.
+  """
+  @type tick_row :: %{
+          collection: Collection.t(),
+          connection: Connection.t(),
+          workspace: Workspace.t() | nil
+        }
 
   @typedoc "An adapter whose collections are assigned to the workspace, with how many."
   @type source :: %{adapter: Node.t(), collections: pos_integer}
@@ -97,7 +146,193 @@ defmodule Apiary.WorkspaceSetup do
   @spec machine_wait_seconds() :: pos_integer
   def machine_wait_seconds, do: @machine_wait_seconds
 
-  ## The rules
+  ## The flow
+
+  @doc false
+  # flow/0 is the steps of the set-up flow, in order, each `{step, group}`: `:organisation`
+  # for the steps the organisation does once, `:workspace` for each workspace's.
+  @spec flow() :: [{step, :organisation | :workspace}]
+  def flow, do: @flow
+
+  @doc false
+  # done?/3 is whether `step` is done, by its rule, for `organisation`, a workspace of the
+  # type `domain` (`Apiary.Lingo.Domain`), and `workspace`, nil before it exists.
+  @spec done?(step, Organisation.t(), {module, Workspace.t() | nil}) :: boolean
+  def done?(:sources, organisation, {domain, _workspace}), do: sources?(organisation, domain)
+
+  def done?(:destinations, organisation, {domain, _workspace}),
+    do: destinations?(organisation, domain)
+
+  def done?(:model, organisation, _type), do: model?(organisation)
+  def done?(:name, _organisation, {_domain, workspace}), do: name?(workspace)
+  def done?(_step, _organisation, {_domain, nil}), do: false
+
+  def done?(:sources_used, _organisation, {domain, workspace}),
+    do: sources_used?(workspace, domain)
+
+  def done?(:destinations_used, _organisation, {domain, workspace}),
+    do: destinations_used?(workspace, domain)
+
+  def done?(:test, _organisation, {_domain, workspace}), do: test?(workspace)
+
+  @doc false
+  # sources?/2 is whether `organisation` has a connected connection of an adapter in use
+  # with items that serves `domain`.
+  @spec sources?(Organisation.t(), module) :: boolean
+  def sources?(%Organisation{id: organisation_id}, domain),
+    do: Repo.exists?(connected_adapters(organisation_id, domain, :items))
+
+  @doc false
+  # destinations?/2 is whether `organisation` has a connected connection of an adapter in
+  # use with `targets` true that serves `domain`.
+  @spec destinations?(Organisation.t(), module) :: boolean
+  def destinations?(%Organisation{id: organisation_id}, domain),
+    do: Repo.exists?(connected_adapters(organisation_id, domain, :targets))
+
+  @doc false
+  # connected_ids/3 is the ids of the adapters in use with items (`:items`) or with
+  # `targets` true (`:targets`) that serve `domain` and that `organisation` has a
+  # connected connection of.
+  @spec connected_ids(Organisation.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
+  def connected_ids(%Organisation{id: organisation_id}, domain, role),
+    do:
+      organisation_id
+      |> connected_adapters(domain, role)
+      |> select([_k, n], n.id)
+      |> Repo.all()
+      |> MapSet.new()
+
+  defp connected_adapters(organisation_id, domain, role) do
+    name = domain.name()
+
+    from(k in Connection,
+      join: n in Node,
+      on: n.id == k.adapter_id,
+      where: k.organisation_id == ^organisation_id,
+      where: k.state == :connected and is_nil(k.ended_at),
+      where: n.kind == :adapter and is_nil(n.deleted_at),
+      where: is_nil(n.domains) or ^name in n.domains
+    )
+    |> where_role(role)
+  end
+
+  defp where_role(query, :items), do: where(query, [_k, n], n.items)
+  defp where_role(query, :targets), do: where(query, [_k, n], n.targets == true)
+
+  @doc false
+  # model?/1 is whether the chain of model choices that resolves for `organisation`'s runs
+  # has a model provider with a key and the organisation's default (level 6) on that chain.
+  # False on an operator's chain for which `c:Apiary.Edition.operator_chain_organisation/1`
+  # returns nil.
+  @spec model?(Organisation.t()) :: boolean
+  def model?(%Organisation{id: organisation_id}) do
+    case ModelChoices.chain_owner(organisation_id) do
+      {_chain, nil} ->
+        false
+
+      {chain, owner_id} ->
+        Repo.exists?(provider_with_key(chain, owner_id)) and
+          Repo.exists?(choice(chain, owner_id, nil))
+    end
+  end
+
+  @doc false
+  # name?/1 is whether the workspace exists.
+  @spec name?(Workspace.t() | nil) :: boolean
+  def name?(workspace), do: match?(%Workspace{}, workspace)
+
+  @doc false
+  # sources_used?/2 is whether a row of the tick list Work sources used, of `workspace` of
+  # the type `domain`, is ticked: a collection of the list (`collections/3`, `:sources`)
+  # assigned to `workspace` with its Backlog on.
+  @spec sources_used?(Workspace.t(), module) :: boolean
+  def sources_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+    organisation_id
+    |> list_query(domain, :sources)
+    |> where([c], c.workspace_id == ^workspace_id and c.backlog)
+    |> Repo.exists?()
+  end
+
+  @doc false
+  # destinations_used?/2 is whether a row of the tick list Destinations used, of
+  # `workspace` of the type `domain`, is ticked: a collection of the list
+  # (`collections/3`, `:destinations`) assigned to `workspace`.
+  @spec destinations_used?(Workspace.t(), module) :: boolean
+  def destinations_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+    organisation_id
+    |> list_query(domain, :destinations)
+    |> where([c], c.workspace_id == ^workspace_id)
+    |> Repo.exists?()
+  end
+
+  @doc false
+  # test?/1 is whether the edition counts a test run of `workspace` that passed
+  # (`c:Apiary.Edition.test_run_passed?/1`).
+  @spec test?(Workspace.t()) :: boolean
+  def test?(%Workspace{} = workspace), do: Edition.test_run_passed?(workspace)
+
+  ## The tick lists
+
+  @doc false
+  # collections/3 is the rows of a tick list for `domain`, a workspace's type, grouped by
+  # adapter, by the adapter's name, then by title: the live collections of the scope's organisation,
+  # of a connection that is connected, of an adapter in use that serves `domain`, each with
+  # its connection and the workspace it is assigned to. For `:sources`, the collections
+  # with items of an adapter with items; for `:destinations`, the collections with a
+  # target of an adapter with `targets` true. `[]` to a person who may not read the
+  # instance's adapters in the organisation (`adapter.read`).
+  @spec collections(Scope.t(), module, :sources | :destinations) :: [{Node.t(), [tick_row]}]
+  def collections(
+        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
+        domain,
+        list
+      ) do
+    if Access.can?(scope, :"adapter.read", organisation) do
+      from([c, k, n] in list_query(organisation_id, domain, list),
+        left_join: w in Workspace,
+        on: w.id == c.workspace_id,
+        order_by: [
+          asc: fragment("lower(?)", n.name),
+          asc: n.id,
+          asc: fragment("lower(?)", c.title),
+          asc: c.id
+        ],
+        select: {n, %{collection: c, connection: k, workspace: w}}
+      )
+      |> Repo.all()
+      |> Enum.chunk_by(fn {adapter, _row} -> adapter.id end)
+      |> Enum.map(fn [{adapter, _row} | _rest] = rows ->
+        {adapter, Enum.map(rows, &elem(&1, 1))}
+      end)
+    else
+      []
+    end
+  end
+
+  # The collections of a tick list (`collections/3`), as `[c, k, n]`: collection,
+  # connection, adapter.
+  defp list_query(organisation_id, domain, list) do
+    name = domain.name()
+
+    from(c in Collection,
+      join: k in Connection,
+      on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+      join: n in Node,
+      on: n.id == c.adapter_id,
+      where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
+      where: k.state == :connected and is_nil(k.ended_at),
+      where: n.kind == :adapter and is_nil(n.deleted_at),
+      where: is_nil(n.domains) or ^name in n.domains
+    )
+    |> where_list(list)
+  end
+
+  defp where_list(query, :sources), do: where(query, [c, _k, n], c.items and n.items)
+
+  defp where_list(query, :destinations),
+    do: where(query, [c, _k, n], n.targets == true and not is_nil(c.target_system))
+
+  ## The rules of the setup list
 
   @doc false
   # work_source/1 is each adapter in use with live collections assigned to `workspace` of
@@ -172,18 +407,28 @@ defmodule Apiary.WorkspaceSetup do
         false
 
       {chain, owner_id} ->
-        provider_with_key =
-          from c in ModelProvider,
-            join: v in Value,
-            on: v.secret_id == c.secret_id,
-            where: c.organisation_id == ^owner_id and not is_nil(c.provider_kind),
-            where: c.chain == ^chain
-
-        Repo.exists?(provider_with_key) and Repo.exists?(choice(chain, owner_id, workspace))
+        Repo.exists?(provider_with_key(chain, owner_id)) and
+          Repo.exists?(choice(chain, owner_id, workspace))
     end
   end
 
-  # The choice a run of `workspace` reads on `chain`, of the organisation `owner_id`.
+  # The model providers of `chain` of the organisation `owner_id` that have a key.
+  defp provider_with_key(chain, owner_id) do
+    from c in ModelProvider,
+      join: v in Value,
+      on: v.secret_id == c.secret_id,
+      where: c.organisation_id == ^owner_id and not is_nil(c.provider_kind),
+      where: c.chain == ^chain
+  end
+
+  # The choice a run of `workspace` reads on `chain`, of the organisation `owner_id`; with
+  # no workspace, the organisation's default (level 6).
+  defp choice(chain, owner_id, nil) do
+    from m in ModelChoice,
+      where: m.organisation_id == ^owner_id and m.chain == ^chain,
+      where: is_nil(m.workspace_id) and is_nil(m.target_id) and is_nil(m.workflow)
+  end
+
   defp choice("operator", owner_id, _workspace) do
     from m in ModelChoice,
       where: m.organisation_id == ^owner_id and m.chain == "operator",

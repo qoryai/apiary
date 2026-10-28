@@ -1,12 +1,14 @@
 defmodule ApiaryWeb.WorkspaceSetupLiveTest do
-  # The workspace set-up, `/:org/set-up` (`ApiaryWeb.WorkspaceSetupLive`): its Workspace
-  # step, the Type field and Create workspace, for a person `workspace.create` allows, and
-  # the line for anyone else; the refusals; the summary once the workspace exists; the page
-  # that moves on when anyone creates the workspace; and the landing that sends an
-  # organisation with no workspace to it. `ApiaryWeb.WorkspaceSetupLive.SourceTest` has
-  # Work source.
+  # The workspace set-up (`ApiaryWeb.WorkspaceSetupLive`) in every feature set: the type
+  # cards, for an owner of an organisation with no workspace and on New workspace, with
+  # the edition's limit; Name, which creates the workspace of the type picked, and shows it
+  # read only once it exists; the line for a person who waits; the page that moves on when
+  # anyone creates the first workspace; and the landing that sends an organisation with no
+  # workspace to it. `ApiaryWeb.WorkspaceSetupLive.FlowTest` has the steps of the `factory`
+  # feature, and `ApiaryWeb.WorkspaceSetupLive.ModelTest` the Model step.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
@@ -79,165 +81,285 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     |> Enum.join(" ")
   end
 
-  @tag :feature_sets
-  test "shows the owner the Type field and Create workspace, with no sidebar", %{conn: conn} do
-    %{user: user, organisation: organisation} = sign_up_without_workspace()
+  defp href(lv, selector) do
+    [href] =
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> LazyHTML.attribute("href")
 
-    {:ok, lv, html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-
-    assert html =~ ~r{<title[^>]*>\s*Set up your workspace}
-    assert has_element?(lv, "h1", "Set up your workspace")
-    refute has_element?(lv, "#shell .drawer")
-    refute has_element?(lv, "#set-up-help")
-
-    assert words(lv, "#set-up-what") ==
-             "Main is where Qory Apiary takes in tickets and runs agents on them. Its type sets " <>
-               "which work sources it can connect, and whether each ticket needs a repository."
-
-    assert words(lv, "#set-up-line") == "Main is this instance's only workspace."
-    assert has_element?(lv, "#set-up-context #set-up-line")
-
-    # Your account, then Workspace, and Work source with the feature; no Back before it.
-    if Apiary.Features.on?(:factory) do
-      assert steps(lv) == [
-               {"Your account", :done},
-               {"Workspace", :current},
-               {"Work source", :to_come}
-             ]
-
-      assert count(lv) == "Step 2 of 3"
-    else
-      assert steps(lv) == [{"Your account", :done}, {"Workspace", :current}]
-      assert count(lv) == "Step 2 of 2"
-    end
-
-    refute has_element?(lv, "#set-up-back")
-
-    # The Type is a choice: a button with the prompt, and a panel of radios, each with
-    # its type's title and line.
-    assert has_element?(lv, "#set-up-form button#workspace_domain.is-prompt", "Choose a type")
-    assert has_element?(lv, "#workspace_domain-panel[hidden]")
-    refute has_element?(lv, "#set-up-form select")
-
-    for {value, title, line} <- [
-          {"software", "Software", "For work on code. Each ticket needs a repository."},
-          {"general", "General",
-           "For any other work, such as marketing, incidents or customer care."}
-        ] do
-      radio = "#set-up-form input[type=radio][name='workspace[domain]'][value='#{value}']"
-      assert has_element?(lv, radio)
-
-      [id] =
-        lv
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query(radio)
-        |> LazyHTML.attribute("id")
-
-      assert has_element?(lv, "label[for='#{id}'] .q-pick-t", title)
-      assert has_element?(lv, "##{id}-s", line)
-    end
-
-    assert has_element?(
-             lv,
-             "#set-up-form",
-             "You can't change the type after you create the workspace."
-           )
-
-    assert has_element?(lv, "#set-up-form button", "Create workspace")
+    href
   end
 
-  test "?step=source before the workspace exists opens the Type step", %{conn: conn} do
+  defp group_headings(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(".q-su-grp-h")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
+  describe "the type cards" do
+    test "show the first person the card of Software factory alone, with no steps", %{
+      conn: conn
+    } do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+      {:ok, lv, html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+
+      assert html =~ ~r{<title[^>]*>\s*What will this workspace do\?}
+      assert has_element?(lv, "h1", "What will this workspace do?")
+      refute has_element?(lv, "#shell .drawer")
+      refute has_element?(lv, "#set-up-steps")
+
+      # General has no card's words, so it has no card.
+      assert has_element?(lv, "#set-up-card-software h2", "Software factory")
+      refute has_element?(lv, "#set-up-card-general")
+
+      assert has_element?(
+               lv,
+               "#set-up-card-software p",
+               "Agents change code in your repositories."
+             )
+
+      assert has_element?(
+               lv,
+               "#set-up-card-software p",
+               "You connect: where work comes from, where changes go, a model."
+             )
+
+      assert href(lv, "#set-up-card-software-choose") ==
+               ~p"/#{organisation}/set-up?type=software"
+    end
+
+    test "a step named with no type, or a type with no card, shows the cards", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+      conn = log_in_user(conn, user)
+
+      for path <- [
+            ~p"/#{organisation}/set-up?step=name",
+            ~p"/#{organisation}/set-up?type=general"
+          ] do
+        {:ok, lv, _html} = live(conn, path)
+        assert has_element?(lv, "#set-up-card-software")
+        refute has_element?(lv, "#set-up-form")
+      end
+    end
+
+    @tag :feature_sets
+    test "Choose opens the flow at its first step, under its two groups", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+
+      lv |> element("#set-up-card-software-choose") |> render_click()
+      assert_patch(lv, ~p"/#{organisation}/set-up?type=software")
+      assert words(lv, "#set-up-title") == "Set up a new Software factory"
+
+      if Apiary.Features.on?(:factory) and Apiary.Features.on?(:secrets) do
+        assert has_element?(lv, "h1", "Where does Acme Studio's work come from?")
+
+        assert steps(lv) == [
+                 {"Your account", :done},
+                 {"Work sources", :current},
+                 {"Work destinations", :to_come},
+                 {"Model", :to_come},
+                 {"Name", :to_come},
+                 {"Work sources used", :to_come},
+                 {"Destinations used", :to_come},
+                 {"Test run", :to_come}
+               ]
+
+        assert count(lv) == "Step 2 of 8"
+        assert group_headings(lv) == ["For Acme Studio", "For the new workspace"]
+
+        # Your account has no page, so the first step has no Back.
+        refute has_element?(lv, "#set-up-back")
+      else
+        assert has_element?(lv, "h1", "Name this workspace")
+        assert steps(lv) == [{"Your account", :done}, {"Name", :current}]
+        assert count(lv) == "Step 2 of 2"
+      end
+    end
+  end
+
+  describe "Name" do
+    @tag :feature_sets
+    test "prefills Main for the first workspace, and creates it of the type picked", %{
+      conn: conn
+    } do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+      {:ok, lv, html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=name&type=software")
+
+      assert html =~ ~r{<title[^>]*>\s*Name this workspace}
+      assert has_element?(lv, "#set-up-form input[name='workspace[name]'][value='Main']")
+      assert words(lv, "#set-up-type") == "Software factory · Acme Studio"
+      assert has_element?(lv, "#set-up-form button", "Create workspace")
+
+      lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
+
+      assert [%Workspace{name: "Payments", domain: "software"} = payments] =
+               Organisations.list_workspaces(
+                 Organisations.load_scope(Scope.for_user(user), organisation.id)
+               )
+
+      {to, _flash} = assert_redirect(lv)
+
+      if Apiary.Features.on?(:factory),
+        do: assert(to == ~p"/#{organisation}/set-up?step=sources_used&workspace=payments"),
+        else: assert(to == ~p"/#{organisation}/#{payments}")
+    end
+
+    test "a blank name is the field's error", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=name&type=software")
+
+      html = lv |> form("#set-up-form", workspace: %{name: " "}) |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+      refute Organisations.has_workspace?(organisation)
+    end
+
+    test "the name of a workspace marked for deletion says to restore it", %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
+      now = DateTime.utc_now()
+
+      main
+      |> Ecto.Changeset.change(
+        deletion_marked_at: now,
+        purge_after: DateTime.add(now, 30, :day),
+        purge_trigger: "grace_period"
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=name&type=software")
+
+      lv |> form("#set-up-form", workspace: %{name: "Main"}) |> render_submit()
+
+      assert words(lv, "#set-up-name-taken") ==
+               "Restore Main in Organisation settings › Workspaces. A deleted workspace keeps " <>
+                 "its name until it is purged."
+
+      refute Organisations.has_workspace?(organisation)
+    end
+
+    @tag :feature_sets
+    test "once the workspace exists, shows it read only", %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=name")
+
+      assert has_element?(lv, "h1", "Name this workspace")
+      assert words(lv, "#set-up-name") == "Main"
+      assert words(lv, "#set-up-type") == "Software factory · #{organisation.name}"
+      refute has_element?(lv, "#set-up-form")
+      assert {"Name", :current} in steps(lv)
+      assert words(lv, "#set-up-title") == "Set up Main · Software factory"
+
+      if Apiary.Features.on?(:factory),
+        do:
+          assert(
+            href(lv, "#set-up-continue") ==
+              ~p"/#{organisation}/set-up?step=sources_used&workspace=#{main.slug}"
+          ),
+        else: refute(has_element?(lv, "#set-up-continue"))
+    end
+  end
+
+  describe "New workspace" do
+    test "says the organisation may have no more workspaces, where the edition allows one",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
+
+      assert has_element?(lv, "h1", "What will this workspace do?")
+      assert words(lv, "#set-up-limit") == "#{organisation.name} may have no more workspaces."
+      refute has_element?(lv, "#set-up-cards")
+
+      # Name says so too, as Create workspace is refused.
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?step=name&type=software")
+      lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
+
+      assert words(lv, "#set-up-limit") == "#{organisation.name} may have no more workspaces."
+
+      assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
+               1
+    end
+
+    @tag :feature_sets
+    test "shows an owner the cards, then Name with no name filled in", %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
+
+      assert href(lv, "#set-up-card-software-choose") ==
+               ~p"/#{organisation}/workspaces/new?type=software"
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?step=name&type=software")
+
+      assert has_element?(lv, "#set-up-form input[name='workspace[name]']")
+      refute has_element?(lv, "#set-up-form input[name='workspace[name]'][value='Main']")
+
+      lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
+      {to, _flash} = assert_redirect(lv)
+
+      if Apiary.Features.on?(:factory),
+        do: assert(to == ~p"/#{organisation}/set-up?step=sources_used&workspace=payments"),
+        else: assert(to == ~p"/#{organisation}/payments")
+    end
+
+    test "is no page for a person workspace.create does not allow", %{conn: conn} do
+      %{organisation: organisation} = sign_up_fixture()
+      user = joined(organisation, :admin)
+
+      assert_raise ApiaryWeb.NotFound, fn ->
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new")
+      end
+    end
+  end
+
+  test "Create workspace after someone else created the first workspace opens the page again",
+       %{conn: conn} do
     %{user: user, organisation: organisation} = sign_up_without_workspace()
 
     {:ok, lv, _html} =
-      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=source")
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=name&type=software")
 
-    assert has_element?(lv, "h1", "Set up your workspace")
-    assert has_element?(lv, "#set-up-form #workspace_domain", "Choose a type")
-    assert {"Workspace", :current} in steps(lv)
-    refute has_element?(lv, "#set-up-sources")
-  end
+    # Written straight into the table: the page hears nothing of it.
+    workspace_fixture(organisation, "Billing")
 
-  @tag :feature_sets
-  test "Create workspace makes Main of the type chosen", %{conn: conn} do
-    %{user: user, organisation: organisation} = sign_up_without_workspace()
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-
-    lv |> form("#set-up-form", workspace: %{domain: "general"}) |> render_submit()
-
-    assert [%Workspace{name: "Main", domain: "general"} = main] =
-             Organisations.list_workspaces(
-               Organisations.load_scope(Scope.for_user(user), organisation.id)
-             )
+    lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
 
     {to, _flash} = assert_redirect(lv)
+    assert to == ~p"/#{organisation}/set-up"
 
-    if Apiary.Features.on?(:factory),
-      do: assert(to == ~p"/#{organisation}/set-up?step=source"),
-      else: assert(to == ~p"/#{organisation}/#{main}")
+    assert [%Workspace{name: "Billing"}] =
+             Repo.all(from w in Workspace, where: w.organisation_id == ^organisation.id)
   end
 
-  test "a type chosen is checked and shown on the button, through a later render", %{
+  test "a create sent by a person workspace.create does not allow creates nothing", %{
     conn: conn
   } do
-    %{user: user, organisation: organisation} = sign_up_without_workspace()
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-    radio = "#set-up-form input[type=radio][name='workspace[domain]']"
+    %{organisation: organisation} = sign_up_without_workspace()
+    member = joined(organisation, :member)
 
-    chosen? = fn value, title ->
-      has_element?(lv, "#{radio}[value='#{value}'][checked]") and
-        not has_element?(lv, "#{radio}[checked]:not([value='#{value}'])") and
-        has_element?(lv, "button#workspace_domain:not(.is-prompt) .q-pick-t", title)
-    end
+    {:ok, lv, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up")
+    render_click(lv, "create", %{"workspace" => %{"name" => "Payments"}})
 
-    for {value, title} <- [{"general", "General"}, {"software", "Software"}] do
-      lv |> form("#set-up-form", workspace: %{domain: value}) |> render_change()
-      assert chosen?.(value, title)
-
-      # The page renders again with nothing changed: `handle_info/2` ignores :tick.
-      send(lv.pid, :tick)
-      assert chosen?.(value, title)
-    end
-
-    # A value that is no type's checks none, and the button shows the prompt.
-    lv |> element("#set-up-form") |> render_change(%{"workspace" => %{"domain" => "unknown"}})
-    refute has_element?(lv, "#{radio}[checked]")
-    assert has_element?(lv, "button#workspace_domain.is-prompt", "Choose a type")
+    refute Organisations.has_workspace?(organisation)
+    assert has_element?(lv, "#set-up-waiting")
   end
 
-  @tag :feature_sets
-  test "Workspace, once the workspace exists, shows what was made, read only", %{conn: conn} do
-    %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
-
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=type")
-
-    assert has_element?(lv, "h1", "Set up your workspace")
-
-    assert words(lv, "#set-up-made") ==
-             "Main is a Software workspace. You can't change the type after you create the workspace."
-
-    refute has_element?(lv, "#set-up-form")
-    assert {"Workspace", :current} in steps(lv)
-
-    if Apiary.Features.on?(:factory) do
-      lv |> element("#set-up-continue") |> render_click()
-      assert_patch(lv, ~p"/#{organisation}/set-up?step=source")
-      assert {"Workspace", :done, :link} in steps(lv)
-    else
-      # Continue opens the workspace, at its first page the person may open.
-      [href] =
-        lv
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#set-up-continue")
-        |> LazyHTML.attribute("href")
-
-      assert String.starts_with?(href, ~p"/#{organisation}/#{main}")
-    end
-  end
-
-  test "once anyone creates the workspace, the page moves on", %{conn: conn} do
+  test "once anyone creates the first workspace, the page moves on", %{conn: conn} do
     %{user: owner, organisation: organisation} = sign_up_without_workspace()
     member = joined(organisation, :member)
 
@@ -245,50 +367,20 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     assert has_element?(waiting, "#set-up-waiting")
     assert steps(waiting) == []
 
-    {:ok, other, _html} = build_conn() |> log_in_user(owner) |> live(~p"/#{organisation}/set-up")
+    {:ok, other, _html} =
+      build_conn() |> log_in_user(owner) |> live(~p"/#{organisation}/set-up?type=software")
 
     {:ok, _main} =
       Organisations.create_first_workspace(
         Organisations.load_scope(Scope.for_user(owner), organisation.id),
-        %{"domain" => "general"}
+        %{"domain" => "software"}
       )
 
+    # Each page opens again where `/:org/set-up` leads now.
     for lv <- [waiting, other] do
       {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=source"
+      assert to == ~p"/#{organisation}/set-up"
     end
-  end
-
-  test "with no type chosen, says to choose one", %{conn: conn} do
-    %{user: user, organisation: organisation} = sign_up_without_workspace()
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-
-    # No radio is checked, so the form sends no type.
-    lv |> form("#set-up-form") |> render_submit()
-
-    assert has_element?(lv, "#set-up-form", "Choose a type.")
-    refute Organisations.has_workspace?(organisation)
-  end
-
-  test "where Main is marked for deletion, says to restore it", %{conn: conn} do
-    %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
-    now = DateTime.utc_now()
-
-    main
-    |> Ecto.Changeset.change(
-      deletion_marked_at: now,
-      purge_after: DateTime.add(now, 30, :day),
-      purge_trigger: "grace_period"
-    )
-    |> Repo.update!()
-
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-    lv |> form("#set-up-form", workspace: %{domain: "software"}) |> render_submit()
-
-    assert words(lv, "#set-up-name-taken") ==
-             "Restore Main in Organisation settings › Workspaces. A deleted workspace keeps its name until it is purged."
-
-    refute Organisations.has_workspace?(organisation)
   end
 
   test "anyone workspace.create does not allow is told who sets it up", %{conn: conn} do
@@ -303,7 +395,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert words(lv, "#set-up-waiting") ==
                "An owner sets up this organisation's first workspace."
 
-      refute has_element?(lv, "#set-up-form")
+      refute has_element?(lv, "#set-up-cards")
       refute has_element?(lv, "#set-up-steps")
       refute has_element?(lv, "#set-up-context")
     end
@@ -352,17 +444,21 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     assert conn.status == 404
   end
 
-  test "once the organisation has a workspace, sends a member on", %{conn: conn} do
-    %{organisation: organisation} = sign_up_fixture()
-    user = joined(organisation, :member)
-    member = Organisations.load_scope(Scope.for_user(user), organisation.id)
+  @tag :feature_sets
+  test "with every step of the workspace done, sends the person to its first page", %{
+    conn: conn
+  } do
+    # Without the `factory` feature, Name is the one step, done once the workspace exists.
+    if not Apiary.Features.on?(:factory) do
+      %{organisation: organisation} = sign_up_fixture()
+      user = joined(organisation, :member)
+      member = Organisations.load_scope(Scope.for_user(user), organisation.id)
 
-    assert {:error, {:live_redirect, %{to: to}}} =
-             conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+      assert {:error, {:live_redirect, %{to: to}}} =
+               conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
 
-    if member.workspace,
-      do: assert(to == ApiaryWeb.Layouts.workspace_landing(member)),
-      else: assert(to == ~p"/#{organisation}")
+      assert to == ApiaryWeb.Layouts.workspace_landing(member)
+    end
   end
 
   describe "the landing" do
@@ -399,11 +495,12 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   end
 end
 
-defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
-  # The second step of the workspace set-up (`ApiaryWeb.WorkspaceSetupLive`): the
-  # instance's configured adapters that serve the workspace's type, each with Connect, and
-  # Skip; with none, the line and Continue; an adapter connecting, which the open page
-  # follows to Connected; and who it is for.
+defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
+  # The steps of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`) with the `factory`
+  # feature: Work sources and Work destinations, with Connect, Connected, Connecting… and
+  # the adapter's guide; the tick lists of the workspace, with a collection in another
+  # workspace and the empty state; the test run, with its condition and its states; who
+  # may act on each; and an instance admin's first organisation.
   use ApiaryWeb.ConnCase, async: true
 
   import ApiaryWeb.SetUpSteps
@@ -413,13 +510,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  import Apiary.SourcesFixtures, only: [key_scope: 1]
-
-  alias Apiary.Repo
-  alias Apiary.Adapters.{Collections, Connections}
+  alias Apiary.{Dispatches, Organisations, Repo, WorkItems}
+  alias Apiary.Adapters.Collection
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
+  alias Apiary.Runs.Run
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
+
+  @line "Hi! Where are you running?"
+
+  defmodule ReadyNoTakeIn do
+    # The machines ready, as `Apiary.EditionStubs.SetupReady` has them, and nobody takes
+    # an item in, as `Apiary.EditionStubs.NoTakeIn` has it.
+    defdelegate machines_ready(workspace), to: Apiary.EditionStubs.SetupReady
+    defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoTakeIn
+  end
 
   defp words(lv, selector) do
     lv
@@ -431,365 +539,796 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
     |> Enum.join(" ")
   end
 
-  test "lists the configured adapters for the type, each with Connect, and Skip", %{conn: conn} do
-    %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
-    %{adapter: adapter} = connectable_adapter_fixture()
-    %{adapter: other_type} = connectable_adapter_fixture()
+  defp href(lv, selector) do
+    [href] =
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> LazyHTML.attribute("href")
 
-    {1, _} =
-      Repo.update_all(
-        from(n in Apiary.Nodes.Node, where: n.id == ^other_type.id),
-        set: [domains: ["general"]]
+    href
+  end
+
+  # The steps of the flow, from Work sources on.
+  defp flow_steps(lv), do: Enum.drop_while(steps(lv), &(elem(&1, 0) != "Work sources"))
+
+  defp first_person do
+    {:ok, %{user: user, organisation: organisation}} =
+      Organisations.sign_up_user(
+        %{email: unique_user_email(), organisation_name: "Acme"},
+        nil,
+        open: true,
+        workspace: false
       )
 
-    # Not configured: no key and no address to connect to.
-    unconfigured = adapter_fixture()
-
-    {:ok, lv, html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-
-    assert html =~ ~r{<title[^>]*>\s*Connect a work source to Main}
-    assert has_element?(lv, "h1", "Connect a work source to Main")
-    assert words(lv, "#set-up-what") == "Bring tickets in from a system this instance has set up."
-
-    assert words(lv, "#set-up-backlog") ==
-             "Main's Backlog lists the tickets of the work sources it connects. Connect opens " <>
-               "#{adapter.name} in this tab, and #{adapter.name} sends you back to Qory Apiary " <>
-               "after its steps."
-
-    assert Enum.take(steps(lv), -2) == [{"Workspace", :done, :link}, {"Work source", :current}]
-
-    assert has_element?(
-             lv,
-             ~s{#set-up-back[href="/#{organisation.slug}/set-up?step=type"][aria-label="Back to Workspace"]}
-           )
-
-    assert has_element?(lv, "#set-up-source-#{adapter.public_id}", adapter.name)
-
-    assert has_element?(
-             lv,
-             "#set-up-source-#{adapter.public_id}",
-             "Tickets from #{adapter.name}."
-           )
-
-    refute has_element?(lv, "#set-up-source-#{other_type.public_id}")
-    refute has_element?(lv, "#set-up-source-#{unconfigured.public_id}")
-
-    assert has_element?(
-             lv,
-             ~s{#set-up-source-#{adapter.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{adapter.public_id}/install?back=set-up"]},
-             "Connect"
-           )
-
-    refute has_element?(lv, "#set-up-source-#{adapter.public_id}-connected")
-
-    assert has_element?(
-             lv,
-             ~s{#set-up-skip-button[href="/#{organisation.slug}/#{main.slug}"]},
-             "Skip"
-           )
-
-    assert words(lv, "#set-up-skip p") == "You can connect one later from Main's Overview."
-    refute has_element?(lv, "#set-up-no-source")
+    %{user: user, organisation: organisation}
   end
 
-  test "an adapter already connected shows Connected, by the Overview's rule, and Continue",
-       %{conn: conn} do
-    %{user: user, organisation: organisation, workspace: main, scope: scope} = sign_up_fixture()
-    collection = collection_fixture(scope)
-    connected = Repo.get!(Apiary.Nodes.Node, collection.adapter_id)
-    %{adapter: other} = connectable_adapter_fixture()
+  defp joined(organisation, level) do
+    user = user_fixture()
 
-    assert [%{adapter: %{id: id}}] = Apiary.Edition.work_source_ready(main)
-    assert id == connected.id
+    %Membership{organisation_id: organisation.id, user_id: user.id}
+    |> Membership.changeset(%{level: level})
+    |> Repo.insert!()
 
-    {:ok, lv, _html} =
-      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=source")
-
-    assert has_element?(lv, "#set-up-source-#{connected.public_id}-connected", "Connected")
-    refute has_element?(lv, "#set-up-source-#{other.public_id}-connected")
-
-    # Connect stays, to connect another account; the step is done, so Continue, not Skip.
-    assert has_element?(
-             lv,
-             "#set-up-source-#{connected.public_id}-connect-install:not(.btn-primary)"
-           )
-
-    assert has_element?(lv, "#set-up-source-#{other.public_id}-connect-install.btn-primary")
-    assert {"Work source", :current} in steps(lv)
-
-    assert has_element?(
-             lv,
-             ~s{#set-up-continue[href="/#{organisation.slug}/#{main.slug}"]},
-             "Continue"
-           )
-
-    refute has_element?(lv, "#set-up-skip-button")
-    refute has_element?(lv, "#set-up-skip p")
+    user
   end
 
-  describe "an adapter connecting" do
-    setup %{conn: conn} do
+  defp targets!(adapter) do
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [targets: true])
+
+    Repo.get!(Node, adapter.id)
+  end
+
+  defp adapter_of(collection), do: Repo.get!(Node, collection.adapter_id)
+
+  describe "Work sources" do
+    test "lists the configured adapters with items for the type, each with Connect, and Skip",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = first_person()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      %{adapter: other_type} = connectable_adapter_fixture()
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^other_type.id),
+          set: [domains: ["general"]]
+        )
+
+      # Not configured: no key and no address to connect to.
+      unconfigured = adapter_fixture()
+
+      {:ok, lv, html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&type=software")
+
+      assert html =~ ~r{<title[^>]*>\s*Where does Acme&#39;s work come from\?}
+      assert has_element?(lv, "h1", "Where does Acme's work come from?")
+      assert {"Work sources", :current} in steps(lv)
+
+      row = "#set-up-adapter-#{adapter.public_id}"
+      assert has_element?(lv, row, adapter.name)
+      assert has_element?(lv, row <> "-not-connected", "Not connected")
+      refute has_element?(lv, "#set-up-adapter-#{other_type.public_id}")
+      refute has_element?(lv, "#set-up-adapter-#{unconfigured.public_id}")
+
+      back = URI.encode_query(back: "set-up:sources:software")
+
+      assert has_element?(
+               lv,
+               ~s{#{row}-connect[action="/#{organisation.slug}/settings/integrations/#{adapter.public_id}/install?#{back}"]}
+             )
+
+      assert has_element?(lv, "#{row}-connect-install.btn-primary", "Connect")
+
+      assert words(lv, "#set-up-later") ==
+               "Acme connects each system once. Each workspace then picks what it uses. You " <>
+                 "can change these or add more later in Organisation settings › Integrations."
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system this instance has set up."
+
+      assert has_element?(
+               lv,
+               "#set-up-context",
+               "Connect opens #{adapter.name} in this tab, and #{adapter.name} sends you back " <>
+                 "to Qory Apiary after its steps."
+             )
+
+      assert href(lv, "#set-up-skip") ==
+               ~p"/#{organisation}/set-up?step=destinations&type=software"
+
+      refute has_element?(lv, "#set-up-continue")
+      refute has_element?(lv, "#set-up-no-adapter")
+    end
+
+    test "with no adapter for the type, shows the line for it", %{conn: conn} do
+      %{user: user, organisation: organisation} = first_person()
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&type=software")
+
+      assert words(lv, "#set-up-no-adapter") ==
+               "No work source for this type is set up on this instance. An instance admin " <>
+                 "sets one up in Instance settings › Adapters."
+
+      refute has_element?(lv, "#set-up-adapters")
+      assert has_element?(lv, "#set-up-skip")
+    end
+
+    test "an adapter connected shows Connected; the step is done, with Continue", %{conn: conn} do
       %{user: user, organisation: organisation, workspace: main, scope: scope} =
         sign_up_fixture()
 
-      %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
-      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+      connected = adapter_of(collection_fixture(scope))
+      %{adapter: other} = connectable_adapter_fixture()
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
+
+      assert has_element?(lv, "#set-up-adapter-#{connected.public_id}-connected", "Connected")
+      assert has_element?(lv, "#set-up-adapter-#{other.public_id}-not-connected")
+
+      # The return of an install leads back to this step of Main.
+      back = URI.encode_query(back: "set-up:sources:workspace=#{main.slug}")
+
+      assert has_element?(
+               lv,
+               ~s{#set-up-adapter-#{other.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{other.public_id}/install?#{back}"]}
+             )
+
+      # Connect stays, to connect another account, as a plain button.
+      assert has_element?(
+               lv,
+               "#set-up-adapter-#{connected.public_id}-connect-install:not(.btn-primary)"
+             )
+
+      assert href(lv, "#set-up-continue") ==
+               ~p"/#{organisation}/set-up?step=destinations&workspace=#{main.slug}"
+
+      refute has_element?(lv, "#set-up-skip")
+    end
+
+    test "a connection started and not yet back shows Connecting…", %{conn: conn} do
+      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      {_connection, _nonce} = connection_fixture(scope, adapter, :pending)
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
+
+      assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connecting", "Connecting…")
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connected")
+      assert has_element?(lv, "#set-up-skip")
+    end
+
+    test "shows the adapter's guide beside the step", %{conn: conn} do
+      %{user: user, organisation: organisation} = first_person()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      guide = source_guide_example()
+      guided_adapter(adapter, guide)
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&type=software")
+
+      help = "#set-up-context #set-up-help-#{adapter.public_id}"
+      assert has_element?(lv, help <> " h3", "On #{adapter.name}")
+
+      steps =
+        lv
+        |> element(help)
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("li")
+        |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+
+      assert steps == guide["connect"]["steps"]
+    end
+
+    test "shows a member who may not connect who may, with no Connect and no guide", %{
+      conn: conn
+    } do
+      %{organisation: organisation} = sign_up_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      guided_adapter(adapter, source_guide_example())
+      member = joined(organisation, :member)
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up?step=sources")
+
+      assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}", adapter.name)
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
+      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+
+      assert words(lv, "#set-up-who-may") ==
+               "Only owners and admins change the integrations of the organisation."
+
+      assert has_element?(lv, "#set-up-skip")
+    end
+  end
+
+  describe "Work destinations" do
+    test "with no adapter with targets for the type, shows the line for it", %{conn: conn} do
+      %{user: user, organisation: organisation} = first_person()
+      %{adapter: tracker} = connectable_adapter_fixture()
+
+      {:ok, lv, _html} =
+        conn
+        |> log_in_user(user)
+        |> live(~p"/#{organisation}/set-up?step=destinations&type=software")
+
+      assert words(lv, "#set-up-no-adapter") ==
+               "No work destination for this type is set up on this instance. An instance " <>
+                 "admin sets one up in Instance settings › Adapters."
+
+      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
+      assert has_element?(lv, "#set-up-skip")
+    end
+
+    test "lists the adapters with targets alone, and the line for later", %{conn: conn} do
+      %{user: user, organisation: organisation} = first_person()
+      %{adapter: forge} = connectable_adapter_fixture()
+      forge = targets!(forge)
+      %{adapter: tracker} = connectable_adapter_fixture()
+
+      {:ok, lv, _html} =
+        conn
+        |> log_in_user(user)
+        |> live(~p"/#{organisation}/set-up?step=destinations&type=software")
+
+      assert has_element?(lv, "h1", "Where do Acme's changes go?")
+      assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
+      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
+
+      assert words(lv, "#set-up-later") ==
+               "You can change these or add more later in Organisation settings › Integrations."
+
+      refute has_element?(lv, "#set-up-context #set-up-what")
+
+      assert has_element?(
+               lv,
+               ~s{#set-up-back[href="/#{organisation.slug}/set-up?step=sources&type=software"]}
+             )
+    end
+  end
+
+  describe "the tick lists" do
+    setup %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
+
+      %{user: user, organisation: organisation, workspace: main, scope: scope} =
+        sign_up_fixture()
+
+      second = workspace_fixture(organisation, "Second")
 
       %{
         conn: log_in_user(conn, user),
         organisation: organisation,
         main: main,
         scope: scope,
-        adapter: adapter,
-        key_scope: key_scope(key),
-        connection: connection
+        second: second
       }
     end
 
-    # A listing of one part, complete, of the collection `ref`, as the adapter posts it.
-    defp list(ctx, ref) do
-      {:ok, :accepted} =
-        Collections.post_listing(ctx.key_scope, %{
-          time: DateTime.utc_now(:second),
-          connection_id: ctx.connection.public_id,
-          collections: [
-            %{
-              ref: ref,
-              url: "https://tracker.example.com/" <> ref,
-              title: ref,
-              grant_ref: listing_grant(ctx.connection),
-              target: nil,
-              environment_ref: nil
-            }
-          ],
-          listing: %{
-            id: "listing-1",
-            part: 1,
-            started_at: DateTime.utc_now(:second),
-            complete: true
-          }
-        })
+    defp tick(lv, collection),
+      do: lv |> element("#set-up-tick-#{collection.public_id} input") |> render_click()
+
+    defp row(collection) do
+      c = Repo.get!(Collection, collection.id)
+      {c.workspace_id, c.backlog}
     end
 
-    test "shows Connecting… while the listing is to come, then Connected and Continue once a collection arrives",
-         ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
-      source = "#set-up-source-#{ctx.adapter.public_id}"
+    test "Work sources used: a tick assigns with Backlog on; an untick unassigns", ctx do
+      free = collection_fixture(ctx.scope, workspace_id: nil)
+      elsewhere = collection_fixture(ctx.scope, workspace_id: ctx.second.id)
 
-      assert has_element?(lv, source <> "-connecting", "Connecting…")
-      refute has_element?(lv, source <> "-connected")
-      assert has_element?(lv, "#set-up-skip-button")
-      refute has_element?(lv, "#set-up-continue")
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
 
-      list(ctx, "ACME")
-
-      assert has_element?(lv, source <> "-connected", "Connected")
-      refute has_element?(lv, source <> "-connecting")
+      assert has_element?(lv, "h1", "Which work sources does Main use?")
 
       assert has_element?(
                lv,
-               ~s{#set-up-continue[href="/#{ctx.organisation.slug}/#{ctx.main.slug}"]},
-               "Continue"
+               "#set-up-tick-#{free.public_id} input[type=checkbox]:not([checked])"
              )
 
-      refute has_element?(lv, "#set-up-skip-button")
+      # A collection in another workspace shows its name, and has no checkbox.
+      refute has_element?(lv, "#set-up-tick-#{elsewhere.public_id} input")
+
+      assert words(lv, "#set-up-tick-#{elsewhere.public_id}-elsewhere") ==
+               "In Second (cannot be ticked)"
+
+      render_click(lv, "tick", %{"id" => elsewhere.id})
+      assert row(elsewhere) == {ctx.second.id, true}
+
+      assert words(lv, "#set-up-later") ==
+               "You can change this later in Workspace settings › Work sources."
+
+      # The list is optional: Continue, with no Skip.
+      assert has_element?(lv, "#set-up-continue")
+      refute has_element?(lv, "#set-up-skip")
+
+      tick(lv, free)
+      assert row(free) == {ctx.main.id, true}
+      assert has_element?(lv, "#set-up-tick-#{free.public_id} input[checked]")
+      assert {"Work sources used", :current} in steps(lv)
+
+      tick(lv, free)
+      assert row(free) == {nil, false}
     end
 
-    test "a listing that completes with no collection for the workspace shows neither", ctx do
-      # With a second workspace, a collection is assigned to none as it is made.
-      workspace_fixture(ctx.organisation)
+    test "Destinations used: a tick assigns with Backlog off, unless Work sources ticked it",
+         ctx do
+      free = collection_fixture(ctx.scope, workspace_id: nil)
+      targets!(adapter_of(free))
 
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
-      source = "#set-up-source-#{ctx.adapter.public_id}"
-      assert has_element?(lv, source <> "-connecting")
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
 
-      list(ctx, "ACME")
+      assert has_element?(lv, "h1", "Which repositories may Main's runs change?")
 
-      refute has_element?(lv, source <> "-connecting")
-      refute has_element?(lv, source <> "-connected")
-      assert has_element?(lv, "#set-up-skip-button")
-      refute has_element?(lv, "#set-up-continue")
+      assert words(lv, "#set-up-later") ==
+               "You can change this later in Workspace settings › Destinations."
+
+      tick(lv, free)
+      assert row(free) == {ctx.main.id, false}
+      refute has_element?(lv, "#set-up-tick-#{free.public_id}-tickets")
+      refute has_element?(lv, "#set-up-untick")
+
+      # Ticked in Work sources too: tickets come in, and an untick here stops them and
+      # unassigns.
+      {:ok, sources, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      tick(sources, free)
+      assert row(free) == {ctx.main.id, true}
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
+
+      assert words(lv, "#set-up-tick-#{free.public_id}-tickets") == "tickets come in"
+      assert words(lv, "#set-up-untick") == "Unticking also stops its tickets coming in."
+
+      tick(lv, free)
+      assert row(free) == {nil, false}
     end
 
-    test "an ended connection shows neither", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
-      source = "#set-up-source-#{ctx.adapter.public_id}"
-      assert has_element?(lv, source <> "-connecting")
+    test "a tick on a collection moved to another workspace since the page read it moves nothing",
+         ctx do
+      free = collection_fixture(ctx.scope, workspace_id: nil)
 
-      {:ok, _ended} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
 
-      refute has_element?(lv, source <> "-connecting")
-      refute has_element?(lv, source <> "-connected")
-      assert has_element?(lv, "#set-up-skip-button")
+      assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
 
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
-      refute has_element?(lv, source <> "-connecting")
-      refute has_element?(lv, source <> "-connected")
+      # Another admin assigns it to Second: the page still shows its checkbox.
+      {:ok, _moved} = set_collection_workspace(free, ctx.second)
+      assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
+
+      tick(lv, free)
+      assert row(free) == {ctx.second.id, true}
+
+      assert words(lv, "#set-up-tick-#{free.public_id}-elsewhere") ==
+               "In Second (cannot be ticked)"
+    end
+
+    test "a tick on a collection of another organisation changes nothing", ctx do
+      %{scope: theirs} = sign_up_fixture()
+      collection = collection_fixture(theirs, workspace_id: nil)
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      render_click(lv, "tick", %{"id" => collection.id})
+      assert row(collection) == {nil, true}
+    end
+
+    test "an untick in Work sources keeps a destination assigned", ctx do
+      collection = collection_fixture(ctx.scope)
+      targets!(adapter_of(collection))
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      assert has_element?(lv, "#set-up-tick-#{collection.public_id} input[checked]")
+
+      tick(lv, collection)
+      assert row(collection) == {ctx.main.id, false}
+    end
+
+    test "with nothing connected, says so, with the step that connects one", ctx do
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      assert words(lv, "#set-up-none") ==
+               "#{ctx.organisation.name} has no work source connected yet. Work sources"
+
+      assert href(lv, "#set-up-none-connect") ==
+               ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main"
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
+
+      assert words(lv, "#set-up-none") ==
+               "#{ctx.organisation.name} has no work destination connected yet. Work destinations"
+    end
+
+    test "a member who may not assign sees the lists, disabled, and who may", ctx do
+      collection = collection_fixture(ctx.scope, workspace_id: nil)
+      member = joined(ctx.organisation, :member)
+
+      {:ok, lv, _html} =
+        build_conn()
+        |> log_in_user(member)
+        |> live(~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      assert has_element?(lv, "#set-up-tick-#{collection.public_id} input[disabled]")
+
+      assert words(lv, "#set-up-who-may") ==
+               "Only owners and admins of #{ctx.organisation.name} assign collections to " <>
+                 "workspaces."
+
+      render_click(lv, "tick", %{"id" => collection.id})
+      assert row(collection) == {nil, true}
     end
   end
 
-  describe "an adapter's guide" do
-    # The text of each element `selector` finds under `help`, its spaces joined.
-    defp texts(lv, help, selector) do
-      lv
-      |> element(help)
-      |> render()
-      |> LazyHTML.from_fragment()
-      |> LazyHTML.query(selector)
-      |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
-    end
+  describe "the test run" do
+    setup :register_and_log_in_user
 
-    test "shows Qory Apiary's first step, the adapter's connect steps, its lines, and the note on the one workspace",
-         %{conn: conn} do
-      %{user: user, organisation: organisation} = sign_up_fixture()
-      %{adapter: adapter} = connectable_adapter_fixture()
-      guide = source_guide_example()
-      guided_adapter(adapter, guide)
+    defp test_path(scope), do: ~p"/#{scope.organisation}/set-up?step=test"
 
-      {1, _} =
-        Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
-          set: [collection_noun_one: "repository", collection_noun_other: "repositories"]
-        )
+    # The one run of `item`, a test work item, with `changes`, and its registered run,
+    # with `run_attrs`; none for nil.
+    defp test_run!(item, changes, run_attrs \\ nil) do
+      [queued] = Repo.all(from d in DispatchRun, where: d.work_item_id == ^item.id)
+      {1, _} = Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id), set: changes)
 
-      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-      help = "#set-up-help-#{adapter.public_id}"
-
-      assert has_element?(lv, "#set-up-context #{help} h3", "On #{adapter.name}")
-      assert texts(lv, help, "li") == guide["connect"]["steps"]
-
-      assert texts(lv, help, "p") == [
-               guide["connect"]["before"],
-               guide["connect"]["after"],
-               "Main gets every repository you picked, because #{organisation.name} has one workspace."
-             ]
-    end
-
-    test "names the adapter as its row does, and hides the steps once Connect can't be pressed",
-         %{conn: conn} do
-      %{user: user, organisation: organisation} = sign_up_fixture()
-      %{adapter: adapter} = connectable_adapter_fixture(%{name: "GitHub"})
-      guided_adapter(adapter, source_guide_example())
-
-      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-      help = "#set-up-help-#{adapter.public_id}"
-      connect = "#set-up-source-#{adapter.public_id}-connect-install"
-
-      assert has_element?(lv, "#set-up-source-#{adapter.public_id} p", "GitHub")
-      assert has_element?(lv, "#{help} h3", "On GitHub")
-      refute render(lv) =~ "Press Connect beside"
-      assert has_element?(lv, connect, "Connect")
-      refute has_element?(lv, "#{connect}[disabled]")
-
-      # The adapter's key is revoked: Connect is disabled, and its steps go when the page
-      # renders again.
-      {1, _} =
-        Repo.update_all(
-          from(k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^adapter.id),
-          set: [revoked_at: DateTime.utc_now()]
-        )
-
-      render_hook(lv, "install", %{"integration" => adapter.public_id})
-
-      assert has_element?(lv, "#{connect}[disabled]")
-      refute has_element?(lv, help)
-    end
-
-    test "with no connect steps, or no guide, the old step shows", %{conn: conn} do
-      %{user: user, organisation: organisation} = sign_up_fixture()
-      %{adapter: adapter} = connectable_adapter_fixture()
-      guided_adapter(adapter, %{"setup" => source_guide_example()["setup"]})
-      %{adapter: plain} = connectable_adapter_fixture()
-
-      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-
-      assert has_element?(lv, "#set-up-source-#{adapter.public_id}")
-      assert has_element?(lv, "#set-up-source-#{plain.public_id}")
-      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
-      refute has_element?(lv, "#set-up-help-#{plain.public_id}")
-    end
-
-    test "shows the adapter's lines as plain text, and no note with two workspaces",
-         %{conn: conn} do
-      %{user: user, organisation: organisation} = sign_up_fixture()
-      workspace_fixture(organisation, "Second")
-
-      %{adapter: adapter} = connectable_adapter_fixture()
-
-      guided_adapter(adapter, %{
-        "connect" => %{
-          "steps" => ["Press **Allow** <b>now</b>."],
-          "after" => "<a href=\"x\">y</a>"
+      if run_attrs do
+        %Run{
+          organisation_id: item.organisation_id,
+          workspace_id: item.workspace_id,
+          node_run_id: queued.run_id,
+          dispatch_run_id: queued.id
         }
-      })
+        |> Ecto.Changeset.change(Map.merge(%{started_at: DateTime.utc_now()}, run_attrs))
+        |> Repo.insert!()
+      end
+    end
 
-      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-      help = "#set-up-help-#{adapter.public_id}"
+    test "with no ready pool, says runs need one, as text", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, test_path(scope))
 
-      assert texts(lv, help, "li") == ["Press **Allow** <b>now</b>."]
+      assert has_element?(lv, "h1", "Run a test")
+      assert words(lv, "#set-up-test-machines") == "Runs need a ready pool. See Machines."
+      refute has_element?(lv, "#set-up-test-form")
+      refute has_element?(lv, "#set-up-test-machines a")
+    end
 
-      assert texts(lv, help, "p") == [~s(<a href="x">y</a>)]
-      refute has_element?(lv, "#{help} a")
+    test "Run the test takes a test work item in; it passes live", %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert has_element?(lv, "#set-up-test-form label", "Say hi to your agent")
+      assert has_element?(lv, "#set-up-test-form input[name='test[line]'][value='#{@line}']")
+      assert has_element?(lv, "#set-up-test-run", "Run the test")
+
+      lv |> form("#set-up-test-form") |> render_submit()
+
+      assert [%WorkItem{test: true, title: @line} = item] = Repo.all(WorkItem)
+      assert words(lv, "#set-up-test-state") == "The test run is queued for a machine."
+      refute has_element?(lv, "#set-up-test-form")
+
+      run =
+        test_run!(item, [state: :ended, end_cause: :run_ended], %{
+          state: "completed",
+          node_id: nil
+        })
+
+      :ok = Dispatches.broadcast([scope.workspace.id])
+
+      assert words(lv, "#set-up-test-passed") ==
+               "Test run passed: the agent answered on a machine. See the run"
+
+      assert href(lv, "#set-up-test-passed a") ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+
+      assert words(lv, "#set-up-go") == "Go to #{scope.workspace.name}"
+    end
+
+    test "a failure shows its line, the fix first, and the field again", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert has_element?(lv, "#set-up-test-failed[data-cause=no_machine]")
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Check the pool in Instance settings › Nodes. No machine has taken the test " <>
+                 "run yet."
+
+      assert has_element?(lv, "#set-up-test-run", "Run the test")
+    end
+
+    test "one who may not take an item in reads who runs the test, and has no field", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(ReadyNoTakeIn)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-who-may") == "Only owners, admins and members run the test."
+      refute has_element?(lv, "#set-up-test-form")
+
+      render_click(lv, "run_test", %{"test" => %{"line" => @line}})
+      refute Repo.exists?(WorkItem)
     end
   end
 
-  test "with no adapter for the type, says so, with Continue", %{conn: conn} do
+  test "an instance admin's first organisation: the flow counts from 1", %{conn: conn} do
+    Apiary.Mail.put_test_source(:env)
+    admin = instance_admin_scope()
+
+    {:ok, lv, _html} =
+      conn |> log_in_user(admin.user) |> live(~p"/#{admin.organisation}/set-up?step=sources")
+
+    assert count(lv) == "Step 1 of 7"
+
+    assert flow_steps(lv) == [
+             {"Work sources", :current},
+             {"Work destinations", :to_come},
+             {"Model", :to_come},
+             {"Name", :done, :link},
+             {"Work sources used", :to_come},
+             {"Destinations used", :to_come},
+             {"Test run", :to_come}
+           ]
+  end
+
+  test "a workspace slug of another organisation is no page", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    %{organisation: theirs} = sign_up_fixture()
+    billing = workspace_fixture(theirs, "Billing")
+
+    conn = log_in_user(conn, user)
+
+    assert_raise ApiaryWeb.NotFound, fn ->
+      get(conn, ~p"/#{organisation}/set-up?step=sources_used&workspace=#{billing.slug}")
+    end
+  end
+
+  test "a workspace step with no workspace named opens for the workspace in use", %{
+    conn: conn
+  } do
     %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
 
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+    {:ok, lv, _html} =
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources_used")
 
-    assert words(lv, "#set-up-no-source") ==
-             "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+    assert has_element?(lv, "h1", "Which work sources does #{main.name} use?")
+  end
+end
 
-    assert has_element?(
-             lv,
-             ~s{#set-up-continue[href="/#{organisation.slug}/#{main.slug}"]},
-             "Continue"
-           )
+defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
+  # The Model step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the `factory`
+  # and `secrets` features: a provider added with its key, which the page never keeps; the
+  # organisation's default; a provider the organisation has; who may; and a second
+  # workspace, whose organisation's steps are done, which opens at Name.
+  use ApiaryWeb.ConnCase, async: true
 
-    refute has_element?(lv, "#set-up-sources")
+  import ApiaryWeb.SetUpSteps
+  import Ecto.Query, only: [from: 2]
+  import Phoenix.LiveViewTest
+  import Apiary.AccountsFixtures
+  import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.{Connections, ModelChoices, Organisations, Repo, WorkspaceSetup}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Membership
+
+  @moduletag needs: [:factory, :secrets]
+
+  @key "sk-ant-set-up-test-0123456789abcdef"
+
+  defp words(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
   end
 
-  test "shows anyone adapter.connect does not allow the edition's sentence of who may, and Skip",
-       %{conn: conn} do
-    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ConnectWorded)
-    %{organisation: organisation, workspace: main} = sign_up_fixture()
-    %{adapter: adapter} = connectable_adapter_fixture()
-    guided_adapter(adapter, source_guide_example())
+  # Everything the page's process keeps, as text.
+  defp kept(lv), do: inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity)
+
+  defp model_path(organisation), do: ~p"/#{organisation}/set-up?step=model&workspace=main"
+
+  # The form in `html` is sent with POST, so a browser that sends it before the page
+  # connects puts no key in an address, and its key's field has no value.
+  defp assert_posts_without_key(html) do
+    form = LazyHTML.query(html, "#set-up-model-form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+
+    key = LazyHTML.query(form, ~s{input[type="password"]})
+    assert LazyHTML.attribute(key, "name") == ["model[key]"]
+    assert LazyHTML.attribute(key, "value") == []
+  end
+
+  defp member(organisation) do
     user = user_fixture()
 
     %Membership{organisation_id: organisation.id, user_id: user.id}
     |> Membership.changeset(%{level: :member})
     |> Repo.insert!()
 
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
-
-    assert has_element?(lv, "h1", "Connect a work source to Main")
-    assert has_element?(lv, "#set-up-source-#{adapter.public_id}", adapter.name)
-    refute has_element?(lv, "#set-up-source-#{adapter.public_id}-connect")
-    refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
-    assert words(lv, "#set-up-who-may") == Apiary.EditionStubs.ConnectWorded.sentence()
-
-    assert has_element?(
-             lv,
-             ~s{#set-up-skip-button[href="/#{organisation.slug}/#{main.slug}"]},
-             "Skip"
-           )
-
-    refute has_element?(lv, "#set-up-skip p")
+    user
   end
 
-  test "sends on anyone adapter.connect does not allow, where the edition says nothing of who may",
+  test "adds the provider with its key and the organisation's default; never keeps the key",
        %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert has_element?(lv, "h1", "Which model do #{organisation.name}'s runs use?")
+    assert has_element?(lv, "#set-up-model-form input[type=password][name='model[key]']")
+    assert has_element?(lv, "#set-up-model-form", "Default model")
+    assert has_element?(lv, "#set-up-model-form", "Runtime")
+
+    assert words(lv, "#set-up-context #set-up-what") ==
+             "A model provider's key lets the agents of #{organisation.name}'s runs call a model."
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
+    |> render_change()
+
+    refute kept(lv) =~ @key
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
+    |> render_submit()
+
+    refute kept(lv) =~ @key
+    refute render(lv) =~ @key
+
+    assert {:ok, [provider]} = Connections.list_providers(scope)
+    assert provider.provider_kind == "anthropic"
+    assert {:ok, [choice]} = ModelChoices.list_choices(scope)
+    assert is_nil(choice.workspace_id) and choice.connection_id == provider.id
+    assert WorkspaceSetup.model?(organisation)
+
+    assert_patch(lv, ~p"/#{organisation}/set-up?step=name&workspace=main")
+
+    # Back on the step: the provider the organisation has, with no key field.
+    {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
+
+    assert words(lv, "#set-up-model-key") ==
+             "#{organisation.name} has a key for #{provider.name}."
+
+    refute has_element?(lv, "input[name='model[key]']")
+    assert {"Model", :current} in steps(lv)
+  end
+
+  test "the form is sent with POST, before the page connects and after", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    conn = log_in_user(conn, user)
+
+    html = conn |> get(model_path(organisation)) |> html_response(200)
+    assert_posts_without_key(LazyHTML.from_document(html))
+
+    {:ok, lv, _html} = live(conn, model_path(organisation))
+    assert_posts_without_key(LazyHTML.from_fragment(render(lv)))
+  end
+
+  test "a save refused with a key typed shows the key nowhere and keeps it nowhere", %{
+    conn: conn
+  } do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{provider: "litellm"}) |> render_change()
+
+    html =
+      lv
+      |> form("#set-up-model-form",
+        model: %{provider: "litellm", key: @key, address: "http://litellm.example.com"}
+      )
+      |> render_submit()
+
+    assert html =~ "https://"
+    refute html =~ @key
+    refute kept(lv) =~ @key
+    assert_posts_without_key(LazyHTML.from_fragment(html))
+    assert {:ok, []} = Connections.list_providers(scope)
+  end
+
+  test "save_model and choose_model sent by a person provider.write does not allow change nothing",
+       %{conn: conn} do
+    %{organisation: organisation, scope: scope} = sign_up_fixture()
+    user = member(organisation)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    params = %{"model" => %{"provider" => "anthropic", "key" => @key}}
+    render_click(lv, "choose_model", params)
+    render_click(lv, "save_model", params)
+
+    refute kept(lv) =~ @key
+    refute render(lv) =~ @key
+    assert {:ok, []} = Connections.list_providers(scope)
+    refute WorkspaceSetup.model?(organisation)
+  end
+
+  test "a refused key keeps no key, and says why on the field", %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "anthropic", key: ""})
+    |> render_submit()
+
+    assert {:ok, []} = Connections.list_providers(scope)
+    refute WorkspaceSetup.model?(organisation)
+    assert has_element?(lv, "#set-up-model-form input[name='model[key]']")
+  end
+
+  test "a member who may not add a key reads who may, and has no form", %{conn: conn} do
     %{organisation: organisation} = sign_up_fixture()
-    user = user_fixture()
+    user = member(organisation)
 
-    %Membership{organisation_id: organisation.id, user_id: user.id}
-    |> Membership.changeset(%{level: :member})
-    |> Repo.insert!()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert {:error, {:live_redirect, %{to: to}}} =
-             conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+    assert words(lv, "#set-up-who-may") == "Only owners and admins add a model key."
+    refute has_element?(lv, "#set-up-model-form")
+    assert has_element?(lv, "#set-up-skip")
+  end
 
-    refute to == ~p"/#{organisation}/set-up"
+  test "a second workspace, with the organisation's steps done, opens at Name", %{conn: conn} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    collection = collection_fixture(scope)
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+        set: [targets: true]
+      )
+
+    conn = log_in_user(conn, user)
+    {:ok, lv, _html} = live(conn, model_path(organisation))
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
+    |> render_submit()
+
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?type=software")
+
+    assert has_element?(lv, "h1", "Name this workspace")
+
+    assert Enum.drop_while(steps(lv), &(elem(&1, 0) != "Work sources")) == [
+             {"Work sources", :done, :link},
+             {"Work destinations", :done, :link},
+             {"Model", :done, :link},
+             {"Name", :current},
+             {"Work sources used", :to_come},
+             {"Destinations used", :to_come},
+             {"Test run", :to_come}
+           ]
+
+    assert words(lv, "#set-up-title") == "Set up a new Software factory"
+
+    lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
+    {to, _flash} = assert_redirect(lv)
+    assert to == ~p"/#{organisation}/set-up?step=sources_used&workspace=payments"
+
+    assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
+             2
   end
 end

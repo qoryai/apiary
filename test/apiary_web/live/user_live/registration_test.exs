@@ -323,21 +323,30 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
                "We will email you a link to confirm; no password needed."
              )
 
-      source = if Apiary.Features.on?(:factory), do: [{"Work source", :to_come}], else: []
+      # The flow of the first workspace: every step with the `factory` feature, Model with
+      # `secrets` too; without `factory`, Name alone.
+      flow =
+        if Apiary.Features.on?(:factory) do
+          ["Work sources", "Work destinations"] ++
+            if(Apiary.Features.on?(:secrets), do: ["Model"], else: []) ++
+            ["Name", "Work sources used", "Destinations used", "Test run"]
+        else
+          ["Name"]
+        end
 
-      assert steps(lv) ==
-               [{"Your account", :current}, {"Workspace", :to_come} | source]
+      flow = Enum.map(flow, &{&1, :to_come})
+
+      assert steps(lv) == [{"Your account", :current} | flow]
 
       Apiary.Mail.put_test_source(:none)
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
       # The organisation's progress alone: the instance's steps belong to its admin.
-      assert steps(lv) ==
-               [{"Your account", :current}, {"Workspace", :to_come} | source]
+      assert steps(lv) == [{"Your account", :current} | flow]
 
-      assert count(lv) == "Step 1 of #{length(source) + 2}"
-      assert has_element?(lv, "#set-up-group-workspace", "Set up your workspace")
-      refute has_element?(lv, "#set-up-group-connect")
+      # Signed out, the organisation has no name yet: the groups have no heading.
+      assert count(lv) == "Step 1 of #{length(flow) + 1}"
+      refute has_element?(lv, ".q-su-grp-h")
 
       assert has_element?(
                lv,

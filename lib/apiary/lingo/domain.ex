@@ -97,9 +97,10 @@ defmodule Apiary.Lingo.Domain do
   @callback description() :: String.t()
 
   @doc """
-  The domain's name where a person picks a new workspace's type from a list, one line per
-  type (`ApiaryWeb.WorkspaceComponents.type_field/1`): "Software". Translated in the
-  locale of the caller's process.
+  The domain's name as a type of workspace: the title of its card on the set-up's type
+  cards, at `/:org/set-up` and `/:org/workspaces/new`, and of its line where a person picks a new
+  workspace's type from a list (`ApiaryWeb.WorkspaceComponents.type_field/1`):
+  "Software factory". Translated in the locale of the caller's process.
   """
   @callback type_name() :: String.t()
 

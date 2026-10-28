@@ -87,8 +87,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
     end
   end
 
-  # The address settings of the provider named `name`, none for one not in the catalogue.
-  defp address_names(name) do
+  @doc false
+  # address_names/1 is the address settings of the catalogue's provider whose name is
+  # `name`, none for one not in the catalogue. The set-up's Model step calls it too
+  # (`ApiaryWeb.WorkspaceSetupLive`), as it calls `field_errors/1`, `setting_title/2`,
+  # `get_key/1` and `provider_options/0`.
+  def address_names(name) do
     case chosen(name) do
       %Provider{} = provider -> Provider.address_settings(provider)
       nil -> []
@@ -136,9 +140,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   def handle_event(event, _params, socket) when event in ~w(choose create),
     do: {:noreply, socket}
 
-  # The errors of a refused provider, each on the field it is about: the keys' secret's
-  # on Key, the settings' on the first address field.
-  defp field_errors(%Ecto.Changeset{data: %Apiary.Secrets.Secret{}} = changeset) do
+  @doc false
+  # field_errors/1 is the errors of a refused provider, each on the field it is about: the
+  # keys' secret's on Key, the settings' on the first address field.
+  def field_errors(%Ecto.Changeset{data: %Apiary.Secrets.Secret{}} = changeset) do
     nested =
       for %Ecto.Changeset{errors: errors} <- List.wrap(changeset.changes[:values]),
           {_field, error} <- errors,
@@ -147,7 +152,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
     nested ++ for {_field, error} <- changeset.errors, do: {:key, error}
   end
 
-  defp field_errors(%Ecto.Changeset{errors: errors} = changeset) do
+  def field_errors(%Ecto.Changeset{errors: errors} = changeset) do
     address =
       case address_names(Ecto.Changeset.get_field(changeset, :provider_kind)) do
         [name | _rest] -> String.to_atom(name)
@@ -179,7 +184,8 @@ defmodule ApiaryWeb.ProviderLive.Index do
         )
   end
 
-  defp setting_title(%Provider{description: description}, name) do
+  @doc false
+  def setting_title(%Provider{description: description}, name) do
     case get_in(description.document, ["settings", "properties", name, "title"]) do
       title when is_binary(title) -> title
       _none -> name
@@ -350,11 +356,13 @@ defmodule ApiaryWeb.ProviderLive.Index do
     """
   end
 
-  # Where to get the key of the chosen provider, none for one not in this list.
-  defp get_key(%Provider{name: "anthropic"}),
+  @doc false
+  # get_key/1 is where to get the key of the chosen provider, none for one not in this
+  # list.
+  def get_key(%Provider{name: "anthropic"}),
     do: gettext("Get the key from the provider first: create an API key in the Claude Console.")
 
-  defp get_key(%Provider{name: "claude-subscription"}),
+  def get_key(%Provider{name: "claude-subscription"}),
     do:
       rich_gettext(
         "Get the key from the provider first: run %{command} in a terminal where Claude Code is installed, and copy the token it prints. %{terms} allow this for personal use only.",
@@ -362,13 +370,13 @@ defmodule ApiaryWeb.ProviderLive.Index do
         terms: {:part, :terms}
       )
 
-  defp get_key(%Provider{name: "deepseek"}),
+  def get_key(%Provider{name: "deepseek"}),
     do: gettext("Get the key from the provider first: create a DeepSeek API key.")
 
-  defp get_key(%Provider{name: "openrouter"}),
+  def get_key(%Provider{name: "openrouter"}),
     do: gettext("Get the key from the provider first: create an OpenRouter API key.")
 
-  defp get_key(%Provider{name: "litellm"}),
+  def get_key(%Provider{name: "litellm"}),
     do:
       rich_gettext(
         "First get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
@@ -376,7 +384,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
         example: {:m, "https://litellm.example.com"}
       )
 
-  defp get_key(_chosen), do: nil
+  def get_key(_chosen), do: nil
 
   # Anthropic's terms, a link out to `href`, or plain words where the description has no
   # address.
@@ -390,10 +398,11 @@ defmodule ApiaryWeb.ProviderLive.Index do
     """
   end
 
-  # Each provider of the catalogue, its description's text under its title. A subtitle is
-  # plain text: the description's backticks and the address that ends it, which
-  # About this step links to (`terms_url/1`), are left out.
-  defp provider_options do
+  @doc false
+  # provider_options/0 is each provider of the catalogue, its description's text under its
+  # title. A subtitle is plain text: the description's backticks and the address that ends
+  # it, which About this step links to (`terms_url/1`), are left out.
+  def provider_options do
     for provider <- Providers.list() do
       %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}
     end

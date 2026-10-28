@@ -1,63 +1,119 @@
 defmodule ApiaryWeb.WorkspaceSetupLive do
-  # The workspace set-up, `/:org/set-up`: the page every organisation with no workspace in
-  # use lands on (`ApiaryWeb.UserAuth.signed_in_path/1`), in two steps of the set-up, in
-  # its frame with the progress indicator (`ApiaryWeb.SetUpComponents.frame/1`):
-  # Workspace, `?step=type`, and Work source, `?step=source`. Without a step, or with
-  # `source` before the organisation has a workspace, the first of them that is not done.
+  # The workspace set-up: `/:org/set-up` (`:show`), the page every organisation with no
+  # workspace in use lands on (`ApiaryWeb.UserAuth.signed_in_path/1`), and
+  # `/:org/workspaces/new` (`:new`), where an owner adds a workspace. Both show the type
+  # cards first, then the flow that sets up a workspace of the type picked, in the set-up's
+  # frame with the progress indicator (`ApiaryWeb.SetUpComponents.frame/1`).
   #
-  # Workspace, while the organisation has no workspace in use
-  # (`Apiary.Organisations.has_workspace?/1`), for a person `workspace.create` allows
-  # there (`Apiary.Access`): the Type field (`ApiaryWeb.WorkspaceComponents.type_field/1`)
-  # and Create workspace, which makes Main
-  # (`Apiary.Organisations.create_first_workspace/2`); its context says what the workspace
-  # is, with the edition's line on which workspace this is
-  # (`c:Apiary.Edition.first_workspace_line/1`). Anyone else is told who sets it up
+  # **The type cards.** One card per domain of `Apiary.Lingo.Domain.choices/0` that has a
+  # card's words (`card_words/1`): Software alone, so General shows none. Each card has the
+  # type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
+  # connect, and Choose, which opens the flow with `?type=<name>`. No indicator shows:
+  # the count starts after a card is picked. `/:org/set-up` shows them while the
+  # organisation has no workspace in use, to a person `workspace.create` allows there
+  # (`Apiary.Access`), and a person whom it does not allow reads who sets it up
   # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
-  # edition lists 2 steps or more (the core lists them none) and the context
-  # where the edition has a line (`c:Apiary.Edition.set_up_context/2`). Where a workspace
-  # marked for deletion still has the name Main, the page says to restore it.
-  # The page listens to the organisation's workspaces
-  # (`Apiary.Organisations.subscribe_workspaces/1`): once its first workspace is made, by
-  # anyone, the page opens Work source as it would open now. Once the workspace exists,
-  # the step shows what was made, read only, with Continue. Its title is the edition's
-  # (`c:Apiary.Edition.set_up_title/2`).
+  # edition lists 2 steps or more (the core lists them none) and the context where the
+  # edition has a line (`c:Apiary.Edition.set_up_context/2`), under the edition's title
+  # (`c:Apiary.Edition.set_up_title/2`). `/:org/workspaces/new` is a page only for a
+  # person `workspace.create` allows; where the organisation has as many workspaces as the
+  # edition allows (`c:Apiary.Edition.limits/0`), the page shows that line in place of
+  # the cards.
   #
-  # Work source, once the organisation has a workspace, for the workspace the person's
-  # scope has, with the `factory` feature, for a person `adapter.connect` allows: the
-  # instance's configured adapters that serve the workspace's type
-  # (`Apiary.Adapters.list_configured/1`), each with Connect, the Install of Organisation
-  # settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`), and Skip;
-  # with none, that no work source for the type is set up on the instance, and Continue.
-  # An adapter shows Connected once the Overview's rule counts it, and Connecting… while
-  # the organisation's connection to it is connected and its listing is not complete, with
-  # no collection for the workspace yet. The page listens to the organisation's
-  # collections and connections (`Apiary.Adapters.Collections.subscribe/1`) and reads
-  # both again on each change, so the step turns Connected, with Continue, as the
-  # adapter's listing arrives.
-  # In the context column, for each adapter whose Connect can be pressed
-  # (`ApiaryWeb.IntegrationComponents.ready?/1`) and whose guide gives steps for
-  # connecting it (`Apiary.Adapters.guide/2`), those steps, under "On %{adapter}", and,
-  # while the organisation has one workspace, a note that the workspace gets every
-  # collection picked. Skip and Continue lead to the workspace's Overview, and so does
-  # Create workspace without the feature. A person `adapter.connect` refuses sees the same
-  # step where the edition says who may connect one
-  # (`c:ApiaryWeb.Edition.who_may_sentence/2`), with no Connect and no steps: the
-  # adapters, that sentence, and Skip; with none, the line and Continue. Anyone else, once
-  # there is a workspace, is sent on: to the workspace's first page, or to the
-  # organisation's page where they reach no workspace.
+  # **The flow.** `?step=<id>` opens a step of the flow (`Apiary.WorkspaceSetup.flow/0`);
+  # without one, or with one the person does not see, the first step that is not done.
+  # The steps of a workspace that exists take `&workspace=<slug>`, its slug, which the
+  # scope resolves as it does a workspace's pages; without it, the workspace the scope
+  # has. Before the workspace exists, `&type=<name>` is the type picked; a flow with no
+  # type shows the cards. `/:org/set-up` sets up a new workspace while the organisation
+  # has none in use, else the scope's workspace; `/:org/workspaces/new` a new workspace
+  # until Name creates it, then the steps go on at `/:org/set-up`. Once every step of a
+  # workspace is done, `/:org/set-up` without a step sends the person to the workspace's
+  # first page. The steps, each as `Apiary.WorkspaceSetup.done?/3` counts it:
+  #
+  #   * Work sources and Work destinations, for the organisation, with the `factory`
+  #     feature: the instance's configured adapters that serve the type
+  #     (`Apiary.Adapters.list_configured/1`), those with items for Work sources and those
+  #     with `targets` true for Work destinations, each Connected while the organisation's
+  #     connection to it is connected, Connecting… while it is pending, else Not
+  #     connected, with Connect, the Install of Organisation settings › Integrations
+  #     (`ApiaryWeb.IntegrationComponents.install_form/1`), whose return leads back to the
+  #     step (`ApiaryWeb.ConnectSession.back?/1`). In the context column, for each adapter
+  #     whose Connect can be pressed and whose guide has steps for connecting it
+  #     (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not done, else
+  #     Continue. A person whom `adapter.connect` does not allow sees the adapters with no
+  #     Connect, and
+  #     who may connect (`ApiaryWeb.Access.who_may/3`). The page listens to the
+  #     organisation's collections and connections (`Apiary.Adapters.Collections.subscribe/1`)
+  #     and reads the step again on each change;
+  #   * Model, for the organisation, with the features `factory` and `secrets`: Provider,
+  #     Key and, for a provider that needs one, Address, which add a model provider as
+  #     Organisation settings › Model providers does (`Apiary.Connections.create_provider/2`),
+  #     while the organisation has no provider with a key; else the line that it has one.
+  #     Then Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`),
+  #     as text where there is one, and Default model, the models suggested for the
+  #     provider and runtime (`Apiary.ModelChoices.suggestions/2`). Continue saves the
+  #     organisation's default (level 6, `Apiary.ModelChoices.put_choice/4`). The key is
+  #     never kept in an assign: its field is left out of the page's patches
+  #     (`phx-update="ignore"`). A person whom `provider.write` does not allow sees who may;
+  #   * Name, for the workspace: the Name field, "Main" for the organisation's first
+  #     workspace, and Create workspace, with the type picked: on `/:org/set-up`, the
+  #     organisation's first workspace (`Apiary.Organisations.create_first_workspace/2`,
+  #     which returns `{:error, :exists}` for a second, under the organisation's lock), on
+  #     `/:org/workspaces/new`
+  #     any other (`Apiary.Organisations.create_workspace/2`); once the workspace exists,
+  #     its name, read only, with Continue;
+  #   * Work sources used and Destinations used, with the `factory` feature: tick lists of
+  #     the organisation's collections (`Apiary.WorkspaceSetup.collections/3`). Ticking a
+  #     work source assigns the collection and turns its Backlog on; ticking a destination
+  #     assigns it with its Backlog off, unless it is ticked as a work source. Unticking a
+  #     work source turns its Backlog off, and unassigns a collection that is no
+  #     destination; unticking a destination turns its Backlog off and unassigns it
+  #     (`Apiary.Adapters.Collections.assign_collections/4`,
+  #     `Apiary.Adapters.Collections.set_collection_backlog/4`). A collection in another
+  #     workspace shows that workspace's name and has no checkbox. A tick reads the list
+  #     again first, and changes nothing for a collection that is now in another
+  #     workspace. A person whom `collection.assign` does not allow sees the boxes
+  #     disabled, and who may;
+  #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
+  #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
+  #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
+  #     pool. Then the test run's state (`Apiary.WorkspaceSetup.test_run/2`): waiting,
+  #     running, passed, or one of four failures, read again as the workspace's queue and
+  #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
+  #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
+  #     whom `work_item.take_in` does not allow sees who may.
   #
   # Every step has Back to the step before it in the indicator, where that step has a
-  # page. The indicator shows the organisation's progress, whose first step is Workspace:
-  # Workspace has no Back to the instance's steps. Work source is of the `factory`
-  # feature, and the module reference leaves the module out.
+  # page: Work sources has none, so Back never leads to the cards or the instance's steps.
+  # The page listens to the organisation's workspaces
+  # (`Apiary.Organisations.subscribe_workspaces/1`): once its first workspace is made, by
+  # anyone else, the page opens `/:org/set-up` again. The steps of the `factory` feature
+  # are left out of the module reference with the module.
   @moduledoc false
 
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Adapters, Features, Organisations}
-  alias Apiary.Adapters.{Collections, Connections}
+  alias Apiary.{
+    Access,
+    Adapters,
+    Connections,
+    Dispatches,
+    Edition,
+    ModelChoices,
+    Organisations,
+    Runs,
+    WorkItems,
+    WorkspaceSetup
+  }
+
+  alias Apiary.Adapters.Collections
+  alias Apiary.Adapters.Connections, as: AdapterConnections
+  alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
-  alias ApiaryWeb.{IntegrationComponents, SetUpComponents, SourceComponents, WorkspaceComponents}
+  alias Apiary.Runs.Run
+  alias ApiaryWeb.{IntegrationComponents, OverviewComponents, SetUpComponents, SourceComponents}
+  alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
 
   @impl true
   def mount(_params, _session, socket) do
@@ -70,207 +126,845 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       _subscribed = Collections.subscribe(scope)
     end
 
-    {:ok, assign(socket, step: nil)}
+    {:ok,
+     assign(socket,
+       view: nil,
+       flow: nil,
+       step: nil,
+       listening: false,
+       timer: nil,
+       attempt: 0,
+       test_notice: nil,
+       test_form: test_form(gettext("Hi! Where are you running?"))
+     )}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
     scope = socket.assigns.current_scope
     organisation = scope.organisation
+    creates = Access.can?(scope, :"workspace.create", organisation)
 
-    cond do
-      not Organisations.has_workspace?(organisation) ->
-        {:noreply, assign_type_step(socket)}
+    case socket.assigns.live_action do
+      :new ->
+        if not creates, do: raise(ApiaryWeb.NotFound)
+        {:noreply, open_new(socket, params, :new)}
 
-      is_nil(scope.workspace) ->
-        {:noreply, push_navigate(socket, to: ~p"/#{organisation}")}
+      :show ->
+        cond do
+          not Organisations.has_workspace?(organisation) and creates ->
+            {:noreply, open_new(socket, params, :set_up)}
 
-      params["step"] == "type" ->
-        {:noreply, assign_made_step(socket)}
+          not Organisations.has_workspace?(organisation) ->
+            {:noreply, assign_waiting(socket)}
 
-      source = source_access(scope) ->
-        {:noreply, assign_source_step(socket, source)}
+          is_nil(scope.workspace) ->
+            {:noreply, push_navigate(socket, to: ~p"/#{organisation}")}
 
-      true ->
-        {:noreply, push_navigate(socket, to: Layouts.workspace_landing(scope))}
+          # A patch to another workspace: the scope resolves it as the page mounts.
+          is_binary(params["workspace"]) and params["workspace"] != scope.workspace.slug ->
+            {:noreply,
+             push_navigate(socket,
+               to: ~p"/#{organisation}/set-up?#{Map.take(params, ~w(step workspace))}"
+             )}
+
+          true ->
+            workspace = scope.workspace
+
+            flow =
+              SetUpComponents.flow(
+                organisation,
+                Domain.for_workspace(workspace),
+                workspace,
+                :set_up
+              )
+
+            {:noreply, open_flow(socket, flow, params["step"])}
+        end
     end
   end
 
-  # Work source, for the scope: `{:ok, nil}` for a person `adapter.connect` allows,
-  # `{:ok, who_may}` with the edition's sentence for one it refuses, nil where the step is
-  # not shown.
-  defp source_access(scope) do
-    cond do
-      not Features.visible?(scope, :factory) -> nil
-      Access.can?(scope, :"adapter.connect", scope.organisation) -> {:ok, nil}
-      who_may = ApiaryWeb.Edition.who_may_sentence(:"adapter.connect", scope) -> {:ok, who_may}
-      true -> nil
+  # A new workspace: the cards, or the flow of the type `?type=` is set to.
+  defp open_new(socket, params, page) do
+    organisation = socket.assigns.current_scope.organisation
+
+    case card_domain(params["type"]) do
+      nil ->
+        assign_cards(socket, page)
+
+      domain ->
+        open_flow(
+          socket,
+          SetUpComponents.flow(organisation, domain, nil, page, type: true),
+          params["step"]
+        )
     end
   end
 
-  defp assign_steps(socket, current) do
-    steps = SetUpComponents.steps_for(socket.assigns.current_scope, current)
-    assign(socket, steps: steps, current: Enum.find(steps, &(&1.id == current)))
-  end
-
-  # A person who may not create the workspace waits: the core lists them no step, so the
-  # page shows no indicator unless the edition lists steps (`c:Apiary.Edition.set_up_steps/2`).
-  defp assign_type_step(socket) do
+  defp assign_cards(socket, page) do
     scope = socket.assigns.current_scope
-    creates = Access.can?(scope, :"workspace.create", scope.organisation)
-
-    socket =
-      if creates,
-        do: assign_steps(socket, :workspace),
-        else: assign(socket, steps: Apiary.Edition.set_up_steps(scope, []), current: nil)
 
     assign(socket,
-      page_title: Apiary.Edition.set_up_title(scope, socket.assigns.current),
-      step: :type,
-      creates: creates,
-      refusal: nil,
-      form: to_form(%{"domain" => nil}, as: "workspace")
+      view: :cards,
+      page: page,
+      flow: nil,
+      step: nil,
+      page_title: gettext("What will this workspace do?"),
+      cards: for(domain <- Domain.choices(), card = card_words(domain), do: {domain, card}),
+      limit: page == :new and at_limit?(scope)
     )
   end
 
-  # Workspace, once the workspace exists: what was made, read only.
-  defp assign_made_step(socket) do
+  # Whether the organisation has as many workspaces in use as the edition allows.
+  defp at_limit?(scope) do
+    case Edition.limits().workspaces do
+      :unlimited -> false
+      limit -> length(Organisations.list_workspaces(scope)) >= limit
+    end
+  end
+
+  # A person who may not create the organisation's first workspace waits: the core lists
+  # them no step, so the page shows no indicator unless the edition lists steps
+  # (`c:Apiary.Edition.set_up_steps/2`).
+  defp assign_waiting(socket) do
     scope = socket.assigns.current_scope
-    socket = assign_steps(socket, :workspace)
 
     assign(socket,
-      page_title: Apiary.Edition.set_up_title(scope, socket.assigns.current),
-      step: :made,
-      continue:
-        if(source_access(scope),
-          do: {:patch, ~p"/#{scope.organisation}/set-up?step=source"},
-          else: {:navigate, Layouts.workspace_landing(scope)}
+      view: :waiting,
+      flow: nil,
+      step: nil,
+      steps: Edition.set_up_steps(scope, []),
+      page_title: Edition.set_up_title(scope, nil)
+    )
+  end
+
+  ## The cards
+
+  # The words of a domain's card, nil for a domain without one, which shows no card.
+  defp card_words(Domain.Software) do
+    %{
+      what: gettext("Agents change code in your repositories."),
+      connect: gettext("You connect: where work comes from, where changes go, a model.")
+    }
+  end
+
+  defp card_words(_domain), do: nil
+
+  # The domain whose name is `name` and that has a card, nil for none.
+  defp card_domain(name) when is_binary(name) do
+    Enum.find(Domain.choices(), &(&1.name() == name and card_words(&1) != nil))
+  end
+
+  defp card_domain(_name), do: nil
+
+  defp card_path(organisation, :set_up, domain),
+    do: ~p"/#{organisation}/set-up?#{[type: domain.name()]}"
+
+  defp card_path(organisation, :new, domain),
+    do: ~p"/#{organisation}/workspaces/new?#{[type: domain.name()]}"
+
+  ## The flow
+
+  # The step `?step=` is set to, among the steps the person sees, else the first that is not
+  # done. A step of the workspace before it exists opens Name.
+  defp open_flow(socket, flow, step_param) do
+    scope = socket.assigns.current_scope
+    plain = SetUpComponents.steps_for(scope, nil, flow: flow)
+    ids = for %{id: id, group: group} <- plain, group in [:organisation, :workspace], do: id
+    named = Enum.find(ids, &(Atom.to_string(&1) == step_param))
+    pending = Enum.find(plain, &(&1.id in ids and &1.state != :done))
+
+    current =
+      cond do
+        is_nil(named) -> pending && pending.id
+        flow.workspace != nil -> named
+        WorkspaceSetup.flow()[named] == :organisation -> named
+        true -> :name
+      end
+
+    cond do
+      current ->
+        assign_step(socket, flow, current)
+
+      flow.workspace ->
+        push_navigate(socket, to: Layouts.workspace_landing(scope))
+
+      true ->
+        assign_step(socket, flow, List.last(ids))
+    end
+  end
+
+  defp assign_step(socket, flow, step) do
+    scope = socket.assigns.current_scope
+    steps = SetUpComponents.steps_for(scope, step, flow: flow)
+    next = SetUpComponents.next_step(steps, step)
+
+    socket
+    |> assign(
+      view: :flow,
+      flow: flow,
+      step: step,
+      steps: steps,
+      title: SetUpComponents.flow_title(flow),
+      page_path: page_path(flow),
+      next_path: next && next.path,
+      page_title: heading(step, flow),
+      refusal: nil
+    )
+    |> load_step()
+  end
+
+  defp page_path(%{organisation: organisation, page: :new}),
+    do: ~p"/#{organisation}/workspaces/new"
+
+  defp page_path(%{organisation: organisation, page: :set_up}), do: ~p"/#{organisation}/set-up"
+
+  # The indicator and the step's data, read again.
+  defp reload(%{assigns: %{view: :flow, flow: flow, step: step}} = socket) do
+    steps = SetUpComponents.steps_for(socket.assigns.current_scope, step, flow: flow)
+
+    socket
+    |> assign(steps: steps)
+    |> load_step()
+  end
+
+  defp reload(socket), do: socket
+
+  defp heading(:sources, flow),
+    do:
+      gettext("Where does %{organisation}'s work come from?",
+        organisation: flow.organisation.name
+      )
+
+  defp heading(:destinations, flow),
+    do: gettext("Where do %{organisation}'s changes go?", organisation: flow.organisation.name)
+
+  defp heading(:model, flow),
+    do:
+      gettext("Which model do %{organisation}'s runs use?", organisation: flow.organisation.name)
+
+  defp heading(:name, _flow), do: gettext("Name this workspace")
+
+  defp heading(:sources_used, flow),
+    do: gettext("Which work sources does %{workspace} use?", workspace: flow.workspace.name)
+
+  defp heading(:destinations_used, flow),
+    do:
+      gettext("Which repositories may %{workspace}'s runs change?",
+        workspace: flow.workspace.name
+      )
+
+  defp heading(:test, _flow), do: gettext("Run a test")
+
+  ## Each step's data
+
+  defp load_step(%{assigns: %{step: step}} = socket) when step in [:sources, :destinations] do
+    %{current_scope: scope, flow: flow} = socket.assigns
+    role = if step == :sources, do: :items, else: :targets
+
+    adapters =
+      for adapter <- Adapters.list_configured(flow.domain),
+          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
+          do: adapter
+
+    connecting =
+      for {adapter_id, %{state: :pending}} <- AdapterConnections.live_by_adapter(scope),
+          into: MapSet.new(),
+          do: adapter_id
+
+    may = Access.can?(scope, :"adapter.connect", scope.organisation)
+
+    assign(socket,
+      adapters: adapters,
+      connected: WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role),
+      connecting: connecting,
+      may: may,
+      who_may:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"adapter.connect",
+          gettext("Only owners and admins change the integrations of the organisation.")
+        ),
+      ready:
+        for(
+          a <- adapters,
+          may,
+          IntegrationComponents.ready?(a),
+          into: MapSet.new(),
+          do: a.id
+        ),
+      sending: nil,
+      done: step_done?(socket.assigns.flow, step)
+    )
+  end
+
+  defp load_step(%{assigns: %{step: :model}} = socket) do
+    scope = socket.assigns.current_scope
+    may = Access.can?(scope, :"provider.write", scope.organisation)
+
+    providers =
+      case Connections.list_providers(scope) do
+        {:ok, providers} -> Enum.filter(providers, &(keys(&1) > 0))
+        {:error, _reason} -> []
+      end
+
+    default = organisation_default(scope)
+
+    existing =
+      Enum.find(providers, &(default && &1.id == default.connection_id)) || List.first(providers)
+
+    socket
+    |> assign(
+      may: may,
+      who_may:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"provider.write",
+          gettext("Only owners and admins add a model key.")
+        ),
+      existing: existing,
+      default: default,
+      done: step_done?(socket.assigns.flow, :model)
+    )
+    |> assign_model_form(model_params(existing, default), [])
+  end
+
+  defp load_step(%{assigns: %{step: :name}} = socket) do
+    %{current_scope: scope, flow: flow} = socket.assigns
+
+    name =
+      if Organisations.has_workspace?(scope.organisation),
+        do: "",
+        else: Organisations.default_workspace_name()
+
+    assign(socket,
+      form:
+        to_form(%{"name" => if(flow.workspace, do: flow.workspace.name, else: name)},
+          as: "workspace"
         )
     )
   end
 
-  # `who_may` is the edition's sentence of who may connect a work source, for a person
-  # `adapter.connect` refuses, or nil for one it allows.
-  defp assign_source_step(socket, {:ok, who_may}) do
-    scope = socket.assigns.current_scope
-    workspace = scope.workspace
+  defp load_step(%{assigns: %{step: step}} = socket)
+       when step in [:sources_used, :destinations_used] do
+    %{current_scope: scope, flow: flow} = socket.assigns
+    list = if step == :sources_used, do: :sources, else: :destinations
+    groups = WorkspaceSetup.collections(scope, flow.domain, list)
+
+    nouns =
+      groups |> Enum.map(fn {adapter, _rows} -> Adapters.collection_noun(adapter) end)
+
+    assign(socket,
+      groups: groups,
+      may: Access.can?(scope, :"collection.assign", scope.organisation),
+      may_connect: Access.can?(scope, :"adapter.connect", scope.organisation),
+      who_may:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"collection.assign",
+          gettext(
+            "Only owners and admins of %{organisation} assign %{collections} to workspaces.",
+            organisation: scope.organisation.name,
+            collections: SourceComponents.collections(nouns, :and)
+          )
+        ),
+      who_connects:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"adapter.connect",
+          gettext("Only owners and admins change the integrations of the organisation.")
+        ),
+      connect_path:
+        Enum.find_value(socket.assigns.steps, fn step -> step.id == list && step.path end)
+    )
+  end
+
+  defp load_step(%{assigns: %{step: :test}} = socket) do
+    %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
+    socket = listen(socket)
+    test = WorkspaceSetup.test_run(workspace, DateTime.utc_now())
+
+    # The line to wait goes away once no test run is in progress.
+    notice =
+      if match?(%{dispatch_run: %{state: state}} when state != :ended, test),
+        do: socket.assigns.test_notice
 
     socket
-    |> assign_steps(:source)
     |> assign(
-      page_title: gettext("Connect a work source to %{workspace}", workspace: workspace.name),
-      step: :source,
-      adapters: Adapters.list_configured(Domain.for_workspace(workspace)),
-      one_workspace: match?([_one], Organisations.list_workspaces(scope)),
-      sending: nil,
-      who_may: who_may
+      test: test,
+      test_state: test && test.state,
+      machines: Edition.machines_ready(workspace),
+      may: Access.can?(scope, :"work_item.take_in", workspace),
+      who_may:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"work_item.take_in",
+          gettext("Only owners, admins and members run the test.")
+        ),
+      test_notice: notice
     )
-    |> assign_source_state()
+    |> wait_for_machine()
   end
 
-  # The adapters connected to the workspace, by the Overview's rule for its Work source
-  # step, and those still connecting: the organisation's connection to the adapter is
-  # connected and its listing not complete, and no collection of it is the workspace's
-  # yet. Once the listing completes with none for the workspace, as where the
-  # organisation has two workspaces and none is assigned as it is made, the adapter is
-  # neither.
-  defp assign_source_state(socket) do
-    scope = socket.assigns.current_scope
-    connected = MapSet.new(Apiary.Edition.work_source_ready(scope.workspace), & &1.adapter.id)
+  # Whether the step `id` of `flow` is done, by its rule: the indicator marks the current
+  # step as current, done or not.
+  defp step_done?(flow, id),
+    do: WorkspaceSetup.done?(id, flow.organisation, {flow.domain, flow.workspace})
 
-    connecting =
-      for {adapter_id, %{state: :connected, ended_at: nil, listing_completed_at: nil}} <-
-            Connections.live_by_adapter(scope),
-          not MapSet.member?(connected, adapter_id),
-          into: MapSet.new(),
-          do: adapter_id
-
-    assign(socket, connected: connected, connecting: connecting)
-  end
-
-  @impl true
-  # With no type chosen, the Type field (a choice) checks no radio, and the form sends no
-  # `workspace` params: the changeset then says to choose one.
-  def handle_event("create", params, %{assigns: %{step: :type}} = socket) do
-    domain =
-      case params do
-        %{"workspace" => %{"domain" => domain}} when is_binary(domain) -> domain
-        _no_type -> ""
-      end
-
-    scope = socket.assigns.current_scope
-    organisation = scope.organisation
-
-    case Organisations.create_first_workspace(scope, %{"domain" => domain}) do
-      {:ok, workspace} ->
-        to =
-          if Features.visible?(scope, :factory),
-            do: ~p"/#{organisation}/set-up?step=source",
-            else: ~p"/#{organisation}/#{workspace}"
-
-        # Off the Type step, so the broadcast this page caused, of the new workspace
-        # (`handle_info/2`), navigates no second time.
-        {:noreply, socket |> assign(:step, :created) |> push_navigate(to: to)}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        if Keyword.has_key?(changeset.errors, :name),
-          do: {:noreply, assign(socket, :refusal, :name_taken)},
-          else:
-            {:noreply,
-             assign(socket, :form, to_form(changeset, as: "workspace", action: :insert))}
-
-      {:error, :limit} ->
-        {:noreply, assign(socket, :refusal, :limit)}
-
-      # Made a moment before, or no longer theirs to make: the page as it would open now.
-      {:error, _reason} ->
-        {:noreply, push_navigate(socket, to: ~p"/#{organisation}/set-up")}
+  # Once the Test run step opens, the page listens to the workspace's queue and runs.
+  defp listen(%{assigns: %{listening: false}} = socket) do
+    if connected?(socket) do
+      scope = socket.assigns.current_scope
+      Dispatches.subscribe(scope.workspace.id)
+      Runs.subscribe(scope)
+      assign(socket, :listening, true)
+    else
+      socket
     end
   end
 
-  # The type chosen, kept in the form, so that a later render of the page shows it. A
-  # value that is no domain's keeps none.
-  def handle_event("choose", params, %{assigns: %{step: :type}} = socket) do
-    names = Enum.map(Domain.choices(), & &1.name())
+  defp listen(socket), do: socket
 
-    domain =
-      case params do
-        %{"workspace" => %{"domain" => domain}} -> if domain in names, do: domain
-        _no_type -> nil
-      end
+  # While the test run waits for a machine, the step reads it again once the wait passes
+  # `Apiary.WorkspaceSetup.machine_wait_seconds/0`, and shows that no machine took it.
+  defp wait_for_machine(%{assigns: %{timer: timer}} = socket) do
+    if timer, do: Process.cancel_timer(timer)
 
-    {:noreply, assign(socket, :form, to_form(%{"domain" => domain}, as: "workspace"))}
+    case socket.assigns.test do
+      %{state: :waiting, dispatch_run: dispatch_run} ->
+        at = DateTime.add(dispatch_run.queued_at, WorkspaceSetup.machine_wait_seconds(), :second)
+        wait = DateTime.diff(at, DateTime.utc_now(), :millisecond)
+        assign(socket, :timer, Process.send_after(self(), :setup_tick, max(wait, 0) + 1_000))
+
+      _other ->
+        assign(socket, :timer, nil)
+    end
   end
 
+  ## The Model step's form
+
+  # The organisation's default (level 6), nil for none.
+  defp organisation_default(scope) do
+    case ModelChoices.list_choices(scope) do
+      {:ok, choices} ->
+        Enum.find(
+          choices,
+          &(is_nil(&1.workspace_id) and is_nil(&1.target_id) and is_nil(&1.workflow))
+        )
+
+      {:error, _reason} ->
+        nil
+    end
+  end
+
+  defp model_params(nil, _default),
+    do: %{"provider" => Providers.list() |> hd() |> Map.fetch!(:name)}
+
+  defp model_params(_existing, default),
+    do: %{"runtime" => default && default.runtime, "model" => default && default.model_id}
+
+  # The form of the Model step, from what was sent but the key, with `errors` on its
+  # fields; the key's field is always empty. The provider is the catalogue's for a new
+  # provider, the description of the organisation's provider for one it has.
+  defp assign_model_form(socket, params, errors) do
+    existing = socket.assigns.existing
+
+    chosen =
+      case existing do
+        nil -> catalogue(params["provider"])
+        provider -> described(provider)
+      end
+
+    runtimes =
+      if chosen, do: Enum.filter(Runtimes.list(), &Providers.serves?(chosen, &1)), else: []
+
+    runtime = Enum.find(runtimes, &(&1.name == params["runtime"])) || List.first(runtimes)
+
+    models =
+      cond do
+        is_nil(runtime) -> []
+        existing -> ModelChoices.suggestions(existing, runtime)
+        true -> ModelChoices.suggestions(chosen, runtime)
+      end
+
+    model = Enum.find(models, &(&1.id == params["model"])) || List.first(models)
+
+    kept =
+      if existing,
+        do: %{},
+        else: Map.take(params, ["provider" | ProviderPage.address_names(params["provider"])])
+
+    values =
+      Map.merge(kept, %{
+        "key" => "",
+        "runtime" => runtime && runtime.name,
+        "model" => model && model.id
+      })
+
+    values = Enum.reduce(errors, values, fn {field, _}, v -> Map.put_new(v, "#{field}", "") end)
+
+    assign(socket,
+      form: to_form(values, as: :model, errors: errors),
+      chosen: chosen,
+      runtimes: runtimes,
+      runtime: runtime,
+      models: models
+    )
+  end
+
+  defp catalogue(name) do
+    case Providers.fetch(name) do
+      {:ok, provider} -> provider
+      :error -> nil
+    end
+  end
+
+  defp described(provider) do
+    case Connections.provider(provider) do
+      {:ok, description} -> description
+      {:error, _changed} -> nil
+    end
+  end
+
+  defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
+  defp keys(_provider), do: 0
+
+  # Adds the provider with its key, for an organisation that has none with a key; the
+  # one it has, else.
+  defp model_provider(%{assigns: %{existing: nil, current_scope: scope}}, params) do
+    with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
+         runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
+         :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
+      Connections.create_provider(scope, %{
+        "provider" => provider.name,
+        "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
+        "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
+      })
+    end
+  end
+
+  defp model_provider(%{assigns: %{existing: provider}}, _params), do: {:ok, provider}
+
+  defp serves(provider, runtime) do
+    case ModelChoices.serves(provider, runtime) do
+      :ok -> :ok
+      {:error, {message, bindings}} -> {:error, {:serves, {message, bindings}}}
+    end
+  end
+
+  ## Events
+
+  @impl true
   def handle_event(
         "install",
         %{"integration" => public_id},
-        %{assigns: %{step: :source, who_may: nil}} = socket
-      ) do
+        %{assigns: %{step: step, may: true}} = socket
+      )
+      when step in [:sources, :destinations] do
     if Enum.any?(socket.assigns.adapters, &(&1.public_id == public_id)),
       do: {:noreply, assign(socket, :sending, public_id)},
       else: {:noreply, socket}
   end
 
+  def handle_event(
+        "choose_model",
+        %{"model" => params},
+        %{assigns: %{step: :model, may: true}} = socket
+      ),
+      do: {:noreply, assign_model_form(socket, params, [])}
+
+  def handle_event(
+        "save_model",
+        %{"model" => params},
+        %{assigns: %{step: :model, may: true}} = socket
+      ) do
+    scope = socket.assigns.current_scope
+    socket = assign(socket, attempt: socket.assigns.attempt + 1, refusal: nil)
+    default = socket.assigns.default
+
+    unchanged? =
+      case {socket.assigns.existing, default} do
+        {%{id: id}, %{connection_id: id, runtime: runtime, model_id: model}} ->
+          runtime == params["runtime"] and model == params["model"]
+
+        _other ->
+          false
+      end
+
+    if unchanged? do
+      {:noreply, push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)}
+    else
+      save_model(socket, scope, params)
+    end
+  end
+
+  def handle_event(
+        "create",
+        %{"workspace" => params},
+        %{assigns: %{step: :name, flow: %{workspace: nil}}} = socket
+      ) do
+    %{current_scope: scope, flow: flow} = socket.assigns
+    name = if is_binary(params["name"]), do: params["name"], else: ""
+
+    attrs = %{"name" => name, "domain" => flow.domain.name()}
+
+    # On `/:org/set-up` the workspace is the organisation's first: of two owners at once,
+    # one creates it, under the organisation's lock.
+    created =
+      case flow.page do
+        :set_up -> Organisations.create_first_workspace(scope, attrs)
+        :new -> Organisations.create_workspace(scope, attrs)
+      end
+
+    case created do
+      {:ok, workspace} ->
+        flow = SetUpComponents.flow(flow.organisation, flow.domain, workspace, :set_up)
+        next = next_id(scope, flow, :name)
+
+        to =
+          if next,
+            do: SetUpComponents.flow_path(flow, next),
+            else: ~p"/#{flow.organisation}/#{workspace}"
+
+        # Off the Name step, so the broadcast this page caused navigates no second time.
+        {:noreply, socket |> assign(:view, :created) |> push_navigate(to: to)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        errors =
+          for {field, error} <- changeset.errors, field in [:name, :slug], do: {:name, error}
+
+        {:noreply,
+         assign(socket,
+           form: to_form(%{"name" => name}, as: "workspace", errors: errors, action: :insert),
+           refusal: if(marked_name?(scope, name), do: :name_taken)
+         )}
+
+      {:error, :limit} ->
+        {:noreply, assign(socket, :refusal, :limit)}
+
+      # Someone else created the first workspace a moment before: the page as it opens now.
+      {:error, :exists} ->
+        {:noreply, push_navigate(socket, to: ~p"/#{flow.organisation}/set-up")}
+
+      {:error, _reason} ->
+        {:noreply, push_navigate(socket, to: page_path(flow))}
+    end
+  end
+
+  def handle_event("tick", %{"id" => id}, %{assigns: %{step: step, may: true}} = socket)
+      when step in [:sources_used, :destinations_used] do
+    %{current_scope: scope, flow: flow} = socket.assigns
+    workspace_id = flow.workspace.id
+    list = if step == :sources_used, do: :sources, else: :destinations
+
+    # The list as it stands now, not as the page last showed it: a collection in another
+    # workspace has no checkbox, and is not moved from here.
+    case scope
+         |> WorkspaceSetup.collections(flow.domain, list)
+         |> Enum.find_value(fn {adapter, rows} ->
+           Enum.find_value(rows, &(&1.collection.id == id && {adapter, &1}))
+         end) do
+      {adapter, %{workspace: workspace} = row} ->
+        socket =
+          case is_nil(workspace) or workspace.id == workspace_id do
+            true -> socket |> tick(step, adapter, row) |> ticked(socket)
+            false -> socket
+          end
+
+        {:noreply, reload(socket)}
+
+      nil ->
+        {:noreply, reload(socket)}
+    end
+  end
+
+  def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket) do
+    line =
+      case params do
+        %{"test" => %{"line" => line}} -> line
+        _other -> nil
+      end
+
+    cond do
+      not is_binary(line) -> {:noreply, socket}
+      is_nil(socket.assigns.machines) -> {:noreply, reload(socket)}
+      true -> run_test(socket, line)
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  @impl true
-  # The organisation's first workspace was made, by anyone: the page as it would open now,
-  # Work source or on.
-  def handle_info({:workspace_created, _ids}, %{assigns: %{step: :type}} = socket),
-    do:
-      {:noreply,
-       push_navigate(socket,
-         to: ~p"/#{socket.assigns.current_scope.organisation}/set-up?step=source"
-       )}
+  defp save_model(socket, scope, params) do
+    with {:ok, provider} <- model_provider(socket, params),
+         {:ok, _choice} <-
+           ModelChoices.put_choice(scope, :organisation, %{
+             "provider" => provider.public_id,
+             "runtime" => params["runtime"],
+             "model" => params["model"]
+           }) do
+      {:noreply, push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)}
+    else
+      {:error, {:serves, error}} ->
+        {:noreply, assign_model_form(socket, params, provider: error)}
 
-  # A collection or a connection of the organisation changed: the Work source step reads
-  # again which adapters are connected and which are connecting, and the indicator.
-  def handle_info({event, _ids}, %{assigns: %{step: :source}} = socket)
+      {:error, :provider_unknown} ->
+        {:noreply, assign_model_form(socket, params, provider: {"is invalid", []})}
+
+      {:error, %Ecto.Changeset{data: %Apiary.ModelChoices.ModelChoice{}} = changeset} ->
+        errors = for {field, error} <- changeset.errors, do: {model_field(field), error}
+        {:noreply, socket |> load_step() |> assign_model_form(params, errors)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign_model_form(socket, params, ProviderPage.field_errors(changeset))}
+
+      {:error, :forbidden} ->
+        {:noreply, socket |> load_step() |> put_flash(:error, socket.assigns.who_may)}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
+  # A refusal of the choice, on the step's field it is about.
+  defp model_field(field) when field in [:runtime, :model], do: field
+  defp model_field(:effort), do: :model
+  defp model_field(_field), do: :provider
+
+  # Whether a workspace of the organisation marked for deletion has the name `name`.
+  defp marked_name?(scope, name),
+    do: Enum.any?(Apiary.Deletion.list_marked_workspaces(scope), &(&1.name == String.trim(name)))
+
+  defp next_id(scope, flow, id) do
+    steps = SetUpComponents.steps_for(scope, id, flow: flow)
+
+    case SetUpComponents.next_step(steps, id) do
+      %{id: next} -> next
+      nil -> nil
+    end
+  end
+
+  defp ticked(:ok, socket), do: socket
+  defp ticked({:error, :forbidden}, socket), do: put_flash(socket, :error, socket.assigns.who_may)
+
+  defp ticked({:error, _reason}, socket),
+    do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+  # One tick or untick of `row`, a collection of `adapter`, in the list of `step`.
+  defp tick(socket, step, adapter, %{collection: collection, connection: connection} = row) do
+    %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
+    here? = collection.workspace_id == workspace.id
+    switch? = collection.items and Adapters.items?(adapter)
+    destination? = adapter.targets == true and not is_nil(collection.target_system)
+
+    case {step, ticked?(step, row, workspace)} do
+      {:sources_used, false} ->
+        with :ok <- assign_to(scope, connection, collection, workspace, here?),
+             do: backlog(scope, connection, collection, switch?, true)
+
+      {:sources_used, true} ->
+        with :ok <- backlog(scope, connection, collection, switch?, false) do
+          if destination?, do: :ok, else: assign_to(scope, connection, collection, nil, false)
+        end
+
+      {:destinations_used, false} ->
+        with :ok <- assign_to(scope, connection, collection, workspace, here?),
+             do: backlog(scope, connection, collection, switch? and not here?, false)
+
+      {:destinations_used, true} ->
+        with :ok <- backlog(scope, connection, collection, switch?, false),
+             do: assign_to(scope, connection, collection, nil, false)
+    end
+  end
+
+  defp assign_to(_scope, _connection, _collection, _workspace, true), do: :ok
+
+  defp assign_to(scope, connection, collection, workspace, false) do
+    case Collections.assign_collections(scope, connection, [collection.id], workspace) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp backlog(_scope, _connection, _collection, false, _on), do: :ok
+
+  defp backlog(scope, connection, collection, true, on) do
+    case Collections.set_collection_backlog(scope, connection, collection.id, on) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # A work source is ticked while it is the workspace's with its Backlog on; a destination
+  # while it is the workspace's.
+  defp ticked?(:sources_used, %{collection: c}, workspace),
+    do: c.workspace_id == workspace.id and c.backlog
+
+  defp ticked?(:destinations_used, %{collection: c}, workspace),
+    do: c.workspace_id == workspace.id
+
+  defp run_test(socket, line) do
+    scope = socket.assigns.current_scope
+
+    case WorkItems.take_in_test(scope, line) do
+      {:ok, _work_item} ->
+        {:noreply, socket |> assign(test_notice: nil, test_form: test_form(line)) |> reload()}
+
+      {:error, :test_running} ->
+        {:noreply, socket |> assign(:test_notice, :test_running) |> reload()}
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        {:noreply, assign(socket, test_notice: nil, test_form: test_form(line, errors[:title]))}
+
+      {:error, :forbidden} ->
+        {:noreply, socket |> reload() |> put_flash(:error, socket.assigns.who_may)}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket |> reload() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
+  # The form of Say hi to your agent, with the work item's refusal of the line, if any.
+  defp test_form(line, error \\ nil) do
+    if error,
+      do: to_form(%{"line" => line}, as: "test", errors: [line: error], action: :insert),
+      else: to_form(%{"line" => line}, as: "test")
+  end
+
+  @impl true
+  # The organisation's first workspace was made by someone else while this page sets up
+  # a new one: the page as it would open now.
+  def handle_info({:workspace_created, _ids}, %{assigns: assigns} = socket) do
+    new? =
+      assigns.view in [:cards, :waiting] or
+        match?(%{view: :flow, flow: %{workspace: nil}}, assigns)
+
+    if new? and assigns.live_action == :show,
+      do:
+        {:noreply, push_navigate(socket, to: ~p"/#{assigns.current_scope.organisation}/set-up")},
+      else: {:noreply, socket}
+  end
+
+  # A collection or a connection of the organisation changed: the step reads again.
+  def handle_info({event, _ids}, socket)
       when event in [:collections_changed, :connection_changed],
-      do: {:noreply, socket |> assign_steps(:source) |> assign_source_state()}
+      do: {:noreply, reload(socket)}
+
+  # The workspace's queue changed, or the test run's wait for a machine ran out.
+  def handle_info({Dispatches, :changed}, socket), do: {:noreply, reload(socket)}
+  def handle_info(:setup_tick, socket), do: {:noreply, reload(socket)}
+
+  # A change of the test run's registered run.
+  def handle_info(
+        {:run_changed, %Run{dispatch_run_id: id}},
+        %{assigns: %{step: :test, test: %{dispatch_run: %{id: id}}}} = socket
+      ),
+      do: {:noreply, reload(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  ## Render
 
   @impl true
   def render(assigns) do
@@ -283,78 +977,65 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:organisation}
       sidebar={false}
     >
-      <.type_step
-        :if={@step == :type}
-        scope={@current_scope}
-        steps={@steps}
-        title={@page_title}
-        creates={@creates}
-        form={@form}
-        refusal={@refusal}
-      />
-      <.made_step
-        :if={@step == :made}
-        scope={@current_scope}
-        steps={@steps}
-        title={@page_title}
-        continue={@continue}
-      />
-      <.source_step
-        :if={@step == :source}
-        scope={@current_scope}
-        steps={@steps}
-        adapters={@adapters}
-        connected={@connected}
-        connecting={@connecting}
-        one_workspace={@one_workspace}
-        sending={@sending}
-        who_may={@who_may}
-      />
+      <.cards :if={@view == :cards} {assigns} />
+      <.waiting :if={@view == :waiting} scope={@current_scope} steps={@steps} title={@page_title} />
+      <.flow_step :if={@view == :flow} {assigns} />
     </Layouts.app>
     """
   end
 
-  attr :scope, :map, required: true
-
-  # Why the workspace exists, and the edition's line on which workspace it is.
-  defp workspace_context(assigns) do
+  defp cards(assigns) do
     ~H"""
-    <p id="set-up-what">
-      <%!-- The workspace type's context: read where the type is picked, in no domain's
-      words yet (docs/lingo.md). --%>
-      {pgettext(
-        "workspace type",
-        "%{workspace} is where Qory Apiary takes in tickets and runs agents on them. Its type sets which work sources it can connect, and whether each ticket needs a repository.",
-        workspace: Organisations.default_workspace_name()
-      )}
-    </p>
-    <p id="set-up-line">{Apiary.Edition.first_workspace_line(@scope.organisation)}</p>
+    <SetUpComponents.frame>
+      <SetUpComponents.heading>{gettext("What will this workspace do?")}</SetUpComponents.heading>
+      <.notice :if={@limit} kind={:error}>
+        <span id="set-up-limit">
+          {gettext("%{organisation} may have no more workspaces.",
+            organisation: @current_scope.organisation.name
+          )}
+        </span>
+      </.notice>
+      <ul :if={!@limit} id="set-up-cards" class="grid gap-3">
+        <li
+          :for={{domain, card} <- @cards}
+          id={"set-up-card-#{domain.name()}"}
+          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+        >
+          <h2 class="font-semibold">{domain.type_name()}</h2>
+          <p class="text-[13.5px]/5">{card.what}</p>
+          <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
+          <div class="flex justify-end">
+            <.button
+              id={"set-up-card-#{domain.name()}-choose"}
+              variant="primary"
+              size="md"
+              patch={card_path(@current_scope.organisation, @page, domain)}
+            >
+              {gettext("Choose")}
+            </.button>
+          </div>
+        </li>
+      </ul>
+    </SetUpComponents.frame>
     """
   end
 
   attr :scope, :map, required: true
   attr :steps, :list, required: true
   attr :title, :string, required: true
-  attr :creates, :boolean, required: true
-  attr :form, :any, required: true
-  attr :refusal, :atom, required: true
 
-  # The waiting line, for a person who may not create the workspace. The frame shows the
-  # steps where the edition lists 2 or more (the core lists none),
-  # and the column About this step where the edition has a line for it
+  # The waiting line, for a person who may not create the organisation's first workspace.
+  # The frame shows the steps where the edition lists 2 or more (the core lists none), and
+  # the column About this step where the edition has a line for it
   # (`c:Apiary.Edition.set_up_context/2`).
-  defp type_step(%{creates: false} = assigns) do
-    assigns = assign(assigns, :context, Apiary.Edition.set_up_context(assigns.scope, :workspace))
+  defp waiting(assigns) do
+    assigns = assign(assigns, :context, Edition.set_up_context(assigns.scope, :workspace))
 
     ~H"""
-    <SetUpComponents.frame
-      steps={@steps}
-      next={SetUpComponents.next?(@scope)}
-      page={~p"/#{@scope.organisation}/set-up"}
-    >
+    <SetUpComponents.frame steps={@steps} page={~p"/#{@scope.organisation}/set-up"}>
       <SetUpComponents.heading>{@title}</SetUpComponents.heading>
       <p id="set-up-waiting" class="text-sm/5 text-muted">
-        {Apiary.Edition.first_workspace_waiting_line(@scope.organisation)}
+        {Edition.first_workspace_waiting_line(@scope.organisation)}
       </p>
       <:context :if={@context}>
         <p id="set-up-what">{@context}</p>
@@ -363,166 +1044,68 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
-  defp type_step(assigns) do
-    assigns = assign(assigns, :workspace, Organisations.default_workspace_name())
-
-    ~H"""
-    <SetUpComponents.frame
-      steps={@steps}
-      next={SetUpComponents.next?(@scope)}
-      page={~p"/#{@scope.organisation}/set-up"}
-    >
-      <SetUpComponents.heading>{@title}</SetUpComponents.heading>
-
-      <.notice :if={@refusal == :name_taken} kind={:error}>
-        <span id="set-up-name-taken">
-          {gettext(
-            "Restore %{workspace} in Organisation settings › Workspaces. A deleted workspace keeps its name until it is purged.",
-            workspace: @workspace
-          )}
-        </span>
-      </.notice>
-      <.notice :if={@refusal == :limit} kind={:error}>
-        <span id="set-up-limit">
-          {gettext("%{organisation} may have no more workspaces.",
-            organisation: @scope.organisation.name
-          )}
-        </span>
-      </.notice>
-
-      <.form
-        for={@form}
-        id="set-up-form"
-        phx-change="choose"
-        phx-submit="create"
-        class="grid gap-5"
-        novalidate
-      >
-        <WorkspaceComponents.type_field field={@form[:domain]} />
-        <div class="q-su-acts">
-          <SetUpComponents.back steps={@steps} page={~p"/#{@scope.organisation}/set-up"} />
-          <.button variant="primary" size="md" loading_text={gettext("Creating")}>
-            {gettext("Create workspace")}
-          </.button>
-        </div>
-      </.form>
-
-      <:context><.workspace_context scope={@scope} /></:context>
-    </SetUpComponents.frame>
-    """
-  end
-
-  attr :scope, :map, required: true
-  attr :steps, :list, required: true
-  attr :title, :string, required: true
-  attr :continue, :any, required: true
-
-  # Workspace once it exists: its type can't change, so the step shows what was made.
-  defp made_step(assigns) do
-    workspace = assigns.scope.workspace
-
+  defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
     assigns =
       assign(assigns,
-        workspace: workspace,
-        type: Domain.for_workspace(workspace).type_name()
-      )
-
-    ~H"""
-    <SetUpComponents.frame
-      steps={@steps}
-      next={SetUpComponents.next?(@scope)}
-      page={~p"/#{@scope.organisation}/set-up"}
-    >
-      <SetUpComponents.heading>{@title}</SetUpComponents.heading>
-
-      <p id="set-up-made" class="text-[13.5px]/5">
-        {gettext("%{workspace} is a %{type} workspace.", workspace: @workspace.name, type: @type)}
-        {gettext("You can't change the type after you create the workspace.")}
-      </p>
-
-      <div class="q-su-acts">
-        <SetUpComponents.back steps={@steps} page={~p"/#{@scope.organisation}/set-up"} />
-        <.button
-          id="set-up-continue"
-          variant="primary"
-          size="md"
-          patch={elem(@continue, 0) == :patch && elem(@continue, 1)}
-          navigate={elem(@continue, 0) == :navigate && elem(@continue, 1)}
-        >
-          {gettext("Continue")}
-        </.button>
-      </div>
-
-      <:context><.workspace_context scope={@scope} /></:context>
-    </SetUpComponents.frame>
-    """
-  end
-
-  attr :scope, :map, required: true
-  attr :steps, :list, required: true
-  attr :adapters, :list, required: true
-  attr :connected, MapSet, required: true, doc: "the ids of the adapters connected to it"
-  attr :connecting, MapSet, required: true, doc: "the ids of the adapters still connecting"
-  attr :one_workspace, :boolean, required: true
-  attr :sending, :string, required: true
-  attr :who_may, :string, required: true
-
-  defp source_step(assigns) do
-    assigns =
-      assign(assigns,
-        workspace: assigns.scope.workspace,
-        ready:
-          for(
-            a <- assigns.adapters,
-            is_nil(assigns.who_may),
-            IntegrationComponents.ready?(a),
-            into: MapSet.new(),
-            do: a.id
+        back:
+          Enum.join(
+            [
+              if(assigns.flow.page == :new, do: "new-workspace", else: "set-up"),
+              step
+              | if(assigns.flow.workspace,
+                  do: ["workspace=" <> assigns.flow.workspace.slug],
+                  else: [assigns.flow.domain.name()]
+                )
+            ],
+            ":"
           )
       )
 
     ~H"""
-    <SetUpComponents.frame
-      steps={@steps}
-      next={SetUpComponents.next?(@scope)}
-      page={~p"/#{@scope.organisation}/set-up"}
-    >
-      <SetUpComponents.heading>
-        {gettext("Connect a work source to %{workspace}", workspace: @workspace.name)}
-      </SetUpComponents.heading>
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <ul :if={@adapters != []} id="set-up-sources" class="grid gap-3">
+      <ul :if={@adapters != []} id="set-up-adapters" class="grid gap-3">
         <li
           :for={adapter <- @adapters}
-          id={"set-up-source-#{adapter.public_id}"}
+          id={"set-up-adapter-#{adapter.public_id}"}
           class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
         >
           <IntegrationComponents.mark class="size-5" />
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-medium">{Adapters.title(adapter)}</p>
-            <p class="text-[12.5px]/4 text-muted">{source_line(adapter)}</p>
-          </div>
+          <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(adapter)}</p>
           <span
             :if={MapSet.member?(@connected, adapter.id)}
-            id={"set-up-source-#{adapter.public_id}-connected"}
+            id={"set-up-adapter-#{adapter.public_id}-connected"}
             class="q-sdot q-sdot-completed text-[13px]/5"
           >
             <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
           </span>
           <span
-            :if={MapSet.member?(@connecting, adapter.id)}
-            id={"set-up-source-#{adapter.public_id}-connecting"}
+            :if={
+              not MapSet.member?(@connected, adapter.id) and MapSet.member?(@connecting, adapter.id)
+            }
+            id={"set-up-adapter-#{adapter.public_id}-connecting"}
             role="status"
             class="q-sdot q-sdot-pending text-[13px]/5"
           >
             <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
           </span>
+          <span
+            :if={
+              not MapSet.member?(@connected, adapter.id) and
+                not MapSet.member?(@connecting, adapter.id)
+            }
+            id={"set-up-adapter-#{adapter.public_id}-not-connected"}
+            class="q-sdot text-[13px]/5 text-muted"
+          >
+            <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
+          </span>
           <IntegrationComponents.install_form
-            :if={is_nil(@who_may)}
-            id={"set-up-source-#{adapter.public_id}-connect"}
+            :if={@may}
+            id={"set-up-adapter-#{adapter.public_id}-connect"}
             adapter={adapter}
             variant={if MapSet.member?(@connected, adapter.id), do: "default", else: "primary"}
-            action={IntegrationComponents.paths(@scope, adapter).install <> "?back=set-up"}
+            action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
             ready={adapter.id in @ready}
             sending={@sending == adapter.public_id}
             label={gettext("Connect")}
@@ -531,127 +1114,521 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </ul>
 
       <p
-        :if={@adapters != [] and @who_may}
-        id="set-up-who-may"
-        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
-      >
-        {@who_may}
-      </p>
-
-      <div :if={@adapters != []} id="set-up-skip" class="q-su-acts">
-        <SetUpComponents.back steps={@steps} page={~p"/#{@scope.organisation}/set-up"} />
-        <.button
-          :if={MapSet.size(@connected) > 0}
-          id="set-up-continue"
-          variant="primary"
-          size="md"
-          navigate={~p"/#{@scope.organisation}/#{@workspace}"}
-        >
-          {gettext("Continue")}
-        </.button>
-        <.button
-          :if={MapSet.size(@connected) == 0}
-          id="set-up-skip-button"
-          variant="ghost"
-          size="md"
-          navigate={~p"/#{@scope.organisation}/#{@workspace}"}
-        >
-          {gettext("Skip")}
-        </.button>
-        <p
-          :if={is_nil(@who_may) and MapSet.size(@connected) == 0}
-          class="self-center text-[12.5px]/4 text-muted"
-        >
-          {gettext("You can connect one later from %{workspace}'s Overview.",
-            workspace: @workspace.name
-          )}
-        </p>
-      </div>
-
-      <p
-        :if={@adapters == []}
-        id="set-up-no-source"
+        :if={@adapters == [] and @step == :sources}
+        id="set-up-no-adapter"
         class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
       >
         {gettext(
           "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
         )}
       </p>
-      <div :if={@adapters == []} class="q-su-acts">
-        <SetUpComponents.back steps={@steps} page={~p"/#{@scope.organisation}/set-up"} />
-        <.button
-          id="set-up-continue"
-          variant="primary"
-          size="md"
-          navigate={~p"/#{@scope.organisation}/#{@workspace}"}
-        >
-          {gettext("Continue")}
-        </.button>
+
+      <p
+        :if={@adapters == [] and @step == :destinations}
+        id="set-up-no-adapter"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {gettext(
+          "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+        )}
+      </p>
+
+      <p
+        :if={!@may}
+        id="set-up-who-may"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {@who_may}
+      </p>
+
+      <div id="set-up-later" class="grid gap-1 text-[13px]/5 text-muted">
+        <p :if={@step == :sources}>
+          {gettext(
+            "%{organisation} connects each system once. Each workspace then picks what it uses.",
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <p>
+          {gettext("You can change these or add more later in Organisation settings › Integrations.")}
+        </p>
       </div>
 
-      <:context>
-        <p id="set-up-what">
+      <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
+
+      <:context :if={@step == :sources or guides(@adapters, @ready) != []}>
+        <p :if={@step == :sources} id="set-up-what">
           {pgettext("plain", "Bring tickets in from a system this instance has set up.")}
         </p>
-        <p id="set-up-backlog">
-          {gettext("%{workspace}'s Backlog lists the tickets of the work sources it connects.",
-            workspace: @workspace.name
+        <p :for={adapter <- @adapters} :if={adapter.id in @ready}>
+          {gettext(
+            "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps.",
+            adapter: Adapters.title(adapter)
           )}
-          <span :for={adapter <- @adapters} :if={adapter.id in @ready}>
-            {gettext(
-              "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps.",
-              adapter: Adapters.title(adapter)
-            )}
-          </span>
         </p>
         <SetUpComponents.outside
           :for={{adapter, guide} <- guides(@adapters, @ready)}
           id={"set-up-help-#{adapter.public_id}"}
           title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
           guide={guide}
-        >
-          <:note :if={@one_workspace and Adapters.items?(adapter)}>
-            {gettext(
-              "%{workspace} gets every %{collection} you picked, because %{organisation} has one workspace.",
-              workspace: @workspace.name,
-              collection: collection_word(adapter),
-              organisation: @scope.organisation.name
-            )}
-          </:note>
-        </SetUpComponents.outside>
+        />
       </:context>
     </SetUpComponents.frame>
     """
   end
 
-  # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide gives
+  defp flow_step(%{step: :model} = assigns) do
+    ~H"""
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
+
+      <p :if={@existing} id="set-up-model-key" class="text-[13.5px]/5">
+        {gettext("%{organisation} has a key for %{provider}.",
+          organisation: @flow.organisation.name,
+          provider: @existing.name
+        )}
+      </p>
+
+      <.form
+        :if={@may}
+        for={@form}
+        id="set-up-model-form"
+        method="post"
+        phx-change="choose_model"
+        phx-submit="save_model"
+        class="grid gap-4"
+        novalidate
+      >
+        <.input
+          :if={!@existing}
+          field={@form[:provider]}
+          type="choice"
+          label={gettext("Provider")}
+          options={ProviderPage.provider_options()}
+        />
+        <.input
+          :if={!@existing}
+          field={@form[:key]}
+          id={"set-up-model-key-#{@attempt}"}
+          type="password"
+          value={nil}
+          label={gettext("Key")}
+          autocomplete="off"
+          spellcheck="false"
+          phx-update="ignore"
+          required
+        />
+        <.input
+          :for={name <- (!@existing && @chosen && Provider.address_settings(@chosen)) || []}
+          field={@form[String.to_atom(name)]}
+          id={"set-up-model-#{name}"}
+          type="text"
+          inputmode="url"
+          label={ProviderPage.setting_title(@chosen, name)}
+          placeholder="https://litellm.example.com"
+          hint={gettext("The proxy's https address without /v1.")}
+          autocomplete="off"
+          spellcheck="false"
+          required
+        />
+        <div :if={length(@runtimes) == 1} id="set-up-model-runtime" class="grid gap-1">
+          <p class="text-[13.5px]/5 font-medium">{gettext("Runtime")}</p>
+          <p class="text-[13.5px]/5">{hd(@runtimes).title}</p>
+          <input type="hidden" name="model[runtime]" value={hd(@runtimes).name} />
+        </div>
+        <.input
+          :if={length(@runtimes) > 1}
+          field={@form[:runtime]}
+          type="select"
+          label={gettext("Runtime")}
+          options={for runtime <- @runtimes, do: {runtime.title, runtime.name}}
+        />
+        <.input
+          field={@form[:model]}
+          type="select"
+          label={gettext("Default model")}
+          options={for model <- @models, do: {model.title || model.id, model.id}}
+        />
+        <p class="text-[13px]/5 text-muted">
+          {gettext(
+            "You can change these or add more later in Organisation settings › Model providers."
+          )}
+        </p>
+        <div class="q-su-acts">
+          <SetUpComponents.back steps={@steps} page={@page_path} />
+          <.button
+            id="set-up-continue"
+            type="submit"
+            variant="primary"
+            size="md"
+            loading_text={gettext("Saving")}
+          >
+            {gettext("Continue")}
+          </.button>
+        </div>
+      </.form>
+
+      <p
+        :if={!@may}
+        id="set-up-who-may"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {@who_may}
+      </p>
+      <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
+
+      <:context>
+        <p id="set-up-what">
+          {gettext("A model provider's key lets the agents of %{organisation}'s runs call a model.",
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <p :if={@may and !@existing and ProviderPage.get_key(@chosen)} id="set-up-get-key">
+          <.rich text={ProviderPage.get_key(@chosen)}>
+            <:part name={:terms}>
+              <ProviderPage.terms href={ProviderPage.terms_url(@chosen)} />
+            </:part>
+          </.rich>
+        </p>
+      </:context>
+    </SetUpComponents.frame>
+    """
+  end
+
+  defp flow_step(%{step: :name} = assigns) do
+    ~H"""
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
+
+      <.notice :if={@refusal == :limit} kind={:error}>
+        <span id="set-up-limit">
+          {gettext("%{organisation} may have no more workspaces.",
+            organisation: @flow.organisation.name
+          )}
+        </span>
+      </.notice>
+      <.notice :if={@refusal == :name_taken} kind={:error}>
+        <span id="set-up-name-taken">
+          {gettext(
+            "Restore %{workspace} in Organisation settings › Workspaces. A deleted workspace keeps its name until it is purged.",
+            workspace: String.trim(@form[:name].value || "")
+          )}
+        </span>
+      </.notice>
+
+      <.form
+        :if={!@flow.workspace}
+        for={@form}
+        id="set-up-form"
+        phx-submit="create"
+        class="grid gap-4"
+        novalidate
+      >
+        <.input field={@form[:name]} type="text" label={gettext("Name")} autocomplete="off" required />
+        <p id="set-up-type" class="text-[13px]/5 text-muted">
+          {gettext("%{type} · %{organisation}",
+            type: @flow.domain.type_name(),
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <div class="q-su-acts">
+          <SetUpComponents.back steps={@steps} page={@page_path} />
+          <.button variant="primary" size="md" loading_text={gettext("Creating")}>
+            {gettext("Create workspace")}
+          </.button>
+        </div>
+      </.form>
+
+      <div :if={@flow.workspace} id="set-up-made" class="grid gap-4">
+        <div class="grid gap-1">
+          <p class="text-[13.5px]/5 font-medium">{gettext("Name")}</p>
+          <p id="set-up-name" class="text-[13.5px]/5">{@flow.workspace.name}</p>
+        </div>
+        <p id="set-up-type" class="text-[13px]/5 text-muted">
+          {gettext("%{type} · %{organisation}",
+            type: @flow.domain.type_name(),
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
+      </div>
+    </SetUpComponents.frame>
+    """
+  end
+
+  defp flow_step(%{step: step} = assigns) when step in [:sources_used, :destinations_used] do
+    assigns =
+      assign(assigns,
+        workspace: assigns.flow.workspace,
+        tickets?:
+          step == :destinations_used and
+            Enum.any?(assigns.groups, fn {adapter, rows} ->
+              Enum.any?(rows, &tickets_in?(&1, adapter, assigns.flow.workspace))
+            end)
+      )
+
+    ~H"""
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
+
+      <div :if={@groups != []} id="set-up-ticks" class="grid gap-3">
+        <section
+          :for={{adapter, rows} <- @groups}
+          id={"set-up-ticks-#{adapter.public_id}"}
+          class="grid gap-1 rounded-box border border-line bg-base-100 px-4 py-3"
+        >
+          <h2 class="flex items-center gap-2 font-medium">
+            <IntegrationComponents.mark class="size-5" />{Adapters.title(adapter)}
+          </h2>
+          <ul class="grid gap-1 pl-7">
+            <li
+              :for={row <- rows}
+              id={"set-up-tick-#{row.collection.public_id}"}
+              class="flex items-center gap-2 text-[13.5px]/5"
+            >
+              <label
+                :if={is_nil(row.workspace) or row.workspace.id == @workspace.id}
+                class="flex min-w-0 flex-1 items-center gap-2"
+              >
+                <input
+                  type="checkbox"
+                  class="checkbox checkbox-sm"
+                  checked={ticked?(@step, row, @workspace)}
+                  disabled={!@may}
+                  phx-click="tick"
+                  phx-value-id={row.collection.id}
+                />
+                <span class="truncate">{row.collection.title}</span>
+              </label>
+              <span
+                :if={row.workspace && row.workspace.id != @workspace.id}
+                class="flex min-w-0 flex-1 items-center gap-2 text-muted"
+              >
+                <span class="inline-block size-4" aria-hidden="true"></span>
+                <span class="truncate">{row.collection.title}</span>
+              </span>
+              <span
+                :if={row.workspace && row.workspace.id != @workspace.id}
+                id={"set-up-tick-#{row.collection.public_id}-elsewhere"}
+                class="text-[12.5px]/4 text-muted"
+              >
+                {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
+              </span>
+              <span
+                :if={@step == :destinations_used and tickets_in?(row, adapter, @workspace)}
+                id={"set-up-tick-#{row.collection.public_id}-tickets"}
+                class="text-[12.5px]/4 text-muted"
+              >
+                {gettext("tickets come in")}
+              </span>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <p :if={@tickets?} id="set-up-untick" class="text-[13px]/5 text-muted">
+        {gettext("Unticking also stops its tickets coming in.")}
+      </p>
+
+      <div
+        :if={@groups == []}
+        id="set-up-none"
+        class="grid gap-1 rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        <p :if={@step == :sources_used}>
+          {gettext("%{organisation} has no work source connected yet.",
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <p :if={@step == :destinations_used}>
+          {gettext("%{organisation} has no work destination connected yet.",
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <p :if={@may_connect and @connect_path}>
+          <.link id="set-up-none-connect" patch={@connect_path} class="q-link">
+            {SetUpComponents.step_label(if @step == :sources_used, do: :sources, else: :destinations)}
+          </.link>
+        </p>
+        <p :if={!@may_connect} id="set-up-none-who">{@who_connects}</p>
+      </div>
+
+      <p
+        :if={!@may and @groups != []}
+        id="set-up-who-may"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {@who_may}
+      </p>
+
+      <p id="set-up-later" class="text-[13px]/5 text-muted">
+        <span :if={@step == :sources_used}>
+          {gettext("You can change this later in Workspace settings › Work sources.")}
+        </span>
+        <span :if={@step == :destinations_used}>
+          {gettext("You can change this later in Workspace settings › Destinations.")}
+        </span>
+      </p>
+
+      <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
+    </SetUpComponents.frame>
+    """
+  end
+
+  defp flow_step(%{step: :test} = assigns) do
+    assigns =
+      assign(assigns,
+        failed?: match?({:failed, _cause}, assigns.test_state),
+        workspace: assigns.flow.workspace,
+        organisation: assigns.flow.organisation
+      )
+
+    ~H"""
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
+
+      <p :if={!@may} id="set-up-who-may" class="text-[13.5px]/5 text-muted">{@who_may}</p>
+
+      <p
+        :if={@may and is_nil(@machines) and @test_state not in [:passed, :waiting, :running]}
+        id="set-up-test-machines"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {gettext("Runs need a ready pool. See Machines.")}
+      </p>
+
+      <.form
+        :if={@may and @machines != nil and (is_nil(@test_state) or @failed?)}
+        for={@test_form}
+        id="set-up-test-form"
+        phx-submit="run_test"
+        novalidate
+        class="grid gap-4"
+      >
+        <.input
+          field={@test_form[:line]}
+          label={gettext("Say hi to your agent")}
+          maxlength="1024"
+          debounce="blur"
+        />
+        <div class="q-su-acts">
+          <SetUpComponents.back steps={@steps} page={@page_path} />
+          <.button id="set-up-test-run" type="submit" variant="primary" size="md">
+            {gettext("Run the test")}
+          </.button>
+        </div>
+      </.form>
+
+      <p :if={@test_state == :waiting} id="set-up-test-state" role="status" class="text-[13.5px]/5">
+        {gettext("The test run is queued for a machine.")}
+      </p>
+      <p :if={@test_state == :running} id="set-up-test-state" role="status" class="text-[13.5px]/5">
+        {gettext("The test run is running.")}
+      </p>
+      <.link
+        :if={@test_state in [:waiting, :running] and @test.run}
+        id="set-up-test-run-link"
+        navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+        class="q-link text-[13.5px]/5"
+      >
+        {gettext("See the run")}
+      </.link>
+
+      <p :if={@test_notice == :test_running} id="set-up-test-running" class="text-[13px]/5 text-muted">
+        <.rich text={
+          rich_gettext(
+            "Wait until the test run in progress ends, then press %{run} again.",
+            run: {:b, gettext("Run the test")}
+          )
+        } />
+      </p>
+
+      <.notice :if={@test_state == :passed} kind={:success}>
+        <span id="set-up-test-passed">
+          {OverviewComponents.passed_line(@test.run)}
+          <.link
+            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            class="q-link"
+          >
+            {gettext("See the run")}
+          </.link>
+        </span>
+      </.notice>
+      <.notice :if={@failed?} kind={:error}>
+        <span id="set-up-test-failed" data-cause={elem(@test_state, 1)}>
+          {OverviewComponents.failed_line(elem(@test_state, 1), @test.run)}
+          <.link
+            :if={elem(@test_state, 1) == :other and @test.run}
+            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            class="q-link"
+          >
+            {gettext("See the run")}
+          </.link>
+        </span>
+      </.notice>
+
+      <div :if={!(@may and @machines != nil and (is_nil(@test_state) or @failed?))} class="q-su-acts">
+        <SetUpComponents.back steps={@steps} page={@page_path} />
+        <.button
+          :if={@test_state == :passed}
+          id="set-up-go"
+          variant="primary"
+          size="md"
+          navigate={~p"/#{@organisation}/#{@workspace}"}
+        >
+          {gettext("Go to %{workspace}", workspace: @workspace.name)}
+        </.button>
+      </div>
+    </SetUpComponents.frame>
+    """
+  end
+
+  attr :steps, :list, required: true
+  attr :page_path, :string, required: true
+  attr :next_path, :string, default: nil
+  attr :skip, :boolean, required: true
+
+  # Back, and Skip while the step is not done, else Continue, to the next step.
+  defp acts(assigns) do
+    ~H"""
+    <div class="q-su-acts">
+      <SetUpComponents.back steps={@steps} page={@page_path} />
+      <.button
+        :if={@next_path && @skip}
+        id="set-up-skip"
+        variant="ghost"
+        size="md"
+        patch={patch?(@next_path, @page_path) && @next_path}
+        navigate={!patch?(@next_path, @page_path) && @next_path}
+      >
+        {gettext("Skip")}
+      </.button>
+      <.button
+        :if={@next_path && !@skip}
+        id="set-up-continue"
+        variant="primary"
+        size="md"
+        patch={patch?(@next_path, @page_path) && @next_path}
+        navigate={!patch?(@next_path, @page_path) && @next_path}
+      >
+        {gettext("Continue")}
+      </.button>
+    </div>
+    """
+  end
+
+  defp patch?(path, page), do: URI.parse(path).path == page
+
+  # Whether `row`'s tickets come in to `workspace`: it is the workspace's, with its
+  # Backlog on, and it and its adapter have items.
+  defp tickets_in?(%{collection: c}, adapter, workspace),
+    do: c.workspace_id == workspace.id and c.backlog and c.items and Adapters.items?(adapter)
+
+  # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide has
   # steps for connecting it, with them.
   defp guides(adapters, ready) do
     for adapter <- adapters,
         adapter.id in ready,
         guide = Adapters.guide(adapter, :connect),
         do: {adapter, guide}
-  end
-
-  # The adapter's word for one of its collections, as a text it sent is shown.
-  defp collection_word(adapter),
-    do:
-      adapter
-      |> Adapters.collection_noun()
-      |> SourceComponents.collection()
-      |> Apiary.ExternalText.line()
-
-  # What an adapter brings in, in its words for its items where it names them.
-  defp source_line(adapter) do
-    case Adapters.item_noun(adapter) do
-      nil ->
-        gettext("Tickets from %{integration}.", integration: Adapters.title(adapter))
-
-      noun ->
-        gettext("Tickets from %{integration} %{items}.",
-          integration: Adapters.title(adapter),
-          items: SourceComponents.items(noun)
-        )
-    end
   end
 end

@@ -256,7 +256,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
   end
 
   describe "with a return, from an install started at the workspace set-up" do
-    test "leads to its Work source step, with the same return link", %{
+    test "leads to its Work sources step, with the same return link", %{
       conn: conn,
       scope: scope,
       pair: pair,
@@ -272,10 +272,60 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> ConnectSession.put(session, "set-up")
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
-      assert redirected_to(conn) == "/#{scope.organisation.slug}/set-up?step=source"
+      assert redirected_to(conn) == "/#{scope.organisation.slug}/set-up?step=sources"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "is connected."
       assert get_session(conn, "connect_passes") == nil
       assert %Connection{state: :connected} = reload(connection)
+    end
+
+    test "leads to the page and the step the install started at, with the type picked", %{
+      conn: conn,
+      scope: scope,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: session
+    } do
+      token = return_token(pair.secret, connection.public_id, nonce)
+      organisation = scope.organisation.slug
+
+      returned =
+        conn
+        |> ConnectSession.put(session, "new-workspace:destinations:software")
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(returned) ==
+               "/#{organisation}/workspaces/new?step=destinations&type=software"
+
+      for back <- ["set-up:destinations", "set-up:sources:software"],
+          do: assert(ConnectSession.back?(back))
+
+      # A step the install does not start at, or a type that is no domain's, is not kept.
+      refute ConnectSession.back?("set-up:model")
+      refute ConnectSession.back?("set-up:sources:unknown")
+      refute ConnectSession.back?("other:sources")
+    end
+
+    test "leads to the step of the workspace the install started at", %{
+      conn: conn,
+      scope: scope,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: session
+    } do
+      token = return_token(pair.secret, connection.public_id, nonce)
+      back = "set-up:destinations:workspace=#{scope.workspace.slug}"
+      assert ConnectSession.back?(back)
+      refute ConnectSession.back?("set-up:sources:workspace=../x")
+
+      conn =
+        conn
+        |> ConnectSession.put(session, back)
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(conn) ==
+               "/#{scope.organisation.slug}/set-up?step=destinations&workspace=#{scope.workspace.slug}"
     end
 
     test "a back value the session may not keep leads to the integration's page", %{

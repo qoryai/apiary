@@ -322,11 +322,19 @@ defmodule Apiary.ModelChoices do
   # effort is its offered effort values, `[]` for a model the description does not list.
   # A default model the file lacks comes first all the same, with the description's title,
   # as a choice that names no model runs it. The page reads its list here alone, and a
-  # choice may name any other model id too.
-  @spec suggestions(Connection.t(), Runtime.t()) :: [
+  # choice may name any other model id too. Given a provider of the catalogue
+  # (`Apiary.Kinds.Provider`), the same for a provider not added yet, from its
+  # description, as the set-up's Model step offers them.
+  @spec suggestions(Connection.t() | Provider.t(), Runtime.t()) :: [
           %{id: String.t(), title: String.t(), effort: [String.t()]}
         ]
-  def suggestions(%Connection{provider_kind: kind} = provider, %Runtime{} = runtime) do
+  def suggestions(%Provider{name: kind} = provider, %Runtime{} = runtime),
+    do: suggested(kind, provider, runtime)
+
+  def suggestions(%Connection{provider_kind: kind} = provider, %Runtime{} = runtime),
+    do: suggested(kind, provider, runtime)
+
+  defp suggested(kind, provider, runtime) do
     described = Map.new(Connections.provider_models(provider), &{&1["id"], &1})
     default = Connections.default_model(provider)
 
