@@ -1588,9 +1588,9 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   # The Model step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the `factory`
-  # and `secrets` features: a provider added with its key, which the page never keeps; the
-  # organisation's default; a provider the organisation has; who may; and a second
-  # workspace, which opens at Name with every later step to come.
+  # and `secrets` features: Key, a provider to reuse or Add a key, whose key the page
+  # never keeps; the workspace's choice it saves; the providers it offers; who may; and a
+  # second workspace, which opens at Name with every later step to come.
   use ApiaryWeb.ConnCase, async: true
 
   import ApiaryWeb.SetUpSteps
@@ -1608,6 +1608,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   @moduletag needs: [:factory, :secrets]
 
   @key "sk-ant-set-up-test-0123456789abcdef"
+
+  @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+  @model_later "You can change the default model later in Workspace settings › Model."
+  @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 
   defp words(lv, selector) do
     lv
@@ -1645,18 +1649,59 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     user
   end
 
-  test "adds the provider with its key and the organisation's default; never keeps the key",
+  # Key's options, each its words and whether it is chosen.
+  defp key_options(lv) do
+    html = lv |> render() |> LazyHTML.from_fragment()
+
+    for label <- LazyHTML.query(html, "#set-up-model-source label") do
+      words = label |> LazyHTML.text() |> String.split() |> Enum.join(" ")
+      {words, LazyHTML.attribute(LazyHTML.query(label, "input"), "checked") != []}
+    end
+  end
+
+  defp provider!(scope, kind, value_id, attrs \\ %{}) do
+    {:ok, provider} =
+      Connections.create_provider(
+        scope,
+        Map.merge(
+          %{provider: kind, keys: [%{value_id: value_id, value: "sk-#{value_id}-1"}]},
+          attrs
+        )
+      )
+
+    provider
+  end
+
+  # The scope's choices: the workspace's (level 5), and the organisation's default (level
+  # 6).
+  defp choices(scope) do
+    {:ok, choices} = ModelChoices.list_choices(scope)
+
+    {Enum.filter(choices, &(&1.workspace_id == scope.workspace.id)),
+     Enum.filter(choices, &is_nil(&1.workspace_id))}
+  end
+
+  defp models(provider) do
+    {:ok, runtime} = ModelChoices.runtime(nil)
+    for model <- ModelChoices.suggestions(provider, runtime), do: model.id
+  end
+
+  test "with no provider, Add a key alone, open: adds the provider and the workspace's choice; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    workspace = scope.workspace
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert has_element?(lv, "h1", "Which model do #{organisation.name}'s runs use?")
-    assert has_element?(lv, "#set-up-model-form input[type=password][name='model[key]']")
+    assert has_element?(lv, "h1", "Which model do runs in #{workspace.name} use?")
+    assert key_options(lv) == [{"Add a key", true}]
+    assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
 
     assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
-             "Qory Apiary stores the key encrypted, and nobody can view it again."
+             "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+
+    assert words(lv, "#set-up-model-later") == @workspace_later
 
     assert has_element?(
              lv,
@@ -1664,7 +1709,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
            )
 
     assert words(lv, "#set-up-context #set-up-what") ==
-             "A model provider's key lets runs in #{organisation.name} call a model."
+             "A model provider's key lets runs in #{workspace.name} call a model."
 
     lv
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
@@ -1692,20 +1737,132 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     assert listed == provider.id
 
-    assert {:ok, [choice]} = ModelChoices.list_choices(scope)
-    assert is_nil(choice.workspace_id) and choice.connection_id == provider.id
-    assert WorkspaceSetup.model?(organisation)
+    # The workspace's choice (level 5), with the provider's default key; no default of
+    # the organisation (level 6).
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == provider.id and choice.target_id == nil
+    assert choice.value_id == provider.default_value_id
+    assert choice.model_id == hd(models(provider))
+    assert WorkspaceSetup.model_key?(workspace)
+    assert WorkspaceSetup.done?(:model, organisation, {Apiary.Lingo.Domain.Software, workspace})
 
     assert_patch(lv, ~p"/#{organisation}/set-up?step=harness&workspace=main")
 
-    # Back on the step: the provider the organisation has, with no key field.
+    # Back on the step: the provider to reuse, chosen, with no key field.
     {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
 
-    assert words(lv, "#set-up-model-key") ==
-             "#{organisation.name} has a key for #{provider.name}."
-
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "input[name='model[key]']")
+    refute has_element?(lv, "#set-up-get-key")
+    # The provider reused links the workspace's secret.
+    assert words(lv, "#set-up-model-later") == @workspace_later
     assert {"Model", :current} in steps(lv)
+    refute render(lv) =~ @key
+  end
+
+  test "reuse with one provider: its default key, another default model; Add a key opens the fields",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    [_first, second | _rest] = models(provider)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    refute has_element?(lv, "#set-up-model-add")
+    refute has_element?(lv, "input[name='model[key]']")
+    # The provider's key is a secret of the organisation, and the core shows no
+    # organisation secrets: the line names the model alone.
+    assert words(lv, "#set-up-model-later") == @model_later
+
+    # Add a key opens Provider and Key, and the provider to reuse closes them again.
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    assert {"Add a key", true} in key_options(lv)
+    assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
+    assert has_element?(lv, "#set-up-context #set-up-get-key")
+    assert words(lv, "#set-up-model-later") == @workspace_later
+
+    lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
+    refute has_element?(lv, "#set-up-model-add")
+    assert words(lv, "#set-up-model-later") == @model_later
+
+    lv
+    |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{organisation}/set-up?step=harness&workspace=main")
+
+    assert {[choice], []} = choices(scope)
+
+    assert {choice.connection_id, choice.value_id, choice.model_id} ==
+             {provider.id, "main", second}
+
+    assert {:ok, [_provider]} = Connections.list_providers(scope)
+
+    # Back on the step: the saved model chosen; Continue with nothing changed writes nothing.
+    {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
+    assert has_element?(lv, ~s{select[name="model[model]"] option[selected][value="#{second}"]})
+    lv |> form("#set-up-model-form") |> render_submit()
+    assert {[^choice], []} = choices(scope)
+  end
+
+  test "where the edition shows organisation secrets, an organisation key's line names Organisation settings",
+       %{conn: conn} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.GrantsOrganisationSecrets)
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    assert words(lv, "#set-up-model-later") == @organisation_later
+
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    assert words(lv, "#set-up-model-later") == @workspace_later
+  end
+
+  test "reuse with two providers: each by its name; the one chosen is saved", %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    deepseek = provider!(scope, "deepseek", "ds")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert Enum.sort(key_options(lv)) ==
+             Enum.sort([{anthropic.name, true}, {deepseek.name, false}, {"Add a key", false}])
+
+    # The default model follows the provider chosen.
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
+
+    for model <- models(deepseek),
+        do: assert(has_element?(lv, ~s{select[name="model[model]"] option[value="#{model}"]}))
+
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_submit()
+
+    assert {[choice], []} = choices(scope)
+
+    assert {choice.connection_id, choice.value_id, choice.model_id} ==
+             {deepseek.id, "ds", hd(models(deepseek))}
+  end
+
+  test "a provider that does not reach the workspace, or has no key, is not offered; a save of it saves nothing",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    other = workspace_fixture(organisation, "Other")
+
+    elsewhere =
+      provider!(scope, "anthropic", "main", %{applies_to: "selected", workspace_ids: [other.id]})
+
+    keyless = provider!(scope, "deepseek", "ds")
+    Repo.delete_all(from v in Apiary.Secrets.Value, where: v.secret_id == ^keyless.secret_id)
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    assert key_options(lv) == [{"Add a key", true}]
+
+    for provider <- [elsewhere, keyless] do
+      render_click(lv, "save_model", %{"model" => %{"source" => provider.public_id}})
+      assert {[], []} = choices(scope)
+    end
+
+    assert {:ok, [_, _]} = Connections.list_providers(scope)
+    refute WorkspaceSetup.model_key?(scope.workspace)
   end
 
   test "the Claude subscription's help shows its command on a line with Copy", %{conn: conn} do
@@ -1769,20 +1926,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {:ok, []} = Connections.list_providers(scope)
   end
 
-  test "save_model and choose_model sent by a person provider.write does not allow change nothing",
+  test "save_model and choose_model sent by a member change nothing: Add a key, or a provider to reuse",
        %{conn: conn} do
     %{organisation: organisation, scope: scope} = sign_up_fixture()
     user = member(organisation)
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    params = %{"model" => %{"provider" => "anthropic", "key" => @key}}
+    params = %{"model" => %{"source" => "add", "provider" => "anthropic", "key" => @key}}
     render_click(lv, "choose_model", params)
     render_click(lv, "save_model", params)
 
     refute kept(lv) =~ @key
     refute render(lv) =~ @key
     assert {:ok, []} = Connections.list_providers(scope)
-    refute WorkspaceSetup.model?(organisation)
+
+    # A provider to reuse, sent by the same person, is no choice either.
+    provider = provider!(scope, "anthropic", "main")
+    render_click(lv, "save_model", %{"model" => %{"source" => provider.public_id}})
+    assert {[], []} = choices(scope)
+    refute WorkspaceSetup.model_key?(scope.workspace)
   end
 
   test "a refused key keeps no key, and says why on the field", %{conn: conn} do
@@ -1794,12 +1956,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> render_submit()
 
     assert {:ok, []} = Connections.list_providers(scope)
-    refute WorkspaceSetup.model?(organisation)
+    refute WorkspaceSetup.model_key?(scope.workspace)
     assert has_element?(lv, "#set-up-model-form input[name='model[key]']")
   end
 
-  test "a member who may not add a key reads who may, and has no form", %{conn: conn} do
-    %{organisation: organisation} = sign_up_fixture()
+  test "a member who may not write the workspace's choice reads who may, and has no form", %{
+    conn: conn
+  } do
+    %{organisation: organisation, scope: scope} = sign_up_fixture()
     user = member(organisation)
 
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
@@ -1807,6 +1971,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-who-may") == "Only owners and admins add a model key."
     refute has_element?(lv, "#set-up-model-form")
     assert has_element?(lv, "#set-up-skip")
+
+    # With a provider to reuse too.
+    _provider = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert words(lv, "#set-up-who-may") == "Only owners and admins add a model key."
+    refute has_element?(lv, "#set-up-model-form")
   end
 
   test "a second workspace opens at Name, whatever the step, with every later step to come",
@@ -1827,9 +1998,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
     |> render_submit()
 
-    # The organisation's model is done, and the new workspace's steps are not: no step
-    # after Name is done before the workspace exists.
-    assert WorkspaceSetup.model?(organisation)
+    # Main's model is done, and the new workspace's steps are not: no step after Name is
+    # done before the workspace exists.
+    assert WorkspaceSetup.model_key?(scope.workspace)
 
     for path <- [
           ~p"/#{organisation}/workspaces/new?type=software",

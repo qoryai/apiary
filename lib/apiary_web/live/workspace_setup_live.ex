@@ -57,17 +57,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     person whom `collection.assign` does not allow sees the boxes disabled, and who
   #     may. The page listens to the organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
-  #   * Model, with the features `factory` and `secrets`: Provider, Key and, for a provider
-  #     that needs one, Address, which add a model provider for the workspace
-  #     (`Apiary.Connections.create_provider/3` with `:workspace`): the key is a secret of
-  #     the workspace, and the provider reaches that workspace alone. They show while the
-  #     organisation has no provider with a key; else the line that it has one. Then
-  #     Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`), as
-  #     text where there is one, and Default model, the models suggested for the provider
-  #     and runtime (`Apiary.ModelChoices.suggestions/2`). Continue saves the
-  #     organisation's default (level 6, `Apiary.ModelChoices.put_choice/4`). The key is
-  #     never kept in an assign: its field is left out of the page's patches
-  #     (`phx-update="ignore"`). A person whom `provider.write` does not allow sees who may;
+  #   * Model, with the features `factory` and `secrets`: three choices. Key: each model
+  #     provider of the organisation with a key that reaches the workspace (applies to
+  #     every workspace or lists it), by its name, to reuse, and Add a key, whose
+  #     Provider, Key and, for a provider that needs one, Address add a model provider for
+  #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
+  #     is a secret of the workspace, and the provider reaches that workspace alone. With
+  #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
+  #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
+  #     Default model, the models suggested for the provider and runtime
+  #     (`Apiary.ModelChoices.suggestions/2`). Continue saves the workspace's choice
+  #     (level 5, `Apiary.ModelChoices.put_choice/4`) with the provider, its default key,
+  #     the runtime and the model. The line under the form shows where to change the
+  #     model and the key: Workspace settings for a key that is a secret of the workspace,
+  #     Organisation settings for one of the organisation, and the model alone for one of
+  #     the organisation where the edition shows no organisation secrets
+  #     (`c:Apiary.Edition.organisation_secrets/2`). The key is never kept in an
+  #     assign: its field is left out of the page's patches (`phx-update="ignore"`). A
+  #     save needs `model_choice.write` on the workspace, and Add a key needs
+  #     `provider.write` too. A person who may not save, or who may not add a key where
+  #     there is none to reuse, sees who may;
   #   * Harness, with the `factory` feature: the three harness choices
   #     (`ApiaryWeb.HarnessComponents.choices/1`), the saved one chosen, else the Qory
   #     harness. The linked repositories of a harness repository are read once the step
@@ -358,8 +367,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       )
 
   defp heading(:model, flow),
-    do:
-      gettext("Which model do %{organisation}'s runs use?", organisation: flow.organisation.name)
+    do: gettext("Which model do runs in %{workspace} use?", workspace: flow.workspace.name)
 
   defp heading(:harness, flow),
     do: gettext("Which harness do runs in %{workspace} use?", workspace: flow.workspace.name)
@@ -414,35 +422,33 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
+  # `providers` are the ones to reuse; `may_add` is of Add a key (`provider.write`), and
+  # `may` of a save (`model_choice.write` on the workspace) with a key to choose.
   defp load_step(%{assigns: %{step: :model}} = socket) do
-    scope = socket.assigns.current_scope
-    may = Access.can?(scope, :"provider.write", scope.organisation)
-
-    providers =
-      case Connections.list_providers(scope) do
-        {:ok, providers} -> Enum.filter(providers, &(keys(&1) > 0))
-        {:error, _reason} -> []
-      end
-
-    default = organisation_default(scope)
-
-    existing =
-      Enum.find(providers, &(default && &1.id == default.connection_id)) || List.first(providers)
+    %{current_scope: scope, flow: flow} = socket.assigns
+    providers = reusable_providers(scope, flow.workspace)
+    may_add = Access.can?(scope, :"provider.write", scope.organisation)
+    choice = workspace_choice(scope, flow.workspace)
 
     socket
     |> assign(
-      may: may,
+      may:
+        Access.can?(scope, :"model_choice.write", flow.workspace) and
+          (may_add or providers != []),
+      may_add: may_add,
       who_may:
         ApiaryWeb.Access.who_may(
           scope,
           :"provider.write",
           gettext("Only owners and admins add a model key.")
         ),
-      existing: existing,
-      default: default,
-      done: step_done?(socket.assigns.flow, :model)
+      providers: providers,
+      choice: choice,
+      # Whether the edition shows the organisation's secrets: the core shows none.
+      organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
+      done: step_done?(flow, :model)
     )
-    |> assign_model_form(model_params(existing, default), [])
+    |> assign_model_form(model_params(providers, choice), [])
   end
 
   defp load_step(%{assigns: %{step: :name}} = socket) do
@@ -595,13 +601,29 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   ## The Model step's form
 
-  # The organisation's default (level 6), nil for none.
-  defp organisation_default(scope) do
+  # The organisation's model providers with a key that reach `workspace`: those that apply
+  # to every workspace, and those that list it.
+  defp reusable_providers(scope, workspace) do
+    case Connections.list_providers(scope) do
+      {:ok, providers} ->
+        Enum.filter(
+          providers,
+          &(keys(&1) > 0 and
+              (&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)))
+        )
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  # The workspace's choice (level 5), nil for none.
+  defp workspace_choice(scope, workspace) do
     case ModelChoices.list_choices(scope) do
       {:ok, choices} ->
         Enum.find(
           choices,
-          &(is_nil(&1.workspace_id) and is_nil(&1.target_id) and is_nil(&1.workflow))
+          &(&1.workspace_id == workspace.id and is_nil(&1.target_id) and is_nil(&1.workflow))
         )
 
       {:error, _reason} ->
@@ -609,21 +631,48 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp model_params(nil, _default),
-    do: %{"provider" => Providers.list() |> hd() |> Map.fetch!(:name)}
+  # The form's first values: the provider of the workspace's choice, with its runtime and
+  # model, where it is one to reuse; else the first provider to reuse; else Add a key.
+  defp model_params(providers, choice) do
+    case {providers, choice && Enum.find(providers, &(&1.id == choice.connection_id))} do
+      {_providers, %{} = provider} ->
+        %{"source" => provider.public_id, "runtime" => choice.runtime, "model" => choice.model_id}
 
-  defp model_params(_existing, default),
-    do: %{"runtime" => default && default.runtime, "model" => default && default.model_id}
+      {[provider | _rest], nil} ->
+        %{"source" => provider.public_id}
+
+      {[], nil} ->
+        %{"source" => "add", "provider" => first_provider()}
+    end
+  end
+
+  defp first_provider, do: Providers.list() |> hd() |> Map.fetch!(:name)
+
+  # The key `params` chose: a provider to reuse, or `:add`, for a person who may add one.
+  # Anything else is the first provider to reuse, and `:add` where there is none.
+  defp model_source(params, %{providers: providers, may_add: may_add}) do
+    reused = Enum.find(providers, &(&1.public_id == params["source"]))
+
+    cond do
+      reused -> reused
+      params["source"] == "add" and may_add -> :add
+      true -> List.first(providers) || :add
+    end
+  end
 
   # The form of the Model step, from what was sent but the key, with `errors` on its
-  # fields; the key's field is always empty. The provider is the catalogue's for a new
-  # provider, the description of the organisation's provider for one it has.
+  # fields; the key's field is always empty. The provider is the catalogue's for Add a
+  # key, the description of the provider to reuse for one.
   defp assign_model_form(socket, params, errors) do
-    existing = socket.assigns.existing
+    source = model_source(params, socket.assigns)
+
+    # Add a key chosen after a provider to reuse: the form sent no Provider yet.
+    params =
+      if source == :add, do: Map.put_new(params, "provider", first_provider()), else: params
 
     chosen =
-      case existing do
-        nil -> catalogue(params["provider"])
+      case source do
+        :add -> catalogue(params["provider"])
         provider -> described(provider)
       end
 
@@ -635,19 +684,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     models =
       cond do
         is_nil(runtime) -> []
-        existing -> ModelChoices.suggestions(existing, runtime)
-        true -> ModelChoices.suggestions(chosen, runtime)
+        source == :add -> ModelChoices.suggestions(chosen, runtime)
+        true -> ModelChoices.suggestions(source, runtime)
       end
 
     model = Enum.find(models, &(&1.id == params["model"])) || List.first(models)
 
     kept =
-      if existing,
-        do: %{},
-        else: Map.take(params, ["provider" | ProviderPage.address_names(params["provider"])])
+      if source == :add,
+        do: Map.take(params, ["provider" | ProviderPage.address_names(params["provider"])]),
+        else: %{}
 
     values =
       Map.merge(kept, %{
+        "source" => source_value(source),
         "key" => "",
         "runtime" => runtime && runtime.name,
         "model" => model && model.id
@@ -657,11 +707,50 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     assign(socket,
       form: to_form(values, as: :model, errors: errors),
+      source: source,
       chosen: chosen,
       runtimes: runtimes,
       runtime: runtime,
       models: models
     )
+  end
+
+  # Whether the key `source` chose is a secret of the workspace: Add a key adds one, and a
+  # provider to reuse links one or the organisation's secret.
+  defp workspace_key?(:add), do: true
+  defp workspace_key?(%{secret: %{workspace_id: workspace_id}}), do: is_binary(workspace_id)
+  defp workspace_key?(_provider), do: false
+
+  # Where to change the default model and the key `source` chose: Workspace settings for a
+  # key that is a secret of the workspace, Organisation settings for one of the
+  # organisation, where the edition shows the organisation's secrets
+  # (`organisation_secrets`); the model alone where it does not.
+  defp later_line(source, organisation_secrets) do
+    cond do
+      workspace_key?(source) ->
+        gettext(
+          "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+        )
+
+      organisation_secrets ->
+        gettext(
+          "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+        )
+
+      true ->
+        gettext("You can change the default model later in Workspace settings › Model.")
+    end
+  end
+
+  # The value of Key's option for `source`.
+  defp source_value(:add), do: "add"
+  defp source_value(provider), do: provider.public_id
+
+  # The options of Key: each provider to reuse, by its name, then Add a key for a person
+  # who may add one.
+  defp source_options(providers, may_add) do
+    reused = for provider <- providers, do: {provider.name, provider.public_id}
+    if may_add, do: reused ++ [{gettext("Add a key"), "add"}], else: reused
   end
 
   defp catalogue(name) do
@@ -681,11 +770,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
   defp keys(_provider), do: 0
 
-  # Adds the provider with its key, for an organisation that has none with a key; the
-  # one it has, else. The key is a secret of the flow's workspace, which Name made
-  # before this step, and the provider reaches that workspace alone
-  # (`Apiary.Connections.create_provider/3`, `:workspace`).
-  defp model_provider(%{assigns: %{existing: nil, current_scope: scope, flow: flow}}, params) do
+  # Adds the provider with its key for Add a key; the provider to reuse, else. The key is
+  # a secret of the flow's workspace, which Name made before this step, and the provider
+  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`).
+  defp model_provider(:add, scope, flow, params) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
@@ -702,7 +790,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp model_provider(%{assigns: %{existing: provider}}, _params), do: {:ok, provider}
+  defp model_provider(provider, _scope, _flow, _params), do: {:ok, provider}
 
   defp serves(provider, runtime) do
     case ModelChoices.serves(provider, runtime) do
@@ -739,10 +827,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       ) do
     scope = socket.assigns.current_scope
     socket = assign(socket, attempt: socket.assigns.attempt + 1, refusal: nil)
-    default = socket.assigns.default
+    source = model_source(params, socket.assigns)
 
     unchanged? =
-      case {socket.assigns.existing, default} do
+      case {source, socket.assigns.choice} do
         {%{id: id}, %{connection_id: id, runtime: runtime, model_id: model}} ->
           runtime == params["runtime"] and model == params["model"]
 
@@ -750,10 +838,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           false
       end
 
-    if unchanged? do
-      {:noreply, push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)}
-    else
-      save_model(socket, scope, params)
+    cond do
+      params["source"] == "add" and not socket.assigns.may_add ->
+        {:noreply, socket |> load_step() |> put_flash(:error, socket.assigns.who_may)}
+
+      # A provider sent that is not one to reuse, such as one removed since the page read
+      # them: nothing is saved.
+      source_value(source) != params["source"] ->
+        {:noreply,
+         socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+
+      unchanged? ->
+        {:noreply, go_on(socket)}
+
+      true ->
+        save_model(socket, scope, source, params)
     end
   end
 
@@ -875,37 +974,48 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  defp save_model(socket, scope, params) do
-    with {:ok, provider} <- model_provider(socket, params),
-         {:ok, _choice} <-
-           ModelChoices.put_choice(scope, :organisation, %{
-             "provider" => provider.public_id,
-             "runtime" => params["runtime"],
-             "model" => params["model"]
-           }) do
-      {:noreply, push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)}
-    else
+  defp save_model(socket, scope, source, params) do
+    case model_provider(source, scope, socket.assigns.flow, params) do
+      {:ok, provider} ->
+        # After a refusal of the choice, the form shows the provider as one to reuse.
+        params = Map.put(params, "source", provider.public_id)
+
+        case ModelChoices.put_choice(scope, :workspace, %{
+               "provider" => provider.public_id,
+               "key" => provider.default_value_id,
+               "runtime" => params["runtime"],
+               "model" => params["model"]
+             }) do
+          {:ok, _choice} -> {:noreply, go_on(socket)}
+          {:error, reason} -> {:noreply, model_refused(load_step(socket), params, reason)}
+        end
+
       {:error, {:serves, error}} ->
         {:noreply, assign_model_form(socket, params, provider: error)}
 
       {:error, :provider_unknown} ->
         {:noreply, assign_model_form(socket, params, provider: {"is invalid", []})}
 
-      {:error, %Ecto.Changeset{data: %Apiary.ModelChoices.ModelChoice{}} = changeset} ->
-        errors = for {field, error} <- changeset.errors, do: {model_field(field), error}
-        {:noreply, socket |> load_step() |> assign_model_form(params, errors)}
-
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_model_form(socket, params, ProviderPage.field_errors(changeset))}
 
-      {:error, :forbidden} ->
-        {:noreply, socket |> load_step() |> put_flash(:error, socket.assigns.who_may)}
-
-      {:error, _reason} ->
-        {:noreply,
-         socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+      {:error, reason} ->
+        {:noreply, model_refused(load_step(socket), params, reason)}
     end
   end
+
+  # A refused choice, each reason on the step's field it is about, or a refusal of the
+  # save in the flash.
+  defp model_refused(socket, params, %Ecto.Changeset{} = changeset) do
+    errors = for {field, error} <- changeset.errors, do: {model_field(field), error}
+    assign_model_form(socket, params, errors)
+  end
+
+  defp model_refused(socket, _params, :forbidden),
+    do: put_flash(socket, :error, socket.assigns.who_may)
+
+  defp model_refused(socket, _params, _reason),
+    do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
 
   defp go_on(socket),
     do: push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)
@@ -934,7 +1044,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # A refusal of the choice, on the step's field it is about.
   defp model_field(field) when field in [:runtime, :model], do: field
   defp model_field(:effort), do: :model
-  defp model_field(_field), do: :provider
+  defp model_field(_field), do: :source
 
   # Whether a workspace of the organisation marked for deletion has the name `name`.
   defp marked_name?(scope, name),
@@ -1278,13 +1388,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <p :if={@existing} id="set-up-model-key" class="text-[13.5px]/5">
-        {gettext("%{organisation} has a key for %{provider}.",
-          organisation: @flow.organisation.name,
-          provider: @existing.name
-        )}
-      </p>
-
       <.form
         :if={@may}
         for={@form}
@@ -1296,38 +1399,49 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         novalidate
       >
         <.input
-          :if={!@existing}
-          field={@form[:provider]}
-          type="choice"
-          label={gettext("Provider")}
-          options={ProviderPage.provider_options()}
-        />
-        <.input
-          :if={!@existing}
-          field={@form[:key]}
-          id={"set-up-model-key-#{@attempt}"}
-          type="password"
-          value={nil}
+          field={@form[:source]}
+          id="set-up-model-source"
+          type="radio"
           label={gettext("Key")}
-          hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
-          autocomplete="off"
-          spellcheck="false"
-          phx-update="ignore"
-          required
+          options={source_options(@providers, @may_add)}
         />
-        <.input
-          :for={name <- (!@existing && @chosen && Provider.address_settings(@chosen)) || []}
-          field={@form[String.to_atom(name)]}
-          id={"set-up-model-#{name}"}
-          type="text"
-          inputmode="url"
-          label={ProviderPage.setting_title(@chosen, name)}
-          placeholder="https://litellm.example.com"
-          hint={gettext("The proxy's https address without /v1.")}
-          autocomplete="off"
-          spellcheck="false"
-          required
-        />
+        <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
+          <.input
+            field={@form[:provider]}
+            type="choice"
+            label={gettext("Provider")}
+            options={ProviderPage.provider_options()}
+          />
+          <.input
+            field={@form[:key]}
+            id={"set-up-model-key-#{@attempt}"}
+            type="password"
+            value={nil}
+            label={gettext("Key")}
+            hint={
+              gettext(
+                "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+              )
+            }
+            autocomplete="off"
+            spellcheck="false"
+            phx-update="ignore"
+            required
+          />
+          <.input
+            :for={name <- (@chosen && Provider.address_settings(@chosen)) || []}
+            field={@form[String.to_atom(name)]}
+            id={"set-up-model-#{name}"}
+            type="text"
+            inputmode="url"
+            label={ProviderPage.setting_title(@chosen, name)}
+            placeholder="https://litellm.example.com"
+            hint={gettext("The proxy's https address without /v1.")}
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </div>
         <div :if={length(@runtimes) == 1} id="set-up-model-runtime" class="grid gap-1">
           <p class="text-[13.5px]/5 font-medium">{gettext("Runtime")}</p>
           <p class="text-[13.5px]/5">{hd(@runtimes).title}</p>
@@ -1346,10 +1460,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           label={gettext("Default model")}
           options={for model <- @models, do: {model.title || model.id, model.id}}
         />
-        <p class="text-[13px]/5 text-muted">
-          {gettext(
-            "You can change these or add more later in Organisation settings › Model providers."
-          )}
+        <p id="set-up-model-later" class="text-[13px]/5 text-muted">
+          {later_line(@source, @organisation_secrets)}
         </p>
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={@page_path} />
@@ -1376,11 +1488,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <:context>
         <p id="set-up-what">
-          {gettext("A model provider's key lets runs in %{organisation} call a model.",
-            organisation: @flow.organisation.name
+          {gettext("A model provider's key lets runs in %{workspace} call a model.",
+            workspace: @flow.workspace.name
           )}
         </p>
-        <ProviderPage.get_key :if={@may and !@existing} id="set-up-get-key" chosen={@chosen} />
+        <ProviderPage.get_key :if={@may and @source == :add} id="set-up-get-key" chosen={@chosen} />
       </:context>
     </SetUpComponents.frame>
     """

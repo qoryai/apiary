@@ -509,30 +509,59 @@ defmodule Apiary.WorkspaceSetupTest do
     end
 
     @tag needs: [:factory, :secrets]
-    test "model?: a provider with a key and the organisation's default", ctx do
-      organisation = ctx.scope.organisation
-      refute WorkspaceSetup.model?(organisation)
+    test "done?/3: Model once the workspace's choice has a provider that reaches it, with a key",
+         ctx do
+      %{scope: scope, workspace: main} = ctx
+      organisation = scope.organisation
+
+      done? = fn workspace ->
+        WorkspaceSetup.done?(:model, organisation, {@software, workspace})
+      end
+
+      refute done?.(main)
 
       {:ok, provider} =
-        Connections.create_provider(ctx.scope, %{
+        Connections.create_provider(scope, %{
           provider: "anthropic",
           keys: [%{value_id: "main", value: "sk-flow-1"}]
         })
 
-      refute WorkspaceSetup.model?(organisation)
+      refute done?.(main)
 
-      # A choice of the workspace is no default of the organisation.
-      {:ok, _} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
-      refute WorkspaceSetup.model?(organisation)
+      # The organisation's default (level 6) is no choice of the workspace.
+      {:ok, _} = ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+      refute done?.(main)
 
       {:ok, _} =
-        ModelChoices.put_choice(ctx.scope, :organisation, %{provider: provider.public_id})
+        ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id, key: "main"})
 
-      assert WorkspaceSetup.model?(organisation)
-      assert WorkspaceSetup.done?(:model, organisation, {@software, ctx.workspace})
-      # Every step after Name is not done before the workspace exists.
-      refute WorkspaceSetup.done?(:model, organisation, {@software, nil})
-      refute WorkspaceSetup.model?(sign_up_fixture().organisation)
+      assert done?.(main)
+      assert WorkspaceSetup.model_key?(main)
+
+      # Another workspace has no choice; every step after Name is not done before the
+      # workspace exists.
+      refute done?.(workspace_fixture(organisation, "Other"))
+      refute done?.(nil)
+
+      # A provider that reaches no workspace any more: applies to the workspaces it lists,
+      # and lists none.
+      set!(Apiary.Connections.Connection, provider.id, applies_to: "selected")
+      refute done?.(main)
+      refute WorkspaceSetup.model_key?(main)
+
+      Repo.insert!(%Apiary.Connections.ConnectionWorkspace{
+        organisation_id: organisation.id,
+        connection_id: provider.id,
+        workspace_id: main.id
+      })
+
+      assert done?.(main)
+
+      # A provider with no key.
+      Repo.delete_all(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
+
+      refute done?.(main)
+      refute WorkspaceSetup.model_key?(main)
     end
 
     test "sources? and destinations?: a row of the tick list ticked", ctx do
