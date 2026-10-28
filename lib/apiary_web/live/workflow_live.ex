@@ -5,11 +5,11 @@ defmodule ApiaryWeb.WorkflowLive do
   # workspace-level document for that workflow (`Apiary.Stacks.Sources.save/3`). A run's
   # workflow comes from the rows with a workflow, this one among them, whatever the
   # choice. The walk reads this row's document only under the harness in each
-  # repository, for a target without a harness file. Under the Qory harness or a harness
-  # repository it walks the choice's document, and with no choice the Qory harness
-  # (`Apiary.Harnesses.Walk`). The page opens for whoever may save it (`harness.save`,
-  # owners and admins), and is not found for anyone else, as the section is absent from
-  # their list.
+  # repository, where no harness file of the run's target applies
+  # (`Apiary.Harnesses.Walk`). Under the Qory harness or a harness repository it walks
+  # the choice's document, and with no choice the Qory harness. The page opens for
+  # whoever may save it (`harness.save`, owners and admins), and is not found for anyone
+  # else, as the section is absent from their list.
   #
   # Beside the form, About this step says what the page sets and which sources Source
   # lists. Under the title, Harness shows the workspace's harness choice and its pin
