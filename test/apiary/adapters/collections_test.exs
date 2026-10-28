@@ -386,29 +386,34 @@ defmodule Apiary.Adapters.CollectionsTest do
       assert Enum.sort(got) == Enum.sort(made)
 
       # The organisation it left has one entry for each, by the instance, about the
-      # collection; this one has none.
+      # collection; this one has none. Both entries have the same time, so sort by subject.
       moves =
         Repo.all(
           from e in Apiary.Audit.Entry,
             where: e.action == "collection.move",
-            order_by: e.inserted_at,
             select: {e.organisation_id, e.actor_kind, e.subject_id, e.details}
         )
 
-      assert moves == [
-               {other.organisation.id, :instance, old_doc.id,
-                %{
-                  "name" => "Title of DOC",
-                  "connection_id" => theirs.public_id,
-                  "integration" => ctx.adapter.name
-                }},
-               {other.organisation.id, :instance, old_trk.id,
-                %{
-                  "name" => "Title of TRK",
-                  "connection_id" => theirs.public_id,
-                  "integration" => ctx.adapter.name
-                }}
-             ]
+      by_subject = &elem(&1, 2)
+
+      assert Enum.sort_by(moves, by_subject) ==
+               Enum.sort_by(
+                 [
+                   {other.organisation.id, :instance, old_doc.id,
+                    %{
+                      "name" => "Title of DOC",
+                      "connection_id" => theirs.public_id,
+                      "integration" => ctx.adapter.name
+                    }},
+                   {other.organisation.id, :instance, old_trk.id,
+                    %{
+                      "name" => "Title of TRK",
+                      "connection_id" => theirs.public_id,
+                      "integration" => ctx.adapter.name
+                    }}
+                 ],
+                 by_subject
+               )
     end
 
     test "a moved ref's new collection is assigned to the organisation's only workspace, as any new one",
@@ -433,21 +438,24 @@ defmodule Apiary.Adapters.CollectionsTest do
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["DOC", "TRK"]))
+      doc = collection(theirs, "DOC").id
+      trk = collection(theirs, "TRK").id
 
       # Without a title, the name; with one, the title as it was at the move.
       assert post(ctx, ["DOC"], id: "first") == {:ok, :accepted}
       Apiary.NodesFixtures.describe_title(ctx.adapter, "Acme Tracker")
       assert post(ctx, ["DOC", "TRK"], id: "second") == {:ok, :accepted}
 
+      # By collection, not by time: the test's one transaction gives both the same time.
       moves =
         Repo.all(
           from e in Apiary.Audit.Entry,
             where: e.action == "collection.move",
-            order_by: e.inserted_at,
-            select: e.details["integration"]
+            select: {e.subject_id, e.details["integration"]}
         )
 
-      assert moves == [ctx.adapter.name, "Acme Tracker"]
+      assert length(moves) == 2
+      assert Map.new(moves) == %{doc => ctx.adapter.name, trk => "Acme Tracker"}
     end
 
     test "a ref live under another connection that a newer listing named stays with it",
