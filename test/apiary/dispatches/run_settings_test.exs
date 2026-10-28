@@ -124,7 +124,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
   describe "a claim with a choice" do
     test "of a run with no target reads the workspace and organisation levels alone", ctx do
-      scope = with_domain(ctx.scope, "general")
+      scope = with_domain(ctx.scope, "example")
       target = Repo.insert!(target(scope, "acme/shop"))
 
       choose!(scope, :organisation, %{

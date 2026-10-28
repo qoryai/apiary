@@ -1164,7 +1164,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {_connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
 
     Repo.update_all(from(w in Apiary.Organisations.Workspace, where: w.id == ^platform.id),
-      set: [domain: "general"]
+      set: [domain: "example"]
     )
 
     Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
@@ -1178,7 +1178,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     # A start that narrows the domains after the page read them: nothing is assigned.
     Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
-      set: [domains: ["general"]]
+      set: [domains: ["example"]]
     )
 
     lv |> element("#collections-assign-#{scope.workspace.id}") |> render_click()

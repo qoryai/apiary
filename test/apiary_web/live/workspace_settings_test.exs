@@ -46,11 +46,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
 
     test "names a workspace of another domain by that domain's label and line",
          %{conn: conn, scope: scope} do
-      for {domain, label, line} <- [
-            {"general", "General workspace",
-             "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."},
-            {"example", "Example workspace", "For the tests only."}
-          ] do
+      for {domain, label, line} <- [{"example", "Example workspace", "For the tests only."}] do
         Apiary.Repo.update_all(
           from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
           set: [domain: domain]

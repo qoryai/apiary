@@ -197,7 +197,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     end
 
     test "with no target has the stacks' document and no target version", ctx do
-      ctx = %{ctx | scope: with_domain(ctx.scope, "general")}
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
       workflow!(ctx)
 
       explore!(ctx, [origin: :setting, document: section()], %{
@@ -274,9 +274,9 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       Repo.get_by!(Apiary.Runs.Run, run_code_sha256: Apiary.AccessKeys.EnrolmentCode.hash(head))
     end
 
-    test "has the built-in harness and workflow, no target and no access, in a software and a general workspace",
+    test "has the built-in harness and workflow, no target and no access, in a software and an example workspace",
          ctx do
-      for domain <- ["software", "general"] do
+      for domain <- ["software", "example"] do
         %{scope: scope} = sign_up_fixture()
         scope = with_domain(scope, domain)
         ctx = Map.merge(ctx, handover_place_fixture(scope)) |> Map.put(:scope, scope)
