@@ -552,5 +552,49 @@ defmodule Apiary.WorkspaceSetupTest do
       :ok = Edition.put_test_stub(NoAdapterRead)
       assert WorkspaceSetup.collections(scope, @software, :sources) == []
     end
+
+    test "tick/5: changes a row of the list as it stands; refuses one elsewhere or gone", ctx do
+      %{scope: scope, workspace: main} = ctx
+      other = workspace_fixture(scope.organisation, "Other")
+      free = collection_fixture(scope, workspace_id: nil)
+      elsewhere = collection_fixture(scope, workspace_id: other.id)
+      theirs = collection_fixture(sign_up_fixture().scope, workspace_id: nil)
+      targets!(free.adapter_id)
+
+      row = fn c ->
+        c = Repo.get!(Collection, c.id)
+        {c.workspace_id, c.backlog}
+      end
+
+      assert WorkspaceSetup.tick(scope, main, @software, :destinations, free.id) == :ok
+      assert row.(free) == {main.id, false}
+      assert WorkspaceSetup.tick(scope, main, @software, :sources, free.id) == :ok
+      assert row.(free) == {main.id, true}
+
+      # Unticked as a work source, a destination stays assigned.
+      assert WorkspaceSetup.tick(scope, main, @software, :sources, free.id) == :ok
+      assert row.(free) == {main.id, false}
+      assert WorkspaceSetup.tick(scope, main, @software, :destinations, free.id) == :ok
+      assert row.(free) == {nil, false}
+
+      assert WorkspaceSetup.tick(scope, main, @software, :sources, elsewhere.id) ==
+               {:error, :elsewhere}
+
+      assert row.(elsewhere) == {other.id, true}
+
+      assert WorkspaceSetup.tick(scope, main, @software, :sources, theirs.id) ==
+               {:error, :unlisted}
+
+      assert WorkspaceSetup.tick(scope, main, @software, :sources, "not an id") ==
+               {:error, :unlisted}
+
+      %{scope: member} = member_fixture(scope, :member)
+      member = %{member | workspace: main}
+
+      assert WorkspaceSetup.tick(member, main, @software, :sources, free.id) ==
+               {:error, :forbidden}
+
+      assert row.(free) == {nil, false}
+    end
   end
 end

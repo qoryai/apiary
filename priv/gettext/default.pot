@@ -2241,12 +2241,12 @@ msgstr ""
 msgid "%{organisation} has a key for %{provider}."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work destination connected yet."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work source connected yet."
 msgstr ""
@@ -6487,6 +6487,12 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/collections_live.ex
+#, elixir-autogen, elixir-format
+msgid "Destinations"
+msgstr ""
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Destinations used"
@@ -8249,7 +8255,7 @@ msgstr ""
 msgid "In %{organisation}"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "In %{workspace} (cannot be ticked)"
 msgstr ""
@@ -11294,6 +11300,7 @@ msgstr ""
 msgid "Nothing was assigned: the page was out of date. It now shows the %{collections} as they are."
 msgstr ""
 
+#: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11658,6 +11665,7 @@ msgstr ""
 msgid "Only owners and admins change the Backlog switches."
 msgstr ""
 
+#: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -11715,7 +11723,7 @@ msgid "Only owners and admins manage members, and only owners change a level or 
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of %{organisation} assign %{collections} to workspaces."
 msgstr ""
@@ -17348,7 +17356,7 @@ msgstr ""
 msgid "Unpin %{target}"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Unticking also stops its tickets coming in."
 msgstr ""
@@ -17899,11 +17907,13 @@ msgstr ""
 msgid "Which model do %{organisation}'s runs use?"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which repositories may %{workspace}'s runs change?"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which work sources does %{workspace} use?"
@@ -18061,6 +18071,8 @@ msgid "Work source"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Work sources"
 msgstr ""
@@ -20099,7 +20111,7 @@ msgctxt "source item, when its adapter names none"
 msgid "tickets"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "tickets come in"
 msgstr ""

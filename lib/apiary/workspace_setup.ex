@@ -47,17 +47,20 @@ defmodule Apiary.WorkspaceSetup do
   #
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
   # line. `collections/3` is the rows of the tick lists of Work sources used and
-  # Destinations used, to a person who may read the instance's adapters. None of the
-  # others checks access: the page's reader reads them.
+  # Destinations used, to a person who may read the instance's adapters, and `tick/5` one
+  # tick or untick of a row: the set-up's steps and Workspace settings › Work sources and
+  # › Destinations show and tick the same lists. `tick/5` changes a collection through
+  # `Apiary.Adapters.Collections`, which checks access. None of the others checks access:
+  # the page's reader reads them.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, AccessKeys, Edition, Gateways, ModelChoices, Repo, Stacks}
+  alias Apiary.{Access, AccessKeys, Adapters, Edition, Gateways, ModelChoices, Repo, Stacks}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{Collection, Connection}
+  alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Connections.Connection, as: ModelProvider
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelChoices.ModelChoice
@@ -346,6 +349,97 @@ defmodule Apiary.WorkspaceSetup do
 
   defp where_list(query, :destinations),
     do: where(query, [c, _k, n], n.targets == true and not is_nil(c.target_system))
+
+  @doc false
+  # ticked?/3 is whether `row` of the tick list `list` is ticked for `workspace`: a work
+  # source while it is the workspace's with its Backlog on; a destination while it is the
+  # workspace's.
+  @spec ticked?(:sources | :destinations, tick_row, Workspace.t()) :: boolean
+  def ticked?(:sources, %{collection: c}, %Workspace{id: id}),
+    do: c.workspace_id == id and c.backlog
+
+  def ticked?(:destinations, %{collection: c}, %Workspace{id: id}), do: c.workspace_id == id
+
+  @doc false
+  # tick/5 ticks or unticks the collection `collection_id` in the tick list `list` of
+  # `workspace` of the type `domain`, on the list as it stands now (`collections/3`), not as
+  # a page last showed it:
+  #
+  #   * ticking a work source assigns the collection and turns its Backlog on;
+  #   * ticking a destination assigns it with its Backlog off, unless it is ticked as a
+  #     work source;
+  #   * unticking a work source turns its Backlog off, and unassigns a collection that is
+  #     no destination;
+  #   * unticking a destination turns its Backlog off and unassigns it.
+  #
+  # `{:error, :unlisted}` for a collection the list does not have, and
+  # `{:error, :elsewhere}` for one in another workspace, which changes nothing: moving it
+  # stays on the organisation's integration page. `Apiary.Adapters.Collections` returns
+  # neither atom. Else the answer of
+  # `Apiary.Adapters.Collections.assign_collections/4` and
+  # `Apiary.Adapters.Collections.set_collection_backlog/4`: `{:error, :forbidden}` to a
+  # person whom `collection.assign` or `collection.set_backlog` does not allow, and
+  # `{:error, :not_found}` where the connection, the workspace or the collection ended
+  # after the read.
+  @spec tick(Scope.t(), Workspace.t(), module, :sources | :destinations, term) ::
+          :ok | {:error, term}
+  def tick(%Scope{} = scope, %Workspace{} = workspace, domain, list, collection_id) do
+    found =
+      scope
+      |> collections(domain, list)
+      |> Enum.find_value(fn {adapter, rows} ->
+        Enum.find_value(rows, &(&1.collection.id == collection_id && {adapter, &1}))
+      end)
+
+    case found do
+      nil ->
+        {:error, :unlisted}
+
+      {_adapter, %{workspace: %Workspace{id: id}}} when id != workspace.id ->
+        {:error, :elsewhere}
+
+      {adapter, row} ->
+        toggle(scope, workspace, list, adapter, row)
+    end
+  end
+
+  defp toggle(scope, workspace, list, adapter, %{collection: collection} = row) do
+    here? = collection.workspace_id == workspace.id
+    switch? = collection.items and Adapters.items?(adapter)
+    destination? = adapter.targets == true and not is_nil(collection.target_system)
+
+    case {list, ticked?(list, row, workspace)} do
+      {:sources, false} ->
+        with :ok <- if(here?, do: :ok, else: assign_row(scope, row, workspace)),
+             do: if(switch?, do: backlog(scope, row, true), else: :ok)
+
+      {:sources, true} ->
+        with :ok <- if(switch?, do: backlog(scope, row, false), else: :ok),
+             do: if(destination?, do: :ok, else: assign_row(scope, row, nil))
+
+      {:destinations, false} ->
+        with :ok <- if(here?, do: :ok, else: assign_row(scope, row, workspace)),
+             do: if(switch? and not here?, do: backlog(scope, row, false), else: :ok)
+
+      {:destinations, true} ->
+        with :ok <- if(switch?, do: backlog(scope, row, false), else: :ok),
+             do: assign_row(scope, row, nil)
+    end
+  end
+
+  defp assign_row(scope, %{collection: collection, connection: connection}, workspace) do
+    case Collections.assign_collections(scope, connection, [collection.id], workspace) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp backlog(scope, %{collection: collection, connection: connection}, on) do
+    case Collections.set_collection_backlog(scope, connection, collection.id, on) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   ## The rules of the setup list
 
