@@ -18347,6 +18347,11 @@ msgstr ""
 msgid "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "You can change the default model later in Workspace settings › Model."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "You can change the email address of your %{name} account by visiting the URL below:"

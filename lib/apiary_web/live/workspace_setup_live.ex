@@ -70,7 +70,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (level 5, `Apiary.ModelChoices.put_choice/4`) with the provider, its default key,
   #     the runtime and the model. The line under the form shows where to change the
   #     model and the key: Workspace settings for a key that is a secret of the workspace,
-  #     Organisation settings for one of the organisation. The key is never kept in an
+  #     Organisation settings for one of the organisation, and the model alone for one of
+  #     the organisation where the edition shows no organisation secrets
+  #     (`c:Apiary.Edition.organisation_secrets/2`). The key is never kept in an
   #     assign: its field is left out of the page's patches (`phx-update="ignore"`). A
   #     save needs `model_choice.write` on the workspace, and Add a key needs
   #     `provider.write` too. A person who may not save, or who may not add a key where
@@ -442,6 +444,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         ),
       providers: providers,
       choice: choice,
+      # Whether the edition shows the organisation's secrets: the core shows none.
+      organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
       done: step_done?(flow, :model)
     )
     |> assign_model_form(model_params(providers, choice), [])
@@ -716,6 +720,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp workspace_key?(:add), do: true
   defp workspace_key?(%{secret: %{workspace_id: workspace_id}}), do: is_binary(workspace_id)
   defp workspace_key?(_provider), do: false
+
+  # Where to change the default model and the key `source` chose: Workspace settings for a
+  # key that is a secret of the workspace, Organisation settings for one of the
+  # organisation, where the edition shows the organisation's secrets
+  # (`organisation_secrets`); the model alone where it does not.
+  defp later_line(source, organisation_secrets) do
+    cond do
+      workspace_key?(source) ->
+        gettext(
+          "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+        )
+
+      organisation_secrets ->
+        gettext(
+          "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+        )
+
+      true ->
+        gettext("You can change the default model later in Workspace settings › Model.")
+    end
+  end
 
   # The value of Key's option for `source`.
   defp source_value(:add), do: "add"
@@ -1436,15 +1461,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           options={for model <- @models, do: {model.title || model.id, model.id}}
         />
         <p id="set-up-model-later" class="text-[13px]/5 text-muted">
-          {if workspace_key?(@source),
-            do:
-              gettext(
-                "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
-              ),
-            else:
-              gettext(
-                "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
-              )}
+          {later_line(@source, @organisation_secrets)}
         </p>
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={@page_path} />

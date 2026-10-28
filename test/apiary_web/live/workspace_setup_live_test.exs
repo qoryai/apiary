@@ -1610,6 +1610,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   @key "sk-ant-set-up-test-0123456789abcdef"
 
   @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+  @model_later "You can change the default model later in Workspace settings › Model."
   @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 
   defp words(lv, selector) do
@@ -1769,8 +1770,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "#set-up-model-add")
     refute has_element?(lv, "input[name='model[key]']")
-    # The provider's key is a secret of the organisation.
-    assert words(lv, "#set-up-model-later") == @organisation_later
+    # The provider's key is a secret of the organisation, and the core shows no
+    # organisation secrets: the line names the model alone.
+    assert words(lv, "#set-up-model-later") == @model_later
 
     # Add a key opens Provider and Key, and the provider to reuse closes them again.
     lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
@@ -1781,7 +1783,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
     refute has_element?(lv, "#set-up-model-add")
-    assert words(lv, "#set-up-model-later") == @organisation_later
+    assert words(lv, "#set-up-model-later") == @model_later
 
     lv
     |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})
@@ -1801,6 +1803,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, ~s{select[name="model[model]"] option[selected][value="#{second}"]})
     lv |> form("#set-up-model-form") |> render_submit()
     assert {[^choice], []} = choices(scope)
+  end
+
+  test "where the edition shows organisation secrets, an organisation key's line names Organisation settings",
+       %{conn: conn} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.GrantsOrganisationSecrets)
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    assert words(lv, "#set-up-model-later") == @organisation_later
+
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    assert words(lv, "#set-up-model-later") == @workspace_later
   end
 
   test "reuse with two providers: each by its name; the one chosen is saved", %{conn: conn} do
