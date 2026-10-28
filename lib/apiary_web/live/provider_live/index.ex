@@ -3,9 +3,18 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # the list of the organisation's model providers (`:index`), each by its name with how
   # many keys it has, its name leading to its page (`ApiaryWeb.ProviderLive.Show`), and
   # New model provider (`:new`), a separate page that adds one with its key
-  # (`Apiary.Connections.create_provider/2`): Provider, Key, and an Address for a
-  # provider whose description has an address setting, such as LiteLLM. Beside the form,
-  # About this step says what a key is for and where to get the chosen provider's key.
+  # (`Apiary.Connections.create_provider/3`): Provider, Key, and an Address for a
+  # provider whose description has an address setting, such as LiteLLM, then, where the
+  # edition shows it (`c:Apiary.Edition.scope_setting?/1`), the setting "Available to
+  # every workspace in <organisation>", off. What it reaches is
+  # `Apiary.Connections.reach_at_add/3`'s, for the scope's workspace: with the setting
+  # off, or not shown, the provider is added for that workspace alone (`:workspace`), its
+  # key a secret of the workspace; with it on, for the organisation (`:organisation`),
+  # reaching every workspace, its key a secret of the organisation. With no workspace in
+  # the scope, in every edition, the page shows no form: a line says to set up a
+  # workspace first, with a link to the set-up, and a submit adds nothing. Beside the
+  # form, About this step says what a key is for and where to get the chosen provider's
+  # key.
   #
   # Every member reads the list (`connection.read`); owners and admins add one
   # (`provider.write`), and anyone else sees the list without New model provider and one
@@ -46,6 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
        writes: writes,
+       needs_workspace: needs_workspace?(scope),
        attempt: 0,
        refusal: nil
      )
@@ -59,6 +69,11 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp page_title(scope, _index),
     do: SettingsComponents.page_title(scope, :organisation, [list_title()])
 
+  # Whether an add must wait for a workspace: with no workspace in the scope, a provider
+  # has no workspace to apply to (`Apiary.Connections.reach_at_add/3`), whatever the
+  # setting.
+  defp needs_workspace?(scope), do: is_nil(scope.workspace)
+
   defp list_title, do: gettext("Model providers")
   defp new_title, do: gettext("New model provider")
 
@@ -69,7 +84,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp assign_form(socket, params, errors) do
     params =
       params
-      |> Map.take(["provider" | address_names(params["provider"])])
+      |> Map.take(["provider", "everywhere" | address_names(params["provider"])])
       |> Map.put("key", "")
 
     params = Enum.reduce(errors, params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
@@ -103,6 +118,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
   def handle_event("choose", %{"provider" => params}, %{assigns: %{writes: true}} = socket),
     do: {:noreply, assign_form(socket, params, [])}
 
+  def handle_event("create", _params, %{assigns: %{needs_workspace: true}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("create", %{"provider" => params}, %{assigns: %{writes: true}} = socket) do
     scope = socket.assigns.current_scope
     socket = assign(socket, attempt: socket.assigns.attempt + 1, refusal: nil)
@@ -113,7 +131,17 @@ defmodule ApiaryWeb.ProviderLive.Index do
       "settings" => Map.new(address_names(params["provider"]), &{&1, params[&1] || ""})
     }
 
-    case Connections.create_provider(scope, attrs) do
+    reach = Connections.reach_at_add(scope, scope.workspace, params["everywhere"] == "true")
+
+    # Added for the workspace alone, the key is a secret of the workspace, as the set-up's
+    # Model step adds one.
+    created =
+      case reach do
+        %{"applies_to" => "selected"} -> Connections.create_provider(scope, attrs, :workspace)
+        %{"applies_to" => "all"} -> Connections.create_provider(scope, Map.merge(attrs, reach))
+      end
+
+    case created do
       {:ok, provider} ->
         {:noreply,
          socket
@@ -211,7 +239,17 @@ defmodule ApiaryWeb.ProviderLive.Index do
           <span id="new-provider-refusal">{@refusal}</span>
         </.notice>
 
+        <p :if={@needs_workspace} id="new-provider-needs-workspace" class="text-[13.5px]/5">
+          <.rich text={
+            rich_gettext("%{set_up} first, then add a model provider in its Model step.",
+              set_up:
+                {:link, ~p"/#{@current_scope.organisation}/set-up", gettext("Set up a workspace")}
+            )
+          } />
+        </p>
+
         <.form
+          :if={!@needs_workspace}
           for={@form}
           id="new-provider-form"
           method="post"
@@ -250,6 +288,16 @@ defmodule ApiaryWeb.ProviderLive.Index do
             autocomplete="off"
             spellcheck="false"
             required
+          />
+          <.input
+            :if={Apiary.Edition.scope_setting?(@current_scope)}
+            field={@form[:everywhere]}
+            type="checkbox"
+            label={
+              gettext("Available to every workspace in %{organisation}",
+                organisation: @current_scope.organisation.name
+              )
+            }
           />
           <.page_form_foot id="new-provider-save" cancel={list_path(@current_scope)}>
             <.button

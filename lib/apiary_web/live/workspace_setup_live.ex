@@ -62,7 +62,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     every workspace or lists it), by its name, to reuse, and Add a key, whose
   #     Provider, Key and, for a provider that needs one, Address add a model provider for
   #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
-  #     is a secret of the workspace, and the provider reaches that workspace alone. With
+  #     is a secret of the workspace, and the provider reaches that workspace alone. Where
+  #     the edition shows it (`c:Apiary.Edition.scope_setting?/1`), Add a key has the
+  #     setting "Available to every workspace in <organisation>", off; on, it adds the
+  #     provider for the organisation, reaching every workspace, its key a secret of the
+  #     organisation (`Apiary.Connections.reach_at_add/3`). With
   #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
   #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
   #     Default model, the models suggested for the provider and runtime
@@ -969,7 +973,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     kept =
       if source == :add,
-        do: Map.take(params, ["provider" | ProviderPage.address_names(params["provider"])]),
+        do:
+          Map.take(params, [
+            "provider",
+            "everywhere" | ProviderPage.address_names(params["provider"])
+          ]),
         else: %{}
 
     values =
@@ -985,6 +993,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     assign(socket,
       form: to_form(values, as: :model, errors: errors),
       source: source,
+      everywhere: everywhere?(socket.assigns.current_scope, source, params),
       chosen: chosen,
       runtimes: runtimes,
       runtime: runtime,
@@ -992,19 +1001,29 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
-  # Whether the key `source` chose is a secret of the workspace: Add a key adds one, and a
-  # provider to reuse links one or the organisation's secret.
-  defp workspace_key?(:add), do: true
-  defp workspace_key?(%{secret: %{workspace_id: workspace_id}}), do: is_binary(workspace_id)
-  defp workspace_key?(_provider), do: false
+  # Whether Add a key adds the provider for every workspace: the setting shown and on.
+  defp everywhere?(scope, :add, params),
+    do: params["everywhere"] == "true" and Apiary.Edition.scope_setting?(scope)
+
+  defp everywhere?(_scope, _source, _params), do: false
+
+  # Whether the key `source` chose is a secret of the workspace: Add a key adds one, unless
+  # it adds the provider for every workspace, and a provider to reuse links one or the
+  # organisation's secret.
+  defp workspace_key?(:add, everywhere), do: not everywhere
+
+  defp workspace_key?(%{secret: %{workspace_id: workspace_id}}, _everywhere),
+    do: is_binary(workspace_id)
+
+  defp workspace_key?(_provider, _everywhere), do: false
 
   # Where to change the default model and the key `source` chose: Workspace settings for a
   # key that is a secret of the workspace, Organisation settings for one of the
   # organisation, where the edition shows the organisation's secrets
   # (`organisation_secrets`); the model alone where it does not.
-  defp later_line(source, organisation_secrets) do
+  defp later_line(source, everywhere, organisation_secrets) do
     cond do
-      workspace_key?(source) ->
+      workspace_key?(source, everywhere) ->
         gettext(
           "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
         )
@@ -1049,21 +1068,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # Adds the provider with its key for Add a key; the provider to reuse, else. The key is
   # a secret of the flow's workspace, which Name made before this step, and the provider
-  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`).
+  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`);
+  # with the setting shown and on, the provider is the organisation's, reaching every
+  # workspace, its key a secret of the organisation (`Apiary.Connections.reach_at_add/3`).
   defp model_provider(:add, scope, flow, params) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
-      Connections.create_provider(
-        %{scope | workspace: flow.workspace},
-        %{
-          "provider" => provider.name,
-          "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
-          "settings" =>
-            Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
-        },
-        :workspace
-      )
+      scope = %{scope | workspace: flow.workspace}
+
+      attrs = %{
+        "provider" => provider.name,
+        "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
+        "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
+      }
+
+      case Connections.reach_at_add(scope, flow.workspace, params["everywhere"] == "true") do
+        %{"applies_to" => "all"} = reach ->
+          Connections.create_provider(scope, Map.merge(attrs, reach))
+
+        %{"applies_to" => "selected"} ->
+          Connections.create_provider(scope, attrs, :workspace)
+      end
     end
   end
 
@@ -1946,6 +1972,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             spellcheck="false"
             required
           />
+          <.input
+            :if={Apiary.Edition.scope_setting?(@current_scope)}
+            field={@form[:everywhere]}
+            id="set-up-model-everywhere"
+            type="checkbox"
+            label={
+              gettext("Available to every workspace in %{organisation}",
+                organisation: @current_scope.organisation.name
+              )
+            }
+          />
         </div>
         <div :if={length(@runtimes) == 1} id="set-up-model-runtime" class="grid gap-1">
           <p class="text-[13.5px]/5 font-medium">{gettext("Runtime")}</p>
@@ -1966,7 +2003,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           options={for model <- @models, do: {model.title || model.id, model.id}}
         />
         <p id="set-up-model-later" class="text-[13px]/5 text-muted">
-          {later_line(@source, @organisation_secrets)}
+          {later_line(@source, @everywhere, @organisation_secrets)}
         </p>
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={@page_path} />

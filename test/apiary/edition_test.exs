@@ -31,6 +31,18 @@ defmodule Apiary.EditionTest do
     end
   end
 
+  describe "scope_setting?/1" do
+    test "the core shows no setting of where a connection applies", %{scope: scope} do
+      refute Apiary.Edition.Core.scope_setting?(scope)
+      refute Apiary.Edition.scope_setting?(scope)
+    end
+
+    test "a test's stub shows it", %{scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      assert Apiary.Edition.scope_setting?(scope)
+    end
+  end
+
   describe "machines_who_may/3" do
     test "the core answers who acts on the instance's pool, and on a pool of the workspace",
          %{scope: scope} do

@@ -688,9 +688,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         })
 
       {:ok, runtime} =
-        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
-
-      {:ok, runtime} = Connections.put_workspace(scope, runtime, scope.workspace.id)
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: [scope.workspace.id]
+        })
 
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})
