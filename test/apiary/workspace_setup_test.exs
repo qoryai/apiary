@@ -350,4 +350,177 @@ defmodule Apiary.WorkspaceSetupTest do
              } = WorkspaceSetup.read(ctx.workspace)
     end
   end
+
+  describe "the rules of the set-up flow" do
+    defmodule NoAdapterRead do
+      # Nobody reads the instance's adapters in an organisation (`adapter.read`).
+      def check(_scope, :"adapter.read", _subject), do: {:error, :forbidden}
+      def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+    end
+
+    @software Apiary.Lingo.Domain.Software
+
+    defp targets!(adapter_id), do: set!(Node, adapter_id, targets: true)
+
+    test "sources? and destinations?: a connected connection of an adapter for the type",
+         ctx do
+      organisation = ctx.scope.organisation
+      refute WorkspaceSetup.sources?(organisation, @software)
+      refute WorkspaceSetup.destinations?(organisation, @software)
+
+      # Pending is not connected.
+      %{adapter: pending} = connectable_adapter_fixture()
+      {_connection, _nonce} = connection_fixture(ctx.scope, pending, :pending)
+      refute WorkspaceSetup.sources?(organisation, @software)
+
+      %{adapter: adapter} = connectable_adapter_fixture()
+      {connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
+      assert WorkspaceSetup.sources?(organisation, @software)
+      refute WorkspaceSetup.destinations?(organisation, @software)
+
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) ==
+               MapSet.new([adapter.id])
+
+      targets!(adapter.id)
+      assert WorkspaceSetup.destinations?(organisation, @software)
+
+      # An adapter that serves another type counts for that type alone.
+      set!(Node, adapter.id, domains: ["general"])
+      refute WorkspaceSetup.sources?(organisation, @software)
+      refute WorkspaceSetup.destinations?(organisation, @software)
+      assert WorkspaceSetup.sources?(organisation, Apiary.Lingo.Domain.General)
+
+      # An ended connection counts for none.
+      set!(Node, adapter.id, domains: nil)
+
+      set!(Connection, connection.id,
+        state: :ended,
+        ended_at: DateTime.utc_now(),
+        ended_reason: "adapter_reported"
+      )
+
+      refute WorkspaceSetup.sources?(organisation, @software)
+
+      # Another organisation's connection counts for none.
+      refute WorkspaceSetup.sources?(sign_up_fixture().organisation, @software)
+    end
+
+    @tag needs: [:factory, :secrets]
+    test "model?: a provider with a key and the organisation's default", ctx do
+      organisation = ctx.scope.organisation
+      refute WorkspaceSetup.model?(organisation)
+
+      {:ok, provider} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-flow-1"}]
+        })
+
+      refute WorkspaceSetup.model?(organisation)
+
+      # A choice of the workspace is no default of the organisation.
+      {:ok, _} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
+      refute WorkspaceSetup.model?(organisation)
+
+      {:ok, _} =
+        ModelChoices.put_choice(ctx.scope, :organisation, %{provider: provider.public_id})
+
+      assert WorkspaceSetup.model?(organisation)
+      assert WorkspaceSetup.done?(:model, organisation, {@software, nil})
+      refute WorkspaceSetup.model?(sign_up_fixture().organisation)
+    end
+
+    test "sources_used? and destinations_used?: a row of the tick list ticked", ctx do
+      %{scope: scope, workspace: main} = ctx
+      collection = collection_fixture(scope)
+
+      # Assigned to Main with its Backlog on: a work source used; its adapter has no
+      # targets, so no destination.
+      assert WorkspaceSetup.sources_used?(main, @software)
+      refute WorkspaceSetup.destinations_used?(main, @software)
+
+      set!(Collection, collection.id, backlog: false)
+      refute WorkspaceSetup.sources_used?(main, @software)
+
+      targets!(collection.adapter_id)
+      assert WorkspaceSetup.destinations_used?(main, @software)
+
+      # A collection with no target is in no destination list.
+      set!(Collection, collection.id, target_system: nil, target_path: nil)
+      refute WorkspaceSetup.destinations_used?(main, @software)
+
+      # A collection of another workspace counts for that workspace alone.
+      set!(Collection, collection.id,
+        target_system: "code.example.com",
+        target_path: "acme/repo",
+        backlog: true
+      )
+
+      other = workspace_fixture(scope.organisation, "Other")
+      set!(Collection, collection.id, workspace_id: other.id)
+      refute WorkspaceSetup.sources_used?(main, @software)
+      refute WorkspaceSetup.destinations_used?(main, @software)
+      assert WorkspaceSetup.sources_used?(other, @software)
+      assert WorkspaceSetup.destinations_used?(other, @software)
+    end
+
+    test "done?/3: Name once the workspace exists; no step of a workspace before", ctx do
+      organisation = ctx.scope.organisation
+      _collection = collection_fixture(ctx.scope)
+
+      refute WorkspaceSetup.done?(:name, organisation, {@software, nil})
+      assert WorkspaceSetup.done?(:name, organisation, {@software, ctx.workspace})
+
+      for step <- [:sources_used, :destinations_used, :test],
+          do: refute(WorkspaceSetup.done?(step, organisation, {@software, nil}))
+
+      assert WorkspaceSetup.done?(:sources, organisation, {@software, nil})
+      assert WorkspaceSetup.done?(:sources_used, organisation, {@software, ctx.workspace})
+      refute WorkspaceSetup.done?(:destinations, organisation, {@software, nil})
+      refute WorkspaceSetup.done?(:test, organisation, {@software, ctx.workspace})
+
+      assert Keyword.keys(WorkspaceSetup.flow()) ==
+               [:sources, :destinations, :model, :name, :sources_used, :destinations_used, :test]
+    end
+
+    test "collections/3: the organisation's rows by adapter, each with its workspace", ctx do
+      %{scope: scope, workspace: main} = ctx
+      other = workspace_fixture(scope.organisation, "Other")
+      b = collection_fixture(scope, external_ref: "b-repo")
+      a = collection_fixture(scope, workspace_id: other.id, external_ref: "a-repo")
+      free = collection_fixture(scope, workspace_id: nil, external_ref: "c-repo")
+      set!(Node, b.adapter_id, name: "Beta")
+      set!(Node, a.adapter_id, name: "alpha")
+      set!(Node, free.adapter_id, name: "Gamma")
+      targets!(a.adapter_id)
+
+      # Another organisation's collection, and an ended one, are in no list.
+      _theirs = collection_fixture(sign_up_fixture().scope)
+      ended = collection_fixture(scope)
+      set!(Collection, ended.id, ended_at: DateTime.utc_now(), ended_reason: "not_listed")
+
+      rows = fn list ->
+        for {adapter, rows} <- WorkspaceSetup.collections(scope, @software, list),
+            do:
+              {adapter.name, Enum.map(rows, &{&1.collection.id, &1.workspace && &1.workspace.id})}
+      end
+
+      assert rows.(:sources) == [
+               {"alpha", [{a.id, other.id}]},
+               {"Beta", [{b.id, main.id}]},
+               {"Gamma", [{free.id, nil}]}
+             ]
+
+      # Destinations: the collections with a target, of an adapter with targets.
+      assert rows.(:destinations) == [{"alpha", [{a.id, other.id}]}]
+
+      # A collection with no items is in no work source list.
+      set!(Collection, b.id, items: false)
+      assert [{"alpha", _}, {"Gamma", _}] = rows.(:sources)
+
+      # A person who may not read the instance's adapters gets no row.
+      :ok = Edition.put_test_stub(NoAdapterRead)
+      assert WorkspaceSetup.collections(scope, @software, :sources) == []
+    end
+  end
 end

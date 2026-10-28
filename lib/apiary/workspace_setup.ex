@@ -15,13 +15,13 @@ defmodule Apiary.WorkspaceSetup do
   #     key, and the organisation's default (level 6). The runtime is checked when the
   #     choice is saved, so the rule resolves none;
   #   * `name?/1`: the workspace exists;
-  #   * `sources_used?/1`: the edition's `work_source_ready/1` lists an adapter;
-  #   * `destinations_used?/1`: a live collection assigned to the workspace, of a
-  #     connection of its organisation that is connected, of an adapter in use with
-  #     `targets` true;
+  #   * `sources_used?/2`: a row of its tick list is ticked: a collection assigned to
+  #     the workspace with its Backlog on;
+  #   * `destinations_used?/2`: a row of its tick list is ticked: a collection with a
+  #     target assigned to the workspace;
   #   * `test?/1`: the edition's `test_run_passed?/1`.
   #
-  # The Overview's setup list asks the edition its four rules (`read/2`):
+  # The Overview's setup list reads the edition's four rules (`read/2`):
   # `c:Apiary.Edition.work_source_ready/1`, `c:Apiary.Edition.machines_ready/1`,
   # `c:Apiary.Edition.model_key_ready?/1` and `c:Apiary.Edition.test_run_passed?/1`, which
   # may count what serves the workspace from another organisation. The core's edition
@@ -47,7 +47,7 @@ defmodule Apiary.WorkspaceSetup do
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
   # line. `collections/3` is the rows of the tick lists of Work sources used and
   # Destinations used, to a person who may read the instance's adapters. None of the
-  # others asks access: the page's reader reads them.
+  # others checks access: the page's reader reads them.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -166,10 +166,12 @@ defmodule Apiary.WorkspaceSetup do
   def done?(:model, organisation, _type), do: model?(organisation)
   def done?(:name, _organisation, {_domain, workspace}), do: name?(workspace)
   def done?(_step, _organisation, {_domain, nil}), do: false
-  def done?(:sources_used, _organisation, {_domain, workspace}), do: sources_used?(workspace)
 
-  def done?(:destinations_used, _organisation, {_domain, workspace}),
-    do: destinations_used?(workspace)
+  def done?(:sources_used, _organisation, {domain, workspace}),
+    do: sources_used?(workspace, domain)
+
+  def done?(:destinations_used, _organisation, {domain, workspace}),
+    do: destinations_used?(workspace, domain)
 
   def done?(:test, _organisation, {_domain, workspace}), do: test?(workspace)
 
@@ -220,7 +222,8 @@ defmodule Apiary.WorkspaceSetup do
   @doc false
   # model?/1 is whether the chain of model choices that resolves for `organisation`'s runs
   # has a model provider with a key and the organisation's default (level 6) on that chain.
-  # False on an operator's chain whose operator the edition does not name.
+  # False on an operator's chain for which `c:Apiary.Edition.operator_chain_organisation/1`
+  # returns nil.
   @spec model?(Organisation.t()) :: boolean
   def model?(%Organisation{id: organisation_id}) do
     case ModelChoices.chain_owner(organisation_id) do
@@ -239,27 +242,27 @@ defmodule Apiary.WorkspaceSetup do
   def name?(workspace), do: match?(%Workspace{}, workspace)
 
   @doc false
-  # sources_used?/1 is whether the edition counts an adapter whose collections are
-  # assigned to `workspace` (`c:Apiary.Edition.work_source_ready/1`).
-  @spec sources_used?(Workspace.t()) :: boolean
-  def sources_used?(%Workspace{} = workspace), do: Edition.work_source_ready(workspace) != []
+  # sources_used?/2 is whether a row of the tick list Work sources used, of `workspace` of
+  # the type `domain`, is ticked: a collection of the list (`collections/3`, `:sources`)
+  # assigned to `workspace` with its Backlog on.
+  @spec sources_used?(Workspace.t(), module) :: boolean
+  def sources_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+    organisation_id
+    |> list_query(domain, :sources)
+    |> where([c], c.workspace_id == ^workspace_id and c.backlog)
+    |> Repo.exists?()
+  end
 
   @doc false
-  # destinations_used?/1 is whether `workspace` has a live collection of a connection of
-  # its organisation that is connected, of an adapter in use with `targets` true.
-  @spec destinations_used?(Workspace.t()) :: boolean
-  def destinations_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}) do
-    Repo.exists?(
-      from c in Collection,
-        join: k in Connection,
-        on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
-        join: n in Node,
-        on: n.id == c.adapter_id,
-        where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
-        where: is_nil(c.ended_at),
-        where: k.state == :connected and is_nil(k.ended_at),
-        where: n.kind == :adapter and is_nil(n.deleted_at) and n.targets == true
-    )
+  # destinations_used?/2 is whether a row of the tick list Destinations used, of
+  # `workspace` of the type `domain`, is ticked: a collection of the list
+  # (`collections/3`, `:destinations`) assigned to `workspace`.
+  @spec destinations_used?(Workspace.t(), module) :: boolean
+  def destinations_used?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+    organisation_id
+    |> list_query(domain, :destinations)
+    |> where([c], c.workspace_id == ^workspace_id)
+    |> Repo.exists?()
   end
 
   @doc false
@@ -285,19 +288,9 @@ defmodule Apiary.WorkspaceSetup do
         list
       ) do
     if Access.can?(scope, :"adapter.read", organisation) do
-      name = domain.name()
-
-      from(c in Collection,
-        join: k in Connection,
-        on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
-        join: n in Node,
-        on: n.id == c.adapter_id,
+      from([c, k, n] in list_query(organisation_id, domain, list),
         left_join: w in Workspace,
         on: w.id == c.workspace_id,
-        where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
-        where: k.state == :connected and is_nil(k.ended_at),
-        where: n.kind == :adapter and is_nil(n.deleted_at),
-        where: is_nil(n.domains) or ^name in n.domains,
         order_by: [
           asc: fragment("lower(?)", n.name),
           asc: n.id,
@@ -306,7 +299,6 @@ defmodule Apiary.WorkspaceSetup do
         ],
         select: {n, %{collection: c, connection: k, workspace: w}}
       )
-      |> where_list(list)
       |> Repo.all()
       |> Enum.chunk_by(fn {adapter, _row} -> adapter.id end)
       |> Enum.map(fn [{adapter, _row} | _rest] = rows ->
@@ -315,6 +307,24 @@ defmodule Apiary.WorkspaceSetup do
     else
       []
     end
+  end
+
+  # The collections of a tick list (`collections/3`), as `[c, k, n]`: collection,
+  # connection, adapter.
+  defp list_query(organisation_id, domain, list) do
+    name = domain.name()
+
+    from(c in Collection,
+      join: k in Connection,
+      on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+      join: n in Node,
+      on: n.id == c.adapter_id,
+      where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
+      where: k.state == :connected and is_nil(k.ended_at),
+      where: n.kind == :adapter and is_nil(n.deleted_at),
+      where: is_nil(n.domains) or ^name in n.domains
+    )
+    |> where_list(list)
   end
 
   defp where_list(query, :sources), do: where(query, [c, _k, n], c.items and n.items)
