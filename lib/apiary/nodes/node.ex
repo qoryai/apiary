@@ -115,6 +115,13 @@ defmodule Apiary.Nodes.Node do
     field :item_noun_one, :string
     field :item_noun_other, :string
     field :items, :boolean, default: true
+    # An adapter's alone (`nodes_targets_check`): whether its collections can have a
+    # target, a place where a run's changes go, as its latest start's description's source
+    # role says (`targets`): true where it says so, false where it says nothing; nil
+    # before its first start and on every other node. Set at each start
+    # (`source_role_changeset/2`) and never cast. A run's work credential comes only from
+    # a collection of an adapter with true (`Apiary.Runs.RunCredentials`).
+    field :targets, :boolean
     # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
     # words for one collection and for many, both or neither (nil for the default,
     # "collection" and "collections"), beside `items` false too.
@@ -411,18 +418,20 @@ defmodule Apiary.Nodes.Node do
   # The changeset of what the source role of an adapter's description says of its items
   # and its collections (`Apiary.Integrations.Description.item_noun/1`, `items?/1`,
   # `collection_noun/1` and `access/1`, which the description's schema has checked): its
-  # words for one item and for many, or none, whether it reports items, its words for one
-  # collection and for many, or none, and its line on how to change, at the source, which
+  # words for one item and for many, or none, whether it reports items, whether its
+  # collections can have a target (`Apiary.Integrations.Description.targets?/1`), its
+  # words for one collection and for many, or none, and its line on how to change, at the source, which
   # collections it reaches, and the names of the secrets it stores in Qory Apiary
   # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
   # items of its work credential with the description's exact `egress_hosts`
   # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
   # none), and its guide (`Apiary.Integrations.Description.source_guide/1`, nil for none).
-  # A description with no source role gives the defaults: no words, items, no line, no
-  # names, no apply items and no guide. The database holds the words and items to the
-  # same (`nodes_items_check`, `nodes_collection_noun_check`), and the line, the names,
-  # the apply items and the guide to adapters (`nodes_source_access_check`,
-  # `nodes_secret_names_check`, `nodes_source_apply_check`, `nodes_source_guide_check`).
+  # A description with no source role gives the defaults: no words, items, no targets, no
+  # line, no names, no apply items and no guide. The database holds the words and items
+  # to the same (`nodes_items_check`, `nodes_collection_noun_check`), and the targets,
+  # the line, the names, the apply items and the guide to adapters
+  # (`nodes_targets_check`, `nodes_source_access_check`, `nodes_secret_names_check`,
+  # `nodes_source_apply_check`, `nodes_source_guide_check`).
   # `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
   # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
@@ -446,6 +455,7 @@ defmodule Apiary.Nodes.Node do
       item_noun_one: item_noun && item_noun.one,
       item_noun_other: item_noun && item_noun.other,
       items: Description.items?(description),
+      targets: Description.targets?(description),
       collection_noun_one: collection_noun && collection_noun.one,
       collection_noun_other: collection_noun && collection_noun.other,
       source_access: Description.access(description),
@@ -455,6 +465,7 @@ defmodule Apiary.Nodes.Node do
       source_guide: Description.source_guide(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
+    |> check_constraint(:targets, name: :nodes_targets_check)
     |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)
