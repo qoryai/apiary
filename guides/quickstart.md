@@ -313,7 +313,7 @@ is done:
 | **Work sources used** | Main takes tickets from at least one ticked collection: the collection is Main's, with its Backlog on. |
 | **Destinations used** | At least one ticked repository is Main's. |
 | **Harness** | Main has a saved harness choice. |
-| **Machines** | A node pool that serves Main's runs has a key in use, and so does the gateway that the pool's **Gateway** choice leads to. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
+| **Machines** | A node pool that serves Main's runs has a key in use, and so does the gateway the pool's runs go through. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
 | **Test run** | The step shows **Test run passed**. |
 
 **Run the test** shows once **Machines** is done, so you can leave the other steps for
@@ -337,7 +337,7 @@ later.
      `harness.yaml`;
    - **A harness repository**: choose a repository linked to Acme and, in **Branch or
      tag**, a branch or tag. **Continue** reads the repository and pins the commit that
-     the branch or tag points to; a read that failed shows why.
+     the branch or tag points to; the step shows why the read failed.
 
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
    whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
@@ -345,7 +345,7 @@ later.
    choice.
 4. **Machines.** **Which machines run the runs in Main?** shows the node pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
-   shows **Ready** with its gateway, or **Not ready** with what is missing. The step
+   shows **Ready** with its gateway, or **Not ready** with the reason. The step
    changes nothing. The test run passes only through the instance's gateway, set
    with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
    `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node

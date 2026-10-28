@@ -813,7 +813,7 @@ With the `factory` feature, both pages have more steps:
   - **Model** adds a model provider's key and the organisation's default model. Only
     owners and admins add a model key.
   - After **Name**: **Work sources used** and **Destinations used**, two tick lists of
-    the organisation's collections; **Harness**; **Machines**, which reads the node pools
+    the organisation's collections; **Harness**; **Machines**, which shows the node pools
     that serve the workspace's runs and changes nothing; and **Test run**. **Create
     workspace** opens **Work sources used** in place of the overview. If another owner
     creates Main while the page is open, the page opens Main's first step that is not
