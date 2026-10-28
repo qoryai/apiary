@@ -188,6 +188,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   lines in the forms are gone.
   **Type** is a choice field, each type's name with its line under it, in place of a
   select.
+- The set-up is split in two, each part with its step count and Back: the instance set-up,
+  which an instance admin goes through once (Your account, one step per adapter, Mail),
+  and the organisation set-up (Workspace, Work source). Back goes only to steps of the
+  same part.
 <!-- feature: factory -->
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
   **Workspace settings › Workflow** have a column **About this step** beside the form.
