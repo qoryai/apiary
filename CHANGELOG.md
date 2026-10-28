@@ -130,9 +130,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stops its tickets, and in Destinations used a repository whose tickets come in shows
   “tickets come in”. Where the edition allows more than one workspace, a collection in
   another workspace shows “In Billing (cannot be ticked)”. With nothing connected, a list
-  shows “Acme has no work source connected yet.”, with a link to **Work sources** for a
-  person who may connect. Owners and admins tick; owners, admins and members read the
-  settings pages.
+  shows “Acme has no work source connected yet.”, or the same for a work destination,
+  with a link to **Work sources** or **Work destinations** for a person who may connect.
+  Owners and admins tick; owners, admins and members read the settings pages.
 - **Harness** sets the harness of the workspace's runs, one of three: **Qory harness**,
   `github.com/qoryai/harness` at the commit this release pins, `fe3b3ab`; **The harness
   in each repository**, where each run reads its repository's `qory.yaml` or
@@ -146,10 +146,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   built-in harness.
 - **Machines** shows the node pools that run the workspace's runs: the workspace's pools,
   or **The instance's pool** while it has none, selected where it is the only one. Each
-  shows “Ready · gateway: <gateway>”, or that it is not ready and what it lacks: a pool,
-  an active key, or a gateway with an active key. Under a pool that is not ready, an
-  instance admin has **Check the nodes** for the instance's pool; owners and admins have
-  a link to the page of a pool of the workspace; anyone else reads who acts, such as
+  shows “Ready · gateway: <gateway>”, or **Not ready** and why: no pool, no active key, a
+  gateway choice of Direct, no gateway, a gateway the pool's runs may not go through, or
+  a gateway with no active key. Under a pool that is not ready, an instance admin has
+  **Check the nodes** for the instance's pool; owners and admins have a link to the page
+  of a pool of the workspace; anyone else reads who acts, such as
   “Only an instance admin checks the instance's pool and gateway.” The step changes
   nothing, and is done once a pool is ready.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
