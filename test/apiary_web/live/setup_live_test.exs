@@ -67,12 +67,16 @@ defmodule ApiaryWeb.SetupLiveTest do
 
       refute render(lv) =~ "You become this instance's admin."
 
-      # The first step of the set-up: the instance's connections and the workspace after it.
+      # The first step of the instance's set-up, whose last step is Mail. The organisation's
+      # steps, Workspace and Work source, are a progress apart, not shown here.
       assert [{"Your account", :current} | rest] = steps(lv)
       names = Enum.map(rest, &elem(&1, 0))
 
-      assert Enum.find_index(names, &(&1 == "Mail")) <
-               Enum.find_index(names, &(&1 == "Workspace"))
+      assert List.last(names) == "Mail"
+      refute "Workspace" in names
+      refute "Work source" in names
+      refute has_element?(lv, "#set-up-group-workspace")
+      refute has_element?(lv, "#set-up-next")
 
       assert Enum.all?(rest, &(elem(&1, 1) in [:to_come, :done]))
       assert count(lv) == "Step 1 of #{length(rest) + 1}"

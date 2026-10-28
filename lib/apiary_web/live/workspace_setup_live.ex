@@ -13,7 +13,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # is, with the edition's line on which workspace this is
   # (`c:Apiary.Edition.first_workspace_line/1`). Anyone else is told who sets it up
   # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
-  # edition lists 2 steps or more (the core lists them none) and the context
+  # edition lists 2 steps or more of the current step's progress (the core lists them
+  # none) and the context
   # where the edition has a line (`c:Apiary.Edition.set_up_context/2`). Where a workspace
   # marked for deletion still has the name Main, the page says to restore it.
   # The page listens to the organisation's workspaces
@@ -47,7 +48,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # organisation's page where they reach no workspace.
   #
   # Every step has Back to the step before it in the indicator, where that step has a
-  # page. Work source is of the `factory` feature, and the module reference leaves the
+  # page. The indicator shows the organisation's progress, whose first step is Workspace:
+  # Workspace has no Back to the instance's steps. Work source is of the `factory` feature, and the module reference leaves the
   # module out.
   @moduledoc false
 

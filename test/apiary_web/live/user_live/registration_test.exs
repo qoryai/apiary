@@ -331,6 +331,14 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       Apiary.Mail.put_test_source(:none)
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
+      # The organisation's progress alone: the instance's steps belong to its admin.
+      assert steps(lv) ==
+               [{"Your account", :current}, {"Workspace", :to_come} | source]
+
+      assert count(lv) == "Step 1 of #{length(source) + 2}"
+      assert has_element?(lv, "#set-up-group-workspace", "Set up your workspace")
+      refute has_element?(lv, "#set-up-group-connect")
+
       assert has_element?(
                lv,
                "#set-up-line",

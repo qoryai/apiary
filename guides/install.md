@@ -752,17 +752,20 @@ the log is one JSON object per line ([Logs](#logs)), and the sentence above is t
 instance's organisation and your account as its owner, an instance admin, and signs you
 in. It creates no workspace.
 
-Each page of the set-up shows the list of its steps: **Your account**, the steps under
-**Connect Qory Apiary**, then those under **Set up your workspace**, with a mark on each
-step done and **Skipped** under each step skipped. On a window narrower than 1280 px,
-the list is a bar with **Step 2 of 4** and **All steps**, which opens the list. Once
-you are signed in, each step done or skipped is a link to that step where it has a
-page; **Your account** is not. **Back**, at the foot of a step's form, opens the step
-before it. A step you open again shows what you saved there, and
-you can change it. The step **Workspace**, opened again, shows the workspace's type and
-**Continue**: the type can't be changed. A column headed **About this step**, beside
-the form or under it on a window narrower than 1024 px, says what the step does. Two
-pages follow the set-up link's page:
+The set-up has two progresses, each with a separate list of steps. The instance's
+progress, set up once by an instance admin, is **Your account** and the steps under
+**Connect Qory Apiary**. The organisation's progress, set up for every organisation, is
+the steps under **Set up your workspace**. Each page of the set-up shows the list of its
+progress alone, with a mark on each step done and **Skipped** under each step skipped.
+On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and **All
+steps**, which opens the list. Each progress counts from step 1. Once you are signed in,
+each step done or skipped is a link to that step where it has a page; **Your account**
+is not. **Back**, at the foot of a step's form, opens the step before it in the same
+progress, so **Workspace** has no **Back**. A step you open again shows what you saved
+there, and you can change it. The step **Workspace**, opened again, shows the
+workspace's type and **Continue**: the type can't be changed. A column headed **About
+this step**, beside the form or under it on a window narrower than 1024 px, says what
+the step does. Two pages follow the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
