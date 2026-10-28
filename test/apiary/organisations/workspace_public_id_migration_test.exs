@@ -36,8 +36,8 @@ defmodule Apiary.Organisations.WorkspacePublicIdMigrationTest do
     id = Ecto.UUID.generate()
 
     Repo.query!(
-      "INSERT INTO workspaces (id, organisation_id, name, slug, domain, inserted_at, " <>
-        "updated_at) VALUES ($1, $2, $3, $4, 'software', now(), now())",
+      "INSERT INTO workspaces (id, organisation_id, name, slug, domain, type, inserted_at, " <>
+        "updated_at) VALUES ($1, $2, $3, $4, 'software', 'qory.software', now(), now())",
       [Ecto.UUID.dump!(id), Ecto.UUID.dump!(organisation.id), name, String.downcase(name)]
     )
 

@@ -281,6 +281,45 @@ defmodule Apiary.Lingo.DomainTest do
     end
   end
 
+  describe "a workspace's type" do
+    test "a new workspace stores the key of its domain's definition" do
+      %{workspace: workspace} = sign_up_fixture()
+      assert workspace.type == "qory.software"
+      assert Repo.reload!(workspace).type == "qory.software"
+    end
+
+    test "is set at creation from the chosen domain, and never from the attributes" do
+      for {name, key} <- [
+            {"software", "qory.software"},
+            {"general", "qory.general"},
+            {"example", "qory.example"}
+          ] do
+        changeset =
+          Workspace.create_changeset(%Workspace{domain: nil}, %{
+            name: "Ops",
+            domain: name,
+            type: "acme.other"
+          })
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :type) == key
+      end
+    end
+
+    test "is not set for a domain no module has" do
+      changeset =
+        Workspace.create_changeset(%Workspace{domain: nil}, %{name: "Ops", domain: "unknown"})
+
+      refute changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :type) == nil
+    end
+
+    test "a rename leaves the type as it is" do
+      changeset = Workspace.changeset(%Workspace{type: "qory.example"}, %{name: "Ops", type: "x"})
+      assert Ecto.Changeset.get_field(changeset, :type) == "qory.example"
+    end
+  end
+
   describe "Apiary.Lingo.Domain" do
     test "target/2 asks the workspace's domain, and labels that are not a map name none" do
       workspace = %Workspace{domain: "software"}
