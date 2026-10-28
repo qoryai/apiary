@@ -92,8 +92,8 @@ the same list. Two pages follow:
    instance has an adapter.
 2. The workspace set-up, at `http://localhost:4100/acme/set-up`. Its first page, **What
    will this workspace do?**, shows the card **Software factory**, whose words this
-   guide uses: select **Choose**. At the step **Name this workspace**, keep the name
-   `Main` and select **Create workspace**.
+   guide uses: select **Choose**. At the step **Name**, keep the name `Main` and select
+   **Create workspace**.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,

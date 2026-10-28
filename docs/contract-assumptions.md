@@ -443,8 +443,9 @@ With no choice, the Qory harness applies: the harness of the workspace type's de
 (`Apiary.Lingo.Domain.Definition`) at its pinned commit. Under the harness in each
 repository, the walk reads the target's harness file at the target's head, in a
 workspace whose domain has harness files and for a target that a live collection of the
-workspace has; the version that read returned is the run's `target_version`. A file whose harness section has `extends` applies, and the documents
-have no `harness`: the machine composes the file at `target_version`. Otherwise the stored
+workspace has; the version that read returned is the run's `target_version`. A file
+whose harness section has `extends` applies, and the documents have no `harness`: the
+machine composes the file at `target_version`. Otherwise the stored
 stacks' document applies and is the documents' `harness`, as `{"harness": <section>}`. An
 organisation's harness document can be stored at five levels, the most specific first:
 the target and the workflow, the target, the workspace and the workflow, the workspace,

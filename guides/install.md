@@ -560,9 +560,9 @@ The gateway's key allows stored secrets, which a test run with a model key needs
 that a person makes on **Nodes** never allows them, so a test run through a gateway added
 there ends before a machine starts it. For a workspace with no node pool in use, the
 set-up's step **Machines** shows the instance's pool as ready once the pool and the
-gateway each have a key in use. An instance admin checks them in **Instance settings › Nodes**: each is ready
-when **State** shows **Running** or **Last seen**. If one shows **Never seen**, open the
-logs of the pool and the gateway on the instance's host.
+gateway each have a key in use. An instance admin checks them in **Instance settings ›
+Nodes**: each is ready when **State** shows **Running** or **Last seen**. If one shows
+**Never seen**, open the logs of the pool and the gateway on the instance's host.
 
 The variables are read at boot. A malformed value, the same name for the pool and the
 gateway, a name that an adapter installed with Qory Apiary has, or a pool or gateway
@@ -755,19 +755,19 @@ in. It creates no workspace.
 The set-up has two progresses, each with a separate list of steps. The instance's
 progress, set up once by an instance admin, is **Your account** and the steps under
 **Connect Qory Apiary**. The organisation's progress sets up a workspace: the steps under
-**For Acme**, which the organisation does once, then those under **For Main**, which each
-workspace does (**For the new workspace** until the workspace exists). Each page of the
-set-up shows the list of its progress alone, with a mark on each step done and
-**Skipped** under each step skipped.
+**For Main** (**For the new workspace** until the workspace exists), and with the
+`factory` feature, first those under **For Acme**, which the organisation does once.
+Each page of the set-up shows the list of its progress alone, with a mark on each step
+done and **Skipped** under each step skipped.
 On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and **All
 steps**, which opens the list. Each progress counts from step 1. Once you are signed in,
 each step done or skipped is a link to that step where it has a page; **Your account**
 is not. **Back**, at the foot of a step's form, opens the step before it in the same
-progress, so the first step after **Your account** has no **Back**. A step you open
+progress, so the first step with a page in each progress has no **Back**. A step you open
 again shows what you saved there, and you can change it. The step **Name**, opened again,
-shows the workspace's name and type and **Continue**: the type can't be changed. A
-column headed **About this step**, beside the form or under it on a window narrower than
-1024 px, says what the step does. Two pages follow the set-up link's page:
+shows the workspace's name and type and **Continue**: the type can't be changed. A column
+headed **About this step**, beside the form or under it on a window narrower than 1024
+px, says what the step does. Two pages follow the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
@@ -815,7 +815,9 @@ With the `factory` feature, both pages have more steps:
   - After **Name**: **Work sources used** and **Destinations used**, two tick lists of
     the organisation's collections; **Harness**; **Machines**, which reads the node pools
     that serve the workspace's runs and changes nothing; and **Test run**. **Create
-    workspace** opens **Work sources used** in place of the overview.
+    workspace** opens **Work sources used** in place of the overview. If another owner
+    creates Main while the page is open, the page opens Main's first step that is not
+    done.
 
   [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
   steps. Until the test run passes, opening Main opens its next step in place of the
@@ -898,13 +900,13 @@ bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")
 On an instance that is not set up, it sets it up: it creates the organisation, its
 workspace Main and the account as its owner, makes the set-up link work no more, and
 emails the account its log-in link. Unlike the set-up link, it creates Main itself, of the
-type **Software factory**, so the type cards and the step **Name** do not show. Without the name it is
-refused and says so. Should the email not go out, the instance is set up all the same,
-and the command says to ask for a link at `/users/log-in` once the mail settings work; it
-never prints the address or the link. Without mail it prints a password link for the
-account instead, which works once, for an hour, and never the address: open it to set
-your password. Should the set-up link be used a moment before, the command does what it
-does on any instance.
+type **Software factory**, so the type cards do not show, and the step **Name** is done.
+Without the name it is refused and says so. Should the email not go out, the instance is
+set up all the same, and the command says to ask for a link at `/users/log-in` once the
+mail settings work; it never prints the address or the link. Without mail it prints a
+password link for the account instead, which works once, for an hour, and never the
+address: open it to set your password. Should the set-up link be used a moment before,
+the command does what it does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the

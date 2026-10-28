@@ -1215,11 +1215,11 @@ product's mark and the theme menu.
   Main" ("For the new workspace" before it exists) for the steps each workspace does
   (Name, Work sources used, Destinations used, Harness, Machines, Test run). Each step has
   its mark: a filled check when done, a ring in the primary colour and
-  `aria-current="step"` when current, a dash and **Skipped** under a step passed over. Each step done or skipped is a link to that step
-  where it has a page, before the current step or after it; Your account is not, and on
-  the pages read signed out, only Invitation is. An edition's note about a step goes
-  under its name. Below
-  1280 px the indicator is a bar, "Step 3 of 9: Model", with **All steps**, a
+  `aria-current="step"` when current, a dash and **Skipped** under a step passed over.
+  Each step done or skipped is a link to that step where it has a page, before the
+  current step or after it; Your account is not, and on the pages read signed out, only
+  Invitation is. An edition's note about a step goes under its name. Below 1280 px the
+  indicator is a bar, "Step 3 of 9: Model", with **All steps**, a
   disclosure that opens the list; Escape closes it. A page with one step shows no
   indicator.
 - **Back** (`SetUpComponents.back/1`) is the first button at the form's foot, left of the
