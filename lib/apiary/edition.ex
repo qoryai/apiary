@@ -49,7 +49,8 @@ defmodule Apiary.Edition do
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0`
     (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
   - **What a person is shown**: `hidden/1`, features and parts
-    (`Apiary.Features.visible?/2`).
+    (`Apiary.Features.visible?/2`); `scope_setting?/1`, whether the Add forms show the
+    setting of the workspaces a thing reaches.
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
 
@@ -742,6 +743,17 @@ defmodule Apiary.Edition do
   """
   @callback hidden(Scope.t()) :: [Apiary.Features.name()]
 
+  @doc """
+  Whether the scope's person sees, on each form that adds a model provider, a runtime, an
+  integration, a service or a connection to an adapter, the setting `Available to every
+  workspace in %{organisation}`, off by default. With the setting on, the thing added
+  reaches every workspace of the organisation (`applies_to` `all`); with it off, or
+  where the form does not show it, it reaches the workspace the form is in alone
+  (`selected`, `Apiary.Connections.reach_at_add/3`). The reach is set at the add and
+  never changed after. The core's answer is false.
+  """
+  @callback scope_setting?(Scope.t()) :: boolean
+
   # Runtime
 
   @doc "Reads and checks the edition's settings at boot; raises on a wrong one."
@@ -815,6 +827,7 @@ defmodule Apiary.Edition do
     features: 0,
     subject_kinds: 0,
     hidden: 1,
+    scope_setting?: 1,
     boot!: 0,
     children: 0,
     crontab: 0,

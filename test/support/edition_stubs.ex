@@ -55,6 +55,15 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule ScopeSetting do
+    @moduledoc """
+    Each form that adds a thing shows the setting "Available to every workspace in
+    <organisation>" (`c:Apiary.Edition.scope_setting?/1`), as an edition with several
+    workspaces does.
+    """
+    def scope_setting?(_scope), do: true
+  end
+
   defmodule SignUpOpen do
     @moduledoc """
     A sign-up without an invitation creates an organisation

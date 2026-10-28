@@ -223,6 +223,11 @@ defmodule Apiary.Edition.Core do
   @impl true
   def hidden(_scope), do: []
 
+  # The core has one workspace: what a person adds reaches it alone, and no form shows the
+  # setting.
+  @impl true
+  def scope_setting?(_scope), do: false
+
   @impl true
   def audit_details(_scope, _organisation_id, details), do: details
 
