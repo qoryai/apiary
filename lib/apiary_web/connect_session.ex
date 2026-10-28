@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ConnectSession do
   # Beside a nonce, the session may keep where the return leads (`back/2`): a word that
   # `back?/1` takes, such as "set-up:sources:software" for an install started at the
   # workspace set-up's Work sources step, never an address. Neither the pass nor the
-  # adapter's return link carries it.
+  # adapter's return link contains it.
   #
   # The session keeps the last `kept/0` connections a browser started, the latest pass of
   # each: a new pass for the same connection replaces the one kept.
@@ -31,24 +31,46 @@ defmodule ApiaryWeb.ConnectSession do
   @spec kept() :: pos_integer
   def kept, do: @kept
 
-  # Whether `back` names where a return may lead, besides the integration's page: a step
-  # of the workspace set-up that connects, `<page>:<step>` or `<page>:<step>:<type>`, the
-  # page "set-up" (`/:org/set-up`) or "new-workspace" (`/:org/workspaces/new`), the step
-  # "sources" or "destinations", and the type a domain's name (`Apiary.Lingo.Domain`).
-  # "set-up" alone is the set-up's Work sources step.
+  # Whether `back` is a place a return may lead to, besides the integration's page: a step
+  # of the workspace set-up that connects, `<page>:<step>`, `<page>:<step>:<type>` before
+  # the workspace exists, or `<page>:<step>:workspace=<slug>` once it does. The page is
+  # "set-up" (`/:org/set-up`) or "new-workspace" (`/:org/workspaces/new`), the step
+  # "sources" or "destinations", the type a domain's name (`Apiary.Lingo.Domain`), and
+  # the slug a workspace's slug in form; the install checks it against the organisation's
+  # workspaces (`back_workspace/1`). "set-up" alone is the set-up's Work sources step.
   @doc false
   @spec back?(term) :: boolean
   def back?("set-up"), do: true
 
   def back?(back) when is_binary(back) do
     case String.split(back, ":") do
-      [page, step] -> page in @pages and step in @steps
-      [page, step, type] -> page in @pages and step in @steps and type in Domain.names()
-      _other -> false
+      [page, step] ->
+        page in @pages and step in @steps
+
+      [page, step, "workspace=" <> slug] ->
+        page in @pages and step in @steps and slug =~ ~r/\A[a-z0-9][a-z0-9-]*\z/
+
+      [page, step, type] ->
+        page in @pages and step in @steps and type in Domain.names()
+
+      _other ->
+        false
     end
   end
 
   def back?(_back), do: false
+
+  # The slug of the workspace `back` leads to (`back?/1`), nil for a `back` with none.
+  @doc false
+  @spec back_workspace(term) :: String.t() | nil
+  def back_workspace(back) when is_binary(back) do
+    case String.split(back, ":") do
+      [_page, _step, "workspace=" <> slug] -> slug
+      _other -> nil
+    end
+  end
+
+  def back_workspace(_back), do: nil
 
   # Keeps `nonce` (base64url) for the connection `connection_id` in the session of `conn`,
   # the session's latest, in place of any kept for it before, with `back` beside it where

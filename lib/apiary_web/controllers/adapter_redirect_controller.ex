@@ -142,12 +142,20 @@ defmodule ApiaryWeb.AdapterRedirectController do
     )
   end
 
-  # The step of the workspace set-up that `back` names (`ApiaryWeb.ConnectSession.back?/1`).
+  # The path of the workspace set-up's step that `back` is set to
+  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug, or the type picked.
   defp back_path(organisation, "set-up"), do: ~p"/#{organisation}/set-up?step=sources"
 
   defp back_path(organisation, back) do
-    [page, step | type] = String.split(back, ":")
-    query = [step: step] ++ Enum.map(type, &{:type, &1})
+    [page, step | rest] = String.split(back, ":")
+
+    query =
+      [step: step] ++
+        case rest do
+          ["workspace=" <> slug] -> [workspace: slug]
+          [type] -> [type: type]
+          [] -> []
+        end
 
     case page do
       "set-up" -> ~p"/#{organisation}/set-up?#{query}"

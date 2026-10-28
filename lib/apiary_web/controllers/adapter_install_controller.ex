@@ -17,8 +17,10 @@ defmodule ApiaryWeb.AdapterInstallController do
   #      answers, the adapter's connect address with the pass. With a `back` that
   #      `ApiaryWeb.ConnectSession.back?/1` takes, such as "set-up:sources:software" from
   #      the workspace set-up's Work sources step, the session keeps it beside the nonce,
-  #      and the return leads there (`ApiaryWeb.AdapterRedirectController`); any other
-  #      `back` is ignored. Neither the pass nor the connect address carries it;
+  #      and the return leads there (`ApiaryWeb.AdapterRedirectController`); a `back` with
+  #      a workspace's slug is kept only for a workspace of the organisation in use
+  #      (`Apiary.Organisations.list_workspaces/1`); any other `back` is ignored. Neither
+  #      the pass nor the connect address contains it;
   #   4. when the organisation's connected connection cannot take a new pass yet, as for
   #      a second press in the same second, the person is sent to the integration's page;
   #      when the adapter cannot be connected yet (it declared no address, holds no key in
@@ -36,7 +38,7 @@ defmodule ApiaryWeb.AdapterInstallController do
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :factory
 
-  alias Apiary.{Access, Adapters}
+  alias Apiary.{Access, Adapters, Organisations}
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{ConnectSession, SendOn}
 
@@ -47,7 +49,7 @@ defmodule ApiaryWeb.AdapterInstallController do
          %Node{} = adapter <- Adapters.get_adapter(scope, adapter_id) || {:error, :not_found},
          {:ok, url, session} <- Adapters.connect(scope, adapter) do
       conn
-      |> ConnectSession.put(session, params["back"])
+      |> ConnectSession.put(session, back(scope, params["back"]))
       |> SendOn.send_on(url)
     else
       {:error, :forbidden} ->
@@ -66,6 +68,19 @@ defmodule ApiaryWeb.AdapterInstallController do
       {:error, reason}
       when reason in [:no_connect_url, :no_key, :not_offered, :invalid, :too_long] ->
         redirect(conn, to: ~p"/#{scope.organisation}/settings/integrations/new")
+    end
+  end
+
+  # `back`, unless it leads to a workspace that is not one of the organisation's in use.
+  defp back(scope, back) do
+    case ConnectSession.back_workspace(back) do
+      nil ->
+        back
+
+      slug ->
+        if Enum.any?(Organisations.list_workspaces(scope), &(&1.slug == slug)),
+          do: back,
+          else: nil
     end
   end
 end

@@ -306,6 +306,28 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       refute ConnectSession.back?("other:sources")
     end
 
+    test "leads to the step of the workspace the install started at", %{
+      conn: conn,
+      scope: scope,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: session
+    } do
+      token = return_token(pair.secret, connection.public_id, nonce)
+      back = "set-up:destinations:workspace=#{scope.workspace.slug}"
+      assert ConnectSession.back?(back)
+      refute ConnectSession.back?("set-up:sources:workspace=../x")
+
+      conn =
+        conn
+        |> ConnectSession.put(session, back)
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(conn) ==
+               "/#{scope.organisation.slug}/set-up?step=destinations&workspace=#{scope.workspace.slug}"
+    end
+
     test "a back value the session may not keep leads to the integration's page", %{
       conn: conn,
       scope: scope,
