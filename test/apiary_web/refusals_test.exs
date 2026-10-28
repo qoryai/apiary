@@ -11,4 +11,9 @@ defmodule ApiaryWeb.RefusalsTest do
   # instance's own organisation, committed once outside the sandbox, whose row and owners
   # they lock (docs/conventions.md, Tests).
   use ApiaryWeb.RefusalsCase, rows: [ApiaryWeb.RefusalsRows], covers: :core, cast: :module
+
+  # A workspace's set-up is finished: the Overview opens, and its rows reach it.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
 end
