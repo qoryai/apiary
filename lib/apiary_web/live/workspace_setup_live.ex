@@ -6,7 +6,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # frame with the progress indicator (`ApiaryWeb.SetUpComponents.frame/1`).
   #
   # **The type cards.** One card per domain of `Apiary.Lingo.Domain.choices/0` that has a
-  # card's words (`card_words/1`): Software alone, so General shows none. Each card has the
+  # card's words (`card_words/1`): Software alone. Each card has the
   # type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
   # connect, and Choose, which opens the flow with `?type=<name>`. No indicator shows:
   # the count starts after a card is picked. `/:org/set-up` shows them while the
