@@ -402,7 +402,8 @@ end
 defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
   # The second step of the workspace set-up (`ApiaryWeb.WorkspaceSetupLive`): the
   # instance's configured adapters that serve the workspace's type, each with Connect, and
-  # Skip; with none, the line and Continue; and who it is for.
+  # Skip; with none, the line and Continue; an adapter connecting, which the open page
+  # follows to Connected; and who it is for.
   use ApiaryWeb.ConnCase, async: true
 
   import ApiaryWeb.SetUpSteps
@@ -412,7 +413,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
+  import Apiary.SourcesFixtures, only: [key_scope: 1]
+
   alias Apiary.Repo
+  alias Apiary.Adapters.{Collections, Connections}
   alias Apiary.Organisations.Membership
 
   @moduletag needs: :factory
@@ -521,6 +525,107 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     refute has_element?(lv, "#set-up-skip-button")
     refute has_element?(lv, "#set-up-skip p")
+  end
+
+  describe "an adapter connecting" do
+    setup %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: main, scope: scope} =
+        sign_up_fixture()
+
+      %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+
+      %{
+        conn: log_in_user(conn, user),
+        organisation: organisation,
+        main: main,
+        scope: scope,
+        adapter: adapter,
+        key_scope: key_scope(key),
+        connection: connection
+      }
+    end
+
+    # A listing of one part, complete, of the collection `ref`, as the adapter posts it.
+    defp list(ctx, ref) do
+      {:ok, :accepted} =
+        Collections.post_listing(ctx.key_scope, %{
+          time: DateTime.utc_now(:second),
+          connection_id: ctx.connection.public_id,
+          collections: [
+            %{
+              ref: ref,
+              url: "https://tracker.example.com/" <> ref,
+              title: ref,
+              grant_ref: listing_grant(ctx.connection),
+              target: nil,
+              environment_ref: nil
+            }
+          ],
+          listing: %{
+            id: "listing-1",
+            part: 1,
+            started_at: DateTime.utc_now(:second),
+            complete: true
+          }
+        })
+    end
+
+    test "shows Connecting… while the listing is to come, then Connected and Continue once a collection arrives",
+         ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
+      source = "#set-up-source-#{ctx.adapter.public_id}"
+
+      assert has_element?(lv, source <> "-connecting", "Connecting…")
+      refute has_element?(lv, source <> "-connected")
+      assert has_element?(lv, "#set-up-skip-button")
+      refute has_element?(lv, "#set-up-continue")
+
+      list(ctx, "ACME")
+
+      assert has_element?(lv, source <> "-connected", "Connected")
+      refute has_element?(lv, source <> "-connecting")
+
+      assert has_element?(
+               lv,
+               ~s{#set-up-continue[href="/#{ctx.organisation.slug}/#{ctx.main.slug}"]},
+               "Continue"
+             )
+
+      refute has_element?(lv, "#set-up-skip-button")
+    end
+
+    test "a listing that completes with no collection for the workspace shows neither", ctx do
+      # With a second workspace, a collection is assigned to none as it is made.
+      workspace_fixture(ctx.organisation)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
+      source = "#set-up-source-#{ctx.adapter.public_id}"
+      assert has_element?(lv, source <> "-connecting")
+
+      list(ctx, "ACME")
+
+      refute has_element?(lv, source <> "-connecting")
+      refute has_element?(lv, source <> "-connected")
+      assert has_element?(lv, "#set-up-skip-button")
+      refute has_element?(lv, "#set-up-continue")
+    end
+
+    test "an ended connection shows neither", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
+      source = "#set-up-source-#{ctx.adapter.public_id}"
+      assert has_element?(lv, source <> "-connecting")
+
+      {:ok, _ended} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+
+      refute has_element?(lv, source <> "-connecting")
+      refute has_element?(lv, source <> "-connected")
+      assert has_element?(lv, "#set-up-skip-button")
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=source")
+      refute has_element?(lv, source <> "-connecting")
+      refute has_element?(lv, source <> "-connected")
+    end
   end
 
   describe "an adapter's guide" do

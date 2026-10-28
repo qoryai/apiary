@@ -28,6 +28,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`Apiary.Adapters.list_configured/1`), each with Connect, the Install of Organisation
   # settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`), and Skip;
   # with none, that no work source for the type is set up on the instance, and Continue.
+  # An adapter shows Connected once the Overview's rule counts it, and Connecting… while
+  # the organisation's connection to it is connected and its listing is not complete, with
+  # no collection for the workspace yet. The page listens to the organisation's
+  # collections and connections (`Apiary.Adapters.Collections.subscribe/1`) and reads
+  # both again on each change, so the step turns Connected, with Continue, as the
+  # adapter's listing arrives.
   # In the context column, for each adapter whose Connect can be pressed
   # (`ApiaryWeb.IntegrationComponents.ready?/1`) and whose guide gives steps for
   # connecting it (`Apiary.Adapters.guide/2`), those steps, under "On %{adapter}", and,
@@ -48,6 +54,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Access, Adapters, Features, Organisations}
+  alias Apiary.Adapters.{Collections, Connections}
   alias Apiary.Lingo.Domain
   alias ApiaryWeb.{IntegrationComponents, SetUpComponents, SourceComponents, WorkspaceComponents}
 
@@ -55,7 +62,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
 
-    if connected?(socket), do: Organisations.subscribe_workspaces(scope)
+    if connected?(socket) do
+      Organisations.subscribe_workspaces(scope)
+      # Refused to a person who may not read the organisation's adapters: their page
+      # shows the step as it opened.
+      _subscribed = Collections.subscribe(scope)
+    end
 
     {:ok, assign(socket, step: nil)}
   end
@@ -148,13 +160,31 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       page_title: gettext("Connect a work source to %{workspace}", workspace: workspace.name),
       step: :source,
       adapters: Adapters.list_configured(Domain.for_workspace(workspace)),
-      # The adapters connected to the workspace, by the Overview's rule for its Work
-      # source step.
-      connected: MapSet.new(Apiary.Edition.work_source_ready(workspace), & &1.adapter.id),
       one_workspace: match?([_one], Organisations.list_workspaces(scope)),
       sending: nil,
       who_may: who_may
     )
+    |> assign_source_state()
+  end
+
+  # The adapters connected to the workspace, by the Overview's rule for its Work source
+  # step, and those still connecting: the organisation's connection to the adapter is
+  # connected and its listing not complete, and no collection of it is the workspace's
+  # yet. Once the listing completes with none for the workspace, as where the
+  # organisation has two workspaces and none is assigned as it is made, the adapter is
+  # neither.
+  defp assign_source_state(socket) do
+    scope = socket.assigns.current_scope
+    connected = MapSet.new(Apiary.Edition.work_source_ready(scope.workspace), & &1.adapter.id)
+
+    connecting =
+      for {adapter_id, %{state: :connected, ended_at: nil, listing_completed_at: nil}} <-
+            Connections.live_by_adapter(scope),
+          not MapSet.member?(connected, adapter_id),
+          into: MapSet.new(),
+          do: adapter_id
+
+    assign(socket, connected: connected, connecting: connecting)
   end
 
   @impl true
@@ -233,6 +263,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
          to: ~p"/#{socket.assigns.current_scope.organisation}/set-up?step=source"
        )}
 
+  # A collection or a connection of the organisation changed: the Work source step reads
+  # again which adapters are connected and which are connecting, and the indicator.
+  def handle_info({event, _ids}, %{assigns: %{step: :source}} = socket)
+      when event in [:collections_changed, :connection_changed],
+      do: {:noreply, socket |> assign_steps(:source) |> assign_source_state()}
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -268,6 +304,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         steps={@steps}
         adapters={@adapters}
         connected={@connected}
+        connecting={@connecting}
         one_workspace={@one_workspace}
         sending={@sending}
         who_may={@who_may}
@@ -424,6 +461,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :steps, :list, required: true
   attr :adapters, :list, required: true
   attr :connected, MapSet, required: true, doc: "the ids of the adapters connected to it"
+  attr :connecting, MapSet, required: true, doc: "the ids of the adapters still connecting"
   attr :one_workspace, :boolean, required: true
   attr :sending, :string, required: true
   attr :who_may, :string, required: true
@@ -469,6 +507,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             class="q-sdot q-sdot-completed text-[13px]/5"
           >
             <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
+          </span>
+          <span
+            :if={MapSet.member?(@connecting, adapter.id)}
+            id={"set-up-source-#{adapter.public_id}-connecting"}
+            role="status"
+            class="q-sdot q-sdot-pending text-[13px]/5"
+          >
+            <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
           </span>
           <IntegrationComponents.install_form
             :if={is_nil(@who_may)}
