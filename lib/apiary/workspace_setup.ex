@@ -5,7 +5,7 @@ defmodule Apiary.WorkspaceSetup do
   #
   # The flow's steps, in order, each of a group: for the organisation, Work sources,
   # Work destinations and Model; for the workspace, Name, Work sources used, Destinations
-  # used and Test run. A step is done by its rule:
+  # used, Harness and Test run. A step is done by its rule:
   #
   #   * `sources?/2`: the organisation has a connected connection of an adapter in use
   #     with items that serves the workspace's type (`Apiary.Lingo.Domain`);
@@ -19,6 +19,7 @@ defmodule Apiary.WorkspaceSetup do
   #     the workspace with its Backlog on;
   #   * `destinations_used?/2`: a row of its tick list is ticked: a collection with a
   #     target assigned to the workspace;
+  #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`);
   #   * `test?/1`: the edition's `test_run_passed?/1`.
   #
   # The Overview's setup list reads the edition's four rules (`read/2`):
@@ -57,7 +58,7 @@ defmodule Apiary.WorkspaceSetup do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, AccessKeys, Adapters, Edition, Gateways, ModelChoices, Repo}
+  alias Apiary.{Access, AccessKeys, Adapters, Edition, Gateways, ModelChoices, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Connections.Connection, as: ModelProvider
@@ -81,12 +82,20 @@ defmodule Apiary.WorkspaceSetup do
     name: :workspace,
     sources_used: :workspace,
     destinations_used: :workspace,
+    harness: :workspace,
     test: :workspace
   ]
 
   @typedoc "A step of the set-up flow (`flow/0`)."
   @type step ::
-          :sources | :destinations | :model | :name | :sources_used | :destinations_used | :test
+          :sources
+          | :destinations
+          | :model
+          | :name
+          | :sources_used
+          | :destinations_used
+          | :harness
+          | :test
 
   @typedoc """
   A row of a tick list (`collections/3`): a live collection with its connection, and the
@@ -176,6 +185,7 @@ defmodule Apiary.WorkspaceSetup do
   def done?(:destinations_used, _organisation, {domain, workspace}),
     do: destinations_used?(workspace, domain)
 
+  def done?(:harness, _organisation, {_domain, workspace}), do: harness?(workspace)
   def done?(:test, _organisation, {_domain, workspace}), do: test?(workspace)
 
   @doc false
@@ -267,6 +277,11 @@ defmodule Apiary.WorkspaceSetup do
     |> where([c], c.workspace_id == ^workspace_id)
     |> Repo.exists?()
   end
+
+  @doc false
+  # harness?/1 is whether `workspace` has a saved harness choice.
+  @spec harness?(Workspace.t()) :: boolean
+  def harness?(%Workspace{} = workspace), do: Stacks.choice(workspace) != nil
 
   @doc false
   # test?/1 is whether the edition counts a test run of `workspace` that passed

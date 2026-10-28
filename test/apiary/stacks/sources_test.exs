@@ -293,6 +293,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert [{"P_pub", "harness.yaml", "HEAD"} | _] = public_reads(calls())
 
       assert {:ok, _stored} = Sources.save(ctx.scope, base, "triage")
+      assert {:ok, _choice} = Sources.choose(ctx.scope, :target_file)
 
       input = %{
         organisation: ctx.scope.organisation,
@@ -405,6 +406,9 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert Sources.current(ctx.scope.workspace) == %{workflow: "triage", base: ctx.base}
       assert Stacks.workflow_for(ctx.scope.workspace, nil) == "triage"
+
+      # The harness in each repository, so the walk takes the stacks' document.
+      assert {:ok, _choice} = Sources.choose(ctx.scope, :target_file)
 
       input = %{
         organisation: ctx.scope.organisation,

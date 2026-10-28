@@ -19,9 +19,10 @@ defmodule Apiary.Harnesses.WalkTest do
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{Assignment, Builtin, Reader, RunHarness, Walk, WalkJob}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
-  alias Apiary.Stacks.Document
+  alias Apiary.Stacks.{Document, Sources}
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -49,6 +50,10 @@ defmodule Apiary.Harnesses.WalkTest do
     {connection, _nonce} = connection_fixture(scope, run.adapter, :listed)
     grant = grant(scope.organisation.id, run.adapter, connection, "G_run")
     collection(scope, run.adapter, connection)
+    # Today's path, the harness in each repository; the other choices are tested in the
+    # describe "the workspace's harness choice".
+    {:ok, _choice} =
+      Stacks.put_stack(scope, {:workspace, scope.workspace}, nil, choice: :target_file)
 
     input = %{
       organisation: scope.organisation,
@@ -133,9 +138,9 @@ defmodule Apiary.Harnesses.WalkTest do
   # resource_ref, {:public, public_ref}}`, or to its public ref alone, `{:public,
   # public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps a resource or a
   # public ref and a path to a document, read with a grant or as public. A resource's
-  # version is `c-<resource>`, whatever the version asked. `refuse` answers every read
-  # with a signed refusal, and `refuse_public` every public read; `down` makes every call
-  # reach no one.
+  # version is `c-<resource>`, whatever the version asked, or its value in `versions`.
+  # `refuse` answers every read with a signed refusal, and `refuse_public` every public
+  # read; `down` makes every call reach no one.
   defp serve(adapters, opts) do
     test = self()
     hosts = Map.new(adapters, &{&1.host, &1})
@@ -204,7 +209,8 @@ defmodule Apiary.Harnesses.WalkTest do
           answer(conn, status, %{"error" => code}, adapter)
 
         path in ["read", "read-public"] ->
-          version = "c-" <> call["resource_ref"]
+          version =
+            Map.get(opts[:versions] || %{}, call["resource_ref"], "c-" <> call["resource_ref"])
 
           found =
             case files[{call["resource_ref"], call["path"]}] do
@@ -679,7 +685,10 @@ defmodule Apiary.Harnesses.WalkTest do
     end
 
     test "a run whose workflow no row has any longer gets read", ctx do
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting)
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting,
+          choice: :target_file
+        )
 
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
@@ -2150,6 +2159,26 @@ defmodule Apiary.Harnesses.WalkTest do
       assert Repo.reload!(row).access_level == :read
     end
 
+    test "keeps the built-in harness whatever the workspace's harness choice", ctx do
+      covering_builtin!(ctx)
+
+      for choose <- [:qory, :target_file, :none] do
+        if choose == :none,
+          do: {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace}),
+          else: {:ok, _stack} = Sources.choose(ctx.scope, choose)
+
+        run = test_run!(ctx.scope)
+
+        assert %RunHarness{state: :resolved, origin: :builtin} =
+                 row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+        assert row.document == Builtin.document()
+      end
+
+      refute_enqueued(worker: WalkJob)
+      assert calls() == []
+    end
+
     test "a work item that is no test is walked as before, beside a test", ctx do
       test_run!(ctx.scope)
 
@@ -2194,6 +2223,221 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, walked} = Walk.run(ctx.input)
       assert [%{"resources" => ["R_qory"]}] = walked.harness_links
       assert [@builtin_git] in resolves(calls())
+    end
+  end
+
+  ## The workspace's harness choice
+
+  describe "the workspace's harness choice" do
+    @qory_git "https://github.com/qoryai/harness"
+    @qory_ref "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305"
+    @pin String.duplicate("c3", 20)
+
+    # A harness repository whose root is its stack, with a local module.
+    @root_files %{
+      {"R_harness", "qory-stack.yaml"} =>
+        "modules:\n  - name: core\n    source: {path: modules/core}\n" <>
+          "workflows:\n  explore: {access: write}\n"
+    }
+
+    # The target's harness file, which applies only under the harness in each repository.
+    @target_files %{{"R_app", "harness.yaml"} => @file_section}
+
+    defp linked(git), do: %{id: "linked:harness", label: "acme/harness", git: git}
+
+    defp no_choice!(ctx) do
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
+      :ok
+    end
+
+    test "none: the Qory harness of the workspace's type at its pin; the target's file and the levels are not read",
+         ctx do
+      no_choice!(ctx)
+      serve([ctx.run], covered: covering(ctx), files: Map.merge(@base_files, @target_files))
+      setting(ctx.scope, @setting)
+
+      assert Domain.definition(Domain.Software).harness == %{
+               "git" => @qory_git,
+               "ref" => @qory_ref,
+               "stack" => "core"
+             }
+
+      assert Sources.chosen(ctx.scope.workspace) ==
+               %{choice: :qory, git: @qory_git, pin: @qory_ref, saved: false}
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert walked.origin == :setting
+
+      assert walked.document == %{
+               "extends" => %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "core"}
+             }
+
+      assert %{target_version: nil, stack_id: nil, owner_organisation_id: nil} = walked
+      refute walked.harness_hidden
+      # No adapter covers it: pinned at its commit, with no link, and not read.
+      assert walked.pins == [%{"git" => @qory_git, "ref" => @qory_ref, "at" => @qory_ref}]
+      assert walked.harness_links == []
+
+      calls = calls()
+      assert reads(calls) == []
+      assert resolves(calls) == [[@qory_git]]
+    end
+
+    test "the Qory harness: saved with no read; its row's document at its pin, not the target's file",
+         ctx do
+      serve([ctx.run], covered: covering(ctx), files: Map.merge(@base_files, @target_files))
+      setting(ctx.scope, @setting)
+
+      assert {:ok, stack} = Sources.choose(ctx.scope, :qory)
+      assert calls() == []
+
+      assert %{choice: :qory, workflow: nil, target_id: nil} = stack
+      assert stack.workspace_id == ctx.scope.workspace.id
+
+      assert Sources.chosen(ctx.scope.workspace) ==
+               %{choice: :qory, git: @qory_git, pin: @qory_ref, saved: true}
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+
+      assert walked.document == %{
+               "extends" => %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "core"}
+             }
+
+      assert walked.stack_id == stack.id
+      assert walked.owner_organisation_id == ctx.scope.organisation.id
+      assert walked.target_version == nil
+      refute walked.harness_hidden
+      assert reads(calls()) == []
+    end
+
+    test "a harness repository: the save pins its branch to the commit the walk read, and the walk reads there, not the target's file",
+         ctx do
+      serve([ctx.run],
+        covered: covering(ctx),
+        files: Map.merge(@root_files, @target_files),
+        versions: %{"R_harness" => @pin}
+      )
+
+      assert {:ok, stack} = Sources.choose(ctx.scope, {:repository, linked(@harness), " main "})
+      assert stack.choice == :repository
+      assert stack.harness == "extends:\n  git: \"#{@harness}\"\n  ref: \"#{@pin}\"\n"
+      assert {"R_harness", "qory-stack.yaml", "main"} in reads(calls())
+
+      assert Sources.chosen(ctx.scope.workspace) ==
+               %{choice: :repository, git: @harness, pin: @pin, saved: true}
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert walked.origin == :setting
+      assert walked.document == %{"extends" => %{"git" => @harness, "ref" => @pin}}
+      assert walked.stack_id == stack.id
+      assert walked.target_version == nil
+      assert walked.pins == [%{"git" => @harness, "ref" => @pin, "at" => @pin}]
+      assert [%{"grant_id" => grant_id, "resources" => ["R_harness"]}] = walked.harness_links
+      assert grant_id == ctx.grant.id
+
+      reads = reads(calls())
+      assert reads != []
+
+      assert Enum.all?(reads, fn {resource, _path, at} ->
+               resource == "R_harness" and at == @pin
+             end)
+    end
+
+    test "a harness repository that cannot be read is refused with the walk's reason, and the choice stays",
+         ctx do
+      refuse = fn opts -> serve([ctx.run], [covered: covering(ctx)] ++ opts) end
+      source = linked(@harness)
+
+      refuse.(files: @root_files, refuse: {404, "version_not_found"})
+
+      assert {:error, {:walk, %{failure: :invalid, rule: %{"rule" => "version"}}}} =
+               Sources.choose(ctx.scope, {:repository, source, "no-such-branch"})
+
+      # The version the read returned is no full commit id.
+      refuse.(files: @root_files)
+
+      assert {:error, {:walk, %{failure: :invalid, rule: %{"rule" => "version"}}}} =
+               Sources.choose(ctx.scope, {:repository, source, "main"})
+
+      # The root has no stack.
+      refuse.(files: %{}, versions: %{"R_harness" => @pin})
+
+      assert {:error, {:walk, %{failure: :invalid, rule: %{"rule" => "no_stack_file"}}}} =
+               Sources.choose(ctx.scope, {:repository, source, "main"})
+
+      # No grant of the organisation covers it.
+      refuse.(files: @root_files, versions: %{"R_harness" => @pin})
+      uncovered = linked("https://code.example.com/acme/elsewhere")
+
+      assert {:error, {:walk, %{failure: :not_covered}}} =
+               Sources.choose(ctx.scope, {:repository, uncovered, "main"})
+
+      # A ref the save rules refuse fails before any call.
+      calls()
+
+      assert {:error, {:walk, %{failure: :invalid}}} =
+               Sources.choose(ctx.scope, {:repository, source, "pull/1/head"})
+
+      assert calls() == []
+
+      assert %{choice: :target_file} = Stacks.choice(ctx.scope.workspace)
+      assert Sources.choose(ctx.scope, {:repository, nil, "main"}) == {:error, :invalid}
+    end
+
+    test "the harness in each repository: the target's file, else the stacks' document", ctx do
+      no_choice!(ctx)
+      assert {:ok, stack} = Sources.choose(ctx.scope, :target_file)
+      assert %{choice: :target_file, harness: nil} = stack
+
+      assert Sources.chosen(ctx.scope.workspace) ==
+               %{choice: :target_file, git: nil, pin: nil, saved: true}
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: Map.merge(@base_files, @target_files)
+      )
+
+      setting(ctx.scope, @setting)
+      assert {:ok, %{origin: :file, target_version: "c-R_app"}} = Walk.run(ctx.input)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert {:ok, %{origin: :setting, document: document}} = Walk.run(ctx.input)
+      assert document == Reader.document(@setting) |> elem(1)
+    end
+
+    test "who may: owners and admins; a member saves nothing", ctx do
+      %{scope: member} = member_fixture(ctx.scope)
+      assert Sources.choose(member, :qory) == {:error, :forbidden}
+      assert %{choice: :target_file} = Stacks.choice(ctx.scope.workspace)
+
+      %{scope: admin} = member_fixture(ctx.scope, :admin)
+      assert {:ok, %{choice: :qory}} = Sources.choose(admin, :qory)
+    end
+
+    test "the row's rules: a choice only at the workspace with no workflow, the Qory harness with its document",
+         ctx do
+      workspace = ctx.scope.workspace
+
+      assert {:error, %Ecto.Changeset{errors: [choice: _]}} =
+               Stacks.put_stack(ctx.scope, {:workspace, workspace, "explore"}, @setting,
+                 choice: :qory
+               )
+
+      assert {:error, %Ecto.Changeset{errors: [harness: {"can't be blank", _}]}} =
+               Stacks.put_stack(ctx.scope, {:workspace, workspace}, nil, choice: :repository)
+
+      assert {:error, %Ecto.Changeset{errors: [choice: _]}} =
+               Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, @setting,
+                 choice: :qory
+               )
+
+      # A write at the workspace without a choice removes the choice.
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, workspace}, @setting)
+      assert Stacks.choice(workspace) == nil
     end
   end
 end

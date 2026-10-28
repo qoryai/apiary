@@ -305,9 +305,11 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert work_items |> Enum.map(& &1.state) |> Enum.frequencies() ==
              %{exploring: 7, closed: 2, undone: 1}
 
-    # The stack of Main's runs: one row, at the workspace, for the workflow hello.
-    assert [%Stacks.Stack{} = stack] = Repo.all(Stacks.Stack)
+    # The stack of Main's runs: one row, at the workspace, for the workflow hello; and
+    # Main's harness choice, the harness in each repository.
+    assert [%Stacks.Stack{} = stack] = Repo.all(where(Stacks.Stack, [s], not is_nil(s.workflow)))
     assert {stack.workspace_id, stack.target_id, stack.workflow} == {main.id, nil, "hello"}
+    assert %{choice: :target_file, harness: nil} = Stacks.choice(main)
 
     assert {:ok, %{"extends" => base}} = Apiary.Harnesses.Reader.document(stack.harness)
 

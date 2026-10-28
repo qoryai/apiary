@@ -62,6 +62,17 @@ defmodule Apiary.Stacks.Sources do
   # workspace, so two at the same time leave one row.
   # It writes no audit entry, as `put_stack/3` writes none.
   #
+  # ## The harness choice
+  #
+  # `choose/2` is `harness.save` too: it saves the workspace's harness choice
+  # (`Apiary.Stacks`) at the workspace with no workflow, under the same lock as `save/3`.
+  # The Qory harness and the harness in each repository read nothing. A harness
+  # repository, a linked repository and a branch or tag, is read as a run's walk reads
+  # the base of a document (`Apiary.Harnesses.Walk.pin_base/3`), within the time of a
+  # read of a source and counted as one of the person's reads; the commit the walk read
+  # is the pin, and a walk that failed is the refusal. `chosen/1` is the choice as a page
+  # shows it.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -70,7 +81,8 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.{Access, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Calls, CallWire, Collection, Connection, Grant, Grants}
-  alias Apiary.Harnesses.{Assignment, Reader}
+  alias Apiary.Harnesses.{Assignment, Reader, Walk}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.RateLimit
@@ -697,6 +709,95 @@ defmodule Apiary.Stacks.Sources do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  @typedoc """
+  A harness choice to save: the Qory harness, the harness in each repository, or a
+  harness repository, a source of `linked/1` with a branch or tag.
+  """
+  @type choice :: :qory | :target_file | {:repository, source, String.t()}
+
+  @typedoc """
+  A workspace's harness choice as a page shows it: the choice, the address of its harness
+  and the commit it is pinned at, nil for the harness in each repository, and whether it
+  is saved. A workspace without a choice shows the Qory harness, not saved.
+  """
+  @type chosen :: %{
+          choice: :qory | :repository | :target_file,
+          git: String.t() | nil,
+          pin: String.t() | nil,
+          saved: boolean
+        }
+
+  @doc false
+  # chosen/1 is the harness choice of `workspace` (`t:chosen/0`).
+  @spec chosen(Workspace.t()) :: chosen
+  def chosen(%Workspace{} = workspace) do
+    case Stacks.choice(workspace) do
+      %Stack{choice: :target_file} ->
+        %{choice: :target_file, git: nil, pin: nil, saved: true}
+
+      %Stack{choice: choice, harness: harness} ->
+        base =
+          case Reader.document(harness) do
+            {:ok, %{"extends" => %{} = base}} -> base
+            _other -> %{}
+          end
+
+        %{choice: choice, git: base["git"], pin: base["ref"], saved: true}
+
+      nil ->
+        harness = qory_harness(workspace)
+        %{choice: :qory, git: harness["git"], pin: harness["ref"], saved: false}
+    end
+  end
+
+  @doc false
+  # choose/2 saves `choice` as the harness choice of the scope's workspace (the
+  # moduledoc). `{:ok, stack}`; `{:error, :forbidden}` or `{:error, :not_found}` from the
+  # access check, asked first; `{:error, {:limited, seconds}}` for a person past their
+  # reads of the minute; `{:error, {:walk, failure}}` for a harness repository the walk
+  # could not read (`t:Apiary.Harnesses.Walk.failure/0`); `{:error, :invalid}` for a
+  # harness repository without a source or a ref; or `{:error, changeset}`.
+  @spec choose(Scope.t(), choice) ::
+          {:ok, Stack.t()}
+          | {:error,
+             Ecto.Changeset.t()
+             | Access.reason()
+             | :invalid
+             | {:limited, pos_integer}
+             | {:walk, Walk.failure()}}
+  def choose(%Scope{workspace: %Workspace{} = workspace} = scope, choice) do
+    with :ok <- Access.authorize(scope, :"harness.save", workspace),
+         {:ok, chosen, harness} <- choice_document(scope, choice) do
+      Repo.transact(fn ->
+        lock_saves(workspace)
+        Stacks.put_stack(scope, {:workspace, workspace}, harness, choice: chosen)
+      end)
+    end
+  end
+
+  defp choice_document(_scope, :target_file), do: {:ok, :target_file, nil}
+
+  defp choice_document(scope, :qory),
+    do: {:ok, :qory, document(qory_harness(scope.workspace))}
+
+  defp choice_document(scope, {:repository, %{git: git}, ref})
+       when is_binary(git) and is_binary(ref) do
+    base = %{"git" => git, "ref" => String.trim(ref)}
+
+    with :ok <- spend(scope, :read, @reads_a_minute) do
+      case Walk.pin_base(scope.organisation, base, time_limit: @read_time) do
+        {:ok, pin} -> {:ok, :repository, document(%{base | "ref" => pin})}
+        {_failed_or_retry, failure} -> {:error, {:walk, failure}}
+      end
+    end
+  end
+
+  defp choice_document(_scope, _choice), do: {:error, :invalid}
+
+  # The base of the Qory harness of `workspace`'s type, pinned (`Apiary.Lingo.Domain`).
+  defp qory_harness(workspace),
+    do: workspace |> Domain.for_workspace() |> Domain.definition() |> Map.fetch!(:harness)
 
   # Saves of one workspace take turns: the second waits for the first's transaction, then
   # sees its row and replaces it, so the workspace keeps one workflow.

@@ -329,7 +329,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
         if Apiary.Features.on?(:factory) do
           ["Work sources", "Work destinations"] ++
             if(Apiary.Features.on?(:secrets), do: ["Model"], else: []) ++
-            ["Name", "Work sources used", "Destinations used", "Test run"]
+            ["Name", "Work sources used", "Destinations used", "Harness", "Test run"]
         else
           ["Name"]
         end

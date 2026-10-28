@@ -471,7 +471,7 @@ defmodule Apiary.WorkspaceSetupTest do
       refute WorkspaceSetup.done?(:name, organisation, {@software, nil})
       assert WorkspaceSetup.done?(:name, organisation, {@software, ctx.workspace})
 
-      for step <- [:sources_used, :destinations_used, :test],
+      for step <- [:sources_used, :destinations_used, :harness, :test],
           do: refute(WorkspaceSetup.done?(step, organisation, {@software, nil}))
 
       assert WorkspaceSetup.done?(:sources, organisation, {@software, nil})
@@ -479,8 +479,38 @@ defmodule Apiary.WorkspaceSetupTest do
       refute WorkspaceSetup.done?(:destinations, organisation, {@software, nil})
       refute WorkspaceSetup.done?(:test, organisation, {@software, ctx.workspace})
 
-      assert Keyword.keys(WorkspaceSetup.flow()) ==
-               [:sources, :destinations, :model, :name, :sources_used, :destinations_used, :test]
+      assert Keyword.keys(WorkspaceSetup.flow()) == [
+               :sources,
+               :destinations,
+               :model,
+               :name,
+               :sources_used,
+               :destinations_used,
+               :harness,
+               :test
+             ]
+
+      assert WorkspaceSetup.flow()[:harness] == :workspace
+    end
+
+    test "done?/3: Harness once the workspace has a saved choice, whichever it is", ctx do
+      organisation = ctx.scope.organisation
+      refute WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
+
+      for choice <- [:target_file, :qory] do
+        {:ok, _stack} = Apiary.Stacks.Sources.choose(ctx.scope, choice)
+        assert WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
+      end
+
+      # A document at the workspace saved without a choice is no choice.
+      {:ok, _stack} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:workspace, ctx.workspace},
+          "extends: {git: \"https://code.example.com/acme/harness\", ref: v1}\n"
+        )
+
+      refute WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
     end
 
     test "collections/3: the organisation's rows by adapter, each with its workspace", ctx do

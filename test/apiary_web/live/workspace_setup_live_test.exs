@@ -167,10 +167,11 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                  {"Name", :to_come},
                  {"Work sources used", :to_come},
                  {"Destinations used", :to_come},
+                 {"Harness", :to_come},
                  {"Test run", :to_come}
                ]
 
-        assert count(lv) == "Step 2 of 8"
+        assert count(lv) == "Step 2 of 9"
         assert group_headings(lv) == ["For Acme Studio", "For the new workspace"]
 
         # Your account has no page, so the first step has no Back.
@@ -994,6 +995,167 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     end
   end
 
+  describe "Harness" do
+    @harness_git "https://code.example.com/acme/harness"
+    @pin String.duplicate("c3", 20)
+    @root_stack "modules:\n  - name: core\n    source: {path: modules/core}\n"
+
+    setup %{conn: conn} do
+      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+
+      %{
+        conn: log_in_user(conn, user),
+        organisation: organisation,
+        scope: scope,
+        path: ~p"/#{organisation}/set-up?step=harness&workspace=#{scope.workspace}"
+      }
+    end
+
+    # A linked repository of the organisation, its adapter's stub serving `files` with the
+    # pin as its version (`serve_harness/2`); the adapter's fixture.
+    defp linked_harness!(ctx, files) do
+      adapter = Apiary.HarnessReadsFixtures.call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(ctx.scope, adapter.adapter, :listed)
+
+      Apiary.HarnessReadsFixtures.live_grant_fixture(
+        ctx.organisation.id,
+        adapter.adapter,
+        connection,
+        "G_acme"
+      )
+
+      Apiary.HarnessReadsFixtures.harness_collection_fixture(
+        connection,
+        @harness_git,
+        "acme/harness"
+      )
+
+      serve_harness(adapter, files)
+      adapter
+    end
+
+    defp serve_harness(adapter, files) do
+      Apiary.HarnessReadsFixtures.serve_calls([adapter],
+        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
+        files: files,
+        versions: %{"R_harness" => @pin}
+      )
+    end
+
+    test "after Destinations used: the three choices, the Qory harness chosen; Continue saves it",
+         ctx do
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      workspace = ctx.scope.workspace
+
+      assert has_element?(lv, "h1", "Which harness do #{workspace.name}'s runs use?")
+
+      assert [{"Destinations used", _state}, {"Harness", :current}, {"Test run", :to_come}] =
+               lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
+
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+
+      assert has_element?(lv, "#harness-choice-qory .q-choice-h", "Qory harness")
+
+      assert words(lv, "#harness-choice-qory .q-choice-p") ==
+               "github.com/qoryai/harness · fe3b3ab"
+
+      assert has_element?(
+               lv,
+               "#harness-choice-target_file .q-choice-h",
+               "The harness in each repository"
+             )
+
+      assert words(lv, "#harness-choice-target_file .q-choice-p") ==
+               "Each run reads its repository's qory.yaml or harness.yaml."
+
+      assert words(lv, "#harness-choice-repository") == "A harness repository"
+      refute has_element?(lv, "#harness-repository")
+
+      assert words(lv, "#set-up-later") ==
+               "You can change this later in Workspace settings › Workflow."
+
+      lv |> form("#set-up-harness-form") |> render_submit()
+      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=test&workspace=#{workspace}")
+
+      assert %Apiary.Stacks.Stack{choice: :qory} = Apiary.Stacks.choice(workspace)
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      assert {"Harness", :current} in Enum.map(steps(lv), &{elem(&1, 0), elem(&1, 1)})
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+
+      # The saved choice, sent again, goes on with no save.
+      lv |> form("#set-up-harness-form") |> render_submit()
+      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=test&workspace=#{workspace}")
+    end
+
+    test "the harness in each repository is saved with no pin", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      lv
+      |> form("#set-up-harness-form", harness: %{choice: "target_file"})
+      |> render_submit()
+
+      assert %{choice: :target_file, harness: nil} = Apiary.Stacks.choice(ctx.scope.workspace)
+    end
+
+    test "a harness repository: read at its branch and pinned, or the read's refusal said",
+         ctx do
+      # acme/harness exports a stack, so the listing shows it, and has none at its root.
+      exports = %{
+        {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage]\n",
+        {"R_harness", "stacks/triage/qory-stack.yaml"} => @root_stack
+      }
+
+      adapter = linked_harness!(ctx, exports)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      assert has_element?(lv, "#harness-source option[selected]", "acme/harness")
+      assert has_element?(lv, "#harness-ref[value=main]")
+
+      assert words(lv, "#harness-ref-hint") ==
+               "Read through #{ctx.organisation.name}'s #{Apiary.Adapters.title(adapter.adapter)} " <>
+                 "connection."
+
+      # The root has no stack: the walk's reason, and nothing saved.
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Reload the page to read acme/harness again, or choose another source. Qory " <>
+                 "Apiary could not read its stack: the call to its integration failed, or a " <>
+                 "file in it is not valid."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+
+      serve_harness(adapter, Map.put(exports, {"R_harness", "qory-stack.yaml"}, @root_stack))
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=test&workspace=#{ctx.scope.workspace}")
+
+      assert %{choice: :repository, harness: harness} = Apiary.Stacks.choice(ctx.scope.workspace)
+      assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
+    end
+
+    test "a member sees the choices disabled and who may; a save sent changes nothing", ctx do
+      member = joined(ctx.organisation, :member)
+      {:ok, lv, _html} = build_conn() |> log_in_user(member) |> live(ctx.path)
+
+      assert has_element?(lv, "#harness-choice-qory-radio[disabled]")
+      assert words(lv, "#set-up-who-may") == "Only owners and admins change this."
+      refute has_element?(lv, "#set-up-continue")
+      assert has_element?(lv, "#set-up-skip")
+
+      render_click(lv, "save_harness", %{"harness" => %{"choice" => "target_file"}})
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+  end
+
   describe "the test run" do
     setup :register_and_log_in_user
 
@@ -1098,7 +1260,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     {:ok, lv, _html} =
       conn |> log_in_user(admin.user) |> live(~p"/#{admin.organisation}/set-up?step=sources")
 
-    assert count(lv) == "Step 1 of 7"
+    assert count(lv) == "Step 1 of 8"
 
     assert flow_steps(lv) == [
              {"Work sources", :current},
@@ -1107,6 +1269,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              {"Name", :done, :link},
              {"Work sources used", :to_come},
              {"Destinations used", :to_come},
+             {"Harness", :to_come},
              {"Test run", :to_come}
            ]
   end
@@ -1339,6 +1502,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              {"Name", :current},
              {"Work sources used", :to_come},
              {"Destinations used", :to_come},
+             {"Harness", :to_come},
              {"Test run", :to_come}
            ]
 

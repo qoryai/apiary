@@ -352,6 +352,11 @@ msgstr ""
 msgid "%{gateway} of %{organisation}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{harness} · pinned at %{commit}"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{header} is a header a definition may not set."
@@ -3031,6 +3036,11 @@ msgstr ""
 msgid "A gateway that is gone"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A harness repository"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A host whose requests the proxy reads, because the run holds a secret, a tool or path rules for it. Every other host is a blind tunnel."
@@ -4661,6 +4671,11 @@ msgstr ""
 msgid "Behind v%{n}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Branch or tag"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -4701,6 +4716,7 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
+#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr ""
@@ -4807,6 +4823,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/target_live/show.ex
+#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Change"
 msgstr ""
@@ -6629,6 +6646,11 @@ msgstr ""
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Each run reads its repository's qory.yaml or harness.yaml."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Earlier runs of this take in"
@@ -7986,6 +8008,12 @@ msgstr ""
 msgid "Handed to %{tool}, path %{path}"
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Harness"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Harness fetch"
@@ -9330,6 +9358,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -11276,6 +11305,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/workflow_live.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -11651,6 +11681,7 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/target_live/show.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change this."
 msgstr ""
@@ -12605,6 +12636,11 @@ msgid_plural "Qory asked %{number} questions, after %{duration}"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory harness"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory is exploring"
@@ -12806,6 +12842,11 @@ msgstr ""
 msgid "Read the run's log, then press Run the test again. The test run ended without passing."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read through %{organisation}'s %{adapter} connection."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reading the record"
@@ -12816,6 +12857,7 @@ msgstr ""
 msgid "Reading the stack of %{source}…"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Reading…"
@@ -12927,6 +12969,7 @@ msgstr ""
 msgid "Released on"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid."
@@ -15701,6 +15744,11 @@ msgstr ""
 msgid "The gateway's name, its kind and its URL."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness in each repository"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The host answered %{status}."
@@ -17541,6 +17589,7 @@ msgid_plural "Wait %{count} seconds, then reload the page to list the linked rep
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources."
@@ -17846,6 +17895,11 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Which harness do %{workspace}'s runs use?"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -18397,6 +18451,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "You can change this later in Workspace settings › Work sources."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "You can change this later in Workspace settings › Workflow."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
