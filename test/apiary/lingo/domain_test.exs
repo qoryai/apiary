@@ -4,7 +4,7 @@ defmodule Apiary.Lingo.DomainTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.{Example, General, Software}
+  alias Apiary.Lingo.Domain.{Definition, Example, General, Software}
   alias Apiary.Organisations.Workspace
 
   @labels %{"forge" => "git.example.com", "repository" => "acme/shop"}
@@ -171,6 +171,42 @@ defmodule Apiary.Lingo.DomainTest do
     end
   end
 
+  describe "a domain's definition" do
+    @harness %{
+      "git" => "https://github.com/qoryai/harness",
+      "ref" => "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305",
+      "stack" => "core"
+    }
+
+    test "each domain is a type Qory provides, with the Qory harness and no plan or pool" do
+      for {domain, key} <- [
+            {Software, "qory.software"},
+            {General, "qory.general"},
+            {Example, "qory.example"}
+          ] do
+        assert Domain.definition(domain) == %Definition{
+                 key: key,
+                 provided_by: "qory",
+                 harness: @harness,
+                 model_plan: nil,
+                 node_pool: nil
+               }
+
+        assert Domain.definition(domain) == domain.definition()
+      end
+    end
+
+    test "every domain there is has a definition, and no two share a key" do
+      keys = for {_name, domain} <- Domain.domains(), do: Domain.definition(domain).key
+      assert length(keys) == map_size(Domain.domains())
+      assert keys == Enum.uniq(keys)
+    end
+
+    test "the harness is pinned by a full commit id" do
+      assert Software.definition().harness["ref"] =~ ~r/\A[0-9a-f]{40}\z/
+    end
+  end
+
   describe "a domain's label and description" do
     test "the software domain is a software workspace, for work on code" do
       assert Software.label() == "Software workspace"
@@ -242,6 +278,45 @@ defmodule Apiary.Lingo.DomainTest do
     test "a rename leaves the domain as it is" do
       changeset = Workspace.changeset(%Workspace{domain: "example"}, %{name: "Ops", domain: "x"})
       assert Ecto.Changeset.get_field(changeset, :domain) == "example"
+    end
+  end
+
+  describe "a workspace's type" do
+    test "a new workspace stores the key of its domain's definition" do
+      %{workspace: workspace} = sign_up_fixture()
+      assert workspace.type == "qory.software"
+      assert Repo.reload!(workspace).type == "qory.software"
+    end
+
+    test "is set at creation from the chosen domain, and never from the attributes" do
+      for {name, key} <- [
+            {"software", "qory.software"},
+            {"general", "qory.general"},
+            {"example", "qory.example"}
+          ] do
+        changeset =
+          Workspace.create_changeset(%Workspace{domain: nil}, %{
+            name: "Ops",
+            domain: name,
+            type: "acme.other"
+          })
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :type) == key
+      end
+    end
+
+    test "is not set for a domain no module has" do
+      changeset =
+        Workspace.create_changeset(%Workspace{domain: nil}, %{name: "Ops", domain: "unknown"})
+
+      refute changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :type) == nil
+    end
+
+    test "a rename leaves the type as it is" do
+      changeset = Workspace.changeset(%Workspace{type: "qory.example"}, %{name: "Ops", type: "x"})
+      assert Ecto.Changeset.get_field(changeset, :type) == "qory.example"
     end
   end
 

@@ -21,7 +21,8 @@ defmodule Apiary.Organisations.WorkspacePublicIdTest do
       organisation_id: organisation.id,
       name: name,
       slug: Slug.from_name(name, "workspace"),
-      domain: "software"
+      domain: "software",
+      type: "qory.software"
     })
   end
 

@@ -9,12 +9,15 @@ defmodule Apiary.Lingo.Domain.General do
   A work item needs no target. A target it has is a host name and a path of 1 to 200
   characters that can be a label; a run of it gets no run variables, no collection's
   environment is prebuilt, and no target is read for a harness file.
+
+  Its workspace type is Qory's `qory.general` (`definition/0`).
   """
   @behaviour Apiary.Lingo.Domain
 
   use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.Lingo.Domain
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Runs.Target
 
   @system_label "system"
@@ -79,4 +82,7 @@ defmodule Apiary.Lingo.Domain.General do
 
   @impl true
   def harness_file?, do: false
+
+  @impl true
+  def definition, do: Definition.qory("qory.general")
 end

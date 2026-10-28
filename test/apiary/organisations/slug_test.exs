@@ -159,7 +159,7 @@ defmodule Apiary.Organisations.SlugTest do
 
       assert {:error, changeset} =
                %Workspace{organisation_id: organisation.id}
-               |> Workspace.changeset(%{name: "Main again"})
+               |> Workspace.create_changeset(%{name: "Main again", domain: "software"})
                |> Workspace.put_slug(workspace.slug)
                |> Repo.insert()
 
@@ -169,7 +169,7 @@ defmodule Apiary.Organisations.SlugTest do
       for organisation_id <- [organisation.id, organisation_fixture().id] do
         assert {:ok, %Workspace{slug: "platform"}} =
                  %Workspace{organisation_id: organisation_id}
-                 |> Workspace.changeset(%{name: "Platform"})
+                 |> Workspace.create_changeset(%{name: "Platform", domain: "software"})
                  |> Workspace.put_slug("platform")
                  |> Repo.insert()
       end

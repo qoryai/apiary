@@ -278,7 +278,8 @@ defmodule ApiaryWeb.ActivityLiveTest do
           organisation_id: scope.organisation.id,
           name: "Second",
           slug: "second",
-          domain: "software"
+          domain: "software",
+          type: "qory.software"
         })
 
       {:ok, in_second} =
