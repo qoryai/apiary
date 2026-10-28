@@ -16,11 +16,11 @@ defmodule Apiary.Runs.RunCredentials do
   #     workspace, whose adapter's latest start said its collections have targets
   #     (`Apiary.Nodes.Node`'s `targets`), and whose target system and path equal the
   #     run's target. A collection of an adapter that did not say so never counts, even
-  #     when its target equals the run's: a ticket's from a tracker is one. Of the
-  #     matching collections, the run takes one that is live and on a connected
-  #     connection before one that is not; then its ticket's collection
-  #     (`Apiary.Sources.Item`) before another; then the oldest, by `inserted_at`, then
-  #     by id.
+  #     when its target equals the run's, as a tracker's collection's may. So the claim
+  #     never requests a forge's credential from a tracker's adapter. Of the matching
+  #     collections, the run takes one that is live and on a connected connection before
+  #     one that is not; then its ticket's collection (`Apiary.Sources.Item`) before
+  #     another; then the oldest, by `inserted_at`, then by id.
   #
   #   * No entry, and the run runs as before: a run with no target, no collection (no
   #     matching one for a run with a work item), or an adapter whose latest start

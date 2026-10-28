@@ -336,6 +336,20 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert [%{"paths" => ["/acme/shop.git/*", "/acme/shop/*"]}, _api] = entry.apply
     end
 
+    test "is found for a work item with no ticket", ctx do
+      # A work item whose ticket's row is gone (`item_id` nil): the matching collections
+      # are read without it. The claim ends such an explore run `ticket_gone` first.
+      {work_item, queued} = tracker_queued!(ctx, @target)
+      forge = forge_collection!(ctx)
+      forge_id = forge.id
+
+      assert {:ok, %RunCredential{resources: [%{"collection_id" => ^forge_id}]} = entry} =
+               RunCredentials.form_work(queued, %{work_item | item_id: nil}, @target)
+
+      assert entry.connection_id == forge.connection_id
+      assert entry.adapter_id == forge.adapter_id
+    end
+
     test "is never one of an adapter without targets, even when its target matches", ctx do
       {work_item, queued} = tracker_queued!(ctx, @target)
 
@@ -426,9 +440,12 @@ defmodule Apiary.Runs.RunCredentialsTest do
       set!(Collection, other.id, target_system: "forge.example.com")
       set!(Node, other.adapter_id, source_apply: @apply, targets: true)
 
-      # One unassigned.
+      # One unassigned, and one in another workspace of the same organisation.
       unassigned = forge_collection!(ctx)
       set!(Collection, unassigned.id, workspace_id: nil)
+      elsewhere = forge_collection!(ctx)
+      workspace = workspace_fixture(ctx.scope.organisation)
+      set!(Collection, elsewhere.id, workspace_id: workspace.id)
 
       assert RunCredentials.form_work(queued, work_item, @target) == {:ok, nil}
       assert {:ok, %{registered: %Run{}}} = claim(ctx)

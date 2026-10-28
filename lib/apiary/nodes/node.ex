@@ -119,8 +119,9 @@ defmodule Apiary.Nodes.Node do
     # target, a place where a run's changes go, as its latest start's description's source
     # role says (`targets`): true where it says so, false where it says nothing; nil
     # before its first start and on every other node. Set at each start
-    # (`source_role_changeset/2`) and never cast. A run's work credential comes only from
-    # a collection of an adapter with true (`Apiary.Runs.RunCredentials`).
+    # (`source_role_changeset/2`) and never cast. A run with a work item takes its work
+    # credential only from a collection of an adapter with true; a prebuild takes its
+    # collection's (`Apiary.Runs.RunCredentials`).
     field :targets, :boolean
     # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
     # words for one collection and for many, both or neither (nil for the default,
@@ -420,8 +421,9 @@ defmodule Apiary.Nodes.Node do
   # `collection_noun/1` and `access/1`, which the description's schema has checked): its
   # words for one item and for many, or none, whether it reports items, whether its
   # collections can have a target (`Apiary.Integrations.Description.targets?/1`), its
-  # words for one collection and for many, or none, and its line on how to change, at the source, which
-  # collections it reaches, and the names of the secrets it stores in Qory Apiary
+  # words for one collection and for many, or none, and its line on how to change, at
+  # the source, which collections it reaches, and the names of the secrets it stores in
+  # Qory Apiary
   # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
   # items of its work credential with the description's exact `egress_hosts`
   # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
