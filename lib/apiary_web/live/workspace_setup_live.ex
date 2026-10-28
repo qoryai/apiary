@@ -48,9 +48,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     and reads the step again on each change;
   #   * Model, for the organisation, with the features `factory` and `secrets`: Provider,
   #     Key and, for a provider that needs one, Address, which add a model provider as
-  #     Organisation settings › Model providers does (`Apiary.Connections.create_provider/2`),
+  #     Organisation settings › Model providers does (`Apiary.Connections.create_provider/3`),
   #     while the organisation has no provider with a key; else the line that it has one.
-  #     Then Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`),
+  #     Once the flow's workspace exists, the key is a secret of that workspace, and the
+  #     provider reaches that workspace alone. Then Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`),
   #     as text where there is one, and Default model, the models suggested for the
   #     provider and runtime (`Apiary.ModelChoices.suggestions/2`). Continue saves the
   #     organisation's default (level 6, `Apiary.ModelChoices.put_choice/4`). The key is
@@ -715,20 +716,35 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp keys(_provider), do: 0
 
   # Adds the provider with its key, for an organisation that has none with a key; the
-  # one it has, else.
-  defp model_provider(%{assigns: %{existing: nil, current_scope: scope}}, params) do
+  # one it has, else. The key is a secret of the flow's workspace, and the provider
+  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`).
+  # A flow whose workspace is not made yet, as the Model step comes before Name, adds it
+  # for the organisation.
+  defp model_provider(%{assigns: %{existing: nil, current_scope: scope, flow: flow}}, params) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
-      Connections.create_provider(scope, %{
-        "provider" => provider.name,
-        "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
-        "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
-      })
+      {scope, place} = key_place(scope, flow)
+
+      Connections.create_provider(
+        scope,
+        %{
+          "provider" => provider.name,
+          "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
+          "settings" =>
+            Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
+        },
+        place
+      )
     end
   end
 
   defp model_provider(%{assigns: %{existing: provider}}, _params), do: {:ok, provider}
+
+  defp key_place(scope, %{workspace: %Apiary.Organisations.Workspace{} = workspace}),
+    do: {%{scope | workspace: workspace}, :workspace}
+
+  defp key_place(scope, _flow), do: {scope, :organisation}
 
   defp serves(provider, runtime) do
     case ModelChoices.serves(provider, runtime) do
