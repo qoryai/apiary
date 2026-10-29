@@ -167,7 +167,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     command that installs qory, with Copy. The step reads
   #     the pools again once the first outstanding code expires, and as a machine enrols
   #     a key on a pool of the workspace or a code of it is cancelled
-  #     (`Apiary.AccessKeys.subscribe/2`, once per pool);
+  #     (`Apiary.AccessKeys.subscribe/2`, once per pool). About this step has what a node
+  #     pool and a node are, whose runs the instance's pool and a pool of the workspace
+  #     take, and why runs need a ready pool and a gateway;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
@@ -176,7 +178,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     running, passed, or one of four failures, read again as the workspace's queue and
   #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
   #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
-  #     whom `work_item.take_in` does not allow sees who may.
+  #     whom `work_item.take_in` does not allow sees who may. About this step has what the
+  #     test run adds and when it passes, its harness (`Apiary.Harnesses.Builtin`), what it
+  #     leaves alone, and that a pass finishes the set-up.
   #
   # Every step has Back to the step before it in the indicator, where that step has a
   # page: Name has none, so Back never leads to the cards or the instance's steps.
@@ -2336,6 +2340,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           {gettext("Go to %{workspace}", workspace: @workspace.name)}
         </.button>
       </div>
+
+      <:context>
+        <p id="set-up-what">
+          {gettext(
+            "The test run adds a test work item to %{workspace} and queues its run. The test passes once a machine takes the run and the run completes.",
+            workspace: @workspace.name
+          )}
+        </p>
+        <p id="set-up-test-harness">
+          {gettext(
+            "The run uses a harness built into Qory Apiary, qory's hello example at a fixed version, in place of the harness of %{workspace}. The test work item has no ticket and no target. The run changes no target, and Qory Apiary sends nothing to a work source or destination.",
+            workspace: @workspace.name
+          )}
+        </p>
+        <p id="set-up-test-after">
+          {gettext(
+            "Once a test run passes, the set-up of %{workspace} is finished, and a link to %{workspace} opens the workspace in place of the set-up.",
+            workspace: @workspace.name
+          )}
+        </p>
+      </:context>
     </SetUpComponents.frame>
     """
   end
@@ -2664,6 +2689,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </ul>
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
+
+      <:context>
+        <p id="set-up-what">
+          {gettext(
+            "A node pool takes runs from the queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue."
+          )}
+        </p>
+        <p id="set-up-machines-pools">
+          {gettext(
+            "The instance's pool, where the instance has one, runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone.",
+            workspace: @flow.workspace.name
+          )}
+        </p>
+        <p id="set-up-machines-why">
+          {gettext(
+            "The runs of work items need a ready pool: one with an active key, and a gateway with an active key. Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
+          )}
+        </p>
+      </:context>
     </SetUpComponents.frame>
     """
   end

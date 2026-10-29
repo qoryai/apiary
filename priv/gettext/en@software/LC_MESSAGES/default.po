@@ -3119,6 +3119,11 @@ msgstr ""
 msgid "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A node pool takes runs from the queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A node runs one instance at a time."
@@ -11477,6 +11482,11 @@ msgstr ""
 msgid "On the machine that ran the command; never shown"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Once a test run passes, the set-up of %{workspace} is finished, and a link to %{workspace} opens the workspace in place of the set-up."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Once it runs, organisations can install it."
@@ -15818,6 +15828,11 @@ msgstr ""
 msgid "The instance's pool"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The instance's pool, where the instance has one, runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half."
@@ -16319,6 +16334,11 @@ msgstr ""
 msgid "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The run uses a harness built into Qory Apiary, qory's hello example at a fixed version, in place of the harness of %{workspace}. The test work item has no ticket and no target. The run changes no target, and Qory Apiary sends nothing to a work source or destination."
+msgstr "The run uses a harness built into Qory Apiary, qory's hello example at a fixed version, in place of the harness of %{workspace}. The test work item has no ticket and no repository. The run changes no repository, and Qory Apiary sends nothing to a work source or destination."
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run was cancelled."
@@ -16347,6 +16367,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The runs could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The runs of work items need a ready pool: one with an active key, and a gateway with an active key. Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -16425,6 +16450,11 @@ msgstr "The repositories that override %{name}, and those whose override its loc
 #, elixir-autogen, elixir-format
 msgid "The targets this workspace's runs have changed."
 msgstr "The repositories this workspace's runs have changed."
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The test run adds a test work item to %{workspace} and queues its run. The test passes once a machine takes the run and the run completes."
+msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
