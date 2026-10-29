@@ -315,7 +315,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Harness** on two lines, such as “Qory harness” over “Always the latest version”, or
   the harness the organisation shares where the workspace has no saved choice.
   **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
-  **Cancel**. **About this step** also has the Harness step's five paragraphs.
+  **Cancel**. Under the harness, **Repositories** shows the same rows as the Harness
+  step, with the same **Stack** field. **About this step** also has the Harness step's
+  five paragraphs.
   Under it, the page sets the workflow of the workspace's runs, from a harness
   repository: **Source** lists the repositories connected to the organisation, and the
   harness sources an instance admin assigned to it;
