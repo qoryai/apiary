@@ -357,26 +357,6 @@ msgstr ""
 msgid "%{gateway} of %{organisation}"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{harness} · %{stack} · at %{ref}, not pinned"
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{harness} · %{stack} · pinned at %{commit}"
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{harness} · at %{ref}, not pinned"
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{harness} · pinned at %{commit}"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{header} is a header a definition may not set."
@@ -2470,6 +2450,11 @@ msgstr ""
 msgid "%{size} · %{lines}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stack} · %{harness} · %{version}"
+msgstr ""
+
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "%{subject} has a rule here already: it was added after the request was sent."
@@ -2508,6 +2493,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{target} enforces; the rest follow the workspace."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{target} exports no stack."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -3001,6 +2991,11 @@ msgstr ""
 msgid "A file outside the folder the runs work in, given with: %{command}"
 msgstr "A file outside the checkout, given with: %{command}"
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A fixed version"
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -3009,13 +3004,18 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "A harness is the skills and workflows the agent runs with. Runs in %{workspace} use the harness you choose here."
+msgid "A harness is the skills and workflows the agent runs with."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "A harness source"
 msgstr "A harness repository"
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A harness source exports stacks in the qory.yaml or harness.yaml at its root. Qory Apiary reads that file in the target you pick, and offers only the stacks it exports."
+msgstr "A harness repository exports stacks in the qory.yaml or harness.yaml at its root. Qory Apiary reads that file in the repository you pick, and offers only the stacks it exports."
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -3145,12 +3145,6 @@ msgctxt "plain"
 msgid "A release image builds it and serves it here. In a checkout, run:"
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "A repository's %{harness} or %{qory} comes first."
-msgstr ""
-
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "A request changes at most %{max} rules."
@@ -3248,6 +3242,11 @@ msgstr ""
 msgid "A secret with several values names each one with a value ID."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A stack of another target…"
+msgstr "A stack of another repository…"
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "A starter that reaches Qory Apiary directly can leave %{via} out."
@@ -3291,19 +3290,14 @@ msgstr "A repository that overrides the mode does not change. The rules stay as 
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "A target uses the workspace's harness unless you choose another one for it."
-msgstr "A repository uses the workspace's harness unless you choose another one for it."
+msgid "A target whose harness.yaml or qory.yaml at its root sets a harness runs with that file. Every other target runs with the stack set for it under Targets, else with the harness you choose here, else with the Qory harness."
+msgstr "A repository whose harness.yaml or qory.yaml at its root sets a harness runs with that file. Every other repository runs with the stack set for it under Repositories, else with the harness you choose here, else with the Qory harness."
 
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "A target's allow rule still holds there."
 msgstr "A repository's allow rule still holds there."
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "A target's harness file comes first."
-msgstr "A repository's harness file comes first."
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
@@ -4166,6 +4160,21 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Always"
 msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Always the latest on"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Always the latest version"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Always the latest: each run uses the newest version when it starts. A fixed version uses that version."
+msgstr "Always the latest on a branch: each run uses the branch's newest commit when it starts. A fixed version uses that tag or commit."
 
 #: lib/apiary_web/activity/actor.ex
 #: lib/apiary_web/activity/describer/core.ex
@@ -5223,7 +5232,6 @@ msgstr ""
 msgid "Choose a day to jump to."
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a source"
@@ -5252,11 +5260,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose an outside API: a built-in one, or a custom API of this organisation."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Choose another"
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
@@ -7375,6 +7378,7 @@ msgstr ""
 msgid "Find a secret by name or value ID"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
@@ -9968,6 +9972,11 @@ msgstr ""
 msgid "Name this workspace"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Named versions come with the first release of the Qory harness."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Needs"
@@ -10204,12 +10213,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "No changes yet. Version 1 was rendered on %{date}."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "No connected repository has a qory-stack.yaml file. Connect a work source, or add the file to a repository."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -12836,11 +12839,6 @@ msgstr ""
 msgid "Read the run's log, then press Run the test again. The test run ended without passing."
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Read through the %{adapter} connection of %{organisation}."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reading the record"
@@ -14810,7 +14808,6 @@ msgstr ""
 msgid "Sort: %{order}"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
@@ -15169,6 +15166,7 @@ msgstr ""
 msgid "Taking you to %{integration}…"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -15501,6 +15499,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The Forager file's lines for this key. Nothing here is secret."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The Qory harness is the harness Qory publishes. Always the latest version uses the newest version this Qory Apiary ships, and moves on when Qory Apiary is upgraded."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -17495,6 +17498,7 @@ msgstr ""
 msgid "Variables, %{number}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -18119,7 +18123,6 @@ msgstr ""
 msgid "Workspace created"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace default"
@@ -18175,6 +18178,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace's deletion cancelled"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace's harness"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -19912,6 +19920,11 @@ msgstr ""
 msgctxt "qualifier"
 msgid "system"
 msgstr "forge"
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "tag or version"
+msgstr "tag or commit"
 
 #: lib/apiary_web/live/connection_live/rules.ex
 #, elixir-autogen, elixir-format

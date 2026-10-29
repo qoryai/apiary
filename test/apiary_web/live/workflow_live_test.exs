@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.WorkflowLiveTest do
   @moduledoc """
   Workspace settings › Workflow (`ApiaryWeb.WorkflowLive`) against stub adapters
-  (`Req.Test`): who opens it and where it is in the list; its steps, and the line on a
-  repository's harness file in a software workspace alone; each kind of source, read when
-  chosen; a refused address; the save, its document, and the setting shown again.
+  (`Req.Test`): who opens it and where it is in the list; About this step, with the
+  paragraphs on the harness; the harness choice and its version; each kind of source,
+  read when chosen; a refused address; the save, its document, and the setting shown
+  again.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -75,6 +76,16 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     )
   end
 
+  defp words(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
   defp calls do
     receive do
       {:harness_call, path, call} -> [{path, call} | calls()]
@@ -123,7 +134,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   end
 
   describe "the page" do
-    test "About this step says what the page sets, and in a software workspace the harness file comes first",
+    test "About this step says what the page sets, what a harness is and the order of a run's harness; no notice says the harness file comes first",
          %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
@@ -145,17 +156,26 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(view, "#workflow-help")
       refute render(view) =~ "Press Save."
 
-      assert has_element?(
-               view,
-               "#workflow-file-first",
-               "A repository's harness.yaml or qory.yaml comes first."
-             )
+      # The paragraphs of the Harness step's About this step.
+      assert words(view, "#page-context #harness-about-what") ==
+               "A harness is the skills and workflows the agent runs with."
+
+      assert words(view, "#page-context #harness-about-order") ==
+               "A repository whose harness.yaml or qory.yaml at its root sets a harness runs " <>
+                 "with that file. Every other repository runs with the stack set for it under " <>
+                 "Repositories, else with the harness you choose here, else with the Qory harness."
+
+      for id <- ~w(harness-about-qory harness-about-exports harness-about-versions),
+          do: assert(has_element?(view, "#page-context ##{id}"))
+
+      refute has_element?(view, "#workflow-file-first")
+      refute render(view) =~ "comes first."
     end
 
-    test "with the Qory harness saved the harness file comes first; with a harness repository no line says so",
+    test "no notice on a repository's harness file shows, whatever the harness choice",
          %{conn: conn, path: path, scope: scope} do
       {:ok, _choice} = Sources.choose(scope, :qory)
-      assert has_element?(open(conn, path), "#workflow-file-first")
+      refute has_element?(open(conn, path), "#workflow-file-first")
 
       document =
         "extends:\n  git: \"#{@harness}\"\n  ref: \"#{String.duplicate("c3", 20)}\"\n"
@@ -255,17 +275,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert calls() == []
     end
 
-    test "with no connected repository, the group shows a line and the address stays",
+    test "with no connected repository, the group is empty and the address stays",
          %{conn: conn, path: path} do
       end_collections!()
       view = open(conn, path)
 
-      assert has_element?(view, ~s(#workflow_source-0[value=""][disabled]))
-
-      assert words(view, ~s(label[for="workflow_source-0"])) ==
-               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
-                 "or add the file to a repository."
-
+      assert has_element?(view, "#workflow_source-g0", "Linked repositories")
+      refute has_element?(view, ~s(#workflow_source-options input[value=""]))
+      refute render(view) =~ "No connected repository"
       refute has_element?(view, "#workflow_source-search")
 
       change(view, %{source: "address"})
@@ -515,54 +532,61 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
   describe "the harness" do
     @pin String.duplicate("c3", 20)
-    @root_stack "modules:\n  - name: core\n    source: {path: modules/core}\n"
-
-    defp words(view, selector) do
-      view
-      |> element(selector)
-      |> render()
-      |> LazyHTML.from_fragment()
-      |> LazyHTML.text()
-      |> String.split()
-      |> Enum.join(" ")
-    end
 
     defp change_harness(view) do
       view |> element("#workflow-harness-change") |> render_click()
       view
     end
 
-    test "without a choice: the Qory harness and its pin, with Change and no Update", %{
-      conn: conn,
-      path: path
-    } do
+    @one_export %{
+      {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage]\n",
+      {"R_harness", "stacks/triage/qory-stack.yaml"} =>
+        "modules:\n  - name: core\n    source: {path: modules/core}\n"
+    }
+
+    # The harness form with a harness repository and acme/harness chosen, its exports read.
+    defp pick_repository(view, linked_id) do
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      view
+      |> form("#workflow-harness-form", harness: %{source: linked_id})
+      |> render_change()
+
+      render_async(view, 2_000)
+      view
+    end
+
+    test "without a choice: the Qory harness at Always the latest version, with Change and no Update",
+         %{conn: conn, path: path} do
       view = open(conn, path)
 
       assert has_element?(view, "#workflow-harness", "Harness")
-      assert words(view, "#harness-line") == "Qory harness · pinned at fe3b3ab"
+      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+      refute render(view) =~ "fe3b3ab"
       assert has_element?(view, "#workflow-harness-change", "Change")
       refute has_element?(view, "#workflow-harness-form")
       refute render(view) =~ "Update"
     end
 
-    test "Change opens the two choices; the Qory harness saves pinned", %{
+    test "Change opens the two choices; the Qory harness saves at Always the latest version", %{
       conn: conn,
       path: path,
       scope: scope
     } do
       view = conn |> open(path) |> change_harness()
 
-      assert words(view, "#harness-intro") ==
-               "A harness is the skills and workflows the agent runs with. " <>
-                 "Runs in #{scope.workspace.name} use the harness you choose here."
-
+      refute has_element?(view, "#harness-intro")
       assert has_element?(view, "#harness-choice-qory-radio[checked]")
+      assert words(view, "#harness-choice-qory") == "Qory harness"
+      assert has_element?(view, "#harness-qory-version-latest[checked]")
+      assert has_element?(view, "#harness-qory-version-named[disabled]")
 
-      assert has_element?(view, "#harness-choice-qory .q-choice-h", "Qory harness")
+      assert words(view, "#harness-qory-version-none") ==
+               "Named versions come with the first release of the Qory harness."
 
-      assert words(view, "#harness-choice-qory .q-choice-p") ==
-               "github.com/qoryai/harness · fe3b3ab"
-
+      refute render(view) =~ "fe3b3ab"
       refute has_element?(view, "#harness-choice-target_file")
       refute has_element?(view, "#harness-choice-qory-file")
       assert has_element?(view, "#harness-choice-repository", "A harness repository")
@@ -571,10 +595,10 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "qory"})
       |> render_submit()
 
-      assert words(view, "#harness-line") == "Qory harness · pinned at fe3b3ab"
+      assert words(view, "#harness-line") == "Qory harness Always the latest version"
       refute has_element?(view, "#workflow-harness-form")
-      assert %{choice: :qory} = Stacks.choice(scope.workspace)
-      assert has_element?(view, "#workflow-file-first")
+      assert %{choice: :qory, version_kind: :latest} = Stacks.choice(scope.workspace)
+      refute has_element?(view, "#workflow-file-first")
 
       # Cancel closes the choices with nothing saved.
       change_harness(view)
@@ -605,18 +629,18 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       refute has_element?(view, "#harness-choice-shared")
       refute has_element?(view, "#harness-targets")
-      refute render(view) =~ "Choose another"
     end
 
-    test "a harness repository: a linked repository at a branch, pinned at the commit read", %{
-      conn: conn,
-      path: path,
-      scope: scope,
-      adapter: adapter,
-      covered: covered,
-      linked_id: linked_id
-    } do
-      files = Map.put(@files, {"R_harness", "qory-stack.yaml"}, @root_stack)
+    test "a harness repository: one repository by name, its exported stack, and a fixed version",
+         %{
+           conn: conn,
+           path: path,
+           scope: scope,
+           adapter: adapter,
+           covered: covered,
+           linked_id: linked_id
+         } do
+      files = Map.merge(@files, @one_export)
       serve_calls([adapter], covered: covered, files: files, versions: %{"R_harness" => @pin})
       view = conn |> open(path) |> change_harness()
 
@@ -624,35 +648,36 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "repository"})
       |> render_change()
 
-      view
-      |> form("#workflow-harness-form", harness: %{choice: "repository", source: linked_id})
-      |> render_change()
+      # No repository is chosen until the person picks one.
+      assert words(view, "#harness-source-label") == "Repository"
+      assert has_element?(view, "button#harness-source.is-prompt", "Find a repository")
+      assert has_element?(view, "#harness-source-search")
+      assert has_element?(view, "#workflow-harness-save[disabled]")
+
+      pick_repository(view, linked_id)
 
       assert has_element?(view, ~s(#harness-source-options input[value="#{linked_id}"][checked]))
-      assert has_element?(view, "button#harness-source .q-pick-t.mono", "acme/harness")
-      assert has_element?(view, "#harness-source-search")
-
-      # The list is built with no read, so no connection is named under the field.
+      assert has_element?(view, ~s(#harness-stack input[value="triage"][checked]))
       refute has_element?(view, "#harness-ref-hint")
 
       view
-      |> form("#workflow-harness-form", harness: %{choice: "repository", ref: "v2"})
+      |> form("#workflow-harness-form", harness: %{version: "fixed", fixed: "v2"})
       |> render_submit()
 
       render_async(view, 2_000)
 
-      assert words(view, "#harness-line") ==
-               "A harness repository · pinned at c3c3c3c code.example.com/acme/harness"
+      assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
 
-      assert {"R_harness", "qory-stack.yaml", "v2"} in for(
+      assert {"R_harness", "harness.yaml", "v2"} in for(
                {"read", call} <- calls(),
                do: {call["resource_ref"], call["path"], call["at"]}
              )
 
-      assert %{choice: :repository} = Stacks.choice(scope.workspace)
+      assert %{choice: :repository, version_kind: :tag, version_name: "v2"} =
+               Stacks.choice(scope.workspace)
     end
 
-    test "a harness repository with no connected repository: a line in place of Source",
+    test "a harness repository with no connected repository: Repository has none to choose",
          %{conn: conn, path: path} do
       end_collections!()
       view = conn |> open(path) |> change_harness()
@@ -661,42 +686,51 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "repository"})
       |> render_change()
 
-      assert words(view, "#harness-source-none") ==
-               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
-                 "or add the file to a repository."
-
-      refute has_element?(view, "#harness-source")
+      assert has_element?(view, "button#harness-source[disabled]")
+      refute render(view) =~ "No connected repository"
       assert has_element?(view, "#workflow-harness-save[disabled]")
     end
 
-    test "a harness repository that cannot be read says why, and the choice stays", %{
+    test "a harness repository that exports no stack: the line in place of Stack", %{
       conn: conn,
       path: path,
       scope: scope,
+      adapter: adapter,
+      covered: covered,
       linked_id: linked_id
     } do
-      view = conn |> open(path) |> change_harness()
+      serve_calls([adapter], covered: covered, files: %{})
+      view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
 
-      view
-      |> form("#workflow-harness-form", harness: %{choice: "repository"})
-      |> render_change()
+      assert words(view, "#harness-stack-none") == "acme/harness exports no stack."
+      assert has_element?(view, "#workflow-harness-save[disabled]")
+      assert Stacks.choice(scope.workspace) == nil
+    end
 
-      view
-      |> form("#workflow-harness-form", harness: %{choice: "repository", source: linked_id})
-      |> render_change()
+    test "a harness repository whose stack cannot be read says why, and the choice stays", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      adapter: adapter,
+      covered: covered,
+      linked_id: linked_id
+    } do
+      # acme/harness exports triage, and has no qory-stack.yaml for it.
+      files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
+      serve_calls([adapter], covered: covered, files: files)
+      view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
 
-      # acme/harness has no root stack.
       view |> form("#workflow-harness-form") |> render_submit()
       render_async(view, 2_000)
 
       assert words(view, "#workflow-harness-refusal") =~
                "Reload the page to read acme/harness again, or choose another source."
 
-      assert words(view, "#harness-line") == "Qory harness · pinned at fe3b3ab"
+      assert words(view, "#harness-line") == "Qory harness Always the latest version"
       assert Stacks.choice(scope.workspace) == nil
     end
 
-    test "a branch or tag the read finds no version for: correct it, and the choice stays", %{
+    test "a tag the read finds no version for: correct it, and the choice stays", %{
       conn: conn,
       path: path,
       scope: scope,
@@ -705,20 +739,11 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       linked_id: linked_id
     } do
       # The read returns c-R_harness, which is no commit.
-      files = Map.put(@files, {"R_harness", "qory-stack.yaml"}, @root_stack)
-      serve_calls([adapter], covered: covered, files: files)
-      view = conn |> open(path) |> change_harness()
+      serve_calls([adapter], covered: covered, files: Map.merge(@files, @one_export))
+      view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
 
       view
-      |> form("#workflow-harness-form", harness: %{choice: "repository"})
-      |> render_change()
-
-      view
-      |> form("#workflow-harness-form", harness: %{choice: "repository", source: linked_id})
-      |> render_change()
-
-      view
-      |> form("#workflow-harness-form", harness: %{choice: "repository", ref: "v9"})
+      |> form("#workflow-harness-form", harness: %{version: "fixed", fixed: "v9"})
       |> render_submit()
 
       render_async(view, 2_000)
@@ -727,7 +752,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
                  "could not read v9 in acme/harness: its ref is no version of its source."
 
-      assert words(view, "#harness-line") == "Qory harness · pinned at fe3b3ab"
+      assert words(view, "#harness-line") == "Qory harness Always the latest version"
       assert Stacks.choice(scope.workspace) == nil
     end
   end
