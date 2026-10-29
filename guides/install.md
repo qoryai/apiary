@@ -578,7 +578,9 @@ declared on an instance without `factory`, stops the boot.
 
 Set `SSL_CERT_FILE` when your adapters run behind a reverse proxy whose certificate a
 private certificate authority signed: mount the authority's certificate into the
-container and set the variable to its path. Adapter calls still check the adapter's
+container and set the variable to its path. Point it at a bundle that also contains the
+operating system's certificate authorities: other tools in the container, such as curl,
+read SSL_CERT_FILE as their only bundle. Adapter calls still check the adapter's
 certificate against the trusted authorities and against the adapter's host name. Qory
 Apiary reads the file at boot, so a change takes a restart. A file that is missing, or
 contains no PEM certificate, stops the boot:
