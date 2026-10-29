@@ -902,19 +902,75 @@ defmodule Apiary.StacksTest do
       {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
 
       assert run_harness(ctx) ==
-               {:qory, %{harness: doc("shared"), level: :organisation, harness_hidden: false}}
+               {:chosen, %{harness: doc("shared"), level: :organisation, harness_hidden: false}}
 
       {:ok, _stack} = Stacks.delete_stack({:organisation, ctx.scope.organisation})
       assert run_harness(ctx) == :none
     end
 
-    test "the Qory harness of the workspace or the organisation is :qory, a harness repository :chosen",
+    test "the Qory harness and a harness repository are both :chosen, the walk reads the target's file before either",
          ctx do
       choose!(ctx, {:organisation, ctx.scope.organisation}, doc("shared"), :repository)
       assert {:chosen, %{level: :organisation}} = run_harness(ctx)
 
       choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"), :qory)
-      assert {:qory, %{level: :workspace}} = run_harness(ctx)
+      assert {:chosen, %{level: :workspace}} = run_harness(ctx)
+    end
+
+    test "the resolution's ref is that of the row's version, nil for a row with none", ctx do
+      target = %{system: ctx.target.system, path: ctx.target.path}
+
+      chosen = fn ->
+        Stacks.chosen_for(ctx.scope.organisation, ctx.scope.workspace, target, "explore")
+      end
+
+      latest = Apiary.Lingo.Domain.Definition.qory_commit(:latest)
+
+      choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"), :repository)
+      assert {:chosen, %Resolution{ref: nil}} = chosen.()
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, doc("workspace"),
+          choice: :repository,
+          version: {:tag, "v2"}
+        )
+
+      assert {:chosen, %Resolution{ref: "v2"}} = chosen.()
+
+      # A target's stack that follows the workspace's version.
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, ctx.target}, doc("target"),
+          choice: :repository,
+          version: {:workspace, nil}
+        )
+
+      assert {:chosen, %Resolution{level: :target, ref: "v2"}} = chosen.()
+
+      # The workspace takes the Qory harness, and the row is of another repository: the
+      # row's document's ref.
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
+      assert {:chosen, %Resolution{level: :target, ref: "main"}} = chosen.()
+
+      # A row of the Qory harness that follows the workspace's: the newest version.
+      qory =
+        "extends:\n  git: \"https://github.com/qoryai/harness\"\n" <>
+          "  ref: \"#{String.duplicate("0a", 20)}\"\n  stack: \"core\"\n"
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, ctx.target}, qory,
+          choice: :qory,
+          version: {:workspace, nil}
+        )
+
+      assert {:chosen, %Resolution{level: :target, ref: ^latest}} = chosen.()
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, ctx.target}, doc("target"),
+          choice: :qory,
+          version: {:named, "v0.1"}
+        )
+
+      assert {:chosen, %Resolution{ref: {:missing, "v0.1"}}} = chosen.()
     end
 
     test "the target's resolution has the target's row", ctx do
@@ -975,7 +1031,7 @@ defmodule Apiary.StacksTest do
     test "is true when the run's organisation is operated", ctx do
       choose!(ctx, {:organisation, ctx.scope.organisation}, doc("core"), :qory)
       :ok = Edition.put_test_stub(Apiary.EditionStubs.Operated)
-      assert {:qory, %{harness_hidden: true}} = run_harness(ctx)
+      assert {:chosen, %{harness_hidden: true}} = run_harness(ctx)
     end
   end
 end
