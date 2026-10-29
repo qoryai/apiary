@@ -160,6 +160,11 @@ msgstr[1] ""
 msgid "%{count} exploring"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} of %{total} %{collections}"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} organisations match."
@@ -2005,6 +2010,7 @@ msgid_plural "%{number} secrets match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
@@ -2235,11 +2241,6 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work source connected yet."
-msgstr ""
-
-#: lib/apiary_web/live/adapter_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -3880,6 +3881,16 @@ msgstr ""
 msgid "All"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "All %{collections}"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "All %{collections}, including new ones"
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "All %{number} run"
@@ -3904,6 +3915,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "All integrations are installed."
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "All new %{collections} of %{account} go to %{workspace}."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -4570,6 +4586,7 @@ msgstr ""
 msgid "A−"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Back"
@@ -4807,6 +4824,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change Qory's proposal · #%{number}"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Change access"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -5162,9 +5184,16 @@ msgstr ""
 msgid "Checking the organisations you own"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/live/choose_collections_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose %{collections} · %{adapter} · %{account}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -5590,6 +5619,16 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Connect a work source"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Connect another destination"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Connect another source"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -7244,6 +7283,7 @@ msgstr ""
 msgid "Filters"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Find a %{collection}"
@@ -8146,6 +8186,7 @@ msgstr ""
 msgid "In %{organisation}"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "In %{workspace} (cannot be ticked)"
@@ -10081,6 +10122,7 @@ msgstr ""
 msgid "Newest"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -10097,6 +10139,7 @@ msgstr ""
 msgid "No"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No %{collections} match “%{search}”."
@@ -10136,11 +10179,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "No changes yet. Version 1 was rendered on %{date}."
 msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "No collection yet"
-msgstr "No collection yet"
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -11000,6 +11038,11 @@ msgstr ""
 msgid "Not listed yet"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not listed? %{access}"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not locked"
@@ -11215,6 +11258,7 @@ msgstr ""
 
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/choose_collections_live.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -11570,6 +11614,7 @@ msgstr ""
 
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/integration_live/common.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change the integrations of the organisation."
 msgstr ""
@@ -11622,6 +11667,7 @@ msgid "Only owners and admins manage members, and only owners change a level or 
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of %{organisation} assign %{collections} to workspaces."
@@ -11645,6 +11691,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners, admins and members run the test."
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only selected"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -12275,6 +12326,7 @@ msgstr ""
 msgid "Press a ticket's title. Its panel opens."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -13843,6 +13895,7 @@ msgid "SMTP relay"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -14092,6 +14145,7 @@ msgstr ""
 msgid "Select %{name}"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Select every %{collection} shown"
@@ -17975,6 +18029,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Work sources"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Work sources is set to All for %{account}. Change it there first."
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
