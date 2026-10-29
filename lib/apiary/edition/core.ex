@@ -73,6 +73,13 @@ defmodule Apiary.Edition.Core do
   def set_up_context(_scope, _step_id), do: nil
 
   @impl true
+  def machines_who_may(_scope, _workspace, :instance),
+    do: gettext("Only an instance admin checks the instance's pool and gateway.")
+
+  def machines_who_may(_scope, _workspace, :workspace),
+    do: gettext("Only owners and admins connect a node.")
+
+  @impl true
   def above_workspace(_workspace), do: nil
 
   # The core has no operator: an organisation's runs take its own chain of model choices.
@@ -106,8 +113,8 @@ defmodule Apiary.Edition.Core do
   def harness_source_allowed?(_run_organisation_id, _owner_organisation_id, _source),
     do: false
 
-  # The setup list counts what the workspace and its organisation have, and the instance's
-  # pool and gateway.
+  # The set-up's rules count what the workspace and its organisation have, and the
+  # instance's pool and gateway.
   @impl true
   def work_source_ready(workspace), do: Apiary.WorkspaceSetup.work_source(workspace)
 
@@ -215,6 +222,11 @@ defmodule Apiary.Edition.Core do
 
   @impl true
   def hidden(_scope), do: []
+
+  # The core has one workspace: what a person adds reaches it alone, and no form shows the
+  # setting.
+  @impl true
+  def scope_setting?(_scope), do: false
 
   @impl true
   def audit_details(_scope, _organisation_id, details), do: details

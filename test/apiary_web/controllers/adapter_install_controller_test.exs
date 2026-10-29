@@ -106,6 +106,30 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
       refute inspect(payload(pass(set_up))) =~ "set-up"
     end
 
+    test "a workspace's slug is kept only for a workspace of the organisation in use", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter
+    } do
+      %{organisation: theirs} = sign_up_fixture()
+      billing = workspace_fixture(theirs, "Billing")
+      main = scope.workspace
+
+      for {slug, kept?} <- [{main.slug, true}, {"missing", false}, {billing.slug, false}] do
+        back = "set-up:sources:workspace=" <> slug
+
+        conn =
+          post(
+            conn,
+            "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}/install?" <>
+              URI.encode_query(back: back)
+          )
+
+        [[public_id | _rest]] = get_session(conn, "connect_passes")
+        assert ConnectSession.back(conn, public_id) == if(kept?, do: back)
+      end
+    end
+
     test "any other value is not kept: no address, no open redirect", %{
       conn: conn,
       scope: scope,
@@ -250,7 +274,7 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
 
     {1, _} =
       Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
-        set: [domains: ["general"]]
+        set: [domains: ["example"]]
       )
 
     for adapter <- [settable, desk] do

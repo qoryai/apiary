@@ -666,11 +666,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   defp items(html, id), do: texts(html, "##{id} > span")
 
-  describe "step_card/1, in a general workspace" do
-    # A general workspace reads the source texts, which name no code; the tests above read
+  describe "step_card/1, in an example workspace" do
+    # An example workspace reads the source texts, which name no code; the tests above read
     # the software catalogue's, the default locale's.
     test "Explore reads the ticket and the answers, and proposes what to do" do
-      Gettext.with_locale(ApiaryWeb.Gettext, "en@general", fn ->
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
         for {people, line} <- [
               {[], "Qory reads the ticket when the run starts, and proposes what to do."},
               {[@dana],

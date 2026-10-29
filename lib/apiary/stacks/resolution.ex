@@ -2,7 +2,8 @@ defmodule Apiary.Stacks.Resolution do
   # What the stacks of a run's organisation come to for the run's workflow: the harness
   # document the run uses, the level it came from, its owner, and whether the run hides
   # the text of the harness. Pure: stacks in, a resolution out. `Apiary.Stacks` reads
-  # what it takes.
+  # what it takes: for a run's walk, `Apiary.Stacks.chosen_for/4` passes the one row of
+  # a chosen stack or choice.
   #
   # **The order.** The five stored levels, the most specific first
   # (`Apiary.Stacks.Stack.levels/0`): the target and the workflow, the target, the

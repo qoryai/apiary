@@ -309,7 +309,7 @@ defmodule Apiary.WorkItems.TakeInTest do
   end
 
   describe "in a domain that needs no target" do
-    setup ctx, do: %{scope: with_domain(ctx.scope, "general")}
+    setup ctx, do: %{scope: with_domain(ctx.scope, "example")}
 
     test "takes in a ticket with no target: the work item has none, and its run waits", ctx do
       ticket =

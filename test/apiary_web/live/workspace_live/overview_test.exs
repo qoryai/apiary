@@ -26,6 +26,19 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   setup :register_and_log_in_user
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
+  # The edition's words for who may lock, as `Apiary.EditionStubs.LockWorded` has them, on
+  # a workspace whose set-up is finished.
+  defmodule LockWordedFinished do
+    @moduledoc false
+    defdelegate who_may_sentence(about, scope), to: Apiary.EditionStubs.LockWorded
+    defdelegate test_run_passed?(workspace), to: Apiary.EditionStubs.SetUpFinished
+  end
+
   # No coalescing and no throttling here, so a broadcast is followed by its read as the
   # next message and no test waits on a clock.
   setup do
@@ -115,7 +128,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the empty workspace" do
-    # Without the `factory` feature, whose setup list takes the box's place
+    # Without the `factory` feature, whose set-up takes the box's place
     # (`ApiaryWeb.WorkspaceLive.OverviewSetupTest`).
     setup do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
@@ -704,7 +717,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the nodes hidden from the reader" do
-    # Without the `factory` feature, whose setup list takes the box's place
+    # Without the `factory` feature, whose set-up takes the box's place
     # (`ApiaryWeb.WorkspaceLive.OverviewSetupTest`).
     setup do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
@@ -1325,7 +1338,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "A locked workspace rule denies *.paste.example. Only an owner can change it."
              ]
 
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      :ok = Apiary.Edition.put_test_stub(LockWordedFinished)
       sentence = Apiary.EditionStubs.LockWorded.sentence()
       assert title.() == ["A locked workspace rule denies *.paste.example. #{sentence}"]
     end

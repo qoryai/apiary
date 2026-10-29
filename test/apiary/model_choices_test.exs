@@ -327,6 +327,37 @@ defmodule Apiary.ModelChoicesTest do
                })
     end
 
+    test "at the organisation's default, for a provider whose keys are a workspace's secret",
+         ctx do
+      %{scope: scope, provider: shared} = ctx
+
+      {:ok, workspace_only} =
+        Connections.create_provider(
+          scope,
+          %{provider: "deepseek", keys: [%{value_id: "main", value: "x"}]},
+          :workspace
+        )
+
+      assert errors(
+               ModelChoices.put_choice(scope, :organisation, %{provider: workspace_only.public_id})
+             ) ==
+               %{
+                 provider: [
+                   "To share this provider, add it again with “Available to every workspace in #{scope.organisation.name}” on. Its key is a secret of #{scope.workspace.name}."
+                 ]
+               }
+
+      assert {:ok, []} = ModelChoices.list_choices(scope)
+
+      # The workspace's choice may name it, and the default a provider of the
+      # organisation's secret.
+      assert {:ok, _} =
+               ModelChoices.put_choice(scope, :workspace, %{provider: workspace_only.public_id})
+
+      assert {:ok, _} =
+               ModelChoices.put_choice(scope, :organisation, %{provider: shared.public_id})
+    end
+
     test "for a provider whose key the runtime has no variable for (T21)" do
       {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, anthropic} = Providers.fetch("anthropic")

@@ -224,7 +224,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # A collection ended because its adapter now lists it under another connection: the
   # entry is the collection's, in the trail of the organisation it left, and names it by
   # the title it had then (`name`), shown as an external system's text is
-  # (`Apiary.ExternalText.line/1`), and the adapter by its name then (`integration`).
+  # (`Apiary.ExternalText.line/1`), and the adapter by its title then, else its name then
+  # (`integration`, `Apiary.Adapters.title/1`).
   def sentence(
         :"collection.move",
         %{details: %{"name" => name, "integration" => integration}},

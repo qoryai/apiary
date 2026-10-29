@@ -7,8 +7,9 @@ defmodule ApiaryWeb.ProviderLiveTest do
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Connections
+  alias Apiary.{Connections, Repo}
   alias Apiary.Kinds.{Provider, Providers}
+  alias Apiary.Secrets.Secret
   alias ApiaryWeb.ProviderLive.Index
 
   @moduletag needs: [:factory, :secrets]
@@ -31,12 +32,36 @@ defmodule ApiaryWeb.ProviderLiveTest do
     provider
   end
 
+  # A person and the organisation they signed up, which has no workspace yet.
+  defp without_workspace do
+    {:ok, %{user: user, organisation: organisation}} =
+      Apiary.Organisations.sign_up_user(
+        %{email: Apiary.AccountsFixtures.unique_user_email(), organisation_name: "Acme"},
+        nil,
+        open: true,
+        workspace: false
+      )
+
+    %{user: user, organisation: organisation}
+  end
+
   defp member_conn(scope, level) do
     %{user: user} = member_fixture(scope, level)
     log_in_user(build_conn(), user)
   end
 
   defp title(name), do: (Providers.fetch(name) |> elem(1)).title
+
+  # The text of the element `selector` selects, its whitespace collapsed.
+  defp text(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
 
   # New model provider's form in `html` is sent with POST, and its key's field has no value.
   defp assert_posts_without_key(html) do
@@ -112,6 +137,141 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute html =~ String.slice(@key, -4, 4)
     end
 
+    test "in the core, adds it for the workspace alone, its key a secret of the workspace",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      refute has_element?(lv, "#new-provider-form input[name='provider[everywhere]']")
+
+      lv
+      |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key})
+      |> render_submit()
+
+      assert {:ok, [provider]} = Connections.list_providers(scope)
+      assert provider.applies_to == "selected"
+      assert Connections.workspace_ids_of(provider) == [scope.workspace.id]
+
+      secret = Repo.get!(Secret, provider.secret_id)
+      assert secret.workspace_id == scope.workspace.id
+
+      # The key is on the workspace's Secrets and variables, with its provider.
+      {:ok, secrets, html} =
+        live(conn, "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets")
+
+      assert has_element?(secrets, "#secret-#{secret.public_id}-provider", provider.name)
+      refute html =~ @key
+    end
+
+    test "where the edition shows the setting: on, for every workspace; off, for this one",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert has_element?(
+               lv,
+               "#new-provider-form label",
+               "Available to every workspace in #{scope.organisation.name}"
+             )
+
+      refute has_element?(
+               lv,
+               "#new-provider-form input[type=checkbox][name='provider[everywhere]'][checked]"
+             )
+
+      lv
+      |> form("#new-provider-form",
+        provider: %{provider: "anthropic", key: @key, everywhere: "true"}
+      )
+      |> render_submit()
+
+      assert {:ok, [every]} = Connections.list_providers(scope)
+      assert every.applies_to == "all"
+      assert Repo.get!(Secret, every.secret_id).workspace_id == nil
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      lv
+      |> form("#new-provider-form",
+        provider: %{provider: "openrouter", key: @key, everywhere: "false"}
+      )
+      |> render_submit()
+
+      assert {:ok, providers} = Connections.list_providers(scope)
+      one = Enum.find(providers, &(&1.provider_kind == "openrouter"))
+      assert one.applies_to == "selected"
+      assert Connections.workspace_ids_of(one) == [scope.workspace.id]
+      assert Repo.get!(Secret, one.secret_id).workspace_id == scope.workspace.id
+    end
+
+    test "with no workspace yet, says to set one up first, with no form", %{conn: conn} do
+      %{user: user, organisation: organisation} = without_workspace()
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, html} = live(conn, ~p"/#{organisation}/settings/model-providers/new")
+
+      assert has_element?(
+               lv,
+               "#new-provider-needs-workspace",
+               "Set up a workspace first, then add a model provider in its Model step."
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}/set-up"]},
+               "Set up a workspace"
+             )
+
+      refute has_element?(lv, "#new-provider-form")
+      refute html =~ "new-provider-form"
+    end
+
+    test "with no workspace yet and the setting shown, the same: no form, and nothing added",
+         %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      %{user: user, organisation: organisation} = without_workspace()
+      conn = log_in_user(conn, user)
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/model-providers/new")
+
+      assert has_element?(
+               lv,
+               "#new-provider-needs-workspace",
+               "Set up a workspace first, then add a model provider in its Model step."
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}/set-up"]},
+               "Set up a workspace"
+             )
+
+      refute has_element?(lv, "#new-provider-form")
+
+      render_hook(lv, "create", %{
+        "provider" => %{"provider" => "anthropic", "key" => @key, "everywhere" => "true"}
+      })
+
+      assert has_element?(lv, "#new-provider-needs-workspace")
+
+      for schema <- [Apiary.Connections.Connection, Secret] do
+        refute Repo.get_by(schema, organisation_id: organisation.id)
+      end
+    end
+
+    test "with no workspace yet, a submit adds nothing", %{conn: conn} do
+      %{user: user, organisation: organisation} = without_workspace()
+      conn = log_in_user(conn, user)
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/model-providers/new")
+
+      render_hook(lv, "create", %{"provider" => %{"provider" => "anthropic", "key" => @key}})
+
+      assert has_element?(lv, "#new-provider-needs-workspace")
+
+      for schema <- [Apiary.Connections.Connection, Secret] do
+        refute Repo.get_by(schema, organisation_id: organisation.id)
+      end
+    end
+
     test "About this step says what a key is for, and where to get the chosen one", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
@@ -121,8 +281,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#page-context #new-provider-what",
-               "A model provider's key lets the agents of #{scope.organisation.name}'s runs " <>
-                 "call a model."
+               "A model provider's key lets runs in #{scope.organisation.name} call a model."
              )
 
       assert has_element?(
@@ -134,7 +293,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#new-provider-next",
-               "After you save, choose #{scope.workspace.name}'s model in Workspace settings › Model."
+               "After you save, choose the model for #{scope.workspace.name} in Workspace settings › Model."
              )
 
       # The help that repeated the form is gone.
@@ -145,11 +304,22 @@ defmodule ApiaryWeb.ProviderLiveTest do
       |> form("#new-provider-form", provider: %{provider: "claude-subscription"})
       |> render_change()
 
-      assert has_element?(lv, "#new-provider-get-key", "claude setup-token")
+      assert text(lv, "#page-context #new-provider-get-key-run") ==
+               "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+
+      assert text(lv, "#new-provider-get-key-command-text") == "claude setup-token"
 
       assert has_element?(
                lv,
-               ~s{#new-provider-get-key a[href="https://code.claude.com/docs/en/legal-and-compliance"][target="_blank"]},
+               ~s{#new-provider-get-key-command-copy[data-copy="claude setup-token"]}
+             )
+
+      assert text(lv, "#new-provider-get-key-copy-token") ==
+               "Then copy the token it prints. Anthropic's terms (opens in a new tab) allow this for personal use only."
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-get-key-copy-token a[href="https://code.claude.com/docs/en/legal-and-compliance"][target="_blank"]},
                "Anthropic's terms"
              )
 
@@ -166,6 +336,19 @@ defmodule ApiaryWeb.ProviderLiveTest do
                lv,
                "#new-provider-address-hint",
                "The proxy's https address without /v1."
+             )
+    end
+
+    test "the Key field's hint says the key is stored encrypted and never shown again", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) ==
+               "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-form input[type=password][aria-describedby$="-hint"]}
              )
     end
 

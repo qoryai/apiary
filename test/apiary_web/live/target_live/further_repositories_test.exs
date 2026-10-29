@@ -205,7 +205,7 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
 
     test "not there, and no card, where the workspace's domain has no label for a run's paths",
          %{conn: conn, scope: scope, path: path, form_path: form_path} do
-      with_domain(scope, "general")
+      with_domain(scope, "example")
 
       view = open(conn, path)
       refute has_element?(view, "#target-further-repositories")

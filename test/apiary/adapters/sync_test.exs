@@ -429,6 +429,44 @@ defmodule Apiary.Adapters.SyncTest do
       end
     end
 
+    test "stores whether the adapter's collections have targets at each start, on an adapter alone",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      # Before its first start, nil.
+      assert reload(adapter).targets == nil
+
+      # A description that says nothing: false.
+      assert {:ok, declared} = Adapters.declare(key_scope, declaration())
+      assert declared.targets == false
+      assert reload(adapter).targets == false
+
+      # A description with `targets: true`, which the contract's check accepts.
+      targeted = read_description("example-source-targets.json")
+
+      assert {:ok, declared} =
+               Adapters.declare(key_scope, %{declaration() | description: targeted})
+
+      assert declared.targets == true
+      assert reload(adapter).targets == true
+
+      # The next start replaces it.
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert reload(adapter).targets == false
+
+      # It is no part of the trail's entries.
+      for entry <- entries(:"adapter.declare") do
+        refute Map.has_key?(entry.after, "targets")
+      end
+
+      # Only an adapter holds one (`nodes_targets_check`).
+      for other <- [pool_fixture(scope), node_fixture(scope)] do
+        assert reload(other).targets == nil
+
+        assert_raise Postgrex.Error, ~r/nodes_targets_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [targets: false])
+        end
+      end
+    end
+
     test "a start that changes the access line or a word tells each connected organisation once",
          %{scope: scope, adapter: adapter, key_scope: key_scope} do
       %{scope: other} = sign_up_fixture()

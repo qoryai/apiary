@@ -364,6 +364,54 @@ defmodule Apiary.DeletionTest do
                )
     end
 
+    @tag needs: :factory
+    test "a workspace's deletes the model providers whose keys are its secrets", ctx do
+      %{scope: scope} = ctx
+      workspace = workspace_fixture(scope.organisation)
+      inside = workspace_scope(scope.user, workspace)
+      keys = [%{value_id: "main", value: "sk-purge-test-0123456789"}]
+      attrs = %{provider: "anthropic", keys: keys}
+
+      {:ok, gone} = Apiary.Connections.create_provider(inside, attrs, :workspace)
+      {:ok, kept} = Apiary.Connections.create_provider(scope, attrs, :workspace)
+      {:ok, shared} = Apiary.Connections.create_provider(scope, attrs)
+
+      {:ok, _} = Apiary.ModelChoices.put_choice(inside, :workspace, %{provider: gone.public_id})
+
+      # The organisation's default refuses such a provider; a row written before that
+      # refusal is purged too.
+      Repo.insert!(%Apiary.ModelChoices.ModelChoice{
+        organisation_id: scope.organisation.id,
+        chain: "organisation",
+        connection_id: gone.id
+      })
+
+      {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
+      overdue!(Workspace, workspace.id)
+      instance = Scope.for_instance(scope.organisation, workspace)
+      assert {:ok, :purged} = Deletion.purge_workspace(instance)
+
+      assert Repo.get(Apiary.Connections.Connection, gone.id) == nil
+      assert Repo.get(Apiary.Secrets.Secret, gone.secret_id) == nil
+
+      refute Repo.exists?(
+               from m in Apiary.ModelChoices.ModelChoice, where: m.connection_id == ^gone.id
+             )
+
+      assert Repo.get(Apiary.Connections.Connection, kept.id)
+      assert Repo.get(Apiary.Secrets.Secret, kept.secret_id)
+      assert Repo.get(Apiary.Connections.Connection, shared.id)
+
+      assert %Entry{details: %{"rows" => rows}} =
+               Repo.one(
+                 from e in Entry,
+                   where: e.subject_id == ^workspace.id and e.action == "workspace.purge"
+               )
+
+      assert rows["organisation_connections"] == 1
+      assert rows["model_choices"] == 2
+    end
+
     test "an organisation's: every row, its trail, and one line at the instance", ctx do
       %{scope: scope} = ctx
       fill!(scope)

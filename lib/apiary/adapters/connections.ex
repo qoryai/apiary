@@ -56,8 +56,8 @@ defmodule Apiary.Adapters.Connections do
   #   * The return (`complete_return/4`) holds the connection `FOR UPDATE`, and nothing
   #     else. `mark_listed/1` holds it `FOR UPDATE` inside the transaction of a listing's
   #     part, which holds the adapter's row `FOR SHARE` before it, and goes on to hold
-  #     `FOR SHARE` the organisation's only workspace, when
-  #     it has one, and the workspaces its collections are assigned to; then the live
+  #     `FOR SHARE` the workspaces of the rules of its grants and the workspaces its
+  #     collections are assigned to; then the live
   #     collections of the connection that the part names, and, when the part completes
   #     its listing, the collections of the connection it ends, and no collection of
   #     another connection; then the targets it makes; then the adapter's feed counter

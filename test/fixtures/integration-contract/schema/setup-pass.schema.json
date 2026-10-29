@@ -24,6 +24,12 @@
     "expires_at": {
       "description": "When the pass expires, RFC 3339 in UTC with whole seconds, at most 15 minutes after the control plane issued it. The adapter refuses a pass whose expires_at has passed on its clock, or is more than 15 minutes ahead of it, and keeps the pass's nonce until expires_at has passed. It bounds only the pass's arrival at the adapter, not the admin's round trip at the source.",
       "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "organisation_slug": {
+      "description": "The slug of the instance's organisation in the control plane: the short name of the organisation in the control plane's addresses, 1 to 40 lower-case letters, digits and hyphens, with no hyphen at either end. The control plane signs it with the other members. An adapter may use it to suggest a name at its source, such as a default name on the adapter's setup page. An adapter accepts a pass without it.",
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
     }
   }
 }

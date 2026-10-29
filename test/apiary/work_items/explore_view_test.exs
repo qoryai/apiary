@@ -11,6 +11,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
   alias Apiary.{Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.WorkItems.WorkItemEvent
 
   @moduletag needs: :factory
@@ -234,6 +235,43 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       stale = %{ctx.work_item | take_in: 7, state: :closed}
 
       assert %{status: :confirm, take_in: 1, stage: nil} = WorkItems.explore(ctx.scope, stale)
+    end
+
+    test "a harness walk that could not reach an adapter names it by its title, else by the name the walk kept",
+         ctx do
+      adapter =
+        Apiary.NodesFixtures.adapter_fixture(%{
+          name: "tracker-#{System.unique_integer([:positive])}"
+        })
+
+      %{dispatch_run: dispatch_run} =
+        explore_run_fixture(ctx.work_item, end_cause: :harness_unresolved)
+
+      walk =
+        Repo.insert!(%RunHarness{
+          dispatch_run_id: dispatch_run.id,
+          state: :failed,
+          failure: "adapter_unavailable",
+          failure_adapter: adapter.name,
+          failure_adapter_id: adapter.id
+        })
+
+      adapter_shown = fn ->
+        %{run: %{harness_failure: %{adapter: shown}}} =
+          WorkItems.explore(ctx.scope, ctx.work_item)
+
+        shown
+      end
+
+      # No title yet: the adapter's name.
+      assert adapter_shown.() == adapter.name
+
+      Apiary.NodesFixtures.describe_title(adapter, "Acme Tracker")
+      assert adapter_shown.() == "Acme Tracker"
+
+      # A walk kept before the adapter was, or once its row is gone: the name it kept.
+      walk |> Ecto.Changeset.change(failure_adapter_id: nil) |> Repo.update!()
+      assert adapter_shown.() == adapter.name
     end
   end
 

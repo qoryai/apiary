@@ -346,7 +346,7 @@ defmodule ApiaryWeb.UserLive.Settings do
     socket = socket |> assign(:page_title, page_title(socket.assigns.live_action))
 
     if socket.assigns.live_action != :preferences and
-         not Accounts.sudo_mode?(socket.assigns.current_scope.user, -10) do
+         not Accounts.sudo_mode?(socket.assigns.current_scope.user, -15) do
       {:noreply, reauthenticate(socket)}
     else
       {:noreply,

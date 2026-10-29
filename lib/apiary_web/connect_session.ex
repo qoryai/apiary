@@ -6,10 +6,10 @@ defmodule ApiaryWeb.ConnectSession do
   # is taken only in the browser whose session kept its nonce
   # (`Apiary.Adapters.Connections.complete_return/4`).
   #
-  # Beside a nonce, the session may keep where the return leads (`back/2`): one of
-  # `backs/0`, such as "set-up" for an install started at the workspace set-up's Work
-  # source step, never an address. Neither the pass nor the adapter's return link
-  # carries it.
+  # Beside a nonce, the session may keep where the return leads (`back/2`): a word that
+  # `back?/1` takes, such as "set-up:sources:workspace=main" for an install started at
+  # the Work sources step of the workspace Main's set-up, never an address. Neither the
+  # pass nor the adapter's return link contains it.
   #
   # The session keeps the last `kept/0` connections a browser started, the latest pass of
   # each: a new pass for the same connection replaces the one kept.
@@ -19,29 +19,67 @@ defmodule ApiaryWeb.ConnectSession do
 
   import Plug.Conn, only: [get_session: 2, put_session: 3]
 
+  alias Apiary.Lingo.Domain
+
   @key "connect_passes"
   @kept 4
-  @backs ~w(set-up)
+  @pages ~w(set-up new-workspace)
+  @steps ~w(sources destinations)
 
   # How many connections a session keeps a nonce for.
   @doc false
   @spec kept() :: pos_integer
   def kept, do: @kept
 
-  # Where a return may lead, besides the integration's page: "set-up", the workspace
-  # set-up's Work source step.
+  # Whether `back` is a place a return may lead to, besides the integration's page: a step
+  # of the workspace set-up that connects, `<page>:<step>`, `<page>:<step>:<type>` before
+  # the workspace exists, or `<page>:<step>:workspace=<slug>` once it does. The page is
+  # "set-up" (`/:org/set-up`) or "new-workspace" (`/:org/workspaces/new`), the step
+  # "sources" or "destinations", the type a domain's name (`Apiary.Lingo.Domain`), and
+  # the slug a workspace's slug in form; the install checks it against the organisation's
+  # workspaces (`back_workspace/1`). "set-up" alone is the set-up's Work sources step.
   @doc false
-  @spec backs() :: [String.t()]
-  def backs, do: @backs
+  @spec back?(term) :: boolean
+  def back?("set-up"), do: true
+
+  def back?(back) when is_binary(back) do
+    case String.split(back, ":") do
+      [page, step] ->
+        page in @pages and step in @steps
+
+      [page, step, "workspace=" <> slug] ->
+        page in @pages and step in @steps and slug =~ ~r/\A[a-z0-9][a-z0-9-]*\z/
+
+      [page, step, type] ->
+        page in @pages and step in @steps and type in Domain.names()
+
+      _other ->
+        false
+    end
+  end
+
+  def back?(_back), do: false
+
+  # The slug of the workspace `back` leads to (`back?/1`), nil for a `back` with none.
+  @doc false
+  @spec back_workspace(term) :: String.t() | nil
+  def back_workspace(back) when is_binary(back) do
+    case String.split(back, ":") do
+      [_page, _step, "workspace=" <> slug] -> slug
+      _other -> nil
+    end
+  end
+
+  def back_workspace(_back), do: nil
 
   # Keeps `nonce` (base64url) for the connection `connection_id` in the session of `conn`,
   # the session's latest, in place of any kept for it before, with `back` beside it where
-  # it is one of `backs/0`; any other `back` is not kept.
+  # `back?/1` takes it; any other `back` is not kept.
   @doc false
   @spec put(Plug.Conn.t(), {String.t(), String.t()}, term) :: Plug.Conn.t()
   def put(conn, {connection_id, nonce}, back \\ nil)
       when is_binary(connection_id) and is_binary(nonce) do
-    entry = if back in @backs, do: [connection_id, nonce, back], else: [connection_id, nonce]
+    entry = if back?(back), do: [connection_id, nonce, back], else: [connection_id, nonce]
 
     kept =
       [entry | Enum.reject(entries(conn), &(hd(&1) == connection_id))]
@@ -61,7 +99,7 @@ defmodule ApiaryWeb.ConnectSession do
   end
 
   # Where the return of the connection `connection_id` leads, as the session of `conn`
-  # keeps it beside the nonce: one of `backs/0`, or nil for the integration's page.
+  # keeps it beside the nonce: a word `back?/1` takes, or nil for the integration's page.
   @doc false
   @spec back(Plug.Conn.t(), term) :: String.t() | nil
   def back(conn, connection_id) do
@@ -82,13 +120,13 @@ defmodule ApiaryWeb.ConnectSession do
   end
 
   # What the session keeps, read as it should be: a list of `[connection_id, nonce]`, or
-  # `[connection_id, nonce, back]` with `back` one of `backs/0`.
+  # `[connection_id, nonce, back]` with `back` a word `back?/1` takes.
   defp entries(conn) do
     case get_session(conn, @key) do
       list when is_list(list) ->
         Enum.filter(list, fn
           [id, nonce] -> is_binary(id) and is_binary(nonce)
-          [id, nonce, back] -> is_binary(id) and is_binary(nonce) and back in @backs
+          [id, nonce, back] -> is_binary(id) and is_binary(nonce) and back?(back)
           _other -> false
         end)
 

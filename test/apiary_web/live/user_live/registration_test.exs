@@ -323,13 +323,30 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
                "We will email you a link to confirm; no password needed."
              )
 
-      source = if Apiary.Features.on?(:factory), do: [{"Work source", :to_come}], else: []
+      # The flow of the first workspace: every step with the `factory` feature, Model with
+      # `secrets` too; without `factory`, Name alone.
+      flow =
+        if Apiary.Features.on?(:factory) do
+          ["Name", "Work sources", "Destinations"] ++
+            if(Apiary.Features.on?(:secrets), do: ["Model"], else: []) ++
+            ["Harness", "Machines", "Test run"]
+        else
+          ["Name"]
+        end
 
-      assert steps(lv) ==
-               [{"Your account", :current}, {"Workspace", :to_come} | source]
+      flow = Enum.map(flow, &{&1, :to_come})
+
+      assert steps(lv) == [{"Your account", :current} | flow]
 
       Apiary.Mail.put_test_source(:none)
       {:ok, lv, _html} = live(conn, ~p"/users/register")
+
+      # The organisation's progress alone: the instance's steps belong to its admin.
+      assert steps(lv) == [{"Your account", :current} | flow]
+
+      # The flow's steps have no group heading.
+      assert count(lv) == "Step 1 of #{length(flow) + 1}"
+      refute has_element?(lv, ".q-su-grp-h")
 
       assert has_element?(
                lv,

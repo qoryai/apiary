@@ -1,9 +1,11 @@
 defmodule Apiary.Runs.RunCredentialsTest do
   # The work credential entry a claim records for its run (`Apiary.Runs.RunCredentials`,
   # through `Apiary.Dispatches.claim/3`): the adapter's apply items filled with the run's
-  # target path, its collection as the resource and its access level; none where there is
-  # no collection or no apply item, and the run ended `target_access_gone` where the
-  # collection or its connection ended, or the target path is refused.
+  # target path, its collection as the resource and its access level. The collection is a
+  # prebuild's, or for a run with a work item one that can change the run's target; none
+  # where there is no such collection or no apply item, and the run ended
+  # `target_access_gone` where the collection or its connection ended, or the target path
+  # is refused.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -44,13 +46,60 @@ defmodule Apiary.Runs.RunCredentialsTest do
     Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
+  @target %{system: "forge.example.com", path: "acme/shop"}
+
   # A run of the queue for a new work item of the scope, whose target is acme/shop at
-  # forge.example.com, and whose ticket's adapter declares `apply` (nil for none).
+  # forge.example.com, whose ticket's adapter declares `apply` (nil for none), and whose
+  # ticket's collection can change that target, as a code forge's issue's does
+  # (`target_candidate!/1`).
   defp queued!(ctx, apply \\ @apply) do
     work_item = work_item_fixture(ctx.scope)
     set!(Node, work_item.adapter_id, source_apply: apply)
+    target_candidate!(work_item)
+    {work_item, queue!(work_item)}
+  end
+
+  # A run of the queue for a new work item of the scope, whose target is acme/shop at
+  # forge.example.com, from a tracker's ticket: its adapter declares `@apply` but not
+  # `targets`, and its collection's target is `ticket_target` (nil for none).
+  defp tracker_queued!(ctx, ticket_target \\ nil) do
+    work_item = work_item_fixture(ctx.scope)
+    set!(Node, work_item.adapter_id, source_apply: @apply, targets: false)
+
+    if ticket_target do
+      set!(Collection, collection_of(work_item).id,
+        target_system: ticket_target.system,
+        target_path: ticket_target.path
+      )
+    end
+
+    {work_item, queue!(work_item)}
+  end
+
+  defp queue!(work_item) do
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {work_item, run}
+    run
+  end
+
+  # A live collection of the scope's workspace, on a connected connection, that can change
+  # `target`, as a code forge's adapter's is, its adapter declaring `@apply`. It has no
+  # environment, so a claim takes no prebuild of it before the run.
+  defp forge_collection!(ctx, target \\ @target) do
+    collection =
+      collection_fixture(ctx.scope,
+        target_system: target.system,
+        target_path: target.path,
+        environment_ref: nil
+      )
+
+    set!(Node, collection.adapter_id, source_apply: @apply, targets: true)
+    collection
+  end
+
+  # The work item's target path set to `path`, and its ticket's collection's to match.
+  defp retarget!(work_item, path) do
+    set!(WorkItem, work_item.id, target_path: path)
+    set!(Collection, collection_of(work_item).id, target_path: path)
   end
 
   defp set!(schema, id, fields),
@@ -164,9 +213,9 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     test "fills the target path exactly as the adapter wrote it", ctx do
-      ctx = %{ctx | scope: with_domain(ctx.scope, "general")}
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
       {work_item, _queued} = queued!(ctx)
-      set!(WorkItem, work_item.id, target_path: "Team/Shop%20Two")
+      retarget!(work_item, "Team/Shop%20Two")
       assert {:ok, %{registered: %Run{}}} = claim(ctx)
 
       assert [%RunCredential{apply: [%{"paths" => paths} | _rest]}] = entries()
@@ -203,11 +252,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     test "ends target_access_gone for a target path the apply items refuse", ctx do
-      ctx = %{ctx | scope: with_domain(ctx.scope, "general")}
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
 
       for path <- ["acme/../shop", "acme//shop", "acme/shop*", "acme/shop?x", "acme/shop#x"] do
         {work_item, queued} = queued!(ctx)
-        set!(WorkItem, work_item.id, target_path: path)
+        retarget!(work_item, path)
         assert claim(ctx) == {:ok, :none}, inspect(path)
         gone!(queued)
       end
@@ -216,8 +265,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
     test "form_work/3 refuses each refused character class before it fills", ctx do
       {work_item, queued} = queued!(ctx)
 
+      # No U+0000: a target is a column of text, which cannot hold one, so no collection's
+      # target and no work item's has one.
       spaces =
-        [0x00, 0x09, 0x0A, 0x1F, 0x20, 0x7F, 0xFEFF, 0x85, 0xA0, 0x1680, 0x2000, 0x2005] ++
+        [0x09, 0x0A, 0x1F, 0x20, 0x7F, 0xFEFF, 0x85, 0xA0, 0x1680, 0x2000, 0x2005] ++
           [0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000]
 
       paths =
@@ -225,6 +276,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
           for code <- spaces, do: "acme/sh" <> <<code::utf8>> <> "op"
 
       for path <- paths do
+        retarget!(work_item, path)
+
         assert RunCredentials.form_work(queued, work_item, %{
                  system: "forge.example.com",
                  path: path
@@ -234,6 +287,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
 
       for path <- ["acme/shop", "acme/.shop", "acme./shop", "Acme/Shop%2E"] do
+        retarget!(work_item, path)
+
         assert {:ok, %RunCredential{}} =
                  RunCredentials.form_work(queued, work_item, %{
                    system: "forge.example.com",
@@ -244,6 +299,125 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
   end
 
+  describe "the collection that can change the run's target" do
+    test "is the ticket's, for a ticket from a code forge, before an older one", ctx do
+      older = forge_collection!(ctx)
+      set!(Collection, older.id, inserted_at: ~U[2026-01-01 00:00:00.000000Z])
+      {work_item, _queued} = queued!(ctx)
+      assert {:ok, %{registered: %Run{}}} = claim(ctx)
+
+      assert [entry] = entries()
+      assert entry.connection_id == work_item.connection_id
+      assert entry.adapter_id == work_item.adapter_id
+      assert [%{"collection_id" => id}] = entry.resources
+      assert id == collection_of(work_item).id
+    end
+
+    test "is a forge's collection of the workspace, for a ticket from a tracker", ctx do
+      # The tracker's ticket's collection has the same target, and its adapter declares
+      # apply items, yet it never counts: its adapter has no `targets`.
+      {work_item, _queued} = tracker_queued!(ctx, @target)
+      forge = forge_collection!(ctx)
+      assert {:ok, %{registered: %Run{}}} = claim(ctx)
+
+      assert [entry] = entries()
+      assert entry.connection_id == forge.connection_id
+      assert entry.adapter_id == forge.adapter_id
+      refute entry.connection_id == work_item.connection_id
+
+      assert entry.resources == [
+               %{
+                 "collection_id" => forge.id,
+                 "external_ref" => forge.external_ref,
+                 "path" => "acme/shop"
+               }
+             ]
+
+      assert [%{"paths" => ["/acme/shop.git/*", "/acme/shop/*"]}, _api] = entry.apply
+    end
+
+    test "is found for a work item with no ticket", ctx do
+      # A work item whose ticket's row is gone (`item_id` nil): the matching collections
+      # are read without it. The claim ends such an explore run `ticket_gone` first.
+      {work_item, queued} = tracker_queued!(ctx, @target)
+      forge = forge_collection!(ctx)
+      forge_id = forge.id
+
+      assert {:ok, %RunCredential{resources: [%{"collection_id" => ^forge_id}]} = entry} =
+               RunCredentials.form_work(queued, %{work_item | item_id: nil}, @target)
+
+      assert entry.connection_id == forge.connection_id
+      assert entry.adapter_id == forge.adapter_id
+    end
+
+    test "is never one of an adapter without targets, even when its target matches", ctx do
+      {work_item, queued} = tracker_queued!(ctx, @target)
+
+      for targets <- [nil, false] do
+        set!(Node, work_item.adapter_id, targets: targets)
+        assert RunCredentials.form_work(queued, work_item, @target) == {:ok, nil}
+      end
+    end
+
+    test "is the oldest, by when it was kept, then by id", ctx do
+      {work_item, queued} = tracker_queued!(ctx)
+      at = ~U[2026-01-01 00:00:00.000000Z]
+      [first, second, third] = for _n <- 1..3, do: forge_collection!(ctx)
+      set!(Collection, first.id, inserted_at: DateTime.add(at, 1))
+      set!(Collection, second.id, inserted_at: at)
+      set!(Collection, third.id, inserted_at: at)
+      [low, _high] = Enum.sort([second.id, third.id])
+
+      assert {:ok, %RunCredential{resources: [%{"collection_id" => ^low}]}} =
+               RunCredentials.form_work(queued, work_item, @target)
+    end
+
+    test "is a live one on a connected connection, before an older one that is not", ctx do
+      {work_item, queued} = tracker_queued!(ctx)
+      ended = forge_collection!(ctx)
+      disconnected = forge_collection!(ctx)
+      live = forge_collection!(ctx)
+      set!(Collection, ended.id, ended_at: DateTime.utc_now(), ended_reason: :not_listed)
+
+      set!(Connection, disconnected.connection_id,
+        state: :ended,
+        ended_at: DateTime.utc_now(),
+        ended_reason: :adapter_reported
+      )
+
+      for {collection, n} <- Enum.with_index([ended, disconnected, live]) do
+        set!(Collection, collection.id,
+          inserted_at: DateTime.add(~U[2026-01-01 00:00:00.000000Z], n)
+        )
+      end
+
+      live_id = live.id
+
+      assert {:ok, %RunCredential{resources: [%{"collection_id" => ^live_id}]}} =
+               RunCredentials.form_work(queued, work_item, @target)
+    end
+
+    test "ends the run target_access_gone where each one ended or is disconnected", ctx do
+      {_work_item, queued} = tracker_queued!(ctx)
+      ended = forge_collection!(ctx)
+      set!(Collection, ended.id, ended_at: DateTime.utc_now(), ended_reason: :not_listed)
+      assert claim(ctx) == {:ok, :none}
+      gone!(queued)
+
+      {work_item, queued} = tracker_queued!(ctx)
+      disconnected = forge_collection!(ctx)
+
+      set!(Connection, disconnected.connection_id,
+        state: :ended,
+        ended_at: DateTime.utc_now(),
+        ended_reason: :adapter_reported
+      )
+
+      assert RunCredentials.form_work(queued, work_item, @target) ==
+               {:end, :target_access_gone}
+    end
+  end
+
   describe "no entry, and the run runs as before" do
     test "for an adapter that declares no apply items", ctx do
       {_work_item, _queued} = queued!(ctx, nil)
@@ -251,13 +425,31 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert entries() == []
     end
 
-    test "for a run with no collection or no target", ctx do
+    test "for a run with no target", ctx do
       {work_item, queued} = queued!(ctx)
-      target = %{system: "forge.example.com", path: "acme/shop"}
-
-      # A work item whose ticket's row is gone; the claim ends such a run ticket_gone first.
-      assert RunCredentials.form_work(queued, %{work_item | item_id: nil}, target) == {:ok, nil}
       assert RunCredentials.form_work(queued, work_item, nil) == {:ok, nil}
+    end
+
+    test "for a run with no collection that can change its target", ctx do
+      {work_item, queued} = tracker_queued!(ctx)
+
+      # One of another target, of another system, and of another workspace.
+      forge_collection!(ctx, %{@target | path: "acme/other"})
+      forge_collection!(ctx, %{@target | system: "other.example.com"})
+      other = collection_fixture(sign_up_fixture().scope, target_path: "acme/shop")
+      set!(Collection, other.id, target_system: "forge.example.com")
+      set!(Node, other.adapter_id, source_apply: @apply, targets: true)
+
+      # One unassigned, and one in another workspace of the same organisation.
+      unassigned = forge_collection!(ctx)
+      set!(Collection, unassigned.id, workspace_id: nil)
+      elsewhere = forge_collection!(ctx)
+      workspace = workspace_fixture(ctx.scope.organisation)
+      set!(Collection, elsewhere.id, workspace_id: workspace.id)
+
+      assert RunCredentials.form_work(queued, work_item, @target) == {:ok, nil}
+      assert {:ok, %{registered: %Run{}}} = claim(ctx)
+      assert entries() == []
     end
 
     test "for a run with no apply items, even when its collection ended", ctx do
@@ -275,8 +467,12 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
   describe "a prebuild" do
     test "gets read access to its collection's target", ctx do
+      # Its collection's adapter has never said `targets`, and another collection of the
+      # workspace can change the same target: the prebuild takes its collection still.
       collection = collection_fixture(ctx.scope, target_path: "acme/app")
       set!(Node, collection.adapter_id, source_apply: @apply)
+      assert Repo.get!(Node, collection.adapter_id).targets == nil
+      forge_collection!(ctx, %{system: "code.example.com", path: "acme/app"})
 
       {:ok, _run} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)

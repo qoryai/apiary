@@ -428,6 +428,23 @@ defmodule Apiary.Sources.BacklogTest do
                integration(elsewhere)
     end
 
+    test "is named by its adapter's title where its description gives one", ctx do
+      item = ticket(ctx.collection)
+      adapter = Repo.get!(Node, ctx.connection.adapter_id)
+      adapter = Apiary.NodesFixtures.describe_title(adapter, "Acme Tracker")
+      titled = %{name: "Acme Tracker", id: adapter.public_id}
+
+      assert row(ctx.scope, item).integration == titled
+      assert Backlog.get_ticket(ctx.scope, item.public_id).integration == titled
+
+      # A title that fails the check: the adapter's name.
+      Apiary.NodesFixtures.describe_title(adapter, "Acme\u0007Tracker")
+      named = %{name: adapter.name, id: adapter.public_id}
+      assert row(ctx.scope, item).integration == named
+    end
+
+    defp row(scope, item), do: Enum.find(list(scope).rows, &(&1.id == item.public_id))
+
     test "is read with the rows: a page of many rows asks as many queries as one of one",
          ctx do
       ticket(ctx.collection)
@@ -1893,7 +1910,7 @@ defmodule Apiary.Sources.BacklogTest do
     end
 
     test "Take in: any ticket of Open, where the workspace's domain needs no target", ctx do
-      scope = with_domain(ctx.scope, "general")
+      scope = with_domain(ctx.scope, "example")
       refute Backlog.backlog_facts(scope).take_in?
 
       item = ticket(ctx.collection)
@@ -1936,9 +1953,9 @@ defmodule Apiary.Sources.BacklogTest do
       declare(ctx.connection, "Connected", nil, nil)
       any = Apiary.NodesFixtures.adapter_fixture(%{name: "Any 1"})
       software = Apiary.NodesFixtures.adapter_fixture(%{name: "Software 1"})
-      general = Apiary.NodesFixtures.adapter_fixture(%{name: "General 1"})
+      example = Apiary.NodesFixtures.adapter_fixture(%{name: "Example 1"})
 
-      for {adapter, domains} <- [{software, ["software"]}, {general, ["general", "marketing"]}] do
+      for {adapter, domains} <- [{software, ["software"]}, {example, ["example", "marketing"]}] do
         {1, _} =
           Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [domains: domains])
       end
@@ -1946,7 +1963,7 @@ defmodule Apiary.Sources.BacklogTest do
       offered = fn scope -> Enum.map(Backlog.backlog_facts(scope).offered, & &1.id) end
 
       assert offered.(ctx.scope) == [any.public_id, software.public_id]
-      assert offered.(with_domain(ctx.scope, "general")) == [any.public_id, general.public_id]
+      assert offered.(with_domain(ctx.scope, "example")) == [any.public_id, example.public_id]
     end
 
     test "what the person may do, and whom to ask for what they may not", ctx do

@@ -600,9 +600,16 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # The workspace set-up: the first workspace's type while the organisation has
-              # none, then a work source for it.
+              # The workspace set-up: the type cards while the organisation has no
+              # workspace, then the flow that sets one up, `?step=<id>`, a workspace's
+              # steps with `&workspace=<slug>`; and the cards, then the flow, for a new
+              # workspace, for an owner.
               live "/set-up", WorkspaceSetupLive, :show
+              live "/workspaces/new", WorkspaceSetupLive, :new
+              # The chooser of the set-up's steps Work sources and Destinations, with the
+              # `factory` feature: which collections of one grant a workspace has,
+              # `?step=<id>&grant=<ag_…>&workspace=<slug>`.
+              live "/set-up/choose", ChooseCollectionsLive, :set_up
               # The organisation's audit trail, a page of its sidebar beside the overview,
               # for the readers `audit.read` allows. It was a section of the settings,
               # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
@@ -778,6 +785,13 @@ defmodule ApiaryWeb.Routes do
               # `secrets`.
               live "/settings/model", ModelChoiceLive, :edit
               live "/settings/runs", SettingsLive, :runs
+              # The cards of what the workspace uses, as the set-up's steps have them, with
+              # the `factory` feature: its work sources and its destinations; and the
+              # chooser of one grant's collections, `?step=<id>&grant=<ag_…>`, whose Save
+              # and Back return to the step's page.
+              live "/settings/work-sources", CollectionsLive, :sources
+              live "/settings/destinations", CollectionsLive, :destinations
+              live "/settings/choose", ChooseCollectionsLive, :settings
               # The workflow of the workspace's runs and the harness source it comes from,
               # with the `factory` feature.
               live "/settings/workflow", WorkflowLive, :edit
@@ -840,12 +854,6 @@ defmodule ApiaryWeb.Routes do
 
               live "/settings/integrations/:id", IntegrationLive.Show, :overview
               live "/settings/integrations/:id/targets", IntegrationLive.Show, :targets
-              live "/settings/integrations/:id/targets/add", IntegrationLive.Show, :add_target
-
-              live "/settings/integrations/:id/targets/:target_id/remove",
-                   IntegrationLive.Show,
-                   :remove_target
-
               live "/settings/integrations/:id/settings", IntegrationLive.Show, :settings
               live "/settings/integrations/:id/version", IntegrationLive.Show, :version
               live "/settings/integrations/:id/delete", IntegrationLive.Show, :delete

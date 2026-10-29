@@ -495,21 +495,26 @@ for each other and never on each other at once:
    integrations lock and the connection's row `FOR UPDATE`, then every workspace row of
    the organisation `FOR NO KEY UPDATE`, in the order of their ids, before it writes, and
    then renders again the policy of each workspace the integration reached before the
-   write or reaches after it (`Apiary.Policy.rerender_in/3`). That write is the one
-   change that takes workspace rows after the integrations lock. No change that holds a
+   write or reaches after it (`Apiary.Policy.rerender_in/3`). Adding a model provider for
+   one workspace takes the integrations lock, then that workspace's row
+   `FOR NO KEY UPDATE`, before it writes the workspace's secret of the provider's keys
+   (`Apiary.Secrets.create_provider_keys/3`). Those two writes are the changes that take
+   workspace rows after the integrations lock. No change that holds a
    workspace row takes the integrations lock or locks the row of an integration other
    than a model provider, so the two never wait on each other. A save of a deny rule
    reads the integrations' hosts while it holds its workspace's row, with no lock of
    theirs (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace
    row before it writes, so the save reads that write whole or not at all. It reads the
-   hosts of the model providers' API endpoints the same way. A change to a model provider
-   takes no workspace row, so a save at the same moment may read the provider as it was
+   hosts of the model providers' API endpoints the same way. A change to an existing
+   model provider takes no workspace row, so a save at the same moment may read the
+   provider as it was
    before the change; the document composed for a run has the provider's hosts in
    `allow_first` either way (`Apiary.Policy.ComposedConfiguration`). A write of a model choice
    at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
-   provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
-   the organisation's advisory lock for its secrets and the row of the keys' secret
-   `FOR UPDATE`; to choose the default key, that row `FOR SHARE`. It reads what uses the
+   provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes,
+   for keys kept as the organisation's secret, the organisation's advisory lock for its
+   secrets, and the row of the keys' secret `FOR UPDATE`, of the organisation or of a
+   workspace, with no workspace row; to choose the default key, that row `FOR SHARE`. It reads what uses the
    keys without a lock (`Apiary.Secrets.Usage`).
    A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
    policy's order, then the provider's row `FOR SHARE`, then the choice's row

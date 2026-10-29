@@ -467,7 +467,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         <:context>
           <p id="model-line">
             {gettext(
-              "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model.",
+              "The default model for runs in %{workspace}. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}.",
               workspace: @current_scope.workspace.name,
               organisation: @current_scope.organisation.name
             )}

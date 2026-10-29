@@ -1,9 +1,10 @@
 # The commit of qoryai/integrations whose contracts/integration/v1 fixtures are under
 # test/fixtures/integration-contract/ (its description fixtures, accepted, refused under
 # invalid/ and refused by a reader under refused-by-reader/, and under adapter/ the
-# signed connect pass and return and the signed setup pass, with their keys and payloads,
-# setup passes refused, the adapter's declarations, accepted and refused, with a setup_url
-# among them, the change feed's answers, accepted and refused, the listings of
+# signed connect pass and return and the signed setup pass, with and without the
+# organisation's slug, with their keys and payloads, setup passes refused, the adapter's
+# declarations, accepted and refused, with a setup_url among them, the change feed's
+# answers, accepted and refused, the listings of
 # collections, each collection with the grant_ref of the grant that covers it, and a
 # disconnect of one, accepted and refused, the bodies of a collection's items and of an
 # item's comments, accepted and refused, a grant report with its external account, a
@@ -24,4 +25,4 @@
 # description: the 256 KiB of a fetched description.json when it is fetched, and every
 # bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
 # adapter's start-up gives the description's value as its body carries it.
-24f1125680838387abed1d16c7dbeac198b27994
+3fc796d01e551d7e966be99bd109239ca9806a7c

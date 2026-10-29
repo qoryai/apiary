@@ -17,6 +17,11 @@ defmodule ApiaryWeb.SwitchControllerTest do
   alias Apiary.Organisations.Workspace
   alias ApiaryWeb.SwitchController
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   setup :register_and_log_in_user
 
   defp other_place(user) do
@@ -151,8 +156,6 @@ defmodule ApiaryWeb.SwitchControllerTest do
     {"settings", "/settings/integrations/definitions/svc_1/delete", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/targets", "/settings/integrations"},
-    {"settings", "/settings/integrations/con_1/targets/add", "/settings/integrations"},
-    {"settings", "/settings/integrations/con_1/targets/t-1/remove", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/settings", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/version", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/delete", "/settings/integrations"},

@@ -67,7 +67,7 @@ defmodule ApiaryWeb.SetupLive do
         </div>
       </SetUpComponents.frame>
 
-      <SetUpComponents.frame :if={@state == :form} steps={@steps} next={SetUpComponents.next?(nil)}>
+      <SetUpComponents.frame :if={@state == :form} steps={@steps}>
         <SetUpComponents.heading>
           {gettext("Set up %{name}", name: Apiary.ProductName.name())}
           <:subtitle>{@line}</:subtitle>

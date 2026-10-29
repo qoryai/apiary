@@ -40,10 +40,11 @@ defmodule Apiary.WorkItems.ExploreView do
   # `end_cause`, the end cause of its run of the queue (nil while it has not ended),
   # `end_detail`, the code that end kept, nil for none (a gateway's refusal code, such as
   # `"model_key_missing"`, for `run_refused`), `adapter_failure`, the call to an adapter
-  # the run stopped at, nil for none (`%{adapter: name, cause: cause, call: path, code:
-  # code}`), `harness_failure`, why its harness walk failed, nil for none (`%{code: code,
-  # source: source or nil, rule: rule or nil, adapter: name or nil}`,
-  # `Apiary.Harnesses.RunHarness`), and by what it gave: `proposal`
+  # the run stopped at, nil for none (`%{adapter: title, cause: cause, call: path, code:
+  # code}`, the adapter's title by `Apiary.Adapters.title/1`), `harness_failure`, why its
+  # harness walk failed, nil for none (`%{code: code, source: source or nil, rule: rule or
+  # nil, adapter: title, the name the walk kept, or nil}`, `Apiary.Harnesses.RunHarness`),
+  # and by what it gave: `proposal`
   # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none; `understanding` and
   # `questions`, each `%{public_id: position, text: question, answer: answer or nil}`, for
   # a run that asked; and `answered_by_id` and `answered_at` once its questions were
@@ -82,6 +83,7 @@ defmodule Apiary.WorkItems.ExploreView do
   @moduledoc false
 
   alias Apiary.Harnesses.RunHarness
+  alias Apiary.Nodes.Node
   alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
   @ends [:declined, :closed, :undone]
@@ -128,7 +130,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp adapter_failure(%{failed_adapter: adapter} = dispatch_run) do
     %{
-      adapter: adapter.name,
+      adapter: Apiary.Adapters.title(adapter),
       cause: dispatch_run.adapter_failure,
       call: dispatch_run.adapter_failure_call,
       code: dispatch_run.adapter_failure_code
@@ -140,11 +142,19 @@ defmodule Apiary.WorkItems.ExploreView do
       code: walk.failure,
       source: walk.failed_source,
       rule: walk.failure_rule,
-      adapter: walk.failure_adapter
+      adapter: walk_adapter(walk)
     }
   end
 
   defp harness_failure(_dispatch_run), do: nil
+
+  # The adapter a failed walk names: its title, read from its node, else the name the walk
+  # kept, for a walk that failed before walks kept the adapter's id and once the adapter's
+  # row is gone.
+  defp walk_adapter(%RunHarness{failed_adapter: %Node{} = adapter}),
+    do: Apiary.Adapters.title(adapter)
+
+  defp walk_adapter(%RunHarness{failure_adapter: name}), do: name
 
   defp run_view(step, answers, confirmation) do
     rows = Map.get(answers, {step.take_in, step.attempt}, [])

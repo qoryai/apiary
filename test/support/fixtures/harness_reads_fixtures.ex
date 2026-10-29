@@ -65,9 +65,11 @@ defmodule Apiary.HarnessReadsFixtures do
   public ref, `{grant_ref, resource_ref, {:public, public_ref}}`, or to its public ref
   alone, `{:public, public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps
   `{resource_ref, path}` to a document, a public ref's read as public (`read-public`). A
-  resource's version is `c-<resource_ref>`, whatever version a read asks. `down: true` makes every call reach no one, and `down:`
-  a list of adapter ids the calls of those adapters. Each call is sent to the test as
-  `{:harness_call, path, members}`.
+  resource's version is `c-<resource_ref>`, whatever version a read asks, or its value in
+  `versions`, a map by resource_ref. `refuse_at` maps a version a read asks for (`at`) to
+  the code a 404 refuses that read with, such as `"version_not_found"`. `down: true` makes
+  every call reach no one, and `down:` a list of adapter ids the calls of those adapters.
+  Each call is sent to the test as `{:harness_call, path, members}`.
   """
   def serve_calls(adapters, opts \\ []) do
     test = self()
@@ -122,7 +124,10 @@ defmodule Apiary.HarnessReadsFixtures do
               end
             end
 
-          answer(conn, %{"version" => 1, "revision" => 1, "results" => results}, adapter)
+          answer(conn, 200, %{"version" => 1, "revision" => 1, "results" => results}, adapter)
+
+        path in ["read", "read-public"] and is_map_key(opts[:refuse_at] || %{}, call["at"]) ->
+          answer(conn, 404, %{"error" => opts[:refuse_at][call["at"]]}, adapter)
 
         path in ["read", "read-public"] ->
           found =
@@ -131,9 +136,11 @@ defmodule Apiary.HarnessReadsFixtures do
               content -> %{"content" => content}
             end
 
-          version = "c-" <> call["resource_ref"]
+          version =
+            Map.get(opts[:versions] || %{}, call["resource_ref"], "c-" <> call["resource_ref"])
+
           body = Map.merge(%{"version" => 1, "revision" => 1, "resolved_at" => version}, found)
-          answer(conn, body, adapter)
+          answer(conn, 200, body, adapter)
       end
     end)
   end
@@ -142,15 +149,15 @@ defmodule Apiary.HarnessReadsFixtures do
   defp down?(ids, adapter) when is_list(ids), do: adapter.adapter.id in ids
   defp down?(_up, _adapter), do: false
 
-  defp answer(conn, body, adapter) do
+  defp answer(conn, status, body, adapter) do
     body = Jason.encode!(body)
     [call_signature] = Plug.Conn.get_req_header(conn, "x-qory-signature-ed25519")
-    message = SignedMessage.call_answer(200, call_signature, body)
+    message = SignedMessage.call_answer(status, call_signature, body)
     signature = Ed25519.encode(:crypto.sign(:eddsa, :none, message, [adapter.seed, :ed25519]))
 
     conn
     |> Plug.Conn.put_resp_header("x-qory-signature-ed25519", signature)
     |> Plug.Conn.put_resp_content_type("application/json")
-    |> Plug.Conn.send_resp(200, body)
+    |> Plug.Conn.send_resp(status, body)
   end
 end

@@ -328,10 +328,11 @@ defmodule Apiary.Adapters.CollectionsTest do
 
     test "a ref live under another connection of the adapter moves: that collection ends as a disconnect ends it, and a new one is made, with nothing of the old",
          ctx do
-      # Another organisation with one workspace, so what its listing makes is assigned
-      # there and linked.
+      # Another organisation whose grant's rule assigns what its listing makes to its
+      # workspace, linked.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      grant_rule_fixture(theirs, other.workspace)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["DOC", "TRK"]))
       old_trk = collection(theirs, "TRK")
       old_doc = collection(theirs, "DOC")
@@ -386,39 +387,45 @@ defmodule Apiary.Adapters.CollectionsTest do
       assert Enum.sort(got) == Enum.sort(made)
 
       # The organisation it left has one entry for each, by the instance, about the
-      # collection; this one has none.
+      # collection; this one has none. Both entries have the same time, so sort by subject.
       moves =
         Repo.all(
           from e in Apiary.Audit.Entry,
             where: e.action == "collection.move",
-            order_by: e.inserted_at,
             select: {e.organisation_id, e.actor_kind, e.subject_id, e.details}
         )
 
-      assert moves == [
-               {other.organisation.id, :instance, old_doc.id,
-                %{
-                  "name" => "Title of DOC",
-                  "connection_id" => theirs.public_id,
-                  "integration" => ctx.adapter.name
-                }},
-               {other.organisation.id, :instance, old_trk.id,
-                %{
-                  "name" => "Title of TRK",
-                  "connection_id" => theirs.public_id,
-                  "integration" => ctx.adapter.name
-                }}
-             ]
+      by_subject = &elem(&1, 2)
+
+      assert Enum.sort_by(moves, by_subject) ==
+               Enum.sort_by(
+                 [
+                   {other.organisation.id, :instance, old_doc.id,
+                    %{
+                      "name" => "Title of DOC",
+                      "connection_id" => theirs.public_id,
+                      "integration" => ctx.adapter.name
+                    }},
+                   {other.organisation.id, :instance, old_trk.id,
+                    %{
+                      "name" => "Title of TRK",
+                      "connection_id" => theirs.public_id,
+                      "integration" => ctx.adapter.name
+                    }}
+                 ],
+                 by_subject
+               )
     end
 
-    test "a moved ref's new collection is assigned to the organisation's only workspace, as any new one",
+    test "a moved ref's new collection is assigned by its grant's rule, as any new one",
          ctx do
       {:ok, :accepted} = post(ctx, ["TRK"])
       old = collection(ctx.connection, "TRK")
 
-      # Another organisation, with one workspace.
+      # Another organisation, whose grant's rule assigns new collections to its workspace.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      grant_rule_fixture(theirs, other.workspace)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
 
       assert Repo.get!(Collection, old.id).ended_reason == :disconnected
@@ -427,6 +434,30 @@ defmodule Apiary.Adapters.CollectionsTest do
 
       # Linked as it is made, with its `linked` entry; the old one was not linked.
       assert unlinked_entries(ctx.adapter) == [%{"collection_ref" => "TRK", "status" => "linked"}]
+    end
+
+    test "a move's entry names the adapter by its title then, else by its name", ctx do
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["DOC", "TRK"]))
+      doc = collection(theirs, "DOC").id
+      trk = collection(theirs, "TRK").id
+
+      # Without a title, the name; with one, the title as it was at the move.
+      assert post(ctx, ["DOC"], id: "first") == {:ok, :accepted}
+      Apiary.NodesFixtures.describe_title(ctx.adapter, "Acme Tracker")
+      assert post(ctx, ["DOC", "TRK"], id: "second") == {:ok, :accepted}
+
+      # By collection, not by time: the test's one transaction gives both the same time.
+      moves =
+        Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "collection.move",
+            select: {e.subject_id, e.details["integration"]}
+        )
+
+      assert length(moves) == 2
+      assert Map.new(moves) == %{doc => ctx.adapter.name, trk => "Acme Tracker"}
     end
 
     test "a ref live under another connection that a newer listing named stays with it",
@@ -579,9 +610,10 @@ defmodule Apiary.Adapters.CollectionsTest do
       {:ok, :accepted} = post(ctx, ["TRK"])
       old = collection(ctx.connection, "TRK")
 
-      # Another organisation, with one workspace: what its listing makes is linked.
+      # Another organisation, whose grant's rule links what its listing makes.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      grant_rule_fixture(theirs, other.workspace)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
       assert Repo.get!(Collection, old.id).ended_reason == :disconnected
       moved = collection(theirs, "TRK")

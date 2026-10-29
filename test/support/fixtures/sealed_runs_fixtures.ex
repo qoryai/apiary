@@ -27,18 +27,23 @@ defmodule Apiary.SealedRunsFixtures do
   `secrets_key: {key, seed}`.
 
   With `work: apply`, the work item's adapter declares the apply items `apply` before the
-  claim, so the run has the work entry `work-1`
-  (`Apiary.Runs.RunCredentials.form_work/3`), and the adapter has an access key in use
+  claim, and its ticket's collection can change the work item's target
+  (`Apiary.WorkItemsFixtures.target_candidate!/1`), so the run has the work entry
+  `work-1` (`Apiary.Runs.RunCredentials.form_work/3`), and the adapter has an access key in use
   and a `call_url` that the calls' stub answers (`Req.Test`, `Apiary.Adapters.Calls`).
   The map then also has `adapter` and `adapter_seed`, the seed of the adapter's key, to
   sign the stub's answers with.
+
+  With `place: :workspace`, the provider is added for the scope's workspace alone, its key
+  a secret of that workspace (`Apiary.Connections.create_provider/3`).
   """
   def sealed_run_fixture(%Scope{} = scope, opts \\ []) do
     {:ok, provider} =
-      Connections.create_provider(scope, %{
-        provider: "anthropic",
-        keys: [%{value_id: "main", value: @model_key}]
-      })
+      Connections.create_provider(
+        scope,
+        %{provider: "anthropic", keys: [%{value_id: "main", value: @model_key}]},
+        Keyword.get(opts, :place, :organisation)
+      )
 
     {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
 
@@ -47,6 +52,7 @@ defmodule Apiary.SealedRunsFixtures do
 
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
     adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
+    if opts[:work], do: Apiary.WorkItemsFixtures.target_candidate!(work_item)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     {:ok, claimed} = Dispatches.claim(place.key, Dispatches.now())
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)

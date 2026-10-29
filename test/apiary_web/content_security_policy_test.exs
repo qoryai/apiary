@@ -405,13 +405,22 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
             for prefix <- acc, value <- values, do: prefix <> "/" <> value
           end)
 
-        query = Map.get(@query, path, "")
+        query = query(path, params)
         {:ok, Enum.map(urls, &(if(&1 == "", do: "/", else: &1) <> query))}
 
       names ->
         {:unknown, names}
     end
   end
+
+  # The query of `path`: a chooser's opens the owner's grant in Work sources.
+  defp query("/:org/set-up/choose", p),
+    do: "?" <> URI.encode_query(step: "sources", grant: p.grant_id, workspace: p.workspace)
+
+  defp query("/:org/:workspace/settings/choose", p),
+    do: "?" <> URI.encode_query(step: "sources", grant: p.grant_id)
+
+  defp query(path, _p), do: Map.get(@query, path, "")
 
   # A parameter's values: most mean one thing wherever they are; `:id`, `:token`,
   # `:target_id` and the globs by the route they are in.
@@ -592,8 +601,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   end
 
   # The records of the `factory` feature: an adapter with a key and a waiting code, so its
-  # Access key tab and the pages that revoke them are there, and a work item whose proposal
-  # waits at Confirm, so its page draws every part and its edit page is there; or
+  # Access key tab and the pages that revoke them are there, a work item whose proposal
+  # waits at Confirm, so its page draws every part and its edit page is there, and a
+  # connected adapter's grant, whose chooser opens; or
   # placeholders where the instance has not got it, whose pages answer as paths that do
   # not exist.
   defp factory_params(scope) do
@@ -610,7 +620,14 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       pool = instance_pool_fixture(%{installed_as: "pool"})
       %{access_key: pool_key} = installed_key_fixture(pool)
 
+      # A connected adapter's grant, for the chooser's pages.
+      %{adapter: connected} = connectable_adapter_fixture()
+      {connection, _nonce} = connection_fixture(scope, connected, :connected)
+      grant_ref = listing_grant(connection)
+      grant = Apiary.Repo.get_by!(Apiary.Adapters.Grant, grant_ref: grant_ref)
+
       %{
+        grant_id: grant.public_id,
         provider_id: provider_id(scope),
         adapter_id: adapter.public_id,
         adapter_key_id: adapter_key.key_id,
@@ -627,6 +644,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         adapter_code_id: Ecto.UUID.generate(),
         instance_node_id: "np_x",
         instance_key_id: "x1",
+        grant_id: "ag_0000000000000000",
         work_item_number: 1
       }
     end
@@ -688,9 +706,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         })
 
       {:ok, runtime} =
-        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
-
-      {:ok, runtime} = Connections.put_workspace(scope, runtime, scope.workspace.id)
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: [scope.workspace.id]
+        })
 
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})

@@ -4,7 +4,7 @@ defmodule Apiary.Lingo.DomainTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.{Example, General, Software}
+  alias Apiary.Lingo.Domain.{Definition, Example, Software}
   alias Apiary.Organisations.Workspace
 
   @labels %{"forge" => "git.example.com", "repository" => "acme/shop"}
@@ -105,60 +105,13 @@ defmodule Apiary.Lingo.DomainTest do
     end
   end
 
-  describe "the general domain" do
-    @general %{"system" => "ads.example.com", "path" => "accounts/1234"}
-
-    test "the system label is the system and the path label the path" do
-      assert General.target(@general) ==
-               {:ok, %{system: "ads.example.com", path: "accounts/1234"}}
-
-      assert General.target(Map.delete(@general, "path")) == :none
-      assert General.target(Map.put(@general, "system", "a\nb")) == :none
-      assert General.target(@labels) == :none
-      assert General.target_labels() == ["system", "path"]
-    end
-
-    test "is named general, with no label of a run's paths" do
-      assert General.name() == "general"
-      refute function_exported?(General, :paths_label, 0)
-    end
-
-    test "a work item needs no target, a run gets no variables, and nothing is prebuilt" do
-      refute General.target_required?()
-      refute General.prebuilds?()
-      refute General.harness_file?()
-
-      assert General.run_variables(%{system: "ads.example.com", path: "accounts/1234"}, []) ==
-               {:ok, nil}
-    end
-
-    test "a target is a host name and any path of 1 to 200 characters that can be a label" do
-      for path <- ["accounts/1234", "one", "a/b/c", "-led by a dash", String.duplicate("a", 200)] do
-        assert General.check_target(%{system: "ads.example.com", path: path}) == :ok, path
-      end
-
-      for {system, path} <- [
-            {"ads.example.com", ""},
-            {"ads.example.com", String.duplicate("a", 201)},
-            {"ads.example.com", "a\tb"},
-            {"Ads.example.com", "one"},
-            {"ads..example.com", "one"},
-            {"ads.example.com.", "one"},
-            {"ads example", "one"}
-          ] do
-        assert General.check_target(%{system: system, path: path}) == {:error, :target_invalid},
-               inspect({system, path})
-      end
-    end
-  end
-
   describe "the registry" do
     test "names every domain by the name it gives itself, the software domain the default" do
       assert Domain.domains()["software"] == Software
-      assert Domain.domains()["general"] == General
+      assert Domain.domains()["example"] == Example
       assert Domain.default() == Software
       assert "software" in Domain.names()
-      assert "general" in Domain.names()
+      assert "example" in Domain.names()
 
       for {name, domain} <- Domain.domains() do
         assert domain.name() == name
@@ -166,8 +119,43 @@ defmodule Apiary.Lingo.DomainTest do
     end
 
     test "offers the domains as choices, the default first, then the others by name" do
-      assert Domain.choices() == [Software, Example, General]
+      assert Domain.choices() == [Software, Example]
       assert Enum.sort(Enum.map(Domain.choices(), & &1.name())) == Domain.names()
+    end
+  end
+
+  describe "a domain's definition" do
+    @harness %{
+      "git" => "https://github.com/qoryai/harness",
+      "ref" => "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305",
+      "stack" => "core"
+    }
+
+    test "each domain is a type Qory provides, with the Qory harness and no plan or pool" do
+      for {domain, key} <- [
+            {Software, "qory.software"},
+            {Example, "qory.example"}
+          ] do
+        assert Domain.definition(domain) == %Definition{
+                 key: key,
+                 provided_by: "qory",
+                 harness: @harness,
+                 model_plan: nil,
+                 node_pool: nil
+               }
+
+        assert Domain.definition(domain) == domain.definition()
+      end
+    end
+
+    test "every domain there is has a definition, and no two share a key" do
+      keys = for {_name, domain} <- Domain.domains(), do: Domain.definition(domain).key
+      assert length(keys) == map_size(Domain.domains())
+      assert keys == Enum.uniq(keys)
+    end
+
+    test "the harness is pinned by a full commit id" do
+      assert Software.definition().harness["ref"] =~ ~r/\A[0-9a-f]{40}\z/
     end
   end
 
@@ -179,24 +167,15 @@ defmodule Apiary.Lingo.DomainTest do
                "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
     end
 
-    test "the general domain is a general workspace, for any other work" do
-      assert General.label() == "General workspace"
+    test "the software domain's label and description read the same in an example workspace's locale" do
+      words =
+        for locale <- ["en@software", "en@example"],
+            do:
+              Gettext.with_locale(ApiaryWeb.Gettext, locale, fn ->
+                {Software.label(), Software.description()}
+              end)
 
-      assert General.description() ==
-               "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
-    end
-
-    test "each reads the same in a software workspace's locale and in a general one's" do
-      for domain <- [Software, General] do
-        words =
-          for locale <- ["en@software", "en@general"],
-              do:
-                Gettext.with_locale(ApiaryWeb.Gettext, locale, fn ->
-                  {domain.label(), domain.description()}
-                end)
-
-        assert words == List.duplicate({domain.label(), domain.description()}, 2)
-      end
+      assert words == List.duplicate({Software.label(), Software.description()}, 2)
     end
   end
 
@@ -245,6 +224,44 @@ defmodule Apiary.Lingo.DomainTest do
     end
   end
 
+  describe "a workspace's type" do
+    test "a new workspace stores the key of its domain's definition" do
+      %{workspace: workspace} = sign_up_fixture()
+      assert workspace.type == "qory.software"
+      assert Repo.reload!(workspace).type == "qory.software"
+    end
+
+    test "is set at creation from the chosen domain, and never from the attributes" do
+      for {name, key} <- [
+            {"software", "qory.software"},
+            {"example", "qory.example"}
+          ] do
+        changeset =
+          Workspace.create_changeset(%Workspace{domain: nil}, %{
+            name: "Ops",
+            domain: name,
+            type: "acme.other"
+          })
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :type) == key
+      end
+    end
+
+    test "is not set for a domain no module has" do
+      changeset =
+        Workspace.create_changeset(%Workspace{domain: nil}, %{name: "Ops", domain: "unknown"})
+
+      refute changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :type) == nil
+    end
+
+    test "a rename leaves the type as it is" do
+      changeset = Workspace.changeset(%Workspace{type: "qory.example"}, %{name: "Ops", type: "x"})
+      assert Ecto.Changeset.get_field(changeset, :type) == "qory.example"
+    end
+  end
+
   describe "Apiary.Lingo.Domain" do
     test "target/2 asks the workspace's domain, and labels that are not a map name none" do
       workspace = %Workspace{domain: "software"}
@@ -260,7 +277,6 @@ defmodule Apiary.Lingo.DomainTest do
     end
 
     test "name/1 is the name of the workspace's domain, the default's for none or a retired one" do
-      assert Domain.name(%Workspace{domain: "general"}) == "general"
       assert Domain.name(%Workspace{domain: "example"}) == "example"
       assert Domain.name(%Workspace{domain: "retired"}) == "software"
       assert Domain.name(nil) == "software"
@@ -280,22 +296,19 @@ defmodule Apiary.Lingo.DomainTest do
     test "target_required?/1 and prebuilds?/1 ask the workspace's domain" do
       assert Domain.target_required?(%Workspace{domain: "software"})
       assert Domain.target_required?(nil)
-      refute Domain.target_required?(%Workspace{domain: "general"})
+      refute Domain.target_required?(%Workspace{domain: "example"})
       assert Domain.prebuilds?(%Workspace{domain: "software"})
-      refute Domain.prebuilds?(%Workspace{domain: "general"})
       refute Domain.prebuilds?(%Workspace{domain: "example"})
     end
 
     test "harness_file?/1 asks the workspace's domain" do
       assert Domain.harness_file?(%Workspace{domain: "software"})
       assert Domain.harness_file?(nil)
-      refute Domain.harness_file?(%Workspace{domain: "general"})
       refute Domain.harness_file?(%Workspace{domain: "example"})
     end
 
     test "check_target/2 refuses no target only where the domain needs one" do
       assert Domain.check_target(%Workspace{domain: "software"}, nil) == {:error, :no_target}
-      assert Domain.check_target(%Workspace{domain: "general"}, nil) == :ok
       assert Domain.check_target(%Workspace{domain: "example"}, nil) == :ok
 
       target = %{system: "ads.example.com", path: "accounts/1234/campaigns"}
@@ -303,7 +316,7 @@ defmodule Apiary.Lingo.DomainTest do
       assert Domain.check_target(%Workspace{domain: "software"}, target) ==
                {:error, :target_invalid}
 
-      assert Domain.check_target(%Workspace{domain: "general"}, target) == :ok
+      assert Domain.check_target(%Workspace{domain: "example"}, target) == :ok
     end
 
     test "run_variables/3 gives none without a target, else asks the workspace's domain" do
@@ -317,17 +330,17 @@ defmodule Apiary.Lingo.DomainTest do
                )
 
       assert Domain.run_variables(
-               %Workspace{domain: "general"},
+               %Workspace{domain: "example"},
                %{system: "ads.example.com", path: "accounts/1234"},
                []
              ) == {:ok, nil}
     end
 
     test "serves?/2: an adapter that lists no domains serves every workspace" do
-      assert Domain.serves?(nil, %Workspace{domain: "general"})
+      assert Domain.serves?(nil, %Workspace{domain: "example"})
       assert Domain.serves?(["software"], %Workspace{domain: "software"})
-      refute Domain.serves?(["software"], %Workspace{domain: "general"})
-      assert Domain.serves?(["marketing", "general"], %Workspace{domain: "general"})
+      refute Domain.serves?(["software"], %Workspace{domain: "example"})
+      assert Domain.serves?(["marketing", "example"], %Workspace{domain: "example"})
       # A stored name no domain has reads the default, as every read of it does.
       assert Domain.serves?(["software"], %Workspace{domain: "retired"})
     end

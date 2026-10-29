@@ -6,11 +6,14 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   one that passes and copies of it that do not.
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
-  # Explore texts, which read the code and propose how to build it, and the policy file's
-  # place, outside the checkout.
+  # Explore texts, which read the code and propose how to build it, the policy file's
+  # place, outside the checkout, and the harness choice's repository and its branch or tag.
   @software_sentences [
     "A file outside the folder the runs work in, given with: %{command}",
+    "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
+    "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}.",
+    "Harness version",
     "Keep a policy file outside the folder the runs work in.",
     "Proposed what to do",
     "Qory asked %{number} question before it can propose what to do.",

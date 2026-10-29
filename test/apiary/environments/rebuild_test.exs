@@ -201,7 +201,7 @@ defmodule Apiary.Environments.RebuildTest do
 
   test "not found: a workspace whose domain has no prebuilds, and the target's page shows none",
        %{scope: scope, shop: shop, target: target} do
-    scope = with_domain(scope, "general")
+    scope = with_domain(scope, "example")
     assert Environments.rebuild(scope, target) == {:error, :not_found}
     assert waiting(shop) == []
     assert entries(target) == []

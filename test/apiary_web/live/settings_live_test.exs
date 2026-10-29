@@ -480,16 +480,24 @@ defmodule ApiaryWeb.SettingsLiveTest do
             do: [model: base <> "/model"],
             else: []
           ) ++
-          if(factory?, do: [workflow: base <> "/workflow"], else: []) ++
+          if(factory?,
+            do: [
+              work_sources: base <> "/work-sources",
+              destinations: base <> "/destinations",
+              workflow: base <> "/workflow"
+            ],
+            else: []
+          ) ++
           [runs: base <> "/runs"]
 
       for {key, path} <- sections do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      # In the map's order: General, People, with the `security` feature Integrations and
-      # Secrets and variables, with `factory` also Model and Workflow, and Runs last. The access keys
-      # are their nodes', not here.
+      # In the nav's order: General, People, with the `secrets` feature Integrations and
+      # Secrets and variables, with `secrets` and `factory` Model, with `factory` Work
+      # sources, Destinations and Workflow, and Runs last. The access keys are on their
+      # nodes' pages.
       assert lv
              |> element("#settings-tabs")
              |> render()

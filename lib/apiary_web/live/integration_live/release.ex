@@ -295,13 +295,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             }
             autocomplete="off"
           />
-          <.input
-            field={@form[:applies_to]}
-            type="radio"
-            label={Common.applies_label()}
-            options={[{gettext("Every workspace"), "all"}, {gettext("Chosen workspaces"), "selected"}]}
-            hint={gettext("You choose the workspaces on its page, once it is added.")}
-          />
+          <Common.everywhere_input form={@form} scope={@scope} />
           <SettingsComponents.save
             id="add-release-save"
             cancel={Common.index_path(@scope)}
@@ -424,7 +418,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       patterns: if(description, do: Common.argument_patterns(description), else: [])
     )
     |> assign_new(:form, fn ->
-      to_form(%{"applies_to" => "all", "argument" => "", "settings" => %{}}, as: :integration)
+      to_form(%{"argument" => "", "settings" => %{}}, as: :integration)
     end)
   end
 
@@ -445,18 +439,16 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   def handle_event("add", %{"integration" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
 
-    attrs = %{
-      settings: Common.cast_settings(socket.assigns.plain, params["settings"]),
-      argument: params["argument"] || "",
-      applies_to: params["applies_to"]
-    }
+    attrs =
+      Map.merge(Common.added_reach(scope, params), %{
+        "settings" => Common.cast_settings(socket.assigns.plain, params["settings"]),
+        "argument" => params["argument"] || ""
+      })
 
     case Connections.create_integration(scope, socket.assigns.release.id, attrs) do
       {:ok, connection} ->
-        to =
-          if connection.applies_to == "selected",
-            do: Common.connection_path(scope, connection, :targets),
-            else: Common.connection_path(scope, connection)
+        # Where it applies was set here, so its Overview follows.
+        to = Common.connection_path(scope, connection)
 
         {:noreply,
          socket

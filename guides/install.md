@@ -440,8 +440,8 @@ to the new address confirms it.
 
 **A forgotten password, without mail.** An instance admin opens **People** in the
 instance's organisation's settings and, in the ⋯ menu of the person's row, selects
-**Make a password link**. It needs a recent sign-in, as **Account** settings do: an admin
-who signed in more than 20 minutes ago logs in again first. The page shows the link once,
+**Make a password link**. It needs a recent sign-in: an admin who signed in more than 20
+minutes ago logs in again first. The page shows the link once,
 to copy and send to the person; it works once, for 24 hours, and a new one ends the one
 before; once mail is set, by **Instance settings › Mail** or a start with `SMTP_RELAY`,
 every such link ends. Following it, the person sets a new password, and every session of
@@ -483,9 +483,9 @@ environment variable SMTP_TLS must be always, if_available or never
 <!-- /feature -->
 <!-- feature: factory -->
 - `factory`: the work items of a workspace and what they are taken in from: the adapters'
-  steps of the instance's set-up, a workspace's work source, model providers and model,
-  workflow, and its setup list with the test run. Opt-in. Needs `observability`,
-  `security` and `secrets`.
+  steps of the instance's set-up, every step of the workspace set-up but **Name**, the
+  test run among them, model providers and model, and workflow. Opt-in. Needs
+  `observability`, `security` and `secrets`.
 <!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
@@ -559,10 +559,10 @@ organisation.
 The gateway's key allows stored secrets, which a test run with a model key needs; a key
 that a person makes on **Nodes** never allows them, so a test run through a gateway added
 there ends before a machine starts it. For a workspace with no node pool in use, the
-overview's step **Machines for runs** is done once the pool and the gateway each have a
-key in use. An instance admin checks them in **Instance settings › Nodes**: each is ready
-when **State** shows **Running** or **Last seen**. If one shows **Never seen**, open the
-logs of the pool and the gateway on the instance's host.
+set-up's step **Machines** shows the instance's pool as ready once the pool and the
+gateway each have a key in use. An instance admin checks them in **Instance settings ›
+Nodes**: each is ready when **State** shows **Running** or **Last seen**. If one shows
+**Never seen**, open the logs of the pool and the gateway on the instance's host.
 
 The variables are read at boot. A malformed value, the same name for the pool and the
 gateway, a name that an adapter installed with Qory Apiary has, or a pool or gateway
@@ -655,8 +655,8 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
-instance's organisation and is its owner, then creates its workspace **Main** on
-**Set up your workspace**. The instance has that one organisation and that one workspace.
+instance's organisation and is its owner, then creates its workspace **Main** in the
+workspace set-up. The instance has that one organisation and that one workspace.
 The organisation is the instance owner, and its owners are the instance's **instance
 admins** ([The instance admins](#the-instance-admins)); to everyone in it, it is an
 organisation like any other. Until the link is used nobody signs up: the sign-up and
@@ -752,17 +752,20 @@ the log is one JSON object per line ([Logs](#logs)), and the sentence above is t
 instance's organisation and your account as its owner, an instance admin, and signs you
 in. It creates no workspace.
 
-Each page of the set-up shows the list of its steps: **Your account**, the steps under
-**Connect Qory Apiary**, then those under **Set up your workspace**, with a mark on each
-step done and **Skipped** under each step skipped. On a window narrower than 1280 px,
-the list is a bar with **Step 2 of 4** and **All steps**, which opens the list. Once
-you are signed in, each step done or skipped is a link to that step where it has a
-page; **Your account** is not. **Back**, at the foot of a step's form, opens the step
-before it. A step you open again shows what you saved there, and
-you can change it. The step **Workspace**, opened again, shows the workspace's type and
-**Continue**: the type can't be changed. A column headed **About this step**, beside
-the form or under it on a window narrower than 1024 px, says what the step does. Two
-pages follow the set-up link's page:
+The set-up has two progresses, each with a separate list of steps. The instance's
+progress, set up once by an instance admin, is **Your account** and the steps under
+**Connect Qory Apiary**. The organisation's progress sets up a workspace, from its step
+**Name**. Each page of the set-up shows the list of its progress alone, with a mark on
+each step done and **Skipped** under each step skipped.
+On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and **All
+steps**, which opens the list. Each progress counts from step 1. Once you are signed in,
+each step done or skipped is a link to that step where it has a page; **Your account**
+is not. **Back**, at the foot of a step's form, opens the step before it in the same
+progress, so the first step with a page in each progress has no **Back**. A step you open
+again shows what you saved there, and you can change it. The step **Name**, opened again,
+shows the workspace's name and type and **Continue**: the type can't be changed. A column
+headed **About this step**, beside the form or under it on a window narrower than 1024
+px, shows what the step does. Two pages come after the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
@@ -771,14 +774,17 @@ pages follow the set-up link's page:
    server's environment sets mail (`SMTP_RELAY`), the page has no **Mail** step, because
    there is nothing to configure. Until an instance admin finishes or skips the page's
    last step, each sign-in of an instance admin opens this page first. Where the page has
-   no step, the set-up link's page leads to **Set up your workspace**.
-2. **Set up your workspace**, at `/<organisation>/set-up?step=type`, creates the
-   organisation's workspace Main. In **Type**, choose **Software**, for work on code, or
-   **General**, for any other work; no type is chosen before you choose one. The type
-   can't be changed after. **Create workspace** creates Main and opens its overview:
-   `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in of a
-   member of the organisation opens this page. If another member creates Main while the
-   page is open, the page opens Main's overview without a reload.
+   no step, the set-up link's page leads to the workspace set-up.
+2. **The workspace set-up**, at `/<organisation>/set-up`, creates the organisation's
+   workspace. Its first page, **What will this workspace do?**, shows one card for each
+   type of workspace: **Software factory**, where agents change code in your
+   repositories. Select **Choose** on the card. At the step **Name**, the field **Name**
+   reads `Main`, the name of an organisation's first workspace: keep it or type another.
+   The type can't be changed after. **Create workspace** creates Main and opens its
+   overview: `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in
+   of a member of the organisation opens this page, and only an owner creates the
+   workspace. If another owner creates Main while the page is open, the page opens
+   Main's overview without a reload.
 
 <!-- feature: factory -->
 With the `factory` feature, both pages have more steps:
@@ -793,20 +799,43 @@ With the `factory` feature, both pages have more steps:
   without a key in use, or of one that has not sent the address where it is set up, shows
   what to do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
-- **Create workspace**, or another member's creating Main while the page is open, opens,
-  for an owner or an admin, the step **Work source** of **Set up your workspace** in
-  place of the overview: **Connect a work source to Main**, at
-  `/<organisation>/set-up?step=source`; a member goes to Main's overview. The step lists
-  the work sources that the instance has set up for the workspace's type, each with
-  **Connect**. Select **Connect** beside one, and follow the steps that the column
-  **About this step** lists under its name. **Skip** opens the overview, where you
-  connect one later from the step **Work source**. With no work source for the type, the
-  page shows so, and **Continue** opens the overview. Only owners and admins connect a
-  work source.
+- **The workspace set-up** has 7 steps, each at
+  `/<organisation>/set-up?step=<step>&workspace=main` once the workspace exists:
+  **Name**, **Work sources**, **Destinations**, **Model**, **Harness**, **Machines** and
+  **Test run**. **Create workspace** opens **Work sources** in place of the overview, and
+  the set-up opens at the first step that is not done. If another owner creates Main
+  while the page is open, the page opens Main's first step that is not done.
+  - **Work sources** and **Destinations** show a card for each account that the
+    organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
+    connect an adapter, open **Connect another source**, or **Connect another
+    destination**, select **Connect** beside the adapter, and follow the steps that the
+    column **About this step** lists under its name. **Choose** opens the account's
+    collections: choose **All repositories, including new ones**, in the adapter's word
+    for its collections, or **Only selected** and tick them, then **Save**. All also
+    assigns to the workspace each collection that the adapter lists for the account
+    later. A new collection joins a workspace only through All or a tick, also in an
+    organisation with one workspace. A connection to an adapter serves every workspace of the
+    organisation. **Skip** leaves the step for later: connect in **Organisation settings
+    › Integrations**, and choose in **Workspace settings › Work sources** and
+    **› Destinations**, which show the same cards and chooser. Only owners and admins
+    connect an adapter and choose.
+  - On **Model** you choose a model provider's key, the runtime and the workspace's
+    default model. A key added there is a secret of the workspace, which **Workspace
+    settings › Secrets and variables** lists. Only owners and admins add a model key.
+  - On **Harness** you choose the harness of the workspace's runs, and a stack for each
+    repository that needs another. On **Machines** you choose the instance's pool or a
+    pool for the workspace, and for a pool of the workspace you get the command that
+    enrols a machine in it. On **Test run** you run a test.
 
-The overview then shows **Set up Main** until a test run passes:
-[Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has its
-steps.
+  Where the edition allows more than one workspace, a workspace added later goes
+  through the same 7 steps. Where the edition shows the setting “Available to every
+  workspace in Acme”, **Model** and **Harness** list first the model keys and the
+  harness that the organisation shares, under **Shared in Acme**, each marked **every
+  workspace**: choose one to reuse it.
+
+  [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
+  steps. Until the test run passes, opening Main opens its next step in place of the
+  overview.
 <!-- /feature -->
 
 The code is 32 random bytes, kept in the database until it is used; it does
@@ -885,13 +914,13 @@ bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")
 On an instance that is not set up, it sets it up: it creates the organisation, its
 workspace Main and the account as its owner, makes the set-up link work no more, and
 emails the account its log-in link. Unlike the set-up link, it creates Main itself, of the
-type **Software**, so **Set up your workspace** does not open. Without the name it is
-refused and says so. Should the email not go out, the instance is set up all the same,
-and the command says to ask for a link at `/users/log-in` once the mail settings work; it
-never prints the address or the link. Without mail it prints a password link for the
-account instead, which works once, for an hour, and never the address: open it to set
-your password. Should the set-up link be used a moment before, the command does what it
-does on any instance.
+type **Software factory**, so the type cards do not show, and the step **Name** is done.
+Without the name it is refused and says so. Should the email not go out, the instance is
+set up all the same, and the command says to ask for a link at `/users/log-in` once the
+mail settings work; it never prints the address or the link. Without mail it prints a
+password link for the account instead, which works once, for an hour, and never the
+address: open it to set your password. Should the set-up link be used a moment before,
+the command does what it does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the

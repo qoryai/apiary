@@ -124,7 +124,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#new-gateway",
-               "An address that runs of nodes and node pools in #{scope.organisation.name}'s workspaces go through, when they choose it."
+               "The address that runs go through when their node or node pool in a workspace of #{scope.organisation.name} is set to this gateway."
              )
 
       {:ok, _tab, html} =

@@ -492,8 +492,9 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
     ]
 
     # A sealed run (`Apiary.SealedRunsFixtures.sealed_run_fixture/1`) of a workspace in
-    # `mode`, whose ticket's adapter declares `@apply`, with the work entry its claim would
-    # record (`Apiary.Runs.RunCredentials.form_work/3`), and the document its reload gives.
+    # `mode`, whose ticket's adapter declares `@apply` and whose ticket's collection can
+    # change its target, with the work entry its claim would record
+    # (`Apiary.Runs.RunCredentials.form_work/3`), and the document its reload gives.
     defp work_run!(scope, mode) do
       {:ok, _mode} = Policy.set_mode(scope, mode)
       ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
@@ -506,8 +507,13 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
           set: [source_apply: @apply]
         )
 
+      Apiary.WorkItemsFixtures.target_candidate!(work_item)
+
       {:ok, entry} =
-        RunCredentials.form_work(dispatch_run, work_item, %{path: work_item.target_path})
+        RunCredentials.form_work(dispatch_run, work_item, %{
+          system: work_item.target_system,
+          path: work_item.target_path
+        })
 
       RunCredentials.insert!(entry, ctx.run)
 

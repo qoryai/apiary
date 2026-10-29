@@ -9,7 +9,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # Backlog switch against two connections' parts naming its ref, a disconnect
   # against a part that completes its listing, a move against a disconnect that names
   # the connection the ref moves away from, a listing's part against a restore and
-  # a marking of workspaces, a start that changes the adapter's items against a
+  # a marking of the workspace of its grant's rule, a start that changes the adapter's items against a
   # listing's part, a Backlog switch and an assign, and a collection's Backlog
   # switch, by its id, against a listing's part, its target's switch, a start and an
   # assign. Each side runs on a separate connection, outside the SQL sandbox, so each
@@ -68,7 +68,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   setup :setup_races
 
   setup do
-    started = DateTime.utc_now()
+    started = database_now()
     {:ok, made} = Agent.start(fn -> [] end)
     Process.put(:race_adapters, made)
 
@@ -91,7 +91,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     end)
 
     %{scope: scope} = sign_up()
-    # A second workspace, so a collection is linked to none as it is made.
+    # A second workspace, for assigns and markings. The grant has no rule, so a
+    # collection is linked to none as it is made.
     other_workspace = Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
     made = connectable_adapter_fixture(%{name: name("adapter")})
     Agent.update(Process.get(:race_adapters), &[made.adapter.id | &1])
@@ -619,9 +620,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
   test "a disconnect holding a linked collection, then a part that completes the listing and links another: neither waits on the other in turn",
        ctx do
-    # One workspace in use, so a part links what it makes.
-    {:ok, _marked} =
-      Deletion.delete_workspace(ctx.scope, ctx.other_workspace.id, ctx.other_workspace.slug)
+    # The grant's rule assigns what a part makes to the workspace, so the part links it.
+    grant_rule_fixture(ctx.connection, ctx.scope.workspace)
 
     {:ok, :accepted} = listing(ctx, ["Z"], "first", @started).()
     [z] = ids(ctx.connection, ["Z"])
@@ -659,7 +659,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
   ## A switch against a part of another connection of the adapter, which moves the refs
 
-  # The same adapter's connection in another organisation, which has two workspaces, so
+  # The same adapter's connection in another organisation, whose grant has no rule, so
   # nothing is linked as it is made: the context as that organisation's owner sees it.
   defp other_side(ctx) do
     %{scope: scope} = sign_up()
@@ -995,10 +995,11 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     {:ok, :accepted} = listing(ctx, ["OLD"], "first", @started).()
     [old] = ids(ctx.connection, ["OLD"])
     {:ok, 1} = assign(ctx, [old], low).()
+    grant_rule_fixture(ctx.connection, high)
     {:ok, _marked} = Deletion.delete_workspace(ctx.scope, low.id, low.slug)
 
-    # The collections' table held, the part stops after it read the organisation's only
-    # workspace, `high`, and before it holds its workspaces.
+    # The collections' table held, the part stops after it read its grant's rule, whose
+    # workspace is `high`, and before it holds its workspaces.
     {held, held_pid} =
       hold(fn -> Repo.query!("LOCK TABLE source_collections IN ACCESS EXCLUSIVE MODE") end)
 
@@ -1020,15 +1021,14 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
     assert {:ok, %Workspace{}} = marking
     assert Task.await(listed.task) == {:ok, :accepted}
-    # Marked meanwhile, the higher workspace is not the only one: `NEW` is linked to none.
+    # Marked meanwhile, the rule's workspace is not held: `NEW` is linked to none.
     [new] = ids(ctx.connection, ["NEW"])
     assert Repo.get!(Collection, new).workspace_id == nil
   end
 
-  test "a part held on the only workspace, then a restore and a marking: the marking waits for the part",
+  test "a part held on the workspace of its grant's rule, then a marking of it: the marking waits for the part",
        ctx do
-    {:ok, _marked} =
-      Deletion.delete_workspace(ctx.scope, ctx.other_workspace.id, ctx.other_workspace.slug)
+    grant_rule_fixture(ctx.connection, ctx.scope.workspace)
 
     {listed, listed_pid} = hold(listing(ctx, ["NEW"], "first", @started))
     assert listed.result == {:ok, :accepted}
@@ -1036,15 +1036,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     marked =
       start(
         safely(fn ->
-          Repo.transact(fn ->
-            {:ok, _restored} = Deletion.restore_workspace(ctx.scope, ctx.other_workspace.id)
-
-            Deletion.delete_workspace(
-              ctx.scope,
-              ctx.scope.workspace.id,
-              ctx.scope.workspace.slug
-            )
-          end)
+          Deletion.delete_workspace(ctx.scope, ctx.scope.workspace.id, ctx.scope.workspace.slug)
         end)
       )
 

@@ -58,44 +58,71 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
 
     assert html =~ ~r{<title[^>]*>\s*Connect Qory Apiary}
     assert has_element?(lv, "h1", "Connect Qory Apiary")
-    assert count(lv) == "Step 2 of 6"
+    assert count(lv) == "Step 2 of 4"
     assert has_element?(lv, "#set-up-#{first.public_id} h2", first.name)
     refute has_element?(lv, "#shell .drawer")
 
-    # The organisation has Main; its work source is not connected. Mail is not set up.
+    # Mail is not set up. The indicator shows the instance's progress alone: no step of the
+    # organisation's, and no line on what comes after it.
     assert [
              {"Your account", :done},
              {first_name, :current},
              {second_name, :to_come},
-             {"Mail", _mail} | _
+             {"Mail", _mail}
            ] = Enum.map(steps(lv), &{elem(&1, 0), elem(&1, 1)})
 
     assert {first_name, second_name} == {first.name, second.name}
-    assert Enum.take(steps(lv), -2) == [{"Workspace", :done, :link}, {"Work source", :to_come}]
 
     assert has_element?(lv, "#set-up-steps p", "Connect Qory Apiary")
-    assert has_element?(lv, "#set-up-steps p", "Set up your workspace")
-
-    assert words(lv, "#set-up-next") ==
-             "Next: on the Overview, Machines for runs, Model key and Test run"
+    refute has_element?(lv, "#set-up-steps p", "Set up your workspace")
+    refute has_element?(lv, "#set-up-next")
 
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{second.public_id}")
-    assert count(lv) == "Step 3 of 6"
+    assert count(lv) == "Step 3 of 4"
     assert has_element?(lv, "#set-up-#{second.public_id} h2", second.name)
 
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
-    assert count(lv) == "Step 4 of 6"
+    assert count(lv) == "Step 4 of 4"
     assert has_element?(lv, "#set-up-mail h2", "Mail")
 
-    assert [_account, {_, :done, :link}, {_, :skipped, :link}, {"Mail", :current} | _] =
-             steps(lv)
+    assert [_account, {_, :done, :link}, {_, :skipped, :link}, {"Mail", :current}] = steps(lv)
 
     # Without a step, or with one the page does not have, the first step not done.
     for path <- [~p"/instance/set-up", ~p"/instance/set-up?step=9"] do
       {:ok, lv, _html} = live(conn, path)
-      assert count(lv) == "Step 3 of 6"
+      assert count(lv) == "Step 3 of 4"
       assert has_element?(lv, "#set-up-#{second.public_id}")
     end
+  end
+
+  test "names an adapter by the title its description gives, else by its name",
+       %{conn: conn} do
+    %{adapter: titled} = settable_adapter_fixture(%{name: named("a-tracker")})
+    %{adapter: untitled} = settable_adapter_fixture(%{name: named("b-tracker")})
+    %{adapter: refused} = settable_adapter_fixture(%{name: named("c-tracker")})
+    titled = describe_title(titled, "Acme Tracker")
+    refused = describe_title(refused, "Acme\u202ETracker")
+    assert refused.title == nil
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{titled.public_id}")
+
+    assert words(lv, "#set-up-#{titled.public_id} h2") == "Acme Tracker"
+    assert {"Acme Tracker", :current} in Enum.map(steps(lv), &{elem(&1, 0), elem(&1, 1)})
+
+    assert words(lv, "#set-up-what") ==
+             "Organisations on this instance bring in tickets from Acme Tracker once its " <>
+               "adapter is set up. Set up opens the Acme Tracker adapter's set-up page " <>
+               "in a new tab, and this step shows the new state without a reload."
+
+    for adapter <- [untitled, refused] do
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{adapter.public_id}")
+      assert words(lv, "#set-up-#{adapter.public_id} h2") == adapter.name
+    end
+
+    # The next start gives another title, and the page shows it.
+    describe_title(titled, "Acme Issues")
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{titled.public_id}")
+    assert words(lv, "#set-up-#{titled.public_id} h2") == "Acme Issues"
   end
 
   test "shows the count and no number left over", %{conn: conn} do
@@ -103,8 +130,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
 
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{adapter.public_id}")
 
-    assert words(lv, "#set-up-step-bar") == "Step 2 of 5: #{adapter.name}"
-    assert has_element?(lv, ~s{#set-up-steps progress[value="2"][max="5"]})
+    assert words(lv, "#set-up-step-bar") == "Step 2 of 3: #{adapter.name}"
+    assert has_element?(lv, ~s{#set-up-steps progress[value="2"][max="3"]})
     refute words(lv, "#set-up-steps") =~ "left"
     refute words(lv, "#set-up-steps") =~ "·"
     assert has_element?(lv, ~s{#set-up-steps-toggle[aria-expanded="false"]}, "All steps")
@@ -140,14 +167,10 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     assert words(lv, "#set-up-state") == "State:Set up"
     assert has_element?(lv, "#set-up-continue")
 
-    # A step after the current one that is done stays a link: Workspace, to its summary.
+    # A step after the current one stays in the list; Work sources, of the organisation's
+    # progress, does not show.
     assert {second.name, :to_come} in steps(lv)
-    assert {"Workspace", :done, :link} in steps(lv)
-
-    assert {:error, {_redirect, %{to: to}}} =
-             lv |> element("#set-up-steps-workspace") |> render_click()
-
-    assert to =~ ~r{/set-up\?step=type$}
+    refute has_element?(lv, "#set-up-steps-sources")
   end
 
   test "an adapter not set up says so, with Set up in a new tab and Skip", %{conn: conn} do
@@ -159,8 +182,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
 
     assert words(lv, "#set-up-what") ==
              "Organisations on this instance bring in tickets from #{adapter.name} once its " <>
-               "adapter is set up. Set up opens the adapter's set-up page in a new tab, and " <>
-               "this step shows the new state without a reload."
+               "adapter is set up. Set up opens the #{adapter.name} adapter's set-up page " <>
+               "in a new tab, and this step shows the new state without a reload."
 
     assert words(lv, "#set-up-state") == "State:Not set up"
 
@@ -362,14 +385,14 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     %{adapter: first} = connectable_adapter_fixture(%{name: named("b-tracker")})
 
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
-    assert count(lv) == "Step 3 of 5"
+    assert count(lv) == "Step 3 of 3"
     assert has_element?(lv, "#set-up-mail")
 
     # Listed before the first, by name.
     %{adapter: added} = settable_adapter_fixture(%{name: named("a-tracker")})
     send(lv.pid, {:adapter_declared, %{node_id: first.id}})
 
-    assert count(lv) == "Step 4 of 6"
+    assert count(lv) == "Step 4 of 4"
     assert has_element?(lv, "#set-up-mail")
     assert {added.name, :skipped, :link} in steps(lv)
 
@@ -385,7 +408,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     %{adapter: _added} = settable_adapter_fixture(%{name: named("a-tracker")})
     send(lv.pid, {:adapter_declared, %{node_id: shown.id}})
 
-    assert count(lv) == "Step 3 of 6"
+    assert count(lv) == "Step 3 of 4"
     assert has_element?(lv, "#set-up-#{shown.public_id}")
   end
 
@@ -410,7 +433,7 @@ end
 defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   # The mail step of the instance's connections (`ApiaryWeb.InstanceLive.SetUp`): its
   # context and the form of Instance settings › Mail, whose test link done or Skip marks
-  # the connections reviewed and leads on, to Work source while it is not done; the saved
+  # the connections reviewed and leads on, to Work sources while it is not done; the saved
   # settings with Continue; and the page without the feature adapters belong to, mail its
   # one step of the instance.
   # Not async: hiding the instance's organisation acts on the row every test shares, and
@@ -452,11 +475,11 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
   defp mail_step_path(_conn), do: ~p"/instance/set-up?step=mail"
 
-  # Where the last step leads: Work source, with the feature, while it is not done; else
+  # Where the last step leads: Work sources, with the feature, while it is not done; else
   # on, as a sign-in sends the admin.
   defp after_mail(scope) do
     if Apiary.Features.on?(:factory),
-      do: ~p"/#{scope.organisation}/set-up?step=source",
+      do: ~p"/#{scope.organisation}/set-up?step=sources&workspace=#{scope.workspace.slug}",
       else: ~p"/"
   end
 
@@ -472,8 +495,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   end
 
   test "asks for a recent sign-in, as Instance settings › Mail does", %{user: user} do
-    eleven_minutes_ago = DateTime.add(DateTime.utc_now(:second), -11, :minute)
-    conn = log_in_user(build_conn(), user, token_authenticated_at: eleven_minutes_ago)
+    sixteen_minutes_ago = DateTime.add(DateTime.utc_now(:second), -16, :minute)
+    conn = log_in_user(build_conn(), user, token_authenticated_at: sixteen_minutes_ago)
 
     assert {:error, {:redirect, %{to: "/users/log-in", flash: flash}}} =
              live(conn, ~p"/instance/set-up")
@@ -616,7 +639,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
     assert has_element?(lv, "#set-up-mail")
     refute has_element?(lv, "#set-up-#{adapter.public_id}")
-    assert steps(lv) == [{"Your account", :done}, {"Mail", :current}, {"Workspace", :done, :link}]
+    assert steps(lv) == [{"Your account", :done}, {"Mail", :current}]
     refute has_element?(lv, "#set-up-next")
   end
 end
@@ -624,7 +647,7 @@ end
 defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
   # The instance's connections (`ApiaryWeb.InstanceLive.SetUp`) where the server's
   # environment sets mail: no mail step. With an adapter, its step is the last, and
-  # finishing or skipping it marks the connections reviewed and leads to Workspace. With
+  # finishing or skipping it marks the connections reviewed and leads to Name. With
   # none, the page has no step and sends the admin on through `/`, as a sign-in does,
   # without marking anything.
   # Not async: the instance's organisation is made again, with no workspace, on the row
@@ -652,11 +675,16 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
   defp named(prefix), do: "#{prefix}-#{System.unique_integer([:positive])}"
 
-  # Work source follows Workspace with the `factory` feature.
+  # The steps of the flow of a new workspace, the first `current`: every step with the
+  # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
   defp workspace_steps(current) do
-    if Apiary.Features.on?(:factory),
-      do: [{"Workspace", current}, {"Work source", :to_come}],
-      else: [{"Workspace", current}]
+    if Apiary.Features.on?(:factory) do
+      [{"Name", current}, {"Work sources", :to_come}, {"Destinations", :to_come}] ++
+        if(Apiary.Features.on?(:secrets), do: [{"Model", :to_come}], else: []) ++
+        [{"Harness", :to_come}, {"Machines", :to_come}, {"Test run", :to_come}]
+    else
+      [{"Name", current}]
+    end
   end
 
   @tag :feature_sets
@@ -670,10 +698,15 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
     assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}/set-up"
     refute Setup.connections_reviewed?()
 
-    # The workspace set-up lists no step under Connect Qory Apiary.
+    # The workspace set-up opens at the type cards, then lists no step under Connect Qory
+    # Apiary.
     {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up")
-    assert steps(lv) == [{"Your account", :done} | workspace_steps(:current)]
-    assert count(lv) == "Step 2 of #{length(steps(lv))}"
+    assert has_element?(lv, "#set-up-card-software")
+
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?type=software")
+    # Your account is of the instance's progress, so the flow's first step is step 1.
+    assert steps(lv) == workspace_steps(:current)
+    assert count(lv) == "Step 1 of #{length(steps(lv))}"
     refute has_element?(lv, "#set-up-group-connect")
     refute has_element?(lv, "#set-up-steps-mail")
   end
@@ -689,10 +722,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
       assert has_element?(lv, "#set-up-#{adapter.public_id}")
 
-      assert steps(lv) ==
-               [{"Your account", :done}, {adapter.name, :current} | workspace_steps(:to_come)]
-
-      assert count(lv) == "Step 2 of 4"
+      assert steps(lv) == [{"Your account", :done}, {adapter.name, :current}]
+      assert count(lv) == "Step 2 of 2"
       assert has_element?(lv, "#set-up-group-connect", "Connect Qory Apiary")
       refute has_element?(lv, "#set-up-steps-mail")
       refute has_element?(lv, "#set-up-mail")
@@ -700,11 +731,59 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-skip-button") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=type"
+      assert to == ~p"/#{organisation}/set-up?step=name"
       assert Setup.connections_reviewed?()
     end
 
-    test "Continue on the adapter's step, set up, leads on to Workspace",
+    test "the instance's progress and the organisation's are counted apart, each from 1",
+         %{conn: conn, organisation: organisation} do
+      Mail.put_test_source(:none)
+      %{adapter: adapter} = connectable_adapter_fixture(%{name: named("tracker")})
+
+      # The instance's progress: Your account, the adapter, then Mail.
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{adapter.public_id}")
+
+      assert steps(lv) == [{"Your account", :done}, {adapter.name, :current}, {"Mail", :to_come}]
+      assert count(lv) == "Step 2 of 3"
+      assert has_element?(lv, "#set-up-group-connect", "Connect Qory Apiary")
+      refute has_element?(lv, "#set-up-group-workspace")
+      refute has_element?(lv, "#set-up-next")
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
+      assert count(lv) == "Step 3 of 3"
+
+      # Skip on Mail leads to Name, the first step of the organisation's progress.
+      lv |> element("#set-up-skip-button") |> render_click()
+      assert {to, _flash} = assert_redirect(lv)
+      assert to == ~p"/#{organisation}/set-up?step=name"
+
+      # With no workspace yet, the set-up opens at the type cards; the flow follows.
+      {:ok, lv, _html} = live(conn, to)
+      assert has_element?(lv, "#set-up-card-software")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=name&type=software")
+
+      assert steps(lv) == workspace_steps(:current)
+      steps = length(workspace_steps(:current))
+      assert count(lv) == "Step 1 of #{steps}"
+      assert has_element?(lv, ~s{#set-up-steps progress[value="1"][max="#{steps}"]})
+
+      assert lv
+             |> element("#set-up-step-bar")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.split()
+             |> Enum.join(" ") == "Step 1 of #{steps}: Name"
+
+      # No group heading in the organisation's progress.
+      refute has_element?(lv, ".q-su-grp-h")
+
+      # Back stays in the organisation's progress: Name is its first step.
+      refute has_element?(lv, "#set-up-back")
+    end
+
+    test "Continue on the adapter's step, set up, leads on to Name",
          %{conn: conn, organisation: organisation} do
       %{adapter: adapter} = connectable_adapter_fixture(%{name: named("tracker")})
 
@@ -712,7 +791,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-continue") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=type"
+      assert to == ~p"/#{organisation}/set-up?step=name"
       assert Setup.connections_reviewed?()
     end
 

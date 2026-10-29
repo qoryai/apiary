@@ -2,8 +2,9 @@ defmodule Apiary.Adapters.ContractFixturesTest do
   # The connect pass, the setup pass and the return against the integrations contract's
   # signed fixtures, vendored from the commit in `.integration-contract-ref` under
   # `test/fixtures/integration-contract/adapter/` and `schema/`: each pass made under the
-  # server key of `keys.json` is the fixture's, byte for byte, and verifies; the setup
-  # pass's invalid payloads, signed under that key, are refused; the return
+  # server key of `keys.json` is the fixture's, byte for byte, and verifies, the setup
+  # pass with and without the organisation's slug; the setup pass's invalid payloads,
+  # signed under that key, are refused; the return
   # signed under the access key of `keys.json` is the fixture's, byte for byte, and
   # verifies; each tampered one is refused; the reasons a refused return may give are the
   # schema's, in its order; a call signed under the server key is the fixture's, byte for
@@ -85,7 +86,7 @@ defmodule Apiary.Adapters.ContractFixturesTest do
     SigningKey.new(seed)
   end
 
-  test "the setup pass under the server key is the fixture's, byte for byte" do
+  test "the setup pass without the organisation's slug under the server key is the fixture's, byte for byte" do
     fixture = read("adapter/signed/setup-pass.json")
     key = server_key()
     public_key = SigningKey.public_key(key)
@@ -97,7 +98,7 @@ defmodule Apiary.Adapters.ContractFixturesTest do
     {:ok, expires_at, 0} = DateTime.from_iso8601(payload["expires_at"])
     now = DateTime.add(expires_at, -SetupPass.validity(), :second)
 
-    assert SetupPass.issue(payload["adapter_id"], key: key, nonce: nonce, now: now) ==
+    assert SetupPass.issue(payload["adapter_id"], nil, key: key, nonce: nonce, now: now) ==
              {:ok, fixture["pass"]}
 
     assert SignedMessage.setup_pass(fixture["payload"]) ==
@@ -112,6 +113,41 @@ defmodule Apiary.Adapters.ContractFixturesTest do
     connect = read("adapter/signed/connect-pass.json")
     assert ConnectPass.verify(fixture["pass"], public_key, now: now) == :error
     assert SetupPass.verify(connect["pass"], public_key, now: now) == :error
+  end
+
+  test "the setup pass with the organisation's slug under the server key is the fixture's, byte for byte" do
+    fixture = read("adapter/signed/setup-pass-organisation-slug.json")
+    key = server_key()
+    public_key = SigningKey.public_key(key)
+
+    payload = Jason.decode!(fixture["payload"])
+    assert compact("adapter/setup-pass/with-organisation-slug.json") == fixture["payload"]
+    assert payload["organisation_slug"] == "acme-org"
+    {:ok, nonce} = Ed25519.decode(payload["nonce"], 16)
+    {:ok, expires_at, 0} = DateTime.from_iso8601(payload["expires_at"])
+    now = DateTime.add(expires_at, -SetupPass.validity(), :second)
+
+    assert SetupPass.issue(payload["adapter_id"], "acme-org", key: key, nonce: nonce, now: now) ==
+             {:ok, fixture["pass"]}
+
+    assert SetupPass.verify(fixture["pass"], public_key, now: now) ==
+             {:ok,
+              %{
+                adapter_id: payload["adapter_id"],
+                nonce: nonce,
+                expires_at: expires_at,
+                organisation_slug: "acme-org"
+              }}
+
+    assert SetupPass.verify(fixture["tampered"], public_key, now: now) == :error
+  end
+
+  test "the setup pass's member organisation_slug is the schema's: optional, at most 40 characters, of the slug's form" do
+    schema = read("schema/setup-pass.schema.json")
+    slug = schema["properties"]["organisation_slug"]
+    refute "organisation_slug" in schema["required"]
+    assert slug["maxLength"] == 40
+    assert slug["pattern"] == "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
   end
 
   test "the setup pass's invalid payloads are refused, each signed as a pass is" do
@@ -131,6 +167,12 @@ defmodule Apiary.Adapters.ContractFixturesTest do
 
     assert names == [
              "invalid/setup-pass-adapter-id-connection-id.json",
+             "invalid/setup-pass-organisation-slug-41-characters.json",
+             "invalid/setup-pass-organisation-slug-empty.json",
+             "invalid/setup-pass-organisation-slug-leading-hyphen.json",
+             "invalid/setup-pass-organisation-slug-trailing-hyphen.json",
+             "invalid/setup-pass-organisation-slug-underscore.json",
+             "invalid/setup-pass-organisation-slug-upper-case.json",
              "invalid/setup-pass-undefined-member.json",
              "invalid/setup-pass-version-2.json",
              "invalid/setup-pass-without-nonce.json"
@@ -138,10 +180,12 @@ defmodule Apiary.Adapters.ContractFixturesTest do
 
     now = ~U[2026-10-15 12:00:00Z]
 
-    # The valid payload, signed the same way, is read: each invalid one is refused for
-    # what it holds.
-    valid = sign.(compact("adapter/setup-pass/payload.json"))
-    assert {:ok, _} = SetupPass.verify(valid, public_key, now: now)
+    # The valid payloads, with and without the slug, signed the same way, are read: each
+    # invalid one is refused for what it holds.
+    for name <- ["payload.json", "with-organisation-slug.json"] do
+      valid = sign.(compact("adapter/setup-pass/" <> name))
+      assert {:ok, _} = SetupPass.verify(valid, public_key, now: now), name
+    end
 
     for name <- names do
       signed = sign.(compact("adapter/" <> name))

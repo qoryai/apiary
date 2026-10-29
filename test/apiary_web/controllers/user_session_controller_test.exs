@@ -4,6 +4,11 @@ defmodule ApiaryWeb.UserSessionControllerTest do
   import Apiary.AccountsFixtures
   alias Apiary.Accounts
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   setup do
     # Users are created the way the product creates them, so they own a workspace
     # and the workspace page can render after login: a later sign-up, which the test

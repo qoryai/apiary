@@ -82,16 +82,18 @@ Enter an email address, `ada@example.com` say, a password of 12 to 72 characters
 same password again, and the **Organisation name**, usually your company's, `Acme` say.
 Then select **Set up**. It creates your account and the organisation, with no workspace
 yet, and signs you in. Each page of the set-up lists its steps, with the current one
-marked; **Back**, at the foot of a step's form, opens the step before it. Two pages
-follow:
+marked: first the instance's steps, then the organisation's in a separate list, each
+counted from step 1. **Back**, at the foot of a step's form, opens the step before it in
+the same list. Two pages follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. **Set up your workspace**, at `http://localhost:4100/acme/set-up?step=type`. In
-   **Type**, choose **Software**, whose words this guide uses; no type is chosen before
-   you choose one. Then select **Create workspace**.
+2. The workspace set-up, at `http://localhost:4100/acme/set-up`. Its first page, **What
+   will this workspace do?**, shows the card **Software factory**, whose words this
+   guide uses: select **Choose**. At the step **Name**, keep the name `Main` and select
+   **Create workspace**.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
@@ -101,14 +103,13 @@ Connect it, See runs here. Steps 5 to 7 below are those steps.
 With the `factory` feature, **Connect Qory Apiary** has one step for each adapter that
 **Instance settings › Adapters** lists, before **Mail** where the page has that step:
 select **Skip**, or **Continue** where the step is set up already, or set the adapter up
-as [Set up a new instance](install.md#set-up-a-new-instance) shows. **Create workspace**
-then opens **Connect a work source to Main**, the step **Work source**, at
-`http://localhost:4100/acme/set-up?step=source`: select **Skip**, or **Continue** where
-no work source is set up. The overview of Main shows **Set up Main** in
-place of the box, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
+as [Set up a new instance](install.md#set-up-a-new-instance) shows.
+
+**Create workspace** then opens **Work sources**, the next step of Main's set-up, in place
+of the overview, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
 to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
-sidebar, but the overview has no box for them, and their node does not count for **Set up
-Main**: its step **Machines for runs** counts node pools only.
+sidebar, but Main's overview has no box for them, and their node does not count for the
+step **Machines**, which counts node pools only.
 <!-- /feature -->
 
 The link works once: after it, its page shows "This Qory Apiary is already set up.", and
@@ -159,9 +160,8 @@ Your preferences are under **Your settings › Preferences**, in the menu of you
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
 organisation's. Mail to you, once the instance sends mail, is written in your language. The words
-of the workspace's pages are its type's, chosen when it was created and fixed after: a
-software workspace says repository, forge and pull request; a general workspace says
-target, system and collection.
+of the workspace's pages are its type's, chosen when it was created and fixed after: in
+a Software factory they are repository, forge and pull request.
 
 ## 5. Add a node, then connect it
 
@@ -282,45 +282,114 @@ version.
 <!-- feature: factory -->
 ## 8. Set up Main and run the test
 
-With the `factory` feature, the overview of Main, `http://localhost:4100/acme/main`,
-shows **Set up Main** until a test run passes. Each of its four steps shows a check mark
-once it is done, and a second line, under its first, that says why the step exists:
+With the `factory` feature, the workspace set-up goes on after **Create workspace**, at
+`http://localhost:4100/acme/set-up?step=<step>&workspace=main`. Until a test run passes,
+opening Main, `http://localhost:4100/acme/main`, opens its next step in place of the
+overview. The list of steps shows a check mark on each step once it is done:
 
 | Step | Done when |
 |---|---|
-| **Work source** | Main has a collection from a work source, and Qory Apiary has read the list of collections through its adapter. |
-| **Machines for runs** | A node pool that serves Main's runs has a key in use, and so does the gateway that the pool's **Gateway** choice leads to. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
-| **Model key** | Acme has a model provider with a key, and Main has a model choice. |
+| **Name** | Main exists. |
+| **Work sources** | Main takes tickets from at least one collection: the collection is Main's, with its Backlog on. |
+| **Destinations** | At least one repository is Main's. |
+| **Model** | Main has a default model, with a model provider that applies to Main and has a key. |
+| **Harness** | Main has a saved harness choice. |
+| **Machines** | A node pool that serves Main's runs has a key in use, and so does the gateway the pool's runs go through. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
 | **Test run** | The step shows **Test run passed**. |
 
-**Run the test** is on once **Machines for runs** and **Model key** are done, so you can
-leave the work source for later.
+**Run the test** shows once **Machines** is done, so you can leave the other steps for
+later.
 
-1. **Work source.** Select **Connect**: the Work source step of the workspace set-up
-   opens, at `/acme/set-up?step=source`. Select **Connect** beside a work source, and
-   follow the steps the page shows for it. Only owners and admins connect a work source.
-2. **Machines for runs.** The test run passes only through the instance's gateway, set
-   with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
-   `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
-   pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added on
-   **Nodes** gets a key without stored secrets, so a test run through it ends before a
-   machine starts it. On an install with the instance's pool and gateway, an instance
-   admin selects **View**, which opens **Instance settings › Nodes**: each is ready when
-   **State** shows **Running** or **Last seen**.
-3. **Model key.** Select **Add model key**, which opens **Organisation settings › Model
-   providers**, `/acme/settings/model-providers`, then select **New model provider**. In
+1. **Work sources.** **Where does work for Main come from?** shows a card for each
+   account that Acme's connections reach. With nothing connected, **Connect another
+   source** is open and lists the adapters that the instance has set up. Select
+   **Connect** beside one, and follow the steps that **About this step** lists under its
+   name: the adapter sends you back to this step, which shows a card such as “GitHub ·
+   acme” with **Choose**. Select **Choose**. On “Choose repositories · GitHub · acme”,
+   choose **All repositories, including new ones**, in the adapter's word for its
+   collections, or **Only selected** and tick the collections whose tickets Main takes
+   in. **Only selected** shows 50 to a page, with **Find a repository** and a count such
+   as “3 selected”. Select **Save**: each collection chosen is assigned to Main, with
+   its Backlog on, and the card shows how many, such as “3 of 14 repositories”, or “All
+   repositories”. All also assigns to Main each collection that the adapter lists for
+   the account later; with **Only selected**, a collection listed later joins no
+   workspace until you tick it. If a collection is missing and the adapter sent a line
+   on its access, **Not listed?** shows that line, with **Change access**. Select
+   **Continue**, or **Skip** to leave the step for later. You can change the list later
+   in **Workspace settings › Work sources**, with the same cards and chooser, and
+   connect an adapter in **Organisation settings › Integrations**. One connection to an
+   adapter serves every workspace of Acme. Only owners and admins connect and choose.
+2. **Destinations.** **Which repositories may runs in Main change?** shows a card for
+   each account of the adapters with repositories, and **Connect another destination**
+   for an adapter not connected yet. Select **Choose**, choose **All repositories,
+   including new ones** or **Only selected** and tick the repositories Main's runs may
+   change, then **Save** and **Continue**. Where **Work sources** has All for the
+   account, the chooser shows All alone: “Work sources is set to All for acme. Change it
+   there first.” You can change the list later in **Workspace settings › Destinations**,
+   which shows the same cards and chooser. Unticking a repository there also stops its
+   tickets.
+3. **Model.** **Which model do runs in Main use?** has three fields. In **Key**, keep
+   **Add a key**, the one option while Main has no model provider to reuse. In
    **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
-   this page**, beside the form, says where to get a key for the provider you choose.
+   this step**, beside the form, shows where to get a key for the provider you choose.
    Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
-   **Address**, such as `https://litellm.example.com`. Select **Save**. Only owners and
-   admins add a model provider.
-4. **Model.** Open **Workspace settings › Model**, `/acme/main/settings/model`. **Model**
-   shows the first model of the first provider: keep it or choose another, and select
-   **Save**. The step **Model key** is then done.
-5. **Test run.** Back on the overview, in **Say hi to your agent**, keep
-   `Hi! Where are you running?`, or write another greeting, and select **Run the test**.
-   The step shows "The test run is queued for a machine.", then "The test run is
-   running.", with **See the run** once a machine has registered the run.
+   **Address**, such as `https://litellm.example.com`. **Runtime** shows **Claude
+   Code**. In **Default model**, keep the first model or choose another, and select
+   **Continue**. The key is a secret of Main: **Workspace settings › Secrets and
+   variables** lists it, masked, and you replace it there. Only owners and admins add a
+   model key.
+4. **Harness.** **Which harness do runs in Main use?** has two choices:
+   - **Qory harness**, `github.com/qoryai/harness` at the commit it is pinned to, the
+     choice when you have made none. A run reads its repository's `harness.yaml` or
+     `qory.yaml` first, where the repository has one.
+   - **A harness repository**: choose a repository linked to Acme and, in **Branch or
+     tag**, a branch or tag. **Continue** reads the repository and pins the commit that
+     the branch or tag points to; the step shows why the read failed. A run then reads
+     no harness file of its repository.
+
+   Under **Repositories**, each of Main's repositories from **Destinations** shows
+   **Workspace default**, or the stack chosen for it. **Change** beside a repository chooses a
+   harness for that repository alone: the **Qory harness**, or **A harness repository**
+   with a **Source**, a **Stack** of it and a **Branch or tag**, then **Save**. A run in
+   that repository then uses that stack, and reads no harness file of the repository.
+   Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
+   whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
+   and **Change** there opens the same two choices. Only owners and admins save a
+   harness choice.
+5. **Machines.** **Which machines run the runs in Main?** shows the node pools that
+   serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
+   shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
+   node pool, you choose between **Shared: the instance's pool** and **A pool for
+   Main**. The test run passes only through the instance's gateway, set with
+   `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
+   `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
+   pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added
+   on **Nodes** gets a key without stored secrets, so a test run through it ends before
+   a machine starts it. On an install with the instance's pool and gateway, keep
+   **Shared: the instance's pool**; an instance admin selects **Check the nodes**, which
+   opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
+   or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
+   for this pool, and the shared pool stops serving them." Its **Add node pool** adds a
+   node pool with the name Main. **Get the command** then shows "On the machine for the
+   pool Main, run:" and the enrol command, with **Copy command**. Under it, the step
+   shows the command that installs qory. Run it first on the Linux machine with Docker
+   that runs Main's runs:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
+   ```
+
+   Then run the enrol command on that machine. Once Main has its one pool, owners and
+   admins can go back to the instance's pool: choose **Shared: the instance's pool**,
+   then **Remove pool**. The step deletes Main's pool, and that pool's machines stop
+   taking runs. Once Main has its pool and the instance has none, **Shared: the
+   instance's pool** shows "Not ready: no pool" and cannot be chosen. **Skip** opens
+   **Test run**.
+6. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
+   another greeting, and select **Run the test**. The step shows "The test run is queued
+   for a machine.", then "The test run is running.", with **See the run** once a machine
+   has registered the run. While no pool is ready, the step shows "Runs need a ready
+   pool. See Machines." in place of **Run the test**.
 
 A pass shows "Test run passed: the agent answered on a machine of the instance's pool.",
 with Main's node pool by name in place of the instance's pool, or "…on a machine." for a
@@ -328,8 +397,8 @@ run with no node, and **See the run**: the agent's output is in the run's log. O
 admins and members run the test. If the step shows another line, follow its first
 sentence, then select **Run the test** again. When no machine takes the test run within 5
 minutes, for example, the step shows "Check the pool in Instance settings › Nodes. No
-machine has taken the test run yet." After a pass, the overview shows **Set up Main** no
-more the next time it opens.
+machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
+and opening Main opens the overview from then on.
 
 The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,
 `/acme/main/settings/workflow`, which opens for owners and admins. In **Source**, choose
@@ -339,7 +408,7 @@ admin assigned to Acme. For a public repository that is not in the list, choose 
 address**, and enter its address in **Public address**, such as
 `https://github.com/example-org/harness`, without a password or token in it. In
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
-**Save**.
+**Save**. **Save** sets only which workflow Main's runs use, not their harness.
 <!-- /feature -->
 
 ## Next

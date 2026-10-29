@@ -41,6 +41,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.ProviderLive.Show,
     ApiaryWeb.ModelChoiceLive,
     ApiaryWeb.WorkflowLive,
+    ApiaryWeb.CollectionsLive,
+    ApiaryWeb.ChooseCollectionsLive,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController,
     ApiaryWeb.AdapterSetupController
@@ -64,6 +66,11 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.InstanceLive.Nodes,
     ApiaryWeb.InstanceLive.Node
   ]
+
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
 
   setup :register_and_log_in_user
 
@@ -204,12 +211,15 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/model-providers"},
                  {:get, "#{org}/settings/model-providers/new"},
                  {:get, "#{org}/settings/model-providers/x1"},
-                 {:get, workspace_path(scope, "/settings/model")}
+                 {:get, workspace_path(scope, "/settings/model")},
+                 # The chooser of set-up's Work sources and Destinations.
+                 {:get, "#{org}/set-up/choose"}
                ] ++
                  for(
                    rest <-
                      ~w(/backlog /backlog/x1 /work /work/1 /work/1/explore /work/1/explore/edit
-                        /work/1/thread /targets/x1/also-read /settings/workflow),
+                        /work/1/thread /targets/x1/also-read /settings/work-sources
+                        /settings/destinations /settings/choose /settings/workflow),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )
@@ -853,7 +863,9 @@ defmodule ApiaryWeb.FactoryShellTest do
     [
       "/#{scope.organisation.slug}/settings/integrations",
       workspace_path(scope, "/work"),
-      workspace_path(scope, "/backlog")
+      workspace_path(scope, "/backlog"),
+      workspace_path(scope, "/settings/work-sources"),
+      workspace_path(scope, "/settings/destinations")
     ]
   end
 

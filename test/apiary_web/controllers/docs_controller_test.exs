@@ -106,7 +106,22 @@ defmodule ApiaryWeb.DocsControllerTest do
     test "/docs says so, and how to build it", %{conn: conn} do
       html = conn |> get(~p"/docs") |> html_response(404)
       assert html =~ "The documentation is not built"
-      assert html =~ "mix docs"
+
+      doc = LazyHTML.from_document(html)
+      words = &(doc |> LazyHTML.query(&1) |> LazyHTML.text() |> String.split() |> Enum.join(" "))
+
+      assert words.("#docs-not-built-run") ==
+               "A release image builds it and serves it here. In a checkout, run:"
+
+      assert words.("#docs-not-built-command-text") == "mix docs"
+
+      assert doc
+             |> LazyHTML.query("#docs-not-built-command-copy")
+             |> LazyHTML.attribute("data-copy") ==
+               ["mix docs"]
+
+      assert words.("#docs-not-built-reload") ==
+               "Then reload this page. The guides are also in the guides directory of the repository, as Markdown."
     end
 
     test "so does every path below it", %{conn: conn} do

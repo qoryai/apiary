@@ -108,8 +108,8 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       refute has_element?(view, "#backlog-ticket-take-in")
     end
 
-    test "in a general workspace, the help leaves out the repository's lines", ctx do
-      scope = with_domain(ctx.scope, "general")
+    test "in an example workspace, the help leaves out the repository's lines", ctx do
+      scope = with_domain(ctx.scope, "example")
       {:ok, view, _html} = live(ctx.conn, open(scope, ctx.ticket))
 
       assert words(view, "#backlog-ticket-take-in-help") ==

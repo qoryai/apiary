@@ -2891,7 +2891,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # walk's failure code (`Apiary.Harnesses.Walk`). nil for a call to an adapter that
   # failed, which the adapter's line words (`adapter_failure_words/1`). A source is
   # shown as the walk wrote it, or as the workspace's harness setting where the walk
-  # wrote none: the stacks' document, or a hidden harness.
+  # wrote none: a harness choice's document, or a hidden harness.
   defp harness_failure_words(%{code: code} = failure) do
     source = failure.source || gettext("the workspace's harness setting")
 
@@ -2956,22 +2956,25 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp harness_failure_words(nil), do: nil
 
-  # The harness format rule a source breaks: one of the walk's, or one of the save check's
-  # (`Apiary.Stacks.Document`), in its words.
-  defp harness_rule_words(%{"rule" => "yaml", "values" => %{"file" => file}} = rule),
+  @doc false
+  # harness_rule_words/1 is the harness format rule a source breaks: one of the walk's, or
+  # one of the save check's (`Apiary.Stacks.Document`), in its words. The Harness step and
+  # Workflow show it too (`ApiaryWeb.HarnessComponents.refusal_words/4`).
+  @spec harness_rule_words(map | nil) :: String.t()
+  def harness_rule_words(%{"rule" => "yaml", "values" => %{"file" => file}} = rule),
     do:
       gettext("%{file} %{problem}",
         file: file,
         problem: saved_rule_words(rule["message"], rule["message_values"])
       )
 
-  defp harness_rule_words(%{"rule" => name, "values" => values}),
+  def harness_rule_words(%{"rule" => name, "values" => values}),
     do: walk_rule_words(name, values)
 
-  defp harness_rule_words(%{"message" => message, "values" => values}),
+  def harness_rule_words(%{"message" => message, "values" => values}),
     do: saved_rule_words(message, values)
 
-  defp harness_rule_words(_rule), do: ""
+  def harness_rule_words(_rule), do: ""
 
   defp saved_rule_words(message, values) when is_binary(message) do
     values =

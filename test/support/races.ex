@@ -124,6 +124,15 @@ defmodule Apiary.Races do
   end
 
   @doc """
+  The database's clock now, for an `on_exit` that deletes the rows a test stamped from
+  then on: `inserted_at` is set by the database, whose clock may run behind this node's.
+  """
+  def database_now do
+    %{rows: [[now]]} = Repo.query!("SELECT clock_timestamp()")
+    now
+  end
+
+  @doc """
   Runs `fun` in a transaction on a connection of its own and holds the transaction open,
   with what `fun` locked, until `commit/1`: `{held, backend_pid}`, `held.result` what
   `fun` answered.

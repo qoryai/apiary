@@ -55,6 +55,15 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule ScopeSetting do
+    @moduledoc """
+    Each form that adds a thing shows the setting "Available to every workspace in
+    <organisation>" (`c:Apiary.Edition.scope_setting?/1`), as an edition with several
+    workspaces does.
+    """
+    def scope_setting?(_scope), do: true
+  end
+
   defmodule SignUpOpen do
     @moduledoc """
     A sign-up without an invitation creates an organisation
@@ -744,6 +753,30 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule EndsCollectionAtAssign do
+    @moduledoc """
+    The organisation's live collections titled `ends-at-assign` end as `collection.assign`
+    is checked, as if a listing ended them between a page's read and its change:
+    `Apiary.Adapters.Collections.assign_collections/4` then finds the collection ended and
+    returns `{:error, :not_found}`. A test sets the title after its page has read the list.
+    """
+    import Ecto.Query, only: [from: 2]
+
+    def check(scope, :"collection.assign", subject) do
+      Apiary.Repo.update_all(
+        from(c in Apiary.Adapters.Collection,
+          where: c.organisation_id == ^scope.organisation.id,
+          where: c.title == "ends-at-assign" and is_nil(c.ended_at)
+        ),
+        set: [ended_at: DateTime.utc_now(:second), ended_reason: "not_listed"]
+      )
+
+      Apiary.Edition.module().check(scope, :"collection.assign", subject)
+    end
+
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}
@@ -779,8 +812,8 @@ defmodule Apiary.EditionStubs do
 
   defmodule SetupReady do
     @moduledoc """
-    The machines and the model key of the Overview's setup list are done for every
-    workspace (`c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1`),
+    The machines and the model key of the set-up are ready for every workspace
+    (`c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1`),
     as an edition that counts what serves a workspace from another organisation may
     answer: a pool `shared-pool` and a gateway `shared-gateway` of an organisation no test
     reads. The work source and the test run are the core's.
@@ -1101,5 +1134,14 @@ defmodule Apiary.EditionStubs do
     end
 
     def client_reads(_scope, _kind, _run, subject), do: subject
+  end
+
+  defmodule SetUpFinished do
+    @moduledoc """
+    The test run of every workspace passed (`c:Apiary.Edition.test_run_passed?/1`): its
+    set-up is finished, so with the `factory` feature a link to it leads to its first page,
+    the Overview, and not to the set-up (`ApiaryWeb.SetUpComponents.set_up_path/1`).
+    """
+    def test_run_passed?(_workspace), do: true
   end
 end

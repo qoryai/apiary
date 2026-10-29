@@ -133,10 +133,10 @@ defmodule ApiaryWeb.NewWorkspaceFormTest do
     {:ok, lv, _html} = open(scope)
 
     lv
-    |> form("#new-workspace", workspace: %{name: "Ops", domain: "general"})
+    |> form("#new-workspace", workspace: %{name: "Ops", domain: "example"})
     |> render_submit()
 
     assert has_element?(lv, "#created", "Ops")
-    assert [%{name: "Ops", domain: "general"}] = Organisations.list_workspaces(scope)
+    assert [%{name: "Ops", domain: "example"}] = Organisations.list_workspaces(scope)
   end
 end

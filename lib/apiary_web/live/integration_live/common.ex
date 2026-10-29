@@ -87,9 +87,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def connection_path(scope, id, :targets),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{id}/targets"
 
-  def connection_path(scope, id, :add_target),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{id}/targets/add"
-
   def connection_path(scope, id, :settings),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{id}/settings"
 
@@ -98,14 +95,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   def connection_path(scope, id, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{id}/delete"
-
-  @doc """
-  remove_target_path/3 is the confirmation, on its row, of taking the workspace
-  `workspace_id` from a connection's list.
-  """
-  def remove_target_path(scope, connection, workspace_id),
-    do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{workspace_id}/remove"
 
   @doc "definition_path/3 is the workspace's custom APIs (service definitions): new, one, its edit or its deletion."
   def definition_path(scope, definition, rest \\ nil)
@@ -165,6 +154,37 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc "applies_label/0 is the label of where a connection applies, in a list, a form or its facts."
   def applies_label, do: pgettext("plain", "Applies to")
+
+  attr :form, :any, required: true
+  attr :scope, :any, required: true
+
+  @doc """
+  everywhere_input/1 is the setting `Available to every workspace in %{organisation}`, off,
+  on a form that adds a connection, where the edition shows it
+  (`c:Apiary.Edition.scope_setting?/1`); nothing elsewhere. It is sent as `everywhere`.
+  """
+  def everywhere_input(assigns) do
+    ~H"""
+    <.input
+      :if={Apiary.Edition.scope_setting?(@scope)}
+      field={@form[:everywhere]}
+      type="checkbox"
+      label={
+        gettext("Available to every workspace in %{organisation}",
+          organisation: @scope.organisation.name
+        )
+      }
+    />
+    """
+  end
+
+  @doc """
+  added_reach/2 is the reach of a connection a form adds, from the form's `params`, in the
+  scope's workspace (`Apiary.Connections.reach_at_add/3`).
+  """
+  @spec added_reach(Apiary.Accounts.Scope.t(), map) :: map
+  def added_reach(scope, params),
+    do: Connections.reach_at_add(scope, scope.workspace, params["everywhere"] == "true")
 
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
@@ -235,7 +255,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def applies_word(%Connection{applies_to: "selected", workspaces: workspaces})
       when is_list(workspaces) do
     case length(workspaces) do
-      0 -> gettext("No workspace yet")
+      0 -> gettext("No workspace")
       n -> ngettext("%{count} chosen workspace", "%{count} chosen workspaces", n)
     end
   end
@@ -399,6 +419,15 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def refusal(scope, reason, connections \\ [], action \\ :"connection.write")
 
   def refusal(scope, :forbidden, _connections, action), do: only_admins(scope, action)
+
+  def refusal(scope, :reach_fixed, _connections, _action),
+    do:
+      pgettext(
+        "plain",
+        "To share it, add it again with “Available to every workspace in %{organisation}” on. Where it applies is set only when it is added.",
+        organisation: scope.organisation.name
+      )
+
   def refusal(_scope, reason, connections, _action), do: sentence(reason, connections)
 
   defp sentence({:overlap, ids}, connections) do

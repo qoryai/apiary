@@ -35,6 +35,10 @@ defmodule Apiary.Organisations.Workspace do
     # members read and how a run's labels name its target. Set when the workspace is
     # created (`create_changeset/2`) and changed by nothing after.
     field :domain, :string, default: "software"
+    # The key of the workspace type the workspace was made from: the key of its domain's
+    # definition (`Apiary.Lingo.Domain.definition/1`), such as `qory.software`. Set when the
+    # workspace is created (`create_changeset/2`), never cast, and changed by nothing after.
+    field :type, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
 
@@ -54,18 +58,28 @@ defmodule Apiary.Organisations.Workspace do
 
   @doc """
   The changeset of a new workspace: its name, as `changeset/2` checks it, its domain, one
-  of `Apiary.Lingo.Domain.names/0`, and a fresh public id. The domain and the id are set
-  here only.
+  of `Apiary.Lingo.Domain.names/0`, its type, the key of the domain's definition, and a
+  fresh public id. The domain, the type and the id are set here only.
   """
   def create_changeset(workspace, attrs) do
     workspace
     |> cast(blank_domain_as_none(attrs), [:domain])
     |> validate_required([:domain], message: no_type())
     |> validate_inclusion(:domain, Apiary.Lingo.Domain.names())
+    |> put_type()
     |> put_change(:public_id, Apiary.PublicId.generate("ws"))
     |> unique_constraint(:public_id)
     |> check_constraint(:public_id, name: :workspaces_public_id_format)
     |> changeset(attrs)
+  end
+
+  # The type follows the domain: the key of its definition. A domain no module has leaves
+  # the type unset, and the changeset has the domain's error.
+  defp put_type(changeset) do
+    case Map.fetch(Apiary.Lingo.Domain.domains(), get_field(changeset, :domain)) do
+      {:ok, domain} -> put_change(changeset, :type, Apiary.Lingo.Domain.definition(domain).key)
+      :error -> changeset
+    end
   end
 
   # A blank domain is no choice. Cast would put the schema's default in its place, so it

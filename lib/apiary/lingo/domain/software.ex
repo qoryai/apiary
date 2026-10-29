@@ -12,12 +12,15 @@ defmodule Apiary.Lingo.Domain.Software do
   path `owner/name` with no segment that starts with a dash. Take in checks them, and a
   claim checks them again with the further repositories. A collection's environment
   is prebuilt, and a target may have a harness file at its root.
+
+  Its workspace type is Qory's `qory.software` (`definition/0`).
   """
   # Qory adds the `repositories` label to a run a claim registers, with the `factory` feature.
   @behaviour Apiary.Lingo.Domain
 
   use Gettext, backend: ApiaryWeb.Gettext
 
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Runs.{RunVariables, Target}
 
   @system_label "forge"
@@ -57,7 +60,7 @@ defmodule Apiary.Lingo.Domain.Software do
       )
 
   @impl true
-  def type_name, do: pgettext("workspace type", "Software")
+  def type_name, do: pgettext("workspace type", "Software factory")
 
   @impl true
   def type_line,
@@ -82,4 +85,7 @@ defmodule Apiary.Lingo.Domain.Software do
 
   @impl true
   def harness_file?, do: true
+
+  @impl true
+  def definition, do: Definition.qory("qory.software")
 end

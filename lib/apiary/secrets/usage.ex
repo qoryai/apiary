@@ -5,9 +5,9 @@ defmodule Apiary.Secrets.Usage do
   answer is not empty. It is asked in the changing transaction, after the secret's row is
   locked.
 
-  A model provider (`Apiary.Connections`) uses the organisation's secret it links, whose
-  values are its keys, and by its value id the value that is its default key: a use of
-  kind `:model_provider`. A model choice that chose one of those keys uses that value: a
+  A model provider (`Apiary.Connections`) uses the secret it links, of the organisation or
+  of a workspace, whose values are its keys, and by its value id the value that is its
+  default key: a use of kind `:model_provider`. A model choice that chose one of those keys uses that value: a
   use of kind `:model_choice`. Nothing else uses a secret; a test adds further uses
   (`uses/2`).
 

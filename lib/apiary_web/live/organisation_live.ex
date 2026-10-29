@@ -344,7 +344,8 @@ defmodule ApiaryWeb.OrganisationLive do
     end
   end
 
-  # Where each workspace's link leads: the first page its sidebar shows the reader there
+  # Where each workspace's link leads: with the `factory` feature, the set-up's next step
+  # while its set-up is not finished; else the first page its sidebar shows the reader there
   # (`ApiaryWeb.Layouts.workspace_landing/1`), asked with the scope they would have in it
   # (`Apiary.Organisations.workspace_scopes/1`), one read for them all; the page's
   # workspace with the page's scope, and a workspace that read did not find at its

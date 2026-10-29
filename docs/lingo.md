@@ -3,9 +3,8 @@
 The engine behind Qory Apiary is generic: a work item enters, a run does it, and the result
 is a **change request** that is **applied** to a **target** in a **system**, in a
 **workspace** of an **organisation**. A **domain** (`Apiary.Lingo.Domain`) names the
-engine for one kind of work. There are two. The software domain says repository, forge,
-pull request and merge. The general domain, for any other kind of work, says the engine's
-words. Every page is written in a domain's words.
+engine for one kind of work. There is one, the software domain, whose words are
+repository, forge, pull request and merge. Every page is written in a domain's words.
 
 This is done with Gettext, not with a list of word swaps:
 
@@ -26,8 +25,8 @@ This is done with Gettext, not with a list of word swaps:
   (`users.language`, one of `Apiary.Accounts.Preferences.languages/0`: English, and the
   language of every catalogue under `priv/gettext`). The domain is the workspace's
   (`workspaces.domain`, chosen when the workspace is created), read through the registry
-  of domains (`Apiary.Lingo.Domain.domains/0`, `for_workspace/1`): software, the default,
-  or general, whose locale `en@general` has no catalogue and reads the source text. Every
+  of domains (`Apiary.Lingo.Domain.domains/0`, `for_workspace/1`): software, the one
+  domain and the default. Every
   page of a signed-in person who reaches a workspace has one in
   its scope, the person's settings included, and reads that workspace's domain. A
   scope without a workspace (a person with no membership, on `/users/organisations`, or
@@ -57,15 +56,15 @@ This is done with Gettext, not with a list of word swaps:
 
 ## The words
 
-| Engine (msgid) | Software domain (`en@software`) | General domain (`en@general`) |
-|---|---|---|
-| target, targets | repository, repositories | same |
-| collection, collections | same, except "Turned on/off taking a repository's %{items}…" | same |
-| system, systems | forge, forges | same |
-| change request | pull request | same |
-| apply, applied | merge, merged | same |
-| organisation | organisation | same |
-| workspace, workspaces | workspace, workspaces | same |
+| Engine (msgid) | Software domain (`en@software`) |
+|---|---|
+| target, targets | repository, repositories |
+| collection, collections | same, except "Turned on/off taking a repository's %{items}…" |
+| system, systems | forge, forges |
+| change request | pull request |
+| apply, applied | merge, merged |
+| organisation | organisation |
+| workspace, workspaces | workspace, workspaces |
 
 A target is what a run's change request is applied to. A collection is what an adapter
 reports work from, which an organisation assigns to a workspace. The software domain calls
@@ -87,19 +86,23 @@ and do not go through Gettext.
 ## Domains and their words
 
 A workspace's domain is its **type**, chosen when the workspace is created and fixed
-after: on the workspace set-up page, `/:org/set-up`, for an organisation's first
-workspace, and on an edition's form for any other. The Type field of those forms
+after: on the type cards of the workspace set-up, at `/:org/set-up` for an
+organisation's first workspace and at `/:org/workspaces/new` for any other, and on an
+edition's form. A card's title is the domain's name (`c:Apiary.Lingo.Domain.type_name/0`):
+"Software factory", the one card. The Type field of an edition's form
 (`ApiaryWeb.WorkspaceComponents.type_field/1`) shows each domain's name and line
-(`c:Apiary.Lingo.Domain.type_name/0`, `type_line/0`): "Software", "For work on code.
-Each ticket needs a repository.", and "General", "For any other work, such as
-marketing, incidents or customer care." The workspace's settings show its label and
-line (`c:Apiary.Lingo.Domain.label/0`, `description/0`): "Software workspace" and
-"General workspace".
+(`type_line/0`): "Software factory", "For work on code. Each ticket needs a
+repository." The workspace's settings show its label and line
+(`c:Apiary.Lingo.Domain.label/0`, `description/0`): "Software workspace".
 `Apiary.Lingo.Domain.choices/0` lists the domains in the order a form offers them.
+Each domain is a workspace type with a definition (`c:Apiary.Lingo.Domain.definition/0`,
+`Apiary.Lingo.Domain.Definition`), and a workspace stores the key of its type's
+definition in `workspaces.type`, such as `qory.software`, beside its domain.
 
 - **No source string uses a software word**: repository, forge, pull request, branch,
-  commit, checkout, or "the code". A general workspace reads the source text, so a
-  software word there would be false. The catalogue test refuses one, except in the
+  commit, checkout, or "the code". A domain reads the source text wherever its
+  catalogue has no translation, so a software word there would be false outside the
+  software domain. The catalogue test refuses one, except in the
   context `"plain"`, in the context `"workspace type"` (a type's line, which a person
   reads where they pick a type), and in the form that adds an integration from a
   repository on a forge.

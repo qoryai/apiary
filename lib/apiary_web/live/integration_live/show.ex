@@ -10,17 +10,15 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       catalogue entry (an agent's), where it applies, who added and changed it, the
       secrets it declares (an API's and a program's) and a program's plain settings;
     * **Workspaces** (`…/targets`): where it applies, every workspace of the organisation
-      or the chosen ones, with Add workspace (`…/targets/add`, a page that chooses one)
-      and the removal of one, confirmed on its row (`…/targets/:target_id/remove`,
-      `:target_id` the workspace's id);
-    * **Settings** (`…/settings`): where it applies, a service's name, an integration's
+      or the chosen ones. Where it applies is set when it is added, and never changed
+      after (`Apiary.Connections.reach_at_add/3`);
+    * **Settings** (`…/settings`): a service's name, an integration's
       plain settings and argument, its version (`…/version`, a page that asks for another
       release of the same source, `ApiaryWeb.IntegrationLive.Release`), and last its
       danger zone, its removal confirmed in place (`…/delete`).
 
   It reads and writes through `Apiary.Connections` (`get_connection/2`,
-  `update_connection/3`, `put_workspace/3`, `remove_workspace/3`, `delete_connection/2`,
-  `definition/1`, `description/1`) and asks
+  `update_connection/3`, `delete_connection/2`, `definition/1`, `description/1`) and asks
   `Apiary.Integrations.request_release/2` for another version. The page says once that a
   run receives only its security policy.
   """
@@ -39,94 +37,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   alias ApiaryWeb.SettingsComponents
 
   @tabs [:overview, :targets, :settings]
-  @writes [:add_target, :remove_target, :version, :delete]
+  @writes [:version, :delete]
 
   @impl true
-  def render(%{live_action: :add_target} = assigns) do
-    ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_scope={@current_scope}
-      memberships={@memberships}
-      counts={@nav_counts}
-      nav={:settings}
-      sections={@sections}
-      section={:integrations}
-    >
-      <:crumb navigate={Common.connection_path(@current_scope, @connection)} title={elem(@names, 0)}>
-        {elem(@names, 0)}
-      </:crumb>
-      <:crumb>{gettext("Add workspace")}</:crumb>
-
-      <.page_form
-        id="add-target-page"
-        title={gettext("Add a workspace to %{name}", name: Common.label(@names))}
-        cancel={Common.connection_path(@current_scope, @connection, :targets)}
-      >
-        <:description>
-          {pgettext("plain", "Choose a workspace of this organisation for it to apply to.")}
-        </:description>
-        <Common.not_on_runs />
-        <.form for={@find} id="find-target-form" phx-change="find" phx-submit="find" novalidate>
-          <.input
-            field={@find[:text]}
-            type="search"
-            label={gettext("Find a workspace")}
-            placeholder="acme/shop"
-            debounce="200"
-            autocomplete="off"
-            phx-hook="FocusOn"
-          />
-        </.form>
-        <p id="target-candidates-status" role="status" class="text-[13px]/5 text-muted">
-          <span :if={@candidates == []} id="target-candidates-empty">
-            {pgettext("plain", "No workspace found that it doesn't apply to already.")}
-          </span>
-          <span :if={@candidates != [] and !@candidates_more} id="target-candidates-count">
-            {candidates_found(@candidates)}
-          </span>
-          <span :if={@candidates_more} id="target-candidates-more">
-            {gettext("The first %{number} by name: type to find another.",
-              number: Format.number(@candidates_limit)
-            )}
-          </span>
-        </p>
-        <.table
-          :if={@candidates != []}
-          id="target-candidates"
-          label={gettext("Workspaces")}
-          rows={@candidates}
-          row_id={&"candidate-#{&1.id}"}
-        >
-          <:col :let={workspace} label={gettext("Workspace")} kind="title">
-            {workspace.name}
-          </:col>
-          <:action :let={workspace}>
-            <.button
-              id={"add-#{workspace.id}"}
-              size="xs"
-              phx-click="put_target"
-              phx-value-id={workspace.id}
-              phx-hook="FocusOn"
-              aria-label={gettext("Add %{workspace}", workspace: workspace.name)}
-            >
-              {gettext("Add")}
-            </.button>
-          </:action>
-        </.table>
-        <div>
-          <.button
-            id="add-target-done"
-            navigate={Common.connection_path(@current_scope, @connection, :targets)}
-          >
-            {gettext("Done")}
-          </.button>
-        </div>
-      </.page_form>
-    </Layouts.app>
-    """
-  end
-
   def render(%{live_action: :version} = assigns) do
     ~H"""
     <Layouts.app
@@ -442,15 +355,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         {pgettext("plain", "It applies to the chosen workspaces below, and to no other.")}
       <% end %>
     </p>
-    <p :if={@connection.applies_to == "all" and @may_write} class="text-[13px]/5 text-muted">
-      <.rich text={
-        rich_pgettext("plain", "To choose its workspaces, change where it applies under %{settings}.",
-          settings:
-            {:link, Common.connection_path(@current_scope, @connection, :settings),
-             gettext("Settings")}
-        )
-      } />
-    </p>
 
     <.table
       :if={@target_rows != [] and @connection.applies_to == "selected"}
@@ -458,7 +362,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       label={gettext("Workspaces")}
       rows={@target_rows}
       row_id={&"target-#{&1.id}"}
-      confirming={@confirming && "target-#{@confirming}"}
     >
       <:col :let={row} label={gettext("Workspace")} kind="title">
         <.link
@@ -470,65 +373,27 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           {row.workspace.name}
         </.link>
       </:col>
-      <:action :let={row}>
-        <.button
-          :if={@may_write}
-          id={"remove-target-#{row.id}"}
-          variant="link"
-          patch={Common.remove_target_path(@current_scope, @connection, row.id)}
-          phx-hook="FocusOn"
-          aria-label={gettext("Remove %{workspace}", workspace: row.workspace && row.workspace.name)}
-        >
-          {gettext("Remove")}
-        </.button>
-      </:action>
-      <:confirm :let={row}>
-        <.inline_confirm
-          id={"target-#{row.id}-confirm"}
-          question={
-            gettext("Remove %{workspace} from %{name}?",
-              workspace: row.workspace && row.workspace.name,
-              name: Common.label(@names)
-            )
-          }
-          cancel={Common.connection_path(@current_scope, @connection, :targets)}
-        >
-          {pgettext("plain", "It no longer applies to that workspace.")}
-          <:action>
-            <.button
-              id={"target-#{row.id}-remove"}
-              variant="danger"
-              size="xs"
-              phx-click="remove_target"
-              phx-value-id={row.id}
-              loading_text={gettext("Removing")}
-            >
-              {gettext("Yes, remove")}
-            </.button>
-          </:action>
-        </.inline_confirm>
-      </:confirm>
     </.table>
     <p
       :if={@target_rows == [] and @connection.applies_to == "selected"}
       id="connection-targets-empty"
       class="text-[13px]/5 text-muted"
     >
-      {pgettext("plain", "No workspace is chosen yet, so it applies to none.")}
+      {pgettext("plain", "It applies to no workspace.")}
     </p>
-    <div :if={@may_write and @connection.applies_to == "selected"}>
-      <.button
-        id="add-target"
-        navigate={Common.connection_path(@current_scope, @connection, :add_target)}
-        phx-hook="FocusOn"
-      >
-        <.icon name="hero-plus-micro" class="size-4" />{gettext("Add workspace")}
-      </.button>
-    </div>
     """
   end
 
   ## Settings
+
+  # Whether the form has a field: a service's name, an integration's plain settings or
+  # its argument. A runtime has none, and where a connection applies is set at its add.
+  defp editable?(%Connection{kind: "service"}, _plain, _patterns), do: true
+
+  defp editable?(%Connection{kind: "integration"}, plain, patterns),
+    do: plain != [] or patterns != []
+
+  defp editable?(%Connection{}, _plain, _patterns), do: false
 
   defp settings(assigns) do
     ~H"""
@@ -537,7 +402,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     </p>
 
     <.form
-      :if={@may_write}
+      :if={@may_write and editable?(@connection, @plain, @patterns)}
       for={@form}
       id="connection-form"
       phx-change="validate"
@@ -546,13 +411,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       novalidate
     >
       <div class="grid gap-4">
-        <.input
-          field={@form[:applies_to]}
-          type="radio"
-          label={Common.applies_label()}
-          options={[{gettext("Every workspace"), "all"}, {gettext("Chosen workspaces"), "selected"}]}
-          hint={gettext("Chosen workspaces are listed under Workspaces.")}
-        />
         <.input
           :if={@connection.kind == "service"}
           field={@form[:name]}
@@ -720,9 +578,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
   ## Mount and params
 
-  # How many workspaces Add target lists at once, by name.
-  @candidates_limit 20
-
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     scope = socket.assigns.current_scope
@@ -731,11 +586,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
      socket
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
-       confirming: nil,
-       find: to_form(%{"text" => ""}, as: :find),
-       candidates: [],
-       candidates_more: false,
-       candidates_limit: @candidates_limit,
        version_problems: [],
        form: nil
      )
@@ -867,11 +717,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
        )
        |> push_patch(to: Common.connection_path(scope, socket.assigns.connection))}
     else
-      left = socket.assigns.confirming
-
       {:noreply,
        socket
-       |> assign(tab: tab(action), confirming: nil, version_problems: [])
+       |> assign(tab: tab(action), version_problems: [])
        |> assign(
          :page_title,
          SettingsComponents.page_title(scope, :workspace, [
@@ -879,33 +727,16 @@ defmodule ApiaryWeb.IntegrationLive.Show do
            gettext("Integrations")
          ])
        )
-       |> open(action, params)
-       |> focus_after_confirm(left)}
+       |> open(action, params)}
     end
   end
 
   defp tab(action) when action in @tabs, do: action
-  defp tab(:remove_target), do: :targets
-  defp tab(:add_target), do: :targets
   defp tab(:delete), do: :settings
   defp tab(:version), do: :settings
 
   defp open(socket, :settings, _params), do: assign(socket, :form, edit_form(socket.assigns))
   defp open(socket, :delete, _params), do: assign(socket, :form, edit_form(socket.assigns))
-
-  defp open(socket, :remove_target, %{"target_id" => target_id}) do
-    %{connection: connection, target_rows: rows} = socket.assigns
-
-    if connection.applies_to == "selected" and Enum.any?(rows, &(&1.id == target_id)),
-      do: assign(socket, :confirming, target_id),
-      else: push_patch(socket, to: targets_path(socket))
-  end
-
-  defp open(socket, :add_target, _params) do
-    if socket.assigns.connection.applies_to == "selected",
-      do: find(socket, ""),
-      else: push_patch(socket, to: targets_path(socket))
-  end
 
   # Another version is an integration's, from a source the instance still accepts;
   # anything else goes back to its Settings, which say why.
@@ -927,22 +758,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
   defp open(socket, _action, _params), do: socket
 
-  defp targets_path(socket),
-    do: Common.connection_path(socket.assigns.current_scope, socket.assigns.connection, :targets)
-
-  # Once a row's removal is no longer asked, by Cancel, Escape or its answer, the focus
-  # goes back to the row's Remove, or, where the row is gone, to Add target; never to the
-  # page's body.
-  defp focus_after_confirm(socket, nil), do: socket
-
-  defp focus_after_confirm(%{assigns: %{confirming: nil, live_action: :targets}} = socket, id) do
-    if Enum.any?(socket.assigns.target_rows, &(&1.id == id)),
-      do: push_event(socket, "run:focus", %{id: "remove-target-#{id}"}),
-      else: push_event(socket, "run:focus", %{id: "add-target"})
-  end
-
-  defp focus_after_confirm(socket, _id), do: socket
-
   defp edit_form(assigns) do
     connection = assigns.connection
 
@@ -954,7 +769,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
     to_form(
       %{
-        "applies_to" => connection.applies_to,
         "name" => connection.name,
         "argument" => connection.argument || "",
         "settings" => settings
@@ -963,114 +777,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     )
   end
 
-  # The organisation's workspaces, not marked for deletion, the connection does not list
-  # yet whose name holds `text`, by name: the first `@candidates_limit` of them, and
-  # whether there are more.
-  defp find(socket, text) do
-    scope = socket.assigns.current_scope
-    present = Connections.workspace_ids_of(socket.assigns.connection)
-    text = String.trim(text)
-
-    query =
-      from w in Workspace,
-        where:
-          w.organisation_id == ^scope.organisation.id and is_nil(w.deletion_marked_at) and
-            w.id not in ^present,
-        order_by: [asc: w.name, asc: w.id],
-        limit: ^(@candidates_limit + 1)
-
-    query =
-      case Apiary.Runs.like(text) do
-        nil -> query
-        pattern -> from w in query, where: ilike(w.name, ^pattern)
-      end
-
-    found = Repo.all(query)
-
-    assign(socket,
-      find: to_form(%{"text" => text}, as: :find),
-      candidates: Enum.take(found, @candidates_limit),
-      candidates_more: length(found) > @candidates_limit
-    )
-  end
-
-  # Where the focus goes once a workspace is added from its row, which leaves the list: the
-  # next row's Add, or the one before where it was the last, or else the search field.
-  defp next_focus(before, target_id, now) do
-    present = MapSet.new(now, & &1.id)
-    {above, [_added | below]} = Enum.split_while(before, &(&1.id != target_id))
-
-    case Enum.find(below, &MapSet.member?(present, &1.id)) ||
-           Enum.find(Enum.reverse(above), &MapSet.member?(present, &1.id)) || List.first(now) do
-      nil -> "find_text"
-      workspace -> "add-#{workspace.id}"
-    end
-  end
-
   ## Events
 
   @impl true
-  def handle_event("find", %{"find" => %{"text" => text}}, socket) when is_binary(text),
-    do: {:noreply, find(socket, text)}
-
-  def handle_event("put_target", %{"id" => target_id}, socket) when is_binary(target_id) do
-    %{current_scope: scope, connection: connection, candidates: before} = socket.assigns
-
-    case Connections.put_workspace(scope, connection, target_id) do
-      {:ok, connection} ->
-        socket =
-          socket
-          |> assign_connection(connection)
-          |> find(socket.assigns.find.params["text"] || "")
-
-        row = Enum.find(socket.assigns.target_rows, &(&1.id == target_id))
-
-        focus =
-          if Enum.any?(before, &(&1.id == target_id)),
-            do: next_focus(before, target_id, socket.assigns.candidates),
-            else: "find_text"
-
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           pgettext("plain", "%{name} now applies to %{workspace}.",
-             name: Common.label(socket.assigns.names),
-             workspace: row && row.workspace && row.workspace.name
-           )
-         )
-         |> push_event("run:focus", %{id: focus})}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, refusal(socket, reason))}
-    end
-  end
-
-  def handle_event("remove_target", %{"id" => target_id}, socket) when is_binary(target_id) do
-    %{current_scope: scope, connection: connection} = socket.assigns
-
-    case Connections.remove_workspace(scope, connection, target_id) do
-      {:ok, connection} ->
-        socket = assign_connection(socket, connection)
-
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           gettext("The workspace is removed from %{name}.",
-             name: Common.label(socket.assigns.names)
-           )
-         )
-         |> push_patch(to: Common.connection_path(scope, connection, :targets))}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, refusal(socket, reason))
-         |> push_patch(to: Common.connection_path(scope, connection, :targets))}
-    end
-  end
-
   def handle_event("validate", %{"connection" => params}, socket) when is_map(params),
     do: {:noreply, assign(socket, :form, to_form(params, as: :connection))}
 
@@ -1078,7 +787,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     %{current_scope: scope, connection: connection} = socket.assigns
 
     attrs =
-      %{"applies_to" => params["applies_to"]}
+      %{}
       |> then(
         &if(connection.kind == "service", do: Map.put(&1, "name", params["name"]), else: &1)
       )
@@ -1188,14 +897,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       reason,
       connections,
       Connections.write_action(socket.assigns.connection)
-    )
-  end
-
-  defp candidates_found(candidates) do
-    number = length(candidates)
-
-    ngettext("%{number} workspace found.", "%{number} workspaces found.", number,
-      number: Format.number(number)
     )
   end
 end

@@ -10,15 +10,31 @@ defmodule ApiaryWeb.SetUpComponents do
     from 1280 px. Below 1280 px the indicator is a bar on top; below 1024 px the context
     stacks under the form.
   - `heading/1` is a step's title, and `back/1` the Back button at the form's foot.
+
+  Each step belongs to one of two progresses, its `:progress`. The instance's,
+  `:instance`, is set up once, by the instance admin: Your account, one step for each
+  adapter, then Mail, each of the group `:connect`. The organisation's, `:organisation`,
+  is the flow that sets up a workspace (the list of Apiary.WorkspaceSetup), after Your
+  account: Name, Work sources, Destinations, Model, Harness, Machines and Test run, with
+  no group.
+  Invitation and Your account belong to the instance's progress for an instance admin and
+  on the set-up link's page, and to the organisation's for everyone else. A step without
+  `:progress`, such as one an edition adds or renames, is the organisation's. The
+  indicator and Back show the current step's progress alone, counted from 1. Finishing
+  or skipping the instance's last step on `/instance/set-up` leads to the first step of
+  the organisation's progress that is not done and has a page, such as Name;
+  with none left, to `/`, which sends the admin on as a sign-in does
+  (`ApiaryWeb.UserAuth.signed_in_path/1`).
   """
   use ApiaryWeb, :html
 
   # `steps/1` is this module's progress indicator, not the core's numbered list.
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
-  alias Apiary.{Access, Adapters, Features, Mail, Organisations}
+  alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.{Invitation, Organisation}
+  alias Apiary.Lingo.Domain
+  alias Apiary.Organisations.{Invitation, Organisation, Workspace}
 
   ## The steps
 
@@ -31,7 +47,8 @@ defmodule ApiaryWeb.SetUpComponents do
   1. Invitation, with `invitation:`, an invitation without a workspace, and `token:`, its
      token: done, a link back to its page, unless it is the page's step.
   2. Your account: done once the person is signed in; never a link.
-  3. One step for each of the instance's adapters, with the `factory` feature, then Mail:
+  3. One step for each of the instance's adapters, with the `factory` feature, then Mail,
+     the instance's progress (`progress: :instance`):
      for an instance admin, and with `first: true` on the set-up link's page, whose reader
      becomes one. First the adapters `QORY_INSTALLED_ADAPTERS` lists, in its order:
      before the installer makes one, its step is `{:installing, name}`, labelled with the
@@ -40,14 +57,21 @@ defmodule ApiaryWeb.SetUpComponents do
      saved and their test link sent. Where the server's environment sets mail
      (`Apiary.Mail.source/0` is `:env`), there is no Mail step: nothing is left to
      configure. With no adapter either, the list has no step under Connect.
-  4. Workspace: for a person of an organisation who may create its first workspace
-     (`workspace.create`), or once it has one, done then
-     (`Apiary.Organisations.has_workspace?/1`); signed out, where the organisation is
-     still to be made, or is the invitation's and has none.
-  5. Work source, with the `factory` feature, for a person who may connect an adapter or
-     whom the edition tells who may (`c:ApiaryWeb.Edition.who_may_sentence/2`): done by the
-     Overview's rule, the edition's `work_source_ready/1`. Signed out, only where the
-     organisation is still to be made: an invitation makes a member, who may not connect.
+  4. The flow's steps (the list of Apiary.WorkspaceSetup), of the organisation's progress
+     (`progress: :organisation`), with no group, each done by its rule in
+     Apiary.WorkspaceSetup: every step with the `factory` feature, Model with
+     the `secrets` feature too; without `factory`, Name alone. `flow:` is the flow the
+     page sets up (`flow/5`). Without it, the flow of the workspace the scope has once
+     the organisation has a workspace, and before, of a new workspace of the default
+     type at `/:org/set-up`, for a person who may create it (`workspace.create`); none
+     for anyone else. Signed out, every step, none done and none with a page, where the
+     organisation is still to be made; Name alone where it is the invitation's and has
+     no workspace.
+
+  Invitation and Your account are of the instance's progress for an instance admin, and
+  with `first: true`, even where the list has no adapter or Mail step; else of the
+  organisation's. The progress is set once the edition has answered, so a step the
+  edition renames from them, with another id, has no progress and is the organisation's.
 
   The step `current` names is current; a step before it that is not done is skipped,
   but for an `{:installing, name}` step on a page that is not of the instance's
@@ -57,19 +81,38 @@ defmodule ApiaryWeb.SetUpComponents do
   def steps_for(scope, current, opts \\ []) do
     invitation = opts[:invitation]
     signed_in? = match?(%Scope{user: %{}}, scope)
+    first = opts[:first] == true
+    admin? = Access.instance_admin?(scope)
 
     steps =
       invitation_step(invitation, opts[:token], current) ++
         [step(:account, gettext("Your account"), nil, signed_in?, nil)] ++
-        instance_steps(scope, opts[:first] == true) ++
-        workspace_steps(scope, invitation, signed_in?)
+        instance_steps(scope, first, admin?) ++
+        flow_steps(scope, invitation, signed_in?, opts)
 
-    Apiary.Edition.set_up_steps(scope, states(steps, current))
+    start = if first or admin?, do: :instance, else: :organisation
+
+    scope
+    |> Apiary.Edition.set_up_steps(states(steps, current))
+    |> starting_progress(start)
   end
 
-  # `done` stands in the state until `states/2` sets it.
+  # `done` stands in the state until `states/2` sets it. Invitation and Your account get
+  # their progress from `starting_progress/2`, after the edition answers.
   defp step(id, label, group, done, path),
     do: %{id: id, label: label, group: group, state: done, path: path, note: nil}
+
+  defp step(id, label, group, done, path, progress),
+    do: Map.put(step(id, label, group, done, path), :progress, progress)
+
+  # Sets `start` as the progress of each step whose id is still `:invitation` or
+  # `:account` and that has none. A step the edition gave another id keeps no progress.
+  defp starting_progress(steps, start) do
+    Enum.map(steps, fn
+      %{id: id} = step when id in [:invitation, :account] -> Map.put_new(step, :progress, start)
+      step -> step
+    end)
+  end
 
   # With the invitation's organisation's id, for the edition (`c:Apiary.Edition.set_up_steps/2`);
   # no page shows it.
@@ -89,9 +132,7 @@ defmodule ApiaryWeb.SetUpComponents do
 
   defp invitation_step(_invitation, _token, _current), do: []
 
-  defp instance_steps(scope, first) do
-    admin? = Access.instance_admin?(scope)
-
+  defp instance_steps(scope, first, admin?) do
     if first or admin? do
       adapters =
         cond do
@@ -114,7 +155,7 @@ defmodule ApiaryWeb.SetUpComponents do
     else
       # On the set-up link's page, signed out, the steps have no page to open yet.
       mail_path = if(admin?, do: ~p"/instance/set-up?step=mail")
-      [step(:mail, gettext("Mail"), :connect, mail_done?(), mail_path)]
+      [step(:mail, gettext("Mail"), :connect, mail_done?(), mail_path, :instance)]
     end
   end
 
@@ -127,80 +168,170 @@ defmodule ApiaryWeb.SetUpComponents do
         name,
         :connect,
         false,
-        if(admin?, do: ~p"/instance/set-up?#{[step: name]}")
+        if(admin?, do: ~p"/instance/set-up?#{[step: name]}"),
+        :instance
       )
 
   defp adapter_step(adapter, admin?),
     do:
       step(
         {:adapter, adapter.public_id},
-        adapter.name,
+        Adapters.title(adapter),
         :connect,
         Adapters.configured?(adapter),
-        if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}")
+        if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}"),
+        :instance
       )
 
   # Mail is done once settings are saved and their test link sent, followed or not.
   defp mail_done?, do: Mail.shown().state in [:pending, :on]
 
-  # Signed in: the person's organisation, which has its workspace or is to have one.
-  # Before the workspace exists, only for a person who may create it: another person
-  # waits, and the page shows them no step of the workspace's.
-  defp workspace_steps(%Scope{organisation: %Organisation{} = organisation} = scope, _, true) do
-    made? = Organisations.has_workspace?(organisation)
+  # Signed in: the flow of the person's organisation, for the workspace the page sets up.
+  # Before the organisation's first workspace exists, only for a person who may create
+  # it: another person waits, and the page shows them no step of the flow.
+  defp flow_steps(%Scope{organisation: %Organisation{}} = scope, _invitation, true, opts) do
+    case opts[:flow] || default_flow(scope) do
+      nil ->
+        []
 
-    if made? or Access.can?(scope, :"workspace.create", organisation),
-      do: workspace_and_source(scope, organisation, made?),
-      else: []
+      flow ->
+        for id <- flow_ids(scope) do
+          step(
+            id,
+            step_label(id),
+            nil,
+            WorkspaceSetup.done?(id, flow.organisation, {flow.domain, flow.workspace}),
+            flow_path(flow, id),
+            :organisation
+          )
+        end
+    end
   end
 
-  defp workspace_steps(_scope, _invitation, true), do: []
+  defp flow_steps(_scope, _invitation, true, _opts), do: []
 
   # Signed out: the organisation the sign-up or the set-up link makes, whose owner the
-  # reader becomes, or the invitation's while it has no workspace. Work source only where
-  # the workspace set-up shows it to the reader: to an owner, with the `factory` feature;
-  # an invitation makes a member, who may not connect an adapter (`adapter.connect`).
-  defp workspace_steps(_scope, invitation, false) do
-    if is_nil(invitation) or not Organisations.has_workspace?(invitation.organisation) do
-      source =
-        if is_nil(invitation) and Features.on?(:factory),
-          do: [step(:source, gettext("Work source"), :workspace, false, nil)],
-          else: []
+  # reader becomes: every step of the flow, none done and none with a page yet. For the
+  # invitation's organisation while it has none, Name alone: an invitation makes a
+  # member, who may not create the workspace (`workspace.create`) nor connect.
+  defp flow_steps(_scope, invitation, false, _opts) do
+    cond do
+      is_nil(invitation) ->
+        for id <- flow_ids(nil), do: step(id, step_label(id), nil, false, nil, :organisation)
 
-      [step(:workspace, gettext("Workspace"), :workspace, false, nil) | source]
-    else
-      []
+      not Organisations.has_workspace?(invitation.organisation) ->
+        [step(:name, step_label(:name), nil, false, nil, :organisation)]
+
+      true ->
+        []
     end
   end
 
-  defp workspace_and_source(scope, organisation, made?) do
-    workspace = [
-      step(
-        :workspace,
-        gettext("Workspace"),
-        :workspace,
-        made?,
-        ~p"/#{organisation}/set-up?step=type"
-      )
-    ]
+  # The flow a page shows without naming one: the workspace the scope has, of its
+  # organisation, once the organisation has a workspace; before, a new workspace of the
+  # default type for a person who may create it, at `/:org/set-up`, which shows the type
+  # cards first; else none.
+  defp default_flow(%Scope{organisation: organisation} = scope) do
+    cond do
+      Organisations.has_workspace?(organisation) ->
+        case organisation_workspace(scope) do
+          nil -> nil
+          workspace -> flow(organisation, Domain.for_workspace(workspace), workspace, :set_up)
+        end
 
-    if source_step?(scope, organisation) do
-      done = organisation_workspace(scope) |> source_done?()
+      Access.can?(scope, :"workspace.create", organisation) ->
+        flow(organisation, Domain.default(), nil, :set_up)
 
-      workspace ++
-        [
-          step(
-            :source,
-            gettext("Work source"),
-            :workspace,
-            done,
-            ~p"/#{organisation}/set-up?step=source"
-          )
-        ]
-    else
-      workspace
+      true ->
+        nil
     end
   end
+
+  @typedoc """
+  The flow a page sets up (`flow/5`): the organisation, the type of the workspace
+  (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and the page that runs
+  it: `:set_up`, `/:org/set-up`, or `:new`, `/:org/workspaces/new`. `type` is whether
+  the step's paths name the type, as once a card is picked.
+  """
+  @type flow :: %{
+          organisation: %Organisation{},
+          domain: module,
+          workspace: %Workspace{} | nil,
+          page: :set_up | :new,
+          type: boolean
+        }
+
+  @doc """
+  flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
+  or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
+  in `opts`, the step's paths name the type, as once a card is picked.
+  """
+  @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
+  def flow(organisation, domain, workspace, page, opts \\ []),
+    do: %{
+      organisation: organisation,
+      domain: domain,
+      workspace: workspace,
+      page: page,
+      type: opts[:type] == true
+    }
+
+  @doc """
+  flow_path/2 is the path of the step `id` of `flow`: `?step=<id>`, with the workspace's
+  slug once it exists (`&workspace=<slug>`), and before, the type's name where the flow
+  names it (`&type=<name>`).
+  """
+  @spec flow_path(flow, atom) :: String.t()
+  def flow_path(%{organisation: organisation} = flow, id) do
+    query = [step: id] ++ flow_query(flow)
+
+    case flow.page do
+      :new -> ~p"/#{organisation}/workspaces/new?#{query}"
+      :set_up -> ~p"/#{organisation}/set-up?#{query}"
+    end
+  end
+
+  defp flow_query(%{workspace: %Workspace{slug: slug}}), do: [workspace: slug]
+  defp flow_query(%{type: true, domain: domain}), do: [type: domain.name()]
+  defp flow_query(_flow), do: []
+
+  # The flow's steps the scope's person sees, nil signed out: every step with the
+  # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
+  defp flow_ids(scope) do
+    factory? = shown?(scope, :factory)
+    secrets? = shown?(scope, :secrets)
+
+    for id <- WorkspaceSetup.flow(),
+        factory? or id == :name,
+        id != :model or secrets?,
+        do: id
+  end
+
+  defp shown?(%Scope{} = scope, feature), do: Features.visible?(scope, feature)
+  defp shown?(nil, feature), do: Features.on?(feature)
+
+  @doc """
+  step_label/1 is the name of the flow's step `id` in the indicator.
+  """
+  @spec step_label(atom) :: String.t()
+  def step_label(:name), do: gettext("Name")
+  def step_label(:sources), do: gettext("Work sources")
+  def step_label(:destinations), do: gettext("Destinations")
+  def step_label(:model), do: gettext("Model")
+  def step_label(:harness), do: gettext("Harness")
+  def step_label(:machines), do: gettext("Machines")
+  def step_label(:test), do: gettext("Test run")
+
+  @doc """
+  flow_title/1 is the line above the indicator's count: "Set up Payments · Software
+  factory", or "Set up a new Software factory" before the workspace exists.
+  """
+  @spec flow_title(flow) :: String.t()
+  def flow_title(%{workspace: %Workspace{name: name}, domain: domain}),
+    do: gettext("Set up %{workspace} · %{type}", workspace: name, type: domain.type_name())
+
+  def flow_title(%{domain: domain}),
+    do: gettext("Set up a new %{type}", type: domain.type_name())
 
   defp organisation_workspace(%Scope{
          organisation: %{id: id},
@@ -209,15 +340,6 @@ defmodule ApiaryWeb.SetUpComponents do
        do: workspace
 
   defp organisation_workspace(_scope), do: nil
-
-  defp source_done?(nil), do: false
-  defp source_done?(workspace), do: Apiary.Edition.work_source_ready(workspace) != []
-
-  defp source_step?(scope, organisation),
-    do:
-      Features.visible?(scope, :factory) and
-        (Access.can?(scope, :"adapter.connect", organisation) or
-           ApiaryWeb.Edition.who_may_sentence(:"adapter.connect", scope) != nil)
 
   # An adapter the installer has not made yet counts as skipped only on a page of the
   # instance's connections, where the person passed its step; elsewhere it is to come.
@@ -246,7 +368,7 @@ defmodule ApiaryWeb.SetUpComponents do
   with the `factory` feature, or a Mail step (`steps_for/3`).
   """
   @spec connect_steps?(Scope.t()) :: boolean
-  def connect_steps?(scope), do: instance_steps(scope, false) != []
+  def connect_steps?(scope), do: instance_steps(scope, false, Access.instance_admin?(scope)) != []
 
   @doc """
   next_step/2 is the step after the one whose id is `id` in `steps`, or nil.
@@ -260,13 +382,37 @@ defmodule ApiaryWeb.SetUpComponents do
   end
 
   @doc """
-  next?/1 says whether the indicator names the stage after its last step, the
-  Overview's setup list: with the `factory` feature where `scope` is, or on the instance
-  for a page read signed out.
+  set_up_path/1 is where a link to the scope's workspace leads while its set-up is not
+  finished: the first step of the flow that is not done, on `/:org/set-up`
+  (`flow_path/2`). The set-up is finished once the test run passed, the Test run step's
+  rule in Apiary.WorkspaceSetup. Nil once it is, where the reader sees no Test run step
+  (without the `factory` feature), and for a scope without a workspace.
+
+  While the set-up is finished it reads one rule, the Test run step's; before, the rules
+  of the steps up to the one it returns.
   """
-  @spec next?(Scope.t() | nil) :: boolean
-  def next?(%Scope{} = scope), do: Features.visible?(scope, :factory)
-  def next?(nil), do: Features.on?(:factory)
+  @spec set_up_path(Scope.t() | nil) :: String.t() | nil
+  def set_up_path(
+        %Scope{organisation: %Organisation{} = organisation, workspace: %Workspace{} = workspace} =
+          scope
+      ) do
+    ids = flow_ids(scope)
+
+    if :test in ids and not WorkspaceSetup.test?(workspace) do
+      domain = Domain.for_workspace(workspace)
+
+      next =
+        Enum.find(
+          ids,
+          :test,
+          &(&1 != :test and not WorkspaceSetup.done?(&1, organisation, {domain, workspace}))
+        )
+
+      flow_path(flow(organisation, domain, workspace, :set_up), next)
+    end
+  end
+
+  def set_up_path(_scope), do: nil
 
   ## The frame
 
@@ -274,7 +420,7 @@ defmodule ApiaryWeb.SetUpComponents do
     default: [],
     doc: "the set-up's steps (`steps_for/3`); the indicator shows where there are two or more"
 
-  attr :next, :boolean, default: false, doc: "whether the indicator names the next stage"
+  attr :title, :string, default: nil, doc: "the line above the indicator's count"
   attr :page, :string, default: nil, doc: "the page's path, where a step's link patches"
   slot :inner_block, required: true, doc: "the step: its title, form and foot"
   slot :context, doc: "why the step exists and what it changes, under About this step"
@@ -286,8 +432,9 @@ defmodule ApiaryWeb.SetUpComponents do
 
   From 1280 px the three are columns: 220 px, 480 px and 320 px. From 1024 px the
   indicator is a bar on top, with the form and its context side by side under it.
-  Below 1024 px they stack. A page with fewer than two steps shows no indicator; one
-  with no context, no aside.
+  Below 1024 px they stack. A page with fewer than two steps in `steps` shows no
+  indicator; one whose current step's progress has one step shows it, "Step 1 of 1". A
+  page with no context shows no aside.
   """
   def frame(assigns) do
     assigns = assign(assigns, :indicator, length(assigns.steps) > 1)
@@ -301,7 +448,7 @@ defmodule ApiaryWeb.SetUpComponents do
         @context != [] && "q-su-has-ctx"
       ]}
     >
-      <.steps :if={@indicator} steps={@steps} next={@next} page={@page} />
+      <.steps :if={@indicator} steps={@steps} title={@title} page={@page} />
       <div class="q-su-form">{render_slot(@inner_block)}</div>
       <aside
         :if={@context != []}
@@ -317,29 +464,33 @@ defmodule ApiaryWeb.SetUpComponents do
   end
 
   attr :steps, :list, required: true
-  attr :next, :boolean, default: false
+  attr :title, :string, default: nil
   attr :page, :string, default: nil
 
   @doc """
-  steps/1 is the progress indicator: "Step 4 of 5" and a progress bar of the same value,
-  then the list of `steps`, under their groups' headings, each with its mark: done, a
-  filled circle with a check; skipped, an empty circle with a dash and "Skipped";
-  current, a ring, `aria-current="step"`; to come, an empty circle. A step that is done or
-  skipped and has a path is a link, after the current one too: a patch where its path is
-  `page`, else a navigation. With `next`, "Next: on the Overview, …" follows the last.
+  steps/1 is the progress indicator of the current step's progress alone, the instance's
+  or the organisation's, with no current step the last step's: `title` where given, then
+  "Step 1 of 2" and a progress bar of the same value, counted from 1 in each progress,
+  then the list of that progress's steps, each with its mark: done, a filled circle with
+  a check; skipped, an empty circle with a dash and "Skipped"; current, a ring,
+  `aria-current="step"`; to come, an empty circle. A step that is done or skipped and has
+  a path is a link, after the current one too: a patch where its path is `page`, else a
+  navigation. The instance's steps (`group: :connect`) are listed under the heading
+  "Connect Qory Apiary"; every other step has no heading.
 
-  Below 1280 px it is a bar, "Step 4 of 5: Workspace", whose **All steps** opens the list
+  Below 1280 px it is a bar, "Step 1 of 2: Workspace", whose **All steps** opens the list
   in place, a disclosure that Escape closes.
   """
   def steps(assigns) do
-    at = Enum.find_index(assigns.steps, &(&1.state == :current))
+    steps = progress_steps(assigns.steps)
+    at = Enum.find_index(steps, &(&1.state == :current))
 
     assigns =
       assign(assigns,
         number: at && at + 1,
-        total: length(assigns.steps),
-        current: at && Enum.at(assigns.steps, at),
-        groups: Enum.chunk_by(assigns.steps, & &1.group),
+        total: length(steps),
+        current: at && Enum.at(steps, at),
+        groups: steps |> Enum.chunk_by(& &1.group) |> Enum.map(&{&1, group_heading(hd(&1))}),
         escape:
           JS.set_attribute({"aria-expanded", "false"}, to: "#set-up-steps-toggle")
           |> JS.focus(to: "#set-up-steps-toggle")
@@ -348,6 +499,7 @@ defmodule ApiaryWeb.SetUpComponents do
     ~H"""
     <nav id="set-up-steps" class="q-su-steps" aria-label={gettext("Set-up steps")}>
       <div :if={@number} class="q-su-count">
+        <p :if={@title} id="set-up-title" class="q-su-title">{@title}</p>
         <p id="set-up-step" class="q-su-count-wide">
           {gettext("Step %{step} of %{total}", step: @number, total: @total)}
         </p>
@@ -373,31 +525,39 @@ defmodule ApiaryWeb.SetUpComponents do
         <progress class="q-su-progress" value={@number} max={@total} aria-labelledby="set-up-step"></progress>
       </div>
       <ol id="set-up-step-list" class="q-su-list">
-        <%= for group <- @groups do %>
-          <li :if={hd(group).group} class="q-su-grp">
-            <p id={"set-up-group-#{hd(group).group}"} class="q-su-grp-h">
-              {group_heading(hd(group).group)}
-            </p>
+        <%= for {group, heading} <- @groups do %>
+          <li :if={hd(group).group && heading} class="q-su-grp">
+            <p id={"set-up-group-#{hd(group).group}"} class="q-su-grp-h">{heading}</p>
             <ol aria-labelledby={"set-up-group-#{hd(group).group}"}>
               <li :for={step <- group}>
                 <.step_row step={step} page={@page} escape={@escape} />
               </li>
             </ol>
           </li>
-          <li :for={step <- group} :if={!hd(group).group}>
+          <li :for={step <- group} :if={!(hd(group).group && heading)}>
             <.step_row step={step} page={@page} escape={@escape} />
           </li>
         <% end %>
       </ol>
-      <p :if={@next} id="set-up-next" class="q-su-next">
-        {gettext("Next: on the Overview, Machines for runs, Model key and Test run")}
-      </p>
     </nav>
     """
   end
 
-  defp group_heading(:connect), do: gettext("Connect %{name}", name: Apiary.ProductName.name())
-  defp group_heading(:workspace), do: gettext("Set up your workspace")
+  # The steps of the progress the page shows: the current step's, or, with no current
+  # step, the last step's. A step without `:progress` is of the organisation's.
+  defp progress_steps([]), do: []
+
+  defp progress_steps(steps) do
+    progress = progress(Enum.find(steps, List.last(steps), &(&1.state == :current)))
+    Enum.filter(steps, &(progress(&1) == progress))
+  end
+
+  defp progress(step), do: Map.get(step, :progress, :organisation)
+
+  defp group_heading(%{group: :connect}),
+    do: gettext("Connect %{name}", name: Apiary.ProductName.name())
+
+  defp group_heading(_step), do: nil
 
   attr :step, :map, required: true
   attr :page, :string, default: nil
@@ -463,12 +623,14 @@ defmodule ApiaryWeb.SetUpComponents do
 
   @doc """
   back/1 is the Back button at the foot of a step's form: a ghost button to the step
-  before the current one in `steps`, a patch where its path is `page`. None on the first
-  step, nor where the step before has no page, such as Your account.
+  before the current one in its progress, a patch where its path is `page`. None on the
+  first step of a progress, such as Name, which leads back to no step of the
+  instance's, nor where the step before has no page, such as Your account.
   """
   def back(assigns) do
-    at = Enum.find_index(assigns.steps, &(&1.state == :current))
-    before = if at && at > 0, do: Enum.at(assigns.steps, at - 1)
+    steps = progress_steps(assigns.steps)
+    at = Enum.find_index(steps, &(&1.state == :current))
+    before = if at && at > 0, do: Enum.at(steps, at - 1)
     before = if before && is_binary(before.path), do: before
 
     assigns = assign(assigns, before: before, patch: before && patch?(before.path, assigns.page))

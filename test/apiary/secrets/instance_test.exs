@@ -259,17 +259,23 @@ defmodule Apiary.Secrets.InstanceTest do
       refute Repo.exists?(from s in InstanceSecret, where: s.adapter_id == ^ctx.adapter.id)
       assert reveal(ctx.other) == {1, [{"signing-key", "y"}]}
 
-      entry = Repo.one!(from e in Apiary.Audit.Entry, where: e.action == "adapter.delete")
-      assert entry.details["app_values_deleted"] == true
+      # Only this test's adapters: an entry a race test committed outside the sandbox, and
+      # did not delete, is visible here too.
+      deletions = fn ids ->
+        Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "adapter.delete" and e.subject_id in ^ids,
+            select: {e.subject_id, e.details["app_values_deleted"]}
+        )
+      end
 
-      {:ok, _deleted} = Adapters.delete_adapter(instance_admin_scope(), adapter_fixture())
+      assert deletions.([ctx.adapter.id]) == [{ctx.adapter.id, true}]
 
-      assert [_, %{details: %{"app_values_deleted" => false}}] =
-               Repo.all(
-                 from e in Apiary.Audit.Entry,
-                   where: e.action == "adapter.delete",
-                   order_by: e.inserted_at
-               )
+      bare = adapter_fixture()
+      {:ok, _deleted} = Adapters.delete_adapter(instance_admin_scope(), bare)
+
+      assert Enum.sort(deletions.([ctx.adapter.id, bare.id])) ==
+               Enum.sort([{ctx.adapter.id, true}, {bare.id, false}])
     end
   end
 

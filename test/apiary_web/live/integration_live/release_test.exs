@@ -135,20 +135,58 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
 
     assert has_element?(lv, "#release-setting-app_id")
     refute has_element?(lv, "#release-setting-private_key")
-    assert has_element?(lv, "#add-release-form fieldset legend", "Applies to")
+    refute has_element?(lv, "#add-release-form fieldset legend", "Applies to")
+    refute has_element?(lv, "#add-release-form input[name='integration[everywhere]']")
     assert has_element?(lv, "#add-release-form", "Qory Apiary links no stored secret to it.")
 
     {:error, {:live_redirect, %{to: to}}} =
       lv
       |> form("#add-release-form",
-        integration: %{applies_to: "all", argument: "", settings: %{app_id: "104231"}}
+        integration: %{argument: "", settings: %{app_id: "104231"}}
       )
       |> render_submit()
 
     {:ok, [connection]} = Connections.list_connections(scope)
     assert connection.kind == "integration"
     assert Connection.settings_map(connection) == %{"app_id" => "104231"}
+    assert connection.applies_to == "selected"
+    assert Connections.workspace_ids_of(connection) == [scope.workspace.id]
     assert to =~ "/settings/integrations/#{connection.public_id}"
+  end
+
+  test "with the setting shown, it is added for every workspace or for this one",
+       %{conn: conn, scope: scope} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+    release = ready_release!(scope, github_description())
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(
+             lv,
+             "#add-release-form label",
+             "Available to every workspace in #{scope.organisation.name}"
+           )
+
+    lv
+    |> form("#add-release-form",
+      integration: %{argument: "", settings: %{app_id: "104231"}, everywhere: "true"}
+    )
+    |> render_submit()
+
+    {:ok, [connection]} = Connections.list_connections(scope)
+    assert connection.applies_to == "all"
+    {:ok, _deleted} = Connections.delete_connection(scope, connection)
+
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    lv
+    |> form("#add-release-form",
+      integration: %{argument: "", settings: %{app_id: "104231"}, everywhere: "false"}
+    )
+    |> render_submit()
+
+    {:ok, [connection]} = Connections.list_connections(scope)
+    assert connection.applies_to == "selected"
+    assert Connections.workspace_ids_of(connection) == [scope.workspace.id]
   end
 
   test "a release's description takes its direction, its invisible characters dropped and its controls shown",
@@ -279,7 +317,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     html =
       lv
       |> form("#add-release-form",
-        integration: %{applies_to: "all", argument: "", settings: %{app_id: "not valid!"}}
+        integration: %{argument: "", settings: %{app_id: "not valid!"}}
       )
       |> render_submit()
 
