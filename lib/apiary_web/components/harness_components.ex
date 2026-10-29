@@ -2,7 +2,8 @@ defmodule ApiaryWeb.HarnessComponents do
   # The harness choice of a workspace (`Apiary.Stacks.Sources.choose/3`), as the set-up's
   # Harness step (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Workflow
   # (`ApiaryWeb.WorkflowLive`) show it, and the stacks chosen for the workspace's
-  # destinations (`Apiary.Stacks.Sources.choose_target/3`), as the Harness step shows them.
+  # destinations (`Apiary.Stacks.Sources.choose_target/3`), as both pages show them; both
+  # handle the destinations' events with `ApiaryWeb.HarnessTargets`.
   #
   # `about/1` is the five paragraphs of the side note, About this step: what a harness
   # is; the order of a run's harness, the target's root harness file first, then the stack

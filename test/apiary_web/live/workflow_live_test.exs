@@ -2,9 +2,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   @moduledoc """
   Workspace settings › Workflow (`ApiaryWeb.WorkflowLive`) against stub adapters
   (`Req.Test`): who opens it and where it is in the list; About this step, with the
-  paragraphs on the harness; the harness choice and its version; each kind of source,
-  read when chosen; a refused address; the save, its document, and the setting shown
-  again.
+  paragraphs on the harness; the harness choice and its version; the destinations' Stack
+  selects under the choice, their saves and refusals; each kind of source, read when
+  chosen; a refused address; the save, its document, and the setting shown again.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -606,7 +606,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(view, "#workflow-harness-form")
     end
 
-    test "with a shared Qory harness and a destination: the Qory harness once, and no destinations list",
+    test "with a shared Qory harness and a destination: the Qory harness once, and the destination's row",
          %{conn: conn, path: path, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
@@ -628,7 +628,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                |> LazyHTML.attribute("id")
 
       refute has_element?(view, "#harness-choice-shared")
-      refute has_element?(view, "#harness-targets")
+      assert has_element?(view, "#harness-targets #harness-target-#{collection.public_id}")
     end
 
     test "a harness repository: one repository by name, its exported stack, and a fixed version",
@@ -760,6 +760,227 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#harness-line") == "Qory harness Always the latest version"
       assert Stacks.choice(scope.workspace) == nil
+    end
+  end
+
+  describe "the destinations" do
+    # A destination of the workspace: a collection with a target, assigned to it, of an
+    # adapter with targets.
+    defp destination!(scope) do
+      collection = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
+
+      collection
+    end
+
+    defp target_of(collection),
+      do: %{system: collection.target_system, path: collection.target_path}
+
+    # The options of a destination's Stack select, `{text, value}`.
+    defp row_options(view, collection) do
+      options =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#harness-target-#{collection.public_id}-stack option")
+
+      values = LazyHTML.attribute(options, "value")
+      texts = Enum.map(options, &(&1 |> LazyHTML.text() |> String.trim()))
+      Enum.zip(texts, values)
+    end
+
+    defp row_chosen(view, collection),
+      do: words(view, "#harness-target-#{collection.public_id}-stack option[selected]")
+
+    defp pick_row(view, collection, value) do
+      view
+      |> form("#harness-target-#{collection.public_id}-form", row: %{stack: value})
+      |> render_change()
+
+      render_async(view, 2_000)
+      view
+    end
+
+    # Whether the element with the id `first` comes before the one with the id `second`.
+    defp before?(html, first, second) do
+      {at_first, _length} = :binary.match(html, ~s(id="#{first}"))
+      {at_second, _length} = :binary.match(html, ~s(id="#{second}"))
+      at_first < at_second
+    end
+
+    test "the rows show under the harness choice, with the Harness step's Stack select; the workspace's harness and a stack of the Qory harness save at once",
+         %{conn: conn, path: path, scope: scope} do
+      destination = destination!(scope)
+      view = open(conn, path)
+
+      assert words(view, "#workflow-harness #harness-targets-h") == "Repositories"
+      assert has_element?(view, "#harness-target-#{destination.public_id}", destination.title)
+
+      assert words(view, ~s(label[for="harness-target-#{destination.public_id}-stack"])) ==
+               "Stack"
+
+      # Under the choice's line, and under its form once Change opens it.
+      assert before?(render(view), "harness-line", "harness-targets")
+      assert before?(render(view), "harness-targets", "workflow-form")
+      change_harness(view)
+      assert before?(render(view), "workflow-harness-form", "harness-targets")
+
+      assert row_options(view, destination) == [
+               {"Workspace's harness", "default"},
+               {"core · Qory harness · latest", "workspace:core"},
+               {"A stack of another repository…", "other"}
+             ]
+
+      assert row_chosen(view, destination) == "Workspace's harness"
+
+      pick_row(view, destination, "workspace:core")
+      assert row_chosen(view, destination) == "core · Qory harness · latest"
+
+      assert %{choice: :qory, version_kind: :workspace} =
+               Stacks.target_choice(scope.workspace, target_of(destination))
+
+      pick_row(view, destination, "default")
+      assert row_chosen(view, destination) == "Workspace's harness"
+      assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
+    end
+
+    test "a harness repository saved on the page: the rows offer the stacks it exports, and one saves",
+         %{
+           conn: conn,
+           path: path,
+           scope: scope,
+           adapter: adapter,
+           covered: covered,
+           linked_id: linked_id
+         } do
+      serve_calls([adapter], covered: covered, files: @files, versions: %{"R_harness" => @pin})
+      destination = destination!(scope)
+      view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
+
+      view
+      |> form("#workflow-harness-form", harness: %{version: "fixed", fixed: "v2"})
+      |> render_submit()
+
+      # The save, then the read of the stacks the saved choice exports.
+      render_async(view, 2_000)
+      render_async(view, 2_000)
+
+      assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
+
+      assert row_options(view, destination) == [
+               {"Workspace's harness", "default"},
+               {"triage · acme/harness · v2", "workspace:triage"},
+               {"A stack of another repository…", "other"}
+             ]
+
+      pick_row(view, destination, "workspace:triage")
+      assert row_chosen(view, destination) == "triage · acme/harness · v2"
+
+      assert %{choice: :repository, version_kind: :workspace, harness: harness} =
+               Stacks.target_choice(scope.workspace, target_of(destination))
+
+      assert harness =~ ~s(stack: "triage")
+    end
+
+    test "A stack of another repository…: a connected repository's exported stack at a fixed version saves",
+         %{
+           conn: conn,
+           path: path,
+           scope: scope,
+           adapter: adapter,
+           covered: covered,
+           linked_id: linked_id
+         } do
+      serve_calls([adapter], covered: covered, files: @files, versions: %{"R_harness" => @pin})
+      destination = destination!(scope)
+      view = open(conn, path)
+
+      pick_row(view, destination, "other")
+      assert row_chosen(view, destination) == "A stack of another repository…"
+      assert words(view, "#target_stack_source-label") == "Repository"
+      assert has_element?(view, "#harness-target-save[disabled]")
+
+      view
+      |> form("#harness-target-form", target_stack: %{source: linked_id})
+      |> render_change()
+
+      render_async(view, 2_000)
+      assert has_element?(view, ~s(#target_stack_stack input[value="triage"][checked]))
+
+      view
+      |> form("#harness-target-form", target_stack: %{version: "fixed", fixed: "v2"})
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      refute has_element?(view, "#harness-target-form")
+      assert row_chosen(view, destination) == "triage · acme/harness · v2"
+
+      assert %{choice: :repository, version_kind: :tag, version_name: "v2"} =
+               Stacks.target_choice(scope.workspace, target_of(destination))
+    end
+
+    test "a refused save shows its reason under its row, and nothing is saved", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      linked_id: linked_id
+    } do
+      # The read returns c-R_harness, which is no commit.
+      destination = destination!(scope)
+      view = open(conn, path)
+      pick_row(view, destination, "other")
+
+      view
+      |> form("#harness-target-form", target_stack: %{source: linked_id})
+      |> render_change()
+
+      render_async(view, 2_000)
+
+      view
+      |> form("#harness-target-form", target_stack: %{version: "fixed", fixed: "v9"})
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      assert words(view, "#harness-target-#{destination.public_id} #harness-target-refusal") ==
+               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
+                 "could not read v9 in acme/harness: its ref is no version of its source."
+
+      assert has_element?(view, "#harness-target-form")
+      assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
+    end
+
+    test "a person whom harness.save no longer allows: the save is refused with who may, and the rows show disabled",
+         %{scope: scope, path: path} do
+      %{user: user, membership: membership} = member_fixture(scope, :admin)
+      destination = destination!(scope)
+      view = open(log_in_user(build_conn(), user), path)
+      refute has_element?(view, "#harness-target-#{destination.public_id}-stack[disabled]")
+
+      {1, _} =
+        Repo.update_all(
+          from(m in Apiary.Organisations.Membership, where: m.id == ^membership.id),
+          set: [level: :member]
+        )
+
+      pick_row(view, destination, "workspace:core")
+
+      assert render(view) =~ "Only owners and admins can change the workflow."
+      assert has_element?(view, "#harness-target-#{destination.public_id}-stack[disabled]")
+      assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
+
+      # A save sent with the select disabled changes nothing.
+      render_change(view, "choose_target_stack", %{
+        "row" => %{"id" => destination.public_id, "stack" => "workspace:core"}
+      })
+
+      assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
     end
   end
 end
