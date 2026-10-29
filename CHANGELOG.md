@@ -209,8 +209,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Change** for a repository, and in Workspace settings › Workflow, has a search box
   that narrows the linked repositories as you type. When every linked repository is read
   and none has a `qory-stack.yaml` file, the line “No connected repository has a
-  qory-stack.yaml file. Connect a work source, or add the file to a repository.”
-  replaces the list.
+  qory-stack.yaml file. Connect a work source, or add the file to a repository.” takes
+  the place of the linked repositories.
 - A run's harness is the first of: the stack chosen for its repository; the
   workspace's harness choice, else the harness the organisation shares; the repository's
   harness file, `harness.yaml` or `qory.yaml`; the Qory harness. Under the Qory harness
