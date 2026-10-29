@@ -322,12 +322,16 @@ defmodule Apiary.Adapters.CallsTest do
     end)
 
     # Within one second of the clock, two different calls carry that second; the test
-    # tries again when the clock's second changed between them.
+    # tries again when the clock's second changed between them. Each try calls other
+    # addresses: a call identical to one an earlier try sent in this second would take
+    # the next second (`CallClock.take/3`).
     sent =
-      Enum.find_value(1..5, fn _try ->
+      Enum.find_value(1..5, fn attempt ->
         before = System.os_time(:second)
-        assert {:ok, _} = Calls.call(adapter, "resolve", [{"addresses", ["https://a.example/1"]}])
-        assert {:ok, _} = Calls.call(adapter, "resolve", [{"addresses", ["https://a.example/2"]}])
+        a = "https://a.example/#{attempt}-1"
+        b = "https://a.example/#{attempt}-2"
+        assert {:ok, _} = Calls.call(adapter, "resolve", [{"addresses", [a]}])
+        assert {:ok, _} = Calls.call(adapter, "resolve", [{"addresses", [b]}])
         sent = calls()
         if System.os_time(:second) == before, do: {before, sent}
       end)
