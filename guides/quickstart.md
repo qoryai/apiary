@@ -379,11 +379,12 @@ later.
    curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
    ```
 
-   Then run the enrol command on that machine. To go back to the instance's pool,
-   choose **Shared: the instance's pool**, then **Remove pool**: the step deletes
-   Main's pool, and its machines stop taking runs. While the instance has no pool,
-   **Shared: the instance's pool** shows "Not ready: no pool" and cannot be chosen.
-   **Skip** opens **Test run**.
+   Then run the enrol command on that machine. Once Main has its one pool, owners and
+   admins can go back to the instance's pool: choose **Shared: the instance's pool**,
+   then **Remove pool**. The step deletes Main's pool, and that pool's machines stop
+   taking runs. Once Main has its pool and the instance has none, **Shared: the
+   instance's pool** shows "Not ready: no pool" and cannot be chosen. **Skip** opens
+   **Test run**.
 6. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
    another greeting, and select **Run the test**. The step shows "The test run is queued
    for a machine.", then "The test run is running.", with **See the run** once a machine
