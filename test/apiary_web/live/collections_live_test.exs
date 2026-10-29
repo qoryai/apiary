@@ -305,6 +305,46 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     assert has_element?(lv, "#choose-only[checked]")
   end
 
+  test "an account with no name or one of whitespace: the card, the heading, the breadcrumb, the browser title and both lines leave it out",
+       ctx do
+    %{adapter: adapter, grant: grant} = listed!(ctx.scope, ["acme/api"], targets: true)
+    {:ok, 1} = Collections.choose(ctx.scope, grant, ctx.main, :sources, :all)
+    title = Apiary.Adapters.title(adapter)
+    heading = "Choose collections · #{title}"
+
+    # `adapter_grants_account_check` allows a ref with a name of 1 to 1024 characters, or
+    # neither, so the empty name is tested on `account/1`.
+    assert ApiaryWeb.IntegrationComponents.account(%{account_title: ""}) == nil
+
+    for {ref, account} <- [{nil, nil}, {"acme", " \t\u00A0 "}] do
+      {1, _} =
+        Repo.update_all(from(g in Grant, where: g.id == ^grant.id),
+          set: [account_ref: ref, account_title: account]
+        )
+
+      {:ok, page, _html} = live(ctx.conn, ctx.destinations)
+      assert words(page, "#destinations-grant-#{grant.public_id}-title") == title
+
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :destinations, grant))
+      assert words(lv, "#choose h1") == heading
+      assert {^heading, nil} = List.last(crumbs(lv))
+      assert page_title(lv) =~ "#{heading} · Destinations · Workspace settings · Main"
+
+      assert words(lv, "#choose-locked") ==
+               "Work sources is set to All for this account. Change it there first."
+
+      # In Second's settings, Main's All of the grant.
+      {:ok, lv, _html} =
+        live(
+          ctx.conn,
+          ~p"/#{ctx.organisation}/#{ctx.second}/settings/choose?#{[step: :sources, grant: grant.public_id]}"
+        )
+
+      assert words(lv, "#choose h1") == heading
+      assert words(lv, "#choose-taken") == "All new collections of this account go to Main."
+    end
+  end
+
   test "Not listed? shows the adapter's line on its access, with Change access to its Install",
        ctx do
     %{adapter: adapter, grant: grant} = listed!(ctx.scope, ["acme/api"])

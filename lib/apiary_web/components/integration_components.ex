@@ -530,8 +530,8 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :choose, :string, required: true, doc: "the chooser's path for the card's grant"
 
   @doc false
-  # A card of a grant: the adapter's title and the account's, a text the adapter sent; how
-  # many of the grant's collections in the list are chosen for `workspace`, of how many,
+  # A card of a grant: the adapter's title and the account's, a text the adapter sent, the
+  # account's left out where `account/1` has none; how many of the grant's collections in the list are chosen for `workspace`, of how many,
   # or All under the workspace's rule (`Apiary.WorkspaceSetup.all?/3`); and Choose, to
   # the chooser.
   def grant_card(assigns) do
@@ -539,7 +539,7 @@ defmodule ApiaryWeb.IntegrationComponents do
 
     assigns =
       assign(assigns,
-        account: assigns.card.grant.account_title,
+        account: account(assigns.card.grant),
         summary:
           if(WorkspaceSetup.all?(assigns.card, assigns.list, assigns.workspace),
             do: gettext("All %{collections}", collections: SourceComponents.collections(noun)),
@@ -575,6 +575,14 @@ defmodule ApiaryWeb.IntegrationComponents do
     """
   end
 
+  @doc false
+  # The grant's account name as the adapter sent it, or nil for none, an empty name and
+  # one of only whitespace (`String.trim/1`), which a card and the chooser leave out.
+  def account(%{account_title: title}) when is_binary(title),
+    do: if(String.trim(title) == "", do: nil, else: title)
+
+  def account(_grant), do: nil
+
   attr :id, :string, required: true
   attr :card, :map, required: true, doc: "`Apiary.WorkspaceSetup.card/5`'s"
   attr :mode, :atom, required: true, values: [:all, :only], doc: "the choice shown"
@@ -603,14 +611,15 @@ defmodule ApiaryWeb.IntegrationComponents do
   # (`collections_table/1`) and the pager. Not listed?, the source's line on its access,
   # with Change access, Install for the connection (`install_form/1`), for a person who
   # may connect. Back, without saving, and Save (`"save"`); the choice sends `"mode"`.
+  # The heading and both lines contain the grant's account name; where `account/1` has
+  # none, the heading leaves it out and the lines read "this account".
   def chooser(assigns) do
     noun = Apiary.Adapters.collection_noun(assigns.card.adapter)
-    account = assigns.card.grant.account_title
 
     assigns =
       assign(assigns,
         noun: noun,
-        account: account,
+        account: account(assigns.card.grant),
         collections: SourceComponents.collections(noun)
       )
 
@@ -618,15 +627,24 @@ defmodule ApiaryWeb.IntegrationComponents do
     <div id={@id} class="grid gap-4">
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 class="min-w-0 flex-1 text-2xl/8 font-semibold tracking-[-0.025em]">
-          <.rich text={
-            rich_gettext("Choose %{collections} · %{adapter} · %{account}",
-              collections: @collections,
-              adapter: Apiary.Adapters.title(@card.adapter),
-              account: {:part, :account}
-            )
-          }>
+          <.rich
+            :if={@account}
+            text={
+              rich_gettext("Choose %{collections} · %{adapter} · %{account}",
+                collections: @collections,
+                adapter: Apiary.Adapters.title(@card.adapter),
+                account: {:part, :account}
+              )
+            }
+          >
             <:part name={:account}><.external_text text={@account} /></:part>
           </.rich>
+          <%= if !@account do %>
+            {gettext("Choose %{collections} · %{adapter}",
+              collections: @collections,
+              adapter: Apiary.Adapters.title(@card.adapter)
+            )}
+          <% end %>
         </h1>
         <span
           :if={@mode == :only}
@@ -654,13 +672,19 @@ defmodule ApiaryWeb.IntegrationComponents do
           {gettext("All %{collections}, including new ones", collections: @collections)}
         </label>
         <p :if={@locked} id={"#{@id}-locked"} class="pl-6 text-[13px]/5 text-muted">
-          <.rich text={
-            rich_gettext("Work sources is set to All for %{account}. Change it there first.",
-              account: {:part, :account}
-            )
-          }>
+          <.rich
+            :if={@account}
+            text={
+              rich_gettext("Work sources is set to All for %{account}. Change it there first.",
+                account: {:part, :account}
+              )
+            }
+          >
             <:part name={:account}><.external_text text={@account} /></:part>
           </.rich>
+          <%= if !@account do %>
+            {gettext("Work sources is set to All for this account. Change it there first.")}
+          <% end %>
         </p>
         <label :if={!@locked} class="flex items-center gap-2 text-[13.5px]/5">
           <input
@@ -675,15 +699,24 @@ defmodule ApiaryWeb.IntegrationComponents do
           {gettext("Only selected")}
         </label>
         <p :if={@taken} id={"#{@id}-taken"} class="pl-6 text-[13px]/5 text-muted">
-          <.rich text={
-            rich_gettext("All new %{collections} of %{account} go to %{workspace}.",
-              collections: @collections,
-              account: {:part, :account},
-              workspace: @taken.name
-            )
-          }>
+          <.rich
+            :if={@account}
+            text={
+              rich_gettext("All new %{collections} of %{account} go to %{workspace}.",
+                collections: @collections,
+                account: {:part, :account},
+                workspace: @taken.name
+              )
+            }
+          >
             <:part name={:account}><.external_text text={@account} /></:part>
           </.rich>
+          <%= if !@account do %>
+            {gettext("All new %{collections} of this account go to %{workspace}.",
+              collections: @collections,
+              workspace: @taken.name
+            )}
+          <% end %>
         </p>
       </form>
 
