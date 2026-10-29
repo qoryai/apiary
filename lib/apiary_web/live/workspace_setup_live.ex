@@ -98,21 +98,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     saved one; a harness repository is read outside the page's process while Continue
   #     shows Saving, and a read that failed shows its reason. Where the
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
-  #     "Available to every workspace in <organisation>", off; on, Continue saves the
-  #     choice as the harness the organisation shares (`shared: true`), which a workspace
-  #     with no choice reuses. While the organisation shares one, the shared harness
-  #     comes first, under "Shared in <organisation>" and marked "every workspace", chosen
-  #     while the workspace reuses it. A shared Qory harness is the one Qory harness row,
-  #     marked "every workspace" and with no heading, chosen also while the workspace's
-  #     choice is the Qory harness at the same pin; a workspace's Qory harness at another
-  #     pin keeps the two rows, with the workspace's Qory harness chosen. Continue with the
-  #     shared harness chosen goes on with nothing saved where the workspace reuses it,
-  #     and else removes the workspace's choice
-  #     (`Apiary.Stacks.Sources.reuse_shared/1`); with a usual choice, it saves the
-  #     workspace's choice, the same as the shared one or not. While the organisation
-  #     shares one, a second is refused, and the step says to choose the shared harness
-  #     or turn the setting off. Under the choices, Targets lists the workspace's
-  #     destinations, the rows the Destinations step ticked, each with a Stack select
+  #     "Available to every workspace in <organisation>", off, while a harness repository
+  #     is chosen; on, Continue saves the choice as the harness the organisation shares
+  #     (`shared: true`), which a workspace with no choice reuses. With the Qory harness
+  #     chosen, the setting does not show, and a tick sent anyway shares nothing. While
+  #     the organisation shares a harness repository, it comes first, under "Shared in
+  #     <organisation>" and marked "every workspace", chosen while the workspace reuses
+  #     it. A shared Qory harness shows as the Qory harness row, with its Version. Continue
+  #     with the shared harness chosen goes on with nothing saved where the workspace
+  #     reuses it, and else removes the workspace's choice
+  #     (`Apiary.Stacks.Sources.reuse_shared/1`). Continue with the Qory harness at the
+  #     version of a shared Qory harness does the same, where the workspace reuses that
+  #     harness or its choice is the Qory harness at the same pin. With another choice, it
+  #     saves the workspace's choice, the same as the shared one or not. While the
+  #     organisation shares one, a second is refused, and the step says to choose the
+  #     shared harness or turn the setting off. Under the choices, Targets lists the
+  #     workspace's destinations, the rows the Destinations step ticked, each with a
+  #     Stack select
   #     (`Apiary.Stacks.Sources.targets_chosen/1`, `ApiaryWeb.HarnessComponents.targets/1`,
   #     `ApiaryWeb.HarnessTargets`): the workspace's harness, which removes
   #     the destination's stack; a stack the workspace's saved harness exports, the Qory
@@ -735,20 +737,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   # Whether the Harness step shows the harness the organisation shares as chosen: the
-  # workspace reuses it, or the workspace's choice is the Qory harness at the pin of the
-  # shared Qory harness, which the step lists as one row.
-  defp follows_shared?(nil, _chosen), do: false
-  defp follows_shared?(_shared, %{shared: true}), do: true
-  defp follows_shared?(%{choice: :qory, pin: pin}, %{choice: :qory, pin: pin}), do: true
+  # workspace reuses a shared harness repository, which the step lists first.
+  defp follows_shared?(%{choice: :repository}, %{shared: true}), do: true
   defp follows_shared?(_shared, _chosen), do: false
 
-  # The choice the Harness form's `params` come to: `:shared` for the harness the
-  # organisation shares, where the step lists it (`shared`); else
-  # `ApiaryWeb.HarnessComponents.choice/3`, with the stacks the chosen repository exports.
-  defp harness_choice(%{"choice" => "shared"}, _linked, %{} = _shared, _exports), do: :shared
+  # Whether the Qory harness row stands for a shared Qory harness: the workspace reuses
+  # it, or the workspace's choice is the Qory harness at its pin.
+  defp shared_qory?(%{choice: :qory, pin: pin}, %{choice: :qory, pin: pin}), do: true
+  defp shared_qory?(_shared, _chosen), do: false
 
-  defp harness_choice(params, linked, _shared, exports),
-    do: HarnessComponents.choice(params, linked, exports)
+  # The choice the Harness form's `params` come to, for the saved choice `chosen`:
+  # `:shared` for the harness the organisation shares, where the step lists it (`shared`),
+  # and for the Qory harness at the version of a shared Qory harness the row stands for
+  # (`shared_qory?/2`); else `ApiaryWeb.HarnessComponents.choice/3`, with the stacks the
+  # chosen repository exports.
+  defp harness_choice(%{"choice" => "shared"}, _linked, %{} = _shared, _chosen, _exports),
+    do: :shared
+
+  defp harness_choice(params, linked, shared, chosen, exports) do
+    choice = HarnessComponents.choice(params, linked, exports)
+
+    if shared_qory?(shared, chosen) and HarnessComponents.unchanged?(choice, shared),
+      do: :shared,
+      else: choice
+  end
 
   # The read of the exports of the repository the Harness form has chosen, nil for another
   # repository or none.
@@ -1282,7 +1294,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     socket = assign_harness_form(socket, params)
     exports = form_exports(socket.assigns)
 
-    case harness_choice(params, linked, socket.assigns.shared_harness, exports) do
+    case harness_choice(params, linked, socket.assigns.shared_harness, chosen, exports) do
       nil ->
         {:noreply, socket}
 
@@ -1576,9 +1588,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     do: push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)
 
   # Whether Continue saves the choice as the harness the organisation shares: the setting
-  # shown and on.
+  # shown, for a harness repository, and on.
   defp share?(scope, params),
-    do: params["everywhere"] == "true" and Apiary.Edition.scope_setting?(scope)
+    do:
+      params["choice"] == "repository" and params["everywhere"] == "true" and
+        Apiary.Edition.scope_setting?(scope)
 
   # The answer to a save of the harness choice `choice`.
   defp harness_saved(socket, _choice, {:ok, _stack}), do: go_on(socket)
@@ -2335,6 +2349,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             assigns.form.params,
             assigns.linked,
             assigns.shared_harness,
+            assigns.chosen,
             form_exports(assigns)
           )
       )
@@ -2354,7 +2369,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         >
           <HarnessComponents.choices
             form={@form}
-            chosen={@chosen}
             linked={@linked}
             exports={@exports}
             organisation={@flow.organisation.name}
@@ -2363,7 +2377,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           />
 
           <.input
-            :if={Apiary.Edition.scope_setting?(@current_scope)}
+            :if={Apiary.Edition.scope_setting?(@current_scope) and @form[:choice].value != "qory"}
             field={@form[:everywhere]}
             id="set-up-harness-everywhere"
             type="checkbox"
