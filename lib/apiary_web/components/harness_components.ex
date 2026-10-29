@@ -9,21 +9,23 @@ defmodule ApiaryWeb.HarnessComponents do
   # `Apiary.Stacks.Sources.linked/1`, and `ref`, its branch or tag. The Qory harness shows
   # its address and the first 7 characters of its pin, and, with `file_first`, the line
   # that a target's harness file comes first. A harness repository lists the linked
-  # repositories, with Reading… until they are read, and under Branch or tag, the
-  # organisation's connection it is read through. `line/1` is the choice with its pin, as
-  # Workflow shows it. With `shared`, as the Harness step passes it, `choices/1` lists the
-  # harness the organisation shares first, as the `choice` `shared`. `form_params/2` is
-  # the form's values for a saved choice, `choice/2` the choice the form's values come
-  # to, and `refusal_words/4` why a save was refused.
+  # repositories under Source, a choice with a search box, with Reading… until they are
+  # read; with `complete` and none listed, a line in place of Source says that none has a
+  # stack. Under Branch or tag, the hint is the organisation's connection a linked
+  # repository is read through. `line/1` is the choice with its pin, as Workflow shows it.
+  # With `shared`, as the Harness step passes it, `choices/1` lists the harness the
+  # organisation shares first, as the `choice` `shared`. `form_params/2` is the form's
+  # values for a saved choice, `choice/2` the choice the form's values come to, and
+  # `refusal_words/4` why a save was refused.
   # `qory/2` is the Qory harness the choices show.
   #
   # `targets/1` is the destinations, each with Workspace default or the stack chosen for
   # it, and Change for a person who may save. Change opens the form `target_stack` of one
   # destination, with the fields `choice`, which is `default`, `qory` or `repository`;
-  # and, for a harness source, `source`, among the three groups of Workflow's Source,
-  # `address`, `stack`, an index among the stacks read, and `ref`, its branch or tag,
-  # which an assigned source has fixed. `target_choice/1` is the choice the form comes
-  # to.
+  # and, for a harness source, `source`, among the three groups of Workflow's Source
+  # (`source_options/3`), `address`, `stack`, an index among the stacks read, and `ref`,
+  # its branch or tag, which an assigned source has fixed. `target_choice/1` is the choice
+  # the form comes to.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -39,6 +41,11 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :chosen, :map, required: true, doc: "the saved choice, `t:Apiary.Stacks.Sources.chosen/0`"
   attr :qory, :map, required: true, doc: "the Qory harness's base: `git` and `ref`"
   attr :linked, :list, default: nil, doc: "the linked repositories, nil while they are read"
+
+  attr :complete, :boolean,
+    default: false,
+    doc: "whether the listing read every linked repository, so an empty one has no stack"
+
   attr :organisation, :string, required: true
   attr :disabled, :boolean, default: false
 
@@ -61,6 +68,7 @@ defmodule ApiaryWeb.HarnessComponents do
       assign(assigns,
         choice: choice,
         source: source,
+        none: assigns.complete and assigns.linked == [],
         shared_title: assigns.shared && choice_title(assigns.shared.choice),
         shared_line:
           assigns.shared && "#{address(assigns.shared.git)} · #{short(assigns.shared.pin)}",
@@ -127,22 +135,20 @@ defmodule ApiaryWeb.HarnessComponents do
     </fieldset>
 
     <div :if={@choice == "repository"} id="harness-repository" class="grid gap-4">
-      <select
+      <p :if={@none} id="harness-source-none" class="text-[13px]/[20px] text-muted">
+        {none_words()}
+      </p>
+      <.input
+        :if={!@none}
+        field={@form[:source]}
         id="harness-source"
-        name={@form[:source].name}
-        aria-label={gettext("A harness source")}
+        type="choice"
+        label={gettext("Source")}
+        prompt={if is_nil(@linked), do: gettext("Reading…")}
+        options={Enum.map(@linked || [], &source_option/1)}
+        search={@linked not in [nil, []] || nil}
         disabled={@disabled or @linked in [nil, []]}
-        class="select select-sm w-full font-mono"
-      >
-        <option :if={is_nil(@linked)} value="" disabled selected>{gettext("Reading…")}</option>
-        <option
-          :for={linked <- @linked || []}
-          value={linked.id}
-          selected={@source && @source.id == linked.id}
-        >
-          {linked.label}
-        </option>
-      </select>
+      />
       <.input
         field={@form[:ref]}
         id="harness-ref"
@@ -206,6 +212,11 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :edit, :map, default: nil, doc: "the open form of a destination, nil for none"
   attr :qory, :map, required: true, doc: "the Qory harness's base: `git` and `ref`"
   attr :linked, :list, default: nil, doc: "the linked repositories, nil while they are read"
+
+  attr :complete, :boolean,
+    default: false,
+    doc: "whether the listing read every linked repository, so an empty one has no stack"
+
   attr :assigned, :list, default: [], doc: "the sources an instance admin assigned"
   attr :organisation, :string, required: true
 
@@ -238,6 +249,7 @@ defmodule ApiaryWeb.HarnessComponents do
             edit={@edit}
             qory={@qory}
             linked={@linked}
+            complete={@complete}
             assigned={@assigned}
             organisation={@organisation}
           />
@@ -250,6 +262,7 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :edit, :map, required: true
   attr :qory, :map, required: true
   attr :linked, :list, default: nil
+  attr :complete, :boolean, default: false
   attr :assigned, :list, default: []
   attr :organisation, :string, required: true
 
@@ -316,7 +329,8 @@ defmodule ApiaryWeb.HarnessComponents do
           type="choice"
           label={gettext("Source")}
           prompt={gettext("Choose a source")}
-          options={source_options(@linked, @assigned)}
+          options={source_options(@linked, @assigned, @complete)}
+          search={@linked not in [nil, []] || nil}
           disabled={@edit.saving}
         />
         <.input
@@ -431,21 +445,35 @@ defmodule ApiaryWeb.HarnessComponents do
     end
   end
 
-  # The groups of Workflow's Source: the linked repositories, with Reading… until they
-  # are read, which cannot be chosen; the assigned sources; and the public address.
-  defp source_options(linked, assigned) do
+  @doc false
+  # source_options/3 is the groups of a Source choice, as Workflow and a destination's form
+  # show it: the linked repositories, with Reading… until they are read, and the line that
+  # none has a stack where `complete` and none is listed, neither of which can be chosen;
+  # the assigned sources; and the public address, which a search keeps in view.
+  @spec source_options([map] | nil, [map], boolean) :: [{String.t(), [map]}]
+  def source_options(linked, assigned, complete) do
     linked =
       case linked do
         nil -> [%{value: "", title: gettext("Reading…"), disabled: true}]
+        [] when complete -> [%{value: "", title: none_words(), disabled: true, keep: true}]
         linked -> Enum.map(linked, &source_option/1)
       end
 
     [
       {pgettext("plain", "Linked repositories"), linked},
       {gettext("Assigned by an instance admin"), Enum.map(assigned, &source_option/1)},
-      {gettext("Public address"), [%{value: "address", title: gettext("Enter an address")}]}
+      {gettext("Public address"),
+       [%{value: "address", title: gettext("Enter an address"), keep: true}]}
     ]
   end
+
+  # Why no linked repository is listed, where the listing read them all.
+  defp none_words,
+    do:
+      pgettext(
+        "plain",
+        "No connected repository has a qory-stack.yaml file. Connect a work source, or add the file to a repository."
+      )
 
   defp source_option(source), do: %{value: source.id, title: source.label, mono: :title}
 
