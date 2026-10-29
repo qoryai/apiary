@@ -11,7 +11,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
   # ended there. Where the session keeps a step of the workspace set-up beside that nonce
   # (`ApiaryWeb.ConnectSession.back?/1`), an install started there, the return leads to
-  # that step, such as `/<org>/set-up?step=sources&type=software`, in place of the
+  # that step, such as `/<org>/set-up?step=sources&workspace=main`, in place of the
   # integration's page. A return the person
   # did not start in this browser is answered with a page that says so; a link that names
   # no connection they reach, and a return that is bad, expired or used, as a path that

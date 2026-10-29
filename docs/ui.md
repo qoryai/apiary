@@ -1209,17 +1209,16 @@ product's mark and the theme menu.
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
   edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: the flow's title, "Set
   up Main · Software factory" ("Set up a new Software factory" before the workspace
-  exists), "Step 3 of 9" and a progress bar, never a count of the steps left. The steps
-  stand under their groups: Connect Qory Apiary for the instance's steps; "For Acme" for
-  the steps the organisation does once (Work sources, Work destinations, Model); and "For
-  Main" ("For the new workspace" before it exists) for the steps each workspace does
-  (Name, Work sources used, Destinations used, Harness, Machines, Test run). Each step has
-  its mark: a filled check when done, a ring in the primary colour and
+  exists), "Step 4 of 7" and a progress bar, never a count of the steps left. The
+  instance's steps stand under Connect Qory Apiary. The workspace's steps stand in one
+  list with no heading: Name, Work sources, Destinations, Model, Harness, Machines and
+  Test run, after Your account for a person who is not an instance admin ("Step 5 of
+  8"). Each step has its mark: a filled check when done, a ring in the primary colour and
   `aria-current="step"` when current, a dash and **Skipped** under a step passed over.
   Each step done or skipped is a link to that step where it has a page, before the
   current step or after it; Your account is not, and on the pages read signed out, only
   Invitation is. An edition's note about a step goes under its name. Below 1280 px the
-  indicator is a bar, "Step 3 of 9: Model", with **All steps**, a
+  indicator is a bar, "Step 4 of 7: Model", with **All steps**, a
   disclosure that opens the list; Escape closes it. A page with one step shows no
   indicator.
 - **Back** (`SetUpComponents.back/1`) is the first button at the form's foot, left of the
@@ -1231,8 +1230,8 @@ product's mark and the theme menu.
   shows the workspace's name and its type, read only, with **Continue**: the type can't
   change.
 - **A workspace in set-up** opens at its next step: with the `factory` feature, until its
-  test run passes, the overview and every link to the workspace lead to its first step
-  under "For Main" that is not done (`SetUpComponents.set_up_path/1`).
+  test run passes, the overview and every link to the workspace lead to the first step
+  of its set-up that is not done (`SetUpComponents.set_up_path/1`).
 
 ## Components
 
@@ -1317,6 +1316,12 @@ needs becomes a component, or an attribute of one, not a copy.
   made is the server's too. A whole number is a text field with `inputmode="numeric"`,
   not `type="number"`, whose value the browser empties when it is not a number.
   `test/apiary_web/novalidate_test.exs` fails for a form without the attribute.
+- **`<.command_line>`** is a terminal command for the person to run:
+  `claude setup-token` in the help of a Claude subscription's key, the enrol command on
+  the set-up's Machines step, and `mix docs` on the page `/docs` shows where the docs are
+  not built. It shows the command on a separate line in code font, with an icon button whose
+  tooltip and name are Copy command, Copied once it has copied the command, its
+  whitespace trimmed. The component adds no prompt sign.
 - **`<.external_link>`** is every link out of the console: it opens in a new tab, with
   `rel="noopener noreferrer nofollow"`, an icon that shows it leaves and "(opens in a new
   tab)" for a screen reader. A url is a link only when it is absolute `http` or `https`
