@@ -499,7 +499,7 @@ defmodule Apiary.Adapters.CallsTest do
              resolve(%{adapter | call_url: "https://elsewhere.localhost/calls/"})
 
     assert {:error, %CallFailure{cause: :not_allowed}} =
-             resolve(adapter, resolver: fn _host -> {:ok, [{127, 0, 0, 1}]} end)
+             resolve(adapter, resolver: fn _host -> {:ok, [{0, 0, 0, 0}]} end)
 
     assert {:error, %CallFailure{cause: :not_allowed}} =
              resolve(adapter, resolver: fn _host -> {:ok, [{169, 254, 169, 254}]} end)
