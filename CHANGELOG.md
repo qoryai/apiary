@@ -210,7 +210,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   repository…**, which opens **Repository**, **Stack** and **Version**, and also offers the
   harness sources an instance admin assigned and a **Public address**. A chosen stack
   shows as “review · acme/tools · main”. A stack from the workspace's harness follows the
-  workspace's version. Owners and admins choose, and each choice saves at once.
+  workspace's version; when the workspace's harness moves to another repository, the row
+  keeps its repository and stack at the version it followed. Owners and admins choose.
+  **Workspace's harness** or a stack of the workspace's harness saves at once; the form of
+  a stack of another repository saves with **Save**.
 - **Repository** narrows the connected repositories as you type. Qory Apiary reads only
   the repository you pick.
 - A run's harness is the first of: the repository's root `harness.yaml`, or the
@@ -309,10 +312,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   shared harness, or turn off “Available to every workspace in Acme”. Acme shares a
   harness already.” The core shows the setting nowhere.
 - **Workspace settings › Workflow**, for owners and admins, shows the workspace's
-  **Harness**, such as “Qory harness / Always the latest version”, or the harness the
-  organisation shares where the workspace has no saved choice. **Change** opens the two
-  choices of the set-up's **Harness** step, with **Save** and **Cancel**. **About this
-  step** also has the Harness step's five paragraphs.
+  **Harness** on two lines, such as “Qory harness” over “Always the latest version”, or
+  the harness the organisation shares where the workspace has no saved choice.
+  **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
+  **Cancel**. **About this step** also has the Harness step's five paragraphs.
   Under it, the page sets the workflow of the workspace's runs, from a harness
   repository: **Source** lists the repositories connected to the organisation, and the
   harness sources an instance admin assigned to it;
