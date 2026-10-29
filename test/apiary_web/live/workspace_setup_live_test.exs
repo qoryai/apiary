@@ -3479,6 +3479,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "the line on the pool's machines shows only where a machine enrolled on the pool", ctx do
+    _instance_pool = instance_pool_fixture()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -3500,6 +3501,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "a person whom node.delete no longer allows is refused, and the pool stays", ctx do
+    _instance_pool = instance_pool_fixture()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -3520,6 +3522,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a pool deleted meanwhile: Remove pool reads the step again, and Shared shows chosen",
        ctx do
+    _instance_pool = instance_pool_fixture()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -3535,6 +3538,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a second pool added elsewhere while the removal is open: Remove pool deletes nothing, and no removal is offered",
        ctx do
+    _instance_pool = instance_pool_fixture()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -3549,6 +3553,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-choice")
     assert has_element?(lv, "#set-up-pool-#{pool.public_id}")
     assert has_element?(lv, "#set-up-pool-#{second.public_id}")
+  end
+
+  test "with no pool of the instance, Shared shows not ready for no pool, and no removal is offered",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
+    assert has_element?(lv, "#set-up-pool-instance-radio[disabled]")
+    refute has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+
+    # The page sent the removal's events, as a page with the instance's pool would.
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    refute has_element?(lv, "#set-up-pool-remove")
+    render_click(lv, "remove_pool", %{})
+    render_click(lv, "keep_pool", %{})
+    refute deleted?(pool)
+    refute has_element?(lv, "#set-up-pool-remove")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
   end
 
   test "a person who may not delete nodes gets no removal: the pool shows as before", ctx do

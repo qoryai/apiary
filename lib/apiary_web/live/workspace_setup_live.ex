@@ -141,7 +141,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     line that the pool's machines stop taking runs where a machine enrolled on it
   #     (`Apiary.AccessKeys.active_key?/1`), Remove pool, which deletes the pool
   #     (`Apiary.Nodes.delete_node/2`), and Cancel. Then the instance's pool serves the
-  #     workspace again, shown chosen. Otherwise, once the workspace has a pool, its pools
+  #     workspace again, shown chosen. Where the instance has no pool, Shared shows not
+  #     ready for no pool, cannot be chosen, and the step offers no removal. Otherwise, once the workspace has a pool, its pools
   #     show with no choice, and a pool that is the only one shows chosen. With 2 pools or
   #     more, the step offers no removal. On each line of a pool whose
   #     `access_key.create_code` allows the person, while the pool has fewer than 2
@@ -578,8 +579,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # outstanding codes and its keys. The command got stays while its code is outstanding,
   # on a read again of the step; an entry to the step, which assigns `step` anew, starts
   # without it. The choice and the line on a taken name stay while the workspace has no
-  # pool. `pool_removable` is the pool that Shared offers to remove (`removable_pool/2`),
-  # with the instance's pool as `shared_line`; the confirmation of its removal stays open
+  # pool. `shared_line` is the line of the instance's pool, for a person who keeps the
+  # choice once the
+  # workspace has its one pool (`keeps_choice?/2`); `pool_removable` is the pool that
+  # Shared offers to remove (`removable_pool/2`); the confirmation of its removal stays open
   # on a read again of the step (`pool_removing`), and an entry to the step starts with it
   # closed. The page listens to each pool of the workspace once (`pool_listened`), and reads
   # the step again as the first outstanding code expires (`pool_timer`).
@@ -611,7 +614,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           nil
       end
 
-    removable = removable_pool(scope, workspace_pools)
+    shared_line = if keeps_choice?(scope, workspace_pools), do: WorkspaceSetup.instance_line()
+    removable = removable_pool(workspace_pools, shared_line)
 
     removing =
       if removable && not Phoenix.Component.changed?(socket, :step) &&
@@ -623,7 +627,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       workspace_pools: workspace_pools,
       pool_removable: removable,
       pool_removing: removing,
-      shared_line: removable && WorkspaceSetup.instance_line(),
+      shared_line: shared_line,
       instance_admin: Access.instance_admin?(scope),
       enrols: MapSet.new(Map.keys(pool_codes)),
       makes_pool: Access.can?(scope, :"node.create", workspace),
@@ -2600,7 +2604,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     assigns =
       assign(assigns,
-        only: removable == nil and match?([_line], pools),
+        only: assigns.shared_line == nil and match?([_line], pools),
         lines:
           for(
             line <- pools,
@@ -2616,7 +2620,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             assigns.pool_removing -> "shared"
             true -> "workspace"
           end,
-        enrolled: removable != nil and enrolled?(hd(pools))
+        enrolled: removable != nil and enrolled?(hd(pools)),
+        shared_off: not choosing and removable == nil
       )
 
     ~H"""
@@ -2628,7 +2633,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
            workspace has its one pool, a person who may remove it chooses the same way:
            Shared opens the confirmation of the removal on the Shared row. --%>
       <form
-        :if={@choosing or @pool_removable}
+        :if={@choosing or @shared_line}
         id="set-up-pool-choice"
         phx-change="choose_pool"
         novalidate
@@ -2647,6 +2652,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               name="pool[choice]"
               value="shared"
               checked={@chosen == "shared"}
+              disabled={@shared_off}
               class="radio radio-sm radio-primary"
             />
             <span id={"#{id}-name"} class="q-choice-h">{gettext("Shared: the instance's pool")}</span>
@@ -2832,14 +2838,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`Apiary.AccessKeys.active_key?/1`), the first rule of its state.
   defp enrolled?(%{state: state}), do: state != {:not_ready, :no_active_key}
 
-  # The pool of the workspace that the step offers to remove, to choose Shared again: the
-  # workspace's only pool, for a person whom `node.delete` allows on it; else nil. Where
-  # the workspace has 2 pools or more, the step offers no removal, since any of them stops
-  # the instance's pool serving the workspace.
-  defp removable_pool(scope, [pool]),
-    do: if(Access.can?(scope, :"node.delete", pool), do: pool)
+  # Whether the step keeps the choice of Shared or the workspace's pool once the workspace
+  # has a pool: for its only pool, and a person whom `node.delete` allows on it. Where the
+  # workspace has 2 pools or more, the step keeps no choice, since any of them stops the
+  # instance's pool serving the workspace.
+  defp keeps_choice?(scope, [pool]), do: Access.can?(scope, :"node.delete", pool)
+  defp keeps_choice?(_scope, _pools), do: false
 
-  defp removable_pool(_scope, _pools), do: nil
+  # The pool of the workspace that the step offers to remove, to choose Shared again: the
+  # workspace's only pool, where the step keeps the choice and the instance has a pool
+  # (`shared_line`); else nil.
+  defp removable_pool([pool], %{pool: %{}}), do: pool
+  defp removable_pool(_pools, _shared_line), do: nil
 
   # The words of Get the command on a pool's line, as the pool's Access key tab words it,
   # for a pool of the workspace whose command the person may get while it has room for a
