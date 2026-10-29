@@ -934,15 +934,16 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # Where the workspace's harness moves from the row `before` to the row `now`, nil for
-  # the Qory harness at `:latest`, and its repository changes: each target row of
-  # `workspace` with the version `:workspace` keeps its repository and stack and stores
-  # the version it followed, that of `before`. A row whose choice differs from that of
-  # `before` stores the `ref` it followed with no version, read as written.
+  # the Qory harness at `:latest`, and its repository changes, each target row of
+  # `workspace` with the version `:workspace`, by its choice and address:
+  #
+  #   * those of `before`: keeps its repository and stack and stores the version it
+  #     followed, that of `before`, its document at the `ref` of `before`;
+  #   * those of `now`: is left as it is, and follows `now`;
+  #   * any other, a row a save wrote while the workspace changed harness: stores no
+  #     version, its document as written.
   defp keep_followed(%Workspace{} = workspace, before, now) do
     if harness_repository(before) != harness_repository(now) do
-      {kind, name} = followed(before)
-      ref = pin(before || %Stack{version_kind: :latest}, nil, nil)
-
       Repo.all(
         from s in Stack,
           where: s.organisation_id == ^workspace.organisation_id,
@@ -950,23 +951,33 @@ defmodule Apiary.Stacks.Sources do
           where: is_nil(s.workflow) and s.version_kind == :workspace,
           lock: "FOR UPDATE"
       )
-      |> Enum.each(fn %Stack{} = row ->
-        {kind, name} = if row.choice == choice_of(before), do: {kind, name}, else: {nil, nil}
-
-        harness = row.harness |> extended() |> Map.put("ref", ref) |> document()
-
-        row
-        |> Ecto.Changeset.change(
-          harness: harness,
-          version_kind: kind,
-          version_name: name
-        )
-        |> Ecto.Changeset.check_constraint(:version_kind, name: :stacks_version_check)
-        |> Repo.update!()
-      end)
+      |> Enum.each(&keep_followed(&1, before, now, harness_repository(&1)))
     end
 
     :ok
+  end
+
+  defp keep_followed(%Stack{} = row, before, now, repository) do
+    cond do
+      repository == harness_repository(before) ->
+        {kind, name} = followed(before)
+        ref = pin(before || %Stack{version_kind: :latest}, nil, nil)
+        harness = row.harness |> extended() |> Map.put("ref", ref) |> document()
+        update_followed!(row, harness: harness, version_kind: kind, version_name: name)
+
+      repository == harness_repository(now) ->
+        :ok
+
+      true ->
+        update_followed!(row, version_kind: nil, version_name: nil)
+    end
+  end
+
+  defp update_followed!(%Stack{} = row, changes) do
+    row
+    |> Ecto.Changeset.change(changes)
+    |> Ecto.Changeset.check_constraint(:version_kind, name: :stacks_version_check)
+    |> Repo.update!()
   end
 
   # The choice and the address of a workspace's harness row, the Qory harness for none.

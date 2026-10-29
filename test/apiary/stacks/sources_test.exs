@@ -893,6 +893,51 @@ defmodule Apiary.Stacks.SourcesTest do
              }
     end
 
+    test "a change of the workspace's harness leaves a row of the new harness following it",
+         ctx do
+      serve_calls([ctx.adapter],
+        covered: ctx.covered,
+        files: @files,
+        versions: %{"R_harness" => @pin}
+      )
+
+      [_app, harness] = Sources.repositories(ctx.scope)
+
+      {:ok, _choice} =
+        Sources.choose(ctx.scope, {:repository, harness, "triage", {:tag, "v1"}})
+
+      {:ok, _row} = Sources.choose_target(ctx.scope, @target, {:workspace, "triage"})
+
+      # The workspace's choice goes with no update of the row, as a save of the row that
+      # ends while the workspace changes harness leaves it; then the workspace takes the
+      # same repository on a branch.
+      Repo.delete!(Stacks.choice(ctx.scope.workspace))
+
+      {:ok, _choice} =
+        Sources.choose(ctx.scope, {:repository, harness, "triage", {:branch, "main"}})
+
+      assert %{git: @harness, stack: "triage", version: :workspace, pin: "main"} =
+               Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+
+      # A row of another repository, neither the old harness nor the new one, keeps its
+      # document as written, with no version.
+      other =
+        "extends:\n  git: \"https://code.example.com/acme/other\"\n" <>
+          "  ref: \"v1\"\n  stack: \"triage\"\n"
+
+      {1, _rows} =
+        Repo.update_all(
+          from(s in Stack, where: s.version_kind == :workspace),
+          set: [harness: other]
+        )
+
+      {:ok, _choice} = Sources.choose(ctx.scope, :qory)
+
+      row = Stacks.target_choice(ctx.scope.workspace, @target)
+      assert {row.choice, row.version_kind, row.version_name} == {:repository, nil, nil}
+      assert row.harness == other
+    end
+
     test "a member chooses nothing", ctx do
       %{scope: member} = member_fixture(ctx.scope)
       assert Sources.choose_target(member, @target, :qory) == {:error, :forbidden}
