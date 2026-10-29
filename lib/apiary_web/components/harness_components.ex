@@ -443,6 +443,7 @@ defmodule ApiaryWeb.HarnessComponents do
             id={"harness-target-#{target.id}-form"}
             phx-change="choose_target_stack"
             class="flex flex-wrap items-center gap-x-6 gap-y-1 text-[13.5px]/5"
+            novalidate
           >
             <span class="min-w-0 flex-1 truncate font-mono">{target.title}</span>
             <input type="hidden" name="row[id]" value={target.id} />
