@@ -20,8 +20,15 @@ defmodule ApiaryWeb.WorkflowLive do
   # of the set-up's Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with Save and
   # Cancel. Save stores the choice (`Apiary.Stacks.Sources.choose/3`); a harness
   # repository's exports are read outside the page's process once it is chosen, and its
-  # save reads it outside the page's process too; a read that failed shows its reason. A
-  # line shows which workflow the runs follow, where the workspace has one.
+  # save reads it outside the page's process too; a read that failed shows its reason.
+  # Under the choice, Targets lists the workspace's destinations, each with its Stack
+  # select, as the Harness step shows and saves them
+  # (`ApiaryWeb.HarnessComponents.targets/1`, `ApiaryWeb.HarnessTargets`). The select's
+  # options come from the saved choice; a save of the choice lists the destinations
+  # again, and reads again the stacks of a harness repository whose address or version
+  # differs from the one read last. Once a destination's save is refused because
+  # `harness.save` no longer allows the person, the selects show disabled. A line shows
+  # which workflow the runs follow, where the workspace has one.
   #
   # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/2`):
   # the organisation's connected repositories (`Apiary.Stacks.Sources.repositories/1`),
@@ -43,8 +50,9 @@ defmodule ApiaryWeb.WorkflowLive do
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"harness.save"}
 
+  alias Apiary.Lingo.Domain
   alias Apiary.Stacks.Sources
-  alias ApiaryWeb.{HarnessComponents, SettingsComponents}
+  alias ApiaryWeb.{HarnessComponents, HarnessTargets, SettingsComponents}
 
   @action :"harness.save"
 
@@ -74,9 +82,13 @@ defmodule ApiaryWeb.WorkflowLive do
         chosen: Sources.chosen(scope.workspace),
         editing: false,
         harness_saving: false,
-        harness_refusal: nil
+        harness_refusal: nil,
+        target_edit: nil,
+        workspace_stacks: nil,
+        workspace_stacks_of: nil
       )
       |> assign_harness_form(nil)
+      |> load_targets()
 
     socket =
       if connected?(socket),
@@ -142,6 +154,7 @@ defmodule ApiaryWeb.WorkflowLive do
     socket
     |> assign(chosen: chosen, editing: false, harness_refusal: nil)
     |> assign_harness_form(nil)
+    |> load_targets()
   end
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
@@ -164,6 +177,47 @@ defmodule ApiaryWeb.WorkflowLive do
         scope,
         @action,
         gettext("Only owners and admins can change the workflow.")
+      )
+
+  ## The destinations
+
+  # The workspace's destinations with the stack chosen for each, whether the person may
+  # save, the edit of a destination while it is still listed, and the stacks the saved
+  # choice exports (`ApiaryWeb.HarnessTargets`).
+  defp load_targets(socket) do
+    scope = socket.assigns.current_scope
+    may = Apiary.Access.can?(scope, @action, scope.workspace)
+
+    targets =
+      HarnessTargets.targets(scope, scope.workspace, Domain.for_workspace(scope.workspace))
+
+    socket
+    |> assign(
+      may: may,
+      harness_targets: targets,
+      target_edit: HarnessTargets.kept_edit(socket.assigns.target_edit, targets, may)
+    )
+    |> HarnessTargets.read_workspace_stacks()
+  end
+
+  # The answer to a save of the stack `choice` for a destination.
+  defp target_saved(socket, _choice, {:ok, _stack}),
+    do: socket |> assign(:target_edit, nil) |> load_targets()
+
+  # The person may no longer save: the selects show disabled.
+  defp target_saved(socket, _choice, {:error, :forbidden}),
+    do:
+      socket
+      |> assign(target_edit: nil, may: false)
+      |> put_flash(:error, harness_who_may(socket.assigns.current_scope))
+
+  defp target_saved(socket, choice, {:error, reason}),
+    do:
+      HarnessTargets.refused(
+        socket,
+        choice,
+        reason,
+        socket.assigns.current_scope.organisation.name
       )
 
   ## Events
@@ -266,6 +320,37 @@ defmodule ApiaryWeb.WorkflowLive do
         raise ApiaryWeb.NotFound
     end
   end
+
+  def handle_event(
+        "choose_target_stack",
+        %{"row" => %{"id" => id, "stack" => value}},
+        %{assigns: %{may: true}} = socket
+      )
+      when is_binary(id) and is_binary(value),
+      do: {:noreply, HarnessTargets.choose_row(socket, id, value, &target_saved/3)}
+
+  def handle_event(
+        "cancel_target",
+        _params,
+        %{assigns: %{target_edit: %{saving: false}}} = socket
+      ),
+      do: {:noreply, HarnessTargets.cancel(socket)}
+
+  def handle_event(
+        "pick_target",
+        %{"target_stack" => params},
+        %{assigns: %{may: true, target_edit: %{saving: false} = edit}} = socket
+      )
+      when is_map(params),
+      do: {:noreply, HarnessTargets.pick(socket, edit, params, socket.assigns.assigned)}
+
+  def handle_event(
+        "save_target",
+        %{"target_stack" => params},
+        %{assigns: %{may: true, target_edit: %{saving: false} = edit}} = socket
+      )
+      when is_map(params),
+      do: {:noreply, HarnessTargets.save(socket, edit, params, &target_saved/3)}
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
@@ -420,6 +505,24 @@ defmodule ApiaryWeb.WorkflowLive do
 
   def handle_async(:read, {:exit, _reason}, socket),
     do: {:noreply, socket |> assign(read_error: :unreadable, reading: false) |> assign_form()}
+
+  def handle_async(:workspace_stacks, {:ok, {of, result}}, socket),
+    do: {:noreply, HarnessTargets.workspace_stacks_read(socket, of, result)}
+
+  def handle_async(:workspace_stacks, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, :workspace_stacks, [])}
+
+  def handle_async(:target_read, {:ok, read}, socket),
+    do: {:noreply, HarnessTargets.read_done(socket, read)}
+
+  def handle_async(:target_read, {:exit, _reason}, socket),
+    do: {:noreply, HarnessTargets.read_failed(socket)}
+
+  def handle_async(:target_save, {:ok, {choice, result}}, socket),
+    do: {:noreply, HarnessTargets.save_done(socket, choice, result, &target_saved/3)}
+
+  def handle_async(:target_save, {:exit, _reason}, socket),
+    do: {:noreply, HarnessTargets.save_failed(socket)}
 
   # Once the connected repositories are listed, a harness form with no repository chosen
   # yet takes the saved one, whose exports are then read.
@@ -596,6 +699,17 @@ defmodule ApiaryWeb.WorkflowLive do
               </.button>
             </div>
           </.form>
+
+          <HarnessComponents.targets
+            targets={@harness_targets}
+            may={@may}
+            edit={@target_edit}
+            workspace={@chosen}
+            stacks={@workspace_stacks}
+            linked={@linked}
+            assigned={@assigned}
+            organisation={@organisation}
+          />
         </div>
 
         <p :if={@current} id="workflow-current" class="text-[13px]/[20px]">
