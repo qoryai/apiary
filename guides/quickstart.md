@@ -309,16 +309,16 @@ later.
    choose **All repositories, including new ones**, in the adapter's word for its
    collections, or **Only selected** and tick the collections whose tickets Main takes
    in. **Only selected** shows 50 to a page, with **Find a repository** and a count such
-   as “3 selected”. Select **Save**: each collection chosen is assigned to Main, with its
-   Backlog on, and the card shows how many, such as “3 of 14 repositories”, or “All
+   as “3 selected”. Select **Save**: each collection chosen is assigned to Main, with
+   its Backlog on, and the card shows how many, such as “3 of 14 repositories”, or “All
    repositories”. All also assigns to Main each collection that the adapter lists for
    the account later; with **Only selected**, a collection listed later joins no
-   workspace until you tick it. If a collection is missing, **Not listed?** shows the
-   adapter's line on its access, with **Change access**. Select **Continue**, or **Skip** to leave
-   the step for later. You can change the list later in **Workspace settings › Work
-   sources**, and connect an adapter in **Organisation settings › Integrations**. One
-   connection to an adapter serves every workspace of Acme. Only owners and admins
-   connect and choose.
+   workspace until you tick it. If a collection is missing and the adapter sent a line
+   on its access, **Not listed?** shows that line, with **Change access**. Select
+   **Continue**, or **Skip** to leave the step for later. You can change the list later
+   in **Workspace settings › Work sources**, and connect an adapter in **Organisation
+   settings › Integrations**. One connection to an adapter serves every workspace of
+   Acme. Only owners and admins connect and choose.
 2. **Destinations.** **Which repositories may runs in Main change?** shows a card for
    each account of the adapters with repositories, and **Connect another destination**
    for an adapter not connected yet. Select **Choose**, choose **All repositories,

@@ -121,8 +121,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Connected**. **Connect another source**, or **Connect another destination** in
   **Destinations**, lists the adapters the instance has set up for the workspace's type
   that the organisation has not connected, each with **Not connected**, or
-  **Connecting…** while the connection is pending; it is open while the step has no
-  card. Owners and admins have **Connect**, which returns to the step after the
+  **Connecting…** while the connection is pending. That list is open while the step
+  shows no card and no **Connected** line. Owners and admins have **Connect**, which returns to the step after the
   adapter's steps; anyone else reads who may connect. A connection to an adapter is the
   organisation's and serves every workspace, so its **Connect** has no setting of where
   it applies: one connection to GitHub serves both steps of every workspace. With no
@@ -132,24 +132,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Choose** opens “Choose repositories · GitHub · acme”, at
   `/acme/set-up/choose?step=sources&grant=<id>&workspace=main`, with two choices, in the
   adapter's word for its collections. **All repositories, including new ones** assigns
-  to the workspace every repository of the account that no other workspace has, and
-  each one the adapter lists for the account later. **Only selected** lists the
-  account's repositories 50 to a page, with the search field **Find a repository**, a checkbox on
-  each row, one in the table head that selects every row shown, and a count, such as
-  “3 selected”. A repository of another workspace has no checkbox and shows “In Billing
-  (cannot be ticked)”. The selection stays across pages and searches until **Save**,
-  which saves it and returns to the step; **Back** returns without saving. The chooser
-  opens on **All** while the workspace has All for the account, else on **Only
+  to the workspace every repository of the account that no other workspace has. It also
+  assigns each one the adapter lists for the account later. **Only selected** lists the
+  account's repositories 50 to a page, with the search field **Find a repository** and a
+  count, such as “3 selected”. Each row has a checkbox, and one in the table head
+  selects every row shown. A repository of another workspace has no checkbox and shows
+  “In Billing (cannot be ticked)”. The selection stays across pages and searches until
+  **Save**, which saves it and returns to the step; **Back** returns without saving. The
+  chooser opens on **All** while the workspace has All for the account, else on **Only
   selected**, with the workspace's repositories ticked. While another workspace has All
   for the account, the chooser shows **Only selected** alone, and “All new repositories
   of acme go to Billing.” In **Destinations**, while **Work sources** has All for the
   account, it shows **All** alone, and “Work sources is set to All for acme. Change it
   there first.” All in **Work sources** turns on the Backlog of each repository it
-  assigns to the workspace; All in **Destinations** leaves it off on one that was in no
-  workspace. Where the adapter sent a line on its access, the chooser shows “Not
-  listed?” and that line, with **Change access** for owners and admins, which opens the
-  adapter's install for the connection and returns to the step. Owners and admins
-  choose; anyone else sees the choices disabled, no **Save**, and who may choose.
+  assigns to the workspace. All in **Destinations** leaves it off on one that was in no
+  workspace. Only where the adapter sent a line on its access, the chooser shows “Not
+  listed?” and that line, with **Change access** for owners and admins. **Change
+  access** opens the adapter's install for the connection, and returns to the step.
+  Owners and admins choose; anyone else sees the choices disabled, no **Save**, and who
+  may choose.
 - A collection joins a workspace only through **All** or a tick. Qory Apiary assigns a
   collection that the adapter lists later to the workspace with All for its account,
   and leaves it in no workspace where none has All, also in an organisation with one
@@ -171,20 +172,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   members read the settings pages.
   <!-- settings: Work sources and Destinations -->
 - **Model**, “Which model do runs in Main use?”, has three fields. **Key** lists each
-  model provider with a key that reaches the workspace, by its name, then **Add a key**,
-  the one option where there is no provider to reuse. **Add a key** opens **Provider**,
-  **Key**, and an address for a provider that needs one, as **Organisation settings ›
-  Model providers** does, and adds the provider for the workspace: its key is a secret
-  of the workspace, and the provider reaches that workspace alone. Under **Key**:
-  “Qory Apiary stores the key encrypted, and nobody can view it again. You can replace
-  it in Settings › Secrets and variables.” **Runtime** lists the runtimes the provider
-  serves, as text where there is one, and **Default model** suggests the provider's
-  models for it. **Continue** saves the workspace's model choice, which **Workspace
-  settings › Model** shows, with the provider's default key: two workspaces can reuse
-  one key and choose different models. The step is done once the workspace has a model
-  choice whose provider reaches the workspace and has a key. Owners and admins fill it
-  in. For a Claude subscription, **About this step** shows `claude setup-token` on a
-  separate line, with **Copy command**.
+  model provider with a key that reaches the workspace, by its name, then **Add a key**.
+  **Add a key** is the one option where there is no provider to reuse. It opens
+  **Provider**, **Key**, and an address for a provider that needs one, as **Organisation
+  settings › Model providers** does. It adds the provider for the workspace: its key is
+  a secret of the workspace, and the provider reaches that workspace alone. Under
+  **Key**: “Qory Apiary stores the key encrypted, and nobody can view it again. You can
+  replace it in Settings › Secrets and variables.” **Runtime** lists the runtimes the
+  provider serves, as text where there is one. **Default model** suggests the provider's
+  models for it. **Continue** saves the workspace's model choice, with the provider's
+  default key; **Workspace settings › Model** shows that choice. Where the edition shows
+  “Available to every workspace in Acme”, two workspaces can reuse one key and choose
+  different models. The step is done once the workspace has a model choice whose
+  provider reaches the workspace and has a key. Owners and admins fill it in. For a
+  Claude subscription, **About this step** shows `claude setup-token` on a separate
+  line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
   workspace's runs, one of two: **Qory harness**, `github.com/qoryai/harness` at the
   commit this release pins, `fe3b3ab`, with “A repository's harness file comes first.”;
@@ -199,8 +201,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “acme/web-harness · stacks/web · pinned at 1a2b3c4”, and **Change** for owners and
   admins. **Change** offers **Workspace default**, which removes the repository's stack,
   the **Qory harness**, or **A harness repository**: a **Source** among the groups of
-  Workspace settings › Workflow, a **Stack** of it and a **Branch or tag**. **Save**
-  reads the source and pins the commit; a refused save shows why. A stack of a source that an
+  Workspace settings › Workflow, a **Stack** of it and a **Branch or tag**. For a harness
+  repository, **Save** reads the source and pins the commit; a refused save shows why. A stack of a source that an
   instance admin assigned is saved at the assignment's branch or tag, such as “… at
   main, not pinned”: runs read the commit it points to when they start.
 - A run's harness is the first of: the stack chosen for its repository; the
@@ -210,21 +212,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stack chosen for the repository, a run reads no harness file of its repository.
 - **Machines**, “Which machines run the runs in Main?”, shows the node pools that run
   the workspace's runs: the workspace's pools, or the instance's pool while it has none.
-  Each shows “Ready · gateway: <gateway>”, or **Not ready** and why: no pool, no active
-  key, a gateway choice of Direct, no gateway, a gateway the pool's runs may not go
-  through, or a gateway with no active key. While the workspace has no pool, owners and
-  admins choose **Shared: the instance's pool**, chosen first, or **A pool for Main**:
-  “Runs in Main then wait for this pool, and the shared pool stops serving them.” Its
-  **Add node pool** adds a node pool to the workspace with the workspace's name, cut to
-  80 characters; where another node of the workspace has that name, the step shows a
-  line to rename that node first. On a pool of the workspace with fewer than 2 active keys,
-  **Get the command** makes an enrolment code, and the step shows “On Main, run:” and
-  the enrol command on a separate line with **Copy command**, until the code expires or
-  a machine enrols with it; **Get a new command** makes another. Under a pool that is
-  not ready, an instance admin has **Check the nodes** for the instance's pool; anyone
-  else reads who acts, such as “Only an instance admin checks the instance's pool and
-  gateway.” While the workspace has no pool, anyone who may not add one sees the
-  instance's pool, read only. The step is done once a pool is ready.
+  Each shows “Ready · gateway: <gateway>”, or **Not ready** and why. The reasons are: no
+  pool, no active key, a gateway choice of Direct, no gateway, a gateway the pool's runs
+  may not go through, or a gateway with no active key. While the workspace has no pool,
+  owners and admins choose **Shared: the instance's pool**, chosen first, or **A pool
+  for Main**: “Runs in Main then wait for this pool, and the shared pool stops serving
+  them.” Its **Add node pool** adds a node pool to the workspace with the workspace's
+  name, cut to 80 characters. Where another node of the workspace has that name, the
+  step shows a line to rename that node first. On a pool of the workspace with fewer
+  than 2 active keys, **Get the command** makes an enrolment code. The step then shows
+  “On Main, run:” and the enrol command on a separate line with **Copy command**, until
+  the code expires or a machine enrols with it; **Get a new command** makes another.
+  Under a pool that is not ready, an instance admin has **Check the nodes** for the
+  instance's pool. For a pool of the workspace, owners and admins have its name as a
+  link to its page. Anyone else reads who acts, such as “Only an instance admin checks
+  the instance's pool and gateway.” While the workspace has no pool, anyone who may not
+  add one sees the instance's pool, read only. The step is done once a pool is ready.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
   agent** with **Run the test**, with no work source; owners, admins and members run it
   once a pool that serves the workspace is ready. Before that, the step shows “Runs need

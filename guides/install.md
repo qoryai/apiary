@@ -824,8 +824,8 @@ With the `factory` feature, both pages have more steps:
     settings › Secrets and variables** lists. Only owners and admins add a model key.
   - On **Harness** you choose the harness of the workspace's runs, and a stack for each
     repository that needs another. On **Machines** you choose the instance's pool or a
-    pool for the workspace, and get the command that enrols a machine in that pool. On
-    **Test run** you run a test.
+    pool for the workspace, and for a pool of the workspace you get the command that
+    enrols a machine in it. On **Test run** you run a test.
 
   Where the edition allows more than one workspace, a workspace added later goes
   through the same 7 steps. Where the edition shows the setting “Available to every
