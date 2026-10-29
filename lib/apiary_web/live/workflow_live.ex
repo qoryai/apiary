@@ -16,12 +16,12 @@ defmodule ApiaryWeb.WorkflowLive do
   # else the Qory harness, and Change, which opens the line on what a harness is and the
   # two choices of the set-up's Harness step (`ApiaryWeb.HarnessComponents.choices/1`)
   # with Save and Cancel. Save stores the choice (`Apiary.Stacks.Sources.choose/3`); a
-  # harness repository is read
-  # outside the page's process, through the linked repositories Source lists, and a read
-  # that failed says why. Under it, where the choice is the Qory harness, saved or not,
-  # in a workspace whose domain has harness files (`Apiary.Lingo.Domain.harness_file?/1`),
-  # a notice says that a repository's harness file comes first. A line says which
-  # workflow the runs follow, where the workspace has one.
+  # harness repository is read outside the page's process, through the linked
+  # repositories Source lists, and a read that failed says why. Under it, where the
+  # choice is the Qory harness, saved or not, in a workspace whose domain has harness
+  # files (`Apiary.Lingo.Domain.harness_file?/1`), a notice says that a repository's
+  # harness file comes first. A line says which workflow the runs follow, where the
+  # workspace has one.
   #
   # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/3`):
   # the organisation's linked repositories that have a stack, read through the adapters

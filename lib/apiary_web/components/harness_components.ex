@@ -17,7 +17,8 @@ defmodule ApiaryWeb.HarnessComponents do
   # With `shared`, as the Harness step passes it, `choices/1` lists the harness the
   # organisation shares first, as the `choice` `shared`. A shared Qory harness is the one
   # Qory harness listed, with the shared pin, in place of the `qory` choice: the walk
-  # reads the two the same way, a target's harness file first. `form_params/2` is the
+  # reads the two the same way, a target's harness file first. The rows merge only where
+  # no saved `qory` choice of the workspace has another pin. `form_params/2` is the
   # form's values for a saved choice, `choice/2` the choice the form's values come to,
   # and `refusal_words/4` why a save was refused.
   # `qory/2` is the Qory harness the choices show.
@@ -67,13 +68,15 @@ defmodule ApiaryWeb.HarnessComponents do
   # `shared`, the harness the organisation shares comes first, under "Shared in
   # <organisation>", marked "every workspace", with its address and pin. A shared Qory
   # harness is the Qory harness choice itself: one row, the `choice` `shared`, marked
-  # "every workspace", with the shared pin, and no heading.
+  # "every workspace", with the shared pin, and no heading. The rows merge only where the
+  # pins are equal: a saved `qory` choice of the workspace at another pin keeps the shared
+  # row and the `qory` row at the saved pin.
   def choices(assigns) do
     choice = assigns.form[:choice].value
     source = source(assigns.linked, assigns.form[:source].value)
     shared = assigns.shared
     shared_line = shared && "#{address(shared.git)} · #{short(shared.pin)}"
-    shared_qory = match?(%{choice: :qory}, shared)
+    shared_qory = match?(%{choice: :qory}, shared) and not other_pin?(assigns.chosen, shared)
 
     qory =
       if shared_qory,
@@ -191,6 +194,13 @@ defmodule ApiaryWeb.HarnessComponents do
     </div>
     """
   end
+
+  # Whether `chosen` is a saved `qory` choice of the workspace at a pin other than that of
+  # the harness the organisation shares, `shared`.
+  defp other_pin?(%{choice: :qory, saved: true, shared: false, pin: pin}, %{pin: shared_pin}),
+    do: pin != shared_pin
+
+  defp other_pin?(_chosen, _shared), do: false
 
   attr :chosen, :map, required: true, doc: "the choice, `t:Apiary.Stacks.Sources.chosen/0`"
 
