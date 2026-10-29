@@ -291,10 +291,17 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     # queue read at most once, at most 5 rows read over the whole plan for each run, each
     # run's harness walk and each workspace, and one query for the queue, whatever the
     # number of workspaces. The walks count because the query skips a run whose walk has
-    # not resolved, which reads each walk once. The plans seen read 1,404 to 1,920 rows
-    # locally and 2,119 on CI, under the bound of 3,015. With index scans, hash joins,
-    # materialize and memoize turned off, the plan scans tables once per run and reads
-    # 112,304.
+    # not resolved, which reads each walk once.
+    #
+    # Postgres plans the subquery of a run held for its build (`Apiary.Environments.held/1`)
+    # for one call, and runs it once for each waiting run. With 203 workspaces in 5 pages,
+    # a sequential scan of `workspaces` costs 8.3, as much as a probe of `workspaces_pkey`,
+    # and the plan with the scan reads 20,300 rows over 100 runs. The table's pages
+    # include the dead rows of earlier tests, so the plan differed from one CI run to the
+    # next, and the test failed in some. The 400 workspaces with no run make the table 14
+    # pages, where the scan costs about 3 times the probe. The plans seen read 2,920 and
+    # 2,921 rows, under the bound of 5,015. With index scans, hash joins, materialize and
+    # memoize turned off, the plan scans tables once per run and reads 54,010.
     test "reads each run of the queue of 200 workspaces at most once, in one query", ctx do
       queued!(ctx.b)
       few = claim_queries(ctx.key)
@@ -306,6 +313,9 @@ defmodule Apiary.Dispatches.InstancePoolTest do
         if rem(n, 2) == 0, do: pool_fixture(scope)
         queued!(scope)
       end
+
+      # Workspaces with no run, so a scan of `workspaces` costs more than a probe.
+      for _n <- 1..400, do: workspace_fixture(organisation)
 
       runs = Repo.aggregate(DispatchRun, :count)
       workspaces = Repo.aggregate(Apiary.Organisations.Workspace, :count)
@@ -322,7 +332,12 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       scans = scans(plan, "dispatch_runs")
       assert scans != []
       assert rows_read(scans) <= runs, inspect(scans)
-      assert rows_read(nodes(plan)) <= 5 * (runs + walks + workspaces)
+
+      assert rows_read(nodes(plan)) <= 5 * (runs + walks + workspaces),
+             Enum.join(
+               ["The plan of the claim's query read these rows:" | plan_lines(plan)],
+               "\n"
+             )
 
       many = claim_queries(ctx.key)
       queue = Enum.filter(many, &(&1 =~ "SKIP LOCKED" and &1 =~ ~s|FROM "dispatch_runs"|))
@@ -370,6 +385,29 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       (node["Actual Rows"] + Map.get(node, "Rows Removed by Filter", 0)) * node["Actual Loops"]
     end)
     |> Enum.sum()
+  end
+
+  # The plan as lines, one for each node, indented under its parent: the node's type, its
+  # table and index, its loops and the rows it read over every loop.
+  defp plan_lines(node, depth \\ 0) do
+    line =
+      "#{String.duplicate("  ", depth)}#{label(node)}: " <>
+        "#{round(rows_read([node]))} rows in #{node["Actual Loops"]} loops"
+
+    [line | Enum.flat_map(Map.get(node, "Plans", []), &plan_lines(&1, depth + 1))]
+  end
+
+  # The node's subplan, join type, node type, table and index, those it has.
+  defp label(node) do
+    [
+      node["Subplan Name"],
+      node["Join Type"] && "#{node["Join Type"]} #{node["Node Type"]}",
+      is_nil(node["Join Type"]) && node["Node Type"],
+      node["Relation Name"] && "on #{node["Relation Name"]}",
+      node["Index Name"] && "using #{node["Index Name"]}"
+    ]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" ")
   end
 
   # The plan's nodes that read `table`.
