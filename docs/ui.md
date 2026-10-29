@@ -1229,6 +1229,14 @@ product's mark and the theme menu.
   again shows what was saved there and can be changed. The step Name, opened again,
   shows the workspace's name and its type, read only, with **Continue**: the type can't
   change.
+- **The chooser** (`IntegrationComponents.chooser/1`), with the `factory` feature, is a
+  separate page in the frame, the step current in the indicator:
+  `/<org>/set-up/choose?step=<sources|destinations>&grant=<id>&workspace=<slug>`, opened
+  by **Choose** on a card of Work sources or Destinations
+  (`IntegrationComponents.grant_card/1`). Its title is “Choose repositories · GitHub ·
+  acme”, in the adapter's word for its collections, with the count, such as “3
+  selected”, beside it under **Only selected**. Its **Back** returns to the step without
+  saving, and **Save**, the primary button, saves and returns to the step.
 - **A workspace in set-up** opens at its next step: with the `factory` feature, until its
   test run passes, the overview and every link to the workspace lead to the first step
   of its set-up that is not done (`SetUpComponents.set_up_path/1`).

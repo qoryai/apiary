@@ -805,16 +805,20 @@ With the `factory` feature, both pages have more steps:
   **Test run**. **Create workspace** opens **Work sources** in place of the overview, and
   the set-up opens at the first step that is not done. If another owner creates Main
   while the page is open, the page opens Main's first step that is not done.
-  - **Work sources** and **Destinations** list the adapters that the instance has set
-    up for the workspace's type, each with **Connect**, and under each connected
-    adapter its collections, with a checkbox. Select **Connect** beside one, and follow
-    the steps that the column **About this step** lists under its name. Then tick the
-    collections the workspace takes tickets from, or the repositories its runs may
-    change. A connection to an adapter serves every workspace of the organisation.
-    **Skip** leaves the step for later: connect in **Organisation settings ›
-    Integrations**, and tick in **Workspace settings › Work sources** and
-    **› Destinations**. Only owners and admins connect an adapter and tick.
-    <!-- set-up: Work sources and Destinations -->
+  - **Work sources** and **Destinations** show a card for each account that the
+    organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
+    connect an adapter, open **Connect another source**, or **Connect another
+    destination**, select **Connect** beside the adapter, and follow the steps that the
+    column **About this step** lists under its name. **Choose** opens the account's
+    collections: choose **All repositories, including new ones**, in the adapter's word
+    for its collections, or **Only selected** and tick them, then **Save**. All also
+    assigns to the workspace each collection that the adapter lists for the account
+    later. A new collection joins a workspace only through All or a tick, also in an
+    organisation with one workspace. A connection to an adapter serves every workspace of the
+    organisation. **Skip** leaves the step for later: connect in **Organisation settings
+    › Integrations**, and tick in **Workspace settings › Work sources** and
+    **› Destinations**. Only owners and admins connect an adapter and choose.
+    <!-- settings: Work sources and Destinations -->
   - On **Model** you choose a model provider's key, the runtime and the workspace's
     default model. A key added there is a secret of the workspace, which **Workspace
     settings › Secrets and variables** lists. Only owners and admins add a model key.

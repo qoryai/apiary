@@ -290,8 +290,8 @@ overview. The list of steps shows a check mark on each step once it is done:
 | Step | Done when |
 |---|---|
 | **Name** | Main exists. |
-| **Work sources** | Main takes tickets from at least one ticked collection: the collection is Main's, with its Backlog on. |
-| **Destinations** | At least one ticked repository is Main's. |
+| **Work sources** | Main takes tickets from at least one collection: the collection is Main's, with its Backlog on. |
+| **Destinations** | At least one repository is Main's. |
 | **Model** | Main has a default model, with a model provider that applies to Main and has a key. |
 | **Harness** | Main has a saved harness choice. |
 | **Machines** | A node pool that serves Main's runs has a key in use, and so does the gateway the pool's runs go through. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
@@ -300,22 +300,35 @@ overview. The list of steps shows a check mark on each step once it is done:
 **Run the test** shows once **Machines** is done, so you can leave the other steps for
 later.
 
-1. **Work sources.** **Where does work for Main come from?** lists the adapters that the
-   instance has set up, each with **Connect**. Select **Connect** beside one, and follow
-   the steps that **About this step** lists under its name: the adapter sends you back
-   to this step. Under the adapter, tick the collections whose tickets Main takes in: a
-   ticked collection is assigned to Main, with its Backlog on. Select **Continue**, or
-   **Skip** to leave the step for later. You can change the list later in **Workspace
-   settings › Work sources**, and connect an adapter in **Organisation settings ›
-   Integrations**. One connection to an adapter serves every workspace of Acme. Only
-   owners and admins connect and tick.
-   <!-- set-up: Work sources and Destinations -->
-2. **Destinations.** **Which repositories may runs in Main change?** lists the adapters
-   with repositories, and under each connected one its repositories, with "tickets come
-   in" beside each repository whose tickets Main takes in. Tick the repositories Main's
-   runs may change, and select **Continue**. Unticking a repository whose tickets come
-   in also stops its tickets. You can change the list later in **Workspace settings ›
-   Destinations**.
+1. **Work sources.** **Where does work for Main come from?** shows a card for each
+   account that Acme's connections reach. With nothing connected, **Connect another
+   source** is open and lists the adapters that the instance has set up. Select
+   **Connect** beside one, and follow the steps that **About this step** lists under its
+   name: the adapter sends you back to this step, which shows a card such as “GitHub ·
+   acme” with **Choose**. Select **Choose**. On “Choose repositories · GitHub · acme”,
+   choose **All repositories, including new ones**, in the adapter's word for its
+   collections, or **Only selected** and tick the collections whose tickets Main takes
+   in. **Only selected** shows 50 to a page, with **Find a repository** and a count such
+   as “3 selected”. Select **Save**: each collection chosen is assigned to Main, with its
+   Backlog on, and the card shows how many, such as “3 of 14 repositories”, or “All
+   repositories”. All also assigns to Main each collection that the adapter lists for
+   the account later; with **Only selected**, a collection listed later joins no
+   workspace until you tick it. If a collection is missing, **Not listed?** shows the
+   adapter's line on its access, with **Change access**. Select **Continue**, or **Skip** to leave
+   the step for later. You can change the list later in **Workspace settings › Work
+   sources**, and connect an adapter in **Organisation settings › Integrations**. One
+   connection to an adapter serves every workspace of Acme. Only owners and admins
+   connect and choose.
+2. **Destinations.** **Which repositories may runs in Main change?** shows a card for
+   each account of the adapters with repositories, and **Connect another destination**
+   for an adapter not connected yet. Select **Choose**, choose **All repositories,
+   including new ones** or **Only selected** and tick the repositories Main's runs may
+   change, then **Save** and **Continue**. Where **Work sources** has All for the
+   account, the chooser shows All alone: “Work sources is set to All for acme. Change it
+   there first.” You can change the list later in **Workspace settings ›
+   Destinations**, where unticking a repository whose tickets come in also stops its
+   tickets.
+   <!-- settings: Work sources and Destinations -->
 3. **Model.** **Which model do runs in Main use?** has three fields. In **Key**, keep
    **Add a key**, the one option while Main has no model provider to reuse. In
    **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
@@ -335,8 +348,8 @@ later.
      the branch or tag points to; the step shows why the read failed. A run then reads
      no harness file of its repository.
 
-   Under **Repositories**, each repository ticked in **Destinations** shows **Workspace
-   default**, or the stack chosen for it. **Change** beside a repository chooses a
+   Under **Repositories**, each of Main's repositories from **Destinations** shows
+   **Workspace default**, or the stack chosen for it. **Change** beside a repository chooses a
    harness for that repository alone: the **Qory harness**, or **A harness repository**
    with a **Source**, a **Stack** of it and a **Branch or tag**, then **Save**. A run in
    that repository then uses that stack, and reads no harness file of the repository.

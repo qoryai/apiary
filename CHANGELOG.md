@@ -111,34 +111,65 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   choice, also where it is the same as the shared harness, so a later change of the
   shared harness leaves the workspace's harness as it is. With nothing shared, neither
   step shows the heading.
-- **Work sources**, “Where does work for Main come from?”, lists the adapters the
-  instance has set up that bring tickets for the workspace's type, and **Destinations**,
-  “Which repositories may runs in Main change?”, the adapters with repositories that runs
-  can change. Each adapter shows **Connected**, **Connecting…** while the organisation's
-  connection to it is pending, or **Not connected**, and updates without a reload.
-  Owners and admins have **Connect**, which returns to the step after the adapter's
-  steps; anyone else reads who may connect. A connection to an adapter is the
+- **Work sources**, “Where does work for Main come from?”, shows a card for each account
+  that the organisation's connections reach, of the adapters that bring tickets for the
+  workspace's type. **Destinations**, “Which repositories may runs in Main change?”,
+  shows one for each account of the adapters with repositories that runs can change. A
+  card shows the adapter and the account, such as “GitHub · acme”, how many of the
+  account's collections the workspace has, such as “2 of 14 repositories”, or “All
+  repositories”, and **Choose**. An adapter connected with no account yet shows
+  **Connected**. **Connect another source**, or **Connect another destination** in
+  **Destinations**, lists the adapters the instance has set up for the workspace's type
+  that the organisation has not connected, each with **Not connected**, or
+  **Connecting…** while the connection is pending; it is open while the step has no
+  card. Owners and admins have **Connect**, which returns to the step after the
+  adapter's steps; anyone else reads who may connect. A connection to an adapter is the
   organisation's and serves every workspace, so its **Connect** has no setting of where
   it applies: one connection to GitHub serves both steps of every workspace. With no
   adapter to list, the step shows “No work source for this type is set up on this
   instance. An instance admin sets one up in Instance settings › Adapters.”, or the same
-  for a work destination.
-- Under each adapter, **Work sources** and **Destinations** list its collections, each
-  with a checkbox, and “No collection yet” under an adapter that is not connected.
-  **Workspace settings › Work sources** and **› Destinations** show the same lists.
-  Ticking a work source assigns it to the workspace and turns its Backlog on; unticking
-  it turns its Backlog off, and removes it from the workspace unless it is a repository,
-  which stays a destination. Ticking a destination assigns it to the workspace, with its
-  Backlog off unless **Work sources** ticked it; unticking it removes it from the
-  workspace and stops its tickets, and in **Destinations** a repository whose tickets
-  come in shows “tickets come in”. Where the edition allows more than one workspace, a
-  collection in another workspace shows “In Billing (cannot be ticked)”. **Work
-  sources** is done once a ticked collection is the workspace's with its Backlog on, and
-  **Destinations** once a ticked repository is the workspace's. With nothing connected,
-  a settings page shows “Acme has no work source connected yet.”, or the same for a work
-  destination, with a link to the set-up's step for a person who may connect. Owners
-  and admins tick; owners, admins and members read the settings pages.
-  <!-- set-up: Work sources and Destinations -->
+  for a work destination. The step updates without a reload.
+- **Choose** opens “Choose repositories · GitHub · acme”, at
+  `/acme/set-up/choose?step=sources&grant=<id>&workspace=main`, with two choices, in the
+  adapter's word for its collections. **All repositories, including new ones** assigns
+  to the workspace every repository of the account that no other workspace has, and
+  each one the adapter lists for the account later. **Only selected** lists the
+  account's repositories 50 to a page, with the search field **Find a repository**, a checkbox on
+  each row, one in the table head that selects every row shown, and a count, such as
+  “3 selected”. A repository of another workspace has no checkbox and shows “In Billing
+  (cannot be ticked)”. The selection stays across pages and searches until **Save**,
+  which saves it and returns to the step; **Back** returns without saving. The chooser
+  opens on **All** while the workspace has All for the account, else on **Only
+  selected**, with the workspace's repositories ticked. While another workspace has All
+  for the account, the chooser shows **Only selected** alone, and “All new repositories
+  of acme go to Billing.” In **Destinations**, while **Work sources** has All for the
+  account, it shows **All** alone, and “Work sources is set to All for acme. Change it
+  there first.” All in **Work sources** turns on the Backlog of each repository it
+  assigns to the workspace; All in **Destinations** leaves it off on one that was in no
+  workspace. Where the adapter sent a line on its access, the chooser shows “Not
+  listed?” and that line, with **Change access** for owners and admins, which opens the
+  adapter's install for the connection and returns to the step. Owners and admins
+  choose; anyone else sees the choices disabled, no **Save**, and who may choose.
+- A collection joins a workspace only through **All** or a tick. Qory Apiary assigns a
+  collection that the adapter lists later to the workspace with All for its account,
+  and leaves it in no workspace where none has All, also in an organisation with one
+  workspace. The end of the account's grant or of the connection, and the purge of a
+  deleted workspace, remove that All.
+- **Work sources** is done once a collection is the workspace's with its Backlog on, and
+  **Destinations** once a repository is the workspace's.
+- **Workspace settings › Work sources** and **› Destinations** list the collections of
+  each adapter, each with a checkbox. Ticking a work source assigns it to the workspace
+  and turns its Backlog on; unticking it turns its Backlog off, and removes it from the
+  workspace unless it is a repository, which stays a destination. Ticking a destination
+  assigns it to the workspace, with its Backlog off unless **Work sources** ticked it;
+  unticking it removes it from the workspace and stops its tickets, and in
+  **Destinations** a repository whose tickets come in shows “tickets come in”. Where the
+  edition allows more than one workspace, a collection in another workspace shows “In
+  Billing (cannot be ticked)”. With nothing connected, a settings page shows “Acme has
+  no work source connected yet.”, or the same for a work destination, with a link to the
+  set-up's step for a person who may connect. Owners and admins tick; owners, admins and
+  members read the settings pages.
+  <!-- settings: Work sources and Destinations -->
 - **Model**, “Which model do runs in Main use?”, has three fields. **Key** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**,
   the one option where there is no provider to reuse. **Add a key** opens **Provider**,
@@ -163,8 +194,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the commit its branch or tag points to; where the read fails, the step shows why. A
   workspace with no saved choice uses the Qory harness. Owners and admins choose. The
   test run keeps its built-in harness.
-- Under the choices, **Harness** lists the repositories ticked in **Destinations** under
-  **Repositories**, each with **Workspace default** or the stack chosen for it, such as
+- Under the choices, **Harness** lists the workspace's repositories from **Destinations**
+  under **Repositories**, each with **Workspace default** or the stack chosen for it, such as
   “acme/web-harness · stacks/web · pinned at 1a2b3c4”, and **Change** for owners and
   admins. **Change** offers **Workspace default**, which removes the repository's stack,
   the **Qory harness**, or **A harness repository**: a **Source** among the groups of
@@ -438,6 +469,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the organisation, with a check on it; the check `stacks_harness_or_workflow` is
   replaced to take a row with a choice alone. `stacks` comes with this release, so on an
   upgrade from 0.1.0 it is empty when these migrations run. They change no row.
+- `grant_rules`: a table, with its indexes built inside the migration, and a unique
+  index on `adapter_grants` (`id`, `organisation_id`), built inside the migration too.
+  `adapter_grants` comes with this release, so on an upgrade from 0.1.0 it is empty when
+  this migration runs. It changes no row.
 
 ## [0.1.0] - 2026-10-13
 
