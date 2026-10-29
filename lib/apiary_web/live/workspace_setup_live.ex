@@ -753,7 +753,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       socket
       |> assign(:listing, true)
-      |> start_async(:harness_linked, fn -> Sources.linked(scope) end)
+      |> start_async(:harness_linked, fn -> Sources.repositories(scope) end)
     else
       socket
     end
@@ -1856,12 +1856,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   @impl true
-  def handle_async(:harness_linked, {:ok, {:ok, %{sources: linked} = listing}}, socket) do
-    complete = listing.unread == 0 and listing.left_out == 0
-    {:noreply, socket |> assign(:linked_complete, complete) |> harness_listed(linked)}
-  end
+  def handle_async(:harness_linked, {:ok, linked}, socket) when is_list(linked),
+    do: {:noreply, socket |> assign(:linked_complete, true) |> harness_listed(linked)}
 
-  def handle_async(:harness_linked, _limited_or_exit, socket),
+  def handle_async(:harness_linked, _exit, socket),
     do: {:noreply, harness_listed(socket, [])}
 
   def handle_async(

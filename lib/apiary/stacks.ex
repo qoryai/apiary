@@ -19,9 +19,10 @@ defmodule Apiary.Stacks do
   # workspace's row, the workspace's choice (`choice/1`); the organisation's row, the
   # harness it shares with every workspace (`shared/1`). The choice `:qory` is the Qory
   # harness, with the document that extends the harness of the workspace's type
-  # (`Apiary.Lingo.Domain.definition/1`) at its pinned commit; `:repository` a harness
-  # repository or a stack of one, with the document that extends it at the `ref` the save
-  # wrote. `chosen_for/4` reads the choices for a run in the walk's order, and
+  # (`Apiary.Lingo.Domain.definition/1`); `:repository` a harness repository or a stack of
+  # one, with the document that extends it. The row's version (`Apiary.Stacks.Stack`)
+  # gives the `ref` a run reads the base at (`version_ref/3`); a row with no version is
+  # read at its document's `ref`. `chosen_for/4` reads the choice for a run, and
   # `Apiary.Stacks.Sources.choose/3` and `Apiary.Stacks.Sources.choose_target/3` save one.
   #
   # ## Writes
@@ -44,8 +45,11 @@ defmodule Apiary.Stacks do
   # nil at a place with a workflow. `workflow`: a lower-case letter, then up to 63
   # lower-case letters, digits and hyphens. `access`: `:read` or `:write` at a place with
   # a workflow, nil at any place. `choice`: `:qory` or `:repository` at a place with no
-  # workflow and with a document, nil at any place. Each refusal is a changeset error on
-  # its field.
+  # workflow and with a document, nil at any place. `version_kind`: only with a choice,
+  # `:latest` and `:named` under `:qory`, `:branch`, `:tag` and `:commit` under
+  # `:repository`, `:workspace` only at a target; `version_name` with `:named`,
+  # `:branch`, `:tag` and `:commit` alone. Each refusal is a changeset error on its
+  # field.
   #
   # ## Locks
   #
@@ -59,6 +63,8 @@ defmodule Apiary.Stacks do
 
   alias Apiary.{Edition, Repo}
   alias Apiary.Accounts.Scope
+  alias Apiary.Harnesses.Reader
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.Runs.Target
   alias Apiary.Stacks.{Document, Resolution, Stack}
@@ -192,21 +198,21 @@ defmodule Apiary.Stacks do
   # chosen_for/4 is the harness choice an explore run of `workflow` of `workspace` of
   # `organisation` at `target`, a `%{system, path}` or nil for none, takes, in this order:
   #
-  #   * the stack chosen for the target, `:qory` or `:repository`: `{:chosen, resolution}`;
+  #   * the stack chosen for the target: `{:chosen, resolution}`;
   #   * the workspace's choice, else the organisation's shared one: `{:chosen,
-  #     resolution}` for `:repository`, `{:qory, resolution}` for `:qory`;
+  #     resolution}`;
   #   * `:none`.
   #
   # The resolution is the one row's document at its level, its owner and whether the run
-  # hides it, as `Apiary.Stacks.Resolution` reads a row. The walk reads the target's
-  # harness file before the document of `{:qory, resolution}`, and before the Qory
-  # harness for `:none`. Read without a lock.
+  # hides it, as `Apiary.Stacks.Resolution` reads a row, with the `ref` of the row's
+  # version (`version_ref/3`), nil for a row with no version. The walk reads the target's
+  # harness file before any of them (`Apiary.Harnesses.Walk`). Read without a lock.
   @spec chosen_for(
           Organisation.t(),
           Workspace.t(),
           %{system: String.t(), path: String.t()} | nil,
           String.t()
-        ) :: {:chosen, Resolution.t()} | {:qory, Resolution.t()} | :none
+        ) :: {:chosen, Resolution.t()} | :none
   def chosen_for(%Organisation{} = organisation, %Workspace{} = workspace, target, workflow)
       when is_binary(workflow) do
     target_row = target_row(workspace, target)
@@ -217,15 +223,15 @@ defmodule Apiary.Stacks do
         {:chosen, resolved(organisation, workspace, target_row.id, workflow, by_target)}
 
       row = choice(workspace) || shared(organisation) ->
-        kind = if row.choice == :qory, do: :qory, else: :chosen
-        {kind, resolved(organisation, workspace, nil, workflow, row)}
+        {:chosen, resolved(organisation, workspace, nil, workflow, row)}
 
       true ->
         :none
     end
   end
 
-  # The resolution of the one choice row `row` for a run (`Apiary.Stacks.Resolution`).
+  # The resolution of the one choice row `row` for a run (`Apiary.Stacks.Resolution`),
+  # with the `ref` of its version.
   defp resolved(organisation, workspace, target_id, workflow, %Stack{} = row) do
     {:ok, resolution} =
       Resolution.resolve(%{
@@ -237,7 +243,82 @@ defmodule Apiary.Stacks do
         operated: Edition.operated?(organisation)
       })
 
-    resolution
+    ref = if row.version_kind, do: version_ref(row, workspace, organisation)
+    %{resolution | ref: ref}
+  end
+
+  @doc false
+  # workspace_harness/2 is the row of the harness of `workspace`: its choice, else the
+  # harness `organisation` shares; nil for none, where its runs take the Qory harness at
+  # the newest version the release ships. Read without a lock.
+  @spec workspace_harness(Workspace.t(), Organisation.t()) :: Stack.t() | nil
+  def workspace_harness(%Workspace{} = workspace, %Organisation{} = organisation),
+    do: choice(workspace) || shared(organisation)
+
+  @doc false
+  # version_ref/3 is the `ref` a run reads the base of `row`'s document at, by the row's
+  # version (`Apiary.Stacks.Stack`), for a run of `workspace` of `organisation`:
+  #
+  #   * no version: the document's `ref`, nil for a document with no base or no `ref`;
+  #   * `:latest`: the full commit id of the newest version of the Qory harness the
+  #     release ships (`Apiary.Lingo.Domain.Definition.qory_commit/1`);
+  #   * `:named`: the full commit id of that name, `{:missing, name}` for a name the
+  #     release does not ship;
+  #   * `:branch`, `:tag` and `:commit`: the name, or the full commit id;
+  #   * `:workspace`: the `ref` of the workspace's harness (`workspace_harness/2`), that
+  #     of the Qory harness at `:latest` for none. A row whose choice and address differ
+  #     from those of the workspace's harness reads its document's `ref`: a save that
+  #     wrote it while the workspace changed harness wrote the old harness.
+  #
+  # Read without a lock.
+  @spec version_ref(Stack.t(), Workspace.t(), Organisation.t()) ::
+          String.t() | {:missing, String.t()} | nil
+  def version_ref(%Stack{version_kind: kind, harness: harness}, _workspace, _organisation)
+      when kind == nil,
+      do: document_ref(harness)
+
+  def version_ref(%Stack{version_kind: :latest}, _workspace, _organisation),
+    do: Definition.qory_commit(:latest)
+
+  def version_ref(%Stack{version_kind: :named, version_name: name}, _workspace, _organisation),
+    do: Definition.qory_commit(name) || {:missing, name}
+
+  def version_ref(%Stack{version_kind: kind, version_name: name}, _workspace, _organisation)
+      when kind in [:branch, :tag, :commit],
+      do: name
+
+  def version_ref(%Stack{version_kind: :workspace} = row, workspace, organisation) do
+    harness = workspace_harness(workspace, organisation)
+
+    if harness_repository(row) == harness_repository(harness) do
+      case harness do
+        # A workspace's or an organisation's row has no `:workspace` version.
+        %Stack{version_kind: :workspace} -> nil
+        %Stack{} -> version_ref(harness, workspace, organisation)
+        nil -> Definition.qory_commit(:latest)
+      end
+    else
+      document_ref(row.harness)
+    end
+  end
+
+  # The choice and the address of the harness a row's document extends, the Qory
+  # harness for no row.
+  defp harness_repository(nil), do: {:qory, Definition.qory_harness().git}
+
+  defp harness_repository(%Stack{choice: choice, harness: harness}) do
+    case is_binary(harness) && Reader.document(harness) do
+      {:ok, %{"extends" => %{"git" => git}}} -> {choice, git}
+      _none -> {choice, nil}
+    end
+  end
+
+  # The `ref` of the base the document `harness` extends, nil for none.
+  defp document_ref(harness) do
+    case is_binary(harness) && Reader.document(harness) do
+      {:ok, %{"extends" => %{"ref" => ref}}} when is_binary(ref) -> ref
+      _none -> nil
+    end
   end
 
   # The target row of the workspace at `system` and `path`, nil for none.
@@ -262,7 +343,9 @@ defmodule Apiary.Stacks do
   # `choice`, the harness choice at a place with no workflow (the moduledoc), nil for
   # none (the default), so a write there without one removes the choice. `{:ok, stack}`;
   # `{:error, :forbidden}` when the edition gives none; or `{:error, changeset}` with the
-  # reason on its field. It checks no access (the moduledoc).
+  # reason on its field. `version`, `{kind, name}`, is the version of a choice
+  # (`Apiary.Stacks.Stack`), nil for none (the default). It checks no access (the
+  # moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do
@@ -274,11 +357,15 @@ defmodule Apiary.Stacks do
         Repo.transact(fn ->
           current = lock_row(columns)
 
+          {kind, name} = Keyword.get(opts, :version) || {nil, nil}
+
           changes =
             Map.merge(columns, %{
               harness: harness,
               access: Keyword.get(opts, :access),
               choice: Keyword.get(opts, :choice),
+              version_kind: kind,
+              version_name: name,
               owner_organisation_id: owner,
               updated_by_id: user_id
             })
@@ -373,12 +460,22 @@ defmodule Apiary.Stacks do
 
   # The changes, checked against the rules of the moduledoc.
   defp changeset(%Stack{} = row, changes) do
+    fields = [
+      :harness,
+      :workflow,
+      :access,
+      :choice,
+      :version_kind,
+      :version_name
+    ]
+
     row
-    |> change(Map.drop(changes, [:harness, :workflow, :access, :choice]))
-    |> cast(changes, [:harness, :workflow, :access, :choice])
+    |> change(Map.drop(changes, fields))
+    |> cast(changes, fields)
     |> validate_harness_or_workflow()
     |> validate_access()
     |> validate_choice()
+    |> validate_version()
     |> validate_change(:harness, fn :harness, value ->
       for error <- Document.errors(value), do: {:harness, error}
     end)
@@ -387,6 +484,7 @@ defmodule Apiary.Stacks do
     |> check_constraint(:harness, name: :stacks_harness_size, message: "is too long")
     |> check_constraint(:access, name: :stacks_access_check, message: @access_without_workflow)
     |> check_constraint(:choice, name: :stacks_choice_check, message: "is invalid")
+    |> check_constraint(:version_kind, name: :stacks_version_check, message: "is invalid")
     |> unique_constraint(:harness, name: :stacks_place_index)
   end
 
@@ -416,6 +514,30 @@ defmodule Apiary.Stacks do
         changeset
     end
   end
+
+  # A version only with a choice, each kind under its choice and with its name (the
+  # moduledoc).
+  defp validate_version(changeset) do
+    kind = get_field(changeset, :version_kind)
+    choice = get_field(changeset, :choice)
+    named? = is_binary(get_field(changeset, :version_name))
+
+    valid? =
+      case kind do
+        nil -> not named?
+        :latest -> choice == :qory and not named?
+        :named -> choice == :qory and named?
+        kind when kind in [:branch, :tag, :commit] -> choice == :repository and named?
+        :workspace -> workspace_version?(changeset, choice, named?)
+      end
+
+    if valid? or Keyword.has_key?(changeset.errors, :version_kind),
+      do: changeset,
+      else: add_error(changeset, :version_kind, "is invalid")
+  end
+
+  defp workspace_version?(changeset, choice, named?),
+    do: choice != nil and get_field(changeset, :target_id) != nil and not named?
 
   # An access level only at a place with a workflow.
   defp validate_access(changeset) do

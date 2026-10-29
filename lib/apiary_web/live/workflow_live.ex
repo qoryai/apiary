@@ -62,8 +62,6 @@ defmodule ApiaryWeb.WorkflowLive do
         harness_file: Domain.harness_file?(scope.workspace),
         linked: nil,
         unread: 0,
-        left_out: 0,
-        listing_limited: nil,
         assigned: Sources.assigned(scope),
         current: Sources.current(scope.workspace),
         choice: "",
@@ -87,7 +85,7 @@ defmodule ApiaryWeb.WorkflowLive do
         do:
           socket
           |> cancel_async(:linked)
-          |> start_async(:linked, fn -> Sources.linked(scope) end)
+          |> start_async(:linked, fn -> Sources.repositories(scope) end)
           |> preselect_assigned(),
         else: socket
 
@@ -372,21 +370,14 @@ defmodule ApiaryWeb.WorkflowLive do
   end
 
   @impl true
-  def handle_async(:linked, {:ok, {:ok, listing}}, socket) do
-    %{sources: linked, unread: unread, left_out: left_out} = listing
-
+  def handle_async(:linked, {:ok, linked}, socket) when is_list(linked) do
     {:noreply,
      socket
-     |> assign(linked: linked, unread: unread, left_out: left_out)
+     |> assign(linked: linked, unread: 0)
      |> preselect_linked()
      |> assign_form()
      |> harness_listed()}
   end
-
-  def handle_async(:linked, {:ok, {:error, {:limited, seconds}}}, socket),
-    do:
-      {:noreply,
-       socket |> assign(linked: [], listing_limited: seconds) |> assign_form() |> harness_listed()}
 
   def handle_async(:linked, {:exit, _reason}, socket),
     do:
@@ -650,10 +641,8 @@ defmodule ApiaryWeb.WorkflowLive do
     """
   end
 
-  # Whether the listing read every linked repository: no limit, no read that failed, and
-  # none past the most a listing reads.
-  defp complete?(%{linked: linked, listing_limited: nil, unread: 0, left_out: 0}),
-    do: is_list(linked)
+  # Whether the connected repositories are listed (`Apiary.Stacks.Sources.repositories/1`).
+  defp complete?(%{linked: linked, unread: 0}), do: is_list(linked)
 
   defp complete?(_assigns), do: false
 
@@ -673,35 +662,8 @@ defmodule ApiaryWeb.WorkflowLive do
 
   defp no_workflow?(stacks), do: Enum.all?(stacks, &(&1.workflows == []))
 
-  # The hint under Source: a listing past the person's limit, else the linked
-  # repositories not read and those past the most a listing reads.
-  defp listing_words(%{listing_limited: seconds}) when is_integer(seconds),
-    do:
-      pngettext(
-        "plain",
-        "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them.",
-        "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them.",
-        seconds
-      )
-
-  defp listing_words(%{unread: unread, left_out: left_out}) do
-    case Enum.reject([unread_words(unread), left_out_words(left_out)], &is_nil/1) do
-      [] -> nil
-      words -> Enum.join(words, " ")
-    end
-  end
-
-  defp left_out_words(0), do: nil
-
-  defp left_out_words(count),
-    do:
-      pngettext(
-        "plain",
-        "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more is linked.",
-        "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more are linked.",
-        count,
-        limit: Sources.limit(:listed)
-      )
+  # The hint under Source: the line for a list of the connected repositories that failed.
+  defp listing_words(%{unread: unread}), do: unread_words(unread)
 
   defp unread_words(0), do: nil
 
@@ -710,15 +672,6 @@ defmodule ApiaryWeb.WorkflowLive do
       pgettext(
         "plain",
         "Qory Apiary could not read the linked repositories. Reload the page to try again."
-      )
-
-  defp unread_words(count),
-    do:
-      pngettext(
-        "plain",
-        "Qory Apiary could not read %{count} linked repository, so the list leaves it out. Reload the page to try again.",
-        "Qory Apiary could not read %{count} linked repositories, so the list leaves them out. Reload the page to try again.",
-        count
       )
 
   defp read_words(:not_covered, source, organisation),

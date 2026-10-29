@@ -180,7 +180,7 @@ defmodule ApiaryWeb.HarnessComponents do
         type="text"
         label={gettext("Harness version")}
         hint={
-          @source &&
+          @source && @source.location &&
             gettext("Read through the %{adapter} connection of %{organisation}.",
               organisation: @organisation,
               adapter: Adapters.title(@source.location.adapter)

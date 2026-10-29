@@ -4413,14 +4413,6 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more is linked."
-msgid_plural "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more are linked."
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB."
@@ -12521,14 +12513,6 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Qory Apiary could not read %{count} linked repository, so the list leaves it out. Reload the page to try again."
-msgid_plural "Qory Apiary could not read %{count} linked repositories, so the list leaves them out. Reload the page to try again."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
 msgid "Qory Apiary could not read the linked repositories. Reload the page to try again."
 msgstr ""
 
@@ -17620,14 +17604,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Views"
 msgstr ""
-
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them."
-msgid_plural "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them."
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex

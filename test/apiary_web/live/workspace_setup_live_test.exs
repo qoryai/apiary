@@ -1210,6 +1210,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       adapter
     end
 
+    # The linked repository of `linked_harness!/2` ends, so the organisation has no
+    # connected repository the list shows.
+    defp end_harness_collection! do
+      {1, _} =
+        Repo.update_all(from(c in Collection, where: c.url == @harness_git),
+          set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
+        )
+    end
+
     defp serve_harness(adapter, files) do
       Apiary.HarnessReadsFixtures.serve_calls([adapter],
         covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
@@ -1435,7 +1444,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {1, _} =
         Repo.update_all(from(s in Apiary.Stacks.Stack, where: s.id == ^row.id),
-          set: [harness: harness]
+          set: [harness: harness, version_kind: nil]
         )
 
       {second, ~p"/#{ctx.organisation}/set-up?step=harness&workspace=#{second}"}
@@ -1851,9 +1860,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#harness-source-none")
       assert has_element?(lv, "#harness-ref[value=main]")
 
-      assert words(lv, "#harness-ref-hint") ==
-               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
-                 "#{ctx.organisation.name}."
+      # The list is built with no read, so no connection is named under the field.
+      refute has_element?(lv, "#harness-ref-hint")
 
       # The root has no stack: the walk's reason, and nothing saved.
       lv |> form("#set-up-harness-form") |> render_submit()
@@ -1881,9 +1889,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
     end
 
-    test "with no linked repository that has a stack, a line takes the place of Source, and Continue stays off",
+    test "with no connected repository, a line takes the place of Source, and Continue stays off",
          ctx do
       linked_harness!(ctx, %{})
+      end_harness_collection!()
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_async(lv, 2_000)
 
@@ -1901,9 +1910,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
     end
 
-    test "with no linked repository that has a stack, a destination's Source shows the line, and an address still reads",
+    test "with no connected repository, a destination's Source shows the line, and an address still reads",
          ctx do
       adapter = linked_harness!(ctx, %{})
+      end_harness_collection!()
       destination = destination!(ctx)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_async(lv, 2_000)
