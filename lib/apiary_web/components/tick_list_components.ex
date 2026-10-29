@@ -1,11 +1,8 @@
 defmodule ApiaryWeb.TickListComponents do
-  # The tick lists of a workspace, Work sources and Destinations, as the set-up's steps
-  # (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Work sources and
-  # › Destinations (`ApiaryWeb.CollectionsLive`) show them: `load/4` reads a list and who
-  # may act on it, `tick_list/1` renders it, and `put_tick_flash/3` puts the flash of a
-  # tick (`Apiary.WorkspaceSetup.tick/5`) that changed nothing. The set-up's steps render
-  # each adapter's rows (`rows/1`) under that adapter's Connect, and the lines under the
-  # list (`notes/1`).
+  # The tick lists of a workspace, Work sources and Destinations, which no page shows:
+  # `load/4` reads a list and who may act on it, `tick_list/1` renders it, `rows/1` one
+  # adapter's rows and `notes/1` the lines under the list, and `put_tick_flash/3` puts
+  # the flash of a tick (`Apiary.WorkspaceSetup.tick/5`) that changed nothing.
   #
   # The list's collections are grouped by adapter (`Apiary.WorkspaceSetup.collections/3`),
   # each with a checkbox, ticked as `Apiary.WorkspaceSetup.ticked?/3` counts it. For a

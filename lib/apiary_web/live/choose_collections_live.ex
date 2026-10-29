@@ -371,7 +371,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # The grant's card and its rule read again, the choice and the selection kept, and the
-  # rows; a grant gone meanwhile returns to the step.
+  # rows; a grant gone meanwhile returns to where Back leads.
   defp reload(socket) do
     %{current_scope: scope, domain: domain, list: list, card: card} = socket.assigns
 

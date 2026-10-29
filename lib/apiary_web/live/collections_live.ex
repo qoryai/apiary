@@ -15,7 +15,8 @@ defmodule ApiaryWeb.CollectionsLive do
   # each Connecting… while its connection is pending, with Connect, the Install of
   # Organisation settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`),
   # whose return leads to the set-up's step of the workspace
-  # (`ApiaryWeb.ConnectSession.back?/1`); it is open while the page has no card.
+  # (`ApiaryWeb.ConnectSession.back?/1`); it is open while the page has no card and no
+  # connected adapter.
   #
   # Every member reads them (`adapter.read`, which the cards need); a person whom
   # `adapter.connect` does not allow sees the adapters with no Connect, and who may
