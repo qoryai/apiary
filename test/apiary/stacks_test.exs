@@ -946,7 +946,22 @@ defmodule Apiary.StacksTest do
 
       assert {:chosen, %Resolution{level: :target, ref: "v2"}} = chosen.()
 
+      # The workspace takes the Qory harness, and the row is of another repository: the
+      # row's document's ref.
       {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
+      assert {:chosen, %Resolution{level: :target, ref: "main"}} = chosen.()
+
+      # A row of the Qory harness that follows the workspace's: the newest version.
+      qory =
+        "extends:\n  git: \"https://github.com/qoryai/harness\"\n" <>
+          "  ref: \"#{String.duplicate("0a", 20)}\"\n  stack: \"core\"\n"
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, ctx.target}, qory,
+          choice: :qory,
+          version: {:workspace, nil}
+        )
+
       assert {:chosen, %Resolution{level: :target, ref: ^latest}} = chosen.()
 
       {:ok, _stack} =

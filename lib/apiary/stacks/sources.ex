@@ -82,9 +82,8 @@ defmodule Apiary.Stacks.Sources do
   # walk that failed is the refusal, a name the read does not find among them. The row
   # stores the stack and the version as the person gave it: a branch by its name, whose
   # newest commit each run reads, a tag by its name, and a commit by its full id. A
-  # choice in the form the pages send at `next` 97e4ef8e, a harness repository's root or
-  # a stack of a source with a branch or tag, is saved as then: pinned at the commit the
-  # walk read, with no version. A stack of an assigned source keeps the assignment's
+  # choice with no version, a harness repository's root or a stack of a source with a
+  # branch or tag, is saved pinned at the commit the walk read. A stack of an assigned source keeps the assignment's
   # `ref`, the only one the assignment covers, and is read the same way.
   #
   # A target's stack of the workspace's harness (`{:workspace, stack}`) stores the
@@ -684,10 +683,9 @@ defmodule Apiary.Stacks.Sources do
   @typedoc """
   A harness choice to save: the Qory harness at the newest version the release ships
   (`:qory` or `{:qory, :latest}`) or at a named version (`{:qory, name}`); a stack of a
-  harness repository at a version (`{:repository, source, stack, version}`); or, in the
-  form the pages send at `next` 97e4ef8e, a harness repository's root at a branch or
-  tag, pinned at the commit the walk read, with no version (`{:repository, source,
-  ref}`).
+  harness repository at a version (`{:repository, source, stack, version}`); or a
+  harness repository's root at a branch or tag, pinned at the commit the walk read, with
+  no version (`{:repository, source, ref}`).
   """
   @type choice ::
           :qory
@@ -912,7 +910,7 @@ defmodule Apiary.Stacks.Sources do
 
         case Stacks.shared(organisation) do
           %Stack{} = stack ->
-            keep_followed(workspace, Stacks.choice(workspace), stack)
+            keep_followed(workspace, Stacks.choice(workspace) || stack, stack)
             delete_choice(workspace)
             {:ok, stack}
 
@@ -936,15 +934,16 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # Where the workspace's harness moves from the row `before` to the row `now`, nil for
-  # the Qory harness at `:latest`, and its repository changes: each target row of
-  # `workspace` with the version `:workspace` keeps its repository and stack and stores
-  # the version it followed, that of `before`. A row whose choice differs from that of
-  # `before` stores the `ref` it followed with no version, read as written.
+  # the Qory harness at `:latest`, and its repository changes, each target row of
+  # `workspace` with the version `:workspace`, by its choice and address:
+  #
+  #   * those of `before`: keeps its repository and stack and stores the version it
+  #     followed, that of `before`, its document at the `ref` of `before`;
+  #   * those of `now`: is left as it is, and follows `now`;
+  #   * any other, a row a save wrote while the workspace changed harness: stores no
+  #     version, its document as written.
   defp keep_followed(%Workspace{} = workspace, before, now) do
     if harness_repository(before) != harness_repository(now) do
-      {kind, name} = followed(before)
-      ref = pin(before || %Stack{version_kind: :latest}, nil, nil)
-
       Repo.all(
         from s in Stack,
           where: s.organisation_id == ^workspace.organisation_id,
@@ -952,23 +951,33 @@ defmodule Apiary.Stacks.Sources do
           where: is_nil(s.workflow) and s.version_kind == :workspace,
           lock: "FOR UPDATE"
       )
-      |> Enum.each(fn %Stack{} = row ->
-        {kind, name} = if row.choice == choice_of(before), do: {kind, name}, else: {nil, nil}
-
-        harness = row.harness |> extended() |> Map.put("ref", ref) |> document()
-
-        row
-        |> Ecto.Changeset.change(
-          harness: harness,
-          version_kind: kind,
-          version_name: name
-        )
-        |> Ecto.Changeset.check_constraint(:version_kind, name: :stacks_version_check)
-        |> Repo.update!()
-      end)
+      |> Enum.each(&keep_followed(&1, before, now, harness_repository(&1)))
     end
 
     :ok
+  end
+
+  defp keep_followed(%Stack{} = row, before, now, repository) do
+    cond do
+      repository == harness_repository(before) ->
+        {kind, name} = followed(before)
+        ref = pin(before || %Stack{version_kind: :latest}, nil, nil)
+        harness = row.harness |> extended() |> Map.put("ref", ref) |> document()
+        update_followed!(row, harness: harness, version_kind: kind, version_name: name)
+
+      repository == harness_repository(now) ->
+        :ok
+
+      true ->
+        update_followed!(row, version_kind: nil, version_name: nil)
+    end
+  end
+
+  defp update_followed!(%Stack{} = row, changes) do
+    row
+    |> Ecto.Changeset.change(changes)
+    |> Ecto.Changeset.check_constraint(:version_kind, name: :stacks_version_check)
+    |> Repo.update!()
   end
 
   # The choice and the address of a workspace's harness row, the Qory harness for none.
@@ -1053,9 +1062,10 @@ defmodule Apiary.Stacks.Sources do
       (the moduledoc);
     * `:qory` or `{:qory, :latest | name}`, and `{:repository, source, stack, version}`:
       as for `t:choice/0`;
-    * `{:stack, source, stack, ref}`, in the form the Harness step sends at `next`
-      97e4ef8e: a stack of `read/2` of a source of `repositories/1`, `assigned/1` or
-      `address/1`, with a branch or tag, saved as then.
+    * `{:stack, source, stack, ref}`: a stack of `read/2` of a source of
+      `repositories/1`, `assigned/1` or `address/1`, with a branch or tag, saved with no
+      version: a stack of an assigned source at the assignment's `ref`, any other pinned
+      at the commit the walk read.
   """
   @type target_choice ::
           :default
