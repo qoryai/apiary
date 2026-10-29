@@ -1895,7 +1895,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
       pick_repository(lv)
 
-      assert words(lv, "#harness-stack-none") == "acme/harness exports no stack."
+      assert words(lv, "#harness-stack-none") ==
+               "acme/harness exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
+
       refute has_element?(lv, "#harness-stack")
       assert has_element?(lv, "#set-up-continue[disabled]")
 
@@ -2028,6 +2031,71 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "through a linked repository or an assignment."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    test "a repository its adapter cannot be reached for: try again, with the adapter's name",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      serve_harness(adapter, @one_export, down: true)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Try again, or choose another source. Qory Apiary could not reach " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness."
+
+      refute render(lv) =~ "Reload the page to read"
+      assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    test "a repository whose harness.yaml is not valid: correct the file", ctx do
+      linked_harness!(ctx, %{{"R_harness", "harness.yaml"} => "exports: [triage\n"})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Correct harness.yaml in acme/harness, or choose another source: is not valid YAML."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    # A read task that raises reports `{:exit, reason}` to the page, which shows
+    # `:exited`'s words. A stub cannot make the read task raise: each call runs in a task
+    # under `Apiary.Adapters.Calls.Supervisor`, and a raise there is an unreachable adapter.
+    test "a read whose task exits: try again" do
+      assert ApiaryWeb.HarnessComponents.read_words(:exited, %{label: "acme/harness"}, "Acme") ==
+               "Try again, or choose another source. Qory Apiary could not read acme/harness."
+    end
+
+    test "a save whose walk cannot reach the adapter or reads a file that is not valid: the cause, and nothing saved",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      serve_harness(adapter, @one_export, down: true)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Try again, or choose another source. Qory Apiary could not reach " <>
+                 "#{adapter.adapter.name} to read acme/harness."
+
+      files =
+        Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
+
+      serve_harness(adapter, files)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct qory-stack.yaml in acme/harness, or choose another source: is not " <>
+                 "valid YAML."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
     test "with no connected repository, Repository has none to choose, a line under it shows how to get one, and Continue stays off",
@@ -2216,6 +2284,72 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       lv |> element("#harness-target-cancel") |> render_click()
       refute has_element?(lv, "#harness-target-form")
       assert row_chosen(lv, destination) == "triage · acme/harness · v2"
+    end
+
+    # A destination's form with acme/harness chosen, its stub serving `files` with `opts`.
+    defp row_read(ctx, files, opts \\ []) do
+      adapter = linked_harness!(ctx, files)
+      serve_harness(adapter, files, opts)
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+      lv |> form("#harness-target-form", target_stack: %{source: linked_id()}) |> render_change()
+      render_async(lv, 2_000)
+      {lv, adapter}
+    end
+
+    test "A stack of another repository…: a connected repository that exports no stack", ctx do
+      {lv, _adapter} = row_read(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+
+      assert words(lv, "#target_stack_stack-none") ==
+               "acme/harness exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
+
+      assert has_element?(lv, "#harness-target-save[disabled]")
+    end
+
+    test "A stack of another repository…: a connected repository its adapter cannot be reached for",
+         ctx do
+      {lv, adapter} = row_read(ctx, @one_export, down: true)
+
+      assert words(lv, "#target_stack_stack-error") ==
+               "Try again, or choose another source. Qory Apiary could not reach " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness."
+
+      assert has_element?(lv, "#harness-target-save[disabled]")
+    end
+
+    test "A stack of another repository…: a connected repository with both root harness files",
+         ctx do
+      files = Map.put(@one_export, {"R_harness", "qory.yaml"}, "exports:\n  stacks: [triage]\n")
+      {lv, _adapter} = row_read(ctx, files)
+
+      assert words(lv, "#target_stack_stack-error") ==
+               "Correct harness.yaml in acme/harness, or choose another source: it has both " <>
+                 "harness.yaml and qory.yaml: keep one."
+
+      assert has_element?(lv, "#harness-target-save[disabled]")
+    end
+
+    test "A stack of another repository…: a public address with no stack", ctx do
+      linked_harness!(ctx, %{})
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+
+      lv |> form("#harness-target-form", target_stack: %{source: "address"}) |> render_change()
+
+      lv
+      |> form("#harness-target-form", target_stack: %{address: @harness_git})
+      |> render_change()
+
+      render_async(lv, 2_000)
+
+      assert words(lv, "#harness-target-read-error") ==
+               "#{@harness_git} exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
     end
 
     test "A stack of another repository…: an assigned source's stack, at the assignment's ref",
