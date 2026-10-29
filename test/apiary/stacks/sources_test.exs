@@ -518,6 +518,45 @@ defmodule Apiary.Stacks.SourcesTest do
       assert Sources.choose(member, :qory, shared: true) == {:error, :forbidden}
       assert Stacks.shared(ctx.scope.organisation) == nil
     end
+
+    test "shared/1 is the organisation's shared harness, as a reusing workspace shows it; nil for none",
+         ctx do
+      assert Sources.shared(ctx.scope.organisation) == nil
+      {:ok, _shared} = Sources.choose(ctx.scope, :qory, shared: true)
+      {:ok, _choice} = Sources.choose(ctx.scope, :qory)
+
+      assert %{choice: :qory, saved: true, shared: true} =
+               Sources.shared(ctx.scope.organisation)
+    end
+
+    test "reuse_shared/1 removes the workspace's choice, so the workspace takes the shared one",
+         ctx do
+      other = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
+      {:ok, shared} = Sources.choose(ctx.scope, :qory, shared: true)
+      {:ok, _choice} = Sources.choose(other, :qory)
+
+      assert {:ok, %Stack{id: id}} = Sources.reuse_shared(other)
+      assert id == shared.id
+      assert Stacks.choice(other.workspace) == nil
+      assert %{shared: true} = Sources.chosen(other.workspace)
+
+      # A workspace with no choice reuses the shared one already.
+      assert {:ok, %Stack{id: ^id}} = Sources.reuse_shared(other)
+    end
+
+    test "reuse_shared/1 removes nothing while the organisation shares none, or for a member",
+         ctx do
+      {:ok, choice} = Sources.choose(ctx.scope, :qory)
+      assert Sources.reuse_shared(ctx.scope) == {:error, :not_shared}
+      assert Stacks.choice(ctx.scope.workspace).id == choice.id
+
+      other = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
+      {:ok, _shared} = Sources.choose(other, :qory, shared: true)
+
+      %{scope: member} = member_fixture(ctx.scope)
+      assert Sources.reuse_shared(member) == {:error, :forbidden}
+      assert Stacks.choice(ctx.scope.workspace).id == choice.id
+    end
   end
 
   describe "a target's stack" do
