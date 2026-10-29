@@ -3533,6 +3533,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#flash-error")
   end
 
+  test "a second pool added elsewhere while the removal is open: Remove pool deletes nothing, and no removal is offered",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+    choose_shared(lv)
+    assert has_element?(lv, "#set-up-pool-remove")
+
+    {:ok, second} = Apiary.Nodes.create_node(ctx.scope, %{kind: "pool", name: "second pool"})
+
+    lv |> element("#set-up-pool-remove-button") |> render_click()
+    refute deleted?(pool)
+    refute deleted?(second)
+    refute has_element?(lv, "#set-up-pool-remove")
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert has_element?(lv, "#set-up-pool-#{pool.public_id}")
+    assert has_element?(lv, "#set-up-pool-#{second.public_id}")
+  end
+
   test "a person who may not delete nodes gets no removal: the pool shows as before", ctx do
     pool = pool_fixture(ctx.scope)
     id = "#set-up-pool-#{pool.public_id}"

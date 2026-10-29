@@ -1572,42 +1572,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # Remove pool: the workspace's pool is deleted (`Apiary.Nodes.delete_node/2`), which
   # revokes its keys and cancels its outstanding codes, and the instance's pool serves
   # the workspace again, shown chosen. Only while the confirmation of that pool is open.
+  # The step reads again first: where the pool is no longer the one it offers to remove,
+  # as after a second pool was added elsewhere, nothing is deleted, and the step shows as
+  # read again.
   def handle_event(
         "remove_pool",
         _params,
-        %{assigns: %{step: :machines, pool_removable: %{id: id} = pool, pool_removing: id}} =
-          socket
+        %{assigns: %{step: :machines, pool_removable: %{id: id}, pool_removing: id}} = socket
       ) do
-    scope = socket.assigns.current_scope
+    case reload(socket) do
+      %{assigns: %{pool_removable: %{id: ^id} = pool, pool_removing: ^id}} = socket ->
+        remove_pool(socket, pool)
 
-    case Apiary.Nodes.delete_node(scope, pool) do
-      {:ok, _deleted} ->
-        {:noreply,
-         socket
-         |> assign(pool_choice: "shared", pool_taken: nil, pool_removing: nil, pool_issued: nil)
-         |> reload()}
-
-      {:error, %Ecto.Changeset{}} ->
-        {:noreply,
-         socket |> put_flash(:error, gettext("Nothing was changed. Try again.")) |> reload()}
-
-      {:error, :forbidden} ->
-        {:noreply,
-         socket
-         |> assign(pool_removing: nil)
-         |> put_flash(
-           :error,
-           ApiaryWeb.Access.who_may(
-             scope,
-             :"node.delete",
-             gettext("Only owners and admins delete nodes.")
-           )
-         )
-         |> reload()}
-
-      # Deleted already, or out of reach: the step as it is now.
-      {:error, _reason} ->
-        {:noreply, socket |> assign(pool_removing: nil) |> reload()}
+      socket ->
+        {:noreply, socket}
     end
   end
 
@@ -1687,6 +1665,41 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # The deletion of `pool`, the one the step offers to remove, as read again.
+  defp remove_pool(socket, pool) do
+    scope = socket.assigns.current_scope
+
+    case Apiary.Nodes.delete_node(scope, pool) do
+      {:ok, _deleted} ->
+        {:noreply,
+         socket
+         |> assign(pool_choice: "shared", pool_taken: nil, pool_removing: nil, pool_issued: nil)
+         |> reload()}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply,
+         socket |> put_flash(:error, gettext("Nothing was changed. Try again.")) |> reload()}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         socket
+         |> assign(pool_removing: nil)
+         |> put_flash(
+           :error,
+           ApiaryWeb.Access.who_may(
+             scope,
+             :"node.delete",
+             gettext("Only owners and admins delete nodes.")
+           )
+         )
+         |> reload()}
+
+      # Deleted already, or out of reach: the step as it is now.
+      {:error, _reason} ->
+        {:noreply, socket |> assign(pool_removing: nil) |> reload()}
+    end
+  end
 
   defp save_model(socket, scope, source, params) do
     case model_provider(source, scope, socket.assigns.flow, params) do
