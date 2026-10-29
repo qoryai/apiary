@@ -2213,6 +2213,11 @@ msgstr ""
 msgid "%{organisation} can have one installation of %{integration}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} has no connected target. Connect a work source to pick one."
+msgstr ""
+
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work destination connected yet."
@@ -15930,7 +15935,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, link it to %{organisation}, or ask an instance admin to assign it."
+msgid "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -19480,6 +19485,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "last seen first"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "latest"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex

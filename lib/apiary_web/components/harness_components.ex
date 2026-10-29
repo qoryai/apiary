@@ -9,11 +9,11 @@ defmodule ApiaryWeb.HarnessComponents do
   # set for the target, then the workspace's harness, then the Qory harness; the Qory
   # harness's versions; the stacks a harness source exports; and the two kinds of version.
   #
-  # `choices/1` is the two choices, the fields of a form named `harness`: `choice`, `qory`
+  # `choices/1` is the two choices, the fields of the form `harness`: `choice`, `qory`
   # or `repository`. The Qory harness shows no address and no commit. Chosen, it shows
   # Version: `qory_version` `latest`, or `named` with `qory_name`, a name the release
   # lists (`Apiary.Lingo.Domain.Definition.qory_harness/0`); with no name listed, A fixed
-  # version is disabled and a line under it says when names come. A harness repository
+  # version is disabled, with the line about named versions under it. A harness repository
   # shows the connected repositories (`Apiary.Stacks.Sources.repositories/1`) under one
   # choice with a search box, `source`, with Reading… until they are listed; then the
   # stacks the chosen one exports (`exports`, read by the page with
@@ -228,6 +228,11 @@ defmodule ApiaryWeb.HarnessComponents do
         search={@linked not in [nil, []] || nil}
         disabled={@disabled or @linked in [nil, []]}
       />
+      <p :if={@linked == []} id="harness-source-none" class="text-[13px]/5 text-muted">
+        {gettext("%{organisation} has no connected target. Connect a work source to pick one.",
+          organisation: @organisation
+        )}
+      </p>
       <.exported
         id="harness-stack"
         field={@form[:stack]}
@@ -365,7 +370,8 @@ defmodule ApiaryWeb.HarnessComponents do
   @doc false
   # chosen_line/1 is a stack as a page shows it, "%{stack} · %{harness} · %{version}":
   # its stack, else the folder it narrows to, else its root's `qory-stack.yaml`; the Qory
-  # harness or its repository; and its version (`version_words/1`).
+  # harness or its repository; and its version (`version_line/1`), the Qory harness's
+  # newest as "latest".
   @spec chosen_line(map) :: String.t()
   def chosen_line(chosen) do
     narrowing = Map.get(chosen, :narrowing, %{})
@@ -373,7 +379,7 @@ defmodule ApiaryWeb.HarnessComponents do
     gettext("%{stack} · %{harness} · %{version}",
       stack: chosen[:stack] || narrowing["path"] || "qory-stack.yaml",
       harness: harness_words(chosen),
-      version: version_line(chosen)
+      version: if(chosen[:version] == :latest, do: gettext("latest"), else: version_line(chosen))
     )
   end
 

@@ -96,7 +96,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     chosen (`Apiary.Stacks.Sources.exports/2`); then Version. Continue saves the
   #     choice (`Apiary.Stacks.Sources.choose/3`) and goes on, or goes on where it is the
   #     saved one; a harness repository is read outside the page's process while Continue
-  #     shows Saving, and a read that failed says why. Where the
+  #     shows Saving, and a read that failed shows its reason. Where the
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
   #     "Available to every workspace in <organisation>", off; on, Continue saves the
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
@@ -120,10 +120,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     process; or A stack of another repository…, which opens the destination's form, a
   #     source among the groups of Workflow's Source, then a stack of it. A choice of the
   #     select saves at once (`Apiary.Stacks.Sources.choose_target/3`), outside the page's
-  #     process where the save reads a harness repository, and a refusal says why under
-  #     the destination; while it saves, every select is disabled. A person whom
+  #     process where the save reads a harness repository, and a refusal shows its reason
+  #     under the destination; while it saves, every select is disabled. A person whom
   #     `harness.save` does not allow sees the choices and the selects disabled, and who
-  #     may. About this step says what a harness is, the order of a run's harness (a
+  #     may. About this step has what a harness is, the order of a run's harness (a
   #     target's root `harness.yaml` or `qory.yaml` that sets a harness first, then the
   #     stack set for the target, then the workspace's harness, then the Qory harness), and
   #     what each version means (`ApiaryWeb.HarnessComponents.about/1`);

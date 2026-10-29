@@ -10,7 +10,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # owners and admins), and is not found for anyone else, as the section is absent from
   # their list.
   #
-  # Beside the form, About this step says what the page sets, which sources Source lists,
+  # Beside the form, About this step has what the page sets, which sources Source lists,
   # and the paragraphs on the harness of the set-up's Harness step
   # (`ApiaryWeb.HarnessComponents.about/1`): what a harness is, the order of a run's
   # harness, a target's root harness file first, and what each version means. Under the
@@ -20,8 +20,8 @@ defmodule ApiaryWeb.WorkflowLive do
   # of the set-up's Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with Save and
   # Cancel. Save stores the choice (`Apiary.Stacks.Sources.choose/3`); a harness
   # repository's exports are read outside the page's process once it is chosen, and its
-  # save reads it outside the page's process too; a read that failed says why. A line
-  # says which workflow the runs follow, where the workspace has one.
+  # save reads it outside the page's process too; a read that failed shows its reason. A
+  # line shows which workflow the runs follow, where the workspace has one.
   #
   # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/2`):
   # the organisation's connected repositories (`Apiary.Stacks.Sources.repositories/1`),
@@ -682,14 +682,11 @@ defmodule ApiaryWeb.WorkflowLive do
             )}
           </p>
           <p id="workflow-list">
-            <.rich text={
-              rich_pgettext(
-                "plain",
-                "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, link it to %{organisation}, or ask an instance admin to assign it.",
-                organisation: @organisation,
-                file: {:code, "qory-stack.yaml"}
-              )
-            } />
+            {pgettext(
+              "plain",
+              "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it.",
+              organisation: @organisation
+            )}
           </p>
           <HarnessComponents.about />
         </:context>

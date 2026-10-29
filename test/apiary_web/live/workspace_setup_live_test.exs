@@ -1527,7 +1527,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {second, ~p"/#{ctx.organisation}/set-up?step=harness&workspace=#{second}"}
     end
 
-    test "with the setting shown, a workspace's Qory harness at a pin other than the shared Qory harness's keeps both rows, its own chosen; Continue saves it at the newest version",
+    test "with the setting shown, a workspace's Qory harness at a pin other than the shared Qory harness's keeps both rows, the workspace's Qory harness chosen; Continue saves it at the newest version",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
@@ -1749,6 +1749,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                ~s|#harness-source-options input[value="#{linked_id()}"]:not([checked])|
              )
 
+      refute has_element?(lv, "#harness-source-none")
       assert harness_calls() == []
       refute has_element?(lv, "#harness-stack")
       assert has_element?(lv, "#set-up-continue[disabled]")
@@ -1900,7 +1901,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
                  "could not read refs/pull/1/head in acme/harness: write the ref " <>
                  "refs/pull/1/head as HEAD, a branch or tag name, refs/heads/<name>, " <>
                  "refs/tags/<name> or a full commit id: people without write access can " <>
@@ -1911,7 +1912,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
                  "could not read v 9 in acme/harness: the ref v 9 is not a version: 1 to 255 " <>
                  "letters, digits, dots, underscores, slashes and hyphens."
 
@@ -1924,7 +1925,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
                  "could not read v9 in acme/harness: its ref is no version of its source."
 
       lv
@@ -1934,7 +1935,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
                  "could not read no-such in acme/harness: its ref is no version of its source."
 
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
@@ -1958,7 +1959,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
-    test "a repository whose exports cannot be read says why under Repository", ctx do
+    test "a repository whose exports cannot be read shows the reason under Repository", ctx do
       adapter = linked_harness!(ctx, %{})
       Apiary.HarnessReadsFixtures.serve_calls([adapter], covered: %{}, files: %{})
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -1973,7 +1974,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
 
-    test "with no connected repository, Repository has none to choose, and Continue stays off",
+    test "with no connected repository, Repository has none to choose, a line under it shows how to get one, and Continue stays off",
          ctx do
       linked_harness!(ctx, %{})
       end_harness_collection!()
@@ -1985,6 +1986,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "button#harness-source[disabled]")
       refute has_element?(lv, "#harness-source-options input")
       refute render(lv) =~ "No connected repository"
+
+      assert words(lv, "#harness-source-none") ==
+               "#{ctx.organisation.name} has no connected repository. Connect a work source " <>
+                 "to pick one."
+
       assert has_element?(lv, "#set-up-continue[disabled]")
 
       # The Qory harness stays a choice, and Continue saves it.
@@ -2046,7 +2052,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert row_options(lv, destination) == [
                {"Workspace's harness", "default"},
-               {"core · Qory harness · Always the latest version", "workspace:core"},
+               {"core · Qory harness · latest", "workspace:core"},
                {"A stack of another repository…", "other"}
              ]
 
@@ -2054,13 +2060,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       pick_row(lv, destination, "workspace:core")
 
-      assert row_chosen(lv, destination) == "core · Qory harness · Always the latest version"
+      assert row_chosen(lv, destination) == "core · Qory harness · latest"
 
       assert %{choice: :qory, version_kind: :workspace} =
                Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
 
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      assert row_chosen(lv, destination) == "core · Qory harness · Always the latest version"
+      assert row_chosen(lv, destination) == "core · Qory harness · latest"
 
       pick_row(lv, destination, "default")
       assert row_chosen(lv, destination) == "Workspace's harness"
@@ -2237,7 +2243,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#harness-target-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
+               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
                  "could not read refs/pull/1/head in #{@harness_git}: write the ref " <>
                  "refs/pull/1/head as HEAD, a branch or tag name, refs/heads/<name>, " <>
                  "refs/tags/<name> or a full commit id: people without write access can " <>
