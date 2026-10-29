@@ -195,15 +195,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the commit its branch or tag points to; where the read fails, the step shows why. A
   workspace with no saved choice uses the Qory harness. Owners and admins choose. The
   test run keeps its built-in harness.
-- Under the choices, **Harness** lists the workspace's repositories from **Destinations**
-  under **Repositories**, each with **Workspace default** or the stack chosen for it, such as
-  “acme/web-harness · stacks/web · pinned at 1a2b3c4”, and **Change** for owners and
-  admins. **Change** offers **Workspace default**, which removes the repository's stack,
-  the **Qory harness**, or **A harness repository**: a **Source** among the groups of
-  Workspace settings › Workflow, a **Stack** of it and a **Branch or tag**. For a harness
-  repository, **Save** reads the source and pins the commit; a refused save shows why. A stack of a source that an
-  instance admin assigned is saved at the assignment's branch or tag, such as “… at
-  main, not pinned”: runs read the commit it points to when they start.
+- Under the choices, **Harness** lists the workspace's repositories from
+  **Destinations** under **Repositories**, each with **Workspace default** or the stack
+  chosen for it, such as “acme/web-harness · stacks/web · pinned at 1a2b3c4”, and
+  **Change** for owners and admins. **Change** offers **Workspace default**, which
+  removes the repository's stack, the **Qory harness**, or **A harness repository**: a
+  **Source** among the groups of Workspace settings › Workflow, a **Stack** of it and a
+  **Branch or tag**. For a harness repository, **Save** reads the source and pins the
+  commit; a save that fails shows why. A stack of a source that an instance admin
+  assigned is saved at the assignment's branch or tag, such as “… at main, not pinned”:
+  runs read the commit it points to when they start.
 - A run's harness is the first of: the stack chosen for its repository; the
   workspace's harness choice, else the harness the organisation shares; the repository's
   harness file, `harness.yaml` or `qory.yaml`; the Qory harness. Under the Qory harness
@@ -269,7 +270,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   added for the workspace among the workspace's secrets, with the provider's name and
   “Model provider key · 1 value”, and a mask in place of each value. Owners and admins
   add, change, rename and delete a key's values there; the secret's name and note stay
-  as they are. Deleting the secret is refused while the provider uses it: “Change or add
+  as they are. Deleting the secret fails while the provider uses it, with “Change or add
   a value instead. Model provider Anthropic API key uses this secret, so it cannot be
   deleted.” The gateway receives such a key only for a run of that workspace, its
   provider cannot be the organisation's default model, and purging the workspace deletes
@@ -279,9 +280,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the organisation's, reaching every workspace, with its key a secret of the
   organisation. The **Harness** step has it too: on, **Continue** saves the choice as
   the harness the organisation shares, which each workspace with no saved choice uses.
-  While the organisation shares a harness, a second is refused: “Choose the shared
-  harness, or turn off “Available to every workspace in Acme”. Acme shares a harness
-  already.” The core shows the setting nowhere.
+  While the organisation shares a harness, sharing a second fails, with “Choose the
+  shared harness, or turn off “Available to every workspace in Acme”. Acme shares a
+  harness already.” The core shows the setting nowhere.
 - **Workspace settings › Workflow**, for owners and admins, shows the workspace's
   **Harness** with its pin, such as “Qory harness · pinned at fe3b3ab”, or the harness
   the organisation shares where the workspace has no saved choice. **Change** opens the
@@ -290,8 +291,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Under it, the page sets the workflow of the workspace's runs, from a harness
   repository: **Source** lists the repositories linked to the organisation that have a
   `qory-stack.yaml` file, and the harness sources an instance admin assigned to it;
-  **Enter an address** takes a **Public address**. **Save** sets which workflow the runs
-  follow; no run reads that source's stack as its harness. When an adapter's result
+  **Enter an address** takes a **Public address**. **Save** sets the workflow the runs
+  use; no run reads that source's stack as its harness. When an adapter's result
   marks a repository as public, a run reads it through that adapter with no link to the
   organisation and no credential.
 - The documentation at `/docs` describes the `factory` feature: its steps in the guides,
@@ -303,9 +304,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   set when it is added, and never changed after. Added from a form with no setting, it
   applies to the workspace you add it in alone. Where an edition shows the setting
   “Available to every workspace in Acme”, off, on each form that adds one, it applies with
-  the setting on to every workspace of the organisation, those added later included. An
-  edition answers whether it shows the setting through the callback `scope_setting?/1` of
-  `Apiary.Edition`; the core shows it nowhere. The **Workspaces** tab shows where it
+  the setting on to every workspace of the organisation, those added later included. The
+  callback `scope_setting?/1` of `Apiary.Edition` returns whether an edition shows the
+  setting; the core shows it nowhere. The **Workspaces** tab shows where it
   applies, with no way to add or remove a workspace, and **Settings** has no field for
   it. After an add, the page opens the **Overview** of what was added. A workspace's
   purge takes the workspace from every list.

@@ -1207,7 +1207,7 @@ product's mark and the theme menu.
   them.
 - **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
-  edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: the flow's title, "Set
+  result of `c:Apiary.Edition.set_up_steps/2`. Above it: the flow's title, "Set
   up Main · Software factory" ("Set up a new Software factory" before the workspace
   exists), "Step 4 of 7" and a progress bar, never a count of the steps left. The
   instance's steps stand under Connect Qory Apiary. The workspace's steps stand in one

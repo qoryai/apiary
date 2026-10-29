@@ -14,7 +14,7 @@ defmodule ApiaryWeb.AdapterInstallController do
   #   3. `Apiary.Adapters.connect/2` starts the connection and makes its connect pass. The
   #      nonce it gives is kept in the person's session (`ApiaryWeb.ConnectSession`), so
   #      the return comes back in this browser, and the person is sent to the address it
-  #      answers, the adapter's connect address with the pass. With a `back` that
+  #      returns, the adapter's connect address with the pass. With a `back` that
   #      `ApiaryWeb.ConnectSession.back?/1` takes, such as "set-up:sources:workspace=main"
   #      from the Work sources step of the workspace Main's set-up, the session keeps it
   #      beside the nonce, and the return leads there

@@ -370,8 +370,8 @@ later.
    opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
    or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
    for this pool, and the shared pool stops serving them." Its **Add node pool** adds a
-   node pool named Main, and **Get the command** shows the command to run on the pool's
-   machine, with **Copy command**. **Skip** opens **Test run**.
+   node pool with the name Main, and **Get the command** shows the command to run on the
+   pool's machine, with **Copy command**. **Skip** opens **Test run**.
 6. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
    another greeting, and select **Run the test**. The step shows "The test run is queued
    for a machine.", then "The test run is running.", with **See the run** once a machine
@@ -395,7 +395,7 @@ admin assigned to Acme. For a public repository that is not in the list, choose 
 address**, and enter its address in **Public address**, such as
 `https://github.com/example-org/harness`, without a password or token in it. In
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
-**Save**. **Save** sets only which workflow Main's runs follow, not their harness.
+**Save**. **Save** sets only which workflow Main's runs use, not their harness.
 <!-- /feature -->
 
 ## Next

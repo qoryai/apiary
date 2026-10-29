@@ -12,14 +12,14 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # ended there. Where the session keeps a step of the workspace set-up beside that nonce
   # (`ApiaryWeb.ConnectSession.back?/1`), an install started there, the return leads to
   # that step, such as `/<org>/set-up?step=sources&workspace=main`, in place of the
-  # integration's page. A return the person
-  # did not start in this browser is answered with a page that says so; a link that names
-  # no connection they reach, and a return that is bad, expired or used, as a path that
-  # does not exist, whoever asks, so the link does not tell whether one exists. Behind
-  # sign-in: an anonymous visitor is sent to log in first. `return` is kept out of the
-  # logs (`:filter_parameters`). Every answer of this controller, the redirect, after a
-  # return or not, the 403 page and the 404 alike, says `Referrer-Policy: no-referrer`, so
-  # no page it leads to sends the link, with its `return`, on as a referrer.
+  # integration's page. A return the person did not start in this browser gets a page that
+  # shows so; a link that contains no connection they reach, and a return that is bad,
+  # expired or used, as a path that does not exist, whoever asks, so the response does not
+  # show whether one exists. Behind sign-in: an anonymous visitor is sent to log in first.
+  # `return` is kept out of the logs (`:filter_parameters`). Every response of this
+  # controller, the redirect, after a return or not, the 403 page and the 404 alike, has
+  # the header `Referrer-Policy: no-referrer`, so no page it leads to sends the link, with
+  # its `return`, on as a referrer.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
