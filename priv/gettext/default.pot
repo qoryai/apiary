@@ -19466,6 +19466,16 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgid "it lists a module address with a credential in it: remove the credential"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it lists a module at an SSH address: give the module's https address"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
 msgid "it takes harness sources from more than %{n} accounts: a run takes %{n} harness credentials at most"
 msgstr ""
 

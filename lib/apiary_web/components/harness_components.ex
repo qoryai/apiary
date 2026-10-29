@@ -993,9 +993,10 @@ defmodule ApiaryWeb.HarnessComponents do
   # Why the walk of a save failed, from its detail: the adapter whose call got no answer
   # or failed; a stack the source does not export or has no stack file for; a file the
   # reader refuses, or both root harness files; an address, folder or version refused
-  # before any call; or the content of the harness document, which includes `:too_many`
-  # and `:no_harness`. Any other failure, `:walk_error` among them, has the words of a
-  # read that exited.
+  # before any call when it is the chosen source's (`chosen?/2`); or the content of the
+  # harness document, which includes `:too_many`, `:no_harness`, a version a read found
+  # no version for, and an address, folder or ref of a source the document lists.
+  # Any other failure, `:walk_error` among them, has the words of a read that exited.
   defp walk_words(%{failure: :adapter_unavailable, adapter: adapter}, source)
        when is_binary(adapter),
        do: unreachable_words(adapter, source)
@@ -1026,26 +1027,42 @@ defmodule ApiaryWeb.HarnessComponents do
   defp walk_words(%{failure: :invalid, rule: %{"rule" => "both_files"} = rule}, source),
     do: invalid_words("harness.yaml", rule, source)
 
-  defp walk_words(%{failure: failure}, source)
-       when failure in [:scp_form, :credential_in_address],
-       do: form_words(source)
+  defp walk_words(%{failure: failure} = walk_failure, source)
+       when failure in [:scp_form, :credential_in_address] do
+    cond do
+      chosen?(walk_failure, source) ->
+        form_words(source)
 
-  defp walk_words(%{failure: :invalid, rule: %{"rule" => rule}}, source)
-       when rule in ["path", "path_form", "host", "host_encoded", "ref", "version"],
-       do: form_words(source)
+      failure == :scp_form ->
+        content_words(
+          gettext("it lists a module at an SSH address: give the module's https address"),
+          source
+        )
 
-  defp walk_words(%{failure: :invalid, rule: %{"rule" => name} = rule}, source)
-       when name in ["extends", "calls", "size", "not_text"],
-       do: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
+      true ->
+        content_words(
+          gettext("it lists a module address with a credential in it: remove the credential"),
+          source
+        )
+    end
+  end
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => name} = rule} = failure, source)
+       when name in ["path", "path_form", "host", "host_encoded", "ref"],
+       do: address_words(failure, rule, source)
 
   # A rule of the save check (`Apiary.Stacks.Document`): one with the value `source` or
   # `ref` is about an address or a ref; any other is about the document's content.
-  defp walk_words(%{failure: :invalid, rule: %{"message" => _message} = rule}, source)
+  defp walk_words(%{failure: :invalid, rule: %{"message" => _message} = rule} = failure, source)
        when not is_map_key(rule, "rule") do
     if is_map_key(rule["values"] || %{}, "source") or is_map_key(rule["values"] || %{}, "ref"),
-      do: form_words(source),
+      do: address_words(failure, rule, source),
       else: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
   end
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => name} = rule}, source)
+       when name in ["version", "extends", "calls", "size", "not_text"],
+       do: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
 
   defp walk_words(%{failure: :too_many}, source),
     do:
@@ -1061,6 +1078,31 @@ defmodule ApiaryWeb.HarnessComponents do
     do: content_words(gettext("it has no harness file and no harness is set"), source)
 
   defp walk_words(_failure, source), do: exited_words(source)
+
+  # A rule about an address, a folder or a ref, refused before any call: the chosen
+  # source's in the words of a refused form, another source's in the words of the
+  # harness document that lists it.
+  defp address_words(failure, rule, source) do
+    if chosen?(failure, source),
+      do: form_words(source),
+      else: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
+  end
+
+  # Whether the walk's `failure` is about `source`, the chosen source, as
+  # `unreadable_ref?/3` tells it: the failure's source is the chosen address, and a rule
+  # about a path has the folder the chosen source is narrowed to.
+  defp chosen?(%{source: shown} = failure, %{git: git} = source) when is_binary(git) do
+    shown == Document.shown(git) and
+      case failure[:rule] do
+        %{"rule" => rule, "values" => %{"path" => path}} when rule in ["path", "path_form"] ->
+          path == (source[:narrowing] || %{})["path"]
+
+        _other ->
+          true
+      end
+  end
+
+  defp chosen?(_failure, _source), do: false
 
   # Whether the walk's `failure` is about `ref` of `source`, the version the person gave:
   # the read found no version for it, it is no version a read takes, or it breaks the

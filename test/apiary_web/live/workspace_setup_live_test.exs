@@ -2129,16 +2129,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Try again, or choose another source. Qory Apiary could not read acme/harness."
     end
 
-    # The walk's failures of a save that no stub here reaches, given as the walk returns
-    # them (`Apiary.Harnesses.Walk.failure/0`).
+    # The walk's failures of a save, as `Apiary.Harnesses.Walk.pin_base/3` returns them:
+    # the chosen source's, whose `source` is the chosen address, and those of a module
+    # that the base's qory-stack.yaml lists, whose `source` is the module's address.
     test "a save refused for an address, for the harness's content, or on an error of the walk" do
-      source = %{label: "acme/harness", git: @harness_git}
+      source = %{label: "acme/harness", git: @harness_git, narrowing: %{}}
+      chosen = "https://code.example.com/acme/harness"
 
-      failure = fn code, rule ->
+      failure = fn code, shown, rule ->
         {:walk,
          %{
            failure: code,
-           source: "acme/harness",
+           source: shown,
            rule: rule,
            adapter: nil,
            adapter_id: nil,
@@ -2147,40 +2149,92 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       end
 
       words = &ApiaryWeb.HarnessComponents.refusal_words(&1, source, "main", "Acme")
+      harness = "Correct the harness in acme/harness, or choose another source: "
 
       refused_form =
         "Correct the address, folder or version of acme/harness, or choose another source. " <>
           "Qory Apiary does not read it in that form."
 
-      assert words.(failure.(:scp_form, nil)) == refused_form
-
-      assert words.(
-               failure.(:invalid, %{
-                 "message" =>
-                   "write %{source} as an https address: Qory Apiary fetches harness sources " <>
-                     "over https only",
-                 "values" => %{"source" => "http://code.example.com/acme/harness"}
-               })
-             ) == refused_form
+      # The chosen source's address, before any call.
+      assert words.(failure.(:invalid, chosen, %{"rule" => "host", "values" => %{}})) ==
+               refused_form
 
       assert ApiaryWeb.HarnessComponents.read_words(:unreadable, source, "Acme") == refused_form
 
-      assert words.(failure.(:invalid, %{"rule" => "size", "values" => %{"n" => 65_536}})) ==
+      # A module's address, folder or ref, which the harness document lists.
+      assert words.(
+               failure.(:invalid, "https://localhost/acme/x", %{
+                 "rule" => "host",
+                 "values" => %{}
+               })
+             ) ==
+               harness <> "its host is an IP address or a local name: give a public host name."
+
+      assert words.(
+               failure.(:invalid, "http://code.example.com/acme/x", %{
+                 "message" =>
+                   "write %{source} as an https address: Qory Apiary fetches harness sources " <>
+                     "over https only",
+                 "values" => %{"source" => "http://code.example.com/acme/x"}
+               })
+             ) ==
+               harness <>
+                 "write http://code.example.com/acme/x as an https address: Qory Apiary " <>
+                 "fetches harness sources over https only."
+
+      assert words.(failure.(:scp_form, "code.example.com:acme/x", nil)) ==
+               harness <> "it lists a module at an SSH address: give the module's https address."
+
+      assert words.(failure.(:credential_in_address, "https://code.example.com/acme/x", nil)) ==
+               harness <>
+                 "it lists a module address with a credential in it: remove the credential."
+
+      assert words.(
+               failure.(:invalid, "https://code.example.com/acme/x", %{
+                 "message" =>
+                   "write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                     "refs/tags/<name> or a full commit id: people without write access can " <>
+                     "change other refs, such as a pull request's",
+                 "values" => %{"ref" => "refs/pull/1/head"}
+               })
+             ) ==
+               harness <>
+                 "write the ref refs/pull/1/head as HEAD, a branch or tag name, " <>
+                 "refs/heads/<name>, refs/tags/<name> or a full commit id: people without " <>
+                 "write access can change other refs, such as a pull request's."
+
+      # A module's local path in the chosen source, which leaves it.
+      assert words.(
+               failure.(:invalid, chosen, %{
+                 "rule" => "path",
+                 "values" => %{"path" => "../../../x"}
+               })
+             ) == harness <> "the path ../../../x leads out of its source."
+
+      # A version a read found no version for, after a call.
+      assert words.(
+               failure.(:invalid, "https://code.example.com/acme/x", %{
+                 "rule" => "version",
+                 "values" => %{"ref" => "v9"}
+               })
+             ) == harness <> "its ref is no version of its source."
+
+      assert words.(failure.(:invalid, chosen, %{"rule" => "size", "values" => %{"n" => 65_536}})) ==
                "Correct the harness in acme/harness, or choose another source: it is larger " <>
                  "than 65536 bytes as JSON."
 
       n = Apiary.Harnesses.Walk.max_links()
 
-      assert words.(failure.(:too_many, nil)) ==
+      assert words.(failure.(:too_many, nil, nil)) ==
                "Correct the harness in acme/harness, or choose another source: it takes " <>
                  "harness sources from more than #{n} accounts: a run takes #{n} harness " <>
                  "credentials at most."
 
-      assert words.(failure.(:no_harness, nil)) ==
+      assert words.(failure.(:no_harness, nil, nil)) ==
                "Correct the harness in acme/harness, or choose another source: it has no " <>
                  "harness file and no harness is set."
 
-      assert words.(failure.(:walk_error, nil)) ==
+      assert words.(failure.(:walk_error, nil, nil)) ==
                "Try again, or choose another source. Qory Apiary could not read acme/harness."
     end
 
