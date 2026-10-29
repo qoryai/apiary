@@ -96,9 +96,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
   #     "Available to every workspace in <organisation>", off; on, Continue saves the
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
-  #     with no choice reuses. While the workspace reuses it, the shared harness comes
-  #     first, chosen, under "Shared in <organisation>" and marked "every workspace",
-  #     and Continue with it chosen goes on with nothing saved. While the organisation
+  #     with no choice reuses. While the organisation shares one, the shared harness
+  #     comes first, under "Shared in <organisation>" and marked "every workspace", chosen
+  #     while the workspace reuses it. Continue with it chosen goes on with nothing saved
+  #     where the workspace reuses it, and else removes the workspace's choice
+  #     (`Apiary.Stacks.Sources.reuse_shared/1`); with a usual choice, it saves the
+  #     workspace's choice, the same as the shared one or not. While the organisation
   #     shares one, a second is refused, and the step says to choose the shared harness
   #     or turn the setting off. Under the
   #     choices, Targets lists the workspace's destinations, the rows the Destinations
@@ -544,7 +547,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       target_edit: kept_edit(socket.assigns[:target_edit], targets, may),
       done: step_done?(socket.assigns.flow, :harness)
     )
-    |> assign_harness_form(if(shared, do: %{params | "choice" => "shared"}, else: params))
+    |> assign_harness_form(
+      if(shared && chosen.shared, do: %{params | "choice" => "shared"}, else: params)
+    )
     |> list_linked()
   end
 
@@ -670,13 +675,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp assign_harness_form(socket, params),
     do: assign(socket, form: to_form(params, as: :harness))
 
-  # The harness the organisation shares, as `Apiary.Stacks.Sources.chosen/1` returns it,
-  # while the workspace reuses it and the edition shows the setting that shares one
-  # (`c:Apiary.Edition.scope_setting?/1`); nil else.
-  defp shared_harness(scope, %{shared: true} = chosen),
-    do: if(Edition.scope_setting?(scope), do: chosen)
-
-  defp shared_harness(_scope, _chosen), do: nil
+  # The harness the organisation shares (`Apiary.Stacks.Sources.shared/1`), where the
+  # edition shows the setting that shares one (`c:Apiary.Edition.scope_setting?/1`); nil
+  # else, and for none. The shared one of `chosen` saves a read.
+  defp shared_harness(scope, chosen) do
+    cond do
+      not Edition.scope_setting?(scope) -> nil
+      chosen.shared -> chosen
+      true -> Sources.shared(scope.organisation)
+    end
+  end
 
   # The choice the Harness form's `params` come to: `:shared` for the harness the
   # organisation shares, where the step lists it (`shared`); else
@@ -1383,16 +1391,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       nil ->
         {:noreply, socket}
 
-      # The workspace reuses the harness the organisation shares, as it does with no
-      # choice: nothing to save.
+      # The harness the organisation shares: nothing to save where the workspace reuses
+      # it; else the workspace's choice goes, so it reuses the shared one.
       :shared ->
-        {:noreply, go_on(socket)}
+        if chosen.shared,
+          do: {:noreply, go_on(socket)},
+          else: {:noreply, harness_saved(socket, :shared, Sources.reuse_shared(scope))}
 
       choice ->
         shared = share?(scope, params)
 
+        # The workspace's saved choice goes on with no save, unless the setting is on. For
+        # a workspace that reuses the shared harness: while the step lists that harness,
+        # a usual choice is saved as the workspace's, even one equal to the shared
+        # harness; where the step does not list it, a choice equal to it goes on.
+        no_save? =
+          if chosen.shared,
+            do: is_nil(socket.assigns.shared_harness),
+            else: not shared
+
         cond do
-          HarnessComponents.unchanged?(choice, chosen) and (chosen.shared or not shared) ->
+          HarnessComponents.unchanged?(choice, chosen) and no_save? ->
             {:noreply, go_on(socket)}
 
           match?({:repository, _source, _ref}, choice) ->
@@ -1642,6 +1661,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
     do: socket |> load_step() |> put_flash(:error, socket.assigns.who_may)
+
+  # The organisation shares no harness any more: the step as it is now.
+  defp harness_saved(socket, :shared, {:error, :not_shared}),
+    do: socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))
 
   defp harness_saved(socket, _choice, {:error, :shared}) do
     words =

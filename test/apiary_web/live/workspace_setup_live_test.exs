@@ -1201,6 +1201,74 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                |> LazyHTML.attribute("id")
     end
 
+    # The organisation's shared harness: a harness repository at the pin.
+    defp share_repository!(ctx) do
+      {:ok, shared} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:organisation, ctx.organisation},
+          "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n",
+          choice: :repository
+        )
+
+      shared
+    end
+
+    test "with the setting shown, a workspace with a choice sees the shared harness first, not chosen; choosing it removes the workspace's choice",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      second = workspace_fixture(ctx.organisation, "Second")
+      {:ok, _row} = Apiary.Stacks.Sources.choose(%{ctx.scope | workspace: second}, :qory)
+      share_repository!(ctx)
+      path = ~p"/#{ctx.organisation}/set-up?step=harness&workspace=#{second}"
+      {:ok, lv, _html} = live(ctx.conn, path)
+
+      assert words(lv, "#harness-choice-shared-h") == "Shared in #{ctx.organisation.name}"
+
+      assert words(lv, "#harness-choice-shared .q-choice-h") ==
+               "A harness repository · every workspace"
+
+      refute has_element?(lv, "#harness-choice-shared-radio[checked]")
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "shared"}) |> render_submit()
+      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
+
+      assert Apiary.Stacks.choice(second) == nil
+      assert %{choice: :repository, shared: true} = Apiary.Stacks.Sources.chosen(second)
+
+      # Back on the step: the shared harness, chosen.
+      {:ok, lv, _html} = live(ctx.conn, path)
+      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+    end
+
+    test "with the setting shown, a usual choice equal to the shared harness is saved as the workspace's",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "qory"}) |> render_submit()
+
+      assert_patch(
+        lv,
+        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
+      )
+
+      assert %{choice: :qory} = row = Apiary.Stacks.choice(ctx.scope.workspace)
+
+      # Another shared harness later leaves the workspace's choice as it is.
+      {:ok, _deleted} = Apiary.Stacks.delete_stack({:organisation, ctx.organisation})
+      share_repository!(ctx)
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace).id == row.id
+
+      assert %{choice: :qory, shared: false} =
+               Apiary.Stacks.Sources.chosen(ctx.scope.workspace)
+    end
+
     test "without the edition's setting, the step shows no setting to share the harness",
          ctx do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -1250,7 +1318,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
 
       lv
-      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> form("#set-up-harness-form", harness: %{choice: "shared", everywhere: "true"})
       |> render_submit()
 
       assert_patch(
@@ -1259,6 +1327,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       )
 
       assert Apiary.Stacks.shared(ctx.organisation).updated_at == shared.updated_at
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
 
       # The workspace's saved choice, chosen again with the setting on, becomes the shared
       # harness.

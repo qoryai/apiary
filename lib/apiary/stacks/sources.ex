@@ -71,7 +71,9 @@ defmodule Apiary.Stacks.Sources do
   # row, and removes the workspace's choice in the same transaction, so the workspace
   # takes the shared one. Shares of one organisation take turns on a transaction-level
   # advisory lock keyed by the organisation, and a share while the organisation shares a
-  # harness is refused, so two shares at the same time leave one row. `choose_target/3`
+  # harness is refused, so two shares at the same time leave one row. `reuse_shared/1`
+  # removes the workspace's choice while the organisation shares a harness, so the
+  # workspace takes the shared one, under both locks. `choose_target/3`
   # saves the stack chosen for one destination of the workspace at the target's row, and
   # creates the target's row where the workspace has none.
   #
@@ -749,9 +751,9 @@ defmodule Apiary.Stacks.Sources do
         Map.put(chosen_row(row), :shared, false)
 
       nil ->
-        case Stacks.shared(%Organisation{id: workspace.organisation_id}) do
-          %Stack{} = row ->
-            Map.put(chosen_row(row), :shared, true)
+        case shared(%Organisation{id: workspace.organisation_id}) do
+          %{} = shared ->
+            shared
 
           nil ->
             harness = qory_harness(workspace)
@@ -764,6 +766,17 @@ defmodule Apiary.Stacks.Sources do
               shared: false
             }
         end
+    end
+  end
+
+  @doc false
+  # shared/1 is the harness `organisation` shares, as `chosen/1` shows it to a workspace
+  # that reuses it (`t:chosen/0`, `shared: true`); nil for none.
+  @spec shared(Organisation.t()) :: chosen | nil
+  def shared(%Organisation{} = organisation) do
+    case Stacks.shared(organisation) do
+      %Stack{} = row -> Map.put(chosen_row(row), :shared, true)
+      nil -> nil
     end
   end
 
@@ -823,19 +836,50 @@ defmodule Apiary.Stacks.Sources do
       else
         with {:ok, stack} <-
                Stacks.put_stack(scope, {:organisation, organisation}, harness, choice: chosen) do
-          # A delete here, not `Stacks.delete_stack/1`: its refusal of a place with no row
-          # would roll this transaction back.
-          Repo.delete_all(
-            from s in Stack,
-              where: s.organisation_id == ^workspace.organisation_id,
-              where: s.workspace_id == ^workspace.id,
-              where: is_nil(s.target_id) and is_nil(s.workflow)
-          )
-
+          delete_choice(workspace)
           {:ok, stack}
         end
       end
     end)
+  end
+
+  @doc false
+  # reuse_shared/1 removes the harness choice of the scope's workspace while its
+  # organisation shares a harness, so the workspace takes the shared one. `{:ok, stack}`,
+  # the organisation's row; `{:error, :forbidden}` or `{:error, :not_found}` from the
+  # access check (`harness.save`), asked first; `{:error, :not_shared}` while the
+  # organisation shares none, with nothing removed.
+  @spec reuse_shared(Scope.t()) :: {:ok, Stack.t()} | {:error, Access.reason() | :not_shared}
+  def reuse_shared(%Scope{workspace: %Workspace{} = workspace} = scope) do
+    organisation = %Organisation{id: workspace.organisation_id}
+
+    with :ok <- Access.authorize(scope, :"harness.save", workspace) do
+      Repo.transact(fn ->
+        lock_shares(organisation)
+        lock_saves(workspace)
+
+        case Stacks.shared(organisation) do
+          %Stack{} = stack ->
+            delete_choice(workspace)
+            {:ok, stack}
+
+          nil ->
+            {:error, :not_shared}
+        end
+      end)
+    end
+  end
+
+  # Removes the workspace's harness choice, if it has one. A delete here, not
+  # `Stacks.delete_stack/1`: its refusal of a place with no row would roll the caller's
+  # transaction back.
+  defp delete_choice(%Workspace{} = workspace) do
+    Repo.delete_all(
+      from s in Stack,
+        where: s.organisation_id == ^workspace.organisation_id,
+        where: s.workspace_id == ^workspace.id,
+        where: is_nil(s.target_id) and is_nil(s.workflow)
+    )
   end
 
   defp choice_document(scope, :qory),
