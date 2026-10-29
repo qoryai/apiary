@@ -2354,7 +2354,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <%!-- While the workspace has no pool, a person who may make one chooses: the
            instance's pool, its line as below, or a pool for the workspace. --%>
-      <form :if={@choosing} id="set-up-pool-choice" phx-change="choose_pool" class="grid gap-4">
+      <form
+        :if={@choosing}
+        id="set-up-pool-choice"
+        phx-change="choose_pool"
+        novalidate
+        class="grid gap-4"
+      >
         <fieldset id="set-up-pools" class="q-choices grid gap-2">
           <label
             :for={{id, line, act, _way} <- @lines}
