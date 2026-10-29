@@ -5597,6 +5597,7 @@ msgstr ""
 msgid "Confirming makes work item #%{number} ready for Shape."
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connect"
@@ -5626,11 +5627,13 @@ msgstr ""
 msgid "Connect a work source"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connect another destination"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connect another source"
@@ -5665,6 +5668,7 @@ msgid "Connect with a command."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -5682,6 +5686,7 @@ msgstr ""
 msgid "Connected with a command by %{person}, %{date}"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connecting…"
@@ -6486,6 +6491,7 @@ msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/choose_collections_live.ex
 #: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Destinations"
@@ -10711,6 +10717,7 @@ msgstr ""
 msgid "No version yet"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
@@ -10721,6 +10728,7 @@ msgstr ""
 msgid "No work items yet"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
@@ -10920,6 +10928,7 @@ msgstr ""
 msgid "Not chosen"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Not connected"
@@ -11618,6 +11627,7 @@ msgid "Only owners and admins change the Backlog switches."
 msgstr ""
 
 #: lib/apiary_web/components/tick_list_components.ex
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -18031,6 +18041,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/choose_collections_live.ex
 #: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Work sources"

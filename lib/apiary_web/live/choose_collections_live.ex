@@ -1,9 +1,14 @@
 defmodule ApiaryWeb.ChooseCollectionsLive do
-  # The chooser of the set-up's steps Work sources and Destinations, with the `factory`
-  # feature: `/:org/set-up/choose?step=<sources|destinations>&grant=<ag_…>&workspace=<slug>`
-  # (`:set_up`), in the set-up's frame with the progress indicator, the step current. It
-  # chooses which collections of one grant (`Apiary.Adapters.Grant`) the workspace has in
-  # the step's list (`ApiaryWeb.IntegrationComponents.chooser/1`):
+  # The chooser of the set-up's steps Work sources and Destinations, and of Workspace
+  # settings › Work sources and › Destinations, with the `factory` feature:
+  #
+  #   * `/:org/set-up/choose?step=<sources|destinations>&grant=<ag_…>&workspace=<slug>`
+  #     (`:set_up`), in the set-up's frame with the progress indicator, the step current;
+  #   * `/:org/:workspace/settings/choose?step=<sources|destinations>&grant=<ag_…>`
+  #     (`:settings`), in the workspace's settings, the step's section current.
+  #
+  # It chooses which collections of one grant (`Apiary.Adapters.Grant`) the workspace has
+  # in the step's list (`ApiaryWeb.IntegrationComponents.chooser/1`):
   #
   #   * All: every collection of the grant that no other workspace has, and every one the
   #     adapter lists for the grant later (`Apiary.Adapters.GrantRule`);
@@ -21,13 +26,15 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   # kept in the page's process until Save, across pages and searches.
   #
   # Save sends the choice (`Apiary.Adapters.Collections.choose/5`) and returns to the
-  # step; Back returns without saving. A refusal leaves the page with the choice read
+  # page the chooser opened from: the set-up's step (`:set_up`), or the settings' page of
+  # the step's list (`:settings`); Back returns there without saving. A refusal leaves the page with the choice read
   # again and a flash that says why: who may, for a person `collection.assign` does not
   # allow, else that nothing changed. Not listed? shows the source's line on its access
   # (`Apiary.Integrations.Description.access/1`, as the adapter's latest start stored it),
   # as an external system's text, with Change access, Install for the connection, to a
   # person `adapter.connect` allows (`ApiaryWeb.IntegrationComponents.install_form/1`);
-  # its return leads back to the step (`ApiaryWeb.ConnectSession.back?/1`).
+  # its return leads to the set-up's step (`ApiaryWeb.ConnectSession.back?/1`), from
+  # either route.
   #
   # A grant the scope's organisation has no card for (`Apiary.WorkspaceSetup.card/5`), a
   # step that is neither, and a scope without a workspace are a path that does not exist.
@@ -47,7 +54,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   alias Apiary.{Access, Adapters, WorkspaceSetup}
   alias Apiary.Adapters.Collections
   alias Apiary.Lingo.Domain
-  alias ApiaryWeb.{IntegrationComponents, SetUpComponents, SourceComponents}
+  alias ApiaryWeb.{IntegrationComponents, SettingsComponents, SetUpComponents, SourceComponents}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -63,6 +70,11 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
      assign(socket,
        card: nil,
        list: nil,
+       steps: nil,
+       title: nil,
+       sections: nil,
+       section: nil,
+       crumb: nil,
        selected: %{},
        mode: :only,
        sending: false,
@@ -118,28 +130,56 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
     card =
       WorkspaceSetup.card(scope, domain, list, workspace, grant_id) || raise(ApiaryWeb.NotFound)
 
-    flow = SetUpComponents.flow(scope.organisation, domain, workspace, :set_up)
-
     socket
     |> assign(
       list: list,
       domain: domain,
-      flow: flow,
-      steps: SetUpComponents.steps_for(scope, list, flow: flow),
-      title: SetUpComponents.flow_title(flow),
-      back: SetUpComponents.flow_path(flow, list),
       install:
         IntegrationComponents.paths(scope, card.adapter).install <>
           "?" <> URI.encode_query(back: "set-up:#{list}:workspace=#{workspace.slug}"),
       ready: IntegrationComponents.ready?(card.adapter),
-      who_may: IntegrationComponents.who_assigns(scope, [card.adapter]),
-      page_title: page_title(card)
+      who_may: IntegrationComponents.who_assigns(scope, [card.adapter])
     )
+    |> assign(frame(socket.assigns.live_action, scope, domain, workspace, list, card))
     |> saved(card)
   end
 
-  # The browser title: the chooser's heading in plain words.
-  defp page_title(card) do
+  # The page's frame, where Back and Save lead, and the browser title: the set-up's, with
+  # its progress indicator; or the workspace's settings, the step's section current.
+  defp frame(:set_up, scope, domain, workspace, list, card) do
+    flow = SetUpComponents.flow(scope.organisation, domain, workspace, :set_up)
+
+    [
+      steps: SetUpComponents.steps_for(scope, list, flow: flow),
+      title: SetUpComponents.flow_title(flow),
+      back: SetUpComponents.flow_path(flow, list),
+      page_title: heading(card)
+    ]
+  end
+
+  defp frame(:settings, scope, _domain, workspace, list, card) do
+    {section, title, back} =
+      case list do
+        :sources ->
+          {:work_sources, gettext("Work sources"),
+           ~p"/#{scope.organisation}/#{workspace}/settings/work-sources"}
+
+        :destinations ->
+          {:destinations, gettext("Destinations"),
+           ~p"/#{scope.organisation}/#{workspace}/settings/destinations"}
+      end
+
+    [
+      sections: SettingsComponents.sections(scope, :workspace),
+      section: section,
+      crumb: heading(card),
+      back: back,
+      page_title: SettingsComponents.page_title(scope, :workspace, [heading(card), title])
+    ]
+  end
+
+  # The chooser's heading in plain words.
+  defp heading(card) do
     gettext("Choose %{collections} · %{adapter} · %{account}",
       collections: SourceComponents.collections(Adapters.collection_noun(card.adapter)),
       adapter: Adapters.title(card.adapter),
@@ -226,13 +266,20 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   defp page_path(socket, query) do
     %{current_scope: scope, card: card, list: list} = socket.assigns
 
-    params =
-      [step: list, grant: card.grant.public_id, workspace: scope.workspace.slug] ++
-        for {key, value} <- [q: query.q, page: query.page],
-            value not in [nil, 1],
-            do: {key, value}
+    rest =
+      for {key, value} <- [q: query.q, page: query.page],
+          value not in [nil, 1],
+          do: {key, value}
 
-    ~p"/#{scope.organisation}/set-up/choose?#{params}"
+    case socket.assigns.live_action do
+      :set_up ->
+        params = [step: list, grant: card.grant.public_id, workspace: scope.workspace.slug]
+        ~p"/#{scope.organisation}/set-up/choose?#{params ++ rest}"
+
+      :settings ->
+        params = [step: list, grant: card.grant.public_id]
+        ~p"/#{scope.organisation}/#{scope.workspace}/settings/choose?#{params ++ rest}"
+    end
   end
 
   @impl true
@@ -350,37 +397,97 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       )
 
     ~H"""
-    <Layouts.app
+    <.page
+      action={@live_action}
       flash={@flash}
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
+      steps={@steps}
+      title={@title}
+      sections={@sections}
+      section={@section}
+      crumb={@crumb}
+    >
+      <IntegrationComponents.chooser
+        id="choose"
+        card={@card}
+        mode={@mode}
+        locked={@locked}
+        taken={@taken}
+        workspace={@current_scope.workspace}
+        may={@may}
+        who_may={@who_may}
+        rows={@rows}
+        selected={@selected}
+        query={@query}
+        pager={@pager}
+        page_path={@path}
+        back={@back}
+        access={@access}
+        may_connect={@may_connect}
+        install={@install}
+        ready={@ready}
+        sending={@sending}
+      />
+    </.page>
+    """
+  end
+
+  attr :action, :atom, required: true, values: [:set_up, :settings]
+  attr :flash, :map, required: true
+  attr :current_scope, :any, required: true
+  attr :memberships, :list, required: true
+  attr :counts, :any, required: true
+  attr :steps, :list, doc: "the set-up's steps, for `:set_up`"
+  attr :title, :string, doc: "the set-up's title, for `:set_up`"
+  attr :sections, :list, doc: "the workspace's settings' sections, for `:settings`"
+  attr :section, :atom, doc: "the step's section, for `:settings`"
+
+  attr :crumb, :string,
+    doc: "the chooser's heading, the breadcrumb's last segment, for `:settings`"
+
+  slot :inner_block, required: true
+
+  # The chooser's frame: the set-up's, with no sidebar; or the workspace's settings, with
+  # the step's section current and the chooser's heading in the breadcrumb.
+  defp page(%{action: :set_up} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@counts}
       place={:organisation}
       sidebar={false}
     >
       <SetUpComponents.frame steps={@steps} title={@title}>
-        <IntegrationComponents.chooser
-          id="choose"
-          card={@card}
-          mode={@mode}
-          locked={@locked}
-          taken={@taken}
-          workspace={@current_scope.workspace}
-          may={@may}
-          who_may={@who_may}
-          rows={@rows}
-          selected={@selected}
-          query={@query}
-          pager={@pager}
-          page_path={@path}
-          back={@back}
-          access={@access}
-          may_connect={@may_connect}
-          install={@install}
-          ready={@ready}
-          sending={@sending}
-        />
+        {render_slot(@inner_block)}
       </SetUpComponents.frame>
+    </Layouts.app>
+    """
+  end
+
+  defp page(%{action: :settings} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@counts}
+      nav={:settings}
+      sections={@sections}
+      section={@section}
+    >
+      <:crumb>{@crumb}</:crumb>
+      <div class="q-settings q-settings-solo">
+        <section
+          id={"settings-section-#{@section}"}
+          class="q-settings-main q-settings-main-list"
+        >
+          {render_slot(@inner_block)}
+        </section>
+      </div>
     </Layouts.app>
     """
   end
