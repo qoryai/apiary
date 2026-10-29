@@ -219,10 +219,28 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   for Main**: “Runs in Main then wait for this pool, and the shared pool stops serving
   them.” Its **Add node pool** adds a node pool to the workspace with the workspace's
   name, cut to 80 characters. Where another node of the workspace has that name, the
-  step shows a line to rename that node first. On a pool of the workspace with fewer
-  than 2 active keys, **Get the command** makes an enrolment code. The step then shows
-  “On Main, run:” and the enrol command on a separate line with **Copy command**, until
-  the code expires or a machine enrols with it; **Get a new command** makes another.
+  step shows a line to rename that node first. Once the workspace has one pool, owners
+  and admins keep the same choice, with the workspace's pool chosen. While the instance
+  has no pool, **Shared: the instance's pool** then shows “Not ready: no pool”, cannot
+  be chosen, and the step offers no removal. Otherwise, choosing **Shared: the
+  instance's pool** shows “Remove the pool Main? Runs in Main then use the instance's
+  pool.”, with **Remove pool** and **Cancel**. For a pool with an active key, it also
+  shows “The machines in Main stop taking runs, because the pool's access key is
+  revoked.” **Remove pool** deletes the pool, and the instance's pool runs the
+  workspace's runs again. With 2 pools or more, and for anyone else, the step shows the
+  pools with no choice and offers no removal. On a pool of the workspace with fewer than
+  2 active keys, **Get the command** makes an enrolment code. The step then shows “On
+  the machine for the pool Main, run:” and the enrol command on a separate line with
+  **Copy command**, until the code expires or a machine enrols with it; **Get a new
+  command** makes another. Under the enrol command, the step shows “Run this on the
+  Linux machine with Docker that runs the runs in Main. It joins that machine to the
+  pool Main. Install qory there first:” and the install command on a separate line with
+  **Copy command**:
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
+  ```
+
   Under a pool that is not ready, an instance admin has **Check the nodes** for the
   instance's pool. For a pool of the workspace, owners and admins have its name as a
   link to its page. Anyone else reads who acts, such as “Only an instance admin checks
