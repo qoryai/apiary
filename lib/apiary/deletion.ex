@@ -353,7 +353,9 @@ defmodule Apiary.Deletion do
   the order of `Apiary.Deletion.Tables.workspace_tables/0`, a batch at a time, the access
   to it among them and nobody's membership, after the public keys of its nodes' access
   keys are made tombstones in the ledger, which outlives it
-  (`Apiary.AccessKeys.retire_public_keys/2`), then the workspace's row, with the entry of
+  (`Apiary.AccessKeys.retire_public_keys/2`), and after the model providers whose keys are
+  its secrets are deleted, with the model choices that name them
+  (`Apiary.Connections.purge_workspace_providers/2`), then the workspace's row, with the entry of
   `workspace.purge` in its organisation's trail in the same transaction. `{:ok,
   :purged}`; `{:ok, :not_due}`, touching nothing, for a workspace that is not marked
   (restored meanwhile) or not yet due; `{:ok, :gone}` for one that is gone already; the
@@ -375,7 +377,13 @@ defmodule Apiary.Deletion do
       _unlinked = Apiary.Adapters.Collections.unlink_workspace(organisation_id, workspace_id)
       # The files of its machine logs, before their records go with the rows.
       _files = Apiary.Dispatches.MachineLogs.delete_files(organisation_id, workspace_id)
-      deleted = delete_rows(Tables.workspace_tables(), organisation_id, workspace_id)
+      # The model providers whose keys are its secrets, before the walk deletes them.
+      providers = Apiary.Connections.purge_workspace_providers(organisation_id, workspace_id)
+
+      deleted =
+        Tables.workspace_tables()
+        |> delete_rows(organisation_id, workspace_id)
+        |> Map.merge(providers, fn _table, walked, before -> walked + before end)
 
       Repo.transact(fn ->
         case lock_claimed(Workspace, workspace_id) do

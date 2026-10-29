@@ -2496,14 +2496,19 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   workspace_landing/1 is where a link to the scope's workspace leads, asked with the
-  scope of that workspace: the first page its sidebar shows the reader there, in the
-  sidebar's order (`nav_entries/1`, which an edition adds to), Settings at its foot last.
-  That is the overview wherever the reader may open it; where they may not, as where the
-  record is off or hidden from them, the next page they may. The overview still where the
-  sidebar shows them none.
+  scope of that workspace. With the `factory` feature, while its set-up is not finished,
+  the set-up's next step (`ApiaryWeb.SetUpComponents.set_up_path/1`). Else the first
+  page its sidebar shows the reader there, in the sidebar's order (`nav_entries/1`,
+  which an edition adds to), Settings at its foot last. That is the overview wherever the
+  reader may open it; where they may not, as where the record is off or hidden from
+  them, the next page they may. The overview still where the sidebar shows them none.
   """
   @spec workspace_landing(Apiary.Accounts.Scope.t()) :: String.t()
   def workspace_landing(%{organisation: organisation, workspace: %{} = workspace} = scope) do
+    ApiaryWeb.SetUpComponents.set_up_path(scope) || first_page(scope, organisation, workspace)
+  end
+
+  defp first_page(scope, organisation, workspace) do
     entries = nav_entries(scope)
 
     first =

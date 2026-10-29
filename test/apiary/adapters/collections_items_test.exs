@@ -143,9 +143,10 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
       assert feed(ctx) == []
     end
 
-    test "made in the only workspace, it is assigned there and not linked", ctx do
+    test "made by its grant's rule, it is assigned there and not linked", ctx do
       %{scope: scope} = sign_up_fixture()
       {connection, _nonce} = connection_fixture(scope, ctx.adapter, :connected)
+      grant_rule_fixture(connection, scope.workspace)
       {:ok, :accepted} = post(%{ctx | connection: connection}, [{"SHOP", @shop, nil}])
 
       assert %Collection{workspace_id: workspace_id, backlog: true, items: true} =

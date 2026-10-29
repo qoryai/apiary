@@ -62,10 +62,10 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
        %{conn: conn, token: token} do
     {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
 
-    # No Work source, with the feature or without: the invitation makes a member, to whom
-    # the workspace set-up does not show it.
+    # Name alone of the flow, with the feature or without: the invitation makes a member,
+    # who waits for an owner to set up the first workspace.
     assert steps(lv) ==
-             [{"Invitation", :current}, {"Your account", :to_come}, {"Workspace", :to_come}]
+             [{"Invitation", :current}, {"Your account", :to_come}, {"Name", :to_come}]
 
     # The Invitation step has the organisation's id, for the edition; the page never
     # shows it.
@@ -96,7 +96,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     # The sign-up after it: the invitation done, a link back to its page.
     {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
 
-    assert [{"Invitation", :done, :link}, {"Your account", :current}, {"Workspace", :to_come}] =
+    assert [{"Invitation", :done, :link}, {"Your account", :current}, {"Name", :to_come}] =
              steps(lv)
 
     assert has_element?(lv, ~s{#set-up-steps-invitation[href="/invitations/#{token}"]})

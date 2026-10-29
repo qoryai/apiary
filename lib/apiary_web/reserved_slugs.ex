@@ -43,7 +43,9 @@ defmodule ApiaryWeb.ReservedSlugs do
   # The organisation's own pages, the second segment of `/:org/…`, the palette's answers
   # there and the switcher's link to the organisation (`-`); `gateways` is reserved as a
   # workspace slug too, and a few names kept back (`api`, `new`).
-  @organisation_pages ~w(- activity api audit-log gateways jump members new set-up settings)
+  @organisation_pages ~w(
+    - activity api audit-log gateways jump members new set-up settings workspaces
+  )
 
   @doc """
   organisation/0 lists the names no organisation slug may be: the core's and the

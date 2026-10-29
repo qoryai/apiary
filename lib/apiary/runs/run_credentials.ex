@@ -7,13 +7,24 @@ defmodule Apiary.Runs.RunCredentials do
   # ## The work entry
   #
   # `form_work/3` forms the run's work entry, `work-1`, from what the claim read, without
-  # a lock: the collection the run's target came from, the connection through which it
-  # came, its adapter's apply items (`Apiary.Nodes.Node`'s `source_apply`) and the run's
-  # access level. The collection is a prebuild's, and an explore run's ticket's
-  # (`Apiary.Sources.Item`).
+  # a lock: a collection that can change the run's target, the connection through which
+  # it came, its adapter's apply items (`Apiary.Nodes.Node`'s `source_apply`) and the
+  # run's access level.
   #
-  #   * No entry, and the run runs as before: a run with no target, no collection (a
-  #     ticket's row gone), or an adapter whose latest start declared no apply items.
+  #   * A prebuild's collection is the one it builds (`source_collection_id`).
+  #   * A run with a work item takes a matching collection: one assigned to the run's
+  #     workspace, whose adapter's latest start said its collections have targets
+  #     (`Apiary.Nodes.Node`'s `targets`), and whose target system and path equal the
+  #     run's target. A collection of an adapter that did not say so never counts, even
+  #     when its target equals the run's, as a tracker's collection's may. So the claim
+  #     never requests a forge's credential from a tracker's adapter. Of the matching
+  #     collections, the run takes one that is live and on a connected connection before
+  #     one that is not; then its ticket's collection (`Apiary.Sources.Item`) before
+  #     another; then the oldest, by `inserted_at`, then by id.
+  #
+  #   * No entry, and the run runs as before: a run with no target, no collection (no
+  #     matching one for a run with a work item), or an adapter whose latest start
+  #     declared no apply items.
   #   * The run ends `target_access_gone`: the collection ended, or its connection is not
   #     connected, or the target path is one the templates refuse
   #     (`Apiary.Integrations.ApplyTemplates.fill/2`).
@@ -53,8 +64,8 @@ defmodule Apiary.Runs.RunCredentials do
           {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
   def form_work(%DispatchRun{}, _work_item, nil), do: {:ok, nil}
 
-  def form_work(%DispatchRun{} = dispatch_run, work_item, %{path: path}) do
-    case collection(dispatch_run, work_item) do
+  def form_work(%DispatchRun{} = dispatch_run, work_item, %{path: path} = target) do
+    case collection(dispatch_run, work_item, target) do
       nil ->
         {:ok, nil}
 
@@ -78,32 +89,54 @@ defmodule Apiary.Runs.RunCredentials do
     end
   end
 
-  # The collection the run's target came from, with its connection and adapter: a
-  # prebuild's, or an explore run's ticket's. Nil where there is none.
-  defp collection(%DispatchRun{source_collection_id: id}, _work_item) when is_binary(id),
-    do: collection_by(from(c in Collection, where: c.id == ^id))
+  # The collection the run's work entry comes from, with its connection and adapter: a
+  # prebuild's, or for a run with a work item the matching collection it takes (the
+  # moduledoc). Nil where there is none.
+  defp collection(%DispatchRun{source_collection_id: id}, _work_item, _target)
+       when is_binary(id),
+       do: Repo.one(from([c, n, a] in with_adapter(), where: c.id == ^id))
 
-  defp collection(%DispatchRun{}, %WorkItem{item_id: item_id}) when is_binary(item_id) do
-    collection_by(
-      from c in Collection,
-        join: i in Item,
-        on: i.collection_id == c.id,
-        where: i.id == ^item_id
+  defp collection(
+         %DispatchRun{} = dispatch_run,
+         %WorkItem{} = work_item,
+         %{system: system, path: path}
+       )
+       when is_binary(system) and is_binary(path) do
+    from([c, n, a] in with_adapter(),
+      where:
+        c.organisation_id == ^dispatch_run.organisation_id and
+          c.workspace_id == ^dispatch_run.workspace_id and c.target_system == ^system and
+          c.target_path == ^path and a.targets == true,
+      order_by: [desc: is_nil(c.ended_at) and n.state == :connected]
     )
+    |> ticket_first(work_item)
+    |> order_by_age()
+    |> Repo.one()
   end
 
-  defp collection(%DispatchRun{}, _work_item), do: nil
+  defp collection(%DispatchRun{}, _work_item, _target), do: nil
 
-  defp collection_by(query) do
-    Repo.one(
-      from [c] in query,
-        join: n in Connection,
-        on: n.id == c.connection_id,
-        join: a in Node,
-        on: a.id == c.adapter_id,
-        select: {c, n, a}
-    )
+  defp with_adapter do
+    from c in Collection,
+      join: n in Connection,
+      on: n.id == c.connection_id,
+      join: a in Node,
+      on: a.id == c.adapter_id,
+      select: {c, n, a}
   end
+
+  # The run's ticket's collection before any other, where the work item has a ticket.
+  defp ticket_first(query, %WorkItem{item_id: item_id}) when is_binary(item_id) do
+    from [c] in query,
+      left_join: i in Item,
+      on: i.collection_id == c.id and i.id == ^item_id,
+      order_by: [desc: not is_nil(i.id)]
+  end
+
+  defp ticket_first(query, _work_item), do: query
+
+  defp order_by_age(query),
+    do: from([c] in query, order_by: [asc: c.inserted_at, asc: c.id], limit: 1)
 
   defp entry(dispatch_run, collection, connection, adapter, path, apply) do
     %RunCredential{

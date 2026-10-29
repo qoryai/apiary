@@ -18,6 +18,11 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
   @hint "Shown in the browser tab, the sidebar, the log-in pages and every email. Empty: Qory Apiary."
   @note "When a name other than Qory Apiary is set, the sidebar, the log-in pages and every email also say “Powered by Qory Apiary”."
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   defp text(view, selector),
     do:
       view

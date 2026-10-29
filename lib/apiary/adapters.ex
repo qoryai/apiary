@@ -307,6 +307,18 @@ defmodule Apiary.Adapters do
 
   def guide(%Node{kind: :adapter}, part) when part in [:setup, :connect], do: nil
 
+  ## The adapter's title
+
+  @doc false
+  # title/1 is the name a page shows a person for `adapter`: the title its latest
+  # start's description gave (`Apiary.Nodes.Node`'s `title`), else, before its first
+  # start or where that title failed its check, its name. A page shows it wherever it
+  # names the adapter to a person; a form where a person types the name, a setting, a
+  # log and the trail keep the name, an identifier.
+  @spec title(Node.t()) :: String.t()
+  def title(%Node{kind: :adapter, title: title}) when is_binary(title), do: title
+  def title(%Node{kind: :adapter, name: name}), do: name
+
   ## The words for a source's items
 
   @doc false
@@ -821,10 +833,12 @@ defmodule Apiary.Adapters do
   # instance admin, `authorize_instance/2`, with no recent sign-in asked: the pass grants
   # nothing in Qory Apiary), with `adapter` as it is now, in use and held `FOR SHARE`: a
   # new setup pass for it (`Apiary.Adapters.SetupPass`), whose nonce nothing here keeps.
-  # `{:ok, url}`: the `setup_url` the adapter declared, with the pass as its query
-  # parameter `state`, where the page sends the instance admin. The entry is in the trail
-  # of the instance's organisation (`instance_scope/1`), about the adapter, naming it,
-  # never the pass or its nonce.
+  # Each pass has the slug of the instance's organisation (`instance_scope/1`) as its
+  # `organisation_slug`, from which the adapter may suggest a name at the system it
+  # reads from. `{:ok, url}`: the `setup_url` the adapter declared, with the pass as its
+  # query parameter `state`, where the page sends the instance admin. The entry is in the
+  # trail of the instance's organisation, about the adapter, naming it, never the pass or
+  # its nonce.
   #
   # `{:error, :unlisted}` for an adapter installed with Qory Apiary whose name
   # `QORY_INSTALLED_ADAPTERS` no longer lists (`listed?/1`): it is turned off there, and
@@ -839,12 +853,12 @@ defmodule Apiary.Adapters do
   def setup(%Scope{} = scope, %Node{id: id}) do
     Repo.transact(fn ->
       with :ok <- authorize_instance(scope),
-           {:ok, recorder} <- instance_scope(scope),
+           {:ok, %Scope{organisation: organisation} = recorder} <- instance_scope(scope),
            %Node{} = current <-
              live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
                {:error, :not_found},
            :ok <- settable(current),
-           {:ok, pass} <- SetupPass.issue(current.public_id),
+           {:ok, pass} <- SetupPass.issue(current.public_id, organisation.slug),
            {:ok, _entry} <-
              Audit.record(Repo, recorder, :"adapter.setup", current, %{
                details: Map.take(current, [:name, :public_id])
@@ -1115,32 +1129,34 @@ defmodule Apiary.Adapters do
   #
   # Each start also stores what its description's source role says
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
-  # reports items, its words for its collections, and its line on how to change which
-  # collections it reaches, and the apply items of each run's work credential from it with
-  # its description's exact `egress_hosts`, each replacing what the start before said; a
-  # description with no source role stores the defaults, no words, items, no line and no
-  # apply items. A description whose apply items name a host that is not an entry of its
+  # reports items, whether its collections can have a target, its words for its
+  # collections, and its line on how to change which collections it reaches, and the
+  # apply items of each run's work credential from it with its description's exact
+  # `egress_hosts`, each replacing what the start before said; a description with no
+  # source role stores the defaults, no words, items, no targets, no line and no apply
+  # items. A description whose apply items name a host that is not an entry of its
   # `egress_hosts`, or a path template that a target path could fill to a path out of
   # Forager's path grammar, never reaches here: the start's body is refused as it is read
   # (`Apiary.Integrations.Description.parse/1`). Each start also
   # stores the domains its description lists, nil for none
   # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
-  # collection assigned as it was. They are no part of the trail's entry. A start that
-  # changes `items` writes the feed's `linked` or `unlinked` entry for each live
-  # collection whose link that changes, in the same transaction
-  # (`Apiary.Adapters.Collections.relink_adapter/2`), before the first declaration's
-  # `sync` entry, so that the feed counter is taken after the collections, last, as the
-  # lock order has it; after the commit those collections are broadcast.
-  # A start that changes the source's line on access or its words for its items or its
-  # collections tells, after the commit, each organisation with a connection to the
-  # adapter that its connection changed, once (`connection_changed`), so an open page of
-  # the integration shows them; a start that changes none of them tells none. The start is
-  # stored by then: where the database fails to read those connections, the failure is
-  # logged, no organisation is told, and the start answers as stored. `opts[:connections]`
-  # replaces that read, a function of the adapter, for a test that makes it fail. A start
-  # that changes the adapter's `setup_url` or `connect_url` tells, after the commit, the
-  # pages subscribed to its keys (`subscribe_keys/2`), as the instance's connections show
-  # whether it is configured (`configured?/1`).
+  # collection assigned as it was. Each start also stores its description's title, nil for
+  # one that fails its check (`Apiary.Nodes.Node.title_changeset/2`). They are no part of
+  # the trail's entry. A start that changes `items` writes the feed's `linked` or
+  # `unlinked` entry for each live collection whose link that changes, in the same
+  # transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
+  # declaration's `sync` entry, so that the feed counter is taken after the collections,
+  # last, as the lock order has it; after the commit those collections are broadcast.
+  # A start that changes the adapter's title, the source's line on access or its words for
+  # its items or its collections tells, after the commit, each organisation with a
+  # connection to the adapter that its connection changed, once (`connection_changed`), so
+  # an open page of the integration shows them; a start that changes none of them tells
+  # none. The start is stored by then: where the database fails to read those connections,
+  # the failure is logged, no organisation is told, and the start answers as stored.
+  # `opts[:connections]` replaces that read, a function of the adapter, for a test that
+  # makes it fail. A start that changes the adapter's `setup_url` or `connect_url` tells,
+  # after the commit, the pages subscribed to its keys (`subscribe_keys/2`), as the
+  # instance's connections show whether it is configured (`configured?/1`).
   # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
   # `{:error, :not_found}`.
   @spec declare(Scope.t(), Wire.declaration(), keyword) ::
@@ -1167,6 +1183,7 @@ defmodule Apiary.Adapters do
              })
              |> Node.source_role_changeset(declaration.description)
              |> Node.domains_changeset(declaration.description)
+             |> Node.title_changeset(declaration.description)
              |> Repo.update(),
            :ok <- record_declaration(scope, current, declared),
            {:ok, relinked} <- Collections.relink_adapter(current, declared),
@@ -1189,9 +1206,10 @@ defmodule Apiary.Adapters do
     end
   end
 
-  # What an integration's page shows of a start: the source's line on access and its words
-  # for its items and its collections.
+  # What an integration's page shows of a start: the adapter's title, the source's line on
+  # access and its words for its items and its collections.
   @shown [
+    :title,
     :source_access,
     :item_noun_one,
     :item_noun_other,

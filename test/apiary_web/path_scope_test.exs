@@ -75,7 +75,7 @@ defmodule ApiaryWeb.PathScopeTest do
 
     {:ok, platform} =
       %Workspace{organisation_id: other.organisation.id}
-      |> Workspace.changeset(%{name: "Platform"})
+      |> Workspace.create_changeset(%{name: "Platform", domain: "software"})
       |> Workspace.put_slug("platform")
       |> Repo.insert()
 

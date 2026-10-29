@@ -9,6 +9,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
 
   alias Apiary.Runs.Projector
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   setup :register_and_log_in_user
 
   setup do

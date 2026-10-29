@@ -44,8 +44,8 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # it is not done, which leaves the connection as it is: it can be finished later in
   # Instance settings. Finishing or skipping the last step marks the connections reviewed
   # (`Apiary.Setup.review_connections/1`) and sends the admin to the first step after the
-  # connections that is not done: the workspace set-up's Workspace or Work source; else
-  # on, as a sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
+  # connections that is not done: a step of the workspace set-up, such as Name;
+  # else on, as a sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
   #
   # The page asks for a recent sign-in, as Instance settings › Mail does
   # (`ApiaryWeb.UserAuth`'s sudo mode), for every step: the mail step saves the mail
@@ -267,7 +267,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # The connections are reviewed, and the admin goes on to the first step after them that
-  # is not done, such as the workspace's Work source; else as a sign-in sends them.
+  # is not done, such as the workspace set-up's Name; else as a sign-in sends them.
   defp finish(socket) do
     %{current_scope: scope, step: step} = socket.assigns
 
@@ -311,7 +311,6 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     >
       <SetUpComponents.frame
         steps={@steps}
-        next={SetUpComponents.next?(@current_scope)}
         page={~p"/instance/set-up"}
       >
         <SetUpComponents.heading>
@@ -330,8 +329,8 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         <:context :if={@row}>
           <p id="set-up-what">
             {gettext(
-              "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the adapter's set-up page in a new tab, and this step shows the new state without a reload.",
-              adapter: @row.adapter.name
+              "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the %{adapter} adapter's set-up page in a new tab, and this step shows the new state without a reload.",
+              adapter: Adapters.title(@row.adapter)
             )}
           </p>
           <SetUpComponents.outside
@@ -363,7 +362,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
     ~H"""
     <section id={"set-up-#{@adapter.public_id}"} class="grid gap-4" aria-labelledby="set-up-name">
-      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{@adapter.name}</h2>
+      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{Adapters.title(@adapter)}</h2>
 
       <p id="set-up-state" class="flex items-center gap-2 text-[13.5px]/5">
         <b class="font-semibold">{gettext("State:")}</b>
@@ -376,7 +375,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
       </p>
 
       <p :if={@row.blocked} id="set-up-blocked" class="text-[13.5px]/5 text-muted">
-        {blocked_line(@row.blocked, @adapter.name)}
+        {blocked_line(@row.blocked, Adapters.title(@adapter))}
       </p>
 
       <div class="q-su-acts">

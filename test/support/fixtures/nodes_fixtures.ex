@@ -140,6 +140,25 @@ defmodule Apiary.NodesFixtures do
     adapter |> Node.source_role_changeset(description) |> Repo.update!()
   end
 
+  @doc """
+  Records on `adapter` the title of a description that gives `title`, the integrations
+  contract's `example-tracker.json` with `title` in place of its title, as a start does
+  (`Apiary.Nodes.Node.title_changeset/2`): kept where it passes the check, nil where it
+  fails it. Returns the adapter as it now is.
+  """
+  def describe_title(%Node{kind: :adapter} = adapter, title) do
+    {:ok, description} =
+      @descriptions
+      |> Path.join("example-tracker.json")
+      |> File.read!()
+      |> Jason.decode!()
+      |> Map.put("title", title)
+      |> Jason.encode!()
+      |> Apiary.Integrations.Description.parse()
+
+    adapter |> Ecto.Changeset.change() |> Node.title_changeset(description) |> Repo.update!()
+  end
+
   @connect_url "https://tracker.example.com/connect"
 
   @doc """
@@ -339,6 +358,39 @@ defmodule Apiary.NodesFixtures do
         granted_at: DateTime.utc_now()
       })
     end
+
+    ref
+  end
+
+  @doc """
+  Gives the live grant `ref` of `connection` (`listing_grant/2`, made if missing) a rule
+  that assigns each collection a listing makes for it to `workspace`, with its Backlog set
+  to `backlog`, as a choice of All in set-up's Work sources makes one. It writes no trail
+  entry. Returns the ref.
+  """
+  def grant_rule_fixture(
+        %Apiary.Adapters.Connection{} = connection,
+        workspace,
+        backlog \\ true,
+        ref \\ nil
+      ) do
+    alias Apiary.Adapters.{Grant, GrantRule}
+
+    ref = listing_grant(connection, ref)
+
+    grant =
+      Repo.one!(
+        from g in Grant,
+          where: g.connection_id == ^connection.id and g.grant_ref == ^ref,
+          where: is_nil(g.ended_at)
+      )
+
+    Repo.insert!(%GrantRule{
+      organisation_id: connection.organisation_id,
+      grant_id: grant.id,
+      workspace_id: workspace.id,
+      backlog: backlog
+    })
 
     ref
   end

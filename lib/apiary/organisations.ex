@@ -1502,8 +1502,8 @@ defmodule Apiary.Organisations do
 
   @doc """
   create_first_workspace/2 creates the first workspace of the scope's organisation, one
-  created with none (`sign_up_user/3` with `workspace: false`): named
-  "#{@default_workspace_name}", of the domain `attrs["domain"]`, one of
+  created with none (`sign_up_user/3` with `workspace: false`): named `attrs["name"]`,
+  else "#{@default_workspace_name}", of the domain `attrs["domain"]`, one of
   `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. It is
   `create_workspace/2` in every other way: the action `workspace.create`, the edition's
   limit, the entry and the edition's step.
@@ -1511,7 +1511,7 @@ defmodule Apiary.Organisations do
   `{:ok, workspace}`; `{:error, :exists}` where the organisation has a workspace in use
   already, counted under the organisation's lock, so of two calls at once one creates it;
   otherwise `create_workspace/2`'s answers. A workspace marked for deletion is not in
-  use, but keeps its name: where it is named "#{@default_workspace_name}", the answer is
+  use, but keeps its name: where it has the name given, the answer is
   `{:error, changeset}` with its error on `name`.
   """
   @spec create_first_workspace(Scope.t(), map) ::
@@ -1519,7 +1519,8 @@ defmodule Apiary.Organisations do
           | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
   def create_first_workspace(%Scope{organisation: %Organisation{}} = scope, attrs) do
     domain = Map.get(attrs, "domain") || Map.get(attrs, :domain)
-    insert_workspace(scope, %{"name" => @default_workspace_name, "domain" => domain}, :first)
+    name = Map.get(attrs, "name") || Map.get(attrs, :name) || @default_workspace_name
+    insert_workspace(scope, %{"name" => name, "domain" => domain}, :first)
   end
 
   @doc """

@@ -62,6 +62,29 @@ defmodule Apiary.Stacks.Sources do
   # workspace, so two at the same time leave one row.
   # It writes no audit entry, as `put_stack/3` writes none.
   #
+  # ## The harness choices
+  #
+  # `choose/3`, `choose_target/3` and `save/3` are `harness.save` on the scope's
+  # workspace, under the same lock. `choose/3` saves the workspace's harness choice
+  # (`Apiary.Stacks`) at the workspace with no workflow; with `shared: true`, it saves the
+  # harness the organisation shares with every workspace instead, at the organisation's
+  # row, and removes the workspace's choice in the same transaction, so the workspace
+  # takes the shared one. Shares of one organisation take turns on a transaction-level
+  # advisory lock keyed by the organisation, and a share while the organisation shares a
+  # harness is refused, so two shares at the same time leave one row. `reuse_shared/1`
+  # removes the workspace's choice while the organisation shares a harness, so the
+  # workspace takes the shared one, under both locks. `choose_target/3`
+  # saves the stack chosen for one destination of the workspace at the target's row, and
+  # creates the target's row where the workspace has none.
+  #
+  # The Qory harness reads nothing. A harness repository, or a stack of one, is read as a
+  # run's walk reads the base of a document (`Apiary.Harnesses.Walk.pin_base/3`), within
+  # the time of a read of a source and counted as one of the person's reads; the commit
+  # the walk read is the pin, and a walk that failed is the refusal. A stack of an
+  # assigned source keeps the assignment's `ref`, the only one the assignment covers, and
+  # is read the same way. `chosen/1` is the workspace's choice as a page shows it, and
+  # `targets_chosen/1` the stacks chosen for its targets.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -70,10 +93,11 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.{Access, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Calls, CallWire, Collection, Connection, Grant, Grants}
-  alias Apiary.Harnesses.{Assignment, Reader}
+  alias Apiary.Harnesses.{Assignment, Reader, Walk}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.RateLimit
+  alias Apiary.Runs.{RateLimit, Target}
   alias Apiary.Stacks.{Document, Stack}
 
   @head "HEAD"
@@ -698,6 +722,349 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
+  @typedoc """
+  A harness choice to save: the Qory harness, or a harness repository, a source of
+  `linked/1` with a branch or tag.
+  """
+  @type choice :: :qory | {:repository, source, String.t()}
+
+  @typedoc """
+  A workspace's harness choice as a page shows it: the choice, the address of its harness
+  and the commit it is pinned at, whether it is saved, and whether it is the harness the
+  organisation shares. A workspace without a choice shows the organisation's shared
+  harness, else the Qory harness, not saved.
+  """
+  @type chosen :: %{
+          choice: :qory | :repository,
+          git: String.t() | nil,
+          pin: String.t() | nil,
+          saved: boolean,
+          shared: boolean
+        }
+
+  @doc false
+  # chosen/1 is the harness choice of `workspace` (`t:chosen/0`).
+  @spec chosen(Workspace.t()) :: chosen
+  def chosen(%Workspace{} = workspace) do
+    case Stacks.choice(workspace) do
+      %Stack{} = row ->
+        Map.put(chosen_row(row), :shared, false)
+
+      nil ->
+        case shared(%Organisation{id: workspace.organisation_id}) do
+          %{} = shared ->
+            shared
+
+          nil ->
+            harness = qory_harness(workspace)
+
+            %{
+              choice: :qory,
+              git: harness["git"],
+              pin: harness["ref"],
+              saved: false,
+              shared: false
+            }
+        end
+    end
+  end
+
+  @doc false
+  # shared/1 is the harness `organisation` shares, as `chosen/1` shows it to a workspace
+  # that reuses it (`t:chosen/0`, `shared: true`); nil for none.
+  @spec shared(Organisation.t()) :: chosen | nil
+  def shared(%Organisation{} = organisation) do
+    case Stacks.shared(organisation) do
+      %Stack{} = row -> Map.put(chosen_row(row), :shared, true)
+      nil -> nil
+    end
+  end
+
+  defp chosen_row(%Stack{choice: choice, harness: harness}) do
+    base = extended(harness)
+    %{choice: choice, git: base["git"], pin: base["ref"], saved: true}
+  end
+
+  # The base the document `harness` extends, `%{}` for none.
+  defp extended(harness) do
+    case is_binary(harness) && Reader.document(harness) do
+      {:ok, %{"extends" => %{} = base}} -> base
+      _other -> %{}
+    end
+  end
+
+  @doc false
+  # choose/3 saves `choice` as the harness choice of the scope's workspace, or, with
+  # `shared: true` in `opts`, as the harness the organisation shares (the moduledoc).
+  # `{:ok, stack}`; `{:error, :forbidden}` or `{:error, :not_found}` from the access
+  # check, asked first; `{:error, :shared}` for a share while the organisation shares a
+  # harness; `{:error, {:limited, seconds}}` for a person past their reads of the minute;
+  # `{:error, {:walk, failure}}` for a harness repository the walk could not read
+  # (`t:Apiary.Harnesses.Walk.failure/0`); `{:error, :invalid}` for a harness repository
+  # without a source or a ref; or `{:error, changeset}`.
+  @spec choose(Scope.t(), choice, keyword) ::
+          {:ok, Stack.t()}
+          | {:error,
+             Ecto.Changeset.t()
+             | Access.reason()
+             | :invalid
+             | :shared
+             | {:limited, pos_integer}
+             | {:walk, Walk.failure()}}
+  def choose(%Scope{workspace: %Workspace{} = workspace} = scope, choice, opts \\ []) do
+    with :ok <- Access.authorize(scope, :"harness.save", workspace),
+         {:ok, chosen, harness} <- choice_document(scope, choice) do
+      if Keyword.get(opts, :shared, false),
+        do: share(scope, chosen, harness),
+        else:
+          Repo.transact(fn ->
+            lock_saves(workspace)
+            Stacks.put_stack(scope, {:workspace, workspace}, harness, choice: chosen)
+          end)
+    end
+  end
+
+  # The organisation's shared harness, saved where the organisation shares none, with the
+  # workspace's choice removed.
+  defp share(%Scope{organisation: organisation, workspace: workspace} = scope, chosen, harness) do
+    Repo.transact(fn ->
+      lock_shares(organisation)
+      lock_saves(workspace)
+
+      if Stacks.shared(organisation) do
+        {:error, :shared}
+      else
+        with {:ok, stack} <-
+               Stacks.put_stack(scope, {:organisation, organisation}, harness, choice: chosen) do
+          delete_choice(workspace)
+          {:ok, stack}
+        end
+      end
+    end)
+  end
+
+  @doc false
+  # reuse_shared/1 removes the harness choice of the scope's workspace while its
+  # organisation shares a harness, so the workspace takes the shared one. `{:ok, stack}`,
+  # the organisation's row; `{:error, :forbidden}` or `{:error, :not_found}` from the
+  # access check (`harness.save`), asked first; `{:error, :not_shared}` while the
+  # organisation shares none, with nothing removed.
+  @spec reuse_shared(Scope.t()) :: {:ok, Stack.t()} | {:error, Access.reason() | :not_shared}
+  def reuse_shared(%Scope{workspace: %Workspace{} = workspace} = scope) do
+    organisation = %Organisation{id: workspace.organisation_id}
+
+    with :ok <- Access.authorize(scope, :"harness.save", workspace) do
+      Repo.transact(fn ->
+        lock_shares(organisation)
+        lock_saves(workspace)
+
+        case Stacks.shared(organisation) do
+          %Stack{} = stack ->
+            delete_choice(workspace)
+            {:ok, stack}
+
+          nil ->
+            {:error, :not_shared}
+        end
+      end)
+    end
+  end
+
+  # Removes the workspace's harness choice, if it has one. A delete here, not
+  # `Stacks.delete_stack/1`: its refusal of a place with no row would roll the caller's
+  # transaction back.
+  defp delete_choice(%Workspace{} = workspace) do
+    Repo.delete_all(
+      from s in Stack,
+        where: s.organisation_id == ^workspace.organisation_id,
+        where: s.workspace_id == ^workspace.id,
+        where: is_nil(s.target_id) and is_nil(s.workflow)
+    )
+  end
+
+  defp choice_document(scope, :qory),
+    do: {:ok, :qory, document(qory_harness(scope.workspace))}
+
+  defp choice_document(scope, {:repository, %{git: git}, ref})
+       when is_binary(git) and is_binary(ref) do
+    with {:ok, pinned} <- pinned(scope, %{"git" => git, "ref" => String.trim(ref)}),
+         do: {:ok, :repository, document(pinned)}
+  end
+
+  defp choice_document(_scope, _choice), do: {:error, :invalid}
+
+  # `base` at the commit a run's walk reads it at (`Apiary.Harnesses.Walk.pin_base/3`),
+  # counted as one of the person's reads.
+  defp pinned(scope, base) do
+    with {:ok, pin} <- checked(scope, base), do: {:ok, %{base | "ref" => pin}}
+  end
+
+  # The commit a run's walk reads `base` at, counted as one of the person's reads.
+  defp checked(scope, base) do
+    with :ok <- spend(scope, :read, @reads_a_minute) do
+      case Walk.pin_base(scope.organisation, base, time_limit: @read_time) do
+        {:ok, pin} -> {:ok, pin}
+        {_failed_or_retry, failure} -> {:error, {:walk, failure}}
+      end
+    end
+  end
+
+  @typedoc """
+  A stack to choose for a target: the target's default (the workspace's choice, else the
+  organisation's shared harness, with the target's harness file first under the Qory
+  harness and with no choice, then the Qory harness),
+  the Qory harness, or a stack of `read/2` of a source of `linked/1`, `assigned/1` or
+  `address/1`, with a branch or tag.
+  """
+  @type target_choice :: :default | :qory | {:stack, source, stack, String.t()}
+
+  @doc false
+  # choose_target/3 saves `choice` as the stack chosen for `target`, a `%{system, path}`
+  # of a destination of the scope's workspace (the moduledoc): `:default` removes the
+  # target's choice. `{:ok, stack}`, `{:ok, nil}` for `:default`; `{:error, :forbidden}`
+  # or `{:error, :not_found}` from the access check, asked first; `{:error, :not_found}`
+  # for a target no destination of the workspace has; `{:error, {:limited, seconds}}`,
+  # `{:error, {:walk, failure}}`, `{:error, :invalid}` or `{:error, changeset}`, as for
+  # `choose/3`.
+  @spec choose_target(Scope.t(), %{system: String.t(), path: String.t()}, target_choice) ::
+          {:ok, Stack.t() | nil}
+          | {:error,
+             Ecto.Changeset.t()
+             | Access.reason()
+             | :invalid
+             | {:limited, pos_integer}
+             | {:walk, Walk.failure()}}
+  def choose_target(
+        %Scope{workspace: %Workspace{} = workspace} = scope,
+        %{system: system, path: path},
+        choice
+      ) do
+    target = %{system: system, path: path}
+
+    with :ok <- Access.authorize(scope, :"harness.save", workspace),
+         true <- destination?(workspace, target) || {:error, :not_found},
+         {:ok, chosen, harness} <- target_document(scope, choice) do
+      Repo.transact(fn ->
+        lock_saves(workspace)
+        save_target(scope, workspace, target, chosen, harness)
+      end)
+    end
+  end
+
+  def choose_target(%Scope{}, _target, _choice), do: {:error, :not_found}
+
+  defp save_target(_scope, workspace, target, :default, nil) do
+    case Stacks.target_choice(workspace, target) do
+      %Stack{target_id: target_id} ->
+        {:ok, _removed} = Stacks.delete_stack({:target, Repo.get!(Target, target_id)})
+        {:ok, nil}
+
+      nil ->
+        {:ok, nil}
+    end
+  end
+
+  defp save_target(scope, workspace, target, chosen, harness) do
+    :ok = Target.insert_new(workspace.organisation_id, workspace.id, [target])
+
+    row =
+      Repo.get_by!(Target,
+        organisation_id: workspace.organisation_id,
+        workspace_id: workspace.id,
+        system: target.system,
+        path: target.path
+      )
+
+    Stacks.put_stack(scope, {:target, row}, harness, choice: chosen)
+  end
+
+  defp target_document(_scope, :default), do: {:ok, :default, nil}
+  defp target_document(scope, :qory), do: choice_document(scope, :qory)
+
+  # A stack of an assigned source at the assignment's `ref`, checked and not pinned.
+  defp target_document(scope, {:stack, %{kind: :assigned, git: git, ref: ref}, stack, _ref})
+       when is_binary(git) and is_binary(ref) do
+    with {:ok, base} <- stack_base(git, stack),
+         base = Map.put(base, "ref", ref),
+         {:ok, _pin} <- checked(scope, base),
+         do: {:ok, :repository, document(base)}
+  end
+
+  defp target_document(scope, {:stack, %{git: git}, stack, ref})
+       when is_binary(git) and is_binary(ref) do
+    with {:ok, base} <- stack_base(git, stack),
+         {:ok, pinned} <- pinned(scope, Map.put(base, "ref", String.trim(ref))),
+         do: {:ok, :repository, document(pinned)}
+  end
+
+  defp target_document(_scope, _choice), do: {:error, :invalid}
+
+  # The base of `stack` of a read (`read/2`) at the address `git`, with no `ref`.
+  defp stack_base(git, %{base: %{} = base}),
+    do: {:ok, base |> Map.take(["path", "stack"]) |> Map.put("git", git)}
+
+  defp stack_base(_git, _stack), do: {:error, :invalid}
+
+  # Whether a live collection of a connected connection, assigned to `workspace`, has
+  # `target`: a destination of the workspace, as the set-up's Destinations list has one
+  # (`Apiary.WorkspaceSetup.collections/3`).
+  defp destination?(%Workspace{} = workspace, %{system: system, path: path}) do
+    Repo.exists?(
+      from c in Collection,
+        join: k in Connection,
+        on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+        join: n in Node,
+        on: n.id == c.adapter_id,
+        where: c.organisation_id == ^workspace.organisation_id,
+        where: c.workspace_id == ^workspace.id and is_nil(c.ended_at),
+        where: c.target_system == ^system and c.target_path == ^path,
+        where: k.state == :connected and is_nil(k.ended_at),
+        where: n.kind == :adapter and is_nil(n.deleted_at) and n.targets == true
+    )
+  end
+
+  @typedoc """
+  A stack chosen for a target as a page shows it: the choice, the address of its harness,
+  the key that narrows it to a stack (`path` or `stack`, or none for a root), and the
+  `ref` it is read at.
+  """
+  @type target_chosen :: %{
+          choice: :qory | :repository,
+          git: String.t() | nil,
+          narrowing: %{optional(String.t()) => String.t()},
+          pin: String.t() | nil
+        }
+
+  @doc false
+  # targets_chosen/1 is the stacks chosen for the targets of `workspace`, by `{system,
+  # path}` (`t:target_chosen/0`). Read without a lock.
+  @spec targets_chosen(Workspace.t()) :: %{{String.t(), String.t()} => target_chosen}
+  def targets_chosen(%Workspace{id: id, organisation_id: organisation_id}) do
+    Repo.all(
+      from s in Stack,
+        join: t in Target,
+        on: t.id == s.target_id,
+        where: s.organisation_id == ^organisation_id and s.workspace_id == ^id,
+        where: is_nil(s.workflow) and not is_nil(s.choice),
+        select: {t.system, t.path, s}
+    )
+    |> Map.new(fn {system, path, %Stack{choice: choice, harness: harness}} ->
+      base = extended(harness)
+
+      {{system, path},
+       %{
+         choice: choice,
+         git: base["git"],
+         narrowing: Map.take(base, ["path", "stack"]),
+         pin: base["ref"]
+       }}
+    end)
+  end
+
+  # The base of the Qory harness of `workspace`'s type, pinned (`Apiary.Lingo.Domain`).
+  defp qory_harness(workspace),
+    do: workspace |> Domain.for_workspace() |> Domain.definition() |> Map.fetch!(:harness)
+
   # Saves of one workspace take turns: the second waits for the first's transaction, then
   # sees its row and replaces it, so the workspace keeps one workflow.
   defp lock_saves(%Workspace{id: workspace_id}) do
@@ -705,6 +1072,17 @@ defmodule Apiary.Stacks.Sources do
 
     Repo.query!(
       "SELECT pg_advisory_xact_lock(hashtextextended('apiary:workflow-save:' || $1::uuid::text, 0))",
+      [uuid]
+    )
+  end
+
+  # Shares of one organisation take turns: the second waits for the first's transaction,
+  # then sees its row and is refused, so the organisation keeps one shared harness.
+  defp lock_shares(%Organisation{id: organisation_id}) do
+    {:ok, uuid} = Ecto.UUID.dump(organisation_id)
+
+    Repo.query!(
+      "SELECT pg_advisory_xact_lock(hashtextextended('apiary:harness-share:' || $1::uuid::text, 0))",
       [uuid]
     )
   end

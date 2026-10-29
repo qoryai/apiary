@@ -3,9 +3,18 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # the list of the organisation's model providers (`:index`), each by its name with how
   # many keys it has, its name leading to its page (`ApiaryWeb.ProviderLive.Show`), and
   # New model provider (`:new`), a separate page that adds one with its key
-  # (`Apiary.Connections.create_provider/2`): Provider, Key, and an Address for a
-  # provider whose description has an address setting, such as LiteLLM. Beside the form,
-  # About this step says what a key is for and where to get the chosen provider's key.
+  # (`Apiary.Connections.create_provider/3`): Provider, Key, and an Address for a
+  # provider whose description has an address setting, such as LiteLLM, then, where the
+  # edition shows it (`c:Apiary.Edition.scope_setting?/1`), the setting "Available to
+  # every workspace in <organisation>", off. What it reaches is
+  # `Apiary.Connections.reach_at_add/3`'s, for the scope's workspace: with the setting
+  # off, or not shown, the provider is added for that workspace alone (`:workspace`), its
+  # key a secret of the workspace; with it on, for the organisation (`:organisation`),
+  # reaching every workspace, its key a secret of the organisation. With no workspace in
+  # the scope, in every edition, the page shows no form: a line says to set up a
+  # workspace first, with a link to the set-up, and a submit adds nothing. Beside the
+  # form, About this step says what a key is for and where to get the chosen provider's
+  # key.
   #
   # Every member reads the list (`connection.read`); owners and admins add one
   # (`provider.write`), and anyone else sees the list without New model provider and one
@@ -46,6 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
        writes: writes,
+       needs_workspace: needs_workspace?(scope),
        attempt: 0,
        refusal: nil
      )
@@ -59,6 +69,11 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp page_title(scope, _index),
     do: SettingsComponents.page_title(scope, :organisation, [list_title()])
 
+  # Whether an add must wait for a workspace: with no workspace in the scope, a provider
+  # has no workspace to apply to (`Apiary.Connections.reach_at_add/3`), whatever the
+  # setting.
+  defp needs_workspace?(scope), do: is_nil(scope.workspace)
+
   defp list_title, do: gettext("Model providers")
   defp new_title, do: gettext("New model provider")
 
@@ -69,7 +84,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp assign_form(socket, params, errors) do
     params =
       params
-      |> Map.take(["provider" | address_names(params["provider"])])
+      |> Map.take(["provider", "everywhere" | address_names(params["provider"])])
       |> Map.put("key", "")
 
     params = Enum.reduce(errors, params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
@@ -87,8 +102,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
     end
   end
 
-  # The address settings of the provider named `name`, none for one not in the catalogue.
-  defp address_names(name) do
+  @doc false
+  # address_names/1 is the address settings of the catalogue's provider whose name is
+  # `name`, none for one not in the catalogue. The set-up's Model step calls it too
+  # (`ApiaryWeb.WorkspaceSetupLive`), as it calls `field_errors/1`, `setting_title/2`,
+  # `get_key/1` and `provider_options/0`.
+  def address_names(name) do
     case chosen(name) do
       %Provider{} = provider -> Provider.address_settings(provider)
       nil -> []
@@ -98,6 +117,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
   @impl true
   def handle_event("choose", %{"provider" => params}, %{assigns: %{writes: true}} = socket),
     do: {:noreply, assign_form(socket, params, [])}
+
+  def handle_event("create", _params, %{assigns: %{needs_workspace: true}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("create", %{"provider" => params}, %{assigns: %{writes: true}} = socket) do
     scope = socket.assigns.current_scope
@@ -109,7 +131,17 @@ defmodule ApiaryWeb.ProviderLive.Index do
       "settings" => Map.new(address_names(params["provider"]), &{&1, params[&1] || ""})
     }
 
-    case Connections.create_provider(scope, attrs) do
+    reach = Connections.reach_at_add(scope, scope.workspace, params["everywhere"] == "true")
+
+    # Added for the workspace alone, the key is a secret of the workspace, as the set-up's
+    # Model step adds one.
+    created =
+      case reach do
+        %{"applies_to" => "selected"} -> Connections.create_provider(scope, attrs, :workspace)
+        %{"applies_to" => "all"} -> Connections.create_provider(scope, Map.merge(attrs, reach))
+      end
+
+    case created do
       {:ok, provider} ->
         {:noreply,
          socket
@@ -136,9 +168,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   def handle_event(event, _params, socket) when event in ~w(choose create),
     do: {:noreply, socket}
 
-  # The errors of a refused provider, each on the field it is about: the keys' secret's
-  # on Key, the settings' on the first address field.
-  defp field_errors(%Ecto.Changeset{data: %Apiary.Secrets.Secret{}} = changeset) do
+  @doc false
+  # field_errors/1 is the errors of a refused provider, each on the field it is about: the
+  # keys' secret's on Key, the settings' on the first address field.
+  def field_errors(%Ecto.Changeset{data: %Apiary.Secrets.Secret{}} = changeset) do
     nested =
       for %Ecto.Changeset{errors: errors} <- List.wrap(changeset.changes[:values]),
           {_field, error} <- errors,
@@ -147,7 +180,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
     nested ++ for {_field, error} <- changeset.errors, do: {:key, error}
   end
 
-  defp field_errors(%Ecto.Changeset{errors: errors} = changeset) do
+  def field_errors(%Ecto.Changeset{errors: errors} = changeset) do
     address =
       case address_names(Ecto.Changeset.get_field(changeset, :provider_kind)) do
         [name | _rest] -> String.to_atom(name)
@@ -179,7 +212,8 @@ defmodule ApiaryWeb.ProviderLive.Index do
         )
   end
 
-  defp setting_title(%Provider{description: description}, name) do
+  @doc false
+  def setting_title(%Provider{description: description}, name) do
     case get_in(description.document, ["settings", "properties", name, "title"]) do
       title when is_binary(title) -> title
       _none -> name
@@ -205,7 +239,17 @@ defmodule ApiaryWeb.ProviderLive.Index do
           <span id="new-provider-refusal">{@refusal}</span>
         </.notice>
 
+        <p :if={@needs_workspace} id="new-provider-needs-workspace" class="text-[13.5px]/5">
+          <.rich text={
+            rich_gettext("%{set_up} first, then add a model provider in its Model step.",
+              set_up:
+                {:link, ~p"/#{@current_scope.organisation}/set-up", gettext("Set up a workspace")}
+            )
+          } />
+        </p>
+
         <.form
+          :if={!@needs_workspace}
           for={@form}
           id="new-provider-form"
           method="post"
@@ -226,6 +270,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             type="password"
             value={nil}
             label={gettext("Key")}
+            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
             autocomplete="off"
             spellcheck="false"
             phx-update="ignore"
@@ -243,6 +288,16 @@ defmodule ApiaryWeb.ProviderLive.Index do
             autocomplete="off"
             spellcheck="false"
             required
+          />
+          <.input
+            :if={Apiary.Edition.scope_setting?(@current_scope)}
+            field={@form[:everywhere]}
+            type="checkbox"
+            label={
+              gettext("Available to every workspace in %{organisation}",
+                organisation: @current_scope.organisation.name
+              )
+            }
           />
           <.page_form_foot id="new-provider-save" cancel={list_path(@current_scope)}>
             <.button
@@ -333,42 +388,66 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp context(assigns) do
     ~H"""
     <p id="new-provider-what">
-      {gettext("A model provider's key lets the agents of %{organisation}'s runs call a model.",
+      {gettext("A model provider's key lets runs in %{organisation} call a model.",
         organisation: @organisation.name
       )}
     </p>
-    <p :if={get_key(@chosen)} id="new-provider-get-key">
-      <.rich text={get_key(@chosen)}>
-        <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
-      </.rich>
-    </p>
+    <.get_key id="new-provider-get-key" chosen={@chosen} />
     <p :if={@workspace} id="new-provider-next">
-      {gettext("After you save, choose %{workspace}'s model in Workspace settings › Model.",
+      {gettext("After you save, choose the model for %{workspace} in Workspace settings › Model.",
         workspace: @workspace.name
       )}
     </p>
     """
   end
 
-  # Where to get the key of the chosen provider, none for one not in this list.
-  defp get_key(%Provider{name: "anthropic"}),
+  @doc false
+  # get_key/1 is where to get the key of the chosen provider, nothing for one not in this
+  # list. For the Claude subscription it is two sentences with the command between them,
+  # on a line with Copy (`ApiaryWeb.CoreComponents.command_line/1`).
+  attr :id, :string, required: true
+  attr :chosen, :any, required: true
+
+  def get_key(%{chosen: %Provider{name: "claude-subscription"}} = assigns) do
+    ~H"""
+    <div id={@id} class="grid gap-2.5">
+      <p id={"#{@id}-run"}>
+        {gettext(
+          "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+        )}
+      </p>
+      <.command_line id={"#{@id}-command"} command="claude setup-token" />
+      <p id={"#{@id}-copy-token"}>
+        <.rich text={
+          rich_gettext("Then copy the token it prints. %{terms} allow this for personal use only.",
+            terms: {:part, :terms}
+          )
+        }>
+          <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
+        </.rich>
+      </p>
+    </div>
+    """
+  end
+
+  def get_key(assigns) do
+    assigns = assign(assigns, :text, get_key_text(assigns.chosen))
+
+    ~H"""
+    <p :if={@text} id={@id}><.rich text={@text} /></p>
+    """
+  end
+
+  defp get_key_text(%Provider{name: "anthropic"}),
     do: gettext("Get the key from the provider first: create an API key in the Claude Console.")
 
-  defp get_key(%Provider{name: "claude-subscription"}),
-    do:
-      rich_gettext(
-        "Get the key from the provider first: run %{command} in a terminal where Claude Code is installed, and copy the token it prints. %{terms} allow this for personal use only.",
-        command: {:m, "claude setup-token"},
-        terms: {:part, :terms}
-      )
-
-  defp get_key(%Provider{name: "deepseek"}),
+  defp get_key_text(%Provider{name: "deepseek"}),
     do: gettext("Get the key from the provider first: create a DeepSeek API key.")
 
-  defp get_key(%Provider{name: "openrouter"}),
+  defp get_key_text(%Provider{name: "openrouter"}),
     do: gettext("Get the key from the provider first: create an OpenRouter API key.")
 
-  defp get_key(%Provider{name: "litellm"}),
+  defp get_key_text(%Provider{name: "litellm"}),
     do:
       rich_gettext(
         "First get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
@@ -376,7 +455,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
         example: {:m, "https://litellm.example.com"}
       )
 
-  defp get_key(_chosen), do: nil
+  defp get_key_text(_chosen), do: nil
 
   # Anthropic's terms, a link out to `href`, or plain words where the description has no
   # address.
@@ -390,10 +469,11 @@ defmodule ApiaryWeb.ProviderLive.Index do
     """
   end
 
-  # Each provider of the catalogue, its description's text under its title. A subtitle is
-  # plain text: the description's backticks and the address that ends it, which
-  # About this step links to (`terms_url/1`), are left out.
-  defp provider_options do
+  @doc false
+  # provider_options/0 is each provider of the catalogue, its description's text under its
+  # title. A subtitle is plain text: the description's backticks and the address that ends
+  # it, which About this step links to (`terms_url/1`), are left out.
+  def provider_options do
     for provider <- Providers.list() do
       %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}
     end

@@ -54,7 +54,9 @@ defmodule Apiary.ModelChoices do
   # these.
   #
   # The organisation's default has no workspace, so the workspace is not asked of it: a
-  # run whose workspace the default's provider does not reach is ended at its claim.
+  # run whose workspace the default's provider does not reach is ended at its claim. A
+  # provider whose keys are a workspace's secret, which reaches that workspace alone, is
+  # refused at the default, on `provider`.
   #
   # The organisation's chain is written by anyone who may. The operator's chain
   # (`c:Apiary.Edition.model_choice_chain/1`) is written only at the organisation's
@@ -322,11 +324,19 @@ defmodule Apiary.ModelChoices do
   # effort is its offered effort values, `[]` for a model the description does not list.
   # A default model the file lacks comes first all the same, with the description's title,
   # as a choice that names no model runs it. The page reads its list here alone, and a
-  # choice may name any other model id too.
-  @spec suggestions(Connection.t(), Runtime.t()) :: [
+  # choice may name any other model id too. Given a provider of the catalogue
+  # (`Apiary.Kinds.Provider`), the same for a provider not added yet, from its
+  # description, as the set-up's Model step offers them.
+  @spec suggestions(Connection.t() | Provider.t(), Runtime.t()) :: [
           %{id: String.t(), title: String.t(), effort: [String.t()]}
         ]
-  def suggestions(%Connection{provider_kind: kind} = provider, %Runtime{} = runtime) do
+  def suggestions(%Provider{name: kind} = provider, %Runtime{} = runtime),
+    do: suggested(kind, provider, runtime)
+
+  def suggestions(%Connection{provider_kind: kind} = provider, %Runtime{} = runtime),
+    do: suggested(kind, provider, runtime)
+
+  defp suggested(kind, provider, runtime) do
     described = Map.new(Connections.provider_models(provider), &{&1["id"], &1})
     default = Connections.default_model(provider)
 
@@ -866,6 +876,23 @@ defmodule Apiary.ModelChoices do
     else
       {:error, {message, bindings}} -> add_error(changeset, :provider, message, bindings)
     end
+  end
+
+  # A provider whose keys are a workspace's secret reaches that workspace alone, so the
+  # organisation's default (level 6), which every workspace's runs may read, refuses it.
+  defp applies(%Connection{secret: %{workspace_id: workspace_id}}, %{workspace: nil} = at)
+       when is_binary(workspace_id) do
+    workspace =
+      Repo.one(
+        from w in Workspace,
+          where: w.id == ^workspace_id and w.organisation_id == ^at.organisation.id
+      )
+
+    {:error,
+     {dgettext_noop(
+        "errors",
+        "To share this provider, add it again with “Available to every workspace in %{organisation}” on. Its key is a secret of %{workspace}."
+      ), organisation: at.organisation.name, workspace: workspace && workspace.name}}
   end
 
   defp applies(_provider, %{workspace: nil}), do: :ok

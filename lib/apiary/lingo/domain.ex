@@ -8,9 +8,8 @@ defmodule Apiary.Lingo.Domain do
   A workspace has its domain, stored by name in `workspaces.domain` and chosen when it is
   created; every member of the workspace reads the same words. `domains/0` is the registry
   of the domains there are, by name; `for_workspace/1` reads a workspace's through it.
-  There are two: the software domain, the default, which a render outside any workspace
-  reads, and the general domain (`Apiary.Lingo.Domain.General`), whose words are the
-  engine's. Nothing changes a workspace's domain. Code that reads a run's labels for its
+  There is one: the software domain, the default, which a render outside any workspace
+  reads. Nothing changes a workspace's domain. Code that reads a run's labels for its
   target asks here and never names a label itself.
 
   A domain also sets the rules of a work item's target: whether a work item needs one
@@ -19,8 +18,13 @@ defmodule Apiary.Lingo.Domain do
   environments are prebuilt (`c:prebuilds?/0`), and whether a target may have a harness
   file (`c:harness_file?/0`). Code that applies one of these rules asks here, through the
   workspace (`check_target/2`, `run_variables/3`, `prebuilds?/1`, `harness_file?/1`).
+
+  A domain is a workspace type, with a definition (`c:definition/0`,
+  `Apiary.Lingo.Domain.Definition`). A workspace stores the key of its type's definition
+  in `workspaces.type`, set when it is created, beside its domain.
   """
 
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Workspace
 
   # Every domain there is, by the name a workspace stores. A new domain is a module here
@@ -28,10 +32,7 @@ defmodule Apiary.Lingo.Domain do
   # one more of their own (`config/test.exs`), so they see a workspace's domain read
   # through the registry and not assumed.
   @domains Map.merge(
-             %{
-               "software" => Apiary.Lingo.Domain.Software,
-               "general" => Apiary.Lingo.Domain.General
-             },
+             %{"software" => Apiary.Lingo.Domain.Software},
              Application.compile_env(:apiary, [__MODULE__, :test_domains], %{})
            )
   @default Apiary.Lingo.Domain.Software
@@ -92,9 +93,10 @@ defmodule Apiary.Lingo.Domain do
   @callback description() :: String.t()
 
   @doc """
-  The domain's name where a person picks a new workspace's type from a list, one line per
-  type (`ApiaryWeb.WorkspaceComponents.type_field/1`): "Software". Translated in the
-  locale of the caller's process.
+  The domain's name as a type of workspace: the title of its card on the set-up's type
+  cards, at `/:org/set-up` and `/:org/workspaces/new`, and of its line where a person picks a new
+  workspace's type from a list (`ApiaryWeb.WorkspaceComponents.type_field/1`):
+  "Software factory". Translated in the locale of the caller's process.
   """
   @callback type_name() :: String.t()
 
@@ -140,6 +142,13 @@ defmodule Apiary.Lingo.Domain do
   """
   @callback harness_file?() :: boolean
 
+  @doc """
+  The definition of the workspace type the domain is (`Apiary.Lingo.Domain.Definition`):
+  its key, which a workspace of the domain stores in `workspaces.type`, who provides it,
+  and the harness a workspace of the type starts with.
+  """
+  @callback definition() :: Definition.t()
+
   @doc "The domains there are, by name."
   @spec domains() :: %{String.t() => module}
   def domains, do: @domains
@@ -179,6 +188,13 @@ defmodule Apiary.Lingo.Domain do
   @spec name(%Workspace{} | nil) :: String.t()
   def name(workspace), do: for_workspace(workspace).name()
 
+  @doc """
+  The definition of the workspace type `domain` is, one of the modules of `domains/0`:
+  its `c:definition/0`.
+  """
+  @spec definition(module) :: Definition.t()
+  def definition(domain) when is_atom(domain), do: domain.definition()
+
   @doc "The target a run's labels name in the workspace: `target/1` of the workspace's domain."
   @spec target(%Workspace{} | nil, term) :: {:ok, target} | :none
   def target(workspace, %{} = labels), do: for_workspace(workspace).target(labels)
@@ -212,12 +228,17 @@ defmodule Apiary.Lingo.Domain do
   """
   @spec check_target(%Workspace{} | nil, target | nil) ::
           :ok | {:error, :no_target | :target_invalid}
-  def check_target(workspace, nil),
-    do: if(target_required?(workspace), do: {:error, :no_target}, else: :ok)
+  def check_target(workspace, nil), do: check_no_target(for_workspace(workspace))
 
   def check_target(workspace, %{system: system, path: path} = target)
       when is_binary(system) and is_binary(path),
       do: for_workspace(workspace).check_target(target)
+
+  # The `else` branch runs for a domain that needs no target, such as the tests' example
+  # domain. The helper takes any domain module: through `for_workspace/1`, with Software
+  # the only domain outside the tests, the compile warns that the `else` branch never runs.
+  defp check_no_target(domain),
+    do: if(domain.target_required?(), do: {:error, :no_target}, else: :ok)
 
   @doc """
   The run variables of a run of the workspace whose target is `target`, nil for none, with

@@ -1,15 +1,26 @@
 defmodule ApiaryWeb.WorkflowLive do
   # Workspace settings › Workflow (`/:org/:workspace/settings/workflow`), with the
-  # `factory` feature: the workflow the workspace's runs follow and the harness source its
-  # stack comes from, stored as the workspace-level document (`Apiary.Stacks.Sources`).
-  # It opens for whoever may save it (`harness.save`, owners and admins), and is not found
-  # for anyone else, as the section is absent from their list.
+  # `factory` feature: the workspace's harness choice (`Apiary.Stacks.Sources.choose/3`),
+  # and the workflow the workspace's runs follow, stored as the workspace-level document
+  # for that workflow (`Apiary.Stacks.Sources.save/3`). A run's workflow comes from the
+  # rows with a workflow, this one among them, whatever the choice. The walk reads no
+  # document of a row with a workflow (`Apiary.Harnesses.Walk`), so Save sets which
+  # workflow the runs follow, and the harness choices set which harness they use. The
+  # page opens for whoever may save it (`harness.save`,
+  # owners and admins), and is not found for anyone else, as the section is absent from
+  # their list.
   #
   # Beside the form, About this step says what the page sets and which sources Source
-  # lists. Under the title, in a workspace whose domain has harness files
-  # (`Apiary.Lingo.Domain.harness_file?/1`), a notice says that a repository's harness
-  # file comes first, and a line says which workflow the runs follow now, where the
-  # workspace has one.
+  # lists. Under the title, Harness shows the workspace's harness choice and its pin
+  # (`ApiaryWeb.HarnessComponents.line/1`), else the harness the organisation shares,
+  # else the Qory harness, and Change, which opens the two choices of the set-up's
+  # Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with Save and Cancel. Save
+  # stores the choice (`Apiary.Stacks.Sources.choose/3`); a harness repository is read
+  # outside the page's process, through the linked repositories Source lists, and a read
+  # that failed says why. Under it, where the choice is the Qory harness, saved or not,
+  # in a workspace whose domain has harness files (`Apiary.Lingo.Domain.harness_file?/1`),
+  # a notice says that a repository's harness file comes first. A line says which
+  # workflow the runs follow, where the workspace has one.
   #
   # Source is one choice in three groups: the organisation's linked repositories that
   # have a stack, read through the adapters when the page connects, so the group says it
@@ -31,7 +42,7 @@ defmodule ApiaryWeb.WorkflowLive do
 
   alias Apiary.Lingo.Domain
   alias Apiary.Stacks.Sources
-  alias ApiaryWeb.SettingsComponents
+  alias ApiaryWeb.{HarnessComponents, SettingsComponents}
 
   @action :"harness.save"
 
@@ -59,8 +70,13 @@ defmodule ApiaryWeb.WorkflowLive do
         stacks: nil,
         read_error: nil,
         workflow: "",
-        save_error: nil
+        save_error: nil,
+        chosen: Sources.chosen(scope.workspace),
+        editing: false,
+        harness_saving: false,
+        harness_refusal: nil
       )
+      |> assign_harness_form(nil)
 
     socket =
       if connected?(socket),
@@ -107,9 +123,97 @@ defmodule ApiaryWeb.WorkflowLive do
       source.narrowing in [Map.take(base, ["path", "stack"]), %{}]
   end
 
+  ## The harness choice
+
+  # The form of the three choices: `params` as sent, else the saved choice's.
+  defp assign_harness_form(socket, nil),
+    do:
+      assign_harness_form(
+        socket,
+        HarnessComponents.form_params(socket.assigns.chosen, socket.assigns.linked)
+      )
+
+  defp assign_harness_form(socket, params),
+    do: assign(socket, harness_form: to_form(params, as: :harness))
+
+  defp harness_saved(socket, _choice, {:ok, _stack}) do
+    chosen = Sources.chosen(socket.assigns.current_scope.workspace)
+
+    socket
+    |> assign(chosen: chosen, editing: false, harness_refusal: nil)
+    |> assign_harness_form(nil)
+  end
+
+  defp harness_saved(socket, _choice, {:error, :forbidden}),
+    do: put_flash(socket, :error, harness_who_may(socket.assigns.current_scope))
+
+  defp harness_saved(socket, choice, {:error, reason}) do
+    {source, ref} =
+      case choice do
+        {:repository, source, ref} -> {source, ref}
+        _other -> {nil, nil}
+      end
+
+    organisation = socket.assigns.current_scope.organisation.name
+
+    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
+      nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+      words -> assign(socket, :harness_refusal, words)
+    end
+  end
+
+  defp harness_who_may(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        @action,
+        gettext("Only owners and admins can change the workflow.")
+      )
+
   ## Events
 
   @impl true
+  def handle_event("change_harness", _params, socket),
+    do: {:noreply, socket |> assign(editing: true) |> assign_harness_form(nil)}
+
+  def handle_event("cancel_harness", _params, %{assigns: %{harness_saving: false}} = socket),
+    do: {:noreply, assign(socket, editing: false, harness_refusal: nil)}
+
+  def handle_event("choose_harness", %{"harness" => params}, socket) when is_map(params) do
+    params = HarnessComponents.fill(params, socket.assigns.chosen, socket.assigns.linked)
+    {:noreply, socket |> assign(harness_refusal: nil) |> assign_harness_form(params)}
+  end
+
+  def handle_event(
+        "save_harness",
+        %{"harness" => params},
+        %{assigns: %{harness_saving: false}} = socket
+      )
+      when is_map(params) do
+    %{current_scope: scope, linked: linked, chosen: chosen} = socket.assigns
+    socket = assign_harness_form(socket, params)
+
+    case HarnessComponents.choice(params, linked) do
+      nil ->
+        {:noreply, socket}
+
+      choice ->
+        cond do
+          HarnessComponents.unchanged?(choice, chosen) ->
+            {:noreply, assign(socket, editing: false, harness_refusal: nil)}
+
+          match?({:repository, _source, _ref}, choice) ->
+            {:noreply,
+             socket
+             |> assign(harness_saving: true, harness_refusal: nil)
+             |> start_async(:harness_save, fn -> {choice, Sources.choose(scope, choice)} end)}
+
+          true ->
+            {:noreply, harness_saved(socket, choice, Sources.choose(scope, choice))}
+        end
+    end
+  end
+
   def handle_event("change", %{"workflow" => params}, socket) when is_map(params) do
     source = Map.get(params, "source", socket.assigns.choice)
 
@@ -156,16 +260,7 @@ defmodule ApiaryWeb.WorkflowLive do
         {:noreply, assign(socket, save_error: save_refusal(errors))}
 
       {:error, :forbidden} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           ApiaryWeb.Access.who_may(
-             scope,
-             @action,
-             gettext("Only owners and admins can change the workflow.")
-           )
-         )}
+        {:noreply, put_flash(socket, :error, harness_who_may(scope))}
 
       {:error, _not_found} ->
         raise ApiaryWeb.NotFound
@@ -280,14 +375,28 @@ defmodule ApiaryWeb.WorkflowLive do
      socket
      |> assign(linked: linked, unread: unread, left_out: left_out)
      |> preselect_linked()
-     |> assign_form()}
+     |> assign_form()
+     |> harness_listed()}
   end
 
   def handle_async(:linked, {:ok, {:error, {:limited, seconds}}}, socket),
-    do: {:noreply, socket |> assign(linked: [], listing_limited: seconds) |> assign_form()}
+    do:
+      {:noreply,
+       socket |> assign(linked: [], listing_limited: seconds) |> assign_form() |> harness_listed()}
 
   def handle_async(:linked, {:exit, _reason}, socket),
-    do: {:noreply, socket |> assign(linked: [], unread: :all) |> assign_form()}
+    do:
+      {:noreply, socket |> assign(linked: [], unread: :all) |> assign_form() |> harness_listed()}
+
+  def handle_async(:harness_save, {:ok, {choice, result}}, socket),
+    do: {:noreply, socket |> assign(:harness_saving, false) |> harness_saved(choice, result)}
+
+  def handle_async(:harness_save, {:exit, _reason}, socket),
+    do:
+      {:noreply,
+       socket
+       |> assign(:harness_saving, false)
+       |> put_flash(:error, gettext("Nothing was changed. Try again."))}
 
   def handle_async(:read, {:ok, {id, git, result}}, socket) do
     socket =
@@ -308,6 +417,13 @@ defmodule ApiaryWeb.WorkflowLive do
 
   def handle_async(:read, {:exit, _reason}, socket),
     do: {:noreply, socket |> assign(read_error: :unreadable, reading: false) |> assign_form()}
+
+  # Once the linked repositories are read, a harness form with no repository chosen yet
+  # takes the saved one, else the first.
+  defp harness_listed(socket) do
+    %{harness_form: %{params: params}, chosen: chosen, linked: linked} = socket.assigns
+    assign_harness_form(socket, HarnessComponents.fill(params, chosen, linked))
+  end
 
   # The current workflow, where the chosen source's stacks have it under the current base.
   defp preselect_workflow(%{assigns: %{current: %{workflow: workflow, base: base}}} = socket) do
@@ -339,7 +455,9 @@ defmodule ApiaryWeb.WorkflowLive do
     assigns =
       assign(assigns,
         organisation: assigns.current_scope.organisation.name,
-        workspace: assigns.current_scope.workspace.name
+        workspace: assigns.current_scope.workspace.name,
+        qory_chosen: assigns.chosen.choice == :qory,
+        harness_choice: HarnessComponents.choice(assigns.harness_form.params, assigns.linked)
       )
 
     ~H"""
@@ -359,7 +477,64 @@ defmodule ApiaryWeb.WorkflowLive do
         current={:workflow}
         title={gettext("Workflow")}
       >
-        <.notice :if={@harness_file} kind={:info}>
+        <div id="workflow-harness" class="grid gap-3">
+          <div class="flex flex-wrap items-start gap-x-6 gap-y-1 text-[13.5px]/5">
+            <p class="w-24 font-medium">{gettext("Harness")}</p>
+            <div class="min-w-0 flex-1"><HarnessComponents.line chosen={@chosen} /></div>
+            <.button
+              :if={!@editing}
+              id="workflow-harness-change"
+              type="button"
+              size="sm"
+              phx-click="change_harness"
+            >
+              {gettext("Change")}
+            </.button>
+          </div>
+
+          <.form
+            :if={@editing}
+            for={@harness_form}
+            id="workflow-harness-form"
+            phx-change="choose_harness"
+            phx-submit="save_harness"
+            class="grid gap-4"
+            novalidate
+          >
+            <HarnessComponents.choices
+              form={@harness_form}
+              chosen={@chosen}
+              qory={HarnessComponents.qory(@chosen, @current_scope.workspace)}
+              linked={@linked}
+              organisation={@organisation}
+              disabled={@harness_saving}
+            />
+            <.notice :if={@harness_refusal} kind={:error}>
+              <span id="workflow-harness-refusal">{@harness_refusal}</span>
+            </.notice>
+            <div class="flex gap-2">
+              <.button
+                id="workflow-harness-save"
+                type="submit"
+                variant="primary"
+                disabled={is_nil(@harness_choice) or @harness_saving}
+                loading_text={gettext("Saving")}
+              >
+                {if @harness_saving, do: gettext("Saving"), else: gettext("Save")}
+              </.button>
+              <.button
+                id="workflow-harness-cancel"
+                type="button"
+                disabled={@harness_saving}
+                phx-click="cancel_harness"
+              >
+                {gettext("Cancel")}
+              </.button>
+            </div>
+          </.form>
+        </div>
+
+        <.notice :if={@harness_file and @qory_chosen} kind={:info}>
           <span id="workflow-file-first">
             <.rich text={
               rich_pgettext("plain", "A repository's %{harness} or %{qory} comes first.",
@@ -448,7 +623,7 @@ defmodule ApiaryWeb.WorkflowLive do
           <p id="workflow-what">
             {pgettext(
               "plain",
-              "%{workspace}'s runs follow the workflow you choose here, from a harness repository.",
+              "Runs in %{workspace} use the workflow you choose here, from a harness repository.",
               workspace: @workspace
             )}
           </p>
@@ -581,14 +756,6 @@ defmodule ApiaryWeb.WorkflowLive do
       gettext(
         "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid.",
         source: source.label
-      )
-
-  defp current_words(%{workflow: workflow, base: %{"git" => git}}, workspace) when is_binary(git),
-    do:
-      gettext("Runs of %{workspace} follow the workflow %{workflow} of %{source}.",
-        workspace: workspace,
-        workflow: workflow,
-        source: Apiary.Stacks.Document.shown(git)
       )
 
   defp current_words(%{workflow: workflow}, workspace),

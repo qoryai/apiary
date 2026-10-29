@@ -1,8 +1,9 @@
 defmodule Apiary.Adapters.CollectionsAssignTest do
   # The collections of a connection, for people: the page of them, its search, views and
   # workspace filter; the counts; assigning them to a workspace, or to none, with the
-  # feed's entries and the trail's; the auto-assign while the organisation has one
-  # workspace; and the broadcasts after each change, which carry ids only.
+  # feed's entries and the trail's; the rule of a grant, which a choice in set-up's
+  # chooser keeps, and which assigns each collection a listing makes for the grant; and
+  # the broadcasts after each change, which carry ids only.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -12,7 +13,19 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
   alias Apiary.{AccessKeys, Adapters, Deletion, Edition, EditionStubs, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias Apiary.Adapters.{Collection, Collections, ConnectPass, Connection, Connections, Feed}
+
+  alias Apiary.Adapters.{
+    Collection,
+    Collections,
+    ConnectPass,
+    Connection,
+    Connections,
+    Feed,
+    Grant,
+    GrantRule,
+    Grants
+  }
+
   alias Apiary.Organisations.Workspace
   alias Apiary.Sources.Backlog
 
@@ -665,6 +678,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       # An organisation marked for deletion, which nothing is asked of.
       %{scope: gone} = sign_up_fixture()
       {connection, _nonce} = connection_fixture(gone, ctx.adapter, :connected)
+      grant_rule_fixture(connection, gone.workspace)
 
       {:ok, :accepted} =
         Collections.post_listing(ctx.key_scope, part(connection, titled(["GONE"])))
@@ -677,48 +691,235 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
     end
   end
 
-  describe "auto-assign" do
-    test "with one workspace, a new collection is linked to it as it is listed, with its linked entry",
-         _ctx do
-      %{scope: scope} = sign_up_fixture()
-      %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
-      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
-      ctx = %{key_scope: key_scope(key), connection: connection, scope: scope}
+  describe "the rule of a grant" do
+    # The live grant of `connection`, made if missing (`listing_grant/2`).
+    defp grant_of(connection) do
+      ref = listing_grant(connection)
+      Repo.get_by!(Grant, connection_id: connection.id, grant_ref: ref, state: :live)
+    end
 
-      {:ok, :accepted} = post(ctx, titled(["B", "A"]))
-      assert workspace_of(ctx, "A") == scope.workspace.id
-      assert workspace_of(ctx, "B") == scope.workspace.id
-      assert collection_entries(adapter) == [entry("A", "linked"), entry("B", "linked")]
-      assert assign_entries() == []
+    defp choose(ctx, list, choice, workspace \\ nil, scope \\ nil),
+      do:
+        Collections.choose(
+          scope || ctx.scope,
+          grant_of(ctx.connection),
+          workspace || ctx.workspace,
+          list,
+          choice
+        )
 
-      # One a person unlinked keeps its link as the next listing names it again; one new
-      # is linked.
-      {:ok, 1} = Collections.assign_collections(scope, connection, ids(ctx, ["A"]), nil)
+    defp rule_of(connection), do: Repo.get_by(GrantRule, grant_id: grant_of(connection).id)
+
+    defp backlog_of(ctx, ref), do: Repo.get!(Collection, id(ctx, ref)).backlog
+
+    defp with_targets(ctx) do
+      {1, _} =
+        Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^ctx.adapter.id),
+          set: [targets: true]
+        )
+
+      :ok
+    end
+
+    test "All in Work sources assigns each collection of the grant in no workspace, Backlog on, and each one a listing makes later",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["A", "B"]))
+      assert choose(ctx, :sources, :all) == {:ok, 2}
+
+      assert %GrantRule{workspace_id: workspace_id, backlog: true} = rule_of(ctx.connection)
+      assert workspace_id == ctx.workspace.id
+      assert Enum.map(["A", "B"], &workspace_of(ctx, &1)) == [ctx.workspace.id, ctx.workspace.id]
+      assert collection_entries(ctx.adapter) == [entry("A", "linked"), entry("B", "linked")]
+      assert [%Entry{details: %{"count" => 2}}] = assign_entries()
+
+      # A collection a person unassigns stays so as the next listing names it again; a new
+      # one is assigned by the rule, with its linked entry and no trail entry.
+      {:ok, 1} = Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["A"]), nil)
       {:ok, :accepted} = post(ctx, titled(["A", "B", "C"]), id: "again")
       assert workspace_of(ctx, "A") == nil
-      assert workspace_of(ctx, "C") == scope.workspace.id
+      assert workspace_of(ctx, "C") == ctx.workspace.id
+      assert backlog_of(ctx, "C")
 
-      assert collection_entries(adapter) == [
+      assert collection_entries(ctx.adapter) == [
                entry("A", "linked"),
                entry("B", "linked"),
                entry("A", "unlinked"),
                entry("C", "linked")
              ]
+
+      assert length(assign_entries()) == 2
+
+      # Chosen again, nothing changes but A.
+      assert choose(ctx, :sources, :all) == {:ok, 1}
+      assert choose(ctx, :sources, :all) == {:ok, 0}
     end
 
-    test "with two workspaces, none is linked; a workspace marked for deletion is not counted",
+    test "All in Destinations assigns with the Backlog off; All in Work sources then turns it on, and stays",
          ctx do
+      :ok = with_targets(ctx)
       {:ok, :accepted} = post(ctx, titled(["A"]))
-      assert workspace_of(ctx, "A") == nil
-      assert collection_entries(ctx.adapter) == []
-
-      {:ok, _} =
-        Deletion.delete_workspace(ctx.scope, ctx.other_workspace.id, ctx.other_workspace.slug)
+      assert choose(ctx, :destinations, :all) == {:ok, 1}
+      assert %GrantRule{backlog: false} = rule_of(ctx.connection)
+      assert {workspace_of(ctx, "A"), backlog_of(ctx, "A")} == {ctx.workspace.id, false}
 
       {:ok, :accepted} = post(ctx, titled(["A", "B"]), id: "again")
+      assert {workspace_of(ctx, "B"), backlog_of(ctx, "B")} == {ctx.workspace.id, false}
+      assert collection_entries(ctx.adapter) == []
+
+      assert choose(ctx, :sources, :all) == {:ok, 2}
+      assert %GrantRule{backlog: true} = rule_of(ctx.connection)
+      assert Enum.map(["A", "B"], &backlog_of(ctx, &1)) == [true, true]
+
+      # Destinations' All leaves the rule chosen in Work sources, and its Only selected is
+      # refused while that rule stands.
+      assert choose(ctx, :destinations, :all) == {:ok, 0}
+      assert %GrantRule{backlog: true} = rule_of(ctx.connection)
+      assert choose(ctx, :destinations, {:only, []}) == {:error, :locked}
+      assert %GrantRule{backlog: true} = rule_of(ctx.connection)
+    end
+
+    test "one rule per grant: All for another workspace is refused; a collection another workspace has stays there",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["A", "B"]))
+
+      {:ok, 1} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, ["B"]),
+          ctx.other_workspace
+        )
+
+      assert choose(ctx, :sources, :all) == {:ok, 1}
+      assert workspace_of(ctx, "B") == ctx.other_workspace.id
+
+      assert choose(ctx, :sources, :all, ctx.other_workspace) == {:error, :taken}
+      assert choose(ctx, :destinations, :all, ctx.other_workspace) == {:error, :not_found}
+      assert rule_of(ctx.connection).workspace_id == ctx.workspace.id
+    end
+
+    test "Only selected ends the rule, keeps what is still selected, and changes nothing for a forged id",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["A", "B", "C"]))
+
+      {:ok, 1} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, ["C"]),
+          ctx.other_workspace
+        )
+
+      assert choose(ctx, :sources, :all) == {:ok, 2}
+
+      # Another organisation's collection, an id of nothing, and a collection another
+      # workspace has: none changes.
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["THEIRS"])))
+      their_id = Repo.get_by!(Collection, connection_id: theirs.id).id
+      [a, c] = ids(ctx, ["A", "C"])
+
+      assert choose(ctx, :sources, {:only, [a, c, their_id, Ecto.UUID.generate(), "not an id"]}) ==
+               {:ok, 1}
+
+      assert rule_of(ctx.connection) == nil
+      assert workspace_of(ctx, "A") == ctx.workspace.id
+      assert {workspace_of(ctx, "B"), backlog_of(ctx, "B")} == {nil, false}
+      assert workspace_of(ctx, "C") == ctx.other_workspace.id
+      assert Repo.get!(Collection, their_id).workspace_id == nil
+
+      # A listing then assigns no new collection.
+      {:ok, :accepted} = post(ctx, titled(["A", "B", "C", "D"]), id: "again")
+      assert workspace_of(ctx, "D") == nil
+    end
+
+    test "the refusals, each changing nothing", ctx do
+      {:ok, :accepted} = post(ctx, titled(["A"]))
+
+      # A member, who may not; a choice of another shape; too many ids.
+      %{scope: member} = member_fixture(ctx.scope, :member)
+      assert {:error, _forbidden} = choose(ctx, :sources, :all, nil, member)
+      assert choose(ctx, :sources, :some) == {:error, :invalid}
+      assert choose(ctx, :sources, {:only, "A"}) == {:error, :invalid}
+      many = for _ <- 1..10_001, do: Ecto.UUID.generate()
+      assert choose(ctx, :sources, {:only, many}) == {:error, :invalid}
+
+      # Another organisation's grant and workspace; a workspace marked for deletion; a
+      # list whose role the adapter does not have.
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+
+      assert Collections.choose(ctx.scope, grant_of(theirs), ctx.workspace, :sources, :all) ==
+               {:error, :not_found}
+
+      assert choose(ctx, :sources, :all, other.workspace) == {:error, :not_found}
+      marked = workspace_fixture(ctx.scope.organisation, "Marked")
+      {:ok, _} = Deletion.delete_workspace(ctx.scope, marked.id, marked.slug)
+      assert choose(ctx, :sources, :all, marked) == {:error, :not_found}
+      assert choose(ctx, :destinations, :all) == {:error, :not_found}
+
+      assert Repo.aggregate(GrantRule, :count) == 0
       assert workspace_of(ctx, "A") == nil
-      assert workspace_of(ctx, "B") == ctx.workspace.id
-      assert collection_entries(ctx.adapter) == [entry("B", "linked")]
+      assert assign_entries() == []
+
+      # A grant that ended; a connection that ended.
+      grant = grant_of(ctx.connection)
+
+      {:ok, _} =
+        Grants.end_grant(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          grant_ref: grant.grant_ref
+        })
+
+      assert Collections.choose(ctx.scope, grant, ctx.workspace, :sources, :all) ==
+               {:error, :not_found}
+
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+
+      assert Collections.choose(ctx.scope, grant, ctx.workspace, :sources, :all) ==
+               {:error, :ended}
+
+      assert Repo.aggregate(GrantRule, :count) == 0
+    end
+
+    test "a workspace marked for deletion gets no new collection; its purge deletes the rule",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["A"]))
+      assert choose(ctx, :sources, :all) == {:ok, 1}
+      workspace = ctx.workspace
+      {:ok, _} = Deletion.delete_workspace(ctx.scope, workspace.id, workspace.slug)
+
+      {:ok, :accepted} = post(ctx, titled(["A", "B"]), id: "again")
+      assert workspace_of(ctx, "B") == nil
+
+      Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id),
+        set: [purge_after: DateTime.add(DateTime.utc_now(), -60, :second)]
+      )
+
+      instance = Scope.for_instance(ctx.scope.organisation, Repo.get!(Workspace, workspace.id))
+      assert {:ok, :purged} = Deletion.purge_workspace(instance)
+      assert Repo.aggregate(GrantRule, :count) == 0
+    end
+
+    test "a grant's end and a connection's end delete its rule", ctx do
+      {:ok, :accepted} = post(ctx, titled(["A"]))
+      assert choose(ctx, :sources, :all) == {:ok, 1}
+      grant = grant_of(ctx.connection)
+
+      {:ok, _} =
+        Grants.end_grant(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          grant_ref: grant.grant_ref
+        })
+
+      assert Repo.get_by(GrantRule, grant_id: grant.id) == nil
+
+      # A new grant of the connection, chosen, then the connection's end.
+      assert choose(ctx, :sources, :all) == {:ok, 0}
+      assert %GrantRule{} = rule_of(ctx.connection)
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+      assert Repo.aggregate(GrantRule, :count) == 0
     end
   end
 
@@ -916,7 +1117,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
 
       assert [ticket.public_id] == Enum.map(Backlog.list_tickets(ctx.scope, %{}).rows, & &1.id)
 
-      assert %{domains: ["general"]} = start(ctx, ["general"])
+      assert %{domains: ["example"]} = start(ctx, ["example"])
       assert workspace_of(ctx, "SHOP") == ctx.workspace.id
 
       # A listing after the restart leaves it assigned too.
@@ -942,13 +1143,13 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
     test "an adapter that lists no domains serves every workspace; one that lists some, those",
          ctx do
       {:ok, :accepted} = post(ctx, titled(["SHOP", "API"]))
-      general = %{ctx.other_workspace | domain: "general"}
+      example = %{ctx.other_workspace | domain: "example"}
 
-      Repo.update_all(from(w in Workspace, where: w.id == ^general.id), set: [domain: "general"])
+      Repo.update_all(from(w in Workspace, where: w.id == ^example.id), set: [domain: "example"])
 
       start(ctx, ["software"])
 
-      assert Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["API"]), general) ==
+      assert Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["API"]), example) ==
                {:error, :other_domain}
 
       assert {:ok, 1} =
@@ -966,10 +1167,10 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
                  ctx.scope,
                  ctx.connection,
                  ids(ctx, ["API"]),
-                 general
+                 example
                )
 
-      start(ctx, ["general", "software"])
+      start(ctx, ["example", "software"])
 
       assert {:ok, 1} =
                Collections.assign_collections(

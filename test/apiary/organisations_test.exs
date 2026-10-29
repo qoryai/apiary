@@ -35,12 +35,12 @@ defmodule Apiary.OrganisationsTest do
     test "Main is of the domain the form gives, and of the default domain without one" do
       {:ok, %{workspace: workspace}} =
         Organisations.sign_up_user(
-          %{email: unique_user_email(), organisation_name: "Acme Ops", domain: "general"},
+          %{email: unique_user_email(), organisation_name: "Acme Ops", domain: "example"},
           nil,
           open: true
         )
 
-      assert Repo.reload!(workspace).domain == "general"
+      assert Repo.reload!(workspace).domain == "example"
 
       {:ok, %{workspace: workspace}} =
         Organisations.sign_up_user(
@@ -72,12 +72,12 @@ defmodule Apiary.OrganisationsTest do
       refute Map.has_key?(errors_on(Organisations.change_sign_up(attrs)), :domain)
 
       assert {:ok, %{workspace: workspace}} =
-               Organisations.sign_up_user(Map.put(attrs, "domain", "general"), nil,
+               Organisations.sign_up_user(Map.put(attrs, "domain", "example"), nil,
                  open: true,
                  domain: :required
                )
 
-      assert Repo.reload!(workspace).domain == "general"
+      assert %{domain: "example", type: "qory.example"} = Repo.reload!(workspace)
     end
 
     test "a domain no registry has is refused on the form's domain, creating nothing" do
@@ -349,7 +349,10 @@ defmodule Apiary.OrganisationsTest do
       # hold.
       {:ok, platform} =
         %Apiary.Organisations.Workspace{organisation_id: ctx.stranger.organisation.id}
-        |> Apiary.Organisations.Workspace.changeset(%{name: "Platform"})
+        |> Apiary.Organisations.Workspace.create_changeset(%{
+          name: "Platform",
+          domain: "software"
+        })
         |> Apiary.Organisations.Workspace.put_slug("platform")
         |> Apiary.Repo.insert()
 
@@ -600,6 +603,8 @@ defmodule Apiary.OrganisationsTest do
       assert %{name: "Café Société, Data", slug: "cafe-societe-data", domain: "software"} =
                workspace
 
+      assert workspace.type == "qory.software"
+      assert Repo.reload!(workspace).type == "qory.software"
       assert workspace.organisation_id == organisation.id
       assert workspace.egress_mode == "observe"
       assert workspace.deletion_marked_at == nil
@@ -638,10 +643,24 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{domain: ["is invalid"]} = errors_on(changeset)
 
-      assert {:ok, %{domain: "general"} = workspace} =
-               Organisations.create_workspace(scope, %{"name" => "Ops", "domain" => "general"})
+      assert {:ok, %{domain: "example"} = workspace} =
+               Organisations.create_workspace(scope, %{"name" => "Ops", "domain" => "example"})
 
-      assert Repo.reload!(workspace).domain == "general"
+      assert %{domain: "example", type: "qory.example"} = Repo.reload!(workspace)
+    end
+
+    test "the type is the key of the domain's definition, never the form's" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace(scope, %{
+                 "name" => "Ops",
+                 "domain" => "example",
+                 "type" => "acme.other"
+               })
+
+      assert %{domain: "example", type: "qory.example"} = Repo.reload!(workspace)
     end
 
     test "a domain the form has not sent, or not used yet, is no used field of the form" do
@@ -943,15 +962,16 @@ defmodule Apiary.OrganisationsTest do
       assert Organisations.has_workspace?(organisation)
     end
 
-    test "create_first_workspace/2 creates Main of the domain given, once" do
+    test "create_first_workspace/2 creates the workspace of the name and domain given, once" do
       %{scope: scope, organisation: organisation} = sign_up_without_workspace()
 
-      assert {:ok, %Workspace{name: "Main", slug: "main", domain: "general"} = main} =
+      assert {:ok, %Workspace{name: "Payments", slug: "payments", domain: "example"} = main} =
                Organisations.create_first_workspace(scope, %{
-                 "domain" => "general",
-                 "name" => "Other"
+                 "domain" => "example",
+                 "name" => "Payments"
                })
 
+      assert Repo.reload!(main).type == "qory.example"
       assert main.organisation_id == organisation.id
       assert main.egress_mode == "observe"
       assert Organisations.has_workspace?(scope)

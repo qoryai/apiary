@@ -287,6 +287,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     %{user: stranger} = sign_up_fixture()
     other = Apiary.Organisations.load_scope(Scope.for_user(stranger))
     {other_connection, _nonce} = connection_fixture(other, adapter, :connected)
+    grant_rule_fixture(other_connection, other.workspace)
     list(key, other_connection, ["beta/shop"], "theirs")
     theirs = collection(other_connection, "beta/shop")
     assert theirs.workspace_id
@@ -337,11 +338,12 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     list(key, connection, ["acme/shop", {"acme/docs", :no_items}])
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every collection is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
+             "These collections are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
 
     assert words(lv, "#collections-backlog-hint") == @hint
     assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}[aria-checked="true"]})
@@ -368,6 +370,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
   } do
     adapter = describe_source(adapter, "example-tracker.json")
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     list(key, connection, ["Support", {"Sales", :no_items}])
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 

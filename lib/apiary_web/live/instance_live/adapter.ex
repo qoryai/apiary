@@ -148,8 +148,8 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   defp titled(%{assigns: %{adapter: adapter, current_scope: scope}} = socket) do
     parts =
       case socket.assigns.live_action do
-        :overview -> [adapter.name]
-        :settings -> [gettext("Settings"), adapter.name]
+        :overview -> [Adapters.title(adapter)]
+        :settings -> [gettext("Settings"), Adapters.title(adapter)]
         :rename -> [rename_title(adapter)]
         :remove -> [remove_title(adapter)]
       end
@@ -158,7 +158,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   end
 
   defp rename_title(adapter), do: gettext("Rename %{name}", name: adapter.name)
-  defp remove_title(adapter), do: gettext("Remove %{name}", name: adapter.name)
+  defp remove_title(adapter), do: gettext("Remove %{name}", name: Adapters.title(adapter))
 
   @impl true
   def handle_event(
@@ -202,7 +202,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       {:ok, removed} ->
         {:noreply,
          socket
-         |> put_flash(:info, gettext("%{name} is removed.", name: removed.name))
+         |> put_flash(:info, gettext("%{name} is removed.", name: Adapters.title(removed)))
          |> push_navigate(to: paths.list)}
 
       {:error, :installed} ->
@@ -233,7 +233,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
          socket
          |> assign(:adapter, %{updated | created_by: adapter.created_by})
          |> read_sync()
-         |> put_flash(:info, gettext("%{name} is saved.", name: updated.name))}
+         |> put_flash(:info, gettext("%{name} is saved.", name: Adapters.title(updated)))}
 
       {:error, :not_declared} ->
         {:noreply, read_sync(socket)}
@@ -282,13 +282,13 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       memberships={@memberships}
       nav_counts={@nav_counts}
     >
-      <:crumb navigate={@paths.overview}>{@adapter.name}</:crumb>
+      <:crumb navigate={@paths.overview}>{Adapters.title(@adapter)}</:crumb>
       <:crumb>{gettext("Rename")}</:crumb>
 
       <.settings_page section={:adapters} title={rename_title(@adapter)}>
         <:subtitle>
           {gettext(
-            "Organisations see the new name on their Integrations page and when they install it."
+            "Organisations see the new name on their Integrations page and when they install the adapter, unless Qory Apiary shows the title from its description."
           )}
         </:subtitle>
 
@@ -326,12 +326,12 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       memberships={@memberships}
       nav_counts={@nav_counts}
     >
-      <:crumb navigate={@paths.overview}>{@adapter.name}</:crumb>
+      <:crumb navigate={@paths.overview}>{Adapters.title(@adapter)}</:crumb>
       <:crumb>{gettext("Remove")}</:crumb>
 
       <.settings_page
         section={:adapters}
-        title={gettext("Remove %{name}?", name: @adapter.name)}
+        title={gettext("Remove %{name}?", name: Adapters.title(@adapter))}
       >
         <:subtitle>{gettext("This happens at once:")}</:subtitle>
 
@@ -377,9 +377,11 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       memberships={@memberships}
       nav_counts={@nav_counts}
     >
-      <:crumb navigate={@live_action != :overview && @paths.overview}>{@adapter.name}</:crumb>
+      <:crumb navigate={@live_action != :overview && @paths.overview}>
+        {Adapters.title(@adapter)}
+      </:crumb>
 
-      <.settings_page section={:adapters} title={@adapter.name}>
+      <.settings_page section={:adapters} title={Adapters.title(@adapter)}>
         <:subtitle>
           <AdapterComponents.adapter_meta
             adapter={@adapter}

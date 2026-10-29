@@ -54,6 +54,8 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
 
     {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
     tabs = for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
-    assert Enum.drop_while(tabs, &(&1 != "secrets")) == ~w(secrets model workflow runs)
+
+    assert Enum.drop_while(tabs, &(&1 != "secrets")) ==
+             ~w(secrets model work_sources destinations workflow runs)
   end
 end

@@ -35,7 +35,7 @@ defmodule Apiary.Dispatches.MachineLogsRacesTest do
   setup :setup_races
 
   setup %{tmp_dir: tmp_dir} do
-    started = DateTime.utc_now()
+    started = database_now()
     dir = Path.join(tmp_dir, "machine-logs")
     before = Application.fetch_env(:apiary, :machine_logs_dir)
     Application.put_env(:apiary, :machine_logs_dir, dir)

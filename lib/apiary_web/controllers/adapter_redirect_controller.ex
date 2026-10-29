@@ -9,16 +9,17 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # when the person comes back from it, it first takes the return
   # (`Apiary.Adapters.Connections.complete_return/4`) with the nonce the person's session
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
-  # ended there. Where the session keeps "set-up" beside that nonce, an install started at
-  # the workspace set-up, the return leads to its Work source step,
-  # `/<org>/set-up?step=source`, in place of the integration's page. A return the person
-  # did not start in this browser is answered with a page that says so; a link that names
-  # no connection they reach, and a return that is bad, expired or used, as a path that
-  # does not exist, whoever asks, so the link does not tell whether one exists. Behind
-  # sign-in: an anonymous visitor is sent to log in first. `return` is kept out of the
-  # logs (`:filter_parameters`). Every answer of this controller, the redirect, after a
-  # return or not, the 403 page and the 404 alike, says `Referrer-Policy: no-referrer`, so
-  # no page it leads to sends the link, with its `return`, on as a referrer.
+  # ended there. Where the session keeps a step of the workspace set-up beside that nonce
+  # (`ApiaryWeb.ConnectSession.back?/1`), an install started there, the return leads to
+  # that step, such as `/<org>/set-up?step=sources&workspace=main`, in place of the
+  # integration's page. A return the person did not start in this browser gets a page that
+  # shows so; a link that contains no connection they reach, and a return that is bad,
+  # expired or used, as a path that does not exist, whoever asks, so the response does not
+  # show whether one exists. Behind sign-in: an anonymous visitor is sent to log in first.
+  # `return` is kept out of the logs (`:filter_parameters`). Every response of this
+  # controller, the redirect, after a return or not, the 403 page and the 404 alike, has
+  # the header `Referrer-Policy: no-referrer`, so no page it leads to sends the link, with
+  # its `return`, on as a referrer.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -59,13 +60,13 @@ defmodule ApiaryWeb.AdapterRedirectController do
       {:ok, outcome} ->
         to =
           case ConnectSession.back(conn, connection.public_id) do
-            "set-up" -> ~p"/#{organisation}/set-up?step=source"
             nil -> path
+            back -> back_path(organisation, back)
           end
 
         conn
         |> ConnectSession.drop(connection.public_id)
-        |> told(outcome, connection.adapter.name)
+        |> told(outcome, Apiary.Adapters.title(connection.adapter))
         |> redirect(to: to)
 
       {:error, :wrong_person} ->
@@ -139,5 +140,26 @@ defmodule ApiaryWeb.AdapterRedirectController do
     gettext(
       "Only the person who started this install can finish it, in the browser they started it in. To install it yourself, start again from Integrations."
     )
+  end
+
+  # The path of the workspace set-up's step that `back` is set to
+  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug, or the type picked.
+  defp back_path(organisation, "set-up"), do: ~p"/#{organisation}/set-up?step=sources"
+
+  defp back_path(organisation, back) do
+    [page, step | rest] = String.split(back, ":")
+
+    query =
+      [step: step] ++
+        case rest do
+          ["workspace=" <> slug] -> [workspace: slug]
+          [type] -> [type: type]
+          [] -> []
+        end
+
+    case page do
+      "set-up" -> ~p"/#{organisation}/set-up?#{query}"
+      "new-workspace" -> ~p"/#{organisation}/workspaces/new?#{query}"
+    end
   end
 end

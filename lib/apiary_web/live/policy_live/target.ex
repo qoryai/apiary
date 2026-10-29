@@ -777,7 +777,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
             :if={!@rule_edit}
             text={
               rich_gettext(
-                "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides %{workspace}'s rule for the same host, unless that rule is locked.",
+                "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides the rule of %{workspace} for the same host, unless that rule is locked.",
                 target: {:m, @target_name},
                 workspace: @current_scope.workspace.name
               )

@@ -656,7 +656,7 @@ defmodule Apiary.WorkItems do
   # row is read again by its id, as for `explore/3`, and its ticket is the record
   # `ticket_query/0` names. It is a map of:
   #
-  #   * `integration` - the name of the adapter the ticket came through, nil for a test
+  #   * `integration` - the title of the adapter the ticket came through, nil for a test
   #     work item, which came through none, with
   #     `item_noun` and `collection_noun`, its words (`Apiary.Adapters.item_noun/1`,
   #     `collection_noun/1`), and `adapter_removed`, whether the adapter was removed;
@@ -711,7 +711,7 @@ defmodule Apiary.WorkItems do
     {item, uninstalled, ended_at} = record || {nil, nil, nil}
 
     %{
-      integration: adapter.name,
+      integration: Apiary.Adapters.title(adapter),
       item_noun: Apiary.Adapters.item_noun(adapter),
       collection_noun: Apiary.Adapters.collection_noun(adapter),
       adapter_removed: not is_nil(adapter.deleted_at),

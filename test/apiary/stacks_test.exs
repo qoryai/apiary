@@ -1,7 +1,7 @@
 defmodule Apiary.StacksTest do
   # The harness document at five levels: what each write stores, every refusal of a save,
-  # the run's workflow read from the rows with a workflow, and what resolves for a run.
-  # The resolution itself is `test/apiary/stacks/resolution_test.exs`.
+  # the run's workflow read from the rows with a workflow, and the harness choice a run
+  # takes. The resolution of a row is `test/apiary/stacks/resolution_test.exs`.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -46,8 +46,8 @@ defmodule Apiary.StacksTest do
     row
   end
 
-  # What resolves for an explore run at `target`, the context's target by default: the
-  # document, the run's workflow and `harness_hidden`; nil for no workflow or no document.
+  # The harness choice an explore run at `target` takes, the context's target by default:
+  # `{kind, %{harness, level, harness_hidden}}`, or `:none`.
   defp run_harness(ctx, target \\ :target) do
     target =
       case target do
@@ -55,13 +55,16 @@ defmodule Apiary.StacksTest do
         other -> other
       end
 
-    with workflow when is_binary(workflow) <- Stacks.workflow_for(ctx.scope.workspace, target),
-         {:ok, resolution} <-
-           Stacks.resolve_for(ctx.scope.organisation, ctx.scope.workspace, target, workflow) do
-      Map.take(resolution, [:harness, :workflow, :harness_hidden])
-    else
-      _none -> nil
+    case Stacks.chosen_for(ctx.scope.organisation, ctx.scope.workspace, target, "explore") do
+      {kind, resolution} -> {kind, Map.take(resolution, [:harness, :level, :harness_hidden])}
+      :none -> :none
     end
+  end
+
+  # A harness choice at `place`, a place with no workflow.
+  defp choose!(ctx, place, harness, choice \\ :repository) do
+    {:ok, row} = Stacks.put_stack(ctx.scope, place, harness, choice: choice)
+    row
   end
 
   defp places(ctx) do
@@ -118,11 +121,11 @@ defmodule Apiary.StacksTest do
       assert Stacks.saved_by(ctx.scope) == ctx.scope.organisation.id
       assert Edition.harness_owner(ctx.scope) == ctx.scope.organisation.id
 
-      stack = workflow!(ctx, doc("core"))
+      stack = choose!(ctx, {:workspace, ctx.scope.workspace}, doc("core"))
 
       assert stack.owner_organisation_id == ctx.scope.organisation.id
       assert Resolution.owner(stack) == ctx.scope.organisation.id
-      assert %{harness: harness, harness_hidden: false} = run_harness(ctx)
+      assert {:chosen, %{harness: harness, harness_hidden: false}} = run_harness(ctx)
       assert harness == doc("core")
     end
 
@@ -154,11 +157,13 @@ defmodule Apiary.StacksTest do
         assert Edition.harness_owner(scope) == instance
 
         {:ok, stack} =
-          Stacks.put_stack(scope, {:workspace, ctx.scope.workspace, "explore"}, doc("core"))
+          Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, doc("core"),
+            choice: :repository
+          )
 
         assert stack.owner_organisation_id == instance
         assert Resolution.owner(stack) == instance
-        assert %{harness: harness, harness_hidden: true} = run_harness(ctx)
+        assert {:chosen, %{harness: harness, harness_hidden: true}} = run_harness(ctx)
         assert harness == doc("core")
       end
     end
@@ -734,14 +739,16 @@ defmodule Apiary.StacksTest do
   end
 
   describe "delete_stack/1" do
-    test "removes the stack at a place, and the next level applies", ctx do
-      workflow!(ctx)
+    test "removes the stack at a place, and the next choice applies", ctx do
+      choose!(ctx, {:workspace, ctx.scope.workspace}, doc("standard"))
       place = {:target, ctx.target}
-      put!(ctx, place, doc("one"))
-      assert run_harness(ctx).harness == doc("one")
+      choose!(ctx, place, doc("one"))
+      assert {:chosen, %{harness: harness}} = run_harness(ctx)
+      assert harness == doc("one")
 
       assert {:ok, %Stack{}} = Stacks.delete_stack(place)
-      assert run_harness(ctx).harness == doc("standard")
+      assert {:chosen, %{harness: harness}} = run_harness(ctx)
+      assert harness == doc("standard")
     end
 
     test "is not found for a place with none", ctx do
@@ -803,115 +810,172 @@ defmodule Apiary.StacksTest do
     end
   end
 
-  describe "workflow_for/2 and resolve_for/4" do
-    test "one row with a workflow: the run has that workflow, its document and harness_hidden",
-         ctx do
-      workflow!(ctx)
+  describe "workflow_for/2" do
+    test "is the workflow of the one row with a workflow at the run's places", ctx do
+      put!(ctx, {:target, ctx.target, "review"}, doc("core"))
+      target = %{system: ctx.target.system, path: ctx.target.path}
 
-      assert run_harness(ctx) == %{
-               harness: doc("standard"),
-               workflow: "explore",
-               harness_hidden: false
-             }
-    end
-
-    test "a document resolves as saved, whatever its keys", ctx do
-      for document <- [
-            "extends: {git: #{@stacks}, ref: main, stack: web}\n",
-            "extends: {git: #{@stacks}, ref: main}\nname: web\n",
-            "extends: {git: #{@stacks}, ref: main}\nmodules: [{source: {git: #{@stacks}, ref: v1}}]\n"
-          ] do
-        workflow!(ctx, document)
-        assert run_harness(ctx).harness == document
-      end
-    end
-
-    test "a row with the workflow alone takes its document from another level", ctx do
-      workflow!(ctx, nil)
-      assert run_harness(ctx) == nil
-
-      put!(ctx, {:organisation, ctx.scope.organisation}, doc("default"))
-
-      assert run_harness(ctx) == %{
-               harness: doc("default"),
-               workflow: "explore",
-               harness_hidden: false
-             }
-    end
-
-    test "no row with a workflow: the run has no harness, whatever the levels have", ctx do
-      for {level, place} <- places(ctx), level in [:target, :workspace, :organisation] do
-        put!(ctx, place, doc("core"))
-      end
-
-      assert run_harness(ctx) == nil
-      assert run_harness(ctx, nil) == nil
-    end
-
-    test "two rows with a workflow: the run has no harness", ctx do
-      workflow!(ctx)
-      put!(ctx, {:target, ctx.target, "review"}, doc("x"))
-
-      assert run_harness(ctx) == nil
-      assert run_harness(ctx, nil).workflow == "explore"
-    end
-
-    test "a target row without a workflow wins over the workflow row at the workspace", ctx do
-      workflow!(ctx, doc("at-workspace-workflow"))
-
-      for {level, place} <- places(ctx), level in [:target, :workspace, :organisation] do
-        put!(ctx, place, doc("at-" <> String.replace("#{level}", "_", "-")))
-      end
-
-      assert run_harness(ctx).harness == doc("at-target")
-      assert run_harness(ctx, nil).harness == doc("at-workspace-workflow")
-
-      {:ok, _stack} = Stacks.delete_stack({:target, ctx.target})
-      assert run_harness(ctx).harness == doc("at-workspace-workflow")
-    end
-
-    test "a workflow row at the target wins over every other level", ctx do
-      for {level, place} <- places(ctx), level != :workspace_workflow do
-        put!(ctx, place, doc("at-" <> String.replace("#{level}", "_", "-")))
-      end
-
-      assert run_harness(ctx) == %{
-               harness: doc("at-target-workflow"),
-               workflow: "explore",
-               harness_hidden: false
-             }
-
-      assert run_harness(ctx, nil) == nil
+      assert Stacks.workflow_for(ctx.scope.workspace, target) == "review"
+      assert Stacks.workflow_for(ctx.scope.workspace, nil) == nil
     end
 
     test "a target no row of the workspace has counts as none", ctx do
       workflow!(ctx)
-      put!(ctx, {:target, ctx.target}, doc("at-target"))
+      put!(ctx, {:target, ctx.target, "review"}, doc("core"))
+      elsewhere = %{system: "system.example", path: "team/elsewhere"}
 
-      assert run_harness(ctx, %{system: "system.example", path: "team/elsewhere"}).harness ==
-               doc("standard")
+      assert Stacks.workflow_for(ctx.scope.workspace, elsewhere) == "explore"
+    end
+  end
+
+  describe "a harness choice" do
+    test "is stored with its document at each place with no workflow", ctx do
+      for {level, place} <- places(ctx),
+          level in [:target, :workspace, :organisation],
+          choice <- [:qory, :repository] do
+        assert {:ok, %Stack{choice: ^choice} = stack} =
+                 Stacks.put_stack(ctx.scope, place, doc("one"), choice: choice)
+
+        assert Stack.level(stack) == level
+      end
+
+      assert Stacks.choice(ctx.scope.workspace).choice == :repository
+      assert Stacks.shared(ctx.scope.organisation).choice == :repository
+      assert Stacks.target_choice(ctx.scope.workspace, ctx.target).choice == :repository
+
+      assert Stacks.target_choice(ctx.scope.workspace, %{
+               system: "system.example",
+               path: "team/place"
+             }).id ==
+               Stacks.target_choice(ctx.scope.workspace, ctx.target).id
+    end
+
+    test "is refused at a place with a workflow, and without a document", ctx do
+      for {level, place} <- places(ctx), level in [:target_workflow, :workspace_workflow] do
+        assert {:error, changeset} =
+                 Stacks.put_stack(ctx.scope, place, doc("one"), choice: :qory)
+
+        assert errors_on(changeset)[:choice] == ["is invalid"]
+      end
+
+      for {level, place} <- places(ctx), level in [:target, :workspace, :organisation] do
+        assert {:error, changeset} =
+                 Stacks.put_stack(ctx.scope, place, nil, choice: :repository)
+
+        assert errors_on(changeset)[:harness] == ["can't be blank"]
+      end
+
+      refute Repo.exists?(Stack)
+    end
+
+    test "refuses any other value, target_file among them", ctx do
+      assert {:error, changeset} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, nil,
+                 choice: :target_file
+               )
+
+      assert errors_on(changeset)[:choice] == ["is invalid"]
+    end
+
+    test "a write at the place without a choice removes the choice", ctx do
+      choose!(ctx, {:organisation, ctx.scope.organisation}, doc("one"))
+      put!(ctx, {:organisation, ctx.scope.organisation}, doc("one"))
+      assert Stacks.shared(ctx.scope.organisation) == nil
+    end
+  end
+
+  describe "chosen_for/4" do
+    test "a target's stack, then the workspace's choice, then the organisation's shared harness, then none",
+         ctx do
+      choose!(ctx, {:organisation, ctx.scope.organisation}, doc("shared"), :qory)
+      choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"))
+      choose!(ctx, {:target, ctx.target}, doc("target"), :qory)
+
+      assert run_harness(ctx) ==
+               {:chosen, %{harness: doc("target"), level: :target, harness_hidden: false}}
+
+      {:ok, _stack} = Stacks.delete_stack({:target, ctx.target})
+
+      assert run_harness(ctx) ==
+               {:chosen, %{harness: doc("workspace"), level: :workspace, harness_hidden: false}}
+
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
+
+      assert run_harness(ctx) ==
+               {:qory, %{harness: doc("shared"), level: :organisation, harness_hidden: false}}
+
+      {:ok, _stack} = Stacks.delete_stack({:organisation, ctx.scope.organisation})
+      assert run_harness(ctx) == :none
+    end
+
+    test "the Qory harness of the workspace or the organisation is :qory, a harness repository :chosen",
+         ctx do
+      choose!(ctx, {:organisation, ctx.scope.organisation}, doc("shared"), :repository)
+      assert {:chosen, %{level: :organisation}} = run_harness(ctx)
+
+      choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"), :qory)
+      assert {:qory, %{level: :workspace}} = run_harness(ctx)
+    end
+
+    test "the target's resolution has the target's row", ctx do
+      stack = choose!(ctx, {:target, ctx.target}, doc("target"))
+      target = %{system: ctx.target.system, path: ctx.target.path}
+
+      assert {:chosen, %Resolution{stack_id: stack_id, workflow: "explore"}} =
+               Stacks.chosen_for(ctx.scope.organisation, ctx.scope.workspace, target, "explore")
+
+      assert stack_id == stack.id
+    end
+
+    test "rows with no choice are not read, the documents of rows with a workflow among them",
+         ctx do
+      for {_level, place} <- places(ctx), do: put!(ctx, place, doc("level"))
+
+      assert run_harness(ctx) == :none
+      assert run_harness(ctx, nil) == :none
+    end
+
+    test "a run with no target, or at a target no row of the workspace has, takes no target's stack",
+         ctx do
+      choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"))
+      choose!(ctx, {:target, ctx.target}, doc("target"))
+
+      for target <- [nil, %{system: "system.example", path: "team/elsewhere"}] do
+        assert {:chosen, %{level: :workspace}} = run_harness(ctx, target)
+      end
+    end
+
+    test "another organisation's shared harness is not read", ctx do
+      %{scope: other} = sign_up_fixture()
+
+      {:ok, _stack} =
+        Stacks.put_stack(other, {:organisation, other.organisation}, doc("other"), choice: :qory)
+
+      assert run_harness(ctx) == :none
     end
   end
 
   describe "harness_hidden" do
     test "is false for a document saved by the run's organisation", ctx do
-      workflow!(ctx, doc("core"))
-      assert %{harness_hidden: false} = run_harness(ctx)
+      choose!(ctx, {:workspace, ctx.scope.workspace}, doc("core"))
+      assert {:chosen, %{harness_hidden: false}} = run_harness(ctx)
     end
 
     test "is true for a document saved by another organisation", ctx do
       %{scope: other} = sign_up_fixture()
 
       {:ok, _stack} =
-        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "explore"}, doc("core"))
+        Stacks.put_stack(other, {:workspace, ctx.scope.workspace}, doc("core"),
+          choice: :repository
+        )
 
-      assert %{harness_hidden: true} = run_harness(ctx)
+      assert {:chosen, %{harness_hidden: true}} = run_harness(ctx)
     end
 
     test "is true when the run's organisation is operated", ctx do
-      workflow!(ctx)
+      choose!(ctx, {:organisation, ctx.scope.organisation}, doc("core"), :qory)
       :ok = Edition.put_test_stub(Apiary.EditionStubs.Operated)
-      assert %{harness_hidden: true} = run_harness(ctx)
+      assert {:qory, %{harness_hidden: true}} = run_harness(ctx)
     end
   end
 end

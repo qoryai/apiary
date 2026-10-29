@@ -105,6 +105,19 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
 
   @powered "Powered by Qory Apiary"
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
+  # Another name of the product, as `Apiary.EditionStubs.AnotherName` has it, on a
+  # workspace whose set-up is finished.
+  defmodule AnotherNameFinished do
+    @moduledoc false
+    defdelegate product_name, to: Apiary.EditionStubs.AnotherName
+    defdelegate test_run_passed?(workspace), to: Apiary.EditionStubs.SetUpFinished
+  end
+
   setup %{tmp_dir: tmp_dir} do
     # The emails' sender, and docs that are not built.
     put_env(:mail_from, "qory@example.com")
@@ -356,7 +369,7 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
   @tag :feature_sets
   test "with no name set, where the edition names the product otherwise, only the menu's button shows that name",
        %{conn: conn} do
-    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AnotherName)
+    :ok = Apiary.Edition.put_test_stub(AnotherNameFinished)
     places = places(conn)
 
     # The titles, the log-in pages and the emails keep Qory Apiary.

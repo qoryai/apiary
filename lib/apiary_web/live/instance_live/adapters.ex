@@ -87,7 +87,7 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
                 navigate={AdapterComponents.paths(adapter).overview}
                 class="font-medium hover:underline"
               >
-                {adapter.name}
+                {Adapters.title(adapter)}
               </.link>
               <span class="q-mono text-[12.5px] text-muted">{adapter.public_id}</span>
             </span>

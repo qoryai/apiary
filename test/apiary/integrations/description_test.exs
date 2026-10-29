@@ -31,14 +31,15 @@ defmodule Apiary.Integrations.DescriptionTest do
                ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
                   example-gateway.json example-projects.json example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
-                  example-source-guide.json example-tracker.json github.json unknown-role.json)
+                  example-source-guide.json example-source-targets.json example-tracker.json
+                  github.json unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 110
+      assert length(names) == 112
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -57,7 +58,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 45
+      assert length(names) == 47
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -99,7 +100,9 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"guide-no-steps", :required, "#/roles/source/guide/connect"},
             {"guide-steps-11", :maxItems, "#/roles/source/guide/connect/steps"},
             {"guide-steps-empty", :minItems, "#/roles/source/guide/connect/steps"},
-            {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"}
+            {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"},
+            {"targets-false", :const, "#/roles/source/targets"},
+            {"targets-string", :const, "#/roles/source/targets"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
@@ -145,6 +148,19 @@ defmodule Apiary.Integrations.DescriptionTest do
         assert Description.item_noun(description) == nil, name
         assert Description.items?(description), name
         assert Description.collection_noun(description) == nil, name
+      end
+    end
+
+    test "whether a source role's collections have targets: true only where it says so" do
+      assert {:ok, targeted} = parse_fixture("example-source-targets.json")
+      assert Description.targets?(targeted)
+      assert Description.items?(targeted)
+
+      # A source role that says nothing, and no source role: no targets.
+      for name <- ~w(example-tracker.json example-projects.json acme-tracker.json
+                     unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        refute Description.targets?(description), name
       end
     end
 
@@ -270,10 +286,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "24f1125680838387abed1d16c7dbeac198b27994"
+  @integrations_ref "3fc796d01e551d7e966be99bd109239ca9806a7c"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "5ba850ce1ebaf44e9732eb29eb08001c80a430d5605c4a7c16e235440c0d8b20",
+      "f5c147113eec95832c102971165afa3308ce2f969b7351555392db1ad1e2a70b",
     "priv/contract/integration/definitions.schema.json" =>
       "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
     "priv/contract/integration/descriptions/anthropic.json" =>

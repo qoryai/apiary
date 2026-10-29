@@ -154,6 +154,12 @@ msgstr ""
 msgid "Start the address with https://, such as https://models.example.com."
 msgstr ""
 
+#: lib/apiary/connections.ex
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "To share this provider, add it again with “Available to every workspace in %{organisation}” on. Its key is a secret of %{workspace}."
+msgstr ""
+
 #: lib/apiary/targets.ex
 #, elixir-autogen, elixir-format
 msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."

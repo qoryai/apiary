@@ -664,7 +664,7 @@ defmodule Apiary.DispatchesTest do
     end
 
     test "takes a run whose work item has no target, in the queue's order", ctx do
-      scope = with_domain(ctx.scope, "general")
+      scope = with_domain(ctx.scope, "example")
       none = scope |> work_item_fixture(%{target_system: nil, target_path: nil}) |> queue!()
       next = queued!(scope)
 

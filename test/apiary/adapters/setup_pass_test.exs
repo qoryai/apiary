@@ -1,8 +1,9 @@
 defmodule Apiary.Adapters.SetupPassTest do
-  # The setup pass: its form, issued and read back (`issue/2`, `verify/3`), its time, what
-  # is refused, that the generated documentation leaves it out, and that it verifies as no
-  # other signed message of the contract, a connect pass's above all, and the reverse. The
-  # contract's signed fixture is `Apiary.Adapters.ContractFixturesTest`'s.
+  # The setup pass: its form, issued and read back (`issue/3`, `verify/3`), with and
+  # without the organisation's slug, its time, what is refused, that the generated
+  # documentation leaves it out, and that it verifies as no other signed message of the
+  # contract, a connect pass's above all, and the reverse. The contract's signed fixtures
+  # are `Apiary.Adapters.ContractFixturesTest`'s.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.{ConnectPass, SetupPass}
@@ -10,6 +11,7 @@ defmodule Apiary.Adapters.SetupPassTest do
   alias Apiary.SigningKey
 
   @adapter "na_0123456789abcdef"
+  @slug "acme-org"
   @now ~U[2026-10-15 12:00:00Z]
 
   @key SigningKey.new(:crypto.strong_rand_bytes(32))
@@ -22,7 +24,8 @@ defmodule Apiary.Adapters.SetupPassTest do
     do: Ed25519.encode(payload) <> "." <> Ed25519.encode(SigningKey.sign(key, message))
 
   defp pass!(opts \\ []) do
-    {:ok, pass} = SetupPass.issue(@adapter, Keyword.merge([key: @key, now: @now], opts))
+    {slug, opts} = Keyword.pop(opts, :slug, @slug)
+    {:ok, pass} = SetupPass.issue(@adapter, slug, Keyword.merge([key: @key, now: @now], opts))
     pass
   end
 
@@ -31,11 +34,17 @@ defmodule Apiary.Adapters.SetupPassTest do
     Base.url_decode64!(encoded, padding: false)
   end
 
-  describe "issue/2" do
-    test "the payload's members are in their order, with no whitespace" do
+  describe "issue/3" do
+    test "the payload's members are in their order, the slug last, with no whitespace" do
       nonce = :binary.list_to_bin(Enum.to_list(0..15))
 
       assert payload!(pass!(nonce: nonce)) ==
+               ~s({"version":1,"adapter_id":"na_0123456789abcdef",) <>
+                 ~s("nonce":"AAECAwQFBgcICQoLDA0ODw","expires_at":"2026-10-15T12:15:00Z",) <>
+                 ~s("organisation_slug":"acme-org"})
+
+      # Without a slug, the member is left out.
+      assert payload!(pass!(nonce: nonce, slug: nil)) ==
                ~s({"version":1,"adapter_id":"na_0123456789abcdef",) <>
                  ~s("nonce":"AAECAwQFBgcICQoLDA0ODw","expires_at":"2026-10-15T12:15:00Z"})
     end
@@ -63,7 +72,7 @@ defmodule Apiary.Adapters.SetupPassTest do
     end
 
     test "both parts are base64url without padding, and the pass is within its bound" do
-      pass = pass!()
+      pass = pass!(slug: String.duplicate("a", 40))
       assert [payload, signature] = String.split(pass, ".")
       assert payload =~ ~r/\A[A-Za-z0-9_-]+\z/
       assert signature =~ ~r/\A[A-Za-z0-9_-]{86}\z/
@@ -72,21 +81,25 @@ defmodule Apiary.Adapters.SetupPassTest do
     end
 
     test "signs under the instance's key unless given one" do
-      {:ok, pass} = SetupPass.issue(@adapter, now: @now)
+      {:ok, pass} = SetupPass.issue(@adapter, @slug, now: @now)
       assert {:ok, _} = SetupPass.verify(pass, SigningKey.public_key(), now: @now)
       assert SetupPass.verify(pass, public_key(), now: @now) == :error
     end
 
-    test "refuses anything but an adapter's public id, a nonce that is not 16 bytes, and a time that is none" do
+    test "refuses anything but an adapter's public id, a slug, a nonce that is not 16 bytes, and a time that is none" do
       for adapter <- ["ac_0123456789abcdef", "na_0123456789ABCDEF", "na_", "", nil, 1] do
-        assert SetupPass.issue(adapter, key: @key) == {:error, :invalid}, inspect(adapter)
+        assert SetupPass.issue(adapter, @slug, key: @key) == {:error, :invalid}, inspect(adapter)
+      end
+
+      for slug <- [String.duplicate("a", 41), "", "-acme", "acme-", "acme_org", "Acme", 1] do
+        assert SetupPass.issue(@adapter, slug, key: @key) == {:error, :invalid}, inspect(slug)
       end
 
       for nonce <- [<<0::120>>, <<0::136>>, "", nil] do
-        assert SetupPass.issue(@adapter, key: @key, nonce: nonce) == {:error, :invalid}
+        assert SetupPass.issue(@adapter, @slug, key: @key, nonce: nonce) == {:error, :invalid}
       end
 
-      assert SetupPass.issue(@adapter, key: @key, now: "2026-10-15T12:00:00Z") ==
+      assert SetupPass.issue(@adapter, @slug, key: @key, now: "2026-10-15T12:00:00Z") ==
                {:error, :invalid}
     end
   end
@@ -95,11 +108,20 @@ defmodule Apiary.Adapters.SetupPassTest do
     test "reads a pass back under the key that signed it, and no other" do
       pass = pass!()
 
-      assert {:ok, %{adapter_id: @adapter, expires_at: ~U[2026-10-15 12:15:00Z]}} =
-               SetupPass.verify(pass, public_key(), now: @now)
+      assert {:ok,
+              %{
+                adapter_id: @adapter,
+                expires_at: ~U[2026-10-15 12:15:00Z],
+                organisation_slug: @slug
+              }} = SetupPass.verify(pass, public_key(), now: @now)
 
       assert SetupPass.verify(pass, public_key(@other), now: @now) == :error
       assert SetupPass.verify(pass, "short", now: @now) == :error
+    end
+
+    test "reads a pass without the slug, and gives no slug back" do
+      assert {:ok, read} = SetupPass.verify(pass!(slug: nil), public_key(), now: @now)
+      assert Map.keys(read) |> Enum.sort() == [:adapter_id, :expires_at, :nonce]
     end
 
     test "a pass is good until its expires_at, and not from then on, nor too far ahead" do
@@ -142,6 +164,18 @@ defmodule Apiary.Adapters.SetupPassTest do
               ~s("connection_id":"ac_0123456789abcdef","expires_at")
             ),
             String.replace(payload, ":00Z", ".000Z"),
+            String.replace(payload, "acme-org", "acme_org"),
+            String.replace(payload, "acme-org", "Acme-org"),
+            String.replace(payload, "acme-org", "-acme-org"),
+            String.replace(payload, "acme-org", "acme-org-"),
+            String.replace(payload, "acme-org", ""),
+            String.replace(payload, "acme-org", String.duplicate("a", 41)),
+            String.replace(payload, ~s("acme-org"), "null"),
+            String.replace(payload, ~s("acme-org"), "1"),
+            String.replace(payload, ~s("organisation_slug"), ~s("organisation")),
+            payload
+            |> String.replace(~s(,"organisation_slug":"acme-org"), "")
+            |> String.replace(~s({"version"), ~s({"organisation_slug":"acme-org","version")),
             payload <> " "
           ] do
         assert other != payload

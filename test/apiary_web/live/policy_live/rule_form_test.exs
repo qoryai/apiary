@@ -833,7 +833,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert has_element?(view, "h1#policy-rule-title", "New rule")
 
       assert read(view, ".q-page-desc") ==
-               "Let the runs of #{target.path} reach a host, or stop them reaching it. A repository rule applies to this repository only and overrides #{scope.workspace.name}'s rule for the same host, unless that rule is locked."
+               "Let the runs of #{target.path} reach a host, or stop them reaching it. A repository rule applies to this repository only and overrides the rule of #{scope.workspace.name} for the same host, unless that rule is locked."
 
       assert has_element?(view, "#policy-rule-host[placeholder='mcp.acme.example']")
       assert text(view, "#policy-rule-add") == "Add repository rule"

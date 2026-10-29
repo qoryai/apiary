@@ -17,6 +17,12 @@ defmodule ApiaryWeb.IntegrationComponents do
   # title its adapter sent, shown as an external system's text is
   # (`ApiaryWeb.ExternalText`): in its row, its checkbox's name and its switch's.
   #
+  # The set-up's steps Work sources and Destinations show a card per grant
+  # (`grant_card/1`), whose Choose opens the chooser (`chooser/1`,
+  # `ApiaryWeb.ChooseCollectionsLive`): All, or Only selected, the collections of the
+  # grant a page at a time in `collections_table/1`, where a row of another workspace has
+  # no checkbox.
+  #
   # The install block says that the integration brings the person back to the
   # organisation's page, that the collections it reaches are listed there, and that the
   # organisation has one installation of it, then offers Install (`install_form/1`),
@@ -30,7 +36,8 @@ defmodule ApiaryWeb.IntegrationComponents do
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias ApiaryWeb.SettingsComponents
+  alias Apiary.WorkspaceSetup
+  alias ApiaryWeb.{RunComponents, SettingsComponents, SourceComponents}
 
   @doc false
   # The paths of the section's pages in the scope's organisation: the list, Add an
@@ -93,16 +100,18 @@ defmodule ApiaryWeb.IntegrationComponents do
       class={["max-w-[720px] rounded-box border border-line bg-base-100 px-5 pt-[18px] pb-5", @class]}
     >
       <p :if={@named} id={"#{@id}-name"} class="mb-2.5 flex items-center gap-2.5 font-semibold">
-        <.mark /><span class="truncate">{@adapter.name}</span>
+        <.mark /><span class="truncate">{Apiary.Adapters.title(@adapter)}</span>
       </p>
       <p class="max-w-[68ch] text-[13.5px]/[21px] text-muted">
-        {gettext("%{integration} then brings you back here.", integration: @adapter.name)}
+        {gettext("%{integration} then brings you back here.",
+          integration: Apiary.Adapters.title(@adapter)
+        )}
         {gettext("The %{collections} it reaches are listed on this page.",
           collections: @collections
         )}
         {gettext("%{organisation} can have one installation of %{integration}.",
           organisation: @organisation.name,
-          integration: @adapter.name
+          integration: Apiary.Adapters.title(@adapter)
         )}
       </p>
       <div class="mt-[18px] flex flex-wrap items-center gap-3">
@@ -117,7 +126,7 @@ defmodule ApiaryWeb.IntegrationComponents do
           {gettext("Cancel")}
         </.button>
         <span :if={@sending} id={"#{@id}-sending"} role="status" class="text-[13px] text-muted">
-          {gettext("Taking you to %{integration}…", integration: @adapter.name)}
+          {gettext("Taking you to %{integration}…", integration: Apiary.Adapters.title(@adapter))}
         </span>
         <span
           :if={!@ready && !@sending}
@@ -126,7 +135,7 @@ defmodule ApiaryWeb.IntegrationComponents do
         >
           {gettext(
             "%{integration} can't be installed yet: this instance's admins are still setting it up.",
-            integration: @adapter.name
+            integration: Apiary.Adapters.title(@adapter)
           )}
         </span>
       </div>
@@ -205,6 +214,10 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :every, :string, default: nil, doc: "the name of the checkbox over every row shown"
   attr :none, :string, default: nil, doc: "the line in place of the rows when there are none"
 
+  attr :chooser, :any,
+    default: nil,
+    doc: "the workspace the rows are chosen for, as in the chooser; nil on the integration page"
+
   @doc false
   # The collections of a page, a row each: the name, the workspace it is assigned to or
   # Unassigned behind a warning mark, with `backlog` its Backlog switch, how many of its
@@ -218,7 +231,13 @@ defmodule ApiaryWeb.IntegrationComponents do
   # screen readers skip. With `picks`, a checkbox first on each row (`"select"`, the row's
   # public id as `collection`), and one in the head over every row shown
   # (`"select_all"`), checked while all of them are. With no rows, `none` in their place.
+  # With `chooser`, a workspace, the Workspace column goes, and a row of another workspace
+  # has no checkbox and shows that workspace's name beside its own; the checkbox over the
+  # rows selects the others.
   def collections_table(assigns) do
+    assigns =
+      assign(assigns, :pickable, Enum.filter(assigns.rows, &pickable?(&1, assigns.chooser)))
+
     ~H"""
     <div
       id={@id}
@@ -235,14 +254,14 @@ defmodule ApiaryWeb.IntegrationComponents do
                 id={"#{@id}-every"}
                 type="checkbox"
                 class="checkbox checkbox-xs"
-                checked={@rows != [] && Enum.all?(@rows, &Map.has_key?(@selected, &1.id))}
-                disabled={@rows == []}
+                checked={@pickable != [] && Enum.all?(@pickable, &Map.has_key?(@selected, &1.id))}
+                disabled={@pickable == []}
                 aria-label={@every}
                 phx-click="select_all"
               />
             </th>
             <th scope="col">{@column}</th>
-            <th scope="col">{gettext("Workspace")}</th>
+            <th :if={!@chooser} scope="col">{gettext("Workspace")}</th>
             <th :if={@backlog} scope="col" class="q-from-sm">{gettext("Backlog")}</th>
             <th :if={@open} scope="col" class="q-num q-from-sm">{@open}</th>
             <th scope="col" class="q-from-sm">{gettext("Added")}</th>
@@ -256,6 +275,7 @@ defmodule ApiaryWeb.IntegrationComponents do
           >
             <td :if={@picks} class="q-int-cb">
               <input
+                :if={pickable?(row, @chooser)}
                 id={"collection-#{row.public_id}-pick"}
                 type="checkbox"
                 class="checkbox checkbox-xs"
@@ -270,6 +290,13 @@ defmodule ApiaryWeb.IntegrationComponents do
                 class="q-title-mono block truncate"
                 title={Apiary.ExternalText.line(row.name)}
               ><.external_text text={row.name} /></span>
+              <span
+                :if={!pickable?(row, @chooser)}
+                id={"collection-#{row.public_id}-elsewhere"}
+                class="text-[12.5px]/4 text-muted"
+              >
+                {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
+              </span>
               <span :if={@backlog && row.backlog} class="q-to-sm mt-1 flex items-center gap-2">
                 <.backlog_switch
                   id={"collection-#{row.public_id}-backlog-line"}
@@ -280,7 +307,7 @@ defmodule ApiaryWeb.IntegrationComponents do
                 <span aria-hidden="true" class="text-xs text-muted">{gettext("Backlog")}</span>
               </span>
             </td>
-            <td>
+            <td :if={!@chooser}>
               <span :if={row.workspace}>{row.workspace.name}</span>
               <span :if={!row.workspace} class="q-int-un">
                 <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><span>{gettext(
@@ -322,6 +349,13 @@ defmodule ApiaryWeb.IntegrationComponents do
     </div>
     """
   end
+
+  # Whether a row may be selected: any row on the integration page; in the chooser, a row
+  # of no workspace or of the workspace chosen for.
+  defp pickable?(_row, nil), do: true
+  defp pickable?(%{workspace: nil}, _chooser), do: true
+  defp pickable?(%{workspace: %{id: id}}, %{id: id}), do: true
+  defp pickable?(_row, _chooser), do: false
 
   attr :id, :string, required: true
   attr :row, :map, required: true, doc: "a row of the table, with its `backlog`"
@@ -467,6 +501,319 @@ defmodule ApiaryWeb.IntegrationComponents do
         {name}
       </.menu_item>
     </.filter_menu>
+    """
+  end
+
+  @doc false
+  # who_assigns/2 is the line of who may assign the collections of `adapters` to
+  # workspaces (`collection.assign`), in the edition's words where it has some, as the
+  # tick lists say it (`ApiaryWeb.TickListComponents.load/4`).
+  @spec who_assigns(Scope.t(), [Node.t()]) :: String.t()
+  def who_assigns(scope, adapters) do
+    nouns = adapters |> Enum.uniq_by(& &1.id) |> Enum.map(&Apiary.Adapters.collection_noun/1)
+
+    ApiaryWeb.Access.who_may(
+      scope,
+      :"collection.assign",
+      gettext(
+        "Only owners and admins of %{organisation} assign %{collections} to workspaces.",
+        organisation: scope.organisation.name,
+        collections: SourceComponents.collections(nouns, :and)
+      )
+    )
+  end
+
+  attr :id, :string, required: true
+  attr :card, :map, required: true, doc: "`Apiary.WorkspaceSetup.cards/4`'s"
+  attr :list, :atom, required: true, values: [:sources, :destinations]
+  attr :workspace, :any, required: true
+  attr :choose, :string, required: true, doc: "the chooser's path for the card's grant"
+
+  @doc false
+  # A card of a grant: the adapter's title and the account's, a text the adapter sent, the
+  # account's left out where `account/1` has none; how many of the grant's collections in the list are chosen for `workspace`, of how many,
+  # or All under the workspace's rule (`Apiary.WorkspaceSetup.all?/3`); and Choose, to
+  # the chooser.
+  def grant_card(assigns) do
+    noun = Apiary.Adapters.collection_noun(assigns.card.adapter)
+
+    assigns =
+      assign(assigns,
+        account: account(assigns.card.grant),
+        summary:
+          if(WorkspaceSetup.all?(assigns.card, assigns.list, assigns.workspace),
+            do: gettext("All %{collections}", collections: SourceComponents.collections(noun)),
+            else:
+              gettext("%{count} of %{total} %{collections}",
+                count: Format.number(assigns.card.chosen),
+                total: Format.number(assigns.card.total),
+                collections: SourceComponents.collections(noun)
+              )
+          )
+      )
+
+    ~H"""
+    <li
+      id={@id}
+      class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
+    >
+      <div class="grid min-w-0 flex-1 gap-0.5">
+        <p class="flex min-w-0 items-center gap-2 font-medium">
+          <.mark class="size-5" />
+          <span id={"#{@id}-title"} class="truncate">
+            {Apiary.Adapters.title(@card.adapter)}<span :if={@account}> · <.external_text text={
+              @account
+            } /></span>
+          </span>
+        </p>
+        <p id={"#{@id}-summary"} class="pl-7 text-[13px]/5 text-muted">{@summary}</p>
+      </div>
+      <.button id={"#{@id}-choose"} variant="default" size="sm" navigate={@choose}>
+        {gettext("Choose")}
+      </.button>
+    </li>
+    """
+  end
+
+  @doc false
+  # The grant's account name as the adapter sent it, or nil for none, an empty name and
+  # one of only whitespace (`String.trim/1`), which a card and the chooser leave out.
+  def account(%{account_title: title}) when is_binary(title),
+    do: if(String.trim(title) == "", do: nil, else: title)
+
+  def account(_grant), do: nil
+
+  attr :id, :string, required: true
+  attr :card, :map, required: true, doc: "`Apiary.WorkspaceSetup.card/5`'s"
+  attr :mode, :atom, required: true, values: [:all, :only], doc: "the choice shown"
+  attr :locked, :boolean, required: true, doc: "All chosen in Work sources, in Destinations"
+  attr :taken, :any, required: true, doc: "the workspace of another workspace's rule, or nil"
+  attr :workspace, :any, required: true
+  attr :may, :boolean, required: true, doc: "whether the person may save"
+  attr :who_may, :string, required: true
+  attr :rows, :list, required: true, doc: "the page of rows, under Only selected"
+  attr :selected, :map, required: true, doc: "the ids selected, by id"
+  attr :query, :map, required: true, doc: "`q`, the search, and `page`"
+  attr :pager, :map, required: true
+  attr :page_path, :any, required: true, doc: "the chooser's path for a query"
+  attr :back, :string, required: true, doc: "where Back leads"
+  attr :access, :any, required: true, doc: "the source's line on its access, or nil"
+  attr :may_connect, :boolean, required: true
+  attr :install, :string, required: true, doc: "the path Change access posts to"
+  attr :ready, :boolean, required: true
+  attr :sending, :boolean, required: true
+
+  @doc false
+  # The chooser of a grant, for `workspace`: All, unless another workspace has the grant's
+  # rule (`taken`), which a line names; Only selected, unless All was chosen in Work sources
+  # and the chooser is Destinations' (`locked`), which a line says. Under Only selected,
+  # how many are selected, the search (`"search"`), the page of rows with a checkbox each
+  # (`collections_table/1`) and the pager. Not listed?, the source's line on its access,
+  # with Change access, Install for the connection (`install_form/1`), for a person who
+  # may connect. Back, without saving, and Save (`"save"`); the choice sends `"mode"`.
+  # The heading and both lines contain the grant's account name; where `account/1` has
+  # none, the heading leaves it out and the lines read "this account".
+  def chooser(assigns) do
+    noun = Apiary.Adapters.collection_noun(assigns.card.adapter)
+
+    assigns =
+      assign(assigns,
+        noun: noun,
+        account: account(assigns.card.grant),
+        collections: SourceComponents.collections(noun)
+      )
+
+    ~H"""
+    <div id={@id} class="grid gap-4">
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h1 class="min-w-0 flex-1 text-2xl/8 font-semibold tracking-[-0.025em]">
+          <.rich
+            :if={@account}
+            text={
+              rich_gettext("Choose %{collections} · %{adapter} · %{account}",
+                collections: @collections,
+                adapter: Apiary.Adapters.title(@card.adapter),
+                account: {:part, :account}
+              )
+            }
+          >
+            <:part name={:account}><.external_text text={@account} /></:part>
+          </.rich>
+          <%= if !@account do %>
+            {gettext("Choose %{collections} · %{adapter}",
+              collections: @collections,
+              adapter: Apiary.Adapters.title(@card.adapter)
+            )}
+          <% end %>
+        </h1>
+        <span
+          :if={@mode == :only}
+          id={"#{@id}-count"}
+          role="status"
+          class="text-[13.5px] text-muted tabular-nums"
+        >
+          {ngettext("%{number} selected", "%{number} selected", map_size(@selected),
+            number: Format.number(map_size(@selected))
+          )}
+        </span>
+      </div>
+
+      <form
+        id={"#{@id}-form"}
+        phx-change="mode"
+        phx-submit="save"
+        class="grid gap-2"
+        novalidate
+      >
+        <label :if={!@taken} class="flex items-center gap-2 text-[13.5px]/5">
+          <input
+            id={"#{@id}-all"}
+            type="radio"
+            name="mode"
+            value="all"
+            class="radio radio-sm"
+            checked={@mode == :all}
+            disabled={!@may}
+          />
+          {gettext("All %{collections}, including new ones", collections: @collections)}
+        </label>
+        <p :if={@locked} id={"#{@id}-locked"} class="pl-6 text-[13px]/5 text-muted">
+          <.rich
+            :if={@account}
+            text={
+              rich_gettext("Work sources is set to All for %{account}. Change it there first.",
+                account: {:part, :account}
+              )
+            }
+          >
+            <:part name={:account}><.external_text text={@account} /></:part>
+          </.rich>
+          <%= if !@account do %>
+            {gettext("Work sources is set to All for this account. Change it there first.")}
+          <% end %>
+        </p>
+        <label :if={!@locked} class="flex items-center gap-2 text-[13.5px]/5">
+          <input
+            id={"#{@id}-only"}
+            type="radio"
+            name="mode"
+            value="only"
+            class="radio radio-sm"
+            checked={@mode == :only}
+            disabled={!@may}
+          />
+          {gettext("Only selected")}
+        </label>
+        <p :if={@taken} id={"#{@id}-taken"} class="pl-6 text-[13px]/5 text-muted">
+          <.rich
+            :if={@account}
+            text={
+              rich_gettext("All new %{collections} of %{account} go to %{workspace}.",
+                collections: @collections,
+                account: {:part, :account},
+                workspace: @taken.name
+              )
+            }
+          >
+            <:part name={:account}><.external_text text={@account} /></:part>
+          </.rich>
+          <%= if !@account do %>
+            {gettext("All new %{collections} of this account go to %{workspace}.",
+              collections: @collections,
+              workspace: @taken.name
+            )}
+          <% end %>
+        </p>
+      </form>
+
+      <div :if={@mode == :only} class="grid gap-3">
+        <.list_search
+          id={"#{@id}-search"}
+          label={gettext("Find a %{collection}", collection: SourceComponents.collection(@noun))}
+          value={@query.q}
+        />
+        <.collections_table
+          id={"#{@id}-table"}
+          label={SourceComponents.collections_label([@noun])}
+          rows={@rows}
+          column={SourceComponents.collection_label(@noun)}
+          picks={@may}
+          selected={@selected}
+          chooser={@workspace}
+          every={
+            gettext("Select every %{collection} shown",
+              collection: SourceComponents.collection(@noun)
+            )
+          }
+          none={
+            @query.q && @pager.total == 0 &&
+              gettext("No %{collections} match “%{search}”.",
+                collections: @collections,
+                search: @query.q
+              )
+          }
+        />
+        <RunComponents.pager
+          :if={@pager.previous || @pager.next}
+          id={"#{@id}-pager"}
+          prefix={"#{@id}-pager"}
+          first={@pager.first}
+          last={@pager.last}
+          total={@pager.total}
+          previous={@pager.previous && @page_path.(%{@query | page: @pager.page - 1})}
+          next={@pager.next && @page_path.(%{@query | page: @pager.page + 1})}
+          previous_label={gettext("Previous")}
+          next_label={gettext("Next")}
+        />
+      </div>
+
+      <div
+        :if={@access}
+        id={"#{@id}-access"}
+        class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]/5 text-muted"
+      >
+        <span>
+          <.rich text={rich_gettext("Not listed? %{access}", access: {:part, :access})}>
+            <:part name={:access}><.external_text text={@access} /></:part>
+          </.rich>
+        </span>
+        <.install_form
+          :if={@may_connect}
+          id={"#{@id}-change-access"}
+          adapter={@card.adapter}
+          action={@install}
+          ready={@ready}
+          sending={@sending}
+          variant="default"
+          size="xs"
+          label={gettext("Change access")}
+        />
+      </div>
+
+      <p
+        :if={!@may}
+        id={"#{@id}-who-may"}
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {@who_may}
+      </p>
+
+      <div class="q-su-acts">
+        <.button id={"#{@id}-back"} variant="ghost" size="md" navigate={@back}>
+          <.icon name="hero-chevron-left-micro" class="size-4" />{gettext("Back")}
+        </.button>
+        <.button
+          :if={@may}
+          id={"#{@id}-save"}
+          type="submit"
+          form={"#{@id}-form"}
+          variant="primary"
+          size="md"
+        >
+          {gettext("Save")}
+        </.button>
+      </div>
+    </div>
     """
   end
 

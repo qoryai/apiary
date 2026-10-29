@@ -325,7 +325,7 @@ defmodule ApiaryWeb.UserAuth do
   def on_mount(:require_sudo_mode, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
-    if Accounts.sudo_mode?(socket.assigns.current_scope.user, -10) do
+    if Accounts.sudo_mode?(socket.assigns.current_scope.user, -15) do
       {:cont, socket}
     else
       socket =
@@ -755,7 +755,8 @@ defmodule ApiaryWeb.UserAuth do
   finishes or skips their last step (`Apiary.Setup.connections_reviewed?/0`); else the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
-  (`Apiary.Organisations.load_home_scope/2`), at the first page it shows them
+  (`Apiary.Organisations.load_home_scope/2`), with the `factory` feature at the set-up's
+  next step while its set-up is not finished, else at the first page it shows them
   (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's workspace set-up,
   `/:org/set-up`, while the organisation has no workspace in use
   (`Apiary.Organisations.has_workspace?/1`); the organisation's path, `/:org`, for a

@@ -49,7 +49,8 @@ defmodule Apiary.Edition do
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0`
     (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
   - **What a person is shown**: `hidden/1`, features and parts
-    (`Apiary.Features.visible?/2`).
+    (`Apiary.Features.visible?/2`); `scope_setting?/1`, whether the Add forms show the
+    setting of the workspaces a thing reaches.
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
 
@@ -81,22 +82,30 @@ defmodule Apiary.Edition do
     exists;
   - `label`, its name in the list, translated;
   - `group`, the heading it is listed under: nil for none, `:connect` for
-    "Connect Qory Apiary", `:workspace` for "Set up your workspace";
+    "Connect Qory Apiary";
   - `state`: `:done`, `:skipped` (before the current step and not done; an
     `{:installing, name}` step only where the current step is in `:connect`), `:current`
     or `:to_come`;
   - `path`, the page that shows the step, or nil where none does; a step that is done or
     skipped and has a path is a link;
   - `note`, a line under its name, or nil;
+  - `progress`, the progress the step belongs to: `:instance`, set up once by the
+    instance admin, or `:organisation`, set up for every organisation. The indicator
+    counts and lists the current step's progress alone. A step without it, such as one
+    the edition adds, is of `:organisation`. On Invitation and Your account the core sets
+    it once the edition has answered: `:instance` for an instance admin and on the set-up
+    link's page, else `:organisation`. A step the edition renames from them, with another
+    id, has none;
   - `organisation_id`, on the Invitation step alone, signed out: the id of the
     invitation's organisation, so an edition can tell whose invitation it is. No page
     shows it.
   """
   @type set_up_step :: %{
           optional(:organisation_id) => Ecto.UUID.t(),
+          optional(:progress) => :instance | :organisation,
           id: term,
           label: String.t(),
-          group: nil | :connect | :workspace,
+          group: nil | :connect,
           state: :done | :skipped | :current | :to_come,
           path: String.t() | nil,
           note: String.t() | nil
@@ -179,8 +188,10 @@ defmodule Apiary.Edition do
   reads signed out: the set-up link, the sign-up and an invitation. There, the
   Invitation step has `organisation_id`, the invitation's organisation's id, which no
   page shows. The answer is the list to show: the edition may add, rename or replace
-  steps, and set their notes; its length is the count the indicator shows ("Step 2 of
-  4"), and a list of fewer than 2 steps shows no indicator. The core answers `steps`.
+  steps, and set their notes. The indicator shows the current step's progress alone
+  (`progress` in `t:set_up_step/0`): the number of its steps is the count the indicator
+  shows ("Step 2 of 4"). A list of fewer than 2 steps shows no indicator; a progress
+  of one step in a longer list shows "Step 1 of 1". The core answers `steps`.
   """
   @callback set_up_steps(Scope.t() | nil, [set_up_step]) :: [set_up_step]
 
@@ -193,11 +204,22 @@ defmodule Apiary.Edition do
   @callback set_up_context(Scope.t() | nil, step_id :: term) :: String.t() | nil
 
   @doc """
-  The title of the workspace set-up page (`/:org/set-up`) on `step`, its Workspace step
-  as `c:set_up_steps/2` answered it, or nil where the list has none, for `scope`.
-  Translated when it is asked. The core answers "Set up your workspace".
+  The title of the workspace set-up page (`/:org/set-up`) for `scope`, while the
+  organisation has no workspace in use and the scope's person may not create it; `step`
+  is nil there. Translated when it is called. The core returns "Set up your workspace".
   """
   @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
+
+  # With the `factory` feature: the line of the workspace set-up's Machines step
+  # (`ApiaryWeb.WorkspaceSetupLive`) on who acts on a pool that serves `workspace`'s runs
+  # and is not ready, for the person of `scope`, who may not act on it. `pool` is
+  # `:instance` for the instance's pool and gateway, `:workspace` for a pool of the
+  # workspace. Translated when it is asked. The core answers "Only an instance admin
+  # checks the instance's pool and gateway." for `:instance`, and "Only owners and admins
+  # connect a node." for `:workspace`.
+  @doc false
+  @callback machines_who_may(Scope.t(), %Workspace{}, pool :: :instance | :workspace) ::
+              String.t()
 
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
@@ -276,12 +298,12 @@ defmodule Apiary.Edition do
               source :: Apiary.Harnesses.source()
             ) :: boolean
 
-  # With the `factory` feature: the four rules of the
-  # Overview's setup list for `workspace` (`Apiary.WorkspaceSetup`), each asked once per
-  # read of the list, without a lock. An edition may count what serves the workspace from
-  # another organisation; the core counts the workspace's and its organisation's alone, and
-  # the instance's pool and gateway, but for the model key, which it reads on the chain the
-  # edition names:
+  # With the `factory` feature: four rules of the set-up for `workspace`
+  # (`Apiary.WorkspaceSetup`), each asked without a lock. The set-up page reads
+  # `machines_ready/1` and `test_run_passed?/1`; no code of the core reads the other two.
+  # An edition may count what serves the workspace from another organisation; the core
+  # counts the workspace's and its organisation's alone, and the instance's pool and
+  # gateway, but for the model key, which it reads on the chain the edition names:
   #
   # - `work_source_ready/1`: the adapters whose live collections are assigned to the
   #   workspace, through a connection that is connected and listed, each with how many,
@@ -721,6 +743,18 @@ defmodule Apiary.Edition do
   """
   @callback hidden(Scope.t()) :: [Apiary.Features.name()]
 
+  @doc """
+  Whether the scope's person sees, on each form that adds a model provider, a runtime, an
+  integration or a service, the setting `Available to every workspace in
+  %{organisation}`, off by default. A connection to an adapter reaches every workspace,
+  and its form shows no setting. With the setting on, the thing added
+  reaches every workspace of the organisation (`applies_to` `all`); with it off, or
+  where the form does not show it, it reaches the workspace the form is in alone
+  (`selected`, `Apiary.Connections.reach_at_add/3`). The reach is set at the add and
+  never changed after. The core's answer is false.
+  """
+  @callback scope_setting?(Scope.t()) :: boolean
+
   # Runtime
 
   @doc "Reads and checks the edition's settings at boot; raises on a wrong one."
@@ -750,6 +784,7 @@ defmodule Apiary.Edition do
     set_up_steps: 2,
     set_up_title: 2,
     set_up_context: 2,
+    machines_who_may: 3,
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,
@@ -793,6 +828,7 @@ defmodule Apiary.Edition do
     features: 0,
     subject_kinds: 0,
     hidden: 1,
+    scope_setting?: 1,
     boot!: 0,
     children: 0,
     crontab: 0,

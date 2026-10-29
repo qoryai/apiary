@@ -53,14 +53,19 @@ defmodule Apiary.Adapters.Collections do
   # A collection with no items, or of an adapter with none, is never linked, so its
   # assign, move, unassign or end writes no entry either.
   #
-  # **Auto-assign**: while the organisation has exactly one workspace that is not marked
-  # for deletion, a collection a part makes is assigned to it as it is made, with the
-  # feed's `linked` entry when that links it, in the part's transaction; one the part only
-  # updates keeps its workspace.
-  # A collection so assigned that has a target makes that target in the workspace, in the
-  # same transaction, as an assign makes it (`Apiary.Runs.Target.insert_new/3`), so the
-  # target is there before its first run. With two workspaces or more, a new collection
-  # is linked to none, until a person assigns it.
+  # **The rule of a grant** (`Apiary.Adapters.GrantRule`): while a workspace has chosen
+  # All for a grant, a collection a part makes for that grant is assigned to that
+  # workspace as it is made, with its Backlog on when the rule was chosen in Work sources
+  # and off when it was chosen in Destinations alone, and with the feed's `linked` entry
+  # when that links it, in the part's transaction; one the part only updates keeps its
+  # workspace and its Backlog. A workspace marked for deletion or claimed by its purge
+  # gets none. A collection so assigned that has a target makes that target in the
+  # workspace, in the same transaction, as an assign makes it
+  # (`Apiary.Runs.Target.insert_new/3`), so the target is there before its first run. A
+  # new collection of a grant with no rule is linked to no workspace until a person
+  # assigns it. `choose/5` makes and removes a rule; the end of its grant
+  # (`end_for_grant/2`, `end_for_connections/2`) and the purge of its workspace
+  # (`Apiary.Deletion`) delete it.
   #
   # **A changed target**: a part that changes the target of a collection assigned to a
   # workspace makes the new target there, in the part's transaction, as an assign makes
@@ -146,13 +151,18 @@ defmodule Apiary.Adapters.Collections do
   #      workspace's unlink (`unlink_workspace/2`) the connections of the collections they
   #      change, `FOR SHARE`, by id;
   #   2. the workspaces, `FOR SHARE`, all in one statement, by id, as a marking
-  #      (`Apiary.Deletion`) and a policy write hold them: the workspace an assign or a
-  #      target's switch names, the one a collection's switch finds the collection in,
-  #      read with no lock first, and for a listing's part the organisation's only
-  #      workspace with those its collections are assigned to; an unlink holds none;
-  #   3. the collections, `FOR UPDATE`: by id for an assign, a switch and an unlink, read
-  #      again once held, so a collection's switch finds out there whether its collection
-  #      is still in the workspace it holds; for a listing's part, the live ones of its
+  #      (`Apiary.Deletion`) and a policy write hold them: the workspace an assign, a
+  #      choice (`choose/5`) or a target's switch names, the one a collection's switch
+  #      finds the collection in, read with no lock first, and for a listing's part the
+  #      workspaces of the rules of its grants, read with no lock under the connection's
+  #      lock, with those its collections are assigned to; an unlink holds none;
+  #   2a. the rule of a grant, `FOR UPDATE`, by its grant: a choice holds it, or inserts
+  #      it, after the workspace and before the collections; a grant's end deletes it after
+  #      its collections, under the connection's row held `FOR UPDATE`, which a choice
+  #      holds `FOR SHARE` first, so the two never wait on each other in turn;
+  #   3. the collections, `FOR UPDATE`: by id for an assign, a choice, a switch and an
+  #      unlink, read again once held, so a collection's switch finds out there whether
+  #      its collection is still in the workspace it holds; for a listing's part, the live ones of its
   #      connection that it names, by ref, then, when it completes the listing, those of
   #      its connection it ends (`complete/3`), and no collection of another connection.
   #      A part makes the others it names with an insert that leaves a ref live under
@@ -211,7 +221,18 @@ defmodule Apiary.Adapters.Collections do
 
   alias Apiary.{Access, Adapters, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{Collection, Connection, Connections, Feed, Grant, Grants, Wire}
+
+  alias Apiary.Adapters.{
+    Collection,
+    Connection,
+    Connections,
+    Feed,
+    Grant,
+    GrantRule,
+    Grants,
+    Wire
+  }
+
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -370,8 +391,8 @@ defmodule Apiary.Adapters.Collections do
   #   2. then, in one transaction, the refs no connection holds live any more are made
   #      under `connection` as a listing's part makes collections (`hold_listed/2`,
   #      `put_collections/6`, `finish_part/3`): new, with nothing of the ended one, so no
-  #      workspace and no Backlog switch come over, and assigned to the organisation's
-  #      only workspace when it has one, as any collection a part makes. A ref whose
+  #      workspace and no Backlog switch come over, and assigned by the rule of its grant
+  #      when it has one, as any collection a part makes. A ref whose
   #      `grant_ref` the connection has no live grant with by then, after a grant end, is
   #      not made. Once it commits, they are broadcast.
   #
@@ -417,10 +438,11 @@ defmodule Apiary.Adapters.Collections do
   # disconnect ends it (`end_disconnected/2`), whatever its organisation's state, and its
   # organisation's trail gets the entry `collection.move`, by the instance, about the
   # collection, with its title as it was then (`name`), its connection's public id
-  # (`connection_id`) and the adapter's name (`integration`), written before the end, as a
-  # Backlog switch writes its entry before its change. `:ended` once that commits, after
-  # which the collection is broadcast to its organisation; `:free` for a ref no
-  # connection holds live; `:kept` otherwise.
+  # (`connection_id`) and the adapter's title as it was then (`integration`,
+  # `Apiary.Adapters.title/1`), written before the end, as a Backlog switch writes its
+  # entry before its change. `:ended` once that commits, after which the collection is
+  # broadcast to its organisation; `:free` for a ref no connection holds live; `:kept`
+  # otherwise.
   defp end_elsewhere(%Connection{id: connection_id, adapter_id: adapter_id}, ref, started_at) do
     {:ok, outcome} =
       Repo.transact(fn ->
@@ -442,7 +464,7 @@ defmodule Apiary.Adapters.Collections do
                   details: %{
                     name: collection.title,
                     connection_id: collection.connection.public_id,
-                    integration: Repo.get!(Node, adapter_id).name
+                    integration: Adapters.title(Repo.get!(Node, adapter_id))
                   }
                 })
 
@@ -555,8 +577,8 @@ defmodule Apiary.Adapters.Collections do
   # the module comment describes, with the id of its grant from `grants`, by ref, which
   # has every `grant_ref` of `collections`. A ref live under another connection of the
   # adapter is left as it is here, and moved once the part commits (`move_here/5`). A
-  # collection made here is assigned to the organisation's only workspace, when it has one
-  # (`only_workspace/1`). It makes no target and writes no feed entry: `finish_part/3`
+  # collection made here is assigned by the rule of its grant, when it has one
+  # (`grant_rules/1`). It makes no target and writes no feed entry: `finish_part/3`
   # does, after `complete/3`. `%{put: collections, made: ids, assigned: before,
   # workspaces: held, elsewhere: named}`: the collections made or updated, each with its
   # adapter, the ids of those made, the assigned ones as they stood before the part
@@ -564,11 +586,12 @@ defmodule Apiary.Adapters.Collections do
   # `collections` whose ref was live under another connection, as the wire module decoded
   # them.
   #
-  # The only workspace is read without a lock, then held with the workspaces the named
-  # collections are assigned to, in one statement, by id, so the part holds every
-  # workspace in the order a marking and a policy write hold them; then it is read again
-  # (`only_held/3`): one marked or claimed meanwhile, or no longer the only one, links
-  # nothing, as when the organisation has none or two.
+  # The rules of the part's grants are read without a lock: a choice that makes or
+  # removes one holds the connection `FOR SHARE`, which the part holds `FOR UPDATE`, and a
+  # grant's end holds it `FOR UPDATE` too. Their workspaces are then held with the
+  # workspaces the named collections are assigned to, in one statement, by id, so the part
+  # holds every workspace in the order a marking and a policy write hold them: a rule whose
+  # workspace is marked or claimed by then, and so not held, assigns nothing.
   #
   # Then the collections: the live ones of `connection` that the part names are held
   # `FOR UPDATE`, by ref (`hold_live/2`), and no other collection is held. The other refs
@@ -595,19 +618,23 @@ defmodule Apiary.Adapters.Collections do
          now
        ) do
     organisation_id = connection.organisation_id
-    only = only_workspace(organisation_id)
+    rules = grant_rules(Map.values(grants))
     assigned = assigned_before(connection, collections)
 
     workspaces =
-      lock_workspaces(organisation_id, [
-        only | Enum.map(Map.values(assigned), &elem(&1.listed, 0))
-      ])
+      lock_workspaces(
+        organisation_id,
+        Enum.map(Map.values(rules), & &1.workspace_id) ++
+          Enum.map(Map.values(assigned), &elem(&1.listed, 0))
+      )
 
-    workspace_id = only_held(organisation_id, only, workspaces)
     held = hold_live(connection, collections)
 
     rows =
       for collection <- Enum.sort_by(collections, & &1.ref) do
+        grant_id = Map.fetch!(grants, collection.grant_ref)
+        {workspace_id, backlog} = ruled(Map.get(rules, grant_id), workspaces)
+
         %{
           id: Ecto.UUID.generate(),
           public_id: PublicId.generate(Collection.prefix()),
@@ -615,6 +642,7 @@ defmodule Apiary.Adapters.Collections do
           adapter_id: connection.adapter_id,
           connection_id: connection.id,
           workspace_id: workspace_id,
+          backlog: backlog,
           external_ref: collection.ref,
           url: collection.url,
           title: collection.title,
@@ -624,7 +652,7 @@ defmodule Apiary.Adapters.Collections do
           # collection has items.
           items: Map.get(collection, :items, true),
           environment_ref: Map.get(collection, :environment_ref),
-          grant_id: Map.fetch!(grants, collection.grant_ref),
+          grant_id: grant_id,
           last_listed_at: started_at,
           inserted_at: now,
           updated_at: now
@@ -795,29 +823,21 @@ defmodule Apiary.Adapters.Collections do
     end)
   end
 
-  # The id of the organisation's only workspace not marked for deletion, read without a
-  # lock; nil while it has none, or two or more.
-  defp only_workspace(organisation_id) do
-    case Repo.all(
-           from w in Workspace,
-             where: w.organisation_id == ^organisation_id and is_nil(w.deletion_marked_at),
-             select: w.id,
-             limit: 2
-         ) do
-      [id] -> id
-      _none_or_more -> nil
-    end
+  # The rules of the grants `grant_ids`, by grant id, read without a lock.
+  defp grant_rules(grant_ids) do
+    Repo.all(from r in GrantRule, where: r.grant_id in ^Enum.uniq(grant_ids))
+    |> Map.new(&{&1.grant_id, &1})
   end
 
-  # `only`, once `lock_workspaces/2` holds it among `workspaces`, so that it is not marked
-  # before the transaction ends, while it is still the organisation's only workspace not
-  # marked for deletion; nil otherwise.
-  defp only_held(_organisation_id, nil, _workspaces), do: nil
+  # The workspace and the Backlog of a collection a part makes under `rule`: the rule's
+  # workspace, once `lock_workspaces/2` holds it among `workspaces`, and the rule's
+  # Backlog; no workspace, and the column's default Backlog, on, for no rule or a
+  # workspace not held.
+  defp ruled(%GrantRule{workspace_id: id, backlog: backlog}, workspaces)
+       when is_map_key(workspaces, id),
+       do: {id, backlog}
 
-  defp only_held(organisation_id, only, workspaces) do
-    if Map.has_key?(workspaces, only) and only_workspace(organisation_id) == only,
-      do: only
-  end
+  defp ruled(_rule, _workspaces), do: {nil, true}
 
   # The workspace `id` of the organisation `organisation_id`, held `FOR SHARE`, while it is
   # not marked for deletion nor claimed by a purge: its id; nil otherwise. A marking or a
@@ -1102,7 +1122,7 @@ defmodule Apiary.Adapters.Collections do
   # Inside the transaction of a connection's end, under the connection's row
   # (`Apiary.Adapters.Connections`): ends every live collection of the connections
   # `connection_ids` (`connection_ended`), with the feed's `unlinked` entry for each
-  # linked. The number ended.
+  # linked, then deletes the rules of their grants. The number ended.
   @spec end_for_connections([Ecto.UUID.t()], DateTime.t()) :: non_neg_integer
   def end_for_connections([], _now), do: 0
 
@@ -1116,6 +1136,14 @@ defmodule Apiary.Adapters.Collections do
         set: [ended_at: now, ended_reason: :connection_ended, updated_at: now]
       )
 
+    {_deleted, _} =
+      Repo.delete_all(
+        from r in GrantRule,
+          join: g in Grant,
+          on: g.id == r.grant_id,
+          where: g.connection_id in ^connection_ids
+      )
+
     :ok = tell_unlinked(ended)
     count
   end
@@ -1124,9 +1152,9 @@ defmodule Apiary.Adapters.Collections do
   # Inside the transaction of a grant end (`Apiary.Adapters.Grants.end_grant/2`), which
   # locks the grant's connection and the grant: ends every live collection whose grant is
   # `grant`, as a disconnect ends one (`disconnected`), at `now`, with the feed's
-  # `unlinked` entry for each that was linked. A collection last listed before the
-  # contract had a collection's grant has none, and stays. The collections ended, as
-  # written.
+  # `unlinked` entry for each that was linked, then deletes the grant's rule. A collection
+  # last listed before the contract had a collection's grant has none, and stays. The
+  # collections ended, as written.
   @spec end_for_grant(Grant.t(), DateTime.t()) :: [Collection.t()]
   def end_for_grant(%Grant{id: grant_id, connection_id: connection_id}, %DateTime{} = now) do
     {_count, ended} =
@@ -1139,6 +1167,7 @@ defmodule Apiary.Adapters.Collections do
         set: [ended_at: now, ended_reason: :disconnected, updated_at: now]
       )
 
+    {_deleted, _} = Repo.delete_all(from r in GrantRule, where: r.grant_id == ^grant_id)
     :ok = tell_unlinked(ended)
     ended
   end
@@ -1254,6 +1283,10 @@ defmodule Apiary.Adapters.Collections do
   #     spaces around it left out; at most 1,024 characters, a title's most, of valid
   #     UTF-8 with no NUL, else nothing matches;
   #   * `workspace:` a workspace of the organisation, or its id: those linked to it;
+  #   * `grant:` a grant of the connection (`Apiary.Adapters.Grant`): those of that grant;
+  #   * `list:` `:sources`, those with items, or `:destinations`, those with a target, as
+  #     the set-up's lists have them (`Apiary.WorkspaceSetup`), what the adapter has left
+  #     to the caller;
   #   * `after:` the public id (`sc_…`) of the last row of the page before, for the next;
   #     one that names no collection of the connection gives `[]`. For a collection that
   #     ended after that page was read, the next page starts past it all the same;
@@ -1301,14 +1334,26 @@ defmodule Apiary.Adapters.Collections do
   end
 
   # The live collections of `connection` that the filters of `opts` find, `view:`,
-  # `search:` and `workspace:`, unordered: what `list_collections/3` pages through and
-  # `count_collections/3` counts.
+  # `search:`, `workspace:`, `grant:` and `list:`, unordered: what `list_collections/3`
+  # pages through and `count_collections/3` counts.
   defp found_query(%Connection{id: connection_id}, opts) do
     from(c in Collection, where: c.connection_id == ^connection_id and is_nil(c.ended_at))
     |> view(Keyword.get(opts, :view, :all))
     |> search(Keyword.get(opts, :search))
     |> in_workspace(Keyword.get(opts, :workspace))
+    |> of_grant(Keyword.get(opts, :grant))
+    |> in_list(Keyword.get(opts, :list))
   end
+
+  defp of_grant(query, nil), do: query
+  defp of_grant(query, %Grant{id: id}), do: where(query, [c], c.grant_id == ^id)
+
+  defp in_list(query, nil), do: query
+  defp in_list(query, :sources), do: where(query, [c], c.items)
+  defp in_list(query, :destinations), do: where(query, [c], not is_nil(c.target_system))
+
+  defp in_list(_query, _list),
+    do: raise(ArgumentError, "a list is :sources or :destinations")
 
   defp sort(query, :title), do: order_by(query, [c], asc: c.title, asc: c.id)
 
@@ -1447,8 +1492,8 @@ defmodule Apiary.Adapters.Collections do
   @doc false
   # count_collections/3 is how many live collections of `connection` the filters of
   # `opts` find, to a person who may read the instance's adapters in the scope's
-  # organisation (`adapter.read`): `view:`, `search:` and `workspace:` as
-  # `list_collections/3` takes them, the rows of all its pages counted; `after:` and
+  # organisation (`adapter.read`): `view:`, `search:`, `workspace:`, `grant:` and `list:`
+  # as `list_collections/3` takes them, the rows of all its pages counted; `after:` and
   # `order:` are not read. 0 to anyone else, and for a connection of another
   # organisation.
   @spec count_collections(Scope.t(), Connection.t(), keyword) :: non_neg_integer
@@ -2059,6 +2104,364 @@ defmodule Apiary.Adapters.Collections do
     else
       _none -> nil
     end
+  end
+
+  ## The chooser
+
+  @doc false
+  # rule/1 is the rule of `grant` (`Apiary.Adapters.GrantRule`), with its workspace; nil
+  # for none. It asks no scope: its caller loads `grant` under the reader's scope first.
+  @spec rule(Grant.t()) :: GrantRule.t() | nil
+  def rule(%Grant{id: id}),
+    do: Repo.one(from r in GrantRule, where: r.grant_id == ^id, preload: :workspace)
+
+  @doc false
+  # chosen_ids/3 is the ids of the live collections of `grant` in the list `list` that
+  # are chosen for `workspace`: in Work sources (`:sources`), those with items assigned to
+  # it with their Backlog on; in Destinations (`:destinations`), those with a target
+  # assigned to it. It asks no scope, as `rule/1`.
+  @spec chosen_ids(Grant.t(), :sources | :destinations, Workspace.t()) :: [Ecto.UUID.t()]
+  def chosen_ids(%Grant{id: grant_id, connection_id: connection_id}, list, %Workspace{id: id}) do
+    from(c in Collection,
+      where: c.connection_id == ^connection_id and c.grant_id == ^grant_id,
+      where: is_nil(c.ended_at) and c.workspace_id == ^id,
+      select: c.id
+    )
+    |> in_list(list)
+    |> then(&if(list == :sources, do: where(&1, [c], c.backlog), else: &1))
+    |> Repo.all()
+  end
+
+  @doc false
+  # choose/5 saves the choice of `workspace`, of the scope's organisation, for the live
+  # grant `grant` in the list `list`, `:sources` (Work sources) or `:destinations`, as the
+  # chooser of the set-up's steps sends it (`collection.assign`, owners and admins, asked
+  # of the organisation), in one transaction:
+  #
+  #   * `:all`: the grant's rule (`Apiary.Adapters.GrantRule`) is the workspace's, with
+  #     its Backlog on in Work sources, and every live collection of the grant that no
+  #     other workspace has is assigned to the workspace: in Work sources with its Backlog
+  #     on, in Destinations with its Backlog off where it was assigned to none. In
+  #     Destinations, a rule of the workspace chosen in Work sources stays as it is;
+  #   * `{:only, ids}`: the workspace's rule goes, unless it was chosen in Work sources and
+  #     `list` is Destinations; then each live collection of the grant in the list that is
+  #     assigned to no workspace or to this one is ticked when `ids` has its id, and
+  #     unticked otherwise, as `Apiary.WorkspaceSetup.tick/5` ticks one. An id of any
+  #     other collection changes nothing.
+  #
+  # In this order:
+  #
+  #   * `Apiary.Access`'s refusal, before anything is read;
+  #   * `{:error, :invalid}` for a choice of another shape, or more than 10,000 ids;
+  #   * `{:error, :not_found}` for a grant of a connection of another organisation, or
+  #     one not connected;
+  #   * `{:error, :ended}` for a connection that ended;
+  #   * `{:error, :not_found}` for a grant that ended, of an adapter without the list's
+  #     role (items for Work sources, `targets` true for Destinations), and for a
+  #     workspace that is not the organisation's, or that is marked for deletion or
+  #     claimed by its purge;
+  #   * `{:error, :other_domain}` for a workspace whose domain the adapter does not serve,
+  #     as an assign refuses it;
+  #   * `{:error, :taken}` for All while another workspace has the grant's rule;
+  #   * `{:error, :locked}` for Only selected in Destinations while the workspace's rule
+  #     was chosen in Work sources;
+  #   * `{:ok, count}`, how many collections changed.
+  #
+  # It holds the connection `FOR SHARE`, the workspace `FOR SHARE`, the rule `FOR UPDATE`,
+  # then the collections, by id, then the adapter's feed counter, last, as the module's
+  # lock order says. Its entries in the organisation's trail are an assign's
+  # (`collection.assign`), one for those it assigns to the workspace and one for those it
+  # unassigns, none for none, and a collection's switch's (`collection.set_backlog`) for
+  # each collection that stays in the workspace and whose Backlog it turns; its feed
+  # entries are an assign's and a switch's. Each collection it assigns to the workspace
+  # makes its target there, as an assign makes it. After the commit, the collections
+  # changed are broadcast.
+  @spec choose(Scope.t(), Grant.t(), Workspace.t(), :sources | :destinations, term) ::
+          {:ok, non_neg_integer}
+          | {:error, :invalid | :ended | :other_domain | :taken | :locked | Access.reason()}
+  def choose(%Scope{} = scope, %Grant{} = grant, %Workspace{} = workspace, list, choice)
+      when list in [:sources, :destinations] do
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"collection.assign", scope.organisation),
+           {:ok, choice} <- cast_choice(choice),
+           organisation_id = scope.organisation.id,
+           {:ok, connection} <- lock_connected(organisation_id, grant),
+           {:ok, grant} <- live_grant(connection, grant),
+           {:ok, adapter} <- with_role(connection, list),
+           {:ok, workspace_id} <- lock_target(organisation_id, workspace),
+           :ok <- served(connection, workspace),
+           {:ok, _rule} <- put_rule(organisation_id, grant, workspace_id, list, choice) do
+        changes =
+          for collection <- lock_choosable(connection, grant, workspace_id),
+              {to, backlog} = wanted(collection, adapter, list, workspace_id, choice),
+              {to, backlog} != {collection.workspace_id, collection.backlog},
+              do: {collection, to, backlog}
+
+        :ok = apply_choice(scope, connection, workspace, changes)
+        {:ok, {connection, Enum.map(changes, &elem(&1, 0).id)}}
+      end
+    end)
+    |> case do
+      {:ok, {connection, changed}} ->
+        :ok = broadcast_collections(connection, changed)
+        {:ok, length(changed)}
+
+      {:error, _reason} = refused ->
+        refused
+    end
+  end
+
+  defp cast_choice(:all), do: {:ok, :all}
+
+  defp cast_choice({:only, ids}) when is_list(ids) do
+    with {:ok, uuids, _every_id?} <- cast_ids(ids), do: {:ok, {:only, MapSet.new(uuids)}}
+  end
+
+  defp cast_choice(_choice), do: {:error, :invalid}
+
+  # The connection of `grant`, of the organisation `organisation_id`, held `FOR SHARE`,
+  # while it is connected.
+  defp lock_connected(organisation_id, %Grant{connection_id: connection_id}) do
+    case lock_connection(organisation_id, %Connection{id: connection_id}) do
+      {:ok, %Connection{state: :connected} = held} -> {:ok, held}
+      {:ok, %Connection{}} -> {:error, :not_found}
+      refused -> refused
+    end
+  end
+
+  # `grant`, read again under its connection's lock, while it is live: a grant's end
+  # holds the connection `FOR UPDATE`, so it does not end before the transaction does.
+  defp live_grant(%Connection{id: connection_id}, %Grant{id: id}) do
+    case Repo.one(
+           from g in Grant,
+             where: g.id == ^id and g.connection_id == ^connection_id and is_nil(g.ended_at)
+         ) do
+      %Grant{} = grant -> {:ok, grant}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  # The adapter of `connection`, in use, while it has the role of `list`: items for Work
+  # sources, `targets` true for Destinations. Read without a lock, as an assign reads its
+  # domains.
+  defp with_role(%Connection{adapter_id: adapter_id}, list) do
+    case Repo.one(from n in Node, where: n.id == ^adapter_id and is_nil(n.deleted_at)) do
+      %Node{items: true} = adapter when list == :sources -> {:ok, adapter}
+      %Node{targets: true} = adapter when list == :destinations -> {:ok, adapter}
+      _none -> {:error, :not_found}
+    end
+  end
+
+  # The rule of `grant` as the choice leaves it, held `FOR UPDATE`, or inserted: nil for
+  # none. A rule of another workspace refuses All (`:taken`); a rule of the workspace
+  # chosen in Work sources refuses Only selected in Destinations (`:locked`). Two choices
+  # of All at once for two workspaces: the second's insert waits on the unique index for
+  # the first's to commit, inserts nothing, and finds the first's rule.
+  defp put_rule(organisation_id, %Grant{id: grant_id} = grant, workspace_id, list, choice) do
+    rule =
+      Repo.one(from r in GrantRule, where: r.grant_id == ^grant_id, lock: "FOR UPDATE")
+
+    case {choice, rule} do
+      {:all, %GrantRule{workspace_id: other}} when other != workspace_id ->
+        {:error, :taken}
+
+      {:all, nil} ->
+        insert_rule(organisation_id, grant, workspace_id, list, choice)
+
+      {:all, %GrantRule{backlog: false} = rule} when list == :sources ->
+        {1, _} =
+          Repo.update_all(from(r in GrantRule, where: r.id == ^rule.id),
+            set: [backlog: true, updated_at: DateTime.utc_now()]
+          )
+
+        {:ok, %{rule | backlog: true}}
+
+      {:all, rule} ->
+        {:ok, rule}
+
+      {{:only, _ids}, %GrantRule{workspace_id: ^workspace_id, backlog: true}}
+      when list == :destinations ->
+        {:error, :locked}
+
+      {{:only, _ids}, %GrantRule{workspace_id: ^workspace_id, backlog: backlog} = rule}
+      when backlog == (list == :sources) ->
+        {1, _} = Repo.delete_all(from r in GrantRule, where: r.id == ^rule.id)
+        {:ok, nil}
+
+      {{:only, _ids}, rule} ->
+        {:ok, rule}
+    end
+  end
+
+  defp insert_rule(organisation_id, grant, workspace_id, list, choice) do
+    now = DateTime.utc_now()
+
+    case Repo.insert_all(
+           GrantRule,
+           [
+             %{
+               id: Ecto.UUID.generate(),
+               organisation_id: organisation_id,
+               grant_id: grant.id,
+               workspace_id: workspace_id,
+               backlog: list == :sources,
+               inserted_at: now,
+               updated_at: now
+             }
+           ],
+           on_conflict: :nothing,
+           conflict_target: [:grant_id],
+           returning: true
+         ) do
+      {1, [rule]} -> {:ok, rule}
+      {0, []} -> put_rule(organisation_id, grant, workspace_id, list, choice)
+    end
+  end
+
+  # The live collections of `grant` assigned to no workspace or to `workspace_id`, each
+  # held `FOR UPDATE` in order of id, and read again once held, with their adapters.
+  defp lock_choosable(%Connection{id: connection_id}, %Grant{id: grant_id}, workspace_id) do
+    Repo.all(
+      from c in Collection,
+        where: c.connection_id == ^connection_id and c.grant_id == ^grant_id,
+        where: is_nil(c.ended_at),
+        where: is_nil(c.workspace_id) or c.workspace_id == ^workspace_id,
+        order_by: c.id,
+        lock: "FOR UPDATE"
+    )
+    |> Repo.preload(:adapter)
+  end
+
+  # The workspace and the Backlog `collection` gets from the choice, as
+  # `{workspace_id, backlog}`. A collection whose items do not come into a Backlog
+  # (`switch?`: it or its adapter has no items) keeps its Backlog, as a tick leaves it.
+  defp wanted(collection, adapter, list, workspace_id, choice) do
+    here? = collection.workspace_id == workspace_id
+    switch? = collection.items and adapter.items == true
+
+    case {choice, list} do
+      {:all, :sources} ->
+        {workspace_id, if(here? and not switch?, do: collection.backlog, else: true)}
+
+      {:all, :destinations} ->
+        {workspace_id, if(here?, do: collection.backlog, else: false)}
+
+      {{:only, ids}, list} ->
+        listed? =
+          if list == :sources,
+            do: collection.items,
+            else: not is_nil(collection.target_system)
+
+        ticked? = here? and (list == :destinations or collection.backlog)
+        wanted? = MapSet.member?(ids, collection.id)
+
+        cond do
+          not listed? or ticked? == wanted? ->
+            {collection.workspace_id, collection.backlog}
+
+          wanted? ->
+            tick(collection, list, workspace_id, here?, switch?)
+
+          true ->
+            untick(collection, adapter, list, workspace_id, switch?)
+        end
+    end
+  end
+
+  # A tick, as `Apiary.WorkspaceSetup.tick/5` makes one: a work source is assigned with
+  # its Backlog on; a destination is assigned, with its Backlog off when it was in no
+  # workspace.
+  defp tick(collection, :sources, workspace_id, _here?, switch?),
+    do: {workspace_id, if(switch?, do: true, else: collection.backlog)}
+
+  defp tick(collection, :destinations, workspace_id, here?, switch?),
+    do: {workspace_id, if(switch? and not here?, do: false, else: collection.backlog)}
+
+  # An untick, as `Apiary.WorkspaceSetup.tick/5` makes one: a work source turns its
+  # Backlog off, and is unassigned unless it is a destination; a destination turns its
+  # Backlog off and is unassigned.
+  defp untick(collection, adapter, :sources, workspace_id, switch?) do
+    destination? = adapter.targets == true and not is_nil(collection.target_system)
+
+    {if(destination?, do: workspace_id), if(switch?, do: false, else: collection.backlog)}
+  end
+
+  defp untick(collection, _adapter, :destinations, _workspace_id, switch?),
+    do: {nil, if(switch?, do: false, else: collection.backlog)}
+
+  # Writes `changes`, `{collection, workspace_id, backlog}` each, held, then the trail's
+  # entries, the targets of those assigned to `workspace`, and the feed's entries, the
+  # adapter's feed counter last.
+  defp apply_choice(_scope, _connection, _workspace, []), do: :ok
+
+  defp apply_choice(scope, connection, %Workspace{id: workspace_id} = workspace, changes) do
+    now = DateTime.utc_now()
+
+    for {{to, backlog}, group} <- Enum.group_by(changes, &{elem(&1, 1), elem(&1, 2)}) do
+      ids = Enum.map(group, &elem(&1, 0).id)
+
+      {_count, _} =
+        Repo.update_all(from(c in Collection, where: c.id in ^ids),
+          set: [workspace_id: to, backlog: backlog, updated_at: now]
+        )
+    end
+
+    assigned = for {c, ^workspace_id, _backlog} <- changes, c.workspace_id != workspace_id, do: c
+    unassigned = for {c, nil, _backlog} <- changes, c.workspace_id == workspace_id, do: c
+
+    :ok = record_assign(scope, connection, workspace, assigned)
+    :ok = record_assign(scope, connection, nil, unassigned)
+
+    for {c, ^workspace_id, backlog} <- changes,
+        c.workspace_id == workspace_id and c.backlog != backlog do
+      {:ok, _entry} =
+        Audit.record(Repo, scope, :"collection.set_backlog", c, %{
+          details: %{
+            backlog: backlog,
+            count: 1,
+            name: c.title,
+            connection_id: connection.public_id
+          }
+        })
+    end
+
+    :ok = insert_targets(scope.organisation.id, workspace, assigned)
+
+    {linked, unlinked} =
+      changes
+      |> Enum.map(fn {c, to, backlog} -> {c, %{c | workspace_id: to, backlog: backlog}} end)
+      |> Enum.filter(fn {before, after_} ->
+        Collection.linked?(before) != Collection.linked?(after_)
+      end)
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.split_with(&Collection.linked?/1)
+
+    :ok = tell(linked, "linked")
+    tell(unlinked, "unlinked")
+  end
+
+  # The entry of `collection.assign` for `collections`, assigned to `workspace`, or to
+  # none for nil, as an assign writes it (`relink/5`); none for none.
+  defp record_assign(_scope, _connection, _workspace, []), do: :ok
+
+  defp record_assign(scope, connection, workspace, collections) do
+    {:ok, _entry} =
+      Audit.record(
+        Repo,
+        scope,
+        :"collection.assign",
+        workspace || scope.organisation,
+        %{
+          details: %{
+            count: length(collections),
+            connection_id: connection.public_id,
+            workspace_id: workspace && workspace.id
+          }
+        },
+        place: :organisation
+      )
+
+    :ok
   end
 
   ## Broadcasts

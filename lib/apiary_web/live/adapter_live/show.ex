@@ -35,11 +35,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # connection is complete, a line says the integration is still sending them, with how
   # many so far; then the heading says how many there are.
   # A lead says what being assigned means, in the adapter's words for its collections and
-  # its items: with one workspace, that every one is assigned to it; for an adapter with
-  # no items, only that each is assigned to one workspace. The lead shows while the page
-  # waits too. Where any live collection has a target
+  # its items: for an adapter with no items, only that each is assigned to one workspace.
+  # The lead shows while the page waits too. Where any live collection has a target
   # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one
-  # changes no workspace's targets; a source without code has none. The first foot note,
+  # adds its target to the workspace, and unassigning or moving it leaves the target; a
+  # source without code has none. The first foot note,
   # over the rest, is the source's line on how to change, at the source, which collections
   # the integration reaches (`Apiary.Integrations.Description.access/1`, as the adapter's
   # latest start stored it), shown as sent and isolated (`ApiaryWeb.ExternalText`), while
@@ -51,11 +51,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # search finds collections by their names (`?q=`), and one that finds none says so, on
   # any page. The foot notes' block shows only while one of its notes does.
   #
-  # With several workspaces, the lead says that each is assigned to one workspace and, for
+  # With a workspace or more, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
-  # Backlog switches are on. Once a listing is complete, a warning says how many are
-  # unassigned, and, for an adapter with items, that their items reach no backlog until
-  # they are assigned, by the person or by an owner or an admin. Views over the table
+  # Backlog switches are on. With several workspaces, once a listing is complete, a
+  # warning says how many are unassigned, and, for an adapter with items, that their items
+  # reach no backlog until they are assigned, by the person or by an owner or an admin.
+  # Views over the table
   # show every one or the unassigned ones (`?view=unassigned`), the warning's Show them
   # leads to the second, and a menu keeps those of one workspace (`?workspace_id=`).
   # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
@@ -115,7 +116,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
     {:ok,
      socket
      |> assign(
-       page_title: IntegrationComponents.page_title(scope, [adapter.name]),
+       page_title: IntegrationComponents.page_title(scope, [Adapters.title(adapter)]),
        sections: SettingsComponents.sections(scope, :organisation),
        paths: IntegrationComponents.paths(scope, adapter),
        adapter: adapter,
@@ -419,7 +420,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp listing(%{assigns: %{state: state}} = socket) when state in [:waiting, :listed] do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     workspaces = Organisations.list_workspaces(scope)
-    socket = assign(socket, workspaces: workspaces, lead: lead(scope, adapter, workspaces))
+    socket = assign(socket, workspaces: workspaces, lead: lead(adapter, workspaces))
     if state == :listed, do: rows(socket), else: unpicked(socket)
   end
 
@@ -538,11 +539,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb title={@adapter.name}>{@adapter.name}</:crumb>
+      <:crumb title={Adapters.title(@adapter)}>{Adapters.title(@adapter)}</:crumb>
 
       <.settings_page
         section={:integrations}
-        title={@adapter.name}
+        title={Adapters.title(@adapter)}
         measure={if @state in [:waiting, :listed], do: "list", else: "read"}
       >
         <:title_block>
@@ -550,7 +551,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             <span aria-hidden="true" class="flex flex-none">
               <IntegrationComponents.mark class="size-[18px]" />
             </span>
-            <span class="min-w-0">{@adapter.name}</span>
+            <span class="min-w-0">{Adapters.title(@adapter)}</span>
           </span>
         </:title_block>
         <:subtitle>
@@ -596,7 +597,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             <span class="q-sdot q-sdot-running">
               <i aria-hidden="true"></i><span>{gettext(
                 "Waiting for %{integration} to send its %{collections}…",
-                integration: @adapter.name,
+                integration: Adapters.title(@adapter),
                 collections: collection_word(@adapter, :other)
               )}</span>
             </span>
@@ -626,7 +627,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             <span class="q-sdot q-sdot-running">
               <i aria-hidden="true"></i><span>{gettext(
                 "%{integration} is still sending its %{collections}…",
-                integration: @adapter.name,
+                integration: Adapters.title(@adapter),
                 collections: collection_word(@adapter, :other)
               )}</span>
             </span>
@@ -868,12 +869,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
                 number: Format.number(@counts.ended),
                 collection: collection_word(@adapter, 1),
                 collections: collection_word(@adapter, :other),
-                integration: @adapter.name
+                integration: Adapters.title(@adapter)
               )}
             </p>
             <p :if={@targets} id="collections-targets" class="q-foot-note">
               {gettext(
-                "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
+                "Assigning a %{collection} here adds its target to the workspace's Targets, which list what its runs change. Unassigning or moving it leaves the target there.",
                 collection: collection_word(@adapter, 1)
               )}
             </p>
@@ -929,7 +930,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       "Not installed. %{person} started an install today at %{time} that isn't finished: finish it on %{integration}, or press Install to start again.",
       person: letter(assigns),
       time: Format.time(assigns.connection.updated_at),
-      integration: assigns.adapter.name
+      integration: Adapters.title(assigns.adapter)
     )
   end
 
@@ -946,7 +947,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       gettext(
         "Not installed. The installation ended on %{date}, when %{integration} reported it gone.",
         date: Format.day(ended.ended_at),
-        integration: adapter.name
+        integration: Adapters.title(adapter)
       )
 
     if ended.listed_at && Adapters.items?(adapter) do
@@ -955,7 +956,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         gettext(
           "The %{items} %{integration} brought in left every backlog; work items already taken in stay.",
           items: SourceComponents.items(Adapters.item_noun(adapter)),
-          integration: adapter.name
+          integration: Adapters.title(adapter)
         )
     else
       gone
@@ -965,29 +966,17 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp status(%{state: :not_installed}), do: gettext("Not installed.")
 
   # What being assigned means, above the table: for an adapter with no items, that each
-  # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's Backlog while its Backlog
-  # switch is on; with several, that each is assigned to one, and their items come into
-  # its Backlog while their Backlog switches are on.
-  defp lead(scope, adapter, workspaces) do
+  # collection is assigned to one workspace; with a workspace or more, that each is
+  # assigned to one, and their items come into its Backlog while their Backlog switches
+  # are on.
+  defp lead(adapter, workspaces) do
     cond do
       not Adapters.items?(adapter) ->
         gettext("These %{collections} are each assigned to one workspace.",
           collections: collection_word(adapter, :other)
         )
 
-      match?([_one], workspaces) ->
-        [workspace] = workspaces
-
-        gettext(
-          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on.",
-          organisation: scope.organisation.name,
-          workspace: workspace.name,
-          collection: collection_word(adapter, 1),
-          items: SourceComponents.items(Adapters.item_noun(adapter))
-        )
-
-      length(workspaces) > 1 ->
+      workspaces != [] ->
         gettext(
           "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's Backlog while their Backlog switches are on.",
           collections: collection_word(adapter, :other),
@@ -1081,7 +1070,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp refused(%{adapter: adapter}, :ended),
     do:
       gettext("Nothing was assigned: the installation of %{integration} ended.",
-        integration: adapter.name
+        integration: Adapters.title(adapter)
       )
 
   # The menu lists only the workspaces the adapter serves, so `:other_domain` comes from

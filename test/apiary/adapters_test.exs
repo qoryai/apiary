@@ -339,18 +339,18 @@ defmodule Apiary.AdaptersTest do
     test "an adapter not set up, or serving none of the workspaces' domains, is not connected; with no workspace, every domain is offered",
          %{scope: scope} do
       %{adapter: settable} = settable_adapter_fixture()
-      %{adapter: general} = connectable_adapter_fixture()
+      %{adapter: example} = connectable_adapter_fixture()
 
       {1, _} =
-        Repo.update_all(from(n in Node, where: n.id == ^general.id),
-          set: [domains: ["general"]]
+        Repo.update_all(from(n in Node, where: n.id == ^example.id),
+          set: [domains: ["example"]]
         )
 
-      general = Repo.get!(Node, general.id)
+      example = Repo.get!(Node, example.id)
 
       # Main is a software workspace.
       assert Adapters.connect(scope, settable) == {:error, :not_offered}
-      assert Adapters.connect(scope, general) == {:error, :not_offered}
+      assert Adapters.connect(scope, example) == {:error, :not_offered}
       assert Repo.aggregate(from(e in Entry, where: e.action == "adapter.connect"), :count) == 0
 
       {1, _} =
@@ -366,7 +366,7 @@ defmodule Apiary.AdaptersTest do
       scope = Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
       assert Organisations.list_workspaces(scope) == []
       assert Adapters.connect(scope, settable) == {:error, :not_offered}
-      assert {:ok, _url, _session} = Adapters.connect(scope, general)
+      assert {:ok, _url, _session} = Adapters.connect(scope, example)
     end
   end
 
@@ -783,14 +783,20 @@ defmodule Apiary.AdaptersTest do
       assert Adapters.delete_adapter(admin, adapter) == {:error, :not_found}
 
       assert %Entry{organisation_id: trail, details: details} =
-               Repo.one!(from e in Entry, where: e.action == "adapter.delete")
+               Repo.one!(
+                 from e in Entry,
+                   where: e.action == "adapter.delete" and e.subject_id == ^adapter.id
+               )
 
       assert trail == instance_id()
       assert details["ended_connection_ids"] == []
       assert details["revoked_key_ids"] == [key.key_id]
 
       assert [%Entry{organisation_id: ^trail}] =
-               Repo.all(from e in Entry, where: e.action == "access_key.revoke")
+               Repo.all(
+                 from e in Entry,
+                   where: e.action == "access_key.revoke" and e.subject_id == ^key.id
+               )
     end
 
     test "only an instance admin deletes one", %{scope: scope} do
@@ -1031,6 +1037,81 @@ defmodule Apiary.AdaptersTest do
       assert {1, _rows} =
                Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
                  set: [source_apply: List.duplicate(item, 16), egress_hosts: ["api.example.com"]]
+               )
+    end
+  end
+
+  describe "its title, at each start" do
+    setup %{admin: admin} do
+      adapter = adapter_fixture(%{name: "tracker-#{System.unique_integer([:positive])}"})
+      %{key: key} = keyed(admin, adapter)
+      %{adapter: adapter, key: key}
+    end
+
+    defp titled(title),
+      do: Map.put(Apiary.DescriptionFixtures.contract_description(), "title", title)
+
+    test "is the description's, replaced at the next start; the name stands in before the first",
+         %{adapter: adapter, key: key} do
+      assert adapter.title == nil
+      assert Adapters.title(adapter) == adapter.name
+
+      assert {:ok, _declared} = declare_with(key, titled("Acme Tracker"))
+      assert %Node{title: "Acme Tracker"} = started = reload(adapter)
+      assert Adapters.title(started) == "Acme Tracker"
+
+      assert {:ok, _declared} = declare_with(key, titled("Acme Issues"))
+      assert Adapters.title(reload(adapter)) == "Acme Issues"
+
+      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 100)))
+      assert Adapters.title(reload(adapter)) == String.duplicate("é", 100)
+    end
+
+    test "a title of 101 characters is kept as nil, and the name stands in",
+         %{adapter: adapter, key: key} do
+      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 101)))
+      assert %Node{title: nil} = started = reload(adapter)
+      assert Adapters.title(started) == adapter.name
+    end
+
+    test "a title that fails the check is kept as nil, and the name stands in",
+         %{adapter: adapter, key: key} do
+      for title <- [
+            "   ",
+            "Acme\u0007Tracker",
+            "Acme\nTracker",
+            "Acme\u202ETracker",
+            "Acme\u200BTracker",
+            "Acme\u2028Tracker",
+            String.duplicate("a", 101)
+          ] do
+        assert {:ok, _declared} = declare_with(key, titled("Acme Tracker"))
+        assert reload(adapter).title == "Acme Tracker"
+
+        assert {:ok, _declared} = declare_with(key, titled(title))
+        assert %Node{title: nil} = started = reload(adapter)
+        assert Adapters.title(started) == adapter.name, inspect(title)
+      end
+    end
+
+    test "the database keeps one only on an adapter, 1 to 100 characters",
+         %{adapter: adapter, scope: scope} do
+      node = node_fixture(scope)
+
+      for {id, title} <- [
+            {node.id, "Acme Tracker"},
+            {adapter.id, ""},
+            {adapter.id, String.duplicate("a", 101)}
+          ] do
+        assert refused(fn ->
+                 Repo.update_all(from(n in Node, where: n.id == ^id), set: [title: title])
+               end) == "nodes_title_check",
+               inspect(title)
+      end
+
+      assert {1, _rows} =
+               Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+                 set: [title: String.duplicate("a", 100)]
                )
     end
   end

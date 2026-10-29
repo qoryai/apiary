@@ -438,6 +438,22 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
              "How often the adapter pulls what changed Not declared yet The adapter declares its default, and the most often it may pull, once it is connected and running. Until then this can't be set."
   end
 
+  test "is headed by the title its description gives; Name and Rename keep the name",
+       %{conn: conn, adapter: adapter} do
+    describe_title(adapter, "Acme Tracker")
+
+    {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+    assert has_element?(lv, "h1", "Acme Tracker")
+    assert page_title(lv) =~ ~r{\ASettings · Acme Tracker ·}
+    assert words(lv, "#adapter-name-value") == adapter.name
+
+    {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/rename"))
+    assert has_element?(lv, "h1", "Rename #{adapter.name}")
+
+    {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
+    assert has_element?(lv, "h1", "Remove Acme Tracker?")
+  end
+
   describe "Rename" do
     test "renames the adapter, and Settings shows the new name", %{
       conn: conn,
@@ -451,7 +467,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert page_title(lv) =~ "Rename #{adapter.name} · Adapters"
 
       assert words(lv, ".q-settings-head-sub") ==
-               "Organisations see the new name on their Integrations page and when they install it."
+               "Organisations see the new name on their Integrations page and when they install " <>
+                 "the adapter, unless Qory Apiary shows the title from its description."
 
       assert has_element?(lv, "#adapter-rename-form label", "Name")
       assert render(lv) =~ "At most 64 characters, and not the name of another adapter here."

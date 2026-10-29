@@ -1,0 +1,6 @@
+{
+  "payload": "{\"version\":1,\"adapter_id\":\"na_f1xt0re000000000\",\"nonce\":\"EBESExQVFhcYGRobHB0eHw\",\"expires_at\":\"2026-10-15T12:15:00Z\",\"organisation_slug\":\"acme-org\"}",
+  "pass": "eyJ2ZXJzaW9uIjoxLCJhZGFwdGVyX2lkIjoibmFfZjF4dDByZTAwMDAwMDAwMCIsIm5vbmNlIjoiRUJFU0V4UVZGaGNZR1JvYkhCMGVIdyIsImV4cGlyZXNfYXQiOiIyMDI2LTEwLTE1VDEyOjE1OjAwWiIsIm9yZ2FuaXNhdGlvbl9zbHVnIjoiYWNtZS1vcmcifQ.m_rmRu85C1GmdFJm4Y6iO2EQ5GtOD9mAJawVO1WwloRXJgohRprkde8sib06Fn7pvcRd85IUmtWEjJSBEARuBw",
+  "tampered": "eyJ2ZXJzaW9uIjoxLCJhZGFwdGVyX2lkIjoibmFfZjF4dDByZTAwMDAwMDAwMSIsIm5vbmNlIjoiRUJFU0V4UVZGaGNZR1JvYkhCMGVIdyIsImV4cGlyZXNfYXQiOiIyMDI2LTEwLTE1VDEyOjE1OjAwWiIsIm9yZ2FuaXNhdGlvbl9zbHVnIjoiYWNtZS1vcmcifQ.m_rmRu85C1GmdFJm4Y6iO2EQ5GtOD9mAJawVO1WwloRXJgohRprkde8sib06Fn7pvcRd85IUmtWEjJSBEARuBw",
+  "note": "pass is the payload of setup-pass/with-organisation-slug.json, compact, signed under the server key of keys.json over qory-setup-ed25519-v1, a line feed and the payload bytes. tampered is the same pass with one payload byte changed after signing, the adapter_id's last character 0 becomes 1: its signature does not verify, and an adapter refuses it."
+}
