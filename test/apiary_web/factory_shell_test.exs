@@ -219,7 +219,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                    rest <-
                      ~w(/backlog /backlog/x1 /work /work/1 /work/1/explore /work/1/explore/edit
                         /work/1/thread /targets/x1/also-read /settings/work-sources
-                        /settings/destinations /settings/workflow),
+                        /settings/destinations /settings/choose /settings/workflow),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )

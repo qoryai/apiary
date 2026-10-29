@@ -51,13 +51,13 @@ defmodule Apiary.WorkspaceSetup do
   #
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
   # line. `collections/3` is the rows of the tick lists of Work sources and Destinations,
-  # to a person who may read the instance's adapters, and `tick/5` one
-  # tick or untick of a row, as Workspace settings › Work sources and › Destinations show
-  # and tick them. `cards/4` is the cards of the set-up's steps Work sources and
-  # Destinations, one per grant, and `card/5` one of them, for the chooser, to a person who
-  # may read the instance's adapters; `all?/3` is whether a card's grant is set to All for
-  # the workspace. `tick/5` changes a collection through `Apiary.Adapters.Collections`,
-  # which checks access. None of the others checks access: the page's reader reads them.
+  # to a person who may read the instance's adapters, and `tick/5` one tick or untick of
+  # a row, which no page calls. `cards/4` is the cards of the set-up's steps Work sources
+  # and Destinations, one per grant, and `card/5` one of them, for the chooser, to a
+  # person who may read the instance's adapters; `all?/3` is whether a card's grant is set
+  # to All for the workspace. `tick/5` changes a collection through
+  # `Apiary.Adapters.Collections`, which checks access. None of the others checks access:
+  # the page's reader reads them.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
