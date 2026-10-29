@@ -328,10 +328,11 @@ defmodule Apiary.Adapters.CollectionsTest do
 
     test "a ref live under another connection of the adapter moves: that collection ends as a disconnect ends it, and a new one is made, with nothing of the old",
          ctx do
-      # Another organisation with one workspace, so what its listing makes is assigned
-      # there and linked.
+      # Another organisation whose grant's rule assigns what its listing makes to its
+      # workspace, linked.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      grant_rule_fixture(theirs, other.workspace)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["DOC", "TRK"]))
       old_trk = collection(theirs, "TRK")
       old_doc = collection(theirs, "DOC")
@@ -416,14 +417,15 @@ defmodule Apiary.Adapters.CollectionsTest do
                )
     end
 
-    test "a moved ref's new collection is assigned to the organisation's only workspace, as any new one",
+    test "a moved ref's new collection is assigned by its grant's rule, as any new one",
          ctx do
       {:ok, :accepted} = post(ctx, ["TRK"])
       old = collection(ctx.connection, "TRK")
 
-      # Another organisation, with one workspace.
+      # Another organisation, whose grant's rule assigns new collections to its workspace.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      grant_rule_fixture(theirs, other.workspace)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
 
       assert Repo.get!(Collection, old.id).ended_reason == :disconnected
@@ -608,9 +610,10 @@ defmodule Apiary.Adapters.CollectionsTest do
       {:ok, :accepted} = post(ctx, ["TRK"])
       old = collection(ctx.connection, "TRK")
 
-      # Another organisation, with one workspace: what its listing makes is linked.
+      # Another organisation, whose grant's rule links what its listing makes.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      grant_rule_fixture(theirs, other.workspace)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
       assert Repo.get!(Collection, old.id).ended_reason == :disconnected
       moved = collection(theirs, "TRK")

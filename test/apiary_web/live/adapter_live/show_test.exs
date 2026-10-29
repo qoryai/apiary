@@ -503,6 +503,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, [{"acme/shop", :target}, {"acme/api", :target}], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
@@ -511,7 +512,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-filling")
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every collection is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
+             "These collections are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
 
     assert words(lv, "#collections-count") == "2 collections"
     assert has_element?(lv, ~s{[role="region"][aria-label="Collections"]})
@@ -535,6 +536,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, ["acme/shop"], 1, true)
     collection = Repo.get_by!(Apiary.Adapters.Collection, connection_id: connection.id)
     earlier = ~U[2026-03-04 10:00:00Z]
@@ -568,11 +570,12 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   } do
     adapter = describe_source(adapter, "example-tracker.json")
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, ["Support"], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-heading") == "Projects 1"
-    assert words(lv, "#collections-lead") =~ "so every project is assigned to it, and its issues"
+    assert words(lv, "#collections-lead") =~ "each assigned to one workspace, and their issues"
     assert words(lv, "#collections-count") == "1 project"
     assert hd(rows(lv)) == "Project Workspace Backlog Open issues Added"
     refute has_element?(lv, "#collections-targets")
@@ -582,6 +585,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
        %{conn: conn, scope: scope, adapter: adapter, key: key} do
     adapter = describe_source(adapter, "example-projects.json")
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, ["Support"], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
@@ -598,7 +602,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert has_element?(lv, "#collections-waiting")
-    assert words(lv, "#collections-lead") =~ "has one workspace, #{scope.workspace.name}"
+    assert words(lv, "#collections-lead") =~ "are each assigned to one workspace"
     refute has_element?(lv, "#collections-targets")
     refute has_element?(lv, "#collections-table")
     refute has_element?(lv, "#collections-count")
@@ -934,6 +938,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, ["acme/api", "acme/shop"], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
     assert length(rows(lv)) == 3
@@ -967,6 +972,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   test "collections the integration no longer reaches: a line under the table says how many",
        %{conn: conn, scope: scope, adapter: adapter, key: key} do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, ["acme/api", "acme/shop", "acme/web"], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
     refute has_element?(lv, "#collections-ended")
@@ -1781,6 +1787,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     post(key, connection, titles(1..120) ++ ["acme/shop"], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 

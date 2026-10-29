@@ -42,6 +42,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.ModelChoiceLive,
     ApiaryWeb.WorkflowLive,
     ApiaryWeb.CollectionsLive,
+    ApiaryWeb.ChooseCollectionsLive,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController,
     ApiaryWeb.AdapterSetupController
@@ -210,7 +211,9 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/model-providers"},
                  {:get, "#{org}/settings/model-providers/new"},
                  {:get, "#{org}/settings/model-providers/x1"},
-                 {:get, workspace_path(scope, "/settings/model")}
+                 {:get, workspace_path(scope, "/settings/model")},
+                 # The chooser of set-up's Work sources and Destinations.
+                 {:get, "#{org}/set-up/choose"}
                ] ++
                  for(
                    rest <-

@@ -52,10 +52,12 @@ defmodule Apiary.WorkspaceSetup do
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
   # line. `collections/3` is the rows of the tick lists of Work sources and Destinations,
   # to a person who may read the instance's adapters, and `tick/5` one
-  # tick or untick of a row: the set-up's steps and Workspace settings › Work sources and
-  # › Destinations show and tick the same lists. `tick/5` changes a collection through
-  # `Apiary.Adapters.Collections`, which checks access. None of the others checks access:
-  # the page's reader reads them.
+  # tick or untick of a row, as Workspace settings › Work sources and › Destinations show
+  # and tick them. `cards/4` is the cards of the set-up's steps Work sources and
+  # Destinations, one per grant, and `card/5` one of them, for the chooser, to a person who
+  # may read the instance's adapters; `all?/3` is whether a card's grant is set to All for
+  # the workspace. `tick/5` changes a collection through `Apiary.Adapters.Collections`,
+  # which checks access. None of the others checks access: the page's reader reads them.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -64,7 +66,7 @@ defmodule Apiary.WorkspaceSetup do
 
   alias Apiary.{Access, AccessKeys, Adapters, Edition, Gateways, ModelChoices, Repo, Stacks}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{Collection, Collections, Connection}
+  alias Apiary.Adapters.{Collection, Collections, Connection, Grant, GrantRule}
   alias Apiary.Connections.Connection, as: ModelProvider
   alias Apiary.Connections.ConnectionWorkspace
   alias Apiary.Dispatches.DispatchRun
@@ -93,6 +95,22 @@ defmodule Apiary.WorkspaceSetup do
           collection: Collection.t(),
           connection: Connection.t(),
           workspace: Workspace.t() | nil
+        }
+
+  @typedoc """
+  A card of the Work sources or Destinations step (`cards/4`): a live grant of a
+  connection of the organisation, with its connection and its adapter; how many live
+  collections of the grant the step's list has (`total`), and how many of them are chosen
+  for the workspace (`chosen`), as `ticked?/3` counts them; and the grant's rule
+  (`Apiary.Adapters.GrantRule`), with its workspace, nil for none.
+  """
+  @type card :: %{
+          grant: Grant.t(),
+          connection: Connection.t(),
+          adapter: Node.t(),
+          total: non_neg_integer,
+          chosen: non_neg_integer,
+          rule: GrantRule.t() | nil
         }
 
   @typedoc "An adapter whose collections are assigned to the workspace, with how many."
@@ -404,6 +422,135 @@ defmodule Apiary.WorkspaceSetup do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  ## The cards
+
+  @doc false
+  # cards/4 is the cards of the list `list` for `workspace` of the type `domain`: one per
+  # live grant of a connection of the scope's organisation that is connected, of an
+  # adapter in use that serves `domain` and has the list's role (items for `:sources`,
+  # `targets` true for `:destinations`), by the adapter's name, then by the account's
+  # title. `[]` to a person who may not read the instance's adapters in the organisation
+  # (`adapter.read`).
+  @spec cards(Scope.t(), module, :sources | :destinations, Workspace.t()) :: [card]
+  def cards(scope, domain, list, workspace), do: read_cards(scope, domain, list, workspace, nil)
+
+  @doc false
+  # card/5 is the card among `cards/4`'s whose grant's public id is `public_id`; nil for
+  # none.
+  @spec card(Scope.t(), module, :sources | :destinations, Workspace.t(), term) :: card | nil
+  def card(scope, domain, list, workspace, public_id) when is_binary(public_id) do
+    if Apiary.PublicId.valid?(Grant.prefix(), public_id),
+      do: scope |> read_cards(domain, list, workspace, public_id) |> List.first()
+  end
+
+  def card(_scope, _domain, _list, _workspace, _public_id), do: nil
+
+  defp read_cards(
+         %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
+         domain,
+         list,
+         %Workspace{organisation_id: organisation_id} = workspace,
+         public_id
+       ) do
+    if Access.can?(scope, :"adapter.read", organisation) do
+      found =
+        organisation_id
+        |> grants_query(domain, list)
+        |> then(&if(public_id, do: where(&1, [g], g.public_id == ^public_id), else: &1))
+        |> Repo.all()
+
+      ids = Enum.map(found, fn {grant, _k, _n} -> grant.id end)
+      counts = card_counts(ids, list, workspace)
+
+      rules =
+        Repo.all(from r in GrantRule, where: r.grant_id in ^ids, preload: :workspace)
+        |> Map.new(&{&1.grant_id, &1})
+
+      for {grant, connection, adapter} <- found do
+        {total, chosen} = Map.get(counts, grant.id, {0, 0})
+
+        %{
+          grant: %{grant | connection: connection, adapter: adapter},
+          connection: connection,
+          adapter: adapter,
+          total: total,
+          chosen: chosen,
+          rule: Map.get(rules, grant.id)
+        }
+      end
+    else
+      []
+    end
+  end
+
+  defp read_cards(_scope, _domain, _list, _workspace, _public_id), do: []
+
+  # The live grants of the cards, as `{grant, connection, adapter}`.
+  defp grants_query(organisation_id, domain, list) do
+    name = domain.name()
+
+    query =
+      from g in Grant,
+        join: k in Connection,
+        on: k.id == g.connection_id and k.organisation_id == g.organisation_id,
+        join: n in Node,
+        on: n.id == k.adapter_id,
+        where: g.organisation_id == ^organisation_id and is_nil(g.ended_at),
+        where: k.state == :connected and is_nil(k.ended_at),
+        where: n.kind == :adapter and is_nil(n.deleted_at),
+        where: is_nil(n.domains) or ^name in n.domains,
+        order_by: [
+          asc: fragment("lower(?)", n.name),
+          asc: n.id,
+          asc: fragment("lower(coalesce(?, ''))", g.account_title),
+          asc: g.id
+        ],
+        select: {g, k, n}
+
+    case list do
+      :sources -> where(query, [_g, _k, n], n.items)
+      :destinations -> where(query, [_g, _k, n], n.targets == true)
+    end
+  end
+
+  # How many live collections of each of the grants `ids` the list `list` has, and how
+  # many of them are chosen for `workspace`, by grant id.
+  defp card_counts([], _list, _workspace), do: %{}
+
+  defp card_counts(ids, list, %Workspace{id: workspace_id}) do
+    query =
+      from c in Collection,
+        where: c.grant_id in ^ids and is_nil(c.ended_at),
+        group_by: c.grant_id
+
+    case list do
+      :sources ->
+        from c in query,
+          where: c.items,
+          select:
+            {c.grant_id,
+             {count(c.id), filter(count(c.id), c.workspace_id == ^workspace_id and c.backlog)}}
+
+      :destinations ->
+        from c in query,
+          where: not is_nil(c.target_system),
+          select:
+            {c.grant_id, {count(c.id), filter(count(c.id), c.workspace_id == ^workspace_id)}}
+    end
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc false
+  # all?/3 is whether the grant of `card` is set to All for `workspace` in the list
+  # `list`: its rule is the workspace's, chosen in Work sources for `:sources`, in either
+  # list for `:destinations`, since every work source is also a destination.
+  @spec all?(card, :sources | :destinations, Workspace.t()) :: boolean
+  def all?(%{rule: %GrantRule{workspace_id: id, backlog: backlog}}, list, %Workspace{id: id}),
+    do: list == :destinations or backlog
+
+  def all?(_card, _list, _workspace), do: false
 
   ## The edition's rules, as the core's edition answers them
 

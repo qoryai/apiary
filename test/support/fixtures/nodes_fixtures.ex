@@ -363,6 +363,39 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  Gives the live grant `ref` of `connection` (`listing_grant/2`, made if missing) a rule
+  that assigns each collection a listing makes for it to `workspace`, with its Backlog set
+  to `backlog`, as a choice of All in set-up's Work sources makes one. It writes no trail
+  entry. Returns the ref.
+  """
+  def grant_rule_fixture(
+        %Apiary.Adapters.Connection{} = connection,
+        workspace,
+        backlog \\ true,
+        ref \\ nil
+      ) do
+    alias Apiary.Adapters.{Grant, GrantRule}
+
+    ref = listing_grant(connection, ref)
+
+    grant =
+      Repo.one!(
+        from g in Grant,
+          where: g.connection_id == ^connection.id and g.grant_ref == ^ref,
+          where: is_nil(g.ended_at)
+      )
+
+    Repo.insert!(%GrantRule{
+      organisation_id: connection.organisation_id,
+      grant_id: grant.id,
+      workspace_id: workspace.id,
+      backlog: backlog
+    })
+
+    ref
+  end
+
+  @doc """
   Sets the expiry kept for the latest connect pass of the pending connection `public_id`
   to `validity/0` seconds less a minute after now, truncated to the second, which is when
   a pass made a minute before now expires, so the next press of Install takes the same
