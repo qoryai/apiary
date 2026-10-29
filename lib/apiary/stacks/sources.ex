@@ -82,9 +82,8 @@ defmodule Apiary.Stacks.Sources do
   # walk that failed is the refusal, a name the read does not find among them. The row
   # stores the stack and the version as the person gave it: a branch by its name, whose
   # newest commit each run reads, a tag by its name, and a commit by its full id. A
-  # choice in the form the pages send at `next` 97e4ef8e, a harness repository's root or
-  # a stack of a source with a branch or tag, is saved as then: pinned at the commit the
-  # walk read, with no version. A stack of an assigned source keeps the assignment's
+  # choice with no version, a harness repository's root or a stack of a source with a
+  # branch or tag, is saved pinned at the commit the walk read. A stack of an assigned source keeps the assignment's
   # `ref`, the only one the assignment covers, and is read the same way.
   #
   # A target's stack of the workspace's harness (`{:workspace, stack}`) stores the
@@ -684,10 +683,9 @@ defmodule Apiary.Stacks.Sources do
   @typedoc """
   A harness choice to save: the Qory harness at the newest version the release ships
   (`:qory` or `{:qory, :latest}`) or at a named version (`{:qory, name}`); a stack of a
-  harness repository at a version (`{:repository, source, stack, version}`); or, in the
-  form the pages send at `next` 97e4ef8e, a harness repository's root at a branch or
-  tag, pinned at the commit the walk read, with no version (`{:repository, source,
-  ref}`).
+  harness repository at a version (`{:repository, source, stack, version}`); or a
+  harness repository's root at a branch or tag, pinned at the commit the walk read, with
+  no version (`{:repository, source, ref}`).
   """
   @type choice ::
           :qory
@@ -912,7 +910,7 @@ defmodule Apiary.Stacks.Sources do
 
         case Stacks.shared(organisation) do
           %Stack{} = stack ->
-            keep_followed(workspace, Stacks.choice(workspace), stack)
+            keep_followed(workspace, Stacks.choice(workspace) || stack, stack)
             delete_choice(workspace)
             {:ok, stack}
 
@@ -1053,9 +1051,10 @@ defmodule Apiary.Stacks.Sources do
       (the moduledoc);
     * `:qory` or `{:qory, :latest | name}`, and `{:repository, source, stack, version}`:
       as for `t:choice/0`;
-    * `{:stack, source, stack, ref}`, in the form the Harness step sends at `next`
-      97e4ef8e: a stack of `read/2` of a source of `repositories/1`, `assigned/1` or
-      `address/1`, with a branch or tag, saved as then.
+    * `{:stack, source, stack, ref}`: a stack of `read/2` of a source of
+      `repositories/1`, `assigned/1` or `address/1`, with a branch or tag, saved with no
+      version: a stack of an assigned source at the assignment's `ref`, any other pinned
+      at the commit the walk read.
   """
   @type target_choice ::
           :default

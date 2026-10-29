@@ -266,7 +266,9 @@ defmodule Apiary.Stacks do
   #     release does not ship;
   #   * `:branch`, `:tag` and `:commit`: the name, or the full commit id;
   #   * `:workspace`: the `ref` of the workspace's harness (`workspace_harness/2`), that
-  #     of the Qory harness at `:latest` for none.
+  #     of the Qory harness at `:latest` for none. A row whose choice and address differ
+  #     from those of the workspace's harness reads its document's `ref`: a save that
+  #     wrote it while the workspace changed harness wrote the old harness.
   #
   # Read without a lock.
   @spec version_ref(Stack.t(), Workspace.t(), Organisation.t()) ::
@@ -285,12 +287,29 @@ defmodule Apiary.Stacks do
       when kind in [:branch, :tag, :commit],
       do: name
 
-  def version_ref(%Stack{version_kind: :workspace}, workspace, organisation) do
-    case workspace_harness(workspace, organisation) do
-      # A workspace's or an organisation's row has no `:workspace` version.
-      %Stack{version_kind: :workspace} -> nil
-      %Stack{} = row -> version_ref(row, workspace, organisation)
-      nil -> Definition.qory_commit(:latest)
+  def version_ref(%Stack{version_kind: :workspace} = row, workspace, organisation) do
+    harness = workspace_harness(workspace, organisation)
+
+    if harness_repository(row) == harness_repository(harness) do
+      case harness do
+        # A workspace's or an organisation's row has no `:workspace` version.
+        %Stack{version_kind: :workspace} -> nil
+        %Stack{} -> version_ref(harness, workspace, organisation)
+        nil -> Definition.qory_commit(:latest)
+      end
+    else
+      document_ref(row.harness)
+    end
+  end
+
+  # The choice and the address of the harness a row's document extends, the Qory
+  # harness for no row.
+  defp harness_repository(nil), do: {:qory, Definition.qory_harness().git}
+
+  defp harness_repository(%Stack{choice: choice, harness: harness}) do
+    case is_binary(harness) && Reader.document(harness) do
+      {:ok, %{"extends" => %{"git" => git}}} -> {choice, git}
+      _none -> {choice, nil}
     end
   end
 
