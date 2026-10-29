@@ -4,7 +4,10 @@ defmodule Apiary.Adapters.CallFailure do
   #
   #   * `:no_address`: the adapter declares no `call_url`;
   #   * `:not_allowed`: its `call_url`, or an address its host resolves to, is one Qory
-  #     Apiary does not call (`Apiary.Adapters.CallAddress`);
+  #     Apiary does not call (`Apiary.Adapters.CallAddress`); `refusal` is why, as
+  #     `CallAddress.check/2` returns it: `:form`, `:public_host` or `{:address, ip,
+  #     kind}`. A run's row keeps the cause alone (`Apiary.Adapters.Calls.record_failure/3`),
+  #     so `refusal` reaches only a caller that reads the failure itself;
   #   * `:unreachable`: the host resolved to no address, or the lookup of the host crashed,
   #     or no connection was made, or it broke before an answer, or a proxy answered 502,
   #     503 or 504 unsigned;
@@ -23,7 +26,16 @@ defmodule Apiary.Adapters.CallFailure do
   @moduledoc false
 
   @enforce_keys [:adapter_id, :adapter_public_id, :adapter_name, :path, :cause]
-  defstruct [:adapter_id, :adapter_public_id, :adapter_name, :path, :cause, :code, :status]
+  defstruct [
+    :adapter_id,
+    :adapter_public_id,
+    :adapter_name,
+    :path,
+    :cause,
+    :code,
+    :status,
+    :refusal
+  ]
 
   @typedoc "Why a call failed."
   @type cause ::
@@ -42,7 +54,8 @@ defmodule Apiary.Adapters.CallFailure do
           path: String.t(),
           cause: cause,
           code: String.t() | nil,
-          status: 100..599 | nil
+          status: 100..599 | nil,
+          refusal: Apiary.Adapters.CallAddress.not_allowed() | nil
         }
 
   @doc false

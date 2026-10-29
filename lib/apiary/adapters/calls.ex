@@ -43,7 +43,8 @@ defmodule Apiary.Adapters.Calls do
   # call's time ends.
   #
   # A failure is `{:error, %Apiary.Adapters.CallFailure{}}`, with one log line: the
-  # adapter's public id, the path, the cause and the duration, never a body, a header's
+  # adapter's public id, the path, the cause, for `:not_allowed` its refusal
+  # (`Apiary.Adapters.CallAddress.check/2`), and the duration, never a body, a header's
   # value or a signature.
   #
   # The settings are `config :apiary, Apiary.Adapters.Calls`, and `opts` for one call:
@@ -115,11 +116,17 @@ defmodule Apiary.Adapters.Calls do
     end
   end
 
+  # Why the address is not allowed, in the log line: ` refusal=form`, ` refusal=public_host`
+  # or ` refusal=address ip=169.254.169.254 kind=metadata`.
+  defp refusal(nil), do: ""
+  defp refusal({:address, ip, kind}), do: " refusal=address ip=#{Address.ntoa(ip)} kind=#{kind}"
+  defp refusal(refusal), do: " refusal=#{refusal}"
+
   # The failure of the call, with its one log line.
   defp failure(adapter, path, cause, details, started) do
     Logger.warning(
       "a call to an adapter failed adapter=#{adapter.public_id} path=#{path} " <>
-        "cause=#{cause} duration_ms=#{now() - started}"
+        "cause=#{cause}#{refusal(details[:refusal])} duration_ms=#{now() - started}"
     )
 
     struct!(
@@ -246,6 +253,7 @@ defmodule Apiary.Adapters.Calls do
     case Task.yield(task, max(deadline - now(), 0)) || Task.shutdown(task, :brutal_kill) do
       {:ok, {:ok, target}} -> {:ok, target}
       {:ok, {:error, :unresolved}} -> {:error, :unreachable, %{}}
+      {:ok, {:error, {:not_allowed, refusal}}} -> {:error, :not_allowed, %{refusal: refusal}}
       {:ok, {:error, cause}} -> {:error, cause, %{}}
       {:exit, _reason} -> {:error, :unreachable, %{}}
       nil -> {:error, :timeout, %{}}
@@ -538,7 +546,8 @@ defmodule Apiary.Adapters.Calls do
   # `read-public`, on the run of the queue `run` through `repo`, inside the caller's
   # transaction where there is one: the adapter, the cause, the call's path, `read` for
   # `read-public`, which reads harness files too, and the refusal's code for `:refused`.
-  # The run's page shows them (`ApiaryWeb.WorkItemComponents`). How the run ends is the
+  # A `:not_allowed` failure is written as `not_allowed`, without its `refusal`, which
+  # no column of the run keeps. The run's page shows them (`ApiaryWeb.WorkItemComponents`). How the run ends is the
   # caller's. `:ok`, or `{:error, :not_found}` for a run that is gone.
   @spec record_failure(module, DispatchRun.t(), CallFailure.t()) :: :ok | {:error, :not_found}
   def record_failure(repo, run, %CallFailure{path: "read-public"} = failure),
