@@ -4,7 +4,8 @@ defmodule ApiaryWeb.HarnessComponents do
   # (`ApiaryWeb.WorkflowLive`) show it, and the stacks chosen for the workspace's
   # destinations (`Apiary.Stacks.Sources.choose_target/3`), as the Harness step shows them.
   #
-  # `choices/1` is the two choices, the fields of a form named `harness`: `choice`, `qory`
+  # `choices/1` is a line on what a harness is and that the workspace's runs use the one
+  # chosen, then the two choices, the fields of a form named `harness`: `choice`, `qory`
   # or `repository`; and, for a harness repository, `source`, a linked repository of
   # `Apiary.Stacks.Sources.linked/1`, and `ref`, its branch or tag. The Qory harness shows
   # its address and the first 7 characters of its pin, and, with `file_first`, the line
@@ -14,14 +15,19 @@ defmodule ApiaryWeb.HarnessComponents do
   # stack. Under Branch or tag, the hint is the organisation's connection a linked
   # repository is read through. `line/1` is the choice with its pin, as Workflow shows it.
   # With `shared`, as the Harness step passes it, `choices/1` lists the harness the
-  # organisation shares first, as the `choice` `shared`. `form_params/2` is the form's
-  # values for a saved choice, `choice/2` the choice the form's values come to, and
-  # `refusal_words/4` why a save was refused.
+  # organisation shares first, as the `choice` `shared`. A shared Qory harness is the one
+  # Qory harness listed, with the shared pin, in place of the `qory` choice: the walk
+  # reads the two the same way, a target's harness file first. The rows merge only where
+  # no saved `qory` choice of the workspace has another pin. `form_params/2` is the
+  # form's values for a saved choice, `choice/2` the choice the form's values come to,
+  # and `refusal_words/4` why a save was refused.
   # `qory/2` is the Qory harness the choices show.
   #
-  # `targets/1` is the destinations, each with Workspace default or the stack chosen for
-  # it, and Change for a person who may save. Change opens the form `target_stack` of one
-  # destination, with the fields `choice`, which is `default`, `qory` or `repository`;
+  # `targets/1` is the destinations under a heading and a line that each uses the
+  # workspace's harness unless another is chosen for it, each with Workspace default or
+  # the stack chosen for it, and Choose another for a person who may save. Choose another
+  # opens the form `target_stack` of one destination, with the fields `choice`, which is
+  # `default`, `qory` or `repository`;
   # and, for a harness source, `source`, among the three groups of Workflow's Source
   # (`source_options/3`), `address`, `stack`, an index among the stacks read, and `ref`,
   # its branch or tag, which an assigned source has fixed. `target_choice/1` is the choice
@@ -47,6 +53,7 @@ defmodule ApiaryWeb.HarnessComponents do
     doc: "whether the listing read every linked repository, so an empty one has no stack"
 
   attr :organisation, :string, required: true
+  attr :workspace, :string, required: true, doc: "the workspace's name"
   attr :disabled, :boolean, default: false
 
   attr :file_first, :boolean,
@@ -59,30 +66,46 @@ defmodule ApiaryWeb.HarnessComponents do
 
   # The two choices, and the fields of a harness repository once it is chosen. With
   # `shared`, the harness the organisation shares comes first, under "Shared in
-  # <organisation>", marked "every workspace", with its address and pin.
+  # <organisation>", marked "every workspace", with its address and pin. A shared Qory
+  # harness is the Qory harness choice itself: one row, the `choice` `shared`, marked
+  # "every workspace", with the shared pin, and no heading. The rows merge only where the
+  # pins are equal: a saved `qory` choice of the workspace at another pin keeps the shared
+  # row and the `qory` row at the saved pin.
   def choices(assigns) do
     choice = assigns.form[:choice].value
     source = source(assigns.linked, assigns.form[:source].value)
+    shared = assigns.shared
+    shared_line = shared && "#{address(shared.git)} · #{short(shared.pin)}"
+    shared_qory = match?(%{choice: :qory}, shared) and not other_pin?(assigns.chosen, shared)
+
+    qory =
+      if shared_qory,
+        do: {"shared", choice_title(:qory), shared_line, true},
+        else:
+          {"qory", choice_title(:qory),
+           "#{address(assigns.qory["git"])} · #{short(assigns.qory["ref"])}", false}
 
     assigns =
       assign(assigns,
         choice: choice,
         source: source,
         none: assigns.complete and assigns.linked == [],
-        shared_title: assigns.shared && choice_title(assigns.shared.choice),
-        shared_line:
-          assigns.shared && "#{address(assigns.shared.git)} · #{short(assigns.shared.pin)}",
-        options: [
-          {"qory", choice_title(:qory),
-           "#{address(assigns.qory["git"])} · #{short(assigns.qory["ref"])}"},
-          {"repository", choice_title(:repository), nil}
-        ]
+        group: shared != nil and not shared_qory,
+        shared_title: shared && choice_title(shared.choice),
+        shared_line: shared_line,
+        options: [qory, {"repository", choice_title(:repository), nil, false}]
       )
 
     ~H"""
+    <p id="harness-intro" class="text-[13.5px]/5 text-muted">
+      {gettext(
+        "A harness is the skills and workflows the agent runs with. Runs in %{workspace} use the harness you choose here.",
+        workspace: @workspace
+      )}
+    </p>
     <fieldset id="harness-choice" class="q-choices grid gap-2">
       <div
-        :if={@shared}
+        :if={@group}
         id="harness-choice-shared-group"
         role="group"
         aria-labelledby="harness-choice-shared-h"
@@ -108,7 +131,7 @@ defmodule ApiaryWeb.HarnessComponents do
         </label>
       </div>
       <label
-        :for={{value, title, line} <- @options}
+        :for={{value, title, line, every} <- @options}
         id={"harness-choice-#{value}"}
         for={"harness-choice-#{value}-radio"}
         class="q-choice"
@@ -122,10 +145,12 @@ defmodule ApiaryWeb.HarnessComponents do
           disabled={@disabled}
           class="radio radio-sm radio-primary"
         />
-        <span class="q-choice-h">{title}</span>
-        <span :if={line} class={["q-choice-p", value == "qory" && "font-mono"]}>{line}</span>
+        <span class="q-choice-h">
+          {title}<span :if={every} class="font-normal text-muted"> · {gettext("every workspace")}</span>
+        </span>
+        <span :if={line} class="q-choice-p font-mono">{line}</span>
         <span
-          :if={value == "qory" and @file_first}
+          :if={value != "repository" and @file_first}
           id="harness-choice-qory-file"
           class="q-choice-p"
         >
@@ -170,6 +195,13 @@ defmodule ApiaryWeb.HarnessComponents do
     """
   end
 
+  # Whether `chosen` is a saved `qory` choice of the workspace at a pin other than that of
+  # the harness the organisation shares, `shared`.
+  defp other_pin?(%{choice: :qory, saved: true, shared: false, pin: pin}, %{pin: shared_pin}),
+    do: pin != shared_pin
+
+  defp other_pin?(_chosen, _shared), do: false
+
   attr :chosen, :map, required: true, doc: "the choice, `t:Apiary.Stacks.Sources.chosen/0`"
 
   # The choice and its pin: "Qory harness · pinned at fe3b3ab"; a harness repository's
@@ -208,7 +240,10 @@ defmodule ApiaryWeb.HarnessComponents do
     doc:
       "the destinations: `id`, `title` and `chosen`, `t:Apiary.Stacks.Sources.target_chosen/0` or nil"
 
-  attr :may, :boolean, required: true, doc: "whether the person may save, so sees Change"
+  attr :may, :boolean,
+    required: true,
+    doc: "whether the person may save, so sees Choose another"
+
   attr :edit, :map, default: nil, doc: "the open form of a destination, nil for none"
   attr :qory, :map, required: true, doc: "the Qory harness's base: `git` and `ref`"
   attr :linked, :list, default: nil, doc: "the linked repositories, nil while they are read"
@@ -220,12 +255,24 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :assigned, :list, default: [], doc: "the sources an instance admin assigned"
   attr :organisation, :string, required: true
 
-  # The destinations, each with its stack, and the form of the one whose Change was
-  # pressed. No list shows for a workspace with no destination.
+  # The destinations, each with its stack, and the form of the one whose Choose another
+  # was pressed. No list shows for a workspace with no destination.
   def targets(assigns) do
     ~H"""
-    <section :if={@targets != []} id="harness-targets" class="grid gap-2">
-      <h2 class="text-[13.5px]/5 font-medium">{gettext("Targets")}</h2>
+    <section
+      :if={@targets != []}
+      id="harness-targets"
+      aria-labelledby="harness-targets-h"
+      class="grid gap-2 pt-2"
+    >
+      <div class="grid gap-1">
+        <h2 id="harness-targets-h" class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
+          {gettext("Targets")}
+        </h2>
+        <p id="harness-targets-line" class="text-[13px]/5 text-muted">
+          {gettext("A target uses the workspace's harness unless you choose another one for it.")}
+        </p>
+      </div>
       <ul class="grid gap-2">
         <li :for={target <- @targets} id={"harness-target-#{target.id}"} class="grid gap-3">
           <div class="flex flex-wrap items-start gap-x-6 gap-y-1 text-[13.5px]/5">
@@ -241,7 +288,7 @@ defmodule ApiaryWeb.HarnessComponents do
               phx-click="change_target"
               phx-value-id={target.id}
             >
-              {gettext("Change")}
+              {gettext("Choose another")}
             </.button>
           </div>
           <.target_form

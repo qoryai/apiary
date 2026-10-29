@@ -13,14 +13,15 @@ defmodule ApiaryWeb.WorkflowLive do
   # Beside the form, About this step says what the page sets and which sources Source
   # lists. Under the title, Harness shows the workspace's harness choice and its pin
   # (`ApiaryWeb.HarnessComponents.line/1`), else the harness the organisation shares,
-  # else the Qory harness, and Change, which opens the two choices of the set-up's
-  # Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with Save and Cancel. Save
-  # stores the choice (`Apiary.Stacks.Sources.choose/3`); a harness repository is read
-  # outside the page's process, through the linked repositories Source lists, and a read
-  # that failed says why. Under it, where the choice is the Qory harness, saved or not,
-  # in a workspace whose domain has harness files (`Apiary.Lingo.Domain.harness_file?/1`),
-  # a notice says that a repository's harness file comes first. A line says which
-  # workflow the runs follow, where the workspace has one.
+  # else the Qory harness, and Change, which opens the line on what a harness is and the
+  # two choices of the set-up's Harness step (`ApiaryWeb.HarnessComponents.choices/1`)
+  # with Save and Cancel. Save stores the choice (`Apiary.Stacks.Sources.choose/3`); a
+  # harness repository is read outside the page's process, through the linked
+  # repositories Source lists, and a read that failed says why. Under it, where the
+  # choice is the Qory harness, saved or not, in a workspace whose domain has harness
+  # files (`Apiary.Lingo.Domain.harness_file?/1`), a notice says that a repository's
+  # harness file comes first. A line says which workflow the runs follow, where the
+  # workspace has one.
   #
   # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/3`):
   # the organisation's linked repositories that have a stack, read through the adapters
@@ -511,6 +512,7 @@ defmodule ApiaryWeb.WorkflowLive do
               linked={@linked}
               complete={complete?(assigns)}
               organisation={@organisation}
+              workspace={@workspace}
               disabled={@harness_saving}
             />
             <.notice :if={@harness_refusal} kind={:error}>

@@ -86,9 +86,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     save needs `model_choice.write` on the workspace, and Add a key needs
   #     `provider.write` too. A person who may not save, or who may not add a key where
   #     there is none to reuse, sees who may;
-  #   * Harness, with the `factory` feature: the two harness choices
-  #     (`ApiaryWeb.HarnessComponents.choices/1`), the saved one chosen, else the harness
-  #     the organisation shares, else the Qory harness. In a workspace whose domain has
+  #   * Harness, with the `factory` feature: a line on what a harness is, then the two
+  #     harness choices (`ApiaryWeb.HarnessComponents.choices/1`), the saved one chosen,
+  #     else the harness the organisation shares, else the Qory harness. In a workspace whose domain has
   #     harness files (`Apiary.Lingo.Domain.harness_file?/1`), the Qory harness shows
   #     that a target's harness file comes first. The linked repositories of a harness
   #     repository are read once the step opens, outside the page's process, once per
@@ -103,24 +103,29 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
   #     with no choice reuses. While the organisation shares one, the shared harness
   #     comes first, under "Shared in <organisation>" and marked "every workspace", chosen
-  #     while the workspace reuses it. Continue with it chosen goes on with nothing saved
-  #     where the workspace reuses it, and else removes the workspace's choice
+  #     while the workspace reuses it. A shared Qory harness is the one Qory harness row,
+  #     marked "every workspace" and with no heading, chosen also while the workspace's
+  #     choice is the Qory harness at the same pin; a workspace's Qory harness at another
+  #     pin keeps the two rows, with the workspace's Qory harness chosen. Continue with the
+  #     shared harness chosen goes on with nothing saved where the workspace reuses it,
+  #     and else removes the workspace's choice
   #     (`Apiary.Stacks.Sources.reuse_shared/1`); with a usual choice, it saves the
   #     workspace's choice, the same as the shared one or not. While the organisation
   #     shares one, a second is refused, and the step says to choose the shared harness
   #     or turn the setting off. Under the
-  #     choices, Targets lists the workspace's destinations, the rows the Destinations
-  #     step ticked, each with Workspace default or the stack chosen for it
+  #     choices, Targets, with a line that a target uses the workspace's harness unless
+  #     another is chosen for it, lists the workspace's destinations, the rows the
+  #     Destinations step ticked, each with Workspace default or the stack chosen for it
   #     (`Apiary.Stacks.Sources.targets_chosen/1`,
-  #     `ApiaryWeb.HarnessComponents.targets/1`), and Change. Change opens the
+  #     `ApiaryWeb.HarnessComponents.targets/1`), and Choose another, which opens the
   #     destination's form: Workspace default, which removes its stack, the Qory harness,
   #     or a harness source among the groups of Workflow's Source, then a stack of it. A
   #     source's stacks are read outside the page's process, and a read cancels the one
   #     before it. Save stores the choice
   #     (`Apiary.Stacks.Sources.choose_target/3`), outside the page's process for a
-  #     harness source, and a refusal says why; while it saves, no other Change opens. A
-  #     person whom `harness.save` does not allow sees the choices disabled, the
-  #     destinations with no Change, and who may;
+  #     harness source, and a refusal says why; while it saves, no other Choose another
+  #     opens. A person whom `harness.save` does not allow sees the choices disabled, the
+  #     destinations with no Choose another, and who may;
   #   * Machines, with the `factory` feature: the node pools that serve the workspace's
   #     runs, each with its state (`Apiary.WorkspaceSetup.pools/1`): the workspace's
   #     pools, or the instance's pool while it has none. A ready pool shows its gateway's
@@ -572,7 +577,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       done: step_done?(socket.assigns.flow, :harness)
     )
     |> assign_harness_form(
-      if(shared && chosen.shared, do: %{params | "choice" => "shared"}, else: params)
+      if(follows_shared?(shared, chosen), do: %{params | "choice" => "shared"}, else: params)
     )
     |> list_linked()
   end
@@ -725,6 +730,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       true -> Sources.shared(scope.organisation)
     end
   end
+
+  # Whether the Harness step shows the harness the organisation shares as chosen: the
+  # workspace reuses it, or the workspace's choice is the Qory harness at the pin of the
+  # shared Qory harness, which the step lists as one row.
+  defp follows_shared?(nil, _chosen), do: false
+  defp follows_shared?(_shared, %{shared: true}), do: true
+  defp follows_shared?(%{choice: :qory, pin: pin}, %{choice: :qory, pin: pin}), do: true
+  defp follows_shared?(_shared, _chosen), do: false
 
   # The choice the Harness form's `params` come to: `:shared` for the harness the
   # organisation shares, where the step lists it (`shared`); else
@@ -2532,6 +2545,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             linked={@linked}
             complete={@linked_complete}
             organisation={@flow.organisation.name}
+            workspace={@flow.workspace.name}
             disabled={!@may or @saving}
             file_first={@harness_file}
             shared={@shared_harness}
