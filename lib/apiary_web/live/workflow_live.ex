@@ -670,7 +670,6 @@ defmodule ApiaryWeb.WorkflowLive do
           >
             <HarnessComponents.choices
               form={@harness_form}
-              chosen={@chosen}
               linked={@linked}
               exports={@exports}
               organisation={@organisation}

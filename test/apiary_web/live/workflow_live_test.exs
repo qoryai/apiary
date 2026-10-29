@@ -751,6 +751,48 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#harness-targets #harness-target-#{collection.public_id}")
     end
 
+    # The Qory harness row and its Version, as Change draws them, chosen.
+    defp qory_row(view) do
+      for selector <- ["#harness-choice-qory", "#harness-qory-version"],
+          do: view |> element(selector) |> render()
+    end
+
+    test "the Qory harness row is the same with no shared harness, a shared Qory harness, a shared harness repository, and the workspace's Qory harness under a shared Qory harness",
+         %{conn: conn, path: path, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      plain = conn |> open(path) |> change_harness() |> qory_row()
+
+      # The organisation shares the Qory harness, and the workspace reuses it.
+      {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
+      view = conn |> open(path) |> change_harness()
+      assert qory_row(view) == plain
+      refute render(view) =~ "every workspace"
+      refute has_element?(view, "#harness-choice-shared")
+
+      # The organisation shares a harness repository: the Qory harness row, once chosen.
+      {:ok, _shared} =
+        Stacks.put_stack(
+          scope,
+          {:organisation, scope.organisation},
+          "extends:\n  git: \"#{@harness}\"\n  ref: \"#{@pin}\"\n",
+          choice: :repository
+        )
+
+      view = conn |> open(path) |> change_harness()
+      assert has_element?(view, "#harness-choice-repository-radio[checked]")
+      view |> form("#workflow-harness-form", harness: %{choice: "qory"}) |> render_change()
+      assert qory_row(view) == plain
+
+      # The workspace's Qory harness while the organisation shares the Qory harness.
+      {:ok, _deleted} = Stacks.delete_stack({:organisation, scope.organisation})
+      {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
+      {:ok, _row} = Sources.choose(scope, :qory)
+      assert %{choice: :qory, shared: false} = Sources.chosen(scope.workspace)
+      view = conn |> open(path) |> change_harness()
+      assert qory_row(view) == plain
+      refute render(view) =~ "every workspace"
+    end
+
     test "a harness repository: one repository by name, its exported stack, and a fixed version",
          %{
            conn: conn,
