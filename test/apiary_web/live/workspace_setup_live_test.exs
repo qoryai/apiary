@@ -3130,8 +3130,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     lv |> element("#{id}-code") |> render_click()
 
-    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+    assert words(lv, "#{id}-command-run") == "On the machine for the pool #{pool.name}, run:"
     assert command(lv, id) =~ ~r{\Aqory access-key enrol \S+ \S+\z}
+
+    assert words(lv, "#{id}-command-where") ==
+             "Run this on the Linux machine with Docker that runs the runs in #{ctx.scope.workspace.name}. It joins that machine to the pool #{pool.name}. Install qory there first:"
+
+    assert words(lv, "#{id}-command-install-text") ==
+             "curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh"
+
+    assert has_element?(lv, "#{id}-command-install-copy")
     refute command(lv, id) =~ "--via"
     refute command(lv, id) =~ "--replace"
     assert has_element?(lv, "#{id}-command-line-copy")
@@ -3269,7 +3277,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       |> live(ctx.path)
 
     lv |> element("#{id}-code") |> render_click()
-    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+    assert words(lv, "#{id}-command-run") == "On the machine for the pool #{pool.name}, run:"
   end
 
   test "a pool with two active keys offers no command", ctx do

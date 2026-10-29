@@ -142,7 +142,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     outstanding, makes a code (`Apiary.AccessKeys.create_enrolment_code/3`), and the
   #     line shows the enrol command (`ApiaryWeb.NodeComponents.enrol_command/3`) with
   #     Copy while that code is outstanding, kept in the page's process alone, as the
-  #     pool's Access key tab keeps it, until the person leaves the step. The step reads
+  #     pool's Access key tab keeps it, until the person leaves the step. Under the
+  #     command, the step shows the line that the command runs on the Linux machine with
+  #     Docker that runs the workspace's runs and joins that machine to the pool, then the
+  #     command that installs qory, with Copy. The step reads
   #     the pools again once the first outstanding code expires, and as a machine enrols
   #     a key on a pool of the workspace or a code of it is cancelled
   #     (`Apiary.AccessKeys.subscribe/2`, once per pool);
@@ -2639,7 +2642,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             class="q-choice-p grid gap-1.5"
           >
             <p id={"#{id}-command-run"} class="text-[13px]/5">
-              {gettext("On %{name}, run:", name: line.pool.name)}
+              {gettext("On the machine for the pool %{pool}, run:", pool: line.pool.name)}
             </p>
             <.command_line
               id={"#{id}-command-line"}
@@ -2653,6 +2656,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <ApiaryWeb.NodeComponents.via_ca_line
               id={"#{id}-command-via-ca"}
               gateway={@pool_issued.through}
+            />
+            <p id={"#{id}-command-where"} class="text-[13px]/5">
+              {gettext(
+                "Run this on the Linux machine with Docker that runs the runs in %{workspace}. It joins that machine to the pool %{pool}. Install qory there first:",
+                workspace: @flow.workspace.name,
+                pool: line.pool.name
+              )}
+            </p>
+            <.command_line
+              id={"#{id}-command-install"}
+              command="curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh"
             />
           </div>
         </li>
