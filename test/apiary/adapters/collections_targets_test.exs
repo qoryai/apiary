@@ -3,7 +3,7 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
   # that target there, as a run of it would name it, once; a move makes the new
   # workspace's too; an unlink, a move away or an end leaves it; and a run of the target,
   # with the labels a dispatched run carries, lands on it. A listing's part makes them
-  # too: where it links a collection to the organisation's only workspace, and where it
+  # too: where it links a collection to the workspace of its grant's rule, and where it
   # changes the target of a collection assigned to a workspace. And whether a connection
   # has a live collection with a target (`Collections.targets?/1`).
   use Apiary.DataCase, async: true
@@ -230,11 +230,13 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert Targets.count_by_workspace(ctx.scope) == %{ctx.workspace.id => 1}
   end
 
-  test "a part that links a collection to the only workspace makes its target, listed with no run, where a run lands",
+  test "a part that links a collection by its grant's rule makes its target, listed with no run, where a run lands",
        ctx do
-    # Another organisation, with one workspace, connected to the same adapter.
+    # Another organisation, with one workspace, connected to the same adapter, whose
+    # grant's rule assigns each new collection to that workspace.
     %{scope: scope} = sign_up_fixture()
     {connection, _nonce} = connection_fixture(scope, ctx.adapter, :connected)
+    grant_rule_fixture(connection, scope.workspace)
     ctx = %{ctx | connection: connection}
 
     {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"API", @api}, {"TRK", nil}])

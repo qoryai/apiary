@@ -498,9 +498,10 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   # The steps of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`) with the `factory`
-  # feature: Work sources and Destinations, each with Connect, Connected, Connecting… and
-  # the adapter's guide, and the tick list of the workspace's collections under each
-  # adapter, with a collection in another workspace and "No collection yet"; the test run,
+  # feature: Work sources and Destinations, each with a card per grant, Connect another,
+  # Connected, Connecting… and the adapter's guide; the chooser of a grant's collections
+  # (`ApiaryWeb.ChooseCollectionsLive`), with All, Only selected, a collection in another
+  # workspace and Not listed?; the test run,
   # with its condition and its states; who may act on each; and an instance admin's first
   # organisation.
   use ApiaryWeb.ConnCase, async: true
@@ -512,8 +513,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Dispatches, Organisations, Repo, WorkItems}
-  alias Apiary.Adapters.Collection
+  alias Apiary.{AccessKeys, Dispatches, Organisations, Repo, WorkItems}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collection, Collections, Grant, GrantRule}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
@@ -583,6 +585,55 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
   defp adapter_of(collection), do: Repo.get!(Node, collection.adapter_id)
 
+  # A configured adapter connected for `scope`'s organisation, and a part of a listing of
+  # `refs` under the connection's grant, for the account acme; with `targets: true`, an
+  # adapter with targets, and each collection's target on code.example.com at its ref.
+  defp listed!(scope, refs, opts \\ []) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    adapter = if opts[:targets], do: targets!(adapter), else: adapter
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    :ok = list!(key, connection, refs, "first", opts)
+    grant = Repo.get_by!(Grant, connection_id: connection.id)
+    %{adapter: adapter, key: key, connection: connection, grant: grant}
+  end
+
+  defp list!(key, connection, refs, id, opts \\ []) do
+    {:ok, verified} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(verified), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections:
+          for ref <- refs do
+            %{
+              ref: ref,
+              url: "https://forge.example.com/" <> ref,
+              title: ref,
+              grant_ref: listing_grant(connection),
+              target: if(opts[:targets], do: %{system: "code.example.com", path: ref})
+            }
+          end,
+        listing: %{
+          id: id,
+          part: 1,
+          started_at: DateTime.utc_now(:second),
+          complete: false
+        }
+      })
+
+    :ok
+  end
+
+  # The live collection of `connection` with the ref `ref`.
+  defp collection!(connection, ref) do
+    Repo.one!(
+      from c in Collection,
+        where: c.connection_id == ^connection.id and c.external_ref == ^ref,
+        where: is_nil(c.ended_at)
+    )
+  end
+
   describe "Work sources" do
     test "lists the configured adapters with items for the type, each with Connect, and Skip",
          %{conn: conn} do
@@ -620,8 +671,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "#{row}-connect-install.btn-primary", "Connect")
 
-      # With no connection, the list under Connect has no collection yet.
-      assert words(lv, "#{row} #{row}-none") == "No collection yet"
+      # With no card, the list of adapters to connect is open.
+      assert has_element?(lv, "#set-up-connect[open] #set-up-adapters #{row}")
+      assert words(lv, "#set-up-connect-another") == "Connect another source"
+      refute has_element?(lv, "#set-up-grants")
 
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Work sources."
@@ -659,28 +712,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "an adapter connected shows Connected and its collections under Connect; done once one is ticked",
+    test "a grant's card: the adapter and the account, how many are chosen, Choose; done once one is chosen",
          %{conn: conn} do
       %{user: user, organisation: organisation, workspace: main, scope: scope} =
         sign_up_fixture()
 
-      collection = collection_fixture(scope)
-      connected = adapter_of(collection)
+      %{adapter: adapter, grant: grant, connection: connection} =
+        listed!(scope, ["acme/api", "acme/shop"])
+
       %{adapter: other} = connectable_adapter_fixture()
 
       {:ok, lv, _html} =
         conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
 
-      row = "#set-up-adapter-#{connected.public_id}"
-      assert has_element?(lv, "#{row}-connected", "Connected")
-      assert has_element?(lv, "#set-up-adapter-#{other.public_id}-not-connected")
+      card = "#set-up-grants #set-up-grant-#{grant.public_id}"
+      assert words(lv, "#{card}-title") == "#{Apiary.Adapters.title(adapter)} · acme"
+      assert words(lv, "#{card}-summary") == "0 of 2 collections"
 
-      # Connect and the tick list on one screen: the collection's row is under its adapter.
-      assert has_element?(lv, "#{row} #set-up-tick-#{collection.public_id} input[checked]")
-      refute has_element?(lv, "#{row}-none")
-      assert has_element?(lv, "#set-up-adapter-#{other.public_id}-none", "No collection yet")
+      assert href(lv, "#{card}-choose") ==
+               ~p"/#{organisation}/set-up/choose?#{[step: :sources, grant: grant.public_id, workspace: main.slug]}"
 
-      # The return of an install leads back to this step of Main.
+      # The connected adapter is not under Connect another source, which is closed; the
+      # other adapter is, and its install leads back to this step of Main.
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}")
+      assert has_element?(lv, "#set-up-connect:not([open]) #set-up-adapter-#{other.public_id}")
       back = URI.encode_query(back: "set-up:sources:workspace=#{main.slug}")
 
       assert has_element?(
@@ -688,13 +743,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                ~s{#set-up-adapter-#{other.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{other.public_id}/install?#{back}"]}
              )
 
-      # Connect stays, to connect another account, as a plain button.
-      assert has_element?(lv, "#{row}-connect-install:not(.btn-primary)")
+      assert has_element?(lv, "#set-up-skip")
+      refute has_element?(lv, "#set-up-continue")
+
+      # Chosen in the chooser: the card counts it, and the step is done.
+      api = collection!(connection, "acme/api")
+      {:ok, 1} = Collections.choose(scope, grant, main, :sources, {:only, [api.id]})
+      assert words(lv, "#{card}-summary") == "1 of 2 collections"
 
       assert href(lv, "#set-up-continue") ==
                ~p"/#{organisation}/set-up?step=destinations&workspace=#{main.slug}"
 
       refute has_element?(lv, "#set-up-skip")
+
+      {:ok, 1} = Collections.choose(scope, grant, main, :sources, :all)
+      assert words(lv, "#{card}-summary") == "All collections"
     end
 
     test "a connection started and not yet back shows Connecting…, and no line for its list",
@@ -712,7 +775,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "a connected adapter with no collection listed yet shows no line under Connect", %{
+    test "a connected adapter with no grant yet shows Connected, with no card and no Connect", %{
       conn: conn
     } do
       %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -722,11 +785,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} =
         conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
 
-      row = "#set-up-adapter-#{adapter.public_id}"
+      row = "#set-up-grants #set-up-adapter-#{adapter.public_id}"
       assert has_element?(lv, "#{row}-connected", "Connected")
-      refute has_element?(lv, "#{row}-none")
-      refute has_element?(lv, "#{row} [id^=set-up-tick-]")
-      refute has_element?(lv, "#set-up-none")
+      refute has_element?(lv, "#{row}-connect")
+      refute has_element?(lv, "[id^=set-up-grant-]")
+      refute has_element?(lv, "#set-up-connect")
       assert has_element?(lv, "#set-up-skip")
     end
 
@@ -797,7 +860,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "lists the adapters with targets alone, with No collection yet, and the line for later",
+    test "lists the adapters with targets alone, under Connect another destination, and the line for later",
          %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: forge} = connectable_adapter_fixture()
@@ -814,7 +877,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
       refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
 
-      assert words(lv, "#set-up-adapter-#{forge.public_id}-none") == "No collection yet"
+      assert words(lv, "#set-up-connect-another") == "Connect another destination"
 
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Destinations."
@@ -828,7 +891,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     end
   end
 
-  describe "the tick lists" do
+  describe "the chooser" do
     setup %{conn: conn} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
 
@@ -846,180 +909,230 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       }
     end
 
-    defp tick(lv, collection),
-      do: lv |> element("#set-up-tick-#{collection.public_id} input") |> render_click()
+    defp chooser(ctx, step, grant, workspace \\ nil, query \\ []) do
+      params = [step: step, grant: grant.public_id, workspace: (workspace || ctx.main).slug]
+      ~p"/#{ctx.organisation}/set-up/choose?#{params ++ query}"
+    end
 
     defp row(collection) do
       c = Repo.get!(Collection, collection.id)
       {c.workspace_id, c.backlog}
     end
 
-    test "Work sources: a tick assigns with Backlog on; an untick unassigns", ctx do
-      free = collection_fixture(ctx.scope, workspace_id: nil)
-      elsewhere = collection_fixture(ctx.scope, workspace_id: ctx.second.id)
+    defp pick(lv, collection),
+      do: lv |> element("#collection-#{collection.public_id}-pick") |> render_click()
 
-      {:ok, lv, _html} =
+    defp save(lv), do: lv |> form("#choose-form") |> render_submit()
+
+    test "Choose opens it on Only selected: a row of another workspace with its name; Save assigns with Backlog on",
+         ctx do
+      %{adapter: adapter, grant: grant, connection: connection} =
+        listed!(ctx.scope, ["acme/api", "acme/shop", "acme/web"])
+
+      [api, shop, web] =
+        Enum.map(["acme/api", "acme/shop", "acme/web"], &collection!(connection, &1))
+
+      {:ok, _moved} = set_collection_workspace(web, ctx.second)
+
+      {:ok, step, _html} =
         live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
-      assert has_element?(lv, "h1", "Where does work for Main come from?")
+      {:ok, lv, html} =
+        step
+        |> element("#set-up-grant-#{grant.public_id}-choose")
+        |> render_click()
+        |> follow_redirect(ctx.conn, chooser(ctx, :sources, grant))
 
-      # The rows are under their adapter's Connect.
-      assert has_element?(
-               lv,
-               "#set-up-adapter-#{adapter_of(free).public_id} #set-up-tick-#{free.public_id}"
-             )
-
-      assert has_element?(
-               lv,
-               "#set-up-tick-#{free.public_id} input[type=checkbox]:not([checked])"
-             )
-
-      # A collection in another workspace shows its name, and has no checkbox.
-      refute has_element?(lv, "#set-up-tick-#{elsewhere.public_id} input")
-
-      assert words(lv, "#set-up-tick-#{elsewhere.public_id}-elsewhere") ==
-               "In Second (cannot be ticked)"
-
-      render_click(lv, "tick", %{"id" => elsewhere.id})
-      assert row(elsewhere) == {ctx.second.id, true}
-
-      assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Work sources."
-
-      # Nothing of Main ticked: Skip, with no Continue.
-      assert has_element?(lv, "#set-up-skip")
-      refute has_element?(lv, "#set-up-continue")
-
-      tick(lv, free)
-      assert row(free) == {ctx.main.id, true}
-      assert has_element?(lv, "#set-up-tick-#{free.public_id} input[checked]")
+      title = "Choose collections · #{Apiary.Adapters.title(adapter)} · acme"
+      assert html =~ title
+      assert words(lv, "#choose h1") == title
       assert {"Work sources", :current} in steps(lv)
+      assert has_element?(lv, "#choose-only[checked]")
+      assert has_element?(lv, "#choose-all:not([checked])")
+      assert words(lv, "#choose-count") == "0 selected"
 
-      # The step is done: Continue, with no Skip.
-      assert has_element?(lv, "#set-up-continue")
-      refute has_element?(lv, "#set-up-skip")
+      refute has_element?(lv, "#collection-#{web.public_id}-pick")
+      assert words(lv, "#collection-#{web.public_id}-elsewhere") == "In Second (cannot be ticked)"
 
-      tick(lv, free)
-      assert row(free) == {nil, false}
+      pick(lv, api)
+      assert words(lv, "#choose-count") == "1 selected"
+      step_path = ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main"
+      assert href(lv, "#choose-back") == step_path
+      assert {:error, {:live_redirect, %{to: ^step_path}}} = save(lv)
+
+      assert row(api) == {ctx.main.id, true}
+      assert row(shop) == {nil, true}
+      assert row(web) == {ctx.second.id, true}
+      assert Repo.aggregate(GrantRule, :count) == 0
+
+      # Opened again, the chosen one is ticked; unticked and saved, it is unassigned.
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
+      assert has_element?(lv, "#collection-#{api.public_id}-pick[checked]")
+      pick(lv, api)
+      assert words(lv, "#choose-count") == "0 selected"
+      {:error, {:live_redirect, _}} = save(lv)
+      assert row(api) == {nil, false}
     end
 
-    test "Destinations: a tick assigns with Backlog off, unless Work sources ticked it",
+    test "the search finds by name; the box over the rows selects the page; the selection stays across pages",
          ctx do
-      free = collection_fixture(ctx.scope, workspace_id: nil)
-      targets!(adapter_of(free))
+      refs = for n <- 1..60, do: "acme/repo-" <> String.pad_leading("#{n}", 2, "0")
+      %{grant: grant, connection: connection} = listed!(ctx.scope, refs ++ ["acme/shop"])
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
 
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations&workspace=main")
+      assert words(lv, "#choose-pager-footer") == "1–50 of 61"
+      lv |> element("#choose-table-every") |> render_click()
+      assert words(lv, "#choose-count") == "50 selected"
 
-      assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
+      lv |> element("#choose-pager-next") |> render_click()
+      assert_patch(lv, chooser(ctx, :sources, grant, nil, page: 2))
+      assert words(lv, "#choose-pager-footer") == "51–61 of 61"
+      assert words(lv, "#choose-count") == "50 selected"
 
-      assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Destinations."
+      lv |> form("#choose-search", %{q: "shop"}) |> render_change()
+      assert_patch(lv, chooser(ctx, :sources, grant, nil, q: "shop"))
+      shop = collection!(connection, "acme/shop")
+      assert has_element?(lv, "#collection-#{shop.public_id}-pick:not([checked])")
+      refute has_element?(lv, "#choose-pager")
+      pick(lv, shop)
+      assert words(lv, "#choose-count") == "51 selected"
 
-      tick(lv, free)
-      assert row(free) == {ctx.main.id, false}
-      refute has_element?(lv, "#set-up-tick-#{free.public_id}-tickets")
-      refute has_element?(lv, "#set-up-untick")
+      {:error, {:live_redirect, _}} = save(lv)
 
-      # Ticked in Work sources too: tickets come in, and an untick here stops them and
-      # unassigns.
-      {:ok, sources, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
-
-      tick(sources, free)
-      assert row(free) == {ctx.main.id, true}
-
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations&workspace=main")
-
-      assert words(lv, "#set-up-tick-#{free.public_id}-tickets") == "tickets come in"
-      assert words(lv, "#set-up-untick") == "Unticking also stops its tickets coming in."
-
-      tick(lv, free)
-      assert row(free) == {nil, false}
+      assert Repo.aggregate(
+               from(c in Collection, where: c.workspace_id == ^ctx.main.id),
+               :count
+             ) == 51
     end
 
-    test "a tick on a collection moved to another workspace since the page read it moves nothing",
+    test "All: every free collection, and each one listed later; back to Only selected keeps them",
          ctx do
-      free = collection_fixture(ctx.scope, workspace_id: nil)
+      %{grant: grant, connection: connection, key: key} =
+        listed!(ctx.scope, ["acme/api", "acme/shop"])
 
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
+      lv |> form("#choose-form", %{mode: "all"}) |> render_change()
+      assert has_element?(lv, "#choose-all[checked]")
+      refute has_element?(lv, "#choose-table")
+      refute has_element?(lv, "#choose-count")
+      {:error, {:live_redirect, _}} = save(lv)
 
-      assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
+      assert %GrantRule{backlog: true} = Repo.get_by!(GrantRule, grant_id: grant.id)
+      assert row(collection!(connection, "acme/api")) == {ctx.main.id, true}
 
-      # Another admin assigns it to Second: the page still shows its checkbox.
-      {:ok, _moved} = set_collection_workspace(free, ctx.second)
-      assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
+      :ok = list!(key, connection, ["acme/api", "acme/shop", "acme/web"], "second")
+      assert row(collection!(connection, "acme/web")) == {ctx.main.id, true}
 
-      tick(lv, free)
-      assert row(free) == {ctx.second.id, true}
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
+      assert has_element?(lv, "#choose-all[checked]")
+      lv |> form("#choose-form", %{mode: "only"}) |> render_change()
+      assert words(lv, "#choose-count") == "3 selected"
+      {:error, {:live_redirect, _}} = save(lv)
 
-      assert words(lv, "#set-up-tick-#{free.public_id}-elsewhere") ==
-               "In Second (cannot be ticked)"
+      assert Repo.get_by(GrantRule, grant_id: grant.id) == nil
+      assert row(collection!(connection, "acme/web")) == {ctx.main.id, true}
     end
 
-    test "a tick on a collection that ends after the tick read the list says nothing changed",
+    test "Destinations while Work sources is set to All: All alone; another workspace's All: Only selected alone",
          ctx do
-      free = collection_fixture(ctx.scope, workspace_id: nil)
+      %{grant: grant} = listed!(ctx.scope, ["acme/api"], targets: true)
+      {:ok, 1} = Collections.choose(ctx.scope, grant, ctx.main, :sources, :all)
 
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :destinations, grant))
+      assert {"Destinations", :current} in steps(lv)
+      assert has_element?(lv, "#choose-all[checked]")
+      refute has_element?(lv, "#choose-only")
 
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.EndsCollectionAtAssign)
+      assert words(lv, "#choose-locked") ==
+               "Work sources is set to All for acme. Change it there first."
+
+      # A forged Only selected changes nothing.
+      render_change(lv, "mode", %{"mode" => "only"})
+      assert has_element?(lv, "#choose-all[checked]")
+
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant, ctx.second))
+      refute has_element?(lv, "#choose-all")
+      assert has_element?(lv, "#choose-only[checked]")
+      assert words(lv, "#choose-taken") == "All new collections of acme go to Main."
+      render_change(lv, "mode", %{"mode" => "all"})
+      assert has_element?(lv, "#choose-only[checked]")
+    end
+
+    test "Not listed? shows the adapter's line on its access, with Change access to its Install",
+         ctx do
+      %{adapter: adapter, grant: grant} = listed!(ctx.scope, ["acme/api"])
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
+      refute has_element?(lv, "#choose-access")
 
       {1, _} =
-        Repo.update_all(from(c in Collection, where: c.id == ^free.id),
-          set: [title: "ends-at-assign"]
+        Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+          set: [source_access: "Pick the repositories in the installation's settings."]
         )
 
-      tick(lv, free)
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
 
-      assert has_element?(lv, "#flash-error", "Nothing was changed. Try again.")
-      assert Repo.get!(Collection, free.id).workspace_id == nil
+      assert words(lv, "#choose-access") =~
+               "Not listed? Pick the repositories in the installation's settings."
+
+      back = URI.encode_query(back: "set-up:sources:workspace=main")
+
+      assert has_element?(
+               lv,
+               ~s{#choose-change-access[action="/#{ctx.organisation.slug}/settings/integrations/#{adapter.public_id}/install?#{back}"]}
+             )
+
+      assert has_element?(lv, "#choose-change-access-install", "Change access")
     end
 
-    test "a tick on a collection of another organisation changes nothing", ctx do
+    test "another organisation's grant, an unknown step or grant is no page; another organisation's collection is not picked",
+         ctx do
+      %{grant: grant} = listed!(ctx.scope, ["acme/api"])
       %{scope: theirs} = sign_up_fixture()
-      collection = collection_fixture(theirs, workspace_id: nil)
+      %{grant: their_grant, connection: their_connection} = listed!(theirs, ["beta/api"])
 
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
+      for path <- [
+            chooser(ctx, :sources, their_grant),
+            chooser(ctx, :elsewhere, grant),
+            ~p"/#{ctx.organisation}/set-up/choose?step=sources&grant=ag_0000000000000000&workspace=main",
+            ~p"/#{ctx.organisation}/set-up/choose?step=sources&grant=not-a-grant&workspace=main"
+          ] do
+        assert_raise ApiaryWeb.NotFound, fn -> live(ctx.conn, path) end
+      end
 
-      render_click(lv, "tick", %{"id" => collection.id})
-      assert row(collection) == {nil, true}
+      their = collection!(their_connection, "beta/api")
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant))
+      render_click(lv, "select", %{"collection" => their.public_id})
+      assert words(lv, "#choose-count") == "0 selected"
+      {:error, {:live_redirect, _}} = save(lv)
+      assert row(their) == {nil, true}
     end
 
-    test "an untick in Work sources keeps a destination assigned", ctx do
-      collection = collection_fixture(ctx.scope)
-      targets!(adapter_of(collection))
-
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
-
-      assert has_element?(lv, "#set-up-tick-#{collection.public_id} input[checked]")
-
-      tick(lv, collection)
-      assert row(collection) == {ctx.main.id, false}
-    end
-
-    test "a member who may not assign sees the lists, disabled, and who may", ctx do
-      collection = collection_fixture(ctx.scope, workspace_id: nil)
+    test "a member sees the choice disabled, no boxes and no Save, and who may; a save sent changes nothing",
+         ctx do
+      %{grant: grant, connection: connection} = listed!(ctx.scope, ["acme/api"])
+      api = collection!(connection, "acme/api")
       member = joined(ctx.organisation, :member)
+      conn = log_in_user(build_conn(), member)
 
-      {:ok, lv, _html} =
-        build_conn()
-        |> log_in_user(member)
-        |> live(~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
+      {:ok, step, _html} = live(conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
-      assert has_element?(lv, "#set-up-tick-#{collection.public_id} input[disabled]")
+      who_may =
+        "Only owners and admins of #{ctx.organisation.name} assign collections to workspaces."
 
-      assert words(lv, "#set-up-who-may") ==
-               "Only owners and admins of #{ctx.organisation.name} assign collections to " <>
-                 "workspaces."
+      assert words(step, "#set-up-who-may") == who_may
 
-      render_click(lv, "tick", %{"id" => collection.id})
-      assert row(collection) == {nil, true}
+      {:ok, lv, _html} = live(conn, chooser(ctx, :sources, grant))
+      assert has_element?(lv, "#choose-only[disabled]")
+      assert has_element?(lv, "#choose-all[disabled]")
+      refute has_element?(lv, "#collection-#{api.public_id}-pick")
+      refute has_element?(lv, "#choose-save")
+      assert words(lv, "#choose-who-may") == who_may
+
+      render_click(lv, "select", %{"collection" => api.public_id})
+      render_change(lv, "mode", %{"mode" => "all"})
+      render_submit(lv, "save", %{})
+      assert row(api) == {nil, true}
+      assert Repo.aggregate(GrantRule, :count) == 0
     end
   end
 

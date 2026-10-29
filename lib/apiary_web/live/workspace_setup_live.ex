@@ -38,24 +38,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     `{:error, :exists}` for a second, under the organisation's lock), on
   #     `/:org/workspaces/new` any other (`Apiary.Organisations.create_workspace/2`); once
   #     the workspace exists, its name, read only, with Continue;
-  #   * Work sources and Destinations, with the `factory` feature: the instance's
-  #     configured adapters that serve the type (`Apiary.Adapters.list_configured/1`),
-  #     those with items for Work sources and those with `targets` true for Destinations,
-  #     each Connected while the organisation's connection to it is connected,
-  #     Connecting… while it is pending, else Not connected, with Connect, the Install of
+  #   * Work sources and Destinations, with the `factory` feature: a card per live grant
+  #     of the organisation's connections (`Apiary.WorkspaceSetup.cards/4`,
+  #     `ApiaryWeb.IntegrationComponents.grant_card/1`), of the adapters with items for
+  #     Work sources and those with `targets` true for Destinations: the adapter's title
+  #     and the account's, how many of the grant's collections are chosen for the
+  #     workspace, of how many, or All, and Choose, which opens the chooser
+  #     (`ApiaryWeb.ChooseCollectionsLive`). An adapter connected with no grant yet shows
+  #     Connected. Connect another source, or Connect another destination, lists the
+  #     instance's configured adapters that serve the type
+  #     (`Apiary.Adapters.list_configured/1`) and that the organisation has not connected,
+  #     each Connecting… while its connection is pending, with Connect, the Install of
   #     Organisation settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`),
-  #     whose return leads back to the step (`ApiaryWeb.ConnectSession.back?/1`). Under
-  #     each adapter, the rows of its collections in the workspace's tick list
-  #     (`ApiaryWeb.TickListComponents`), which Workspace settings › Work sources and
-  #     › Destinations show too; under an adapter that is not connected, "No collection
-  #     yet". A tick (`Apiary.WorkspaceSetup.tick/5`) reads the list again first, and
-  #     changes nothing for a collection that is now in another workspace. In the context
-  #     column, for each adapter whose Connect can be pressed and whose guide has steps for
-  #     connecting it (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not
-  #     done, else Continue. A person whom `adapter.connect` does not allow sees the
-  #     adapters with no Connect, and who may connect (`ApiaryWeb.Access.who_may/3`); a
-  #     person whom `collection.assign` does not allow sees the boxes disabled, and who
-  #     may. The page listens to the organisation's collections and connections
+  #     whose return leads back to the step (`ApiaryWeb.ConnectSession.back?/1`); it is
+  #     open while the step has no card. In the context column, for each adapter whose
+  #     Connect can be pressed and whose guide has steps for connecting it
+  #     (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not done, else
+  #     Continue. A person whom `adapter.connect` does not allow sees the adapters with no
+  #     Connect, and who may connect (`ApiaryWeb.Access.who_may/3`); a person whom
+  #     `collection.assign` does not allow sees who may. The page listens to the
+  #     organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
   #   * Model, with the features `factory` and `secrets`: three choices. Key: each model
   #     provider of the organisation with a key that reaches the workspace (applies to
@@ -188,8 +190,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessComponents,
     IntegrationComponents,
     OverviewComponents,
-    SetUpComponents,
-    TickListComponents
+    SetUpComponents
   }
 
   alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
@@ -427,12 +428,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   ## Each step's data
 
-  # Connect for each adapter, with the rows of its collections in the tick list under it.
-  # `may` and `who_may` are of the ticks (`collection.assign`); `may_connect` and
-  # `who_connects` of Connect (`adapter.connect`).
+  # The cards of the step's grants; the configured adapters for the step, those connected
+  # with no card yet, and those not connected, each with Connect. `may` and `who_may` are
+  # of the chooser's Save (`collection.assign`); `may_connect` and `who_connects` of
+  # Connect (`adapter.connect`).
   defp load_step(%{assigns: %{step: step}} = socket) when step in [:sources, :destinations] do
     %{current_scope: scope, flow: flow} = socket.assigns
     role = if step == :sources, do: :items, else: :targets
+    may_connect = Access.can?(scope, :"adapter.connect", scope.organisation)
 
     adapters =
       for adapter <- Adapters.list_configured(flow.domain),
@@ -444,26 +447,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           into: MapSet.new(),
           do: adapter_id
 
-    ticks = TickListComponents.load(scope, flow.domain, step, nil)
-    listed = MapSet.new(adapters, & &1.id)
+    connected = WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role)
+    cards = WorkspaceSetup.cards(scope, flow.domain, step, flow.workspace)
+    carded = MapSet.new(cards, & &1.adapter.id)
 
-    socket
-    |> assign(ticks)
-    |> assign(
+    assign(socket,
+      cards: cards,
       adapters: adapters,
-      # The adapters of the tick list's rows that are not configured, listed after the
-      # configured ones, without Connect.
-      others: for({adapter, _rows} <- ticks[:groups], adapter.id not in listed, do: adapter),
-      rows: Map.new(ticks[:groups], fn {adapter, rows} -> {adapter.id, rows} end),
-      connected: WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role),
+      waiting: for(a <- adapters, a.id in connected, a.id not in carded, do: a),
+      unconnected: for(a <- adapters, a.id not in connected, do: a),
       connecting: connecting,
       ready:
         for(
           a <- adapters,
-          ticks[:may_connect],
+          may_connect,
           IntegrationComponents.ready?(a),
           into: MapSet.new(),
           do: a.id
+        ),
+      may: Access.can?(scope, :"collection.assign", scope.organisation),
+      who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
+      may_connect: may_connect,
+      who_connects:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"adapter.connect",
+          gettext("Only owners and admins change the integrations of the organisation.")
         ),
       sending: nil,
       done: step_done?(flow, step)
@@ -1258,7 +1267,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         %{assigns: %{step: step, may_connect: true}} = socket
       )
       when step in [:sources, :destinations] do
-    if Enum.any?(socket.assigns.adapters, &(&1.public_id == public_id)),
+    if Enum.any?(socket.assigns.unconnected, &(&1.public_id == public_id)),
       do: {:noreply, assign(socket, :sending, public_id)},
       else: {:noreply, socket}
   end
@@ -1357,15 +1366,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       {:error, _reason} ->
         {:noreply, push_navigate(socket, to: page_path(flow))}
     end
-  end
-
-  def handle_event("tick", %{"id" => id}, %{assigns: %{step: step, may: true}} = socket)
-      when step in [:sources, :destinations] do
-    %{current_scope: scope, flow: flow} = socket.assigns
-    ticked = WorkspaceSetup.tick(scope, flow.workspace, flow.domain, step, id)
-
-    {:noreply,
-     socket |> TickListComponents.put_tick_flash(ticked, socket.assigns.who_may) |> reload()}
   end
 
   def handle_event(
@@ -1963,27 +1963,51 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <ul :if={@adapters != [] or @others != []} id="set-up-adapters" class="grid gap-3">
+      <ul :if={@cards != [] or @waiting != []} id="set-up-grants" class="grid gap-3">
+        <IntegrationComponents.grant_card
+          :for={card <- @cards}
+          id={"set-up-grant-#{card.grant.public_id}"}
+          card={card}
+          list={@step}
+          workspace={@flow.workspace}
+          choose={chooser_path(@flow, @step, card)}
+        />
         <li
-          :for={adapter <- @adapters ++ @others}
+          :for={adapter <- @waiting}
           id={"set-up-adapter-#{adapter.public_id}"}
-          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+          class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
         >
-          <div class="flex items-center gap-3">
+          <IntegrationComponents.mark class="size-5" />
+          <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(adapter)}</p>
+          <span
+            id={"set-up-adapter-#{adapter.public_id}-connected"}
+            class="q-sdot q-sdot-completed text-[13px]/5"
+          >
+            <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
+          </span>
+        </li>
+      </ul>
+
+      <details
+        :if={@unconnected != []}
+        id="set-up-connect"
+        class="grid gap-3"
+        open={@cards == [] and @waiting == []}
+      >
+        <summary id="set-up-connect-another" class="btn btn-sm w-fit">
+          <span :if={@step == :sources}>{gettext("Connect another source")}</span>
+          <span :if={@step == :destinations}>{gettext("Connect another destination")}</span>
+        </summary>
+        <ul id="set-up-adapters" class="mt-3 grid gap-3">
+          <li
+            :for={adapter <- @unconnected}
+            id={"set-up-adapter-#{adapter.public_id}"}
+            class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
+          >
             <IntegrationComponents.mark class="size-5" />
             <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(adapter)}</p>
             <span
-              :if={MapSet.member?(@connected, adapter.id)}
-              id={"set-up-adapter-#{adapter.public_id}-connected"}
-              class="q-sdot q-sdot-completed text-[13px]/5"
-            >
-              <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
-            </span>
-            <span
-              :if={
-                not MapSet.member?(@connected, adapter.id) and
-                  MapSet.member?(@connecting, adapter.id)
-              }
+              :if={MapSet.member?(@connecting, adapter.id)}
               id={"set-up-adapter-#{adapter.public_id}-connecting"}
               role="status"
               class="q-sdot q-sdot-pending text-[13px]/5"
@@ -1991,55 +2015,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
             </span>
             <span
-              :if={
-                not MapSet.member?(@connected, adapter.id) and
-                  not MapSet.member?(@connecting, adapter.id)
-              }
+              :if={not MapSet.member?(@connecting, adapter.id)}
               id={"set-up-adapter-#{adapter.public_id}-not-connected"}
               class="q-sdot text-[13px]/5 text-muted"
             >
               <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
             </span>
             <IntegrationComponents.install_form
-              :if={@may_connect and adapter in @adapters}
+              :if={@may_connect}
               id={"set-up-adapter-#{adapter.public_id}-connect"}
               adapter={adapter}
-              variant={if MapSet.member?(@connected, adapter.id), do: "default", else: "primary"}
               action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
               ready={adapter.id in @ready}
               sending={@sending == adapter.public_id}
               label={gettext("Connect")}
             />
-          </div>
-          <TickListComponents.rows
-            id="set-up"
-            list={@step}
-            adapter={adapter}
-            rows={Map.get(@rows, adapter.id, [])}
-            workspace={@flow.workspace}
-            may={@may}
-          />
-          <p
-            :if={
-              not MapSet.member?(@connected, adapter.id) and
-                not MapSet.member?(@connecting, adapter.id)
-            }
-            id={"set-up-adapter-#{adapter.public_id}-none"}
-            class="pl-8 text-[13px]/5 text-muted"
-          >
-            {gettext("No collection yet")}
-          </p>
-        </li>
-      </ul>
+          </li>
+        </ul>
+      </details>
 
-      <TickListComponents.notes
-        id="set-up"
-        list={@step}
-        groups={@groups}
-        workspace={@flow.workspace}
-        may={@may}
-        who_may={@who_may}
-      />
+      <p
+        :if={!@may and @cards != []}
+        id="set-up-who-may"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {@who_may}
+      </p>
 
       <p
         :if={@adapters == [] and @step == :sources}
@@ -2080,18 +2081,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context :if={@step == :sources or guides(@adapters, @ready) != []}>
+      <:context :if={@step == :sources or guides(@unconnected, @ready) != []}>
         <p :if={@step == :sources} id="set-up-what">
           {pgettext("plain", "Bring tickets in from a system this instance has set up.")}
         </p>
-        <p :for={adapter <- @adapters} :if={adapter.id in @ready}>
+        <p :for={adapter <- @unconnected} :if={adapter.id in @ready}>
           {gettext(
             "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps.",
             adapter: Adapters.title(adapter)
           )}
         </p>
         <SetUpComponents.outside
-          :for={{adapter, guide} <- guides(@adapters, @ready)}
+          :for={{adapter, guide} <- guides(@unconnected, @ready)}
           id={"set-up-help-#{adapter.public_id}"}
           title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
           guide={guide}
@@ -2867,4 +2868,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         guide = Adapters.guide(adapter, :connect),
         do: {adapter, guide}
   end
+
+  # The chooser of `card`'s grant for the step `step` of `flow`'s workspace.
+  defp chooser_path(%{organisation: organisation, workspace: workspace}, step, card),
+    do:
+      ~p"/#{organisation}/set-up/choose?#{[step: step, grant: card.grant.public_id, workspace: workspace.slug]}"
 end
