@@ -370,8 +370,20 @@ later.
    opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
    or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
    for this pool, and the shared pool stops serving them." Its **Add node pool** adds a
-   node pool with the name Main, and **Get the command** shows the command to run on the
-   pool's machine, with **Copy command**. **Skip** opens **Test run**.
+   node pool with the name Main. **Get the command** then shows "On the machine for the
+   pool Main, run:" and the enrol command, with **Copy command**. Under it, the step
+   shows the command that installs qory. Run it first on the Linux machine with Docker
+   that runs Main's runs:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
+   ```
+
+   Then run the enrol command on that machine. To go back to the instance's pool,
+   choose **Shared: the instance's pool**, then **Remove pool**: the step deletes
+   Main's pool, and its machines stop taking runs. While the instance has no pool,
+   **Shared: the instance's pool** shows "Not ready: no pool" and cannot be chosen.
+   **Skip** opens **Test run**.
 6. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
    another greeting, and select **Run the test**. The step shows "The test run is queued
    for a machine.", then "The test run is running.", with **See the run** once a machine
