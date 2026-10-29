@@ -606,6 +606,39 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(view, "#workflow-harness-form")
     end
 
+    test "without a choice of the workspace: the shared harness and its version as a line, with no version field",
+         %{conn: conn, path: path, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
+      view = open(conn, path)
+
+      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+      refute has_element?(view, "#harness-qory-version")
+      refute has_element?(view, "#harness-version")
+
+      for {version, line} <- [
+            {{:branch, "main"}, "triage · acme/harness · main"},
+            {{:tag, "v1"}, "triage · acme/harness · v1"}
+          ] do
+        {:ok, _shared} =
+          Stacks.put_stack(
+            scope,
+            {:organisation, scope.organisation},
+            "extends:\n  git: \"#{@harness}\"\n  ref: \"#{elem(version, 1)}\"\n  stack: \"triage\"\n",
+            choice: :repository,
+            version: version
+          )
+
+        view = open(conn, path)
+
+        assert words(view, "#harness-line") == "A harness repository " <> line
+        refute has_element?(view, "#harness-qory-version")
+        refute has_element?(view, "#harness-version")
+      end
+
+      assert Stacks.choice(scope.workspace) == nil
+    end
+
     test "with a shared Qory harness and a destination: the Qory harness once, and the destination's row",
          %{conn: conn, path: path, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)

@@ -1407,14 +1407,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       refute has_element?(lv, "#harness-choice-shared-group")
       refute render(lv) =~ "Shared in"
-      assert words(lv, "#harness-choice-shared") == "Qory harness · every workspace"
+      assert words(lv, "#harness-choice-shared .q-choice-h") == "Qory harness · every workspace"
       refute render(lv) =~ "fe3b3ab"
 
       assert has_element?(lv, "#harness-choice-shared-radio[checked]")
       refute has_element?(lv, "#harness-choice-qory")
       refute has_element?(lv, "#harness-choice-repository-radio[checked]")
-      # The shared harness's version is the organisation's: the step shows none to change.
+      # The shared harness's version is a line under its title, with no field to change it.
+      assert words(lv, "#harness-choice-shared-line") == "Always the latest version"
       refute has_element?(lv, "#harness-qory-version")
+      refute has_element?(lv, "#harness-choice-shared input[type=text]")
 
       # One Qory harness, then a harness repository.
       assert ["harness-choice-shared", "harness-choice-repository"] ==
@@ -1427,6 +1429,59 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
       assert Apiary.Stacks.choice(second) == nil
       assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
+    end
+
+    test "with the setting shown, a shared Qory harness at a named version shows the name under its title, with no field",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      {:ok, _shared} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:organisation, ctx.organisation},
+          "extends:\n  git: \"https://github.com/qoryai/harness\"\n  ref: \"#{@pin}\"\n  stack: \"core\"\n",
+          choice: :qory,
+          version: {:named, "v1"}
+        )
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+      assert words(lv, "#harness-choice-shared .q-choice-h") == "Qory harness · every workspace"
+      assert words(lv, "#harness-choice-shared-line") == "v1"
+      refute has_element?(lv, "#harness-qory-version")
+      refute has_element?(lv, "#harness-choice-shared input[type=text]")
+    end
+
+    test "with the setting shown, a shared harness repository on a branch or at a tag shows its stack, repository and version under its title, with no field",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      for {version, line} <- [
+            {{:branch, "main"}, "triage · acme/harness · main"},
+            {{:tag, "v1"}, "triage · acme/harness · v1"}
+          ] do
+        {:ok, _shared} =
+          Apiary.Stacks.put_stack(
+            ctx.scope,
+            {:organisation, ctx.organisation},
+            "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{elem(version, 1)}\"\n  stack: \"triage\"\n",
+            choice: :repository,
+            version: version
+          )
+
+        {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+        assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+
+        assert words(lv, "#harness-choice-shared .q-choice-h") ==
+                 "A harness repository · every workspace"
+
+        assert words(lv, "#harness-choice-shared-line") == line
+        refute has_element?(lv, "#harness-version")
+        refute has_element?(lv, "#harness-qory-version")
+        refute has_element?(lv, "#harness-choice-shared-group input[type=text]")
+      end
     end
 
     test "with the setting shown and no shared harness: no heading, the two choices", ctx do
@@ -1537,7 +1592,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, path)
 
       assert words(lv, "#harness-choice-shared-h") == "Shared in #{ctx.organisation.name}"
-      assert words(lv, "#harness-choice-shared") == "Qory harness · every workspace"
+      assert words(lv, "#harness-choice-shared .q-choice-h") == "Qory harness · every workspace"
+      assert words(lv, "#harness-choice-shared-line") == "Always the latest version"
       assert words(lv, "#harness-choice-qory") == "Qory harness"
       refute render(lv) =~ "0123456"
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")

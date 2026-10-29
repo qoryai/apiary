@@ -22,9 +22,10 @@ defmodule ApiaryWeb.HarnessComponents do
   # Stack where it exports none; then Version: `version` `branch`, with `branch`, the
   # branch whose newest commit each run reads, or `fixed`, with `fixed`, a tag or a full
   # commit id. With `shared`, as the Harness step passes it, `choices/1` lists the harness
-  # the organisation shares first, as the `choice` `shared`. A shared Qory harness is the
-  # one Qory harness listed in place of the `qory` choice where no saved `qory` choice of
-  # the workspace has another pin. `line/1` is the choice as Workflow shows it.
+  # the organisation shares first, as the `choice` `shared`, with its version as one line
+  # under its title and no field. A shared Qory harness is the one Qory harness listed in
+  # place of the `qory` choice where no saved `qory` choice of the workspace has another
+  # pin. `line/1` is the choice as Workflow shows it.
   # `form_params/2` is the form's values for a saved choice, `fill/3` the values sent with
   # the saved choice's where a field is absent, `choice/3` the choice the values come to,
   # and `refusal_words/4` why a save was refused.
@@ -102,10 +103,11 @@ defmodule ApiaryWeb.HarnessComponents do
 
   # The two choices, and the fields of the one chosen. With `shared`, the harness the
   # organisation shares comes first, under "Shared in <organisation>", marked "every
-  # workspace", with its stack, repository and version. A shared Qory harness is the Qory
-  # harness choice itself: one row, the `choice` `shared`, marked "every workspace", and
-  # no heading. The rows merge only where the pins are equal: a saved `qory` choice of the
-  # workspace at another pin keeps the shared row and the `qory` row.
+  # workspace", with its version as a line under its title (`shared_line/1`) and no field.
+  # A shared Qory harness is the Qory harness choice itself: one row, the `choice`
+  # `shared`, marked "every workspace", with that line, and no heading. The rows merge only
+  # where the pins are equal: a saved `qory` choice of the workspace at another pin keeps
+  # the shared row and the `qory` row.
   def choices(assigns) do
     choice = assigns.form[:choice].value
     shared = assigns.shared
@@ -113,8 +115,8 @@ defmodule ApiaryWeb.HarnessComponents do
 
     qory =
       if shared_qory,
-        do: {"shared", choice_title(:qory), true},
-        else: {"qory", choice_title(:qory), false}
+        do: {"shared", choice_title(:qory), true, shared_line(shared)},
+        else: {"qory", choice_title(:qory), false, nil}
 
     assigns =
       assign(assigns,
@@ -123,8 +125,8 @@ defmodule ApiaryWeb.HarnessComponents do
         named: Definition.qory_harness().named,
         group: shared != nil and not shared_qory,
         shared_title: shared && choice_title(shared.choice),
-        shared_line: shared && shared.choice == :repository && chosen_line(shared),
-        options: [qory, {"repository", choice_title(:repository), false}]
+        shared_line: shared && shared_line(shared),
+        options: [qory, {"repository", choice_title(:repository), false, nil}]
       )
 
     ~H"""
@@ -152,11 +154,11 @@ defmodule ApiaryWeb.HarnessComponents do
           <span class="q-choice-h">
             {@shared_title}<span class="font-normal text-muted"> · {gettext("every workspace")}</span>
           </span>
-          <span :if={@shared_line} class="q-choice-p">{@shared_line}</span>
+          <span id="harness-choice-shared-line" class="q-choice-p">{@shared_line}</span>
         </label>
       </div>
       <label
-        :for={{value, title, every} <- @options}
+        :for={{value, title, every, line} <- @options}
         id={"harness-choice-#{value}"}
         for={"harness-choice-#{value}-radio"}
         class="q-choice"
@@ -173,6 +175,7 @@ defmodule ApiaryWeb.HarnessComponents do
         <span class="q-choice-h">
           {title}<span :if={every} class="font-normal text-muted"> · {gettext("every workspace")}</span>
         </span>
+        <span :if={line} id={"harness-choice-#{value}-line"} class="q-choice-p">{line}</span>
       </label>
     </fieldset>
 
@@ -343,6 +346,12 @@ defmodule ApiaryWeb.HarnessComponents do
     </fieldset>
     """
   end
+
+  # The version of the harness the organisation shares, `shared`, as its row shows it: a
+  # Qory harness by its version (`version_line/1`), a harness repository by its stack,
+  # repository and version (`chosen_line/1`).
+  defp shared_line(%{choice: :qory} = shared), do: version_line(shared)
+  defp shared_line(shared), do: chosen_line(shared)
 
   # Whether `chosen` is a saved `qory` choice of the workspace at a pin other than that of
   # the harness the organisation shares, `shared`.
