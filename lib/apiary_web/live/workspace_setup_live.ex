@@ -68,7 +68,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     the edition shows it (`c:Apiary.Edition.scope_setting?/1`), Add a key has the
   #     setting "Available to every workspace in <organisation>", off; on, it adds the
   #     provider for the organisation, reaching every workspace, its key a secret of the
-  #     organisation (`Apiary.Connections.reach_at_add/3`). With
+  #     organisation (`Apiary.Connections.reach_at_add/3`). Where the edition shows that
+  #     setting, the providers to reuse that apply to every workspace come first in Key,
+  #     under "Shared in <organisation>", each marked "every workspace"; with none, Key
+  #     has no heading. With
   #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
   #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
   #     Default model, the models suggested for the provider and runtime
@@ -95,9 +98,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
   #     "Available to every workspace in <organisation>", off; on, Continue saves the
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
-  #     with no choice reuses, shown chosen. While the organisation shares one, a second
-  #     is refused, and the step says to choose the shared harness or turn the setting
-  #     off. Under the
+  #     with no choice reuses. While the organisation shares one, the shared harness
+  #     comes first, under "Shared in <organisation>" and marked "every workspace", chosen
+  #     while the workspace reuses it. Continue with it chosen goes on with nothing saved
+  #     where the workspace reuses it, and else removes the workspace's choice
+  #     (`Apiary.Stacks.Sources.reuse_shared/1`); with a usual choice, it saves the
+  #     workspace's choice, the same as the shared one or not. While the organisation
+  #     shares one, a second is refused, and the step says to choose the shared harness
+  #     or turn the setting off. Under the
   #     choices, Targets lists the workspace's destinations, the rows the Destinations
   #     step ticked, each with Workspace default or the stack chosen for it
   #     (`Apiary.Stacks.Sources.targets_chosen/1`,
@@ -471,11 +479,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
-  # `providers` are the ones to reuse; `may_add` is of Add a key (`provider.write`), and
-  # `may` of a save (`model_choice.write` on the workspace) with a key to choose.
+  # `providers` are the ones to reuse, of which the first `shared_keys` are shown as shared
+  # (`split_shared/2`); `may_add` is of Add a key (`provider.write`), and `may` of a save
+  # (`model_choice.write` on the workspace) with a key to choose.
   defp load_step(%{assigns: %{step: :model}} = socket) do
     %{current_scope: scope, flow: flow} = socket.assigns
-    providers = reusable_providers(scope, flow.workspace)
+    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace))
+    providers = shared ++ others
     may_add = Access.can?(scope, :"provider.write", scope.organisation)
     choice = workspace_choice(scope, flow.workspace)
 
@@ -492,6 +502,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           gettext("Only owners and admins add a model key.")
         ),
       providers: providers,
+      shared_keys: length(shared),
       choice: choice,
       # Whether the edition shows the organisation's secrets: the core shows none.
       organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
@@ -521,6 +532,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     chosen = Sources.chosen(workspace)
     may = Access.can?(scope, :"harness.save", workspace)
     targets = harness_targets(scope, flow)
+    shared = shared_harness(scope, chosen)
+    params = HarnessComponents.form_params(chosen, socket.assigns.linked)
 
     socket
     |> assign(
@@ -532,6 +545,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           gettext("Only owners and admins change this.")
         ),
       chosen: chosen,
+      shared_harness: shared,
       qory: HarnessComponents.qory(chosen, workspace),
       saving: false,
       harness_refusal: nil,
@@ -542,7 +556,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       target_edit: kept_edit(socket.assigns[:target_edit], targets, may),
       done: step_done?(socket.assigns.flow, :harness)
     )
-    |> assign_harness_form(HarnessComponents.form_params(chosen, socket.assigns.linked))
+    |> assign_harness_form(
+      if(shared && chosen.shared, do: %{params | "choice" => "shared"}, else: params)
+    )
     |> list_linked()
   end
 
@@ -667,6 +683,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp assign_harness_form(socket, params),
     do: assign(socket, form: to_form(params, as: :harness))
+
+  # The harness the organisation shares (`Apiary.Stacks.Sources.shared/1`), where the
+  # edition shows the setting that shares one (`c:Apiary.Edition.scope_setting?/1`); nil
+  # else, and for none. The shared one of `chosen` saves a read.
+  defp shared_harness(scope, chosen) do
+    cond do
+      not Edition.scope_setting?(scope) -> nil
+      chosen.shared -> chosen
+      true -> Sources.shared(scope.organisation)
+    end
+  end
+
+  # The choice the Harness form's `params` come to: `:shared` for the harness the
+  # organisation shares, where the step lists it (`shared`); else
+  # `ApiaryWeb.HarnessComponents.choice/2`.
+  defp harness_choice(%{"choice" => "shared"}, _linked, %{} = _shared), do: :shared
+  defp harness_choice(params, linked, _shared), do: HarnessComponents.choice(params, linked)
 
   # The linked repositories, read once per page, outside the page's process, for a person
   # who may save.
@@ -913,6 +946,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  # `providers` as `{shared, others}`, each in the order given: shared are those that apply
+  # to every workspace, where the edition shows the setting that makes them
+  # (`c:Apiary.Edition.scope_setting?/1`); none where it does not.
+  defp split_shared(scope, providers) do
+    if Edition.scope_setting?(scope),
+      do: Enum.split_with(providers, &(&1.applies_to == "all")),
+      else: {[], providers}
+  end
+
   # The workspace's choice (level 5), nil for none.
   defp workspace_choice(scope, workspace) do
     case ModelChoices.list_choices(scope) do
@@ -1063,6 +1105,105 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     reused = for provider <- providers, do: {provider.name, provider.public_id}
     if may_add, do: reused ++ [{gettext("Add a key"), "add"}], else: reused
   end
+
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :options, :list, required: true, doc: "Key's options, `{words, value}`"
+  attr :shared, :integer, required: true, doc: "how many of `options`, the first, are shared"
+  attr :organisation, :string, required: true
+
+  # Key, one radio group as `input/1` draws one: the first `shared` options under "Shared
+  # in <organisation>", each marked "every workspace", then the others. With no shared
+  # option, no heading.
+  defp key_choice(assigns) do
+    {shared, others} = assigns.options |> Enum.with_index() |> Enum.split(assigns.shared)
+    errors = Enum.map(assigns.field.errors, &translate_error/1)
+
+    assigns =
+      assign(assigns,
+        id: "set-up-model-source",
+        shared_options: shared,
+        other_options: others,
+        errors: errors
+      )
+
+    ~H"""
+    <fieldset
+      id={@id}
+      class="fieldset"
+      aria-invalid={@errors != [] && "true"}
+      aria-describedby={
+        @errors != [] && Enum.map_join(1..length(@errors), " ", &key_error_id(@id, &1))
+      }
+    >
+      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Key")}</legend>
+      <div
+        :if={@shared_options != []}
+        id={"#{@id}-shared"}
+        role="group"
+        aria-labelledby={"#{@id}-shared-h"}
+        class="grid gap-1"
+      >
+        <p id={"#{@id}-shared-h"} class="text-[12.5px]/[18px] font-medium text-muted">
+          {gettext("Shared in %{organisation}", organisation: @organisation)}
+        </p>
+        <.key_option
+          :for={{option, index} <- @shared_options}
+          id={@id}
+          field={@field}
+          option={option}
+          index={index}
+          shared
+        />
+      </div>
+      <.key_option
+        :for={{option, index} <- @other_options}
+        id={@id}
+        field={@field}
+        option={option}
+        index={index}
+      />
+      <p
+        :for={{msg, i} <- Enum.with_index(@errors, 1)}
+        id={key_error_id(@id, i)}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {msg}
+      </p>
+    </fieldset>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :option, :any, required: true
+  attr :index, :integer, required: true
+  attr :shared, :boolean, default: false
+
+  defp key_option(assigns) do
+    ~H"""
+    <label
+      for={"#{@id}-#{@index}"}
+      class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+    >
+      <input
+        type="radio"
+        id={"#{@id}-#{@index}"}
+        name={@field.name}
+        value={elem(@option, 1)}
+        checked={to_string(@field.value) == elem(@option, 1)}
+        class="radio radio-sm radio-primary"
+      />
+      <span>
+        {elem(@option, 0)}<span :if={@shared} class="text-muted"> · {gettext("every workspace")}</span>
+      </span>
+    </label>
+    """
+  end
+
+  # The id of Key's error `n`, counted from 1, as `input/1` numbers a field's errors.
+  defp key_error_id(id, 1), do: "#{id}-error"
+  defp key_error_id(id, n), do: "#{id}-error-#{n}"
 
   defp catalogue(name) do
     case Providers.fetch(name) do
@@ -1246,15 +1387,31 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     %{current_scope: scope, linked: linked, chosen: chosen} = socket.assigns
     socket = assign_harness_form(socket, params)
 
-    case HarnessComponents.choice(params, linked) do
+    case harness_choice(params, linked, socket.assigns.shared_harness) do
       nil ->
         {:noreply, socket}
+
+      # The harness the organisation shares: nothing to save where the workspace reuses
+      # it; else the workspace's choice goes, so it reuses the shared one.
+      :shared ->
+        if chosen.shared,
+          do: {:noreply, go_on(socket)},
+          else: {:noreply, harness_saved(socket, :shared, Sources.reuse_shared(scope))}
 
       choice ->
         shared = share?(scope, params)
 
+        # The workspace's saved choice goes on with no save, unless the setting is on. For
+        # a workspace that reuses the shared harness: while the step lists that harness,
+        # a usual choice is saved as the workspace's, even one equal to the shared
+        # harness; where the step does not list it, a choice equal to it goes on.
+        no_save? =
+          if chosen.shared,
+            do: is_nil(socket.assigns.shared_harness),
+            else: not shared
+
         cond do
-          HarnessComponents.unchanged?(choice, chosen) and (chosen.shared or not shared) ->
+          HarnessComponents.unchanged?(choice, chosen) and no_save? ->
             {:noreply, go_on(socket)}
 
           match?({:repository, _source, _ref}, choice) ->
@@ -1504,6 +1661,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
     do: socket |> load_step() |> put_flash(:error, socket.assigns.who_may)
+
+  # The organisation shares no harness any more: the step as it is now.
+  defp harness_saved(socket, :shared, {:error, :not_shared}),
+    do: socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))
 
   defp harness_saved(socket, _choice, {:error, :shared}) do
     words =
@@ -1956,12 +2117,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         class="grid gap-4"
         novalidate
       >
-        <.input
+        <.key_choice
           field={@form[:source]}
-          id="set-up-model-source"
-          type="radio"
-          label={gettext("Key")}
           options={source_options(@providers, @may_add)}
+          shared={@shared_keys}
+          organisation={@current_scope.organisation.name}
         />
         <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
           <.input
@@ -2243,7 +2403,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp flow_step(%{step: :harness} = assigns) do
     assigns =
       assign(assigns,
-        choice: HarnessComponents.choice(assigns.form.params, assigns.linked)
+        choice: harness_choice(assigns.form.params, assigns.linked, assigns.shared_harness)
       )
 
     ~H"""
@@ -2267,6 +2427,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             organisation={@flow.organisation.name}
             disabled={!@may or @saving}
             file_first={@harness_file}
+            shared={@shared_harness}
           />
 
           <.input
