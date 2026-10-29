@@ -6,7 +6,7 @@ defmodule Apiary.Adapters.CallTrustTest do
   # the boot. The certificates are made here (`:public_key.pkix_test_data/1`), and a call
   # goes to a TLS listener on 127.0.0.1 that this module starts on a free port.
   #
-  # Not async: the certificates `boot!/0` keeps are the application's environment.
+  # Not async: the options `boot!/0` keeps are the node's (`:persistent_term`).
   use Apiary.DataCase, async: false
 
   import Apiary.NodesFixtures
@@ -17,21 +17,26 @@ defmodule Apiary.Adapters.CallTrustTest do
   @moduletag :capture_log
   @moduletag :tmp_dir
 
-  @ok ~s({"version":1,"revision":1,"results":[]})
   @fast [attempt: 2_000, total: 5_000, retry_wait: {1, 2}]
+
+  # Where `boot!/0` keeps the options it builds.
+  @key {CallTrust, :transport_opts}
 
   setup do
     setting = Application.get_env(:apiary, :ssl_cert_file_setting)
-    kept = Application.get_env(:apiary, CallTrust)
+    kept = CallTrust.transport_opts()
 
     on_exit(fn ->
-      restore(:ssl_cert_file_setting, setting)
-      restore(CallTrust, kept)
+      if setting,
+        do: Application.put_env(:apiary, :ssl_cert_file_setting, setting),
+        else: Application.delete_env(:apiary, :ssl_cert_file_setting)
+
+      :persistent_term.put(@key, kept)
     end)
   end
 
-  defp restore(key, nil), do: Application.delete_env(:apiary, key)
-  defp restore(key, value), do: Application.put_env(:apiary, key, value)
+  # The options `boot!/0` keeps for a file of `certificates`.
+  defp trust(certificates), do: :persistent_term.put(@key, CallTrust.transport_opts(certificates))
 
   # A certificate authority and a server certificate it signs for `host`, P-256 keys and
   # SHA-256 signatures, which TLS 1.2 and 1.3 accept. The client's `cacerts` start with
@@ -129,7 +134,6 @@ defmodule Apiary.Adapters.CallTrustTest do
       for setting <- [nil, ""] do
         Application.put_env(:apiary, :ssl_cert_file_setting, setting)
         assert CallTrust.boot!() == :ok
-        assert Application.get_env(:apiary, CallTrust) == []
         assert CallTrust.transport_opts() == []
       end
     end
@@ -139,8 +143,24 @@ defmodule Apiary.Adapters.CallTrustTest do
       Application.put_env(:apiary, :ssl_cert_file_setting, write(dir, "ca.pem", pem([a])))
 
       assert CallTrust.boot!() == :ok
-      assert Application.get_env(:apiary, CallTrust) == [a]
-      assert List.last(CallTrust.transport_opts()[:cacerts]) == a
+      assert [cacerts: cacerts] = CallTrust.transport_opts()
+      assert List.last(cacerts) == a
+
+      # Built once: each call passes the same term, so Req's Finch pool stays one.
+      assert CallTrust.transport_opts() == CallTrust.transport_opts([a])
+      assert :erts_debug.same(CallTrust.transport_opts(), CallTrust.transport_opts())
+    end
+
+    @tag with_features: [:observability]
+    test "without the factory feature reads no file, and keeps no certificate", %{tmp_dir: dir} do
+      %{authorities: [a]} = chain("tracker.localhost")
+
+      for path <- [write(dir, "ca.pem", pem([a])), Path.join(dir, "missing.pem")] do
+        trust([a])
+        Application.put_env(:apiary, :ssl_cert_file_setting, path)
+        assert CallTrust.boot!() == :ok
+        assert CallTrust.transport_opts() == []
+      end
     end
 
     test "stops the boot for a file that cannot be read or has no certificate", %{tmp_dir: dir} do
@@ -177,30 +197,23 @@ defmodule Apiary.Adapters.CallTrustTest do
       )
     end
 
-    # The options Req receives, without a connection.
+    # The options Req receives, without a connection (`__MODULE__.Options`).
     defp options_of(adapter, host) do
-      test = self()
-
-      seen = fn request ->
-        send(test, {:connect_options, request.options[:connect_options]})
-        {request, Req.Response.new(status: 503)}
-      end
-
-      at(adapter, host, 8443, adapter: seen)
+      at(adapter, host, 8443, adapter: __MODULE__.Options)
       assert_received {:connect_options, options}
       options
     end
 
     test "without SSL_CERT_FILE sets the host and the timeout alone, as before",
          %{adapter: adapter, host: host} do
-      Application.put_env(:apiary, CallTrust, [])
+      trust([])
       assert options_of(adapter, host) == [hostname: host, timeout: 2_000]
     end
 
     test "with SSL_CERT_FILE adds the operating system's certificates and the file's",
          %{adapter: adapter, host: host} do
       %{authorities: [a]} = chain(host)
-      Application.put_env(:apiary, CallTrust, [a])
+      trust([a])
 
       assert [hostname: ^host, timeout: 2_000, transport_opts: [cacerts: cacerts]] =
                options_of(adapter, host)
@@ -213,7 +226,7 @@ defmodule Apiary.Adapters.CallTrustTest do
       %{authorities: authorities} = keys = chain(host)
       port = listen(keys, seed)
 
-      Application.put_env(:apiary, CallTrust, authorities)
+      trust(authorities)
 
       assert at(adapter, host, port) ==
                {:ok, %{"version" => 1, "revision" => 1, "results" => []}}
@@ -225,7 +238,7 @@ defmodule Apiary.Adapters.CallTrustTest do
       %{authorities: other} = chain(host)
 
       for trusted <- [[], other] do
-        Application.put_env(:apiary, CallTrust, trusted)
+        trust(trusted)
 
         assert {:error, %CallFailure{cause: :unreachable}} = at(adapter, host, port)
       end
@@ -236,7 +249,7 @@ defmodule Apiary.Adapters.CallTrustTest do
       %{authorities: authorities} = keys = chain("other.localhost")
       port = listen(keys, seed)
 
-      Application.put_env(:apiary, CallTrust, authorities)
+      trust(authorities)
 
       assert {:error, %CallFailure{cause: :unreachable}} = at(adapter, host, port)
     end
@@ -258,6 +271,16 @@ defmodule Apiary.Adapters.CallTrustTest do
 
     {:ok, {_ip, port}} = ThousandIsland.listener_info(pid)
     port
+  end
+
+  defmodule Options do
+    @moduledoc false
+    # A Req adapter that tells the test the connect options of each request, and answers
+    # 503. It runs in the attempt's task, whose first caller is the test.
+    def run(request) do
+      send(hd(Process.get(:"$callers")), {:connect_options, request.options[:connect_options]})
+      {request, Req.Response.new(status: 503)}
+    end
   end
 
   defmodule Adapter do
