@@ -66,7 +66,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     the edition shows it (`c:Apiary.Edition.scope_setting?/1`), Add a key has the
   #     setting "Available to every workspace in <organisation>", off; on, it adds the
   #     provider for the organisation, reaching every workspace, its key a secret of the
-  #     organisation (`Apiary.Connections.reach_at_add/3`). With
+  #     organisation (`Apiary.Connections.reach_at_add/3`). Where the edition shows that
+  #     setting, the providers to reuse that apply to every workspace come first in Key,
+  #     under "Shared in <organisation>", each marked "every workspace"; with none, Key
+  #     has no heading. With
   #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
   #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
   #     Default model, the models suggested for the provider and runtime
@@ -456,11 +459,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
-  # `providers` are the ones to reuse; `may_add` is of Add a key (`provider.write`), and
-  # `may` of a save (`model_choice.write` on the workspace) with a key to choose.
+  # `providers` are the ones to reuse, of which the first `shared_keys` are shown as shared
+  # (`split_shared/2`); `may_add` is of Add a key (`provider.write`), and `may` of a save
+  # (`model_choice.write` on the workspace) with a key to choose.
   defp load_step(%{assigns: %{step: :model}} = socket) do
     %{current_scope: scope, flow: flow} = socket.assigns
-    providers = reusable_providers(scope, flow.workspace)
+    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace))
+    providers = shared ++ others
     may_add = Access.can?(scope, :"provider.write", scope.organisation)
     choice = workspace_choice(scope, flow.workspace)
 
@@ -477,6 +482,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           gettext("Only owners and admins add a model key.")
         ),
       providers: providers,
+      shared_keys: length(shared),
       choice: choice,
       # Whether the edition shows the organisation's secrets: the core shows none.
       organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
@@ -898,6 +904,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  # `providers` as `{shared, others}`, each in the order given: shared are those that apply
+  # to every workspace, where the edition shows the setting that makes them
+  # (`c:Apiary.Edition.scope_setting?/1`); none where it does not.
+  defp split_shared(scope, providers) do
+    if Edition.scope_setting?(scope),
+      do: Enum.split_with(providers, &(&1.applies_to == "all")),
+      else: {[], providers}
+  end
+
   # The workspace's choice (level 5), nil for none.
   defp workspace_choice(scope, workspace) do
     case ModelChoices.list_choices(scope) do
@@ -1048,6 +1063,105 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     reused = for provider <- providers, do: {provider.name, provider.public_id}
     if may_add, do: reused ++ [{gettext("Add a key"), "add"}], else: reused
   end
+
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :options, :list, required: true, doc: "Key's options, `{words, value}`"
+  attr :shared, :integer, required: true, doc: "how many of `options`, the first, are shared"
+  attr :organisation, :string, required: true
+
+  # Key, one radio group as `input/1` draws one: the first `shared` options under "Shared
+  # in <organisation>", each marked "every workspace", then the others. With no shared
+  # option, no heading.
+  defp key_choice(assigns) do
+    {shared, others} = assigns.options |> Enum.with_index() |> Enum.split(assigns.shared)
+    errors = Enum.map(assigns.field.errors, &translate_error/1)
+
+    assigns =
+      assign(assigns,
+        id: "set-up-model-source",
+        shared_options: shared,
+        other_options: others,
+        errors: errors
+      )
+
+    ~H"""
+    <fieldset
+      id={@id}
+      class="fieldset"
+      aria-invalid={@errors != [] && "true"}
+      aria-describedby={
+        @errors != [] && Enum.map_join(1..length(@errors), " ", &key_error_id(@id, &1))
+      }
+    >
+      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Key")}</legend>
+      <div
+        :if={@shared_options != []}
+        id={"#{@id}-shared"}
+        role="group"
+        aria-labelledby={"#{@id}-shared-h"}
+        class="grid gap-1"
+      >
+        <p id={"#{@id}-shared-h"} class="text-[12.5px]/[18px] font-medium text-muted">
+          {gettext("Shared in %{organisation}", organisation: @organisation)}
+        </p>
+        <.key_option
+          :for={{option, index} <- @shared_options}
+          id={@id}
+          field={@field}
+          option={option}
+          index={index}
+          shared
+        />
+      </div>
+      <.key_option
+        :for={{option, index} <- @other_options}
+        id={@id}
+        field={@field}
+        option={option}
+        index={index}
+      />
+      <p
+        :for={{msg, i} <- Enum.with_index(@errors, 1)}
+        id={key_error_id(@id, i)}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {msg}
+      </p>
+    </fieldset>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :option, :any, required: true
+  attr :index, :integer, required: true
+  attr :shared, :boolean, default: false
+
+  defp key_option(assigns) do
+    ~H"""
+    <label
+      for={"#{@id}-#{@index}"}
+      class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+    >
+      <input
+        type="radio"
+        id={"#{@id}-#{@index}"}
+        name={@field.name}
+        value={elem(@option, 1)}
+        checked={to_string(@field.value) == elem(@option, 1)}
+        class="radio radio-sm radio-primary"
+      />
+      <span>
+        {elem(@option, 0)}<span :if={@shared} class="text-muted"> · {gettext("every workspace")}</span>
+      </span>
+    </label>
+    """
+  end
+
+  # The id of Key's error `n`, counted from 1, as `input/1` numbers a field's errors.
+  defp key_error_id(id, 1), do: "#{id}-error"
+  defp key_error_id(id, n), do: "#{id}-error-#{n}"
 
   defp catalogue(name) do
     case Providers.fetch(name) do
@@ -1929,12 +2043,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         class="grid gap-4"
         novalidate
       >
-        <.input
+        <.key_choice
           field={@form[:source]}
-          id="set-up-model-source"
-          type="radio"
-          label={gettext("Key")}
           options={source_options(@providers, @may_add)}
+          shared={@shared_keys}
+          organisation={@current_scope.organisation.name}
         />
         <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
           <.input

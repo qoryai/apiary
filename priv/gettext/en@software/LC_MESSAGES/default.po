@@ -14418,6 +14418,11 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgid "Shared in %{organisation}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
 msgid "Shared: the instance's pool"
 msgstr ""
 
@@ -19092,6 +19097,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "every path"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "every workspace"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex

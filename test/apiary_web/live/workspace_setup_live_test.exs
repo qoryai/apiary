@@ -2098,6 +2098,81 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              {deepseek.id, "ds", hd(models(deepseek))}
   end
 
+  # A provider of the workspace alone, and one that applies to every workspace. By name,
+  # the workspace's comes first (Anthropic before DeepSeek).
+  defp own_and_shared!(scope) do
+    own =
+      provider!(scope, "anthropic", "main", %{
+        applies_to: "selected",
+        workspace_ids: [scope.workspace.id]
+      })
+
+    shared = provider!(scope, "deepseek", "ds")
+    assert shared.applies_to == "all"
+    {own, shared}
+  end
+
+  test "with the setting shown: the providers every workspace shares first, under Shared in, each marked; the first is chosen",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+    {own, shared} = own_and_shared!(scope)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert words(lv, "#set-up-model-source-shared-h") == "Shared in #{organisation.name}"
+
+    assert key_options(lv) == [
+             {"#{shared.name} · every workspace", true},
+             {own.name, false},
+             {"Add a key", false}
+           ]
+
+    assert has_element?(lv, "#set-up-model-source-shared label", shared.name)
+    refute has_element?(lv, "#set-up-model-source-shared label", own.name)
+
+    # The workspace's choice of its provider: that provider is chosen when the step opens.
+    lv |> form("#set-up-model-form", model: %{source: own.public_id}) |> render_submit()
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == own.id
+
+    {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
+
+    assert key_options(lv) == [
+             {"#{shared.name} · every workspace", false},
+             {own.name, true},
+             {"Add a key", false}
+           ]
+  end
+
+  test "with the setting shown and no provider every workspace shares: no heading, no mark",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+    own =
+      provider!(scope, "anthropic", "main", %{
+        applies_to: "selected",
+        workspace_ids: [scope.workspace.id]
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{own.name, true}, {"Add a key", false}]
+    refute has_element?(lv, "#set-up-model-source-shared")
+    refute render(lv) =~ "Shared in"
+  end
+
+  test "the core shows no setting: a provider every workspace shares is listed by its name, with no heading",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    {own, shared} = own_and_shared!(scope)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{own.name, true}, {shared.name, false}, {"Add a key", false}]
+    refute has_element?(lv, "#set-up-model-source-shared")
+    refute render(lv) =~ "Shared in"
+  end
+
   test "a provider that does not reach the workspace, or has no key, is not offered; a save of it saves nothing",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
