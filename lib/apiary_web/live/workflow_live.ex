@@ -25,8 +25,8 @@ defmodule ApiaryWeb.WorkflowLive do
   # select, as the Harness step shows and saves them
   # (`ApiaryWeb.HarnessComponents.targets/1`, `ApiaryWeb.HarnessTargets`). The select's
   # options come from the saved choice; a save of the choice lists the destinations
-  # again, and reads the stacks of a harness repository at a version not read before.
-  # Once a destination's save is refused because
+  # again, and reads again the stacks of a harness repository whose address or version
+  # differs from the one read last. Once a destination's save is refused because
   # `harness.save` no longer allows the person, the selects show disabled. A line shows
   # which workflow the runs follow, where the workspace has one.
   #
