@@ -68,6 +68,13 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     render_async(view, 2_000)
   end
 
+  # Ends every collection, so the organisation has no connected repository.
+  defp end_collections! do
+    Repo.update_all(Apiary.Adapters.Collection,
+      set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
+    )
+  end
+
   defp calls do
     receive do
       {:harness_call, path, call} -> [{path, call} | calls()]
@@ -171,7 +178,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(view, "#workflow-file-first")
     end
 
-    test "Source groups the linked repositories that have a stack, the assigned sources and the public address",
+    test "Source groups the connected repositories, the assigned sources and the public address",
          %{conn: conn, scope: scope, path: path, linked_id: linked_id} do
       Repo.insert!(%Assignment{
         organisation_id: scope.organisation.id,
@@ -188,7 +195,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, ~s(#workflow_source-g0 ~ label input[value="#{linked_id}"]))
       assert has_element?(view, "#workflow_source-g0 ~ label .q-pick-t.mono", "acme/harness")
 
-      refute render(view) =~ "acme/app"
+      # The list is built with no read, so a repository with no stack is listed too.
+      assert has_element?(view, "#workflow_source-g0 ~ label .q-pick-t.mono", "acme/app")
 
       assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
 
@@ -235,21 +243,21 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(view, "#workflow_source-g1 ~ label")
     end
 
-    test "a third listing in a minute says when to reload", %{conn: conn, path: path} do
-      open(conn, path)
-      open(conn, path)
-      view = open(conn, path)
+    test "the connected repositories are listed on each load with no call", %{
+      conn: conn,
+      path: path
+    } do
+      for _n <- 1..3 do
+        view = open(conn, path)
+        assert render(view) =~ "acme/harness"
+      end
 
-      assert render(view) =~ "then reload the page to list the linked repositories."
-      refute render(view) =~ "acme/harness"
-
-      # A listing that did not run says nothing of the repositories' stacks.
-      refute render(view) =~ "No connected repository"
+      assert calls() == []
     end
 
-    test "with no linked repository that has a stack, the group shows a line and the address stays",
-         %{conn: conn, path: path, adapter: adapter, covered: covered} do
-      serve_calls([adapter], covered: covered, files: %{})
+    test "with no connected repository, the group shows a line and the address stays",
+         %{conn: conn, path: path} do
+      end_collections!()
       view = open(conn, path)
 
       assert has_element?(view, ~s(#workflow_source-0[value=""][disabled]))
@@ -616,13 +624,16 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "repository"})
       |> render_change()
 
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository", source: linked_id})
+      |> render_change()
+
       assert has_element?(view, ~s(#harness-source-options input[value="#{linked_id}"][checked]))
       assert has_element?(view, "button#harness-source .q-pick-t.mono", "acme/harness")
       assert has_element?(view, "#harness-source-search")
 
-      assert words(view, "#harness-ref-hint") ==
-               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
-                 "#{scope.organisation.name}."
+      # The list is built with no read, so no connection is named under the field.
+      refute has_element?(view, "#harness-ref-hint")
 
       view
       |> form("#workflow-harness-form", harness: %{choice: "repository", ref: "v2"})
@@ -641,9 +652,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert %{choice: :repository} = Stacks.choice(scope.workspace)
     end
 
-    test "a harness repository with no linked repository that has a stack: a line in place of Source",
-         %{conn: conn, path: path, adapter: adapter, covered: covered} do
-      serve_calls([adapter], covered: covered, files: %{})
+    test "a harness repository with no connected repository: a line in place of Source",
+         %{conn: conn, path: path} do
+      end_collections!()
       view = conn |> open(path) |> change_harness()
 
       view
@@ -661,12 +672,17 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     test "a harness repository that cannot be read says why, and the choice stays", %{
       conn: conn,
       path: path,
-      scope: scope
+      scope: scope,
+      linked_id: linked_id
     } do
       view = conn |> open(path) |> change_harness()
 
       view
       |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository", source: linked_id})
       |> render_change()
 
       # acme/harness has no root stack.
@@ -685,7 +701,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       path: path,
       scope: scope,
       adapter: adapter,
-      covered: covered
+      covered: covered,
+      linked_id: linked_id
     } do
       # The read returns c-R_harness, which is no commit.
       files = Map.put(@files, {"R_harness", "qory-stack.yaml"}, @root_stack)
@@ -694,6 +711,10 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       view
       |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository", source: linked_id})
       |> render_change()
 
       view
