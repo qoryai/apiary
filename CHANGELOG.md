@@ -107,11 +107,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   model choice. On **Harness**, a harness repository the organisation shares comes
   first, chosen while the workspace has no saved choice, with its version as text under
   it, such as “triage · acme/harness · main”. Where the organisation shares the Qory
-  harness, **Harness** shows the plain **Qory harness** row, its title and then
-  **Version**, with no mark and no heading. **Continue** with the shared harness chosen
-  removes the workspace's saved choice, so its runs use the shared harness. **Continue**
-  with **Qory harness** at the version of the shared Qory harness does the same where
-  the workspace's saved Qory harness is at the same commit. With any other choice,
+  harness, **Harness** shows the plain **Qory harness** row, with no mark and no
+  heading, and **Version** under it while **Qory harness** is chosen. **Continue** with
+  the shared harness chosen removes the workspace's saved choice, so its runs use the
+  shared harness. **Continue** with **Qory harness** at the version of the shared Qory
+  harness does the same where the workspace has no saved choice, or its saved Qory
+  harness is at the same commit. With any other choice,
   **Continue** saves the workspace's choice, also where it is the same as a shared
   harness repository, so a later change of the shared harness leaves the workspace's
   harness as it is. With nothing shared, neither step shows the heading.
@@ -204,18 +205,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   organisation has no connected repository, “Acme has no connected repository. Connect a
   work source to pick one.” shows under **Repository**.
   **Continue** saves the choice. The save reads the branch, tag or commit. Where Qory
-  Apiary does not read the stacks of a harness source, the Harness step, **Workflow**
-  and the form of **A stack of another repository…** show the cause and what to do,
-  such as “Try again, or choose another source. Qory Apiary could not reach GitHub to
-  read acme/tools.” The other main causes are a file that is not valid, with “Correct
-  qory.yaml in acme/tools, or choose another source: its exports or stack section is
-  not valid.”; an address, folder or version in a form Qory Apiary does not read, with
-  “Correct the address, folder or version of acme/tools, or choose another source. Qory
-  Apiary does not read it in that form.”; and a harness whose content breaks a rule,
-  with “Correct the harness in acme/tools, or choose another source:” and the rule, such
-  as “it has no harness file and no harness is set”. Each run on a branch reads the
-  branch's newest commit when it starts and records it. A workspace with no saved
-  choice uses the Qory harness. Owners and admins choose. The test run keeps its built-in harness.
+  Apiary does not read the stacks of a harness source, or does not save it, the Harness
+  step, **Workflow** and the form of **A stack of another repository…** show the cause
+  and what to do, such as “Try again, or choose another source. Qory Apiary could not
+  reach GitHub to read acme/tools.” The other main causes are a file that is not valid,
+  with “Correct qory.yaml in acme/tools, or choose another source: its exports or stack
+  section is not valid.”; an address, folder or version in a form Qory Apiary does not
+  read, with “Correct the address, folder or version of acme/tools, or choose another
+  source. Qory Apiary does not read it in that form.”; and a harness whose content
+  breaks a rule, with “Correct the harness in acme/tools, or choose another source:”
+  and the rule, such as “it has no harness file and no harness is set”. Each run on a
+  branch reads the branch's newest commit when it starts and records it. A workspace
+  with no saved choice uses the Qory harness. Owners and admins choose. The test run
+  keeps its built-in harness.
 - Under the choices, **Repositories** lists the workspace's repositories from
   **Destinations**, each with a **Stack**: **Workspace's harness** until you choose
   another, a stack the workspace's harness exports, or **A stack of another
@@ -322,9 +324,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Where an edition shows the setting “Available to every workspace in Acme”, off, the
   **Model** step's **Add a key** and **New model provider** have it: on, the provider is
   the organisation's, reaching every workspace, with its key a secret of the
-  organisation. The **Harness** step has it too while **A harness repository** is
-  chosen, and not with **Qory harness**: on, **Continue** saves the harness repository as
-  the harness the organisation shares, which each workspace with no saved choice uses.
+  organisation. The **Harness** step has it too, except while **Qory harness** is
+  chosen: on, with **A harness repository** chosen, **Continue** saves the harness
+  repository as the harness the organisation shares, which each workspace with no saved
+  choice uses.
   While the organisation shares a harness, sharing a second fails, with “Choose the
   shared harness, or turn off “Available to every workspace in Acme”. Acme shares a
   harness already.” The core shows the setting nowhere.
