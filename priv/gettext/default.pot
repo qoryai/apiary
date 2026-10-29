@@ -5262,6 +5262,11 @@ msgstr ""
 msgid "Choose the mode for %{target}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the shared harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares a harness already."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the workspace's default mode"
