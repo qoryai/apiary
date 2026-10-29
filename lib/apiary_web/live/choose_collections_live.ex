@@ -178,13 +178,23 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
     ]
   end
 
-  # The chooser's heading in plain words.
+  # The chooser's heading in plain words, as `IntegrationComponents.chooser/1` shows it:
+  # the account name left out where `IntegrationComponents.account/1` has none.
   defp heading(card) do
-    gettext("Choose %{collections} · %{adapter} · %{account}",
-      collections: SourceComponents.collections(Adapters.collection_noun(card.adapter)),
-      adapter: Adapters.title(card.adapter),
-      account: Apiary.ExternalText.line(card.grant.account_title || "")
-    )
+    collections = SourceComponents.collections(Adapters.collection_noun(card.adapter))
+    adapter = Adapters.title(card.adapter)
+
+    case IntegrationComponents.account(card.grant) do
+      nil ->
+        gettext("Choose %{collections} · %{adapter}", collections: collections, adapter: adapter)
+
+      account ->
+        gettext("Choose %{collections} · %{adapter} · %{account}",
+          collections: collections,
+          adapter: adapter,
+          account: Apiary.ExternalText.sent(account)
+        )
+    end
   end
 
   # The choice as the grant's rule and its collections stand: All or Only selected, and

@@ -305,6 +305,46 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     assert has_element?(lv, "#choose-only[checked]")
   end
 
+  test "an account with no name or one of whitespace: the card, the heading, the breadcrumb, the browser title and both lines leave it out",
+       ctx do
+    %{adapter: adapter, grant: grant} = listed!(ctx.scope, ["acme/api"], targets: true)
+    {:ok, 1} = Collections.choose(ctx.scope, grant, ctx.main, :sources, :all)
+    title = Apiary.Adapters.title(adapter)
+    heading = "Choose collections · #{title}"
+
+    # `adapter_grants_account_check` allows a ref with a name of 1 to 1024 characters, or
+    # neither, so the empty name is tested on `account/1`.
+    assert ApiaryWeb.IntegrationComponents.account(%{account_title: ""}) == nil
+
+    for {ref, account} <- [{nil, nil}, {"acme", " \t\u00A0 "}] do
+      {1, _} =
+        Repo.update_all(from(g in Grant, where: g.id == ^grant.id),
+          set: [account_ref: ref, account_title: account]
+        )
+
+      {:ok, page, _html} = live(ctx.conn, ctx.destinations)
+      assert words(page, "#destinations-grant-#{grant.public_id}-title") == title
+
+      {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :destinations, grant))
+      assert words(lv, "#choose h1") == heading
+      assert {^heading, nil} = List.last(crumbs(lv))
+      assert page_title(lv) =~ "#{heading} · Destinations · Workspace settings · Main"
+
+      assert words(lv, "#choose-locked") ==
+               "Work sources is set to All for this account. Change it there first."
+
+      # In Second's settings, Main's All of the grant.
+      {:ok, lv, _html} =
+        live(
+          ctx.conn,
+          ~p"/#{ctx.organisation}/#{ctx.second}/settings/choose?#{[step: :sources, grant: grant.public_id]}"
+        )
+
+      assert words(lv, "#choose h1") == heading
+      assert words(lv, "#choose-taken") == "All new collections of this account go to Main."
+    end
+  end
+
   test "Not listed? shows the adapter's line on its access, with Change access to its Install",
        ctx do
     %{adapter: adapter, grant: grant} = listed!(ctx.scope, ["acme/api"])
@@ -450,6 +490,55 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     assert words(lv, "#choose-count") == "0 selected"
     {:error, {:live_redirect, _}} = save(lv)
     assert row(their) == {nil, true}
+  end
+
+  # In the core, `collection.assign` is the organisation's: a person who may assign in
+  # one workspace may in every workspace of the organisation. A workspace where they may
+  # not assign is one of another organisation.
+  test "a workspace in ?workspace= is not the page's: Save under All assigns to the path's workspace, and nothing in another organisation's workspace",
+       ctx do
+    %{grant: grant, connection: connection} = listed!(ctx.scope, ["acme/api"])
+    %{scope: theirs} = sign_up_fixture()
+    billing = workspace_fixture(theirs.organisation, "Billing")
+    %{grant: their_grant, connection: their_connection} = listed!(theirs, ["beta/api"])
+
+    {:ok, lv, _html} = live(ctx.conn, chooser(ctx, :sources, grant, workspace: billing.slug))
+    assert page_title(lv) =~ " · Work sources · Workspace settings · Main"
+    lv |> form("#choose-form", %{mode: "all"}) |> render_change()
+    sources = ctx.sources
+    assert {:error, {:live_redirect, %{to: ^sources}}} = save(lv)
+
+    assert Repo.get_by!(GrantRule, grant_id: grant.id).workspace_id == ctx.main.id
+    assert row(collection!(connection, "acme/api")) == {ctx.main.id, true}
+
+    assert Repo.aggregate(from(c in Collection, where: c.workspace_id == ^billing.id), :count) ==
+             0
+
+    assert Repo.aggregate(from(r in GrantRule, where: r.workspace_id == ^billing.id), :count) ==
+             0
+
+    assert Repo.get_by(GrantRule, grant_id: their_grant.id) == nil
+    assert row(collection!(their_connection, "beta/api")) == {nil, true}
+  end
+
+  test "a workspace in the path the person does not reach, or of another organisation, is no page",
+       ctx do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachNamed)
+    %{grant: grant} = listed!(ctx.scope, ["acme/api"])
+    %{scope: theirs} = sign_up_fixture()
+    billing = workspace_fixture(theirs.organisation, "Billing")
+    params = [step: :sources, grant: grant.public_id]
+
+    %{user: member} = member_fixture(ctx.scope, :member)
+    Apiary.EditionStubs.MembersReachNamed.put([ctx.main.id])
+    member_conn = log_in_user(build_conn(), member)
+    second = ~p"/#{ctx.organisation}/#{ctx.second}/settings/choose?#{params}"
+
+    assert {:ok, _lv, _html} = live(member_conn, chooser(ctx, :sources, grant))
+    assert get(member_conn, second).status == 404
+
+    elsewhere = ~p"/#{ctx.organisation}/#{billing.slug}/settings/choose?#{params}"
+    assert get(ctx.conn, elsewhere).status == 404
   end
 
   test "another organisation's owner finds no such page", ctx do
