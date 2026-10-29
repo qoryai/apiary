@@ -658,7 +658,13 @@ defmodule ApiaryWeb.IntegrationComponents do
         </span>
       </div>
 
-      <form id={"#{@id}-form"} phx-change="mode" phx-submit="save" class="grid gap-2">
+      <form
+        id={"#{@id}-form"}
+        phx-change="mode"
+        phx-submit="save"
+        class="grid gap-2"
+        novalidate
+      >
         <label :if={!@taken} class="flex items-center gap-2 text-[13.5px]/5">
           <input
             id={"#{@id}-all"}
