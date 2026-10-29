@@ -105,9 +105,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   that applies to every workspace, then the providers of the workspace alone and **Add a
   key**; the first is chosen while the workspace has no model choice. On **Harness**,
   the harness the organisation shares comes first, chosen while the workspace has no
-  saved choice. Where the organisation shares the Qory
-  harness, **Harness** shows it once, as **Qory harness** marked “· every workspace”,
-  with no heading, unless the workspace's saved Qory harness is at another commit.
+  saved choice, with its version as text under it, such as “Always the latest version”
+  or “triage · acme/harness · main”. Where the organisation shares the Qory harness,
+  **Harness** shows it once, as **Qory harness** marked “· every workspace”, with no
+  heading, unless the workspace's saved Qory harness is at another commit.
   **Continue** with the shared harness chosen removes the workspace's saved choice, so
   its runs use the shared harness. With **Qory harness** or **A harness repository**
   chosen, **Continue** saves the workspace's choice, also where it is the same as the
