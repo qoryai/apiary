@@ -2129,9 +2129,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Try again, or choose another source. Qory Apiary could not read acme/harness."
     end
 
-    # The walk's failures of a save, as `Apiary.Harnesses.Walk.pin_base/3` returns them:
-    # the chosen source's, whose `source` is the chosen address, and those of a module
-    # that the base's qory-stack.yaml lists, whose `source` is the module's address.
+    # The walk's failures of a save, as `Apiary.Harnesses.Walk.pin_base/3` returns them.
+    # A failure's `source` is the chosen address for the chosen source, and for a module
+    # that the base's qory-stack.yaml lists at a local path or at the chosen address; it
+    # is the module's address for a module at another address.
     test "a save refused for an address, for the harness's content, or on an error of the walk" do
       source = %{label: "acme/harness", git: @harness_git, narrowing: %{}}
       chosen = "https://code.example.com/acme/harness"
@@ -2210,6 +2211,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "values" => %{"path" => "../../../x"}
                })
              ) == harness <> "the path ../../../x leads out of its source."
+
+      # A module at the chosen address with a ref no read takes: the module's ref, which
+      # the chosen version is not.
+      assert words.(
+               failure.(:invalid, chosen, %{
+                 "message" =>
+                   "write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                     "refs/tags/<name> or a full commit id: people without write access can " <>
+                     "change other refs, such as a pull request's",
+                 "values" => %{"ref" => "refs/pull/1/head"}
+               })
+             ) ==
+               harness <>
+                 "write the ref refs/pull/1/head as HEAD, a branch or tag name, " <>
+                 "refs/heads/<name>, refs/tags/<name> or a full commit id: people without " <>
+                 "write access can change other refs, such as a pull request's."
+
+      assert words.(failure.(:invalid, chosen, %{"rule" => "ref", "values" => %{"ref" => "v 9"}})) ==
+               harness <>
+                 "the ref v 9 is not a version: 1 to 255 letters, digits, dots, underscores, " <>
+                 "slashes and hyphens."
 
       # A version a read found no version for, after a call.
       assert words.(

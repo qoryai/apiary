@@ -1079,23 +1079,31 @@ defmodule ApiaryWeb.HarnessComponents do
 
   defp walk_words(_failure, source), do: exited_words(source)
 
-  # A rule about an address, a folder or a ref, refused before any call: the chosen
-  # source's in the words of a refused form, another source's in the words of the
-  # harness document that lists it.
+  # A rule about an address, a folder or a ref, refused before any call: one about the
+  # chosen source's address or folder (`chosen?/2`) in the words of a refused form; any
+  # other, a ref among them, in the words of the harness document that lists it.
   defp address_words(failure, rule, source) do
     if chosen?(failure, source),
       do: form_words(source),
       else: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
   end
 
-  # Whether the walk's `failure` is about `source`, the chosen source, as
-  # `unreadable_ref?/3` tells it: the failure's source is the chosen address, and a rule
-  # about a path has the folder the chosen source is narrowed to.
+  # Whether the walk's `failure` is about the address or folder of `source`, the chosen
+  # source: the failure's source is the chosen address, a rule about a path has the
+  # folder the chosen source is narrowed to, and the rule is about no ref.
+  # `refusal_words/4` calls `unreadable_ref?/3` first, which matches every failure about
+  # the chosen ref, so a failure about a ref here is about a module the document lists.
   defp chosen?(%{source: shown} = failure, %{git: git} = source) when is_binary(git) do
     shown == Document.shown(git) and
       case failure[:rule] do
         %{"rule" => rule, "values" => %{"path" => path}} when rule in ["path", "path_form"] ->
           path == (source[:narrowing] || %{})["path"]
+
+        %{"rule" => "ref"} ->
+          false
+
+        %{"values" => %{"ref" => _ref}} ->
+          false
 
         _other ->
           true
