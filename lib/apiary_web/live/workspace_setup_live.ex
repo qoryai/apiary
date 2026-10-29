@@ -93,8 +93,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
   #     "Available to every workspace in <organisation>", off; on, Continue saves the
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
-  #     with no choice reuses, shown chosen. While the organisation shares one, a second is refused, and
-  #     the step says to choose the shared harness or turn the setting off. Under the
+  #     with no choice reuses, shown chosen. While the organisation shares one, a second
+  #     is refused, and the step says to choose the shared harness or turn the setting
+  #     off. Under the
   #     choices, Targets lists the workspace's destinations, the rows the Destinations
   #     step ticked, each with Workspace default or the stack chosen for it
   #     (`Apiary.Stacks.Sources.targets_chosen/1`,
