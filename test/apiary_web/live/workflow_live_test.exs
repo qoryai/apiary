@@ -406,8 +406,6 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert words(view, "#workflow-read-error") ==
                "Correct stacks/triage/qory-stack.yaml in acme/harness, or choose another " <>
                  "source: is not valid YAML."
-
-      refute render(view) =~ "Reload the page to read"
     end
 
     test "a refused call, a listed stack with no stack file, or a stack section that is not valid: the cause",

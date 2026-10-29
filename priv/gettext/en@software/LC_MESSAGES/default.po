@@ -13005,11 +13005,6 @@ msgstr ""
 msgid "Released on"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid."
-msgstr ""
-
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Reloaded."
@@ -19454,6 +19449,11 @@ msgstr ""
 msgid "it has no %{path}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it has no harness file and no harness is set"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "it has no qory-stack.yaml at the stack's path"
@@ -19462,6 +19462,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "it is larger than %{n} bytes as JSON"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it takes harness sources from more than %{n} accounts: a run takes %{n} harness credentials at most"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

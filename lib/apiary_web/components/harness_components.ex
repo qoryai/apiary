@@ -732,12 +732,13 @@ defmodule ApiaryWeb.HarnessComponents do
         source: label(source)
       )
 
-  # A save refused for the content of the harness document, which breaks `rule`.
-  defp harness_words(rule, source),
+  # A save refused for the content of the harness document: `problem`, the words of the
+  # rule it breaks.
+  defp content_words(problem, source),
     do:
       gettext("Correct the harness in %{source}, or choose another source: %{rule}.",
         source: label(source),
-        rule: ApiaryWeb.WorkItemComponents.harness_problem_words(rule)
+        rule: problem
       )
 
   # The words for a root that exports no stack: `{:ok, []}` of
@@ -992,9 +993,9 @@ defmodule ApiaryWeb.HarnessComponents do
   # Why the walk of a save failed, from its detail: the adapter whose call got no answer
   # or failed; a stack the source does not export or has no stack file for; a file the
   # reader refuses, or both root harness files; an address, folder or version refused
-  # before any call; or the content of the harness document. `:too_many` and
-  # `:no_harness` keep the words of an unread source. Any other failure, `:walk_error`
-  # among them, has the words of a read that exited.
+  # before any call; or the content of the harness document, which includes `:too_many`
+  # and `:no_harness`. Any other failure, `:walk_error` among them, has the words of a
+  # read that exited.
   defp walk_words(%{failure: :adapter_unavailable, adapter: adapter}, source)
        when is_binary(adapter),
        do: unreachable_words(adapter, source)
@@ -1035,7 +1036,7 @@ defmodule ApiaryWeb.HarnessComponents do
 
   defp walk_words(%{failure: :invalid, rule: %{"rule" => name} = rule}, source)
        when name in ["extends", "calls", "size", "not_text"],
-       do: harness_words(rule, source)
+       do: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
 
   # A rule of the save check (`Apiary.Stacks.Document`): one with the value `source` or
   # `ref` is about an address or a ref; any other is about the document's content.
@@ -1043,20 +1044,23 @@ defmodule ApiaryWeb.HarnessComponents do
        when not is_map_key(rule, "rule") do
     if is_map_key(rule["values"] || %{}, "source") or is_map_key(rule["values"] || %{}, "ref"),
       do: form_words(source),
-      else: harness_words(rule, source)
+      else: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
   end
 
-  defp walk_words(%{failure: failure}, source) when failure in [:too_many, :no_harness],
-    do: unread_words(source)
+  defp walk_words(%{failure: :too_many}, source),
+    do:
+      content_words(
+        gettext(
+          "it takes harness sources from more than %{n} accounts: a run takes %{n} harness credentials at most",
+          n: Apiary.Harnesses.Walk.max_links()
+        ),
+        source
+      )
+
+  defp walk_words(%{failure: :no_harness}, source),
+    do: content_words(gettext("it has no harness file and no harness is set"), source)
 
   defp walk_words(_failure, source), do: exited_words(source)
-
-  defp unread_words(source),
-    do:
-      gettext(
-        "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid.",
-        source: label(source)
-      )
 
   # Whether the walk's `failure` is about `ref` of `source`, the version the person gave:
   # the read found no version for it, it is no version a read takes, or it breaks the

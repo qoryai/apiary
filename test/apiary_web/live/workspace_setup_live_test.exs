@@ -2106,7 +2106,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Try again, or choose another source. Qory Apiary could not reach " <>
                  "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness."
 
-      refute render(lv) =~ "Reload the page to read"
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
 
@@ -2169,6 +2168,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(failure.(:invalid, %{"rule" => "size", "values" => %{"n" => 65_536}})) ==
                "Correct the harness in acme/harness, or choose another source: it is larger " <>
                  "than 65536 bytes as JSON."
+
+      n = Apiary.Harnesses.Walk.max_links()
+
+      assert words.(failure.(:too_many, nil)) ==
+               "Correct the harness in acme/harness, or choose another source: it takes " <>
+                 "harness sources from more than #{n} accounts: a run takes #{n} harness " <>
+                 "credentials at most."
+
+      assert words.(failure.(:no_harness, nil)) ==
+               "Correct the harness in acme/harness, or choose another source: it has no " <>
+                 "harness file and no harness is set."
 
       assert words.(failure.(:walk_error, nil)) ==
                "Try again, or choose another source. Qory Apiary could not read acme/harness."
