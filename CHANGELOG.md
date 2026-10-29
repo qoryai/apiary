@@ -328,11 +328,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   chosen: on, with **A harness repository** chosen, **Continue** saves the harness
   repository as the harness the organisation shares, which each workspace with no saved
   choice uses.
-  While the organisation shares a harness, sharing a second fails. Where Acme shares a
-  harness repository, the step shows “Choose the shared harness, or turn off “Available
-  to every workspace in Acme”. Acme shares a harness already.” Where Acme shares the
-  Qory harness, it shows “Choose Qory harness, or turn off “Available to every workspace
-  in Acme”. Acme shares the Qory harness already.” The core shows the setting nowhere.
+  While the organisation shares a harness repository, sharing a second fails, and the
+  step shows “Choose the shared harness, or turn off “Available to every workspace in
+  Acme”. Acme shares a harness already.” Where Acme shares the Qory harness, sharing a
+  harness repository replaces it. The core shows the setting nowhere.
 - **Workspace settings › Workflow**, for owners and admins, shows the workspace's
   **Harness** on two lines, such as “Qory harness” over “Always the latest version”, or
   the harness the organisation shares where the workspace has no saved choice.

@@ -67,10 +67,11 @@ defmodule Apiary.Stacks.Sources do
   # harness the organisation shares with every workspace instead, at the organisation's
   # row, and removes the workspace's choice in the same transaction, so the workspace
   # takes the shared one. Shares of one organisation take turns on a transaction-level
-  # advisory lock keyed by the organisation, and a share while the organisation shares a
-  # harness is refused, so two shares at the same time leave one row. `reuse_shared/1`
-  # removes the workspace's choice while the organisation shares a harness, so the
-  # workspace takes the shared one, under both locks. `choose_target/3`
+  # advisory lock keyed by the organisation. A harness repository shared while the
+  # organisation shares the Qory harness replaces that row; any other share while the
+  # organisation shares a harness is refused. Two shares at the same time leave one row.
+  # `reuse_shared/1` removes the workspace's choice while the organisation shares a
+  # harness, so the workspace takes the shared one, under both locks. `choose_target/3`
   # saves the stack chosen for one destination of the workspace at the target's row, and
   # creates the target's row where the workspace has none.
   #
@@ -858,6 +859,7 @@ defmodule Apiary.Stacks.Sources do
   # `shared: true` in `opts`, as the harness the organisation shares (the moduledoc).
   # `{:ok, stack}`; `{:error, :forbidden}` or `{:error, :not_found}` from the access
   # check, asked first; `{:error, :shared}` for a share while the organisation shares a
+  # harness repository, and for a share of the Qory harness while it shares the Qory
   # harness; `{:error, {:limited, seconds}}` for a person past their reads of the minute;
   # `{:error, {:walk, failure}}` for a harness repository the walk could not read
   # (`t:Apiary.Harnesses.Walk.failure/0`), a branch or tag it does not find among them;
@@ -894,7 +896,8 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The organisation's shared harness, saved where the organisation shares none, with the
+  # The organisation's shared harness, saved where the organisation shares none, or in
+  # place of a shared Qory harness where `chosen` is a harness repository, with the
   # workspace's choice removed. Each workspace of the organisation with no choice, and
   # the scope's workspace, takes the shared harness from then on.
   defp share(
@@ -907,10 +910,10 @@ defmodule Apiary.Stacks.Sources do
       lock_shares(organisation)
       lock_saves(workspace)
 
-      if Stacks.shared(organisation) do
-        {:error, :shared}
-      else
-        before = Stacks.choice(workspace)
+      replaced = Stacks.shared(organisation)
+
+      if replaces?(replaced, chosen) do
+        before = Stacks.choice(workspace) || replaced
         without_choice = workspaces_without_choice(organisation, workspace)
 
         with {:ok, stack} <-
@@ -920,12 +923,20 @@ defmodule Apiary.Stacks.Sources do
                ) do
           delete_choice(workspace)
           keep_followed(workspace, before, stack)
-          for other <- without_choice, do: keep_followed(other, nil, stack)
+          for other <- without_choice, do: keep_followed(other, replaced, stack)
           {:ok, stack}
         end
+      else
+        {:error, :shared}
       end
     end)
   end
+
+  # Whether a share of `chosen` is saved while the organisation's shared row is `shared`:
+  # true for none, and for a harness repository in place of the Qory harness.
+  defp replaces?(nil = _shared, _chosen), do: true
+  defp replaces?(%Stack{choice: :qory} = _shared, :repository), do: true
+  defp replaces?(%Stack{} = _shared, _chosen), do: false
 
   # The workspaces of `organisation` other than `workspace` with no harness choice.
   defp workspaces_without_choice(%Organisation{id: organisation_id}, %Workspace{id: id}) do
@@ -1324,7 +1335,8 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # Shares of one organisation take turns: the second waits for the first's transaction,
-  # then sees its row and is refused, so the organisation keeps one shared harness.
+  # then reads its row and replaces it or is refused (`share/4`), so the organisation
+  # keeps one shared harness.
   defp lock_shares(%Organisation{id: organisation_id}) do
     {:ok, uuid} = Ecto.UUID.dump(organisation_id)
 

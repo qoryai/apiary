@@ -913,6 +913,98 @@ defmodule Apiary.Stacks.SourcesTest do
       assert walked.document["extends"]["git"] == @harness
     end
 
+    test "a harness repository shared in place of the shared Qory harness: each workspace with no choice takes it, and its rows follow the three cases",
+         ctx do
+      serve_calls([ctx.adapter],
+        covered: ctx.covered,
+        files: @files,
+        versions: %{"R_harness" => @pin}
+      )
+
+      [_app, harness] = Sources.repositories(ctx.scope)
+      organisation = ctx.scope.organisation
+      sharing = workspace_scope(ctx.scope.user, workspace_fixture(organisation))
+      saved = workspace_scope(ctx.scope.user, workspace_fixture(organisation))
+
+      {:ok, qory} = Sources.choose(ctx.scope, :qory, shared: true)
+      {:ok, choice} = Sources.choose(saved, :qory)
+
+      # Main, the workspace of ctx.scope, takes the shared Qory harness. Three of its
+      # targets follow its harness: one a stack of the Qory harness, one of acme/harness
+      # and one of acme/other.
+      {:ok, _row} = Sources.choose_target(ctx.scope, @target, {:workspace, "core"})
+
+      follow = fn path, choice, git ->
+        workspace = ctx.scope.workspace
+        target = %{system: @target.system, path: path}
+        :ok = Target.insert_new(organisation.id, workspace.id, [target])
+        row = Repo.get_by!(Target, workspace_id: workspace.id, path: path)
+        document = "extends:\n  git: \"#{git}\"\n  ref: \"v1\"\n  stack: \"triage\"\n"
+
+        {:ok, _row} =
+          Stacks.put_stack(ctx.scope, {:target, row}, document,
+            choice: choice,
+            version: {:workspace, nil}
+          )
+
+        document
+      end
+
+      follow.("acme/one", :repository, @harness)
+      other = follow.("acme/two", :repository, "https://code.example.com/acme/other")
+
+      assert {:ok, %Stack{id: id, choice: :repository}} =
+               Sources.choose(sharing, {:repository, harness, "triage", {:branch, "main"}},
+                 shared: true
+               )
+
+      assert id == qory.id
+
+      assert [%Stack{id: ^id}] =
+               Repo.all(from s in Stack, where: is_nil(s.workspace_id) and not is_nil(s.choice))
+
+      # Main and the workspace that shares take acme/harness; the workspace with a saved
+      # choice keeps it.
+      for scope <- [ctx.scope, sharing] do
+        assert Stacks.choice(scope.workspace) == nil
+
+        assert %{
+                 choice: :repository,
+                 git: @harness,
+                 stack: "triage",
+                 version: {:branch, "main"},
+                 shared: true
+               } = Sources.chosen(scope.workspace)
+      end
+
+      assert Stacks.choice(saved.workspace).id == choice.id
+      assert %{choice: :qory, shared: false} = Sources.chosen(saved.workspace)
+
+      chosen = Sources.targets_chosen(ctx.scope.workspace)
+
+      # The stack of the Qory harness keeps the version it followed; the stack of
+      # acme/harness follows the shared branch; the stack of acme/other keeps its
+      # document, with no version.
+      assert %{choice: :qory, stack: "core", version: :latest} =
+               chosen[{@target.system, @target.path}]
+
+      assert %{git: @harness, stack: "triage", version: :workspace, pin: "main"} =
+               chosen[{@target.system, "acme/one"}]
+
+      assert %{version: nil, pin: "v1"} = chosen[{@target.system, "acme/two"}]
+
+      assert Stacks.target_choice(ctx.scope.workspace, %{@target | path: "acme/two"}).harness ==
+               other
+
+      # A share while the organisation shares a harness repository is refused.
+      assert Sources.choose(saved, {:repository, harness, "triage", {:tag, "v1"}}, shared: true) ==
+               {:error, :shared}
+
+      assert Sources.choose(saved, :qory, shared: true) == {:error, :shared}
+      assert Stacks.shared(organisation).id == id
+      assert Stacks.choice(saved.workspace).id == choice.id
+    end
+
     test "a row following a harness the workspace no longer takes reads its document's ref",
          ctx do
       serve_calls([ctx.adapter],

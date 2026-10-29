@@ -110,10 +110,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (`Apiary.Stacks.Sources.reuse_shared/1`). Continue with the Qory harness at the
   #     version of a shared Qory harness does the same, where the workspace reuses that
   #     harness or its choice is the Qory harness at the same pin. With another choice, it
-  #     saves the workspace's choice, the same as the shared one or not. While the
-  #     organisation shares one, a second is refused, and the step shows the fix: choose
-  #     the shared harness, or Qory harness where that is the shared one, or turn the
-  #     setting off. Under the choices, Targets lists the
+  #     saves the workspace's choice, the same as the shared one or not. A harness
+  #     repository shared while the organisation shares the Qory harness replaces it.
+  #     While the organisation shares a harness repository, a second share is refused,
+  #     and the step shows the fix: choose the shared harness, or turn the setting off.
+  #     Under the choices, Targets lists the
   #     workspace's destinations, the rows the Destinations step ticked, each with a
   #     Stack select
   #     (`Apiary.Stacks.Sources.targets_chosen/1`, `ApiaryWeb.HarnessComponents.targets/1`,
@@ -1609,24 +1610,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp harness_saved(socket, :shared, {:error, :not_shared}),
     do: socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))
 
-  # A shared Qory harness shows as the Qory harness row, so the fix for it names that row.
+  # The organisation shares a harness repository: a share of another is refused.
   defp harness_saved(socket, _choice, {:error, :shared}) do
     organisation = socket.assigns.flow.organisation.name
 
     words =
-      case socket.assigns.shared_harness do
-        %{choice: :qory} ->
-          gettext(
-            "Choose Qory harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares the Qory harness already.",
-            organisation: organisation
-          )
-
-        _repository_or_none ->
-          gettext(
-            "Choose the shared harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares a harness already.",
-            organisation: organisation
-          )
-      end
+      gettext(
+        "Choose the shared harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares a harness already.",
+        organisation: organisation
+      )
 
     assign(socket, :harness_refusal, {:shared, words})
   end
