@@ -223,6 +223,28 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
     end
 
+    test "instance_line/0: the instance's pool with its state, while a pool of the workspace serves the workspace",
+         ctx do
+      assert WorkspaceSetup.instance_line() ==
+               %{pool: nil, instance: true, state: {:not_ready, :no_pool}}
+
+      instance_pool = instance_pool_fixture()
+      _pool = pool_fixture(ctx.scope)
+      refute WorkspaceSetup.instance_pool?(ctx.workspace)
+
+      assert %{pool: %Node{id: id}, instance: true, state: {:not_ready, :no_active_key}} =
+               WorkspaceSetup.instance_line()
+
+      assert id == instance_pool.id
+
+      _key = installed_key_fixture(instance_pool)
+      gateway = instance_gateway_fixture()
+      _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
+
+      assert %{state: {:ready, %Node{id: gateway_id}}} = WorkspaceSetup.instance_line()
+      assert gateway_id == gateway.id
+    end
+
     test "pools/1: a pool of the workspace set to Direct, or to a default gateway that does not exist",
          ctx do
       pool = pool_fixture(ctx.scope)
