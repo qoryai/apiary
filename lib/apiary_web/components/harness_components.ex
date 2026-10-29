@@ -50,6 +50,12 @@ defmodule ApiaryWeb.HarnessComponents do
   alias Apiary.Stacks.Document
 
   @short 7
+  # The words `Apiary.Stacks.Document.unreadable/1` gives the reader's `:invalid_stack`,
+  # `:invalid_exports`, `:invalid_harness` and `:not_a_mapping`. On a save, the walk
+  # reads a root harness file's `exports` and a `qory-stack.yaml`, so its `yaml` rule has
+  # these words for `exports` or a stack section that is not valid, or for a root file
+  # that is no mapping.
+  @section_words elem(Document.unreadable(:invalid_stack), 0)
 
   @doc false
   # about/1 is the side note of the Harness step, the paragraphs under About this step.
@@ -707,6 +713,8 @@ defmodule ApiaryWeb.HarnessComponents do
 
   def read_words(:no_stack, source, _organisation), do: no_stack_words(source)
 
+  def read_words(:no_stack_file, source, _organisation), do: no_stack_file_words(source)
+
   def read_words({:limited, seconds}, source, _organisation),
     do:
       ngettext(
@@ -719,6 +727,12 @@ defmodule ApiaryWeb.HarnessComponents do
   def read_words({:unreachable, adapter}, source, _organisation),
     do: unreachable_words(adapter, source)
 
+  def read_words({:call_failed, adapter}, source, _organisation),
+    do: call_failed_words(adapter, source)
+
+  def read_words({:invalid_section, file}, source, _organisation),
+    do: section_words(file, source)
+
   def read_words({:invalid, file, rule}, source, _organisation),
     do: invalid_words(file, rule, source)
 
@@ -730,8 +744,9 @@ defmodule ApiaryWeb.HarnessComponents do
 
   def read_words(_unreadable, source, _organisation), do: unread_words(source)
 
-  # The words for a source that exports no stack: `{:ok, []}` of
-  # `Apiary.Stacks.Sources.exports/2`, and `:no_stack` of `Apiary.Stacks.Sources.read/2`.
+  # The words for a root that exports no stack: `{:ok, []}` of
+  # `Apiary.Stacks.Sources.exports/2`, and `:no_stack` of `Apiary.Stacks.Sources.read/2`,
+  # a root with no stack in `exports` and no `qory-stack.yaml`.
   defp no_stack_words(source),
     do:
       gettext(
@@ -739,12 +754,39 @@ defmodule ApiaryWeb.HarnessComponents do
         source: label(source)
       )
 
-  # A call to the adapter shown as `adapter` that failed or ran out of time.
+  # The words for a stack whose `qory-stack.yaml` is missing: one a root harness file
+  # lists, the folder a source is narrowed to, or the stack name it is narrowed to.
+  defp no_stack_file_words(source),
+    do:
+      gettext(
+        "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack.",
+        source: label(source)
+      )
+
+  # A call to the adapter shown as `adapter` that got no answer, or had no time left.
   defp unreachable_words(adapter, source),
     do:
       gettext(
         "Try again, or choose another source. Qory Apiary could not reach %{adapter} to read %{source}.",
         adapter: adapter,
+        source: label(source)
+      )
+
+  # A call to the adapter shown as `adapter` that failed with an answer, such as a
+  # refusal, or before it was sent.
+  defp call_failed_words(adapter, source),
+    do:
+      gettext("Choose another source. The call to %{adapter} to read %{source} failed.",
+        adapter: adapter,
+        source: label(source)
+      )
+
+  # The file `file` of `source`, whose `exports` or stack section is not valid.
+  defp section_words(file, source),
+    do:
+      gettext(
+        "Correct %{file} in %{source}, or choose another source: its exports or stack section is not valid.",
+        file: file,
         source: label(source)
       )
 
@@ -951,12 +993,30 @@ defmodule ApiaryWeb.HarnessComponents do
   def refused({:stack, source, _stack, ref}), do: {source, ref}
   def refused(_choice), do: {nil, nil}
 
-  # Why the walk of a save failed, from its detail: the adapter whose call failed, a file
-  # the reader refuses, or both root harness files; any other failure in the words of an
+  # Why the walk of a save failed, from its detail: the adapter whose call got no answer
+  # or failed, a stack the source does not export or has no stack file for, a file the
+  # reader refuses, or both root harness files; any other failure in the words of an
   # unread source.
-  defp walk_words(%{failure: failure, adapter: adapter}, source)
-       when failure in [:adapter_unavailable, :adapter_failed] and is_binary(adapter),
+  defp walk_words(%{failure: :adapter_unavailable, adapter: adapter}, source)
+       when is_binary(adapter),
        do: unreachable_words(adapter, source)
+
+  defp walk_words(%{failure: :adapter_failed, adapter: adapter}, source)
+       when is_binary(adapter),
+       do: call_failed_words(adapter, source)
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => rule}}, source)
+       when rule in ["no_export", "no_stack_file"],
+       do: no_stack_file_words(source)
+
+  defp walk_words(
+         %{
+           failure: :invalid,
+           rule: %{"rule" => "yaml", "values" => %{"file" => file}, "message" => @section_words}
+         },
+         source
+       ),
+       do: section_words(file, source)
 
   defp walk_words(
          %{failure: :invalid, rule: %{"rule" => "yaml", "values" => %{"file" => file}} = rule},

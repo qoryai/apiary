@@ -3644,6 +3644,11 @@ msgstr ""
 msgid "Add a program from a release on github.com, gitlab.com or codeberg.org."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add a rule for this target"
@@ -5266,6 +5271,11 @@ msgstr ""
 msgid "Choose another runtime: no model provider of %{organisation} serves %{runtime}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another source. The call to %{adapter} to read %{source} failed."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Choose it when %{name} runs in a CI job, or on a machine you can't open a terminal on."
@@ -5833,6 +5843,11 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Correct %{file} in %{source}, or choose another source: %{rule}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct %{file} in %{source}, or choose another source: its exports or stack section is not valid."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

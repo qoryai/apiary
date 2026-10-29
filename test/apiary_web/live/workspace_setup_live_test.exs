@@ -2000,7 +2000,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
-    test "a stack the walk cannot read: the read's line, and nothing saved", ctx do
+    test "a stack the walk finds no stack file for: add it, and nothing saved", ctx do
       files = Map.delete(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"})
       linked_harness!(ctx, files)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -2011,9 +2011,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "Reload the page to read acme/harness again, or choose another source. Qory " <>
-                 "Apiary could not read its stack: the call to its integration failed, or a " <>
-                 "file in it is not valid."
+               "Add a qory-stack.yaml file to acme/harness, or choose another source: " <>
+                 "acme/harness has no stack."
 
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
@@ -2095,7 +2094,48 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Correct qory-stack.yaml in acme/harness, or choose another source: is not " <>
                  "valid YAML."
 
+      files = Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: 7\n")
+      serve_harness(adapter, files)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct qory-stack.yaml in acme/harness, or choose another source: its exports " <>
+                 "or stack section is not valid."
+
+      refuse = Map.new(["HEAD", "main", @pin], &{&1, "internal"})
+      serve_harness(adapter, @one_export, refuse_at: refuse)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Choose another source. The call to #{adapter.adapter.name} to read " <>
+                 "acme/harness failed."
+
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a repository whose call is refused, or whose exports are not valid: the cause", ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      serve_harness(adapter, @one_export, refuse_at: %{"HEAD" => "internal"})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Choose another source. The call to " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness failed."
+
+      serve_harness(adapter, %{{"R_harness", "harness.yaml"} => "exports: 7\n"})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Correct harness.yaml in acme/harness, or choose another source: its exports or " <>
+                 "stack section is not valid."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
     end
 
     test "with no connected repository, Repository has none to choose, a line under it shows how to get one, and Continue stays off",
