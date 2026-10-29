@@ -134,14 +134,22 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       scope: scope
     } do
       free = collection_fixture(scope, workspace_id: nil)
+      connection = Repo.get!(Apiary.Adapters.Connection, free.connection_id)
+      grant = Repo.get_by!(Apiary.Adapters.Grant, grant_ref: listing_grant(connection))
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
 
       assert sent_to(conn, scope) == step_path(scope, :sources)
 
       {:ok, lv, _html} = live(conn, step_path(scope, :sources))
-      assert has_element?(lv, "#set-up-tick-#{free.public_id} input[disabled]")
+      assert has_element?(lv, "#set-up-grant-#{grant.public_id}-choose")
       assert has_element?(lv, "#set-up-who-may")
+
+      # The grant's chooser shows the choice disabled, and no Save.
+      params = [step: :sources, grant: grant.public_id, workspace: scope.workspace.slug]
+      {:ok, chooser, _html} = live(conn, ~p"/#{scope.organisation}/set-up/choose?#{params}")
+      assert has_element?(chooser, "#choose-only[disabled]")
+      refute has_element?(chooser, "#choose-save")
 
       # The set-up without a step opens the first step not done, and sends nowhere.
       assert {:ok, _lv, _html} = live(conn, ~p"/#{scope.organisation}/set-up")
