@@ -119,6 +119,12 @@ defmodule Apiary.Stacks.VersionMigrationTest do
 
   test "the check takes each kind under its choice, with its name, and workspace at a target alone",
        ctx do
+    # The check this file's migration writes, not the one the database has: a test
+    # database migrated by an earlier text of the migration keeps that text's check, as
+    # `mix ecto.migrate` runs no migration a second time.
+    assert :ok = down!()
+    assert :ok = up!()
+
     set = fn id, kind, name ->
       Repo.transact(fn ->
         {:ok,
