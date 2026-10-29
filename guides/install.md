@@ -754,11 +754,9 @@ in. It creates no workspace.
 
 The set-up has two progresses, each with a separate list of steps. The instance's
 progress, set up once by an instance admin, is **Your account** and the steps under
-**Connect Qory Apiary**. The organisation's progress sets up a workspace: the steps under
-**For Main** (**For the new workspace** until the workspace exists), and with the
-`factory` feature, first those under **For Acme**, which the organisation does once.
-Each page of the set-up shows the list of its progress alone, with a mark on each step
-done and **Skipped** under each step skipped.
+**Connect Qory Apiary**. The organisation's progress sets up a workspace, from its step
+**Name**. Each page of the set-up shows the list of its progress alone, with a mark on
+each step done and **Skipped** under each step skipped.
 On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and **All
 steps**, which opens the list. Each progress counts from step 1. Once you are signed in,
 each step done or skipped is a link to that step where it has a page; **Your account**
@@ -801,23 +799,39 @@ With the `factory` feature, both pages have more steps:
   without a key in use, or of one that has not sent the address where it is set up, shows
   what to do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
-- **The workspace set-up** has three steps under **For Acme** before **Name**, which the
-  organisation does once, and five under **For Main** after it, each at
-  `/<organisation>/set-up?step=<step>`. The set-up opens at the first step that is not
-  done.
-  - **Work sources** and **Work destinations** list the adapters that the instance has
-    set up for the workspace's type, each with **Connect**. Select **Connect** beside
-    one, and follow the steps that the column **About this step** lists under its name.
-    **Skip** leaves the step for later, in **Organisation settings › Integrations**. Only
-    owners and admins connect an adapter.
-  - **Model** adds a model provider's key and the organisation's default model. Only
-    owners and admins add a model key.
-  - After **Name**: **Work sources used** and **Destinations used**, two tick lists of
-    the organisation's collections; **Harness**; **Machines**, which shows the node pools
-    that serve the workspace's runs and changes nothing; and **Test run**. **Create
-    workspace** opens **Work sources used** in place of the overview. If another owner
-    creates Main while the page is open, the page opens Main's first step that is not
-    done.
+- **The workspace set-up** has 7 steps, each at
+  `/<organisation>/set-up?step=<step>&workspace=main` once the workspace exists:
+  **Name**, **Work sources**, **Destinations**, **Model**, **Harness**, **Machines** and
+  **Test run**. **Create workspace** opens **Work sources** in place of the overview, and
+  the set-up opens at the first step that is not done. If another owner creates Main
+  while the page is open, the page opens Main's first step that is not done.
+  - **Work sources** and **Destinations** show a card for each account that the
+    organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
+    connect an adapter, open **Connect another source**, or **Connect another
+    destination**, select **Connect** beside the adapter, and follow the steps that the
+    column **About this step** lists under its name. **Choose** opens the account's
+    collections: choose **All repositories, including new ones**, in the adapter's word
+    for its collections, or **Only selected** and tick them, then **Save**. All also
+    assigns to the workspace each collection that the adapter lists for the account
+    later. A new collection joins a workspace only through All or a tick, also in an
+    organisation with one workspace. A connection to an adapter serves every workspace of the
+    organisation. **Skip** leaves the step for later: connect in **Organisation settings
+    › Integrations**, and choose in **Workspace settings › Work sources** and
+    **› Destinations**, which show the same cards and chooser. Only owners and admins
+    connect an adapter and choose.
+  - On **Model** you choose a model provider's key, the runtime and the workspace's
+    default model. A key added there is a secret of the workspace, which **Workspace
+    settings › Secrets and variables** lists. Only owners and admins add a model key.
+  - On **Harness** you choose the harness of the workspace's runs, and a stack for each
+    repository that needs another. On **Machines** you choose the instance's pool or a
+    pool for the workspace, and for a pool of the workspace you get the command that
+    enrols a machine in it. On **Test run** you run a test.
+
+  Where the edition allows more than one workspace, a workspace added later goes
+  through the same 7 steps. Where the edition shows the setting “Available to every
+  workspace in Acme”, **Model** and **Harness** list first the model keys and the
+  harness that the organisation shares, under **Shared in Acme**, each marked **every
+  workspace**: choose one to reuse it.
 
   [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
   steps. Until the test run passes, opening Main opens its next step in place of the

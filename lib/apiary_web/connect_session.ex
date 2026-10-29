@@ -7,9 +7,9 @@ defmodule ApiaryWeb.ConnectSession do
   # (`Apiary.Adapters.Connections.complete_return/4`).
   #
   # Beside a nonce, the session may keep where the return leads (`back/2`): a word that
-  # `back?/1` takes, such as "set-up:sources:software" for an install started at the
-  # workspace set-up's Work sources step, never an address. Neither the pass nor the
-  # adapter's return link contains it.
+  # `back?/1` takes, such as "set-up:sources:workspace=main" for an install started at
+  # the Work sources step of the workspace Main's set-up, never an address. Neither the
+  # pass nor the adapter's return link contains it.
   #
   # The session keeps the last `kept/0` connections a browser started, the latest pass of
   # each: a new pass for the same connection replaces the one kept.
