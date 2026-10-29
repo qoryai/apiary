@@ -35,9 +35,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # connection is complete, a line says the integration is still sending them, with how
   # many so far; then the heading says how many there are.
   # A lead says what being assigned means, in the adapter's words for its collections and
-  # its items: with one workspace, that every one is assigned to it; for an adapter with
-  # no items, only that each is assigned to one workspace. The lead shows while the page
-  # waits too. Where any live collection has a target
+  # its items: for an adapter with no items, only that each is assigned to one workspace.
+  # The lead shows while the page waits too. Where any live collection has a target
   # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one
   # adds its target to the workspace, and unassigning or moving it leaves the target; a
   # source without code has none. The first foot note,
@@ -52,11 +51,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # search finds collections by their names (`?q=`), and one that finds none says so, on
   # any page. The foot notes' block shows only while one of its notes does.
   #
-  # With several workspaces, the lead says that each is assigned to one workspace and, for
+  # With a workspace or more, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
-  # Backlog switches are on. Once a listing is complete, a warning says how many are
-  # unassigned, and, for an adapter with items, that their items reach no backlog until
-  # they are assigned, by the person or by an owner or an admin. Views over the table
+  # Backlog switches are on. With several workspaces, once a listing is complete, a
+  # warning says how many are unassigned, and, for an adapter with items, that their items
+  # reach no backlog until they are assigned, by the person or by an owner or an admin.
+  # Views over the table
   # show every one or the unassigned ones (`?view=unassigned`), the warning's Show them
   # leads to the second, and a menu keeps those of one workspace (`?workspace_id=`).
   # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
@@ -420,7 +420,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp listing(%{assigns: %{state: state}} = socket) when state in [:waiting, :listed] do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     workspaces = Organisations.list_workspaces(scope)
-    socket = assign(socket, workspaces: workspaces, lead: lead(scope, adapter, workspaces))
+    socket = assign(socket, workspaces: workspaces, lead: lead(adapter, workspaces))
     if state == :listed, do: rows(socket), else: unpicked(socket)
   end
 
@@ -966,29 +966,17 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp status(%{state: :not_installed}), do: gettext("Not installed.")
 
   # What being assigned means, above the table: for an adapter with no items, that each
-  # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's Backlog while its Backlog
-  # switch is on; with several, that each is assigned to one, and their items come into
-  # its Backlog while their Backlog switches are on.
-  defp lead(scope, adapter, workspaces) do
+  # collection is assigned to one workspace; with a workspace or more, that each is
+  # assigned to one, and their items come into its Backlog while their Backlog switches
+  # are on.
+  defp lead(adapter, workspaces) do
     cond do
       not Adapters.items?(adapter) ->
         gettext("These %{collections} are each assigned to one workspace.",
           collections: collection_word(adapter, :other)
         )
 
-      match?([_one], workspaces) ->
-        [workspace] = workspaces
-
-        gettext(
-          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on.",
-          organisation: scope.organisation.name,
-          workspace: workspace.name,
-          collection: collection_word(adapter, 1),
-          items: SourceComponents.items(Adapters.item_noun(adapter))
-        )
-
-      length(workspaces) > 1 ->
+      workspaces != [] ->
         gettext(
           "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's Backlog while their Backlog switches are on.",
           collections: collection_word(adapter, :other),

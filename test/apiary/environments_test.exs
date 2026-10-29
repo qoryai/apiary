@@ -279,6 +279,12 @@ defmodule Apiary.EnvironmentsTest do
   describe "a run held for its build" do
     @shop_target %{system: "code.example.com", path: "acme/shop"}
 
+    # The grant's rule assigns SHOP to the workspace as the listing makes it.
+    setup ctx do
+      grant_rule_fixture(ctx.connection, ctx.scope.workspace)
+      :ok
+    end
+
     defp shop_image(n),
       do: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate(n, 64)
 
