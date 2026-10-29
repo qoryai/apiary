@@ -1415,8 +1415,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       plain = qory_row(lv)
       refute has_element?(lv, "#set-up-harness-everywhere")
 
-      # The organisation shares the Qory harness: one workspace reuses it, another has
-      # its own choice of the Qory harness.
+      # The organisation shares the Qory harness: one workspace reuses it, and another
+      # workspace has a saved Qory harness choice.
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
       reuses = workspace_fixture(ctx.organisation, "Second")
       saved = workspace_fixture(ctx.organisation, "Third")

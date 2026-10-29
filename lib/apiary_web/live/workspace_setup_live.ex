@@ -741,14 +741,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp follows_shared?(%{choice: :repository}, %{shared: true}), do: true
   defp follows_shared?(_shared, _chosen), do: false
 
-  # Whether the Qory harness row stands for a shared Qory harness: the workspace reuses
-  # it, or the workspace's choice is the Qory harness at its pin.
+  # Whether a Qory harness choice on the step is the shared Qory harness: the workspace
+  # reuses it, or the workspace's saved choice is the Qory harness at the same pin.
   defp shared_qory?(%{choice: :qory, pin: pin}, %{choice: :qory, pin: pin}), do: true
   defp shared_qory?(_shared, _chosen), do: false
 
   # The choice the Harness form's `params` come to, for the saved choice `chosen`:
   # `:shared` for the harness the organisation shares, where the step lists it (`shared`),
-  # and for the Qory harness at the version of a shared Qory harness the row stands for
+  # and for the Qory harness at the version of a shared Qory harness that the choice is
   # (`shared_qory?/2`); else `ApiaryWeb.HarnessComponents.choice/3`, with the stacks the
   # chosen repository exports.
   defp harness_choice(%{"choice" => "shared"}, _linked, %{} = _shared, _chosen, _exports),
