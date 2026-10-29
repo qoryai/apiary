@@ -7,11 +7,13 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
   # Explore texts, which read the code and propose how to build it, the policy file's
-  # place, outside the checkout, and the harness choice's repository and its branch or tag.
+  # place, outside the checkout, and the harness choice's repository and its branch, tag or
+  # commit.
   @software_sentences [
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
+    "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
     "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
@@ -34,7 +36,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
     "Run %{attempt} of %{of} reads the %{item} and these answers, from the start. It proposes what to do, or asks what it still needs to know.",
     "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know.",
-    "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start."
+    "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
+    "tag or version"
   ]
 
   use ApiaryWeb.LingoCatalogueCase,
