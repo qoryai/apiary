@@ -471,7 +471,7 @@ defmodule ApiaryWeb.WorkflowLive do
 
   def handle_async(:harness_exports, {:exit, _reason}, socket) do
     case socket.assigns.harness_exports do
-      %{id: id} -> {:noreply, exports_read(socket, id, {:error, :unreadable})}
+      %{id: id} -> {:noreply, exports_read(socket, id, {:error, :exited})}
       nil -> {:noreply, socket}
     end
   end
@@ -504,7 +504,7 @@ defmodule ApiaryWeb.WorkflowLive do
   end
 
   def handle_async(:read, {:exit, _reason}, socket),
-    do: {:noreply, socket |> assign(read_error: :unreadable, reading: false) |> assign_form()}
+    do: {:noreply, socket |> assign(read_error: :exited, reading: false) |> assign_form()}
 
   def handle_async(:workspace_stacks, {:ok, {of, result}}, socket),
     do: {:noreply, HarnessTargets.workspace_stacks_read(socket, of, result)}
@@ -750,7 +750,11 @@ defmodule ApiaryWeb.WorkflowLive do
             {gettext("Reading the stack of %{source}…", source: @source.label)}
           </p>
           <.notice :if={@read_error} kind={:error}>
-            <span id="workflow-read-error">{read_words(@read_error, @source, @organisation)}</span>
+            <span id="workflow-read-error">{HarnessComponents.read_words(
+              @read_error,
+              @source,
+              @organisation
+            )}</span>
           </.notice>
           <.notice :if={@stacks && no_workflow?(@stacks)} kind={:error}>
             <span id="workflow-no-workflow">
@@ -834,38 +838,6 @@ defmodule ApiaryWeb.WorkflowLive do
       pgettext(
         "plain",
         "Qory Apiary could not read the linked repositories. Reload the page to try again."
-      )
-
-  defp read_words(:not_covered, source, organisation),
-    do:
-      pgettext(
-        "plain",
-        "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment.",
-        source: source.label,
-        organisation: organisation
-      )
-
-  defp read_words(:no_stack, source, _organisation),
-    do:
-      gettext(
-        "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack.",
-        source: source.label
-      )
-
-  defp read_words({:limited, seconds}, source, _organisation),
-    do:
-      ngettext(
-        "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
-        "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
-        seconds,
-        source: source.label
-      )
-
-  defp read_words(_unreadable, source, _organisation),
-    do:
-      gettext(
-        "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid.",
-        source: source.label
       )
 
   defp current_words(%{workflow: workflow}, workspace),

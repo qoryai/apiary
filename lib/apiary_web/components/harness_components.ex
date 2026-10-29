@@ -50,6 +50,12 @@ defmodule ApiaryWeb.HarnessComponents do
   alias Apiary.Stacks.Document
 
   @short 7
+  # The words `Apiary.Stacks.Document.unreadable/1` returns for the reader's
+  # `:invalid_stack`, `:invalid_exports`, `:invalid_harness` and `:not_a_mapping`. On a
+  # save, the walk reads a root harness file's `exports` and a `qory-stack.yaml`, so its
+  # `yaml` rule has these words for `exports` or a stack section that is not valid, or
+  # for a root file that is no mapping.
+  @section_words elem(Document.unreadable(:invalid_stack), 0)
 
   @doc false
   # about/1 is the side note of the Harness step, the paragraphs under About this step.
@@ -257,7 +263,7 @@ defmodule ApiaryWeb.HarnessComponents do
       <span id={"#{@id}-error"}>{read_words(elem(@exports, 1), @source, @organisation)}</span>
     </.notice>
     <p :if={@source && @exports == {:ok, []}} id={"#{@id}-none"} class="text-[13px]/5 text-muted">
-      {gettext("%{target} exports no stack.", target: @source.label)}
+      {no_stack_words(@source)}
     </p>
     <.input
       :if={@source && match?({:ok, [_ | _]}, @exports)}
@@ -667,8 +673,12 @@ defmodule ApiaryWeb.HarnessComponents do
         do: {stack.name || stack.base["path"] || "qory-stack.yaml", Integer.to_string(index)}
   end
 
-  # Why the stacks of `source` were not read, in the words of Workflow's Source.
-  defp read_words(:not_covered, source, organisation),
+  @doc false
+  # read_words/3 is why the stacks of `source` were not read, as the Harness step,
+  # Workflow and a destination's form show it: a reason of `Apiary.Stacks.Sources`, or
+  # `:exited` for a read whose task exited.
+  @spec read_words(term, map | nil, String.t()) :: String.t()
+  def read_words(:not_covered, source, organisation),
     do:
       pgettext(
         "plain",
@@ -677,14 +687,11 @@ defmodule ApiaryWeb.HarnessComponents do
         organisation: organisation
       )
 
-  defp read_words(:no_stack, source, _organisation),
-    do:
-      gettext(
-        "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack.",
-        source: label(source)
-      )
+  def read_words(:no_stack, source, _organisation), do: no_stack_words(source)
 
-  defp read_words({:limited, seconds}, source, _organisation),
+  def read_words(:no_stack_file, source, _organisation), do: no_stack_file_words(source)
+
+  def read_words({:limited, seconds}, source, _organisation),
     do:
       ngettext(
         "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
@@ -693,7 +700,101 @@ defmodule ApiaryWeb.HarnessComponents do
         source: label(source)
       )
 
-  defp read_words(_unreadable, source, _organisation), do: unread_words(source)
+  def read_words({:unreachable, adapter}, source, _organisation),
+    do: unreachable_words(adapter, source)
+
+  def read_words({:call_failed, adapter}, source, _organisation),
+    do: call_failed_words(adapter, source)
+
+  def read_words({:invalid_section, file}, source, _organisation),
+    do: section_words(file, source)
+
+  def read_words({:invalid, file, rule}, source, _organisation),
+    do: invalid_words(file, rule, source)
+
+  def read_words(:unreadable, source, _organisation), do: form_words(source)
+
+  # `:exited`, or a reason no clause above matches.
+  def read_words(_exited, source, _organisation), do: exited_words(source)
+
+  # A read whose task exited, or a failure with no known cause.
+  defp exited_words(source),
+    do:
+      gettext("Try again, or choose another source. Qory Apiary could not read %{source}.",
+        source: label(source)
+      )
+
+  # An address, folder or version refused before any call.
+  defp form_words(source),
+    do:
+      gettext(
+        "Correct the address, folder or version of %{source}, or choose another source. Qory Apiary does not read it in that form.",
+        source: label(source)
+      )
+
+  # A save refused for the content of the harness document: `problem`, the words of the
+  # rule it breaks.
+  defp content_words(problem, source),
+    do:
+      gettext("Correct the harness in %{source}, or choose another source: %{rule}.",
+        source: label(source),
+        rule: problem
+      )
+
+  # The words for a root that exports no stack: `{:ok, []}` of
+  # `Apiary.Stacks.Sources.exports/2`, and `:no_stack` of `Apiary.Stacks.Sources.read/2`,
+  # a root with no stack in `exports` and no `qory-stack.yaml`.
+  defp no_stack_words(source),
+    do:
+      gettext(
+        "%{source} exports no stack. Add a qory.yaml or harness.yaml at its root that lists the stack under exports.",
+        source: label(source)
+      )
+
+  # The words for a stack whose `qory-stack.yaml` is missing: one a root harness file
+  # lists, the folder a source is narrowed to, or the stack name it is narrowed to.
+  defp no_stack_file_words(source),
+    do:
+      gettext(
+        "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack.",
+        source: label(source)
+      )
+
+  # A call to the adapter shown as `adapter` that got no answer, or had no time left.
+  defp unreachable_words(adapter, source),
+    do:
+      gettext(
+        "Try again, or choose another source. Qory Apiary could not reach %{adapter} to read %{source}.",
+        adapter: adapter,
+        source: label(source)
+      )
+
+  # A call to the adapter shown as `adapter` that failed with an answer, such as a
+  # refusal, or before it was sent.
+  defp call_failed_words(adapter, source),
+    do:
+      gettext("Choose another source. The call to %{adapter} to read %{source} failed.",
+        adapter: adapter,
+        source: label(source)
+      )
+
+  # The file `file` of `source`, whose `exports` or stack section is not valid.
+  defp section_words(file, source),
+    do:
+      gettext(
+        "Correct %{file} in %{source}, or choose another source: its exports or stack section is not valid.",
+        file: file,
+        source: label(source)
+      )
+
+  # The file `file` of `source`, which breaks `rule`, a rule of the walk.
+  defp invalid_words(file, rule, source),
+    do:
+      gettext("Correct %{file} in %{source}, or choose another source: %{rule}.",
+        file: file,
+        source: label(source),
+        rule: ApiaryWeb.WorkItemComponents.harness_problem_words(rule)
+      )
 
   @doc false
   # target_choice/1 is the choice the form of a destination comes to, for
@@ -876,7 +977,7 @@ defmodule ApiaryWeb.HarnessComponents do
           source: label(source),
           rule: ApiaryWeb.WorkItemComponents.harness_rule_words(failure.rule)
         ),
-      else: unread_words(source)
+      else: walk_words(failure, source)
   end
 
   def refusal_words(_reason, _source, _ref, _organisation), do: nil
@@ -889,12 +990,127 @@ defmodule ApiaryWeb.HarnessComponents do
   def refused({:stack, source, _stack, ref}), do: {source, ref}
   def refused(_choice), do: {nil, nil}
 
-  defp unread_words(source),
+  # Why the walk of a save failed, from its detail: the adapter whose call got no answer
+  # or failed; a stack the source does not export or has no stack file for; a file the
+  # reader refuses, or both root harness files; an address, folder or version refused
+  # before any call when it is the chosen source's (`chosen?/2`); or the content of the
+  # harness document, which includes `:too_many`, `:no_harness`, a version a read found
+  # no version for, and an address, folder or ref of a source the document lists.
+  # Any other failure, `:walk_error` among them, has the words of a read that exited.
+  defp walk_words(%{failure: :adapter_unavailable, adapter: adapter}, source)
+       when is_binary(adapter),
+       do: unreachable_words(adapter, source)
+
+  defp walk_words(%{failure: :adapter_failed, adapter: adapter}, source)
+       when is_binary(adapter),
+       do: call_failed_words(adapter, source)
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => rule}}, source)
+       when rule in ["no_export", "no_stack_file"],
+       do: no_stack_file_words(source)
+
+  defp walk_words(
+         %{
+           failure: :invalid,
+           rule: %{"rule" => "yaml", "values" => %{"file" => file}, "message" => @section_words}
+         },
+         source
+       ),
+       do: section_words(file, source)
+
+  defp walk_words(
+         %{failure: :invalid, rule: %{"rule" => "yaml", "values" => %{"file" => file}} = rule},
+         source
+       ),
+       do: invalid_words(file, rule, source)
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => "both_files"} = rule}, source),
+    do: invalid_words("harness.yaml", rule, source)
+
+  defp walk_words(%{failure: failure} = walk_failure, source)
+       when failure in [:scp_form, :credential_in_address] do
+    cond do
+      chosen?(walk_failure, source) ->
+        form_words(source)
+
+      failure == :scp_form ->
+        content_words(
+          gettext("it lists a module at an SSH address: give the module's https address"),
+          source
+        )
+
+      true ->
+        content_words(
+          gettext("it lists a module address with a credential in it: remove the credential"),
+          source
+        )
+    end
+  end
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => name} = rule} = failure, source)
+       when name in ["path", "path_form", "host", "host_encoded", "ref"],
+       do: address_words(failure, rule, source)
+
+  # A rule of the save check (`Apiary.Stacks.Document`): one with the value `source` or
+  # `ref` is about an address or a ref; any other is about the document's content.
+  defp walk_words(%{failure: :invalid, rule: %{"message" => _message} = rule} = failure, source)
+       when not is_map_key(rule, "rule") do
+    if is_map_key(rule["values"] || %{}, "source") or is_map_key(rule["values"] || %{}, "ref"),
+      do: address_words(failure, rule, source),
+      else: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
+  end
+
+  defp walk_words(%{failure: :invalid, rule: %{"rule" => name} = rule}, source)
+       when name in ["version", "extends", "calls", "size", "not_text"],
+       do: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
+
+  defp walk_words(%{failure: :too_many}, source),
     do:
-      gettext(
-        "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid.",
-        source: label(source)
+      content_words(
+        gettext(
+          "it takes harness sources from more than %{n} accounts: a run takes %{n} harness credentials at most",
+          n: Apiary.Harnesses.Walk.max_links()
+        ),
+        source
       )
+
+  defp walk_words(%{failure: :no_harness}, source),
+    do: content_words(gettext("it has no harness file and no harness is set"), source)
+
+  defp walk_words(_failure, source), do: exited_words(source)
+
+  # A rule about an address, a folder or a ref, refused before any call: one about the
+  # chosen source's address or folder (`chosen?/2`) in the words of a refused form; any
+  # other, a ref among them, in the words of the harness document that lists it.
+  defp address_words(failure, rule, source) do
+    if chosen?(failure, source),
+      do: form_words(source),
+      else: content_words(ApiaryWeb.WorkItemComponents.harness_problem_words(rule), source)
+  end
+
+  # Whether the walk's `failure` is about the address or folder of `source`, the chosen
+  # source: the failure's source is the chosen address, a rule about a path has the
+  # folder the chosen source is narrowed to, and the rule is about no ref.
+  # `refusal_words/4` calls `unreadable_ref?/3` first, which matches every failure about
+  # the chosen ref, so a failure about a ref here is about a module the document lists.
+  defp chosen?(%{source: shown} = failure, %{git: git} = source) when is_binary(git) do
+    shown == Document.shown(git) and
+      case failure[:rule] do
+        %{"rule" => rule, "values" => %{"path" => path}} when rule in ["path", "path_form"] ->
+          path == (source[:narrowing] || %{})["path"]
+
+        %{"rule" => "ref"} ->
+          false
+
+        %{"values" => %{"ref" => _ref}} ->
+          false
+
+        _other ->
+          true
+      end
+  end
+
+  defp chosen?(_failure, _source), do: false
 
   # Whether the walk's `failure` is about `ref` of `source`, the version the person gave:
   # the read found no version for it, it is no version a read takes, or it breaks the

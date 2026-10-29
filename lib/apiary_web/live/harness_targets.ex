@@ -215,12 +215,12 @@ defmodule ApiaryWeb.HarnessTargets do
   end
 
   @doc false
-  # read_failed/1 is a read of a destination's source that exited: unreadable.
+  # read_failed/1 is a read of a destination's source whose task exited: `:exited`.
   @spec read_failed(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def read_failed(socket) do
     case socket.assigns[:target_edit] do
       %{reading: true} = edit ->
-        assign(socket, :target_edit, %{edit | read_error: :unreadable, reading: false})
+        assign(socket, :target_edit, %{edit | read_error: :exited, reading: false})
 
       _other ->
         socket

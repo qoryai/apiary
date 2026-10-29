@@ -2457,6 +2457,11 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{source} exports no stack. Add a qory.yaml or harness.yaml at its root that lists the stack under exports."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{stack} · %{harness} · %{version}"
 msgstr ""
 
@@ -2498,11 +2503,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{target} enforces; the rest follow the workspace."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{target} exports no stack."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -3650,7 +3650,6 @@ msgid "Add a program from a release on github.com, gitlab.com or codeberg.org."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack."
 msgstr ""
@@ -5277,6 +5276,11 @@ msgstr ""
 msgid "Choose another runtime: no model provider of %{organisation} serves %{runtime}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another source. The call to %{adapter} to read %{source} failed."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Choose it when %{name} runs in a CI job, or on a machine you can't open a terminal on."
@@ -5841,9 +5845,29 @@ msgstr ""
 msgid "Copy variable"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct %{file} in %{source}, or choose another source: %{rule}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct %{file} in %{source}, or choose another source: its exports or stack section is not valid."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Correct %{source}, then run Explore again. It breaks the harness format: %{rule}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the address, folder or version of %{source}, or choose another source. Qory Apiary does not read it in that form."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the harness in %{source}, or choose another source: %{rule}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -9331,7 +9355,6 @@ msgid "Light"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
@@ -12980,12 +13003,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Released on"
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgid "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -17208,6 +17225,16 @@ msgstr ""
 msgid "Try again"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Try again, or choose another source. Qory Apiary could not reach %{adapter} to read %{source}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Try again, or choose another source. Qory Apiary could not read %{source}."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Turn failed"
@@ -17646,7 +17673,6 @@ msgid "Views"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources."
 msgid_plural "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources."
@@ -19423,6 +19449,11 @@ msgstr ""
 msgid "it has no %{path}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it has no harness file and no harness is set"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "it has no qory-stack.yaml at the stack's path"
@@ -19431,6 +19462,21 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "it is larger than %{n} bytes as JSON"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it lists a module address with a credential in it: remove the credential"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it lists a module at an SSH address: give the module's https address"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "it takes harness sources from more than %{n} accounts: a run takes %{n} harness credentials at most"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

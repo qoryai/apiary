@@ -1142,18 +1142,32 @@ defmodule Apiary.Harnesses.Walk do
       else: {message, values}
   end
 
-  # A file that the reader refuses: its name, and the save check's words for why.
+  # A file that the reader refuses: its name, and the save check's words for why, with a
+  # hidden harness's values left out (`hidden/2`).
   defp yaml(file, reason) do
     {message, values} = Document.unreadable(reason)
     {message, values} = hidden(message, values)
+    yaml_rule(file, message, values)
+  end
 
-    %{
+  @doc false
+  # yaml_rule/2 is the walk's `yaml` rule for `file`, which the reader refuses for
+  # `reason`: the file's name, and the save check's words for why
+  # (`Apiary.Stacks.Document.unreadable/1`). `Apiary.Stacks.Sources` reports a file it
+  # cannot read with it.
+  @spec yaml_rule(String.t(), Reader.reason()) :: map
+  def yaml_rule(file, reason) do
+    {message, values} = Document.unreadable(reason)
+    yaml_rule(file, message, values)
+  end
+
+  defp yaml_rule(file, message, values),
+    do: %{
       "rule" => "yaml",
       "values" => %{"file" => file},
       "message" => message,
       "message_values" => Map.new(values, fn {k, v} -> {to_string(k), to_string(v)} end)
     }
-  end
 
   defp get(key), do: Map.fetch!(Process.get(__MODULE__), key)
   defp put(key, value), do: Process.put(__MODULE__, Map.put(Process.get(__MODULE__), key, value))

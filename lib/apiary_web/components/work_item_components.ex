@@ -2976,6 +2976,15 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def harness_rule_words(_rule), do: ""
 
+  @doc false
+  # harness_problem_words/1 is `harness_rule_words/1` without the file of a `yaml` rule,
+  # for a sentence that shows the file before the rule.
+  @spec harness_problem_words(map | nil) :: String.t()
+  def harness_problem_words(%{"rule" => "yaml"} = rule),
+    do: saved_rule_words(rule["message"], rule["message_values"])
+
+  def harness_problem_words(rule), do: harness_rule_words(rule)
+
   defp saved_rule_words(message, values) when is_binary(message) do
     values =
       for {key, value} <- values || %{}, atom = @rule_values[key], atom != nil do

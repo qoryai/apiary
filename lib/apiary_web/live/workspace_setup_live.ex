@@ -1688,7 +1688,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   def handle_async(:harness_exports, {:exit, _reason}, socket) do
     case socket.assigns.harness_exports do
-      %{id: id} -> {:noreply, exports_read(socket, id, {:error, :unreadable})}
+      %{id: id} -> {:noreply, exports_read(socket, id, {:error, :exited})}
       nil -> {:noreply, socket}
     end
   end
