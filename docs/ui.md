@@ -1236,7 +1236,10 @@ product's mark and the theme menu.
   (`IntegrationComponents.grant_card/1`). Its title is “Choose repositories · GitHub ·
   acme”, in the adapter's word for its collections, with the count, such as “3
   selected”, beside it under **Only selected**. Its **Back** returns to the step without
-  saving, and **Save**, the primary button, saves and returns to the step.
+  saving, and **Save**, the primary button, saves and returns to the step. Workspace
+  settings › Work sources and › Destinations open the same chooser inside the settings,
+  at `/<org>/<workspace>/settings/choose?step=<sources|destinations>&grant=<id>`, with
+  the step's section current; there **Back** and **Save** return to the settings page.
 - **A workspace in set-up** opens at its next step: with the `factory` feature, until its
   test run passes, the overview and every link to the workspace lead to the first step
   of its set-up that is not done (`SetUpComponents.set_up_path/1`).

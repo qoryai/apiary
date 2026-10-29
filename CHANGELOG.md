@@ -158,19 +158,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deleted workspace, remove that All.
 - **Work sources** is done once a collection is the workspace's with its Backlog on, and
   **Destinations** once a repository is the workspace's.
-- **Workspace settings › Work sources** and **› Destinations** list the collections of
-  each adapter, each with a checkbox. Ticking a work source assigns it to the workspace
-  and turns its Backlog on; unticking it turns its Backlog off, and removes it from the
-  workspace unless it is a repository, which stays a destination. Ticking a destination
-  assigns it to the workspace, with its Backlog off unless **Work sources** ticked it;
-  unticking it removes it from the workspace and stops its tickets, and in
-  **Destinations** a repository whose tickets come in shows “tickets come in”. Where the
-  edition allows more than one workspace, a collection in another workspace shows “In
-  Billing (cannot be ticked)”. With nothing connected, a settings page shows “Acme has
-  no work source connected yet.”, or the same for a work destination, with a link to the
-  set-up's step for a person who may connect. Owners and admins tick; owners, admins and
-  members read the settings pages.
-  <!-- settings: Work sources and Destinations -->
+- **Workspace settings › Work sources**, “Which work sources does Main use?”, and
+  **› Destinations**, “Which repositories may runs in Main change?”, show the same cards
+  as the set-up's steps, with **Connect another source** or **Connect another
+  destination**. **Choose** opens the same chooser in the workspace's settings, at
+  `/acme/main/settings/choose?step=sources&grant=<id>`. Its **Save** and **Back** return
+  to the settings page. **Connect** and **Change access** return to the set-up's step of
+  the workspace. Under **Only selected**, ticking a work source assigns it to the
+  workspace and turns its Backlog on. Unticking it turns its Backlog off, and removes it
+  from the workspace unless it is a repository, which stays a destination. Ticking a
+  destination assigns it to the workspace, with its Backlog off unless it is chosen as a
+  work source. Unticking a destination removes it from the workspace and stops its
+  tickets. Owners and admins choose; owners, admins and members read the settings pages.
 - **Model**, “Which model do runs in Main use?”, has three fields. **Key** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
   **Add a key** is the one option where there is no provider to reuse. It opens

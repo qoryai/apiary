@@ -816,9 +816,9 @@ With the `factory` feature, both pages have more steps:
     later. A new collection joins a workspace only through All or a tick, also in an
     organisation with one workspace. A connection to an adapter serves every workspace of the
     organisation. **Skip** leaves the step for later: connect in **Organisation settings
-    › Integrations**, and tick in **Workspace settings › Work sources** and
-    **› Destinations**. Only owners and admins connect an adapter and choose.
-    <!-- settings: Work sources and Destinations -->
+    › Integrations**, and choose in **Workspace settings › Work sources** and
+    **› Destinations**, which show the same cards and chooser. Only owners and admins
+    connect an adapter and choose.
   - On **Model** you choose a model provider's key, the runtime and the workspace's
     default model. A key added there is a secret of the workspace, which **Workspace
     settings › Secrets and variables** lists. Only owners and admins add a model key.

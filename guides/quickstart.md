@@ -316,19 +316,18 @@ later.
    workspace until you tick it. If a collection is missing and the adapter sent a line
    on its access, **Not listed?** shows that line, with **Change access**. Select
    **Continue**, or **Skip** to leave the step for later. You can change the list later
-   in **Workspace settings › Work sources**, and connect an adapter in **Organisation
-   settings › Integrations**. One connection to an adapter serves every workspace of
-   Acme. Only owners and admins connect and choose.
+   in **Workspace settings › Work sources**, with the same cards and chooser, and
+   connect an adapter in **Organisation settings › Integrations**. One connection to an
+   adapter serves every workspace of Acme. Only owners and admins connect and choose.
 2. **Destinations.** **Which repositories may runs in Main change?** shows a card for
    each account of the adapters with repositories, and **Connect another destination**
    for an adapter not connected yet. Select **Choose**, choose **All repositories,
    including new ones** or **Only selected** and tick the repositories Main's runs may
    change, then **Save** and **Continue**. Where **Work sources** has All for the
    account, the chooser shows All alone: “Work sources is set to All for acme. Change it
-   there first.” You can change the list later in **Workspace settings ›
-   Destinations**, where unticking a repository whose tickets come in also stops its
+   there first.” You can change the list later in **Workspace settings › Destinations**,
+   which shows the same cards and chooser. Unticking a repository there also stops its
    tickets.
-   <!-- settings: Work sources and Destinations -->
 3. **Model.** **Which model do runs in Main use?** has three fields. In **Key**, keep
    **Add a key**, the one option while Main has no model provider to reuse. In
    **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
