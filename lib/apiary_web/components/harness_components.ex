@@ -11,8 +11,10 @@ defmodule ApiaryWeb.HarnessComponents do
   # that a target's harness file comes first. A harness repository lists the linked
   # repositories, with Reading… until they are read, and under Branch or tag, the
   # organisation's connection it is read through. `line/1` is the choice with its pin, as
-  # Workflow shows it. `form_params/2` is the form's values for a saved choice, `choice/2`
-  # the choice the form's values come to, and `refusal_words/4` why a save was refused.
+  # Workflow shows it. With `shared`, as the Harness step passes it, `choices/1` lists the
+  # harness the organisation shares first, as the `choice` `shared`. `form_params/2` is
+  # the form's values for a saved choice, `choice/2` the choice the form's values come
+  # to, and `refusal_words/4` why a save was refused.
   # `qory/2` is the Qory harness the choices show.
   #
   # `targets/1` is the destinations, each with Workspace default or the stack chosen for
@@ -44,7 +46,13 @@ defmodule ApiaryWeb.HarnessComponents do
     default: false,
     doc: "whether the Qory harness shows that a target's harness file comes first"
 
-  # The two choices, and the fields of a harness repository once it is chosen.
+  attr :shared, :map,
+    default: nil,
+    doc: "the harness the organisation shares, listed first as the choice `shared`; nil for none"
+
+  # The two choices, and the fields of a harness repository once it is chosen. With
+  # `shared`, the harness the organisation shares comes first, under "Shared in
+  # <organisation>", marked "every workspace", with its address and pin.
   def choices(assigns) do
     choice = assigns.form[:choice].value
     source = source(assigns.linked, assigns.form[:source].value)
@@ -53,15 +61,44 @@ defmodule ApiaryWeb.HarnessComponents do
       assign(assigns,
         choice: choice,
         source: source,
+        shared_title: assigns.shared && choice_title(assigns.shared.choice),
+        shared_line:
+          assigns.shared && "#{address(assigns.shared.git)} · #{short(assigns.shared.pin)}",
         options: [
-          {"qory", gettext("Qory harness"),
+          {"qory", choice_title(:qory),
            "#{address(assigns.qory["git"])} · #{short(assigns.qory["ref"])}"},
-          {"repository", gettext("A harness source"), nil}
+          {"repository", choice_title(:repository), nil}
         ]
       )
 
     ~H"""
     <fieldset id="harness-choice" class="q-choices grid gap-2">
+      <div
+        :if={@shared}
+        id="harness-choice-shared-group"
+        role="group"
+        aria-labelledby="harness-choice-shared-h"
+        class="grid gap-2"
+      >
+        <p id="harness-choice-shared-h" class="text-[12.5px]/[18px] font-medium text-muted">
+          {gettext("Shared in %{organisation}", organisation: @organisation)}
+        </p>
+        <label id="harness-choice-shared" for="harness-choice-shared-radio" class="q-choice">
+          <input
+            type="radio"
+            id="harness-choice-shared-radio"
+            name={@form[:choice].name}
+            value="shared"
+            checked={@choice == "shared"}
+            disabled={@disabled}
+            class="radio radio-sm radio-primary"
+          />
+          <span class="q-choice-h">
+            {@shared_title}<span class="font-normal text-muted"> · {gettext("every workspace")}</span>
+          </span>
+          <span class="q-choice-p font-mono">{@shared_line}</span>
+        </label>
+      </div>
       <label
         :for={{value, title, line} <- @options}
         id={"harness-choice-#{value}"}
@@ -647,6 +684,10 @@ defmodule ApiaryWeb.HarnessComponents do
     do: String.match?(ref, ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/)
 
   defp commit?(_ref), do: false
+
+  # The title of a harness choice, as the choices show it.
+  defp choice_title(:qory), do: gettext("Qory harness")
+  defp choice_title(:repository), do: gettext("A harness source")
 
   defp short(pin) when is_binary(pin), do: String.slice(pin, 0, @short)
   defp short(_pin), do: ""

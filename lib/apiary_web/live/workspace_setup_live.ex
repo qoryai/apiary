@@ -96,9 +96,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
   #     "Available to every workspace in <organisation>", off; on, Continue saves the
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
-  #     with no choice reuses, shown chosen. While the organisation shares one, a second
-  #     is refused, and the step says to choose the shared harness or turn the setting
-  #     off. Under the
+  #     with no choice reuses. While the workspace reuses it, the shared harness comes
+  #     first, chosen, under "Shared in <organisation>" and marked "every workspace",
+  #     and Continue with it chosen goes on with nothing saved. While the organisation
+  #     shares one, a second is refused, and the step says to choose the shared harness
+  #     or turn the setting off. Under the
   #     choices, Targets lists the workspace's destinations, the rows the Destinations
   #     step ticked, each with Workspace default or the stack chosen for it
   #     (`Apiary.Stacks.Sources.targets_chosen/1`,
@@ -518,6 +520,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     chosen = Sources.chosen(workspace)
     may = Access.can?(scope, :"harness.save", workspace)
     targets = harness_targets(scope, flow)
+    shared = shared_harness(scope, chosen)
+    params = HarnessComponents.form_params(chosen, socket.assigns.linked)
 
     socket
     |> assign(
@@ -529,6 +533,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           gettext("Only owners and admins change this.")
         ),
       chosen: chosen,
+      shared_harness: shared,
       qory: HarnessComponents.qory(chosen, workspace),
       saving: false,
       harness_refusal: nil,
@@ -539,7 +544,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       target_edit: kept_edit(socket.assigns[:target_edit], targets, may),
       done: step_done?(socket.assigns.flow, :harness)
     )
-    |> assign_harness_form(HarnessComponents.form_params(chosen, socket.assigns.linked))
+    |> assign_harness_form(if(shared, do: %{params | "choice" => "shared"}, else: params))
     |> list_linked()
   end
 
@@ -664,6 +669,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp assign_harness_form(socket, params),
     do: assign(socket, form: to_form(params, as: :harness))
+
+  # The harness the organisation shares, as `Apiary.Stacks.Sources.chosen/1` returns it,
+  # while the workspace reuses it and the edition shows the setting that shares one
+  # (`c:Apiary.Edition.scope_setting?/1`); nil else.
+  defp shared_harness(scope, %{shared: true} = chosen),
+    do: if(Edition.scope_setting?(scope), do: chosen)
+
+  defp shared_harness(_scope, _chosen), do: nil
+
+  # The choice the Harness form's `params` come to: `:shared` for the harness the
+  # organisation shares, where the step lists it (`shared`); else
+  # `ApiaryWeb.HarnessComponents.choice/2`.
+  defp harness_choice(%{"choice" => "shared"}, _linked, %{} = _shared), do: :shared
+  defp harness_choice(params, linked, _shared), do: HarnessComponents.choice(params, linked)
 
   # The linked repositories, read once per page, outside the page's process, for a person
   # who may save.
@@ -1360,9 +1379,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     %{current_scope: scope, linked: linked, chosen: chosen} = socket.assigns
     socket = assign_harness_form(socket, params)
 
-    case HarnessComponents.choice(params, linked) do
+    case harness_choice(params, linked, socket.assigns.shared_harness) do
       nil ->
         {:noreply, socket}
+
+      # The workspace reuses the harness the organisation shares, as it does with no
+      # choice: nothing to save.
+      :shared ->
+        {:noreply, go_on(socket)}
 
       choice ->
         shared = share?(scope, params)
@@ -2355,7 +2379,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp flow_step(%{step: :harness} = assigns) do
     assigns =
       assign(assigns,
-        choice: HarnessComponents.choice(assigns.form.params, assigns.linked)
+        choice: harness_choice(assigns.form.params, assigns.linked, assigns.shared_harness)
       )
 
     ~H"""
@@ -2379,6 +2403,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             organisation={@flow.organisation.name}
             disabled={!@may or @saving}
             file_first={@harness_file}
+            shared={@shared_harness}
           />
 
           <.input
