@@ -2336,7 +2336,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
         <p id="set-up-test-harness">
           {gettext(
-            "The run uses a harness built into Qory Apiary, qory's hello example at a fixed version, in place of the harness you chose. The test work item has no ticket and no target. The run changes no target, and Qory Apiary sends nothing to a work source or destination."
+            "The run uses a harness built into Qory Apiary, qory's hello example at a fixed version, in place of the harness of %{workspace}. The test work item has no ticket and no target. The run changes no target, and Qory Apiary sends nothing to a work source or destination.",
+            workspace: @workspace.name
           )}
         </p>
         <p id="set-up-test-after">
@@ -2678,19 +2679,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <:context>
         <p id="set-up-what">
           {gettext(
-            "A node pool takes the runs of %{workspace} from its queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue.",
-            workspace: @flow.workspace.name
+            "A node pool takes runs from the queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue."
           )}
         </p>
         <p id="set-up-machines-pools">
           {gettext(
-            "The instance's pool runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone.",
+            "The instance's pool, where the instance has one, runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone.",
             workspace: @flow.workspace.name
           )}
         </p>
         <p id="set-up-machines-why">
           {gettext(
-            "Runs need a ready pool, as only a machine that joined a pool takes them. They also need a gateway: Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
+            "The runs of work items need a ready pool: one with an active key, and a gateway with an active key. Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
           )}
         </p>
       </:context>

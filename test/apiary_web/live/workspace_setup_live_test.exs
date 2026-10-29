@@ -2404,7 +2404,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-test-run")
     end
 
-    test "About this step says what the test run adds, its harness, and what a pass finishes",
+    test "About this step shows what the test run adds, its harness, and what a pass finishes",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, test_path(scope))
       workspace = scope.workspace.name
@@ -2421,9 +2421,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # The software domain's words: a repository, not a target.
       assert words(lv, "#set-up-context #set-up-test-harness") ==
                "The run uses a harness built into Qory Apiary, qory's hello example at a " <>
-                 "fixed version, in place of the harness you chose. The test work item has no " <>
-                 "ticket and no repository. The run changes no repository, and Qory Apiary " <>
-                 "sends nothing to a work source or destination."
+                 "fixed version, in place of the harness of #{workspace}. The test work item " <>
+                 "has no ticket and no repository. The run changes no repository, and Qory " <>
+                 "Apiary sends nothing to a work source or destination."
 
       assert words(lv, "#set-up-context #set-up-test-after") ==
                "Once a test run passes, the set-up of #{workspace} is finished, and a link to " <>
@@ -3397,7 +3397,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-continue") == "Continue"
   end
 
-  test "About this step says what a pool and a node are, which pool takes which runs, and why",
+  test "About this step shows what a pool and a node are, which pool takes which runs, and why",
        ctx do
     lv = open(ctx)
     workspace = ctx.scope.workspace.name
@@ -3412,19 +3412,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              ["set-up-what", "set-up-machines-pools", "set-up-machines-why"]
 
     assert words(lv, "#set-up-context #set-up-what") ==
-             "A node pool takes the runs of #{workspace} from its queue and starts them on " <>
-               "the machines that joined the pool. A node is one permanent machine, and " <>
-               "takes no runs from the queue."
+             "A node pool takes runs from the queue and starts them on the machines that " <>
+               "joined the pool. A node is one permanent machine, and takes no runs from the " <>
+               "queue."
 
     assert words(lv, "#set-up-context #set-up-machines-pools") ==
-             "The instance's pool runs beside this Qory Apiary and takes the runs of every " <>
-               "workspace that has no pool. A pool for #{workspace} takes the runs of " <>
-               "#{workspace} alone."
+             "The instance's pool, where the instance has one, runs beside this Qory Apiary " <>
+               "and takes the runs of every workspace that has no pool. A pool for " <>
+               "#{workspace} takes the runs of #{workspace} alone."
 
     assert words(lv, "#set-up-context #set-up-machines-why") ==
-             "Runs need a ready pool, as only a machine that joined a pool takes them. They " <>
-               "also need a gateway: Qory Apiary returns a run's secrets, such as its model " <>
-               "key, only to a gateway, encrypted to the gateway's access key."
+             "The runs of work items need a ready pool: one with an active key, and a " <>
+               "gateway with an active key. Qory Apiary returns a run's secrets, such as its " <>
+               "model key, only to a gateway, encrypted to the gateway's access key."
   end
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
