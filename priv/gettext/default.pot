@@ -4698,6 +4698,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr ""
@@ -11409,7 +11410,6 @@ msgid "On %{name}, by qory"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "On %{name}, run:"
 msgstr ""
@@ -11447,6 +11447,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "On since %{day}."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "On the machine for the pool %{pool}, run:"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11678,6 +11683,7 @@ msgid "Only owners and admins delete a workspace."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins delete nodes."
 msgstr ""
@@ -13044,6 +13050,11 @@ msgstr ""
 msgid "Remove harness sources or files, then start the run again. The run stopped before it started: the call to %{adapter} for %{what} was over 256 KiB."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Remove pool"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove program…"
@@ -13087,6 +13098,11 @@ msgstr ""
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the label filter"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the pool %{pool}? Runs in %{workspace} then use the instance's pool."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -13721,6 +13737,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Run the test"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Run this on the Linux machine with Docker that runs the runs in %{workspace}. It joins that machine to the pool %{pool}. Install qory there first:"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -15932,6 +15953,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The machines in %{pool} stop taking runs, because the pool's access key is revoked."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail.ex

@@ -608,6 +608,18 @@ defmodule Apiary.WorkspaceSetup do
     end
   end
 
+  @doc false
+  # instance_line/0 is the line of the instance's pool, with its state by the rule of
+  # `machines/1`, whether it serves a workspace or not; not ready for `:no_pool` where the
+  # instance has no pool.
+  @spec instance_line() :: pool_line
+  def instance_line do
+    case Repo.one(Installed.live_query(:pool)) do
+      nil -> %{pool: nil, instance: true, state: {:not_ready, :no_pool}}
+      pool -> %{pool: pool, instance: true, state: pool_state(pool)}
+    end
+  end
+
   # A pool is ready with an active key and a choice that resolves to a gateway with an
   # active key; else not ready, for the first reason of `t:not_ready_reason/0` that holds.
   # `Gateways.resolve/1` returns `:gateway_key` for a gateway alone, never for a pool.

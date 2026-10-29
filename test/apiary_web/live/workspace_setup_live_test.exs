@@ -2766,6 +2766,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   import Apiary.AccountsFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Repo, WorkspaceSetup}
   alias Apiary.Nodes.Node
@@ -2969,8 +2970,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     id = "#set-up-pool-#{pool.public_id}"
 
     lv = open(ctx)
-    refute has_element?(lv, "#set-up-pool-instance")
-    assert has_element?(lv, "#{id}-radio[checked][disabled]")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    refute has_element?(lv, "#{id}-radio")
     assert words(lv, "#{id}-name") == pool.name
     assert words(lv, "#{id}-state") == "Not ready: no active key"
 
@@ -2978,11 +2979,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/nodes/#{pool.public_id}"
 
     refute has_element?(lv, "#{id}-who-may")
-    refute has_element?(lv, "#set-up-pool-choice")
     assert words(lv, "#{id}-code") == "Get the command"
     assert has_element?(lv, "#set-up-skip")
 
     lv = open(ctx, member(ctx.organisation))
+    refute has_element?(lv, "#set-up-pool-instance")
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert has_element?(lv, "#{id}-radio[checked][disabled]")
     assert words(lv, "#{id}-name") == pool.name
     refute has_element?(lv, "#{id}-name a")
     assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
@@ -3013,7 +3016,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              "Not ready: the pool's runs may not go through the chosen gateway"
   end
 
-  test "two pools of the workspace: each with its state, neither shown chosen", ctx do
+  test "two pools of the workspace: each with its state, neither shown chosen, and no removal",
+       ctx do
     first = pool_fixture(ctx.scope)
     second = pool_fixture(ctx.scope)
 
@@ -3024,6 +3028,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       assert words(lv, "#{id}-state") == "Not ready: no active key"
       refute has_element?(lv, "#{id}-radio")
     end
+
+    refute has_element?(lv, "#set-up-pool-choice")
+    refute has_element?(lv, "#set-up-pool-instance")
+
+    # The page sent the removal's events, as a page of one pool would.
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    refute has_element?(lv, "#set-up-pool-remove")
+    render_click(lv, "remove_pool", %{})
+    assert Enum.map(workspace_pools(ctx.scope.workspace), & &1.id) == [first.id, second.id]
   end
 
   # The workspace's pools in use, as the step reads them.
@@ -3085,9 +3098,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert pool.workspace_id == workspace.id
 
     id = "#set-up-pool-#{pool.public_id}"
-    refute has_element?(lv, "#set-up-pool-choice")
-    refute has_element?(lv, "#set-up-pool-instance")
-    assert has_element?(lv, "#{id}-radio[checked][disabled]")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    refute has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    refute has_element?(lv, "#set-up-pool-remove")
     assert words(lv, "#{id}-name") == pool.name
     assert words(lv, "#{id}-state") == "Not ready: no active key"
     assert words(lv, "#{id}-code") == "Get the command"
@@ -3112,7 +3126,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     # The other page still shows the choice: its click makes no pool, and it reads again.
     other |> element("#set-up-pool-add-button") |> render_click()
     assert [^pool] = workspace_pools(workspace)
-    refute has_element?(other, "#set-up-pool-choice")
+    assert has_element?(other, "#set-up-pool-workspace-radio[checked]")
+    refute has_element?(other, "#set-up-pool-add-button")
     assert has_element?(other, "#set-up-pool-#{pool.public_id}")
     refute has_element?(other, "#set-up-pool-taken")
   end
@@ -3165,8 +3180,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     lv |> element("#{id}-code") |> render_click()
 
-    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+    assert words(lv, "#{id}-command-run") == "On the machine for the pool #{pool.name}, run:"
     assert command(lv, id) =~ ~r{\Aqory access-key enrol \S+ \S+\z}
+
+    assert words(lv, "#{id}-command-where") ==
+             "Run this on the Linux machine with Docker that runs the runs in #{ctx.scope.workspace.name}. It joins that machine to the pool #{pool.name}. Install qory there first:"
+
+    assert words(lv, "#{id}-command-install-text") ==
+             "curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh"
+
+    assert has_element?(lv, "#{id}-command-install-copy")
     refute command(lv, id) =~ "--via"
     refute command(lv, id) =~ "--replace"
     assert has_element?(lv, "#{id}-command-line-copy")
@@ -3304,7 +3327,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       |> live(ctx.path)
 
     lv |> element("#{id}-code") |> render_click()
-    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+    assert words(lv, "#{id}-command-run") == "On the machine for the pool #{pool.name}, run:"
   end
 
   test "a pool with two active keys offers no command", ctx do
@@ -3373,5 +3396,201 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     pool = pool_fixture(ctx.scope)
     lv = open(ctx, member)
     assert words(lv, "#set-up-pool-#{pool.public_id}-who-may") == "Harbour Ops enrols the pool."
+  end
+
+  defp choose_shared(lv),
+    do: lv |> form("#set-up-pool-choice", pool: %{choice: "shared"}) |> render_change()
+
+  # Whether the node `pool` is deleted.
+  defp deleted?(pool), do: Repo.get!(Node, pool.id).deleted_at != nil
+
+  test "with a pool of the workspace, an owner sees both choices, the pool chosen; Shared opens the removal, Cancel closes it",
+       ctx do
+    _instance_pool = ready_instance!()
+    workspace = ctx.scope.workspace
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert words(lv, "#set-up-pool-#{pool.public_id}-name") == pool.name
+    refute has_element?(lv, "#set-up-pool-remove")
+
+    choose_shared(lv)
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+
+    assert words(lv, "#set-up-pool-remove-line") ==
+             "Remove the pool #{pool.name}? Runs in #{workspace.name} then use the instance's pool."
+
+    refute has_element?(lv, "#set-up-pool-remove-enrolled")
+    assert words(lv, "#set-up-pool-remove-button") == "Remove pool"
+    assert words(lv, "#set-up-pool-remove-cancel") == "Cancel"
+
+    lv |> element("#set-up-pool-remove-cancel") |> render_click()
+    refute has_element?(lv, "#set-up-pool-remove")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    refute deleted?(pool)
+
+    # The workspace's pool chosen again closes the removal too, and Remove pool sent with
+    # the removal closed deletes nothing.
+    choose_shared(lv)
+    choose_workspace_pool(lv)
+    refute has_element?(lv, "#set-up-pool-remove")
+    render_click(lv, "remove_pool", %{})
+    refute deleted?(pool)
+
+    # An entry to the step starts with the removal closed.
+    choose_shared(lv)
+    render_patch(lv, ctx.test_path)
+    render_patch(lv, ctx.path)
+    refute has_element?(lv, "#set-up-pool-remove")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+  end
+
+  test "Remove pool deletes the workspace's pool: Shared shows chosen, with no pool and no command",
+       ctx do
+    instance_pool = ready_instance!()
+    workspace = ctx.scope.workspace
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    lv = open(ctx)
+
+    lv |> element("#{id}-code") |> render_click()
+    assert has_element?(lv, "#{id}-command")
+
+    choose_shared(lv)
+    lv |> element("#set-up-pool-remove-button") |> render_click()
+
+    assert deleted?(pool)
+    assert [%Node{id: serving}] = WorkspaceSetup.serving_pools(workspace)
+    assert serving == instance_pool.id
+
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    refute has_element?(lv, id)
+    refute has_element?(lv, "#{id}-command")
+    refute has_element?(lv, "#set-up-pool-remove")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "the line on the pool's machines shows only where a machine enrolled on the pool", ctx do
+    _instance_pool = instance_pool_fixture()
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+    choose_shared(lv)
+    assert has_element?(lv, "#set-up-pool-remove-line")
+    refute has_element?(lv, "#set-up-pool-remove-enrolled")
+
+    %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+    assert Apiary.AccessKeys.active_key?(pool)
+    lv = open(ctx)
+    choose_shared(lv)
+
+    assert words(lv, "#set-up-pool-remove-enrolled") ==
+             "The machines in #{pool.name} stop taking runs, because the pool's access key is revoked."
+
+    lv |> element("#set-up-pool-remove-button") |> render_click()
+    assert deleted?(pool)
+    refute Apiary.AccessKeys.active_key?(pool)
+    assert Repo.get!(Apiary.AccessKeys.AccessKey, key.id).revoked_at != nil
+  end
+
+  test "a person whom node.delete no longer allows is refused, and the pool stays", ctx do
+    _instance_pool = instance_pool_fixture()
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+    choose_shared(lv)
+
+    {1, _} =
+      Repo.update_all(
+        from(m in Membership,
+          where: m.user_id == ^ctx.user.id and m.organisation_id == ^ctx.organisation.id
+        ),
+        set: [level: :member]
+      )
+
+    lv |> element("#set-up-pool-remove-button") |> render_click()
+    refute deleted?(pool)
+    assert words(lv, "#flash-error") =~ "Only owners and admins delete nodes."
+    refute has_element?(lv, "#set-up-pool-remove")
+  end
+
+  test "a pool deleted meanwhile: Remove pool reads the step again, and Shared shows chosen",
+       ctx do
+    _instance_pool = instance_pool_fixture()
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+    choose_shared(lv)
+
+    pool |> Ecto.Changeset.change(deleted_at: DateTime.utc_now()) |> Repo.update!()
+
+    lv |> element("#set-up-pool-remove-button") |> render_click()
+    refute has_element?(lv, "#set-up-pool-#{pool.public_id}")
+    refute has_element?(lv, "#set-up-pool-remove")
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    refute has_element?(lv, "#flash-error")
+  end
+
+  test "a second pool added elsewhere while the removal is open: Remove pool deletes nothing, and no removal is offered",
+       ctx do
+    _instance_pool = instance_pool_fixture()
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+    choose_shared(lv)
+    assert has_element?(lv, "#set-up-pool-remove")
+
+    {:ok, second} = Apiary.Nodes.create_node(ctx.scope, %{kind: "pool", name: "second pool"})
+
+    lv |> element("#set-up-pool-remove-button") |> render_click()
+    refute deleted?(pool)
+    refute deleted?(second)
+    refute has_element?(lv, "#set-up-pool-remove")
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert has_element?(lv, "#set-up-pool-#{pool.public_id}")
+    assert has_element?(lv, "#set-up-pool-#{second.public_id}")
+  end
+
+  test "with no pool of the instance, Shared shows not ready for no pool, and no removal is offered",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
+    assert has_element?(lv, "#set-up-pool-instance-radio[disabled]")
+    refute has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+
+    # The page sent the removal's events, as a page with the instance's pool would.
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    refute has_element?(lv, "#set-up-pool-remove")
+    render_click(lv, "remove_pool", %{})
+    render_click(lv, "keep_pool", %{})
+    refute deleted?(pool)
+    refute has_element?(lv, "#set-up-pool-remove")
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+  end
+
+  test "a person who may not delete nodes gets no removal: the pool shows as before", ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    member = member(ctx.organisation)
+    lv = open(ctx, member)
+
+    refute has_element?(lv, "#set-up-pool-choice")
+    refute has_element?(lv, "#set-up-pool-instance")
+    assert has_element?(lv, "#{id}-radio[checked][disabled]")
+
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    render_click(lv, "remove_pool", %{})
+    render_click(lv, "keep_pool", %{})
+    refute has_element?(lv, "#set-up-pool-remove")
+    refute deleted?(pool)
+    assert read_only?(lv)
   end
 end
