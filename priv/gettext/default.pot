@@ -11302,6 +11302,7 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/choose_collections_live.ex
+#: lib/apiary_web/live/harness_targets.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex

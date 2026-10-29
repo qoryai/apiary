@@ -113,8 +113,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     shares one, a second is refused, and the step says to choose the shared harness
   #     or turn the setting off. Under the choices, Targets lists the workspace's
   #     destinations, the rows the Destinations step ticked, each with a Stack select
-  #     (`Apiary.Stacks.Sources.targets_chosen/1`,
-  #     `ApiaryWeb.HarnessComponents.targets/1`): the workspace's harness, which removes
+  #     (`Apiary.Stacks.Sources.targets_chosen/1`, `ApiaryWeb.HarnessComponents.targets/1`,
+  #     `ApiaryWeb.HarnessTargets`): the workspace's harness, which removes
   #     the destination's stack; a stack the workspace's saved harness exports, the Qory
   #     harness's from the release's list, a harness repository's read outside the page's
   #     process; or A stack of another repository…, which opens the destination's form, a
@@ -203,12 +203,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Adapters.Connections, as: AdapterConnections
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
 
   alias ApiaryWeb.{
     HarnessComponents,
+    HarnessTargets,
     IntegrationComponents,
     OverviewComponents,
     SetUpComponents
@@ -574,7 +574,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       harness_refusal: nil,
       harness_targets: targets,
       harness_assigned: if(may, do: Sources.assigned(scope), else: []),
-      target_edit: kept_edit(socket.assigns[:target_edit], targets, may),
+      target_edit: HarnessTargets.kept_edit(socket.assigns[:target_edit], targets, may),
       done: step_done?(socket.assigns.flow, :harness)
     )
     |> assign_harness_form(
@@ -582,7 +582,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
     |> list_linked()
     |> read_exports()
-    |> read_workspace_stacks()
+    |> HarnessTargets.read_workspace_stacks()
   end
 
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
@@ -782,38 +782,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # The stacks the workspace's saved harness exports, as a destination's Stack offers
-  # them: the Qory harness's from the release's list, with no read; a harness repository's
-  # read outside the page's process at the `ref` a run reads it at, once per repository
-  # and `ref`, where a person who may save has a destination.
-  defp read_workspace_stacks(%{assigns: %{chosen: %{choice: :qory}}} = socket),
-    do:
-      assign(socket, workspace_stacks: Definition.qory_harness().stacks, workspace_stacks_of: nil)
-
-  defp read_workspace_stacks(%{assigns: %{may: true, harness_targets: [_ | _]}} = socket) do
-    %{chosen: chosen, current_scope: scope} = socket.assigns
-    of = {chosen.git, chosen.pin}
-
-    cond do
-      socket.assigns.workspace_stacks_of == of ->
-        socket
-
-      connected?(socket) ->
-        source = HarnessComponents.exports_source(chosen)
-
-        socket
-        |> assign(workspace_stacks: nil, workspace_stacks_of: of)
-        |> cancel_async(:workspace_stacks)
-        |> start_async(:workspace_stacks, fn -> {of, Sources.exports(scope, source)} end)
-
-      true ->
-        assign(socket, workspace_stacks: nil, workspace_stacks_of: nil)
-    end
-  end
-
-  defp read_workspace_stacks(socket),
-    do: assign(socket, workspace_stacks: nil, workspace_stacks_of: nil)
-
   # The linked repositories, read once per page, outside the page's process, for a person
   # who may save.
   defp list_linked(%{assigns: %{listing: false, may: true}} = socket) do
@@ -830,226 +798,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp list_linked(socket), do: socket
 
-  # The workspace's destinations, the rows of the Destinations step's list it ticked, one
-  # per target, each with the stack chosen for it, nil for none.
-  defp harness_targets(scope, %{workspace: workspace, domain: domain}) do
-    chosen = Sources.targets_chosen(workspace)
-
-    for {_adapter, rows} <- WorkspaceSetup.collections(scope, domain, :destinations),
-        row <- rows,
-        WorkspaceSetup.ticked?(:destinations, row, workspace) do
-      %{collection: collection} = row
-      target = %{system: collection.target_system, path: collection.target_path}
-
-      %{
-        id: collection.public_id,
-        title: collection.title,
-        target: target,
-        chosen: chosen[{target.system, target.path}]
-      }
-    end
-    |> Enum.uniq_by(& &1.target)
-  end
-
-  # The edit of a destination stays as the step reads again, while the destination is
-  # listed and the person may save.
-  defp kept_edit(%{id: id} = edit, targets, true) do
-    case Enum.find(targets, &(&1.id == id)) do
-      nil -> nil
-      target -> %{edit | target: target.target}
-    end
-  end
-
-  defp kept_edit(_edit, _targets, _may), do: nil
-
-  # The edit of `target`: its form of a stack of another repository where `open`, else a
-  # save of its Stack select.
-  defp new_edit(target, open) do
-    %{
-      id: target.id,
-      target: target.target,
-      open: open,
-      source_id: "",
-      address: "",
-      address_error: nil,
-      source: nil,
-      stacks: nil,
-      names: nil,
-      reading: false,
-      read_error: nil,
-      stack: "",
-      version: "branch",
-      branch: "main",
-      fixed: "",
-      ref: "main",
-      refusal: nil,
-      saving: false
-    }
-  end
-
-  # The choice of a destination's Stack select: the workspace's harness, or one of its
-  # stacks; nil for the saved stack, which needs no save.
-  defp row_choice("default"), do: :default
-  defp row_choice("workspace:" <> stack) when stack != "", do: {:workspace, stack}
-  defp row_choice(_value), do: nil
-
-  # The form's values sent: the stack and the version, then a source chosen anew or an
-  # address typed.
-  defp pick_target(socket, edit, params) do
-    edit = edit_values(edit, params)
-    source_id = params["source"] || edit.source_id
-
-    cond do
-      source_id != edit.source_id -> pick_source(socket, edit, source_id, params["address"])
-      source_id == "address" -> target_address(socket, edit, params["address"])
-      true -> assign(socket, :target_edit, edit)
-    end
-  end
-
-  defp edit_values(edit, params) do
-    %{
-      edit
-      | stack: params["stack"] || edit.stack,
-        version: params["version"] || edit.version,
-        branch: params["branch"] || edit.branch,
-        fixed: params["fixed"] || edit.fixed,
-        ref: params["ref"] || edit.ref,
-        refusal: nil
-    }
-  end
-
-  defp pick_source(socket, edit, "address", text) do
-    edit = %{
-      edit
-      | source_id: "address",
-        source: nil,
-        stacks: nil,
-        names: nil,
-        read_error: nil,
-        reading: false
-    }
-
-    socket |> cancel_async(:target_read) |> target_address(edit, text || edit.address)
-  end
-
-  defp pick_source(socket, edit, id, _text) do
-    %{linked: linked, harness_assigned: assigned} = socket.assigns
-
-    case Enum.find((linked || []) ++ assigned, &(&1.id == id)) do
-      nil ->
-        socket
-        |> cancel_async(:target_read)
-        |> assign(:target_edit, %{
-          edit
-          | source_id: "",
-            source: nil,
-            stacks: nil,
-            names: nil,
-            read_error: nil,
-            reading: false
-        })
-
-      source ->
-        read_target(socket, edit, source)
-    end
-  end
-
-  # The address typed, checked, and read when it passes; nothing is read again for the
-  # same address.
-  defp target_address(socket, edit, text) when is_binary(text) do
-    cond do
-      text == edit.address and edit.source != nil ->
-        assign(socket, :target_edit, edit)
-
-      String.trim(text) == "" ->
-        socket
-        |> cancel_async(:target_read)
-        |> assign(:target_edit, %{
-          edit
-          | address: text,
-            address_error: nil,
-            source: nil,
-            stacks: nil,
-            read_error: nil,
-            reading: false
-        })
-
-      true ->
-        case Sources.address(text) do
-          {:ok, source} ->
-            read_target(socket, %{edit | address: text, address_error: nil}, source)
-
-          {:error, error} ->
-            socket
-            |> cancel_async(:target_read)
-            |> assign(:target_edit, %{
-              edit
-              | address: text,
-                address_error: translate_error(error),
-                source: nil,
-                stacks: nil,
-                read_error: nil,
-                reading: false
-            })
-        end
-    end
-  end
-
-  defp target_address(socket, edit, _text), do: assign(socket, :target_edit, edit)
-
-  # `source` chosen: outside the page's process, the stacks a connected repository
-  # exports (`Apiary.Stacks.Sources.exports/2`), else the stacks of an assigned source or
-  # an address (`Apiary.Stacks.Sources.read/2`); a later choice cancels this read.
-  defp read_target(socket, edit, source) do
-    scope = socket.assigns.current_scope
-    id = if source.kind == :address, do: "address", else: source.id
-
-    read =
-      if source.kind == :linked,
-        do: fn -> {source.id, source.git, Sources.exports(scope, source)} end,
-        else: fn -> {source.id, source.git, Sources.read(scope, source)} end
-
-    socket
-    |> assign(:target_edit, %{
-      edit
-      | source_id: id,
-        source: source,
-        stacks: nil,
-        names: nil,
-        stack: if(source.kind == :linked, do: "", else: "0"),
-        read_error: nil,
-        reading: true
-    })
-    |> cancel_async(:target_read)
-    |> start_async(:target_read, read)
-  end
-
-  # The save of `choice` for the destination of `edit`: outside the page's process where
-  # the save reads a harness repository, as a stack of the workspace's harness repository
-  # does.
-  defp save_target_choice(socket, edit, choice) do
-    scope = socket.assigns.current_scope
-
-    if reads?(choice, socket.assigns.chosen) do
-      target = edit.target
-
-      socket
-      |> assign(:target_edit, %{edit | saving: true})
-      |> start_async(:target_save, fn ->
-        {choice, Sources.choose_target(scope, target, choice)}
-      end)
-    else
-      socket
-      |> assign(:target_edit, edit)
-      |> target_saved(choice, Sources.choose_target(scope, edit.target, choice))
-    end
-  end
-
-  defp reads?({:workspace, _stack}, %{choice: choice}), do: choice == :repository
-  defp reads?(:default, _chosen), do: false
-  defp reads?(_choice, _chosen), do: true
-
-  # The answer to a save of the stack `choice` for a destination.
+  # The answer to a save of the stack `choice` for a destination
+  # (`ApiaryWeb.HarnessTargets`).
   defp target_saved(socket, _choice, {:ok, _stack}) do
     %{current_scope: scope, flow: flow} = socket.assigns
     assign(socket, target_edit: nil, harness_targets: harness_targets(scope, flow))
@@ -1062,27 +812,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       |> load_step()
       |> put_flash(:error, socket.assigns.who_may)
 
-  defp target_saved(%{assigns: %{target_edit: %{} = edit}} = socket, choice, {:error, reason}) do
-    {source, ref} =
-      case choice do
-        {:workspace, _stack} ->
-          chosen = socket.assigns.chosen
-          {HarnessComponents.exports_source(chosen), chosen.pin}
+  defp target_saved(socket, choice, {:error, reason}),
+    do: HarnessTargets.refused(socket, choice, reason, socket.assigns.flow.organisation.name)
 
-        choice ->
-          HarnessComponents.refused(choice)
-      end
-
-    organisation = socket.assigns.flow.organisation.name
-
-    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
-      nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
-      words -> assign(socket, :target_edit, %{edit | refusal: words})
-    end
-  end
-
-  defp target_saved(socket, _choice, {:error, _reason}),
-    do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+  defp harness_targets(scope, flow),
+    do: HarnessTargets.targets(scope, flow.workspace, flow.domain)
 
   ## The Model step's form
 
@@ -1595,37 +1329,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         %{"row" => %{"id" => id, "stack" => value}},
         %{assigns: %{step: :harness, may: true}} = socket
       )
-      when is_binary(id) and is_binary(value) do
-    saving = match?(%{saving: true}, socket.assigns.target_edit)
-
-    case Enum.find(socket.assigns.harness_targets, &(&1.id == id)) do
-      # A save in flight finishes first, so its answer reaches its destination.
-      _target when saving ->
-        {:noreply, socket}
-
-      nil ->
-        {:noreply, socket}
-
-      target when value == "other" ->
-        {:noreply,
-         socket |> cancel_async(:target_read) |> assign(:target_edit, new_edit(target, true))}
-
-      target ->
-        socket = cancel_async(socket, :target_read)
-
-        case row_choice(value) do
-          nil -> {:noreply, assign(socket, :target_edit, nil)}
-          choice -> {:noreply, save_target_choice(socket, new_edit(target, false), choice)}
-        end
-    end
-  end
+      when is_binary(id) and is_binary(value),
+      do: {:noreply, HarnessTargets.choose_row(socket, id, value, &target_saved/3)}
 
   def handle_event(
         "cancel_target",
         _params,
         %{assigns: %{step: :harness, target_edit: %{saving: false}}} = socket
       ),
-      do: {:noreply, socket |> cancel_async(:target_read) |> assign(:target_edit, nil)}
+      do: {:noreply, HarnessTargets.cancel(socket)}
 
   def handle_event(
         "pick_target",
@@ -1633,21 +1345,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         %{assigns: %{step: :harness, may: true, target_edit: %{saving: false} = edit}} = socket
       )
       when is_map(params),
-      do: {:noreply, pick_target(socket, edit, params)}
+      do: {:noreply, HarnessTargets.pick(socket, edit, params, socket.assigns.harness_assigned)}
 
   def handle_event(
         "save_target",
         %{"target_stack" => params},
         %{assigns: %{step: :harness, may: true, target_edit: %{saving: false} = edit}} = socket
       )
-      when is_map(params) do
-    edit = edit_values(edit, params)
-
-    case HarnessComponents.target_choice(edit) do
-      nil -> {:noreply, assign(socket, :target_edit, edit)}
-      choice -> {:noreply, save_target_choice(socket, edit, choice)}
-    end
-  end
+      when is_map(params),
+      do: {:noreply, HarnessTargets.save(socket, edit, params, &target_saved/3)}
 
   def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket) do
     line =
@@ -1969,19 +1675,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  def handle_async(:workspace_stacks, {:ok, {of, result}}, socket) do
-    if socket.assigns.workspace_stacks_of == of do
-      stacks =
-        case result do
-          {:ok, names} -> names
-          {:error, _reason} -> []
-        end
-
-      {:noreply, assign(socket, :workspace_stacks, stacks)}
-    else
-      {:noreply, socket}
-    end
-  end
+  def handle_async(:workspace_stacks, {:ok, {of, result}}, socket),
+    do: {:noreply, HarnessTargets.workspace_stacks_read(socket, of, result)}
 
   def handle_async(:workspace_stacks, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, :workspace_stacks, [])}
@@ -2001,45 +1696,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       else: {:noreply, socket}
   end
 
-  def handle_async(:target_read, {:ok, {id, git, result}}, socket) do
-    case socket.assigns[:target_edit] do
-      %{source: %{id: ^id, git: ^git} = source} = edit ->
-        edit =
-          case {source.kind, result} do
-            {:linked, {:ok, names}} ->
-              stack = HarnessComponents.with_stack(%{"stack" => edit.stack}, names)["stack"]
-              %{edit | names: names, stack: stack, reading: false}
+  def handle_async(:target_read, {:ok, read}, socket),
+    do: {:noreply, HarnessTargets.read_done(socket, read)}
 
-            {_kind, {:ok, stacks}} ->
-              %{edit | stacks: stacks, reading: false}
-
-            {_kind, {:error, reason}} ->
-              %{edit | read_error: reason, reading: false}
-          end
-
-        {:noreply, assign(socket, :target_edit, edit)}
-
-      _other ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_async(:target_read, {:exit, _reason}, socket) do
-    case socket.assigns[:target_edit] do
-      %{reading: true} = edit ->
-        {:noreply,
-         assign(socket, :target_edit, %{edit | read_error: :unreadable, reading: false})}
-
-      _other ->
-        {:noreply, socket}
-    end
-  end
+  def handle_async(:target_read, {:exit, _reason}, socket),
+    do: {:noreply, HarnessTargets.read_failed(socket)}
 
   def handle_async(:target_save, {:ok, {choice, result}}, socket) do
     case socket.assigns[:target_edit] do
-      %{saving: true} = edit when socket.assigns.step == :harness ->
-        {:noreply,
-         socket |> assign(:target_edit, %{edit | saving: false}) |> target_saved(choice, result)}
+      %{saving: true} when socket.assigns.step == :harness ->
+        {:noreply, HarnessTargets.save_done(socket, choice, result, &target_saved/3)}
 
       # The step was left: it reads the saved stack when it opens again.
       %{saving: true} ->
@@ -2050,18 +1716,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  def handle_async(:target_save, {:exit, _reason}, socket) do
-    case socket.assigns[:target_edit] do
-      %{saving: true} = edit ->
-        {:noreply,
-         socket
-         |> assign(:target_edit, %{edit | saving: false})
-         |> put_flash(:error, gettext("Nothing was changed. Try again."))}
-
-      _other ->
-        {:noreply, socket}
-    end
-  end
+  def handle_async(:target_save, {:exit, _reason}, socket),
+    do: {:noreply, HarnessTargets.save_failed(socket)}
 
   # The connected repositories are listed: a form with no repository chosen yet takes the
   # saved one, whose exports are then read.
