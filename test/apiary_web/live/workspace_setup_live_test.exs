@@ -1720,7 +1720,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
 
-      assert has_element?(lv, "#harness-source option[selected]", "acme/harness")
+      # Source is a choice with a search box, the first linked repository chosen.
+      linked_id = "linked:" <> Repo.get_by!(Collection, url: @harness_git).public_id
+      assert words(lv, "#harness-source-label") == "Source"
+      assert has_element?(lv, "button#harness-source .q-pick-t.mono", "acme/harness")
+      assert has_element?(lv, ~s(#harness-source-options input[value="#{linked_id}"][checked]))
+      assert has_element?(lv, "#harness-source-search")
+      refute has_element?(lv, "#harness-source-none")
       assert has_element?(lv, "#harness-ref[value=main]")
 
       assert words(lv, "#harness-ref-hint") ==
@@ -1751,6 +1757,93 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert %{choice: :repository, harness: harness} = Apiary.Stacks.choice(ctx.scope.workspace)
       assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
+    end
+
+    test "with no linked repository that has a stack, a line takes the place of Source, and Continue stays off",
+         ctx do
+      linked_harness!(ctx, %{})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      assert words(lv, "#harness-source-none") ==
+               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
+                 "or add the file to a repository."
+
+      refute has_element?(lv, "#harness-source")
+      assert has_element?(lv, "#set-up-continue[disabled]")
+
+      # The Qory harness stays a choice, and Continue saves it.
+      lv |> form("#set-up-harness-form", harness: %{choice: "qory"}) |> render_submit()
+      assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
+    end
+
+    test "with no linked repository that has a stack, a destination's Source shows the line, and an address still reads",
+         ctx do
+      adapter = linked_harness!(ctx, %{})
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      open_target(lv, destination)
+
+      lv
+      |> form("#harness-target-form", target_stack: %{choice: "repository"})
+      |> render_change()
+
+      assert has_element?(lv, "#target_stack_source-g0", "Linked repositories")
+      assert has_element?(lv, ~s(#target_stack_source-0[value=""][disabled]))
+
+      assert words(lv, ~s(label[for="target_stack_source-0"])) ==
+               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
+                 "or add the file to a repository."
+
+      refute has_element?(lv, "#target_stack_source-search")
+
+      # Enter an address stays a choice, and its stack is read.
+      serve_harness(adapter, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+      lv |> form("#harness-target-form", target_stack: %{source: "address"}) |> render_change()
+
+      lv
+      |> form("#harness-target-form", target_stack: %{address: @harness_git})
+      |> render_change()
+
+      render_async(lv, 2_000)
+      assert has_element?(lv, ~s(#target_stack_stack option[value="0"]), "qory-stack.yaml")
+    end
+
+    test "a destination's Source lists the linked repositories with a search box that keeps Enter an address",
+         ctx do
+      linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      open_target(lv, destination)
+
+      lv
+      |> form("#harness-target-form", target_stack: %{choice: "repository"})
+      |> render_change()
+
+      linked_id = "linked:" <> Repo.get_by!(Collection, url: @harness_git).public_id
+      assert has_element?(lv, "#target_stack_source-search")
+      assert has_element?(lv, ~s(#target_stack_source-g0 ~ label input[value="#{linked_id}"]))
+
+      assert has_element?(
+               lv,
+               ~s(#target_stack_source-g2 ~ label[data-keep="true"] input[value="address"])
+             )
+
+      lv |> form("#harness-target-form", target_stack: %{source: linked_id}) |> render_change()
+      render_async(lv, 2_000)
+
+      lv
+      |> form("#harness-target-form", target_stack: %{stack: "0", ref: "main"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert words(lv, "#harness-target-#{destination.public_id}-line") ==
+               "acme/harness · pinned at c3c3c3c"
     end
 
     test "a harness repository at a branch or tag that cannot be read: correct it", ctx do
