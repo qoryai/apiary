@@ -24,8 +24,9 @@ defmodule ApiaryWeb.WorkflowLive do
   # Under the choice, Targets lists the workspace's destinations, each with its Stack
   # select, as the Harness step shows and saves them
   # (`ApiaryWeb.HarnessComponents.targets/1`, `ApiaryWeb.HarnessTargets`). The select's
-  # options come from the saved choice; a save of the choice reads the destinations and
-  # the stacks it exports again. Once a destination's save is refused because
+  # options come from the saved choice; a save of the choice lists the destinations
+  # again, and reads the stacks of a harness repository at a version not read before.
+  # Once a destination's save is refused because
   # `harness.save` no longer allows the person, the selects show disabled. A line shows
   # which workflow the runs follow, where the workspace has one.
   #
