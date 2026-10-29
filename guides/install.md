@@ -824,8 +824,10 @@ With the `factory` feature, both pages have more steps:
     **Test run** you run a test.
 
   Where the edition allows more than one workspace, a workspace added later goes
-  through the same 7 steps.
-  <!-- set-up: shared lists -->
+  through the same 7 steps. Where the edition shows the setting “Available to every
+  workspace in Acme”, **Model** and **Harness** list first the model keys and the
+  harness that the organisation shares, under **Shared in Acme**, each marked **every
+  workspace**: choose one to reuse it.
 
   [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
   steps. Until the test run passes, opening Main opens its next step in place of the

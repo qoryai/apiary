@@ -99,7 +99,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   later, such as “You can change this later in Workspace settings › Workflow.” Where the
   edition allows more than one workspace, a workspace added later goes through the same
   7 steps.
-  <!-- set-up: shared lists -->
+- Where the edition shows the setting “Available to every workspace in Acme”, **Model**
+  and **Harness** list first what the organisation shares, under “Shared in Acme”, each
+  marked “· every workspace”. On **Model**, **Key** lists each model provider with a key
+  that applies to every workspace, then the providers of the workspace alone and **Add a
+  key**; the first is chosen while the workspace has no model choice. On **Harness**,
+  the harness the organisation shares comes first, with its address and pin, chosen
+  while the workspace has no saved choice. **Continue** with the shared harness chosen
+  removes the workspace's saved choice, so its runs use the shared harness. With **Qory
+  harness** or **A harness repository** chosen, **Continue** saves the workspace's
+  choice, also where it is the same as the shared harness, so a later change of the
+  shared harness leaves the workspace's harness as it is. With nothing shared, neither
+  step shows the heading.
 - **Work sources**, “Where does work for Main come from?”, lists the adapters the
   instance has set up that bring tickets for the workspace's type, and **Destinations**,
   “Which repositories may runs in Main change?”, the adapters with repositories that runs
