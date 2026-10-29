@@ -120,18 +120,39 @@ defmodule Apiary.Stacks.SourcesTest do
       assert Sources.exports(ctx.scope, app) == {:ok, []}
     end
 
-    test "both root harness files, or exports that do not read, are unreadable", ctx do
+    test "both root harness files, or exports that do not read, are invalid, with the file and the walk's rule",
+         ctx do
       files = %{
         {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage]\n",
         {"R_harness", "qory.yaml"} => "exports:\n  stacks: [triage]\n",
-        {"R_app", "harness.yaml"} => "exports: 7\n"
+        {"R_app", "qory.yaml"} => "exports: 7\n"
       }
 
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
       [app, harness] = Sources.repositories(ctx.scope)
 
-      assert Sources.exports(ctx.scope, harness) == {:error, :unreadable}
-      assert Sources.exports(ctx.scope, app) == {:error, :unreadable}
+      assert Sources.exports(ctx.scope, harness) ==
+               {:error, {:invalid, "harness.yaml", %{"rule" => "both_files", "values" => %{}}}}
+
+      assert Sources.exports(ctx.scope, app) ==
+               {:error, {:invalid, "qory.yaml", Walk.yaml_rule("qory.yaml", :invalid_exports)}}
+    end
+
+    test "a resolve or a read that fails is unreachable, with the adapter's shown name", ctx do
+      [_app, harness] = Sources.repositories(ctx.scope)
+      title = Apiary.Adapters.title(ctx.adapter.adapter)
+
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files, down: true)
+      assert Sources.exports(ctx.scope, harness) == {:error, {:unreachable, title}}
+
+      serve_calls([ctx.adapter],
+        covered: ctx.covered,
+        files: @files,
+        refuse_at: %{"HEAD" => "internal"}
+      )
+
+      assert Sources.exports(ctx.scope, harness) == {:error, {:unreachable, title}}
+      assert Sources.read(ctx.scope, harness) == {:error, {:unreachable, title}}
     end
 
     test "one another organisation's grant covers is not covered; reads count toward the limit",
@@ -350,7 +371,11 @@ defmodule Apiary.Stacks.SourcesTest do
       serve_calls([ctx.adapter], down: true)
       {:ok, source} = Sources.address(@harness)
 
-      for _n <- 1..10, do: assert(Sources.read(ctx.scope, source) == {:error, :unreadable})
+      title = Apiary.Adapters.title(ctx.adapter.adapter)
+
+      for _n <- 1..10,
+          do: assert(Sources.read(ctx.scope, source) == {:error, {:unreachable, title}})
+
       assert calls() != []
 
       assert {:error, {:limited, seconds}} = Sources.read(ctx.scope, source)
@@ -380,10 +405,14 @@ defmodule Apiary.Stacks.SourcesTest do
       {:ok, app} = Sources.address(@app)
       assert Sources.read(ctx.scope, app) == {:error, :no_stack}
 
-      files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: 7\n")
+      file = "stacks/triage/qory-stack.yaml"
+      files = Map.put(@files, {"R_harness", file}, "modules: 7\n")
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
       {:ok, harness} = Sources.address(@harness)
-      assert Sources.read(ctx.scope, harness) == {:error, :unreadable}
+      {:error, reason} = Apiary.Harnesses.Reader.stack("modules: 7\n")
+
+      assert Sources.read(ctx.scope, harness) ==
+               {:error, {:invalid, file, Walk.yaml_rule(file, reason)}}
     end
   end
 

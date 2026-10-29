@@ -142,8 +142,21 @@ defmodule Apiary.Stacks.Sources do
   @typedoc "A stack of a source: its export name, nil for none, the base a document extends, and its workflows."
   @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
 
-  @typedoc "Why a source's stacks were not read."
-  @type reason :: :not_covered | :no_stack | :unreadable | {:limited, pos_integer}
+  @typedoc """
+  Why a source's stacks were not read: `:not_covered`; `:no_stack`; `{:unreachable,
+  adapter}`, the shown name (`Apiary.Adapters.title/1`) of the adapter whose call failed or
+  ran out of time; `{:invalid, file, rule}`, a file the reader refuses, with the walk's
+  rule for it (`Apiary.Harnesses.Walk.yaml_rule/2`), or both root harness files, with the
+  walk's `both_files` rule, given for `harness.yaml`; `:unreadable`, an address, a path or
+  a version a read does not take; or `{:limited, seconds}`.
+  """
+  @type reason ::
+          :not_covered
+          | :no_stack
+          | {:unreachable, String.t()}
+          | {:invalid, String.t(), map}
+          | :unreadable
+          | {:limited, pos_integer}
 
   ## The sources
 
@@ -339,9 +352,9 @@ defmodule Apiary.Stacks.Sources do
   # exports/2 is the names of the stacks `source`'s root `harness.yaml` or `qory.yaml`
   # lists in its `exports`, read at the source's `ref`, in the file's order: `{:ok,
   # names}`, `[]` for a source with neither file or with no `exports`; `{:error,
-  # reason}`, `:unreadable` for both files or `exports` that do not read, and `{:limited,
-  # seconds}` for a person past their reads of the minute. It calls the adapters, so a
-  # page runs it outside its process.
+  # reason}`, `{:invalid, file, rule}` for both files or `exports` that do not read, and
+  # `{:limited, seconds}` for a person past their reads of the minute. It calls the
+  # adapters, so a page runs it outside its process.
   @spec exports(Scope.t(), source) :: {:ok, [String.t()]} | {:error, reason}
   def exports(%Scope{organisation: %Organisation{} = organisation} = scope, %{} = source) do
     deadline = now() + @read_time
@@ -353,20 +366,23 @@ defmodule Apiary.Stacks.Sources do
          {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
       case {harness, qory} do
         {nil, nil} -> {:ok, []}
-        {content, nil} -> export_names(content)
-        {nil, content} -> export_names(content)
-        _both -> {:error, :unreadable}
+        {content, nil} -> export_names("harness.yaml", content)
+        {nil, content} -> export_names("qory.yaml", content)
+        _both -> {:error, both_files()}
       end
     end
   end
 
-  defp export_names(content) do
+  defp export_names(file, content) do
     case Reader.exports(content) do
       {:ok, %{stacks: names}} -> {:ok, names}
       :none -> {:ok, []}
-      {:error, _reason} -> {:error, :unreadable}
+      {:error, reason} -> {:error, {:invalid, file, Walk.yaml_rule(file, reason)}}
     end
   end
+
+  # Both root harness files: the walk's `both_files` rule, given for `harness.yaml`.
+  defp both_files, do: {:invalid, "harness.yaml", %{"rule" => "both_files", "values" => %{}}}
 
   @doc false
   # read/2 is the stacks of `source` and the workflows each lists (the moduledoc), in the
@@ -458,10 +474,11 @@ defmodule Apiary.Stacks.Sources do
 
   # An adapter whose resolve fails is passed over. A link at a later adapter comes before
   # a public result at an earlier one, as in a run's walk. With neither, the source is
-  # `:unreadable` when any resolve failed, since that adapter may have covered it.
+  # `{:unreachable, adapter}` for the first adapter whose resolve failed or ran out of
+  # time, since that adapter may have covered it.
   defp locate_at(adapters, organisation_id, git, harness_source, deadline) do
     adapters
-    |> Enum.reduce_while(%{public: nil, failed: false}, fn adapter, found ->
+    |> Enum.reduce_while(%{public: nil, failed: nil}, fn adapter, found ->
       with opts when is_list(opts) <- call_opts(deadline) || {:error, :late},
            {:ok, [%{} = result]} <- Calls.resolve(adapter, [git], opts) do
         case linked(adapter, result, organisation_id, harness_source) do
@@ -469,17 +486,19 @@ defmodule Apiary.Stacks.Sources do
           nil -> {:cont, %{found | public: found.public || public(adapter, result)}}
         end
       else
-        {:error, _failure} -> {:cont, %{found | failed: true}}
+        {:error, _failure} -> {:cont, %{found | failed: found.failed || adapter}}
         _other -> {:cont, found}
       end
     end)
     |> case do
       {:ok, link} -> {:ok, link}
       %{public: %{} = public} -> {:ok, public}
-      %{failed: true} -> {:error, :unreadable}
+      %{failed: %Node{} = adapter} -> {:error, unreachable(adapter)}
       _none -> {:error, :not_covered}
     end
   end
+
+  defp unreachable(adapter), do: {:unreachable, Apiary.Adapters.title(adapter)}
 
   # The link of a covered result under a live grant the rule allows; nil for none.
   defp linked(
@@ -520,21 +539,22 @@ defmodule Apiary.Stacks.Sources do
     do: %{adapter: adapter, grant_ref: grant_ref, resource_ref: resource_ref}
 
   # The stacks of the root at `location`, read at `at`: `{:ok, version, stacks}`, each
-  # `%{name, file}`, `[]` for none; `{:error, :unreadable}` for a read that failed, both
-  # root harness files, or a harness file whose `exports` do not read.
+  # `%{name, file}`, `[]` for none; `{:error, reason}` for a read that failed, and
+  # `{:invalid, file, rule}` for both root harness files or a harness file whose
+  # `exports` do not read.
   defp stacks_at(location, at, deadline) do
     with {:ok, harness, version} <- read_file(location, "harness.yaml", at, deadline),
          {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
       case {harness, qory} do
         {nil, nil} -> root_stack(location, version, deadline)
-        {content, nil} -> exported(location, content, version, deadline)
-        {nil, content} -> exported(location, content, version, deadline)
-        _both -> {:error, :unreadable}
+        {content, nil} -> exported(location, "harness.yaml", content, version, deadline)
+        {nil, content} -> exported(location, "qory.yaml", content, version, deadline)
+        _both -> {:error, both_files()}
       end
     end
   end
 
-  defp exported(location, content, version, deadline) do
+  defp exported(location, file, content, version, deadline) do
     case Reader.exports(content) do
       {:ok, %{stacks: [_ | _] = names} = exports} ->
         stacks =
@@ -551,8 +571,8 @@ defmodule Apiary.Stacks.Sources do
       :none ->
         root_stack(location, version, deadline)
 
-      {:error, _reason} ->
-        {:error, :unreadable}
+      {:error, reason} ->
+        {:error, {:invalid, file, Walk.yaml_rule(file, reason)}}
     end
   end
 
@@ -573,7 +593,7 @@ defmodule Apiary.Stacks.Sources do
       {:ok, content, _version} ->
         case Reader.stack(content) do
           {:ok, %{workflows: workflows}} -> {:ok, workflows |> Map.keys() |> Enum.sort()}
-          {:error, _reason} -> {:error, :unreadable}
+          {:error, reason} -> {:error, {:invalid, file, Walk.yaml_rule(file, reason)}}
         end
 
       {:error, reason} ->
@@ -582,9 +602,9 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # The document at `path` at `location`, read at `at` before `deadline`, with no grant
-  # for a public source's location (`read-public`): `{:ok, content | nil, resolved_at}`,
-  # or `{:error, :unreadable}` for a path a read does not take, a call that failed, or no
-  # time left.
+  # for a public source's location (`read-public`): `{:ok, content | nil, resolved_at}`;
+  # `{:error, :unreadable}` for a path or a version a read does not take; or `{:error,
+  # {:unreachable, adapter}}` for a call that failed or no time left.
   defp read_file(location, path, at, deadline) do
     request = %{
       grant_ref: location.grant_ref,
@@ -593,16 +613,16 @@ defmodule Apiary.Stacks.Sources do
       at: at
     }
 
-    opts = call_opts(deadline)
-
-    if CallWire.document_path?(path) and CallWire.version_ref?(at) and is_list(opts) do
+    with true <- CallWire.document_path?(path) and CallWire.version_ref?(at),
+         opts when is_list(opts) <- call_opts(deadline) do
       case Calls.read_at(location.adapter, request, opts) do
         {:ok, %{found: true, content: content, resolved_at: version}} -> {:ok, content, version}
         {:ok, %{found: false, resolved_at: version}} -> {:ok, nil, version}
-        {:error, _failure} -> {:error, :unreadable}
+        {:error, _failure} -> {:error, unreachable(location.adapter)}
       end
     else
-      {:error, :unreadable}
+      false -> {:error, :unreadable}
+      nil -> {:error, unreachable(location.adapter)}
     end
   end
 
