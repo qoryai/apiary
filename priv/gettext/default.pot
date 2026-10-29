@@ -3922,6 +3922,11 @@ msgstr ""
 msgid "All new %{collections} of %{account} go to %{workspace}."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "All new %{collections} of this account go to %{workspace}."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "All people"
@@ -5189,6 +5194,12 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/live/choose_collections_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose %{collections} · %{adapter}"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -18082,6 +18093,11 @@ msgstr ""
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Work sources is set to All for %{account}. Change it there first."
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Work sources is set to All for this account. Change it there first."
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
