@@ -470,8 +470,9 @@ defmodule ApiaryWeb.HarnessComponents do
   # Why no linked repository is listed, where the listing read them all.
   defp none_words,
     do:
-      gettext(
-        "No connected target has a qory-stack.yaml file. Connect a work source, or add the file to a target."
+      pgettext(
+        "plain",
+        "No connected repository has a qory-stack.yaml file. Connect a work source, or add the file to a repository."
       )
 
   defp source_option(source), do: %{value: source.id, title: source.label, mono: :title}
