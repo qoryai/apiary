@@ -105,27 +105,11 @@ With the `factory` feature, **Connect Qory Apiary** has one step for each adapte
 select **Skip**, or **Continue** where the step is set up already, or set the adapter up
 as [Set up a new instance](install.md#set-up-a-new-instance) shows.
 
-The workspace set-up then has three steps under **For Acme** before **Name**, which Acme
-does once:
-
-1. **Where does Acme's work come from?**, the step **Work sources**, and **Where do
-   Acme's changes go?**, the step **Work destinations**, each list the adapters that the
-   instance has set up, with **Connect**. Select **Skip**, or **Continue** where Acme is
-   connected already. You can connect one later in **Organisation settings ›
-   Integrations**.
-2. **Which model do Acme's runs use?**, the step **Model**. In **Provider**, choose the
-   provider of your key, such as **Anthropic API key**; **About this step**, beside the
-   form, shows where to get a key for the provider you choose. Paste the key in **Key**.
-   For LiteLLM, also enter the proxy's https address in **Address**, such as
-   `https://litellm.example.com`. **Runtime** shows **Claude Code**. In **Default
-   model**, keep the first model or choose another, and select **Continue**. Only owners
-   and admins add a model key.
-
-After **Create workspace**, the set-up goes on under **For Main**, and
-[step 8](#8-set-up-main-and-run-the-test) has the steps from there to a test run. Steps 5
-to 7 still connect a node and post a run, from **Nodes** in the sidebar, but Main's
-overview has no box for them, and their node does not count for the step **Machines**,
-which counts node pools only.
+**Create workspace** then opens **Work sources**, the next step of Main's set-up, in place
+of the overview, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
+to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
+sidebar, but Main's overview has no box for them, and their node does not count for the
+step **Machines**, which counts node pools only.
 <!-- /feature -->
 
 The link works once: after it, its page shows "This Qory Apiary is already set up.", and
@@ -298,20 +282,17 @@ version.
 <!-- feature: factory -->
 ## 8. Set up Main and run the test
 
-With the `factory` feature, the workspace set-up goes on under **For Main** after
-**Create workspace**, at `http://localhost:4100/acme/set-up?step=<step>&workspace=main`.
-Until a test run passes, opening Main, `http://localhost:4100/acme/main`, opens its next
-step in place of the overview. The list of steps shows a check mark on each step once it
-is done:
+With the `factory` feature, the workspace set-up goes on after **Create workspace**, at
+`http://localhost:4100/acme/set-up?step=<step>&workspace=main`. Until a test run passes,
+opening Main, `http://localhost:4100/acme/main`, opens its next step in place of the
+overview. The list of steps shows a check mark on each step once it is done:
 
 | Step | Done when |
 |---|---|
-| **Work sources** | Acme has a connected connection to a work source. |
-| **Work destinations** | Acme has a connected connection to a work destination. |
-| **Model** | Acme has a model provider with a key, and a default model. |
 | **Name** | Main exists. |
-| **Work sources used** | Main takes tickets from at least one ticked collection: the collection is Main's, with its Backlog on. |
-| **Destinations used** | At least one ticked repository is Main's. |
+| **Work sources** | Main takes tickets from at least one ticked collection: the collection is Main's, with its Backlog on. |
+| **Destinations** | At least one ticked repository is Main's. |
+| **Model** | Main has a default model, with a model provider that applies to Main and has a key. |
 | **Harness** | Main has a saved harness choice. |
 | **Machines** | A node pool that serves Main's runs has a key in use, and so does the gateway the pool's runs go through. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
 | **Test run** | The step shows **Test run passed**. |
@@ -319,42 +300,67 @@ is done:
 **Run the test** shows once **Machines** is done, so you can leave the other steps for
 later.
 
-1. **Work sources used.** **Which work sources does Main use?** lists the collections of
-   Acme's connections. Tick those whose tickets Main takes in: a ticked collection is
-   assigned to Main, with its Backlog on. A collection of another workspace shows "In
-   Billing (cannot be ticked)", with that workspace's name. Select **Continue**. You can
-   change the list later in **Workspace settings › Work sources**. Only owners and admins
-   tick.
-2. **Destinations used.** **Which repositories may runs in Main change?** lists the
-   repositories of Acme's connections, with "tickets come in" beside each repository
-   whose tickets Main takes in. Tick the repositories Main's runs may change, and select
-   **Continue**. Unticking a repository whose tickets come in also stops its tickets. You
-   can change the list later in **Workspace settings › Destinations**.
-3. **Harness.** **Which harness do runs in Main use?** has three choices:
+1. **Work sources.** **Where does work for Main come from?** lists the adapters that the
+   instance has set up, each with **Connect**. Select **Connect** beside one, and follow
+   the steps that **About this step** lists under its name: the adapter sends you back
+   to this step. Under the adapter, tick the collections whose tickets Main takes in: a
+   ticked collection is assigned to Main, with its Backlog on. Select **Continue**, or
+   **Skip** to leave the step for later. You can change the list later in **Workspace
+   settings › Work sources**, and connect an adapter in **Organisation settings ›
+   Integrations**. One connection to an adapter serves every workspace of Acme. Only
+   owners and admins connect and tick.
+   <!-- set-up: Work sources and Destinations -->
+2. **Destinations.** **Which repositories may runs in Main change?** lists the adapters
+   with repositories, and under each connected one its repositories, with "tickets come
+   in" beside each repository whose tickets Main takes in. Tick the repositories Main's
+   runs may change, and select **Continue**. Unticking a repository whose tickets come
+   in also stops its tickets. You can change the list later in **Workspace settings ›
+   Destinations**.
+3. **Model.** **Which model do runs in Main use?** has three fields. In **Key**, keep
+   **Add a key**, the one option while Main has no model provider to reuse. In
+   **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
+   this step**, beside the form, shows where to get a key for the provider you choose.
+   Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
+   **Address**, such as `https://litellm.example.com`. **Runtime** shows **Claude
+   Code**. In **Default model**, keep the first model or choose another, and select
+   **Continue**. The key is a secret of Main: **Workspace settings › Secrets and
+   variables** lists it, masked, and you replace it there. Only owners and admins add a
+   model key.
+4. **Harness.** **Which harness do runs in Main use?** has two choices:
    - **Qory harness**, `github.com/qoryai/harness` at the commit it is pinned to, the
-     choice when you have made none;
-   - **The harness in each repository**: each run reads its repository's `qory.yaml` or
-     `harness.yaml`;
+     choice when you have made none. A run reads its repository's `harness.yaml` or
+     `qory.yaml` first, where the repository has one.
    - **A harness repository**: choose a repository linked to Acme and, in **Branch or
      tag**, a branch or tag. **Continue** reads the repository and pins the commit that
-     the branch or tag points to; the step shows why the read failed.
+     the branch or tag points to; the step shows why the read failed. A run then reads
+     no harness file of its repository.
 
+   Under **Repositories**, each repository ticked in **Destinations** shows **Workspace
+   default**, or the stack chosen for it. **Change** beside a repository chooses a
+   harness for that repository alone: the **Qory harness**, or **A harness repository**
+   with a **Source**, a **Stack** of it and a **Branch or tag**, then **Save**. A run in
+   that repository then uses that stack, and reads no harness file of the repository.
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
    whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
-   and **Change** there opens the same choices. Only owners and admins save a harness
-   choice.
-4. **Machines.** **Which machines run the runs in Main?** shows the node pools that
+   and **Change** there opens the same two choices. Only owners and admins save a
+   harness choice.
+5. **Machines.** **Which machines run the runs in Main?** shows the node pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
-   shows **Ready** with its gateway, or **Not ready** with the reason. The step
-   changes nothing. The test run passes only through the instance's gateway, set
-   with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
+   shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
+   node pool, you choose between **Shared: the instance's pool** and **A pool for
+   Main**. The test run passes only through the instance's gateway, set with
+   `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
    `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
-   pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added on
-   **Nodes** gets a key without stored secrets, so a test run through it ends before a
-   machine starts it. On an install with the instance's pool and gateway, an instance
-   admin selects **Check the nodes**, which opens **Instance settings › Nodes**: each is
-   ready when **State** shows **Running** or **Last seen**. **Skip** opens **Test run**.
-5. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
+   pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added
+   on **Nodes** gets a key without stored secrets, so a test run through it ends before
+   a machine starts it. On an install with the instance's pool and gateway, keep
+   **Shared: the instance's pool**; an instance admin selects **Check the nodes**, which
+   opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
+   or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
+   for this pool, and the shared pool stops serving them." Its **Add node pool** adds a
+   node pool named Main, and **Get the command** shows the command to run on the pool's
+   machine, with **Copy command**. **Skip** opens **Test run**.
+6. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
    another greeting, and select **Run the test**. The step shows "The test run is queued
    for a machine.", then "The test run is running.", with **See the run** once a machine
    has registered the run. While no pool is ready, the step shows "Runs need a ready
@@ -377,7 +383,7 @@ admin assigned to Acme. For a public repository that is not in the list, choose 
 address**, and enter its address in **Public address**, such as
 `https://github.com/example-org/harness`, without a password or token in it. In
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
-**Save**.
+**Save**. **Save** sets only which workflow Main's runs follow, not their harness.
 <!-- /feature -->
 
 ## Next
