@@ -5862,6 +5862,16 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgid "Correct the address, folder or version of %{source}, or choose another source. Qory Apiary does not read it in that form."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the harness in %{source}, or choose another source: %{rule}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
 msgid "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}."
 msgstr "Correct the branch, tag or commit, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}."
 

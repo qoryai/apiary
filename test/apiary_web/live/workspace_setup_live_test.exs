@@ -2130,6 +2130,50 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Try again, or choose another source. Qory Apiary could not read acme/harness."
     end
 
+    # The walk's failures of a save that no stub here reaches, given as the walk returns
+    # them (`Apiary.Harnesses.Walk.failure/0`).
+    test "a save refused for an address, for the harness's content, or on an error of the walk" do
+      source = %{label: "acme/harness", git: @harness_git}
+
+      failure = fn code, rule ->
+        {:walk,
+         %{
+           failure: code,
+           source: "acme/harness",
+           rule: rule,
+           adapter: nil,
+           adapter_id: nil,
+           call_failure: nil
+         }}
+      end
+
+      words = &ApiaryWeb.HarnessComponents.refusal_words(&1, source, "main", "Acme")
+
+      refused_form =
+        "Correct the address, folder or version of acme/harness, or choose another source. " <>
+          "Qory Apiary does not read it in that form."
+
+      assert words.(failure.(:scp_form, nil)) == refused_form
+
+      assert words.(
+               failure.(:invalid, %{
+                 "message" =>
+                   "write %{source} as an https address: Qory Apiary fetches harness sources " <>
+                     "over https only",
+                 "values" => %{"source" => "http://code.example.com/acme/harness"}
+               })
+             ) == refused_form
+
+      assert ApiaryWeb.HarnessComponents.read_words(:unreadable, source, "Acme") == refused_form
+
+      assert words.(failure.(:invalid, %{"rule" => "size", "values" => %{"n" => 65_536}})) ==
+               "Correct the harness in acme/harness, or choose another source: it is larger " <>
+                 "than 65536 bytes as JSON."
+
+      assert words.(failure.(:walk_error, nil)) ==
+               "Try again, or choose another source. Qory Apiary could not read acme/harness."
+    end
+
     test "a save whose walk cannot reach the adapter or reads a file that is not valid: the cause, and nothing saved",
          ctx do
       adapter = linked_harness!(ctx, @one_export)
