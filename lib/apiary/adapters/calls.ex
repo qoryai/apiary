@@ -20,8 +20,10 @@ defmodule Apiary.Adapters.Calls do
   #      declared the `call_url`), `X-Qory-Contract-Version` (1) and
   #      `X-Qory-Signature-Ed25519`, over `Apiary.Contract.SignedMessage.call/5`;
   #   4. it is sent to the pinned address, with the host kept for `Host`, SNI and the
-  #      certificate's check. No redirect is followed, no body is decompressed, and an
-  #      answer over `max_answer` bytes (1 MiB), counted as it arrives, is refused;
+  #      certificate's check, against the operating system's certificate authorities and,
+  #      with `SSL_CERT_FILE`, that file's (`Apiary.Adapters.CallTrust`). No redirect is
+  #      followed, no body is decompressed, and an answer over `max_answer` bytes (1 MiB),
+  #      counted as it arrives, is refused;
   #   5. the answer counts only when its `X-Qory-Signature-Ed25519` verifies under an
   #      active access key of the adapter (`signed?/5`), over
   #      `Apiary.Contract.SignedMessage.call_answer/3`, bound to the call's signature. A
@@ -58,7 +60,17 @@ defmodule Apiary.Adapters.Calls do
 
   alias Apiary.{AccessKeys, SigningKey}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{CallAddress, CallClock, CallFailure, CallWire, RunCredential, Wire}
+
+  alias Apiary.Adapters.{
+    CallAddress,
+    CallClock,
+    CallFailure,
+    CallTrust,
+    CallWire,
+    RunCredential,
+    Wire
+  }
+
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Integrations.Fetch.Address
@@ -392,7 +404,11 @@ defmodule Apiary.Adapters.Calls do
         # A fixed connect timeout, the attempt's setting: the connect options are part of
         # the key of Finch's pool, so a timeout that changed with each budget would start
         # a pool for each. The attempt's task holds the budget.
-        connect_options: [hostname: target.host, timeout: attempt_setting(settings)],
+        # With `SSL_CERT_FILE`, the certificate authorities to trust
+        # (`Apiary.Adapters.CallTrust`); the peer is verified and the host checked either way.
+        connect_options:
+          [hostname: target.host, timeout: attempt_setting(settings)] ++
+            transport_opts(CallTrust.transport_opts()),
         into: collect(max_answer)
       ]
       |> Keyword.merge(Keyword.get(settings, :req_options, []))
@@ -407,6 +423,9 @@ defmodule Apiary.Adapters.Calls do
         :unreachable
     end
   end
+
+  defp transport_opts([]), do: []
+  defp transport_opts(tls), do: [transport_opts: tls]
 
   # The answer's body, kept only up to `max_bytes`: a declared length over it, or a body
   # that grows past it, stops the read.
