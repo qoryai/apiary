@@ -2404,6 +2404,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-test-run")
     end
 
+    test "About this step says what the test run adds, its harness, and what a pass finishes",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, test_path(scope))
+      workspace = scope.workspace.name
+
+      assert words(lv, "#set-up-context-h") == "About this step"
+
+      assert ids(lv, "#set-up-context p") ==
+               ["set-up-what", "set-up-test-harness", "set-up-test-after"]
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "The test run adds a test work item to #{workspace} and queues its run. " <>
+                 "The test passes once a machine takes the run and the run completes."
+
+      # The software domain's words: a repository, not a target.
+      assert words(lv, "#set-up-context #set-up-test-harness") ==
+               "The run uses a harness built into Qory Apiary, qory's hello example at a " <>
+                 "fixed version, in place of the harness you chose. The test work item has no " <>
+                 "ticket and no repository. The run changes no repository, and Qory Apiary " <>
+                 "sends nothing to a work source or destination."
+
+      assert words(lv, "#set-up-context #set-up-test-after") ==
+               "Once a test run passes, the set-up of #{workspace} is finished, and a link to " <>
+                 "#{workspace} opens the workspace in place of the set-up."
+    end
+
     test "Run the test takes a test work item in; it passes live", %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, lv, _html} = live(conn, test_path(scope))
@@ -3369,6 +3395,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-workspace")
     assert read_only?(lv)
     assert words(lv, "#set-up-continue") == "Continue"
+  end
+
+  test "About this step says what a pool and a node are, which pool takes which runs, and why",
+       ctx do
+    lv = open(ctx)
+    workspace = ctx.scope.workspace.name
+
+    assert words(lv, "#set-up-context-h") == "About this step"
+
+    assert lv
+           |> render()
+           |> LazyHTML.from_fragment()
+           |> LazyHTML.query("#set-up-context p")
+           |> LazyHTML.attribute("id") ==
+             ["set-up-what", "set-up-machines-pools", "set-up-machines-why"]
+
+    assert words(lv, "#set-up-context #set-up-what") ==
+             "A node pool takes the runs of #{workspace} from its queue and starts them on " <>
+               "the machines that joined the pool. A node is one permanent machine, and " <>
+               "takes no runs from the queue."
+
+    assert words(lv, "#set-up-context #set-up-machines-pools") ==
+             "The instance's pool runs beside this Qory Apiary and takes the runs of every " <>
+               "workspace that has no pool. A pool for #{workspace} takes the runs of " <>
+               "#{workspace} alone."
+
+    assert words(lv, "#set-up-context #set-up-machines-why") ==
+             "Runs need a ready pool, as only a machine that joined a pool takes them. They " <>
+               "also need a gateway: Qory Apiary returns a run's secrets, such as its model " <>
+               "key, only to a gateway, encrypted to the gateway's access key."
   end
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
