@@ -90,10 +90,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     page. Continue saves the choice (`Apiary.Stacks.Sources.choose/3`) and goes on, or
   #     goes on where it is the saved one; a harness repository is read outside the page's
   #     process while Continue shows Saving, and a read that failed says why. Where the
-  #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the setting "Available to
-  #     every workspace in %{organisation}", off, makes Continue save the choice as the
-  #     harness the organisation shares (`shared: true`), which a workspace with no choice
-  #     reuses, shown chosen. While the organisation shares one, a second is refused, and
+  #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
+  #     "Available to every workspace in <organisation>", off; on, Continue saves the
+  #     choice as the harness the organisation shares (`shared: true`), which a workspace
+  #     with no choice reuses, shown chosen. While the organisation shares one, a second is refused, and
   #     the step says to choose the shared harness or turn the setting off. Under the
   #     choices, Targets lists the workspace's destinations, the rows the Destinations
   #     step ticked, each with Workspace default or the stack chosen for it

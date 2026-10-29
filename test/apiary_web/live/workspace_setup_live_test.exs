@@ -1189,6 +1189,37 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.WorkspaceSetup.harness?(ctx.scope.workspace)
     end
 
+    test "with the setting on, a reused shared harness goes on with no save, and a saved choice of the workspace is shared",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      lv
+      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> render_submit()
+
+      assert_patch(
+        lv,
+        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
+      )
+
+      assert Apiary.Stacks.shared(ctx.organisation).updated_at == shared.updated_at
+
+      # The workspace's saved choice, chosen again with the setting on, becomes the shared
+      # harness.
+      {:ok, _deleted} = Apiary.Stacks.delete_stack({:organisation, ctx.organisation})
+      {:ok, _row} = Apiary.Stacks.Sources.choose(ctx.scope, :qory)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      lv
+      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> render_submit()
+
+      assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
     test "while the organisation shares a harness, sharing another is refused with the fix first",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
