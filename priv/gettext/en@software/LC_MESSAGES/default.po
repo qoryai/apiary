@@ -4523,7 +4523,6 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Assigned by an instance admin"
 msgstr ""
@@ -6899,7 +6898,6 @@ msgid "Enter a host, such as %{example}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an address"
 msgstr ""
@@ -9320,7 +9318,6 @@ msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it:
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Linked repositories"
@@ -10201,6 +10198,12 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "No changes yet. Version 1 was rendered on %{date}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "No connected repository has a qory-stack.yaml file. Connect a work source, or add the file to a repository."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -12852,7 +12855,6 @@ msgid "Reading the stack of %{source}…"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Reading…"
 msgstr ""

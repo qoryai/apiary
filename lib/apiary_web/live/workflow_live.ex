@@ -22,11 +22,14 @@ defmodule ApiaryWeb.WorkflowLive do
   # a notice says that a repository's harness file comes first. A line says which
   # workflow the runs follow, where the workspace has one.
   #
-  # Source is one choice in three groups: the organisation's linked repositories that
-  # have a stack, read through the adapters when the page connects, so the group says it
-  # is reading until then; the harness sources an instance admin assigned to the
-  # organisation; and a public address, which shows a field for it. Choosing a source, or
-  # typing an address, reads its stacks through the adapters, outside the page's process;
+  # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/3`):
+  # the organisation's linked repositories that have a stack, read through the adapters
+  # when the page connects, so the group shows Reading… until then, and the line that
+  # none has a stack where the listing read every linked repository and lists none; the
+  # harness sources an instance admin assigned to the organisation; and a public address,
+  # which shows a field for it. Once a linked repository is listed, a search box narrows
+  # the choice and keeps the public address in view. Choosing a source, or typing an
+  # address, reads its stacks through the adapters, outside the page's process;
   # a source that cannot be read says why under the field. The address is read when its
   # field loses focus, not while it is typed; a read cancels the one before it, and a
   # person's reads are limited (`Apiary.Stacks.Sources`). Workflow lists the workflows
@@ -506,6 +509,7 @@ defmodule ApiaryWeb.WorkflowLive do
               chosen={@chosen}
               qory={HarnessComponents.qory(@chosen, @current_scope.workspace)}
               linked={@linked}
+              complete={complete?(assigns)}
               organisation={@organisation}
               disabled={@harness_saving}
             />
@@ -562,7 +566,8 @@ defmodule ApiaryWeb.WorkflowLive do
             type="choice"
             label={gettext("Source")}
             prompt={gettext("Choose a source")}
-            options={source_options(assigns)}
+            options={HarnessComponents.source_options(@linked, @assigned, complete?(assigns))}
+            search={@linked not in [nil, []] || nil}
             hint={listing_words(assigns)}
           />
           <.input
@@ -643,24 +648,12 @@ defmodule ApiaryWeb.WorkflowLive do
     """
   end
 
-  # The groups of Source: the linked repositories, read when the page connects, with
-  # Reading… until then, which cannot be chosen; the assigned sources; and the public
-  # address. Each group shows, an empty one too. A source is its label, in mono.
-  defp source_options(assigns) do
-    linked =
-      case assigns.linked do
-        nil -> [%{value: "", title: gettext("Reading…"), disabled: true}]
-        linked -> Enum.map(linked, &source_option/1)
-      end
+  # Whether the listing read every linked repository: no limit, no read that failed, and
+  # none past the most a listing reads.
+  defp complete?(%{linked: linked, listing_limited: nil, unread: 0, left_out: 0}),
+    do: is_list(linked)
 
-    [
-      {pgettext("plain", "Linked repositories"), linked},
-      {gettext("Assigned by an instance admin"), Enum.map(assigns.assigned, &source_option/1)},
-      {gettext("Public address"), [%{value: "address", title: gettext("Enter an address")}]}
-    ]
-  end
-
-  defp source_option(source), do: %{value: source.id, title: source.label, mono: :title}
+  defp complete?(_assigns), do: false
 
   # The workflows of the chosen source's stacks, each `<stack index>/<workflow>`: one
   # list for one stack, a group per stack named for it where there are several.

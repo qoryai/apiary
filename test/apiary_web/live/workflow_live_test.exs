@@ -241,6 +241,41 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert render(view) =~ "then reload the page to list the linked repositories."
       refute render(view) =~ "acme/harness"
+
+      # A listing that did not run says nothing of the repositories' stacks.
+      refute render(view) =~ "No connected repository"
+    end
+
+    test "with no linked repository that has a stack, the group shows a line and the address stays",
+         %{conn: conn, path: path, adapter: adapter, covered: covered} do
+      serve_calls([adapter], covered: covered, files: %{})
+      view = open(conn, path)
+
+      assert has_element?(view, ~s(#workflow_source-0[value=""][disabled]))
+
+      assert words(view, ~s(label[for="workflow_source-0"])) ==
+               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
+                 "or add the file to a repository."
+
+      refute has_element?(view, "#workflow_source-search")
+
+      change(view, %{source: "address"})
+      assert has_element?(view, "#workflow_address")
+    end
+
+    test "with a linked repository listed, Source has a search box, which keeps the address in view",
+         %{conn: conn, path: path, linked_id: linked_id} do
+      view = open(conn, path)
+
+      assert has_element?(view, "#workflow_source-search")
+      assert has_element?(view, ~s(#workflow_source-g0 ~ label input[value="#{linked_id}"]))
+
+      assert has_element?(
+               view,
+               ~s(#workflow_source-g2 ~ label[data-keep="true"] input[value="address"])
+             )
+
+      refute has_element?(view, ~s(#workflow_source-g0 ~ label[data-keep="true"]))
     end
   end
 
@@ -550,11 +585,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "repository"})
       |> render_change()
 
-      assert has_element?(
-               view,
-               ~s(#harness-source option[value="#{linked_id}"][selected]),
-               "acme/harness"
-             )
+      assert has_element?(view, ~s(#harness-source-options input[value="#{linked_id}"][checked]))
+      assert has_element?(view, "button#harness-source .q-pick-t.mono", "acme/harness")
+      assert has_element?(view, "#harness-source-search")
 
       assert words(view, "#harness-ref-hint") ==
                "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
@@ -575,6 +608,23 @@ defmodule ApiaryWeb.WorkflowLiveTest do
              )
 
       assert %{choice: :repository} = Stacks.choice(scope.workspace)
+    end
+
+    test "a harness repository with no linked repository that has a stack: a line in place of Source",
+         %{conn: conn, path: path, adapter: adapter, covered: covered} do
+      serve_calls([adapter], covered: covered, files: %{})
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      assert words(view, "#harness-source-none") ==
+               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
+                 "or add the file to a repository."
+
+      refute has_element?(view, "#harness-source")
+      assert has_element?(view, "#workflow-harness-save[disabled]")
     end
 
     test "a harness repository that cannot be read says why, and the choice stays", %{
