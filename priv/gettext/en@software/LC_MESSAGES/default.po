@@ -3009,6 +3009,11 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgid "A harness is the skills and workflows the agent runs with. Runs in %{workspace} use the harness you choose here."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
 msgid "A harness source"
 msgstr "A harness repository"
 
@@ -3283,6 +3288,11 @@ msgstr "A repository rule for this host still decides there."
 #, elixir-autogen, elixir-format
 msgid "A target that overrides the mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
 msgstr "A repository that overrides the mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A target uses the workspace's harness unless you choose another one for it."
+msgstr "A repository uses the workspace's harness unless you choose another one for it."
 
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -4799,7 +4809,6 @@ msgstr ""
 msgid "Cancelling"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -5251,6 +5260,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose an outside API: a built-in one, or a custom API of this organisation."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another"
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex

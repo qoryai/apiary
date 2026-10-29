@@ -7,6 +7,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.HarnessReadsFixtures
   import Apiary.NodesFixtures
@@ -543,6 +544,10 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     } do
       view = conn |> open(path) |> change_harness()
 
+      assert words(view, "#harness-intro") ==
+               "A harness is the skills and workflows the agent runs with. " <>
+                 "Runs in #{scope.workspace.name} use the harness you choose here."
+
       assert has_element?(view, "#harness-choice-qory-radio[checked]")
 
       assert has_element?(view, "#harness-choice-qory .q-choice-h", "Qory harness")
@@ -567,6 +572,32 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change_harness(view)
       view |> element("#workflow-harness-cancel") |> render_click()
       refute has_element?(view, "#workflow-harness-form")
+    end
+
+    test "with a shared Qory harness and a destination: the Qory harness once, and no destinations list",
+         %{conn: conn, path: path, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
+      collection = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
+
+      view = conn |> open(path) |> change_harness()
+
+      assert ["harness-choice-qory", "harness-choice-repository"] ==
+               view
+               |> render()
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query("#harness-choice label")
+               |> LazyHTML.attribute("id")
+
+      refute has_element?(view, "#harness-choice-shared")
+      refute has_element?(view, "#harness-targets")
+      refute render(view) =~ "Choose another"
     end
 
     test "a harness repository: a linked repository at a branch, pinned at the commit read", %{
