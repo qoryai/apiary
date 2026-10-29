@@ -92,9 +92,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     harness files (`Apiary.Lingo.Domain.harness_file?/1`), the Qory harness shows
   #     that a target's harness file comes first. The linked repositories of a harness
   #     repository are read once the step opens, outside the page's process, once per
-  #     page. Continue saves the choice (`Apiary.Stacks.Sources.choose/3`) and goes on, or
-  #     goes on where it is the saved one; a harness repository is read outside the page's
-  #     process while Continue shows Saving, and a read that failed says why. Where the
+  #     page, and listed under Source, a choice with a search box. Where the listing read
+  #     every linked repository and lists none, the line that none has a stack shows in
+  #     place of Source. Continue saves the choice (`Apiary.Stacks.Sources.choose/3`) and
+  #     goes on, or goes on where it is the saved one; a harness repository is read
+  #     outside the page's process while Continue shows Saving, and a read that failed
+  #     says why. Where the
   #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the step has the setting
   #     "Available to every workspace in <organisation>", off; on, Continue saves the
   #     choice as the harness the organisation shares (`shared: true`), which a workspace
@@ -228,6 +231,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        test_notice: nil,
        test_form: test_form(gettext("Hi! Where are you running?")),
        linked: nil,
+       linked_complete: false,
        listing: false
      )}
   end
@@ -1839,8 +1843,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   @impl true
-  def handle_async(:harness_linked, {:ok, {:ok, %{sources: linked}}}, socket),
-    do: {:noreply, harness_listed(socket, linked)}
+  def handle_async(:harness_linked, {:ok, {:ok, %{sources: linked} = listing}}, socket) do
+    complete = listing.unread == 0 and listing.left_out == 0
+    {:noreply, socket |> assign(:linked_complete, complete) |> harness_listed(linked)}
+  end
 
   def handle_async(:harness_linked, _limited_or_exit, socket),
     do: {:noreply, harness_listed(socket, [])}
@@ -2524,6 +2530,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             chosen={@chosen}
             qory={@qory}
             linked={@linked}
+            complete={@linked_complete}
             organisation={@flow.organisation.name}
             disabled={!@may or @saving}
             file_first={@harness_file}
@@ -2556,6 +2563,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           edit={@target_edit}
           qory={@target_qory}
           linked={@linked}
+          complete={@linked_complete}
           assigned={@harness_assigned}
           organisation={@flow.organisation.name}
         />
