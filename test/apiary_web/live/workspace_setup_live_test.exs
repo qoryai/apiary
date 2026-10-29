@@ -1847,6 +1847,33 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert %{choice: :repository} = Apiary.Stacks.choice(ctx.scope.workspace)
     end
 
+    test "while the organisation shares the Qory harness, sharing a harness repository is refused with the Qory harness row as the fix",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
+      linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      refute has_element?(lv, "#harness-choice-shared")
+
+      pick_repository(lv)
+
+      lv
+      |> form("#set-up-harness-form", harness: %{everywhere: "true"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, ~s(#set-up-harness-refusal[data-reason="shared"]))
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Choose Qory harness, or turn off “Available to every workspace in " <>
+                 "#{ctx.organisation.name}”. #{ctx.organisation.name} shares the Qory harness already."
+
+      assert Apiary.Stacks.shared(ctx.organisation).id == shared.id
+      assert Apiary.Stacks.shared(ctx.organisation).choice == :qory
+    end
+
     test "a harness repository with one stack: Repository lists the connected repositories with no read, the stack is chosen, and Continue saves the branch",
          ctx do
       adapter = linked_harness!(ctx, @one_export)

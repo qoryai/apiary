@@ -5226,6 +5226,11 @@ msgstr ""
 msgid "Choose %{collections} · %{adapter} · %{account}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose Qory harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares the Qory harness already."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a coding agent of Forager's catalogue."
