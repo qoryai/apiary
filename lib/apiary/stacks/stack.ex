@@ -34,7 +34,18 @@ defmodule Apiary.Stacks.Stack do
   #     (`Apiary.Stacks.shared/1`).
   #
   # `:qory` is the Qory harness, and `:repository` a harness repository or a stack of
-  # one; each row's document extends it at the `ref` the save wrote.
+  # one; each row's document extends it.
+  #
+  # `version_kind` is the version of a choice, nil on a row the save wrote before versions,
+  # whose document's `ref` is read as written (`Apiary.Stacks.version_ref/3`):
+  #
+  #   * `:latest` and `:named`, under `:qory`: the newest version of the Qory harness the
+  #     release ships (`Apiary.Lingo.Domain.Definition.qory_harness/0`), or the named
+  #     version `version_name`;
+  #   * `:branch`, `:tag` and `:commit`, under `:repository`: the newest commit of the
+  #     branch `version_name` when each run starts; the tag `version_name`; the commit
+  #     whose full id is `version_name`;
+  #   * `:workspace`, on a target's row: the version of the workspace's harness.
   #
   # Changed only through `Apiary.Stacks`.
   @moduledoc false
@@ -55,6 +66,10 @@ defmodule Apiary.Stacks.Stack do
     field :harness, :string
     field :access, Ecto.Enum, values: [:read, :write]
     field :choice, Ecto.Enum, values: [:qory, :repository]
+
+    field :version_kind, Ecto.Enum, values: [:latest, :named, :branch, :tag, :commit, :workspace]
+
+    field :version_name, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
