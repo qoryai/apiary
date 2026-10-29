@@ -105,12 +105,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   that applies to every workspace, then the providers of the workspace alone and **Add a
   key**; the first is chosen while the workspace has no model choice. On **Harness**,
   the harness the organisation shares comes first, with its address and pin, chosen
-  while the workspace has no saved choice. **Continue** with the shared harness chosen
-  removes the workspace's saved choice, so its runs use the shared harness. With **Qory
-  harness** or **A harness repository** chosen, **Continue** saves the workspace's
-  choice, also where it is the same as the shared harness, so a later change of the
-  shared harness leaves the workspace's harness as it is. With nothing shared, neither
-  step shows the heading.
+  while the workspace has no saved choice. Where the organisation shares the Qory
+  harness, **Harness** shows it once, as **Qory harness** marked “· every workspace”,
+  with no heading, unless the workspace's saved Qory harness is at another commit.
+  **Continue** with the shared harness chosen removes the workspace's saved choice, so
+  its runs use the shared harness. With **Qory harness** or **A harness repository**
+  chosen, **Continue** saves the workspace's choice, also where it is the same as the
+  shared harness, so a later change of the shared harness leaves the workspace's harness
+  as it is. With nothing shared, neither step shows the heading.
 - **Work sources**, “Where does work for Main come from?”, shows a card for each account
   that the organisation's connections reach, of the adapters that bring tickets for the
   workspace's type. **Destinations**, “Which repositories may runs in Main change?”,
@@ -187,30 +189,35 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Claude subscription, **About this step** shows `claude setup-token` on a separate
   line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
-  workspace's runs, one of two: **Qory harness**, `github.com/qoryai/harness` at the
-  commit this release pins, `fe3b3ab`, with “A repository's harness file comes first.”;
-  or **A harness repository**, a repository linked to the organisation, with **Branch or
-  tag**, `main` unless you change it, read through the organisation's connection.
+  workspace's runs. It opens with “A harness is the skills and workflows the agent runs
+  with. Runs in Main use the harness you choose here.”, which Workspace settings ›
+  Workflow shows too after **Change**. The choices are two: **Qory harness**,
+  `github.com/qoryai/harness` at the commit this release pins, `fe3b3ab`, with “A
+  repository's harness file comes first.”; or **A harness repository**, a repository
+  linked to the organisation, with **Branch or tag**, `main` unless you change it, read
+  through the organisation's connection.
   **Continue** saves the choice. For a harness repository, the save reads it and pins
   the commit its branch or tag points to; where the read fails, the step shows why. A
   workspace with no saved choice uses the Qory harness. Owners and admins choose. The
   test run keeps its built-in harness.
 - Under the choices, **Harness** lists the workspace's repositories from
-  **Destinations** under **Repositories**, each with **Workspace default** or the stack
-  chosen for it, such as “acme/web-harness · stacks/web · pinned at 1a2b3c4”, and
-  **Change** for owners and admins. **Change** offers **Workspace default**, which
-  removes the repository's stack, the **Qory harness**, or **A harness repository**: a
-  **Source** among the groups of Workspace settings › Workflow, a **Stack** of it and a
-  **Branch or tag**. For a harness repository, **Save** reads the source and pins the
+  **Destinations** under the heading **Repositories** and the line “A repository uses
+  the workspace's harness unless you choose another one for it.”, each with **Workspace
+  default** or the stack chosen for it, such as “acme/web-harness · stacks/web · pinned
+  at 1a2b3c4”, and **Choose another** for owners and admins. **Choose another** offers
+  **Workspace default**, which removes the repository's stack, the **Qory harness**, or
+  **A harness repository**: a **Source** among the groups of Workspace settings ›
+  Workflow, a **Stack** of it and a **Branch or tag**. For a harness repository,
+  **Save** reads the source and pins the
   commit; a save that fails shows why. A stack of a source that an instance admin
   assigned is saved at the assignment's branch or tag, such as “… at main, not pinned”:
   runs read the commit it points to when they start.
 - **Source**, where you choose a harness repository on the **Harness** step, in its
-  **Change** for a repository, and in Workspace settings › Workflow, has a search box
-  that narrows the linked repositories as you type. When every linked repository is read
-  and none has a `qory-stack.yaml` file, the line “No connected repository has a
-  qory-stack.yaml file. Connect a work source, or add the file to a repository.” takes
-  the place of the linked repositories.
+  **Choose another** for a repository, and in Workspace settings › Workflow, has a
+  search box that narrows the linked repositories as you type. When every linked
+  repository is read and none has a `qory-stack.yaml` file, the line “No connected
+  repository has a qory-stack.yaml file. Connect a work source, or add the file to a
+  repository.” takes the place of the linked repositories.
 - A run's harness is the first of: the stack chosen for its repository; the
   workspace's harness choice, else the harness the organisation shares; the repository's
   harness file, `harness.yaml` or `qory.yaml`; the Qory harness. Under the Qory harness
