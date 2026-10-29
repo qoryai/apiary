@@ -15,11 +15,14 @@ defmodule Apiary.Adapters.CallAddress do
   #      `qory.example.com` is called at `https://tracker.qory.example.com/…` and nowhere
   #      else;
   #   3. the host is resolved, every address it has: `{:error, :not_allowed}` when any is
-  #      forbidden (`Apiary.Integrations.Fetch.Address`: loopback, link-local with the
-  #      cloud metadata address `169.254.169.254`, the other metadata addresses,
-  #      unspecified, multicast and broadcast), `{:error, :unresolved}` when it has none.
-  #      A private address is allowed: inside the instance's network the adapter's name
-  #      leads to the reverse proxy's private address, and step 2 limits the host;
+  #      forbidden (`Apiary.Integrations.Fetch.Address`: link-local with the cloud
+  #      metadata address `169.254.169.254`, the other metadata addresses, unspecified,
+  #      multicast and broadcast), `{:error, :unresolved}` when it has none. A private
+  #      address is allowed: inside the instance's network the adapter's name leads to the
+  #      reverse proxy's private address, and step 2 limits the host. A loopback address,
+  #      `127.0.0.0/8` or `::1`, is allowed too, which `Fetch.Address` forbids: an adapter
+  #      may run on the instance's machine. A loopback address written inside an IPv6 one,
+  #      such as `::ffff:127.0.0.1`, stays forbidden;
   #   4. `{:ok, target}`: the base address, the host, the port, the first address, which
   #      the call connects to with the host kept for `Host`, SNI and the certificate's
   #      check, so a second lookup cannot send it elsewhere, and the adapter's instance id
@@ -132,14 +135,19 @@ defmodule Apiary.Adapters.CallAddress do
 
     case lookup(host, resolver) do
       {:ok, [_ | _] = addresses} ->
-        if Enum.any?(addresses, &(Address.classify(&1) == :forbidden)),
-          do: {:error, :not_allowed},
-          else: {:ok, hd(addresses)}
+        if Enum.all?(addresses, &allowed?/1),
+          do: {:ok, hd(addresses)},
+          else: {:error, :not_allowed}
 
       _none ->
         {:error, :unresolved}
     end
   end
+
+  # Step 3's rule: `Fetch.Address`'s, with loopback allowed.
+  defp allowed?({127, _, _, _}), do: true
+  defp allowed?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp allowed?(address), do: Address.classify(address) != :forbidden
 
   defp lookup(host, resolver) when is_function(resolver, 1), do: resolver.(host)
   defp lookup(host, resolver) when is_atom(resolver), do: resolver.resolve(host)

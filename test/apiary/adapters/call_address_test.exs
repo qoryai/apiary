@@ -1,8 +1,8 @@
 defmodule Apiary.Adapters.CallAddressTest do
   # Where Qory Apiary calls an adapter (`Apiary.Adapters.CallAddress.check/2`): only the
   # adapter's https `call_url` at exactly `<adapter name>.<instance name>`, never an
-  # address that is loopback, link-local or a cloud metadata address, every address of the
-  # host checked, and the first one pinned for the call.
+  # address that is link-local or a cloud metadata address, a loopback address allowed,
+  # every address of the host checked, and the first one pinned for the call.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.CallAddress
@@ -56,6 +56,15 @@ defmodule Apiary.Adapters.CallAddressTest do
     end
   end
 
+  test "a loopback address is called: the adapter may run on the instance's machine" do
+    for address <- [{127, 0, 0, 1}, {127, 8, 9, 1}, {0, 0, 0, 0, 0, 0, 0, 1}] do
+      resolver = answers("tracker.localhost", [address])
+
+      assert {:ok, %{address: ^address, host: "tracker.localhost"}} =
+               CallAddress.check(adapter("https://tracker.localhost:8443/"), resolver: resolver)
+    end
+  end
+
   test "an adapter that declares no call_url is :no_address" do
     assert CallAddress.check(%Node{kind: :adapter, name: "tracker"}) == {:error, :no_address}
   end
@@ -94,19 +103,26 @@ defmodule Apiary.Adapters.CallAddressTest do
     end
   end
 
-  test "a host with a loopback, link-local or metadata address among its addresses is :not_allowed" do
+  test "a host with a link-local, metadata, unspecified, multicast or broadcast address among its addresses is :not_allowed" do
     for addresses <- [
-          [{127, 0, 0, 1}],
-          [{0, 0, 0, 0, 0, 0, 0, 1}],
           [{169, 254, 169, 254}],
           [{169, 254, 1, 1}],
           [{0xFE80, 0, 0, 0, 0, 0, 0, 1}],
           [{0xFD00, 0x0EC2, 0, 0, 0, 0, 0, 0x254}],
           [{100, 100, 100, 200}],
+          [{192, 0, 0, 192}],
           [{0, 0, 0, 0}],
+          [{0, 0, 0, 0, 0, 0, 0, 0}],
+          [{224, 0, 0, 1}],
+          [{0xFF02, 0, 0, 0, 0, 0, 0, 1}],
+          [{255, 255, 255, 255}],
+          [{240, 0, 0, 1}],
+          # A loopback address written inside an IPv6 one, and metadata written so.
           [{0, 0, 0, 0, 0, 0xFFFF, 0x7F00, 1}],
-          # The first address public, a later one loopback: every address counts.
-          [FetchStub.public(), {127, 0, 0, 1}]
+          [{0, 0, 0, 0, 0, 0xFFFF, 0xA9FE, 0xA9FE}],
+          # The first address loopback, a later one metadata: every address counts.
+          [{127, 0, 0, 1}, {169, 254, 169, 254}],
+          [FetchStub.public(), {169, 254, 169, 254}]
         ] do
       resolver = answers("tracker.localhost", addresses)
 
@@ -126,9 +142,13 @@ defmodule Apiary.Adapters.CallAddressTest do
   end
 
   test "the resolver is the configured one unless the call gives one" do
-    # `Apiary.FetchStub` resolves a name by its first label: `loopback` to 127.0.0.1.
-    assert CallAddress.check(adapter("https://loopback.localhost/", "loopback")) ==
+    # `Apiary.FetchStub` resolves a name by its first label: `metadata` to
+    # 169.254.169.254, `loopback` to 127.0.0.1.
+    assert CallAddress.check(adapter("https://metadata.localhost/", "metadata")) ==
              {:error, :not_allowed}
+
+    assert {:ok, %{address: {127, 0, 0, 1}}} =
+             CallAddress.check(adapter("https://loopback.localhost/", "loopback"))
 
     assert CallAddress.check(adapter("https://nowhere.localhost/", "nowhere")) ==
              {:error, :unresolved}
