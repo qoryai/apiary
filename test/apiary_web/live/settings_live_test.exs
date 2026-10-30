@@ -35,7 +35,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       # Once the name changes, the line says what breaks.
       name = "Acme #{System.unique_integer([:positive])}"
-      slug = Apiary.Organisations.Slug.from_name(name, "organisation")
+      slug = Apiary.Organisations.Slug.from_name(name)
       old = scope.organisation
 
       lv |> form("#organisation-form", organisation: %{name: name}) |> render_change()
@@ -102,6 +102,25 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert reloaded.workspace.name == "Platform"
       assert reloaded.organisation.slug == slug
       assert reloaded.workspace.slug == "platform"
+    end
+
+    test "refuses a name with no letter or digit from A to Z or 0 to 9, on the name",
+         %{conn: conn, user: user, scope: scope} do
+      message =
+        "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+          "The address is made from those characters."
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      lv |> form("#organisation-form", organisation: %{name: "株式会社"}) |> render_submit()
+      assert has_element?(lv, "#organisation-form", message)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
+      lv |> form("#workspace-form", workspace: %{name: "Ωμέγα"}) |> render_submit()
+      assert has_element?(lv, "#workspace-form", message)
+
+      reloaded = Organisations.load_scope(Scope.for_user(user))
+      assert reloaded.organisation.slug == scope.organisation.slug
+      assert reloaded.workspace.slug == scope.workspace.slug
     end
 
     test "refuses an empty name", %{conn: conn, user: user, scope: scope} do

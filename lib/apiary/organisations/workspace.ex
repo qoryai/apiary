@@ -122,7 +122,7 @@ defmodule Apiary.Organisations.Workspace do
 
   @doc """
   put_address/2 gives a workspace the slug its name makes
-  (`Apiary.Organisations.Slug.from_name/2`, always of a slug's characters), at creation
+  (`Apiary.Organisations.Slug.from_name/1`, always of a slug's characters), at creation
   or on a rename. Whether a page or another workspace has it is asked by the caller
   (`Apiary.Organisations.change_workspace/2`); the unique index answers for one taken
   since, on the name.

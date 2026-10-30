@@ -11,17 +11,18 @@ defmodule Apiary.Organisations.SlugTest do
 
   describe "from_name/2" do
     test "keeps lowercase letters and digits, and makes every other run one hyphen" do
-      assert Slug.from_name("Platform Team", "workspace") == "platform-team"
-      assert Slug.from_name("  --Build & Release 2--  ", "workspace") == "build-release-2"
-      assert Slug.from_name("first.last+tag", "organisation") == "first-last-tag"
-      assert Slug.from_name("Zürich Øst", "workspace") == "zurich-st"
+      assert Slug.from_name("Platform Team") == "platform-team"
+      assert Slug.from_name("  --Build & Release 2--  ") == "build-release-2"
+      assert Slug.from_name("first.last+tag") == "first-last-tag"
+      assert Slug.from_name("Zürich Øst") == "zurich-st"
     end
 
-    test "falls back when nothing is left, and cuts a long name to 40 without a hyphen at the end" do
-      assert Slug.from_name("日本", "organisation") == "organisation"
-      assert Slug.from_name("", "workspace") == "workspace"
+    test "gives nil when nothing is left, and cuts a long name to 40 without a hyphen at the end" do
+      for name <- ["日本", "株式会社", "Ωμέγα", "—", "", nil], do: assert(Slug.from_name(name) == nil)
+      # Latin accents are dropped to their letters.
+      assert Slug.from_name("Crème Brûlée Ångström") == "creme-brulee-angstrom"
 
-      long = Slug.from_name(String.duplicate("abcd ", 20), "workspace")
+      long = Slug.from_name(String.duplicate("abcd ", 20))
       assert String.length(long) <= 40
       refute String.ends_with?(long, "-")
     end
@@ -113,6 +114,25 @@ defmodule Apiary.Organisations.SlugTest do
         message = "Choose another name. /#{slug} is a page of Qory Apiary."
         assert %{organisation_name: [^message]} = errors_on(changeset)
       end
+    end
+
+    test "a name with no letter or digit from A to Z or 0 to 9 is refused; accents are dropped" do
+      before = counts()
+
+      for name <- ["株式会社", "Ωμέγα"] do
+        assert {:error, changeset} = sign_up(name)
+
+        assert %{
+                 organisation_name: [
+                   "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+                     "The address is made from those characters."
+                 ]
+               } = errors_on(changeset)
+      end
+
+      assert counts() == before
+
+      assert {:ok, %{organisation: %Organisation{slug: "creme-brulee"}}} = sign_up("Crème Brûlée")
     end
   end
 
