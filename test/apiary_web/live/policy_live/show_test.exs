@@ -204,11 +204,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#nav-policy-mode")
       assert has_element?(view, "h2", "Qory Apiary serves no policy yet")
 
-      assert text(view, "#policy-unmanaged") =~
-               "Until the first change here, every machine of this workspace runs under its local policy"
-
-      assert text(view, "#policy-unmanaged") =~
-               "renders version 1, and from then on each machine applies it, narrowed by its local policy."
+      assert text(view, "#policy-unmanaged") ==
+               "Until the first change here, every machine of this workspace runs under its " <>
+                 "local policy, the policy set on the machine itself. The first rule you add, or " <>
+                 "a mode you set, renders version 1, and from then on each machine applies it, " <>
+                 "narrowed by its local policy. You can also let a run reach out first and allow " <>
+                 "its hosts from the Network access page, one row at a time."
 
       refute has_element?(view, "#policy-version-pill-copy")
       assert text(view, "#policy-version-pill") == "No version yet"

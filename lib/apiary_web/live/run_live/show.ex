@@ -40,17 +40,20 @@ defmodule ApiaryWeb.RunLive.Show do
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
   import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
+  import ApiaryWeb.PreparationComponents, only: [prepare_machine: 1]
 
   alias Apiary.Access
   alias Apiary.Dispatches
+  alias Apiary.Dispatches.MachineLogs
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Runs
-  alias Apiary.Runs.{Record, Run}
+  alias Apiary.Runs.{Preparation, Record, Run}
   alias Apiary.Targets
   alias Apiary.Runs.Record.Timeline
   alias ApiaryWeb.ConnectionLive.Rules
+  alias ApiaryWeb.PreparationComponents
 
   @window 300
   @page 200
@@ -348,6 +351,9 @@ defmodule ApiaryWeb.RunLive.Show do
               >
                 <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
               </div>
+            <% @run.state == "pending" and @index.items == [] and @tab == :timeline and
+                 PreparationComponents.shown?(@preparation) -> %>
+              <.prepare_machine preparation={@preparation} machine_log={@machine_log} />
             <% @run.state == "pending" and @index.items == [] -> %>
               <.limits reason={:not_started} variant="empty" registered={!!@run.registered_at} />
             <% @run.events_pruned_at && @index.items == [] && @tab == :timeline -> %>
@@ -513,15 +519,22 @@ defmodule ApiaryWeb.RunLive.Show do
       </div>
 
       <.limits
-        :if={@limit}
-        reason={@limit}
+        :if={shown_limit(@limit, @preparation)}
+        reason={shown_limit(@limit, @preparation)}
         runtime={shown_sent(@run.runtime)}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
         terminal={Access.can?(@current_scope, :"run.read_log", @run)}
+        step={stopped_step(@preparation)}
       />
 
       <.background_tasks background={@index.background} ended={!alive?(@run)} />
+
+      <.prepare_machine
+        :if={@earlier == 0 and PreparationComponents.shown?(@preparation)}
+        preparation={@preparation}
+        machine_log={@machine_log}
+      />
 
       <.timeline
         id="timeline"
@@ -1336,7 +1349,10 @@ defmodule ApiaryWeb.RunLive.Show do
        unread: 0,
        limit: nil,
        win_first: nil,
-       win_last: nil
+       win_last: nil,
+       preparation: nil,
+       preparation_settled: false,
+       machine_log: :hidden
      )
      |> stream_configure(:items, dom_id: & &1.id)
      |> stream(:items, [])
@@ -1433,6 +1449,8 @@ defmodule ApiaryWeb.RunLive.Show do
           |> put_index(Record.timeline(scope, run))
           |> assign_ending()
           |> assign_policy_facts()
+          |> assign(preparation: nil, preparation_settled: false, machine_log: :hidden)
+          |> assign_preparation()
         else
           socket
         end
@@ -2716,7 +2734,7 @@ defmodule ApiaryWeb.RunLive.Show do
           end
       end
 
-    socket = socket |> put_index(index) |> assign_ending()
+    socket = socket |> put_index(index) |> assign_ending() |> refresh_preparation()
     security = socket.assigns.security
 
     case rows do
@@ -2757,6 +2775,68 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp flush(socket), do: assign(socket, range: nil)
+
+  ## The Prepare machine section
+
+  # The run's preparation (`Apiary.Runs.Preparation`), read again at each flush until it
+  # is settled (`ApiaryWeb.PreparationComponents.settled?/2`) or the timeline has a
+  # session's item, so a live session's flushes read nothing more; and its machine log
+  # for an instance admin, read until it has arrived.
+  defp assign_preparation(%{assigns: %{run: %Run{} = run, current_scope: scope}} = socket) do
+    preparation = Preparation.read(scope, run)
+
+    assign(socket,
+      preparation: preparation,
+      preparation_settled:
+        PreparationComponents.settled?(preparation, alive?(run)) or
+          socket.assigns.index.session_items > 0,
+      machine_log: machine_log(scope, preparation, socket.assigns.machine_log)
+    )
+  end
+
+  # The note above the timeline. A run that stopped before its session started says at
+  # which step, in place of any other note; a wall's note is for a run whose session
+  # started.
+  defp shown_limit(_limit, %{stopped: %{}, session_started_at: nil}), do: :stopped
+  defp shown_limit(:vm_wall, %{session_started_at: nil}), do: nil
+  defp shown_limit(limit, _preparation), do: limit
+
+  defp stopped_step(%{stopped: %{step: nil}}), do: gettext("Machine started")
+
+  defp stopped_step(%{stopped: %{step: number}, steps: steps}),
+    do: steps |> Enum.find(&(&1.number == number)) |> Preparation.step_name()
+
+  defp stopped_step(_preparation), do: nil
+
+  defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket), do: socket
+  defp refresh_preparation(socket), do: assign_preparation(socket)
+
+  defp machine_log(_scope, _preparation, {:ok, _text, _truncated} = read), do: read
+  defp machine_log(_scope, %{machine: nil}, _read), do: :hidden
+
+  defp machine_log(scope, %{machine: %{dispatch_id: dispatch_id} = machine}, _read) do
+    if Access.instance_admin?(scope) do
+      case Dispatches.machine_log(scope, dispatch_id) do
+        {:ok, %{text: text, truncated: truncated}} -> {:ok, text, truncated}
+        {:error, :unreadable} -> :unreadable
+        {:error, _none} -> no_machine_log(machine)
+      end
+    else
+      :hidden
+    end
+  end
+
+  # No machine log is recorded: none has arrived, or one did and the machine logs'
+  # retention deleted it. A prune deletes under the setting in force when it runs, which
+  # can be lower than today's, so a log can be gone once the setting's least days have
+  # passed since the claim. The line shows today's setting.
+  defp no_machine_log(%{requested_at: requested_at}) do
+    least = MachineLogs.retention_min_days()
+
+    if DateTime.compare(DateTime.add(requested_at, least, :day), DateTime.utc_now()) == :lt,
+      do: {:deleted, MachineLogs.retention_days()},
+      else: :none
+  end
 
   # A reload arrived: the lines after the rows say at which sequence the run reloaded,
   # and they were made when the run's row changed, before this event was read.

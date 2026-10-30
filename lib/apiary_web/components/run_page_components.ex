@@ -190,6 +190,7 @@ defmodule ApiaryWeb.RunPageComponents do
     values: [
       :no_hooks,
       :vm_wall,
+      :stopped,
       :other_runtime,
       :not_started,
       :no_egress,
@@ -204,6 +205,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :wall, :boolean, default: false
   attr :only_result, :boolean, default: false
   attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
+  attr :step, :string, default: nil, doc: "for `:stopped`: the step the run stopped at"
 
   attr :registered, :boolean,
     default: false,
@@ -223,6 +225,7 @@ defmodule ApiaryWeb.RunPageComponents do
         runtime={@runtime}
         registered={@registered}
         terminal={@terminal}
+        step={@step}
       />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
@@ -264,6 +267,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :at, :any, default: nil
   attr :registered, :boolean, default: false
   attr :terminal, :boolean, default: true
+  attr :step, :string, default: nil
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -322,12 +326,12 @@ defmodule ApiaryWeb.RunPageComponents do
       if @terminal,
         do:
           rich_gettext(
-            "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline.",
+            "This run's session events could not be recorded: the %{wall} it ran behind runs inside a virtual machine. The run has a terminal and connections, and no session timeline.",
             wall: {:part, :wall}
           ),
         else:
           rich_gettext(
-            "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has connections and no session timeline.",
+            "This run's session events could not be recorded: the %{wall} it ran behind runs inside a virtual machine. The run has connections and no session timeline.",
             wall: {:part, :wall}
           )
     }>
@@ -340,6 +344,18 @@ defmodule ApiaryWeb.RunPageComponents do
           class="q-tip-wide"
         />
       </:part>
+    </.rich>
+    """
+  end
+
+  defp limit_sentence(%{reason: :stopped} = assigns) do
+    ~H"""
+    <.rich text={
+      rich_gettext("The run stopped before its session started, at the step %{step}.",
+        step: {:part, :step}
+      )
+    }>
+      <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
     """
   end

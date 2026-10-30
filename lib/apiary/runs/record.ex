@@ -676,6 +676,85 @@ defmodule Apiary.Runs.Record do
     )
   end
 
+  @doc """
+  The end of the output of the run's step `step`: the last `bytes` bytes of its
+  `dev.qory.run.log` chunks with that `step`, in sequence order, as `%{bytes, total}`,
+  where `total` is the size of the whole output in bytes. `%{bytes: "", total: 0}` for a
+  step without output and for a number outside 1 to #{@max_step}.
+  """
+  @spec step_tail(Scope.t(), Run.t(), integer, pos_integer) :: %{
+          bytes: binary,
+          total: non_neg_integer
+        }
+  def step_tail(scope, run, step, bytes)
+
+  def step_tail(%Scope{}, %Run{}, step, _bytes) when step not in 1..@max_step,
+    do: %{bytes: "", total: 0}
+
+  def step_tail(%Scope{} = scope, %Run{} = run, step, bytes)
+      when is_integer(step) and is_integer(bytes) and bytes > 0 do
+    chunks = from l in log_chunks(scope, run), where: l.step == ^step
+
+    total =
+      Repo.one(from l in chunks, select: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0))
+      |> to_integer()
+
+    kept = if total == 0, do: [], else: step_tail_pages(chunks, bytes, nil, [])
+    %{bytes: IO.iodata_to_binary(kept), total: total}
+  end
+
+  @step_tail_page 500
+
+  # The step's chunks newest first, a page at a time, each cut by the database to what is
+  # left of the budget, until the budget is spent or the chunks run out; oldest first.
+  defp step_tail_pages(_chunks, left, _before, acc) when left <= 0, do: acc
+
+  defp step_tail_pages(chunks, left, before, acc) do
+    query =
+      from l in chunks,
+        order_by: [desc: l.sequence],
+        limit: @step_tail_page,
+        select:
+          {l.sequence,
+           fragment(
+             "substring(? from greatest(octet_length(?) - ?, 0) + 1)",
+             l.bytes,
+             l.bytes,
+             ^left
+           )}
+
+    query = if before, do: from(l in query, where: l.sequence < ^before), else: query
+    page = Repo.all(query)
+
+    {acc, left} =
+      Enum.reduce_while(page, {acc, left}, fn {_sequence, part}, {acc, left} ->
+        size = byte_size(part)
+
+        if size >= left,
+          do: {:halt, {[binary_part(part, size - left, left) | acc], 0}},
+          else: {:cont, {[part | acc], left - size}}
+      end)
+
+    if length(page) < @step_tail_page,
+      do: acc,
+      else: step_tail_pages(chunks, left, page |> List.last() |> elem(0), acc)
+  end
+
+  @doc """
+  The time of the run's first `dev.qory.session.started`, by sequence; nil for a run
+  with none, and once retention deleted the run's events.
+  """
+  @spec session_started_at(Scope.t(), Run.t()) :: DateTime.t() | nil
+  def session_started_at(%Scope{} = scope, %Run{} = run) do
+    Repo.one(
+      from e in events(scope, run),
+        where: e.type == ^@session_started,
+        order_by: e.sequence,
+        limit: 1,
+        select: e.time
+    )
+  end
+
   ## The log
 
   @doc """
