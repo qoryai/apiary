@@ -49,7 +49,7 @@ defmodule ApiaryWeb.PreparationComponents do
   @doc """
   The section. `machine_log` is what the caller read of the machine's log: `{:ok, text,
   truncated}` for an instance admin, `:none` while no log has arrived, `{:deleted, days}`
-  once a log that arrived would be deleted (`days` is the machine logs' retention),
+  once a log that arrived would have been deleted (`days` is the machine logs' retention),
   `:unreadable` for one whose file cannot be read, and `:hidden` for anyone else.
   """
   attr :id, :string, default: "prepare-machine"
@@ -261,8 +261,8 @@ defmodule ApiaryWeb.PreparationComponents do
     ~H"""
     <p id={@id} class="text-sm text-faint">
       {ngettext(
-        "This machine's log was deleted after %{days} day.",
-        "This machine's log was deleted after %{days} days.",
+        "Machine logs are kept for %{days} day. This machine has none.",
+        "Machine logs are kept for %{days} days. This machine has none.",
         @days,
         days: @days
       )}

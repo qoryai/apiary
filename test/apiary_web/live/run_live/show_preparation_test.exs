@@ -364,7 +364,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       log =
         ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
 
-      assert log =~ "This machine&#39;s log was deleted after 14 days."
+      assert log =~ "Machine logs are kept for 14 days. This machine has none."
       refute log =~ "No machine log has arrived."
     end
   end

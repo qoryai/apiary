@@ -1645,8 +1645,9 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   machine log for an instance admin, and "The instance admin can read the machine's log."
   for anyone else. With no machine log recorded, an instance admin reads "No machine log
   has arrived." until the machine logs' retention days have passed since the claim, and
-  then "This machine's log was deleted after 30 days.", with the retention's days. A step
-  that exits with code -1 has no exit status, and its line shows no code. A failed row is
+  then "Machine logs are kept for 30 days. This machine has none.", with the
+  retention's days. A step that exits with code -1 has no exit status, and its line
+  shows no code. A failed row is
   open, with one cause line under its output that shows the cause, then who fixes it
   (with no pointer to the output once it was pruned); under Machine started only who
   fixes it, as the header shows the cause. The section's duration runs from its first row to the

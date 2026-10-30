@@ -9789,6 +9789,13 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "Machine logs are kept for %{days} day. This machine has none."
+msgid_plural "Machine logs are kept for %{days} days. This machine has none."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "Machine requested"
 msgstr ""
 
@@ -17188,13 +17195,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "This list"
 msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "This machine's log was deleted after %{days} day."
-msgid_plural "This machine's log was deleted after %{days} days."
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
