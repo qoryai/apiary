@@ -1644,9 +1644,10 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
   for anyone else. With no machine log recorded, an instance admin reads "No machine log
-  has arrived." until the machine logs' retention days have passed since the claim, and
-  then "Machine logs are kept for 30 days. This machine has none.", with the
-  retention's days. A step that exits with code -1 has no exit status, and its line
+  has arrived." until a day has passed since the claim (the least the machine logs'
+  retention can be set to, under which a prune can have deleted the log), and then
+  "Machine logs are kept for 30 days. This machine has none.", with the retention's
+  days in force. A step that exits with code -1 has no exit status, and its line
   shows no code. A failed row is open, with one cause line under its output that shows
   the cause, then who fixes it; once retention deleted the run's log lines, "The step's
   output was deleted under the workspace's log retention, so the cause is no longer

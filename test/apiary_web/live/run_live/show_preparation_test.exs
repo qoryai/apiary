@@ -308,9 +308,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       end)
     end
 
-    # The dispatch, claimed `days` days ago.
-    defp claimed!(dispatch, days) do
-      at = DateTime.add(DateTime.utc_now(), -days * 86_400, :second)
+    # The dispatch, claimed `hours` hours ago.
+    defp claimed!(dispatch, hours) do
+      at = DateTime.add(DateTime.utc_now(), -hours * 3_600, :second)
 
       {1, _} =
         Apiary.Repo.update_all(
@@ -348,24 +348,40 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                "No machine log has arrived."
     end
 
-    test "with no machine log, says it arrived until the retention's days have passed", ctx do
+    test "with no machine log, shows it may still arrive until the least retention passed",
+         ctx do
       put_retention_days(14)
       %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
       run = project!(run, steps(false))
 
-      claimed!(dispatch, 13)
+      claimed!(dispatch, 23)
 
       log =
         ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
 
       assert log =~ "No machine log has arrived."
 
-      claimed!(dispatch, 15)
+      claimed!(dispatch, 25)
 
       log =
         ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
 
       assert log =~ "Machine logs are kept for 14 days. This machine has none."
+      refute log =~ "No machine log has arrived."
+    end
+
+    # A prune under a 1-day setting deleted the log on day 2; the setting is 30 days on
+    # day 5.
+    test "with no machine log after the setting was raised, never shows it may arrive", ctx do
+      put_retention_days(30)
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      claimed!(dispatch, 5 * 24)
+
+      log =
+        ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
+
+      assert log =~ "Machine logs are kept for 30 days. This machine has none."
       refute log =~ "No machine log has arrived."
     end
   end

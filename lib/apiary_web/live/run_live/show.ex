@@ -2826,13 +2826,14 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # No machine log is recorded: none has arrived, or one did and the machine logs'
-  # retention deleted it, which it can have done only once the retention's days have
-  # passed since the claim.
+  # retention deleted it. A prune deletes under the setting in force when it runs, which
+  # can be lower than today's, so a log can be gone once the setting's least days have
+  # passed since the claim. The line shows today's setting.
   defp no_machine_log(%{requested_at: requested_at}) do
-    days = MachineLogs.retention_days()
+    least = MachineLogs.retention_min_days()
 
-    if DateTime.compare(DateTime.add(requested_at, days, :day), DateTime.utc_now()) == :lt,
-      do: {:deleted, days},
+    if DateTime.compare(DateTime.add(requested_at, least, :day), DateTime.utc_now()) == :lt,
+      do: {:deleted, MachineLogs.retention_days()},
       else: :none
   end
 
