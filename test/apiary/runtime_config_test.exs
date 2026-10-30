@@ -592,4 +592,34 @@ defmodule Apiary.RuntimeConfigTest do
       refute Keyword.has_key?(config[:apiary] || [], :accept_signing_fingerprint_setting)
     end
   end
+
+  describe "SSL_CERT_FILE" do
+    setup do
+      previous = System.get_env("SSL_CERT_FILE")
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("SSL_CERT_FILE", previous),
+          else: System.delete_env("SSL_CERT_FILE")
+      end)
+    end
+
+    test "is read as it is set, for the check at boot, and not under test" do
+      System.put_env("SSL_CERT_FILE", "/certs/ca.pem")
+
+      for env <- [:prod, :dev] do
+        config = Config.Reader.read!("config/runtime.exs", env: env, target: :host)
+        assert get_in(config, [:apiary, :ssl_cert_file_setting]) == "/certs/ca.pem"
+      end
+
+      config = Config.Reader.read!("config/runtime.exs", env: :test, target: :host)
+      refute Keyword.has_key?(config[:apiary] || [], :ssl_cert_file_setting)
+    end
+
+    test "unset, the setting is nil" do
+      System.delete_env("SSL_CERT_FILE")
+      config = Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
+      assert get_in(config, [:apiary, :ssl_cert_file_setting]) == nil
+    end
+  end
 end

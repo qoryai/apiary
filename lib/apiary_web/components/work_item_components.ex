@@ -2870,7 +2870,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :not_allowed ->
         gettext(
-          "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to a loopback, link-local, metadata, unspecified, multicast or broadcast address, or the instance's public address has no host name.",
+          "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to an address that Qory Apiary does not call, or the instance's public address has no host name.",
           adapter: adapter
         )
 
@@ -2975,6 +2975,15 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: saved_rule_words(message, values)
 
   def harness_rule_words(_rule), do: ""
+
+  @doc false
+  # harness_problem_words/1 is `harness_rule_words/1` without the file of a `yaml` rule,
+  # for a sentence that shows the file before the rule.
+  @spec harness_problem_words(map | nil) :: String.t()
+  def harness_problem_words(%{"rule" => "yaml"} = rule),
+    do: saved_rule_words(rule["message"], rule["message_values"])
+
+  def harness_problem_words(rule), do: harness_rule_words(rule)
 
   defp saved_rule_words(message, values) when is_binary(message) do
     values =

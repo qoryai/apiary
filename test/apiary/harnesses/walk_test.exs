@@ -1803,14 +1803,28 @@ defmodule Apiary.Harnesses.WalkTest do
       assert values == %{"n" => 65_536}
     end
 
-    test "an adapter that answers no one is a retry, with its name", ctx do
+    test "an adapter that answers no one is a retry, with its name and the call's cause", ctx do
       setting(ctx.scope, @setting)
       serve([ctx.run], down: true)
 
-      assert {:retry, %{failure: :adapter_unavailable, adapter: name}} =
+      assert {:retry,
+              %{
+                failure: :adapter_unavailable,
+                adapter: name,
+                call_failure: nil,
+                call_cause: :unreachable
+              }} =
                Walk.run(ctx.input, call_opts: [attempt: 100, total: 500, retry_wait: {1, 2}])
 
       assert name == ctx.run.adapter.name
+    end
+
+    test "a walk out of time is a retry, its call's cause late", ctx do
+      setting(ctx.scope, @setting)
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:retry, %{failure: :adapter_unavailable, call_cause: :late}} =
+               Walk.run(ctx.input, time_limit: 0)
     end
   end
 
@@ -2274,7 +2288,15 @@ defmodule Apiary.Harnesses.WalkTest do
              }
 
       assert Sources.chosen(ctx.scope.workspace) ==
-               %{choice: :qory, git: @qory_git, pin: @qory_ref, saved: false, shared: false}
+               %{
+                 choice: :qory,
+                 git: @qory_git,
+                 stack: "core",
+                 version: :latest,
+                 pin: @qory_ref,
+                 saved: false,
+                 shared: false
+               }
 
       serve([ctx.run], covered: covering(ctx), files: @base_files)
       assert {:ok, walked} = Walk.run(ctx.input)
@@ -2307,7 +2329,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{origin: :file, target_version: "c-R_app"}} = Walk.run(ctx.input)
     end
 
-    test "the Qory harness: saved with no read; the target's file first, else its row's document at its pin",
+    test "the Qory harness: saved at latest with no read; the target's file first, else its row's document at the newest version",
          ctx do
       serve([ctx.run], covered: covering(ctx), files: @base_files)
       workflow_row!(ctx)
@@ -2319,7 +2341,15 @@ defmodule Apiary.Harnesses.WalkTest do
       assert stack.workspace_id == ctx.scope.workspace.id
 
       assert Sources.chosen(ctx.scope.workspace) ==
-               %{choice: :qory, git: @qory_git, pin: @qory_ref, saved: true, shared: false}
+               %{
+                 choice: :qory,
+                 git: @qory_git,
+                 stack: "core",
+                 version: :latest,
+                 pin: @qory_ref,
+                 saved: true,
+                 shared: false
+               }
 
       assert {:ok, walked} = Walk.run(ctx.input)
 
@@ -2342,36 +2372,58 @@ defmodule Apiary.Harnesses.WalkTest do
                Walk.run(ctx.input)
     end
 
-    test "a harness repository: the save pins its branch to the commit the walk read, and the walk reads there, not the target's file",
+    test "a harness repository's root, in the pages' form: the save pins its branch to the commit the walk read; the target's file first, else the walk reads at the pin",
          ctx do
+      # The target's file defines a stack: modules without extends.
+      target_files = %{
+        {"R_app", "harness.yaml"} =>
+          "harness:\n  modules:\n    - name: core\n      source: {path: modules/core}\n"
+      }
+
       serve([ctx.run],
         covered: covering(ctx),
-        files: Map.merge(@root_files, @target_files),
+        files: Map.merge(@root_files, target_files),
         versions: %{"R_harness" => @pin}
       )
 
       assert {:ok, stack} = Sources.choose(ctx.scope, {:repository, linked(@harness), " main "})
       assert stack.choice == :repository
+      assert stack.version_kind == nil
       assert stack.harness == "extends:\n  git: \"#{@harness}\"\n  ref: \"#{@pin}\"\n"
       assert {"R_harness", "qory-stack.yaml", "main"} in reads(calls())
 
       assert Sources.chosen(ctx.scope.workspace) ==
-               %{choice: :repository, git: @harness, pin: @pin, saved: true, shared: false}
+               %{
+                 choice: :repository,
+                 git: @harness,
+                 stack: nil,
+                 version: nil,
+                 pin: @pin,
+                 saved: true,
+                 shared: false
+               }
+
+      # The target's file applies, under the harness repository too.
+      assert {:ok, %{origin: :file, stack_id: nil, document: nil}} = Walk.run(ctx.input)
+      assert {"R_app", "harness.yaml", "HEAD"} in reads(calls())
+
+      serve([ctx.run],
+        covered: covering(ctx),
+        files: @root_files,
+        versions: %{"R_harness" => @pin}
+      )
 
       assert {:ok, walked} = Walk.run(ctx.input)
       assert walked.origin == :setting
       assert walked.document == %{"extends" => %{"git" => @harness, "ref" => @pin}}
       assert walked.stack_id == stack.id
-      assert walked.target_version == nil
+      assert walked.target_version == "c-R_app"
       assert walked.pins == [%{"git" => @harness, "ref" => @pin, "at" => @pin}]
       assert [%{"grant_id" => grant_id, "resources" => ["R_harness"]}] = walked.harness_links
       assert grant_id == ctx.grant.id
 
-      reads = reads(calls())
-      assert reads != []
-
-      assert Enum.all?(reads, fn {resource, _path, at} ->
-               resource == "R_harness" and at == @pin
+      assert Enum.all?(reads(calls()), fn {resource, _path, at} ->
+               resource == "R_app" or (resource == "R_harness" and at == @pin)
              end)
     end
 
@@ -2437,9 +2489,20 @@ defmodule Apiary.Harnesses.WalkTest do
       assert Sources.choose(ctx.scope, :target_file) == {:error, :invalid}
     end
 
-    test "the order: a target's stack, the workspace's choice, the organisation's shared harness, the target's file, the Qory harness",
+    test "the order: the target's file, a target's stack, the workspace's choice, else the organisation's shared harness, the Qory harness",
          ctx do
-      files = Map.merge(@base_files, @target_files)
+      # The target's file in three forms: one that extends a stack, one that lists
+      # modules without extends, and one with neither, which is passed over.
+      extends = Map.merge(@base_files, @target_files)
+
+      modules =
+        Map.put(
+          @base_files,
+          {"R_app", "harness.yaml"},
+          "harness:\n  modules:\n    - name: core\n      source: {path: modules/core}\n"
+        )
+
+      neither = Map.put(@base_files, {"R_app", "harness.yaml"}, "harness:\n  name: app\n")
       covered = covering(ctx, %{@tools => {"G_run", "R_tools"}})
 
       walk = fn files ->
@@ -2447,7 +2510,21 @@ defmodule Apiary.Harnesses.WalkTest do
         Walk.run(ctx.input)
       end
 
-      target_reads = fn -> Enum.filter(reads(calls()), &match?({"R_app", _path, _at}, &1)) end
+      # Under each choice, a file that sets a harness applies, and one with neither, or
+      # none, takes the next place, with the target's version.
+      applies = fn name ->
+        for files <- [extends, modules] do
+          assert {:ok, %{origin: :file, document: nil, target_version: "c-R_app"}} =
+                   walk.(files)
+        end
+
+        for files <- [neither, @base_files] do
+          assert {:ok, walked} = walk.(files)
+          assert %{origin: :setting, target_version: "c-R_app"} = walked
+          assert walked.document["name"] == name
+          walked
+        end
+      end
 
       target =
         Repo.insert!(%Apiary.Runs.Target{
@@ -2467,39 +2544,49 @@ defmodule Apiary.Harnesses.WalkTest do
       workspace = choose.({:workspace, ctx.scope.workspace}, "workspace", :repository)
       by_target = choose.({:target, target}, "target", :qory)
 
-      # 1. A target's stack, the Qory harness among them: the target's file is not read.
-      assert {:ok, walked} = walk.(files)
-      assert %{origin: :setting, target_version: nil, document: %{"name" => "target"}} = walked
-      assert walked.stack_id == by_target.id
-      assert target_reads.() == []
+      # 1. The target's file, then 2. a target's stack.
+      assert [%{stack_id: id}, %{stack_id: id}] = applies.("target")
+      assert id == by_target.id
 
-      # 2. The workspace's choice, before the organisation's shared harness.
+      # 3. The workspace's choice, before the organisation's shared harness.
       {:ok, _row} = Stacks.delete_stack({:target, target})
-      assert {:ok, walked} = walk.(files)
-      assert %{target_version: nil, document: %{"name" => "workspace"}} = walked
-      assert walked.stack_id == workspace.id
-      assert target_reads.() == []
+      assert [%{stack_id: id}, _walked] = applies.("workspace")
+      assert id == workspace.id
 
-      # 2. The shared harness, where the workspace has no choice: a harness repository
-      # before the target's file, the Qory harness after it.
+      # 3. The shared harness, where the workspace has no choice, a harness repository
+      # or the Qory harness.
       {:ok, _row} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
-      assert {:ok, walked} = walk.(files)
-      assert %{target_version: nil, document: %{"name" => "shared"}} = walked
-      assert walked.stack_id == shared.id
-      assert target_reads.() == []
+      assert [%{stack_id: id}, _walked] = applies.("shared")
+      assert id == shared.id
 
       shared = choose.({:organisation, ctx.scope.organisation}, "shared", :qory)
-      assert {:ok, %{origin: :file, target_version: "c-R_app"}} = walk.(files)
-      assert {:ok, walked} = walk.(@base_files)
-      assert %{target_version: "c-R_app", document: %{"name" => "shared"}} = walked
-      assert walked.stack_id == shared.id
+      assert [%{stack_id: id}, _walked] = applies.("shared")
+      assert id == shared.id
 
-      # 3. The target's file, then 4. the Qory harness.
+      # 4. The Qory harness, after the target's file.
       {:ok, _row} = Stacks.delete_stack({:organisation, ctx.scope.organisation})
-      assert {:ok, %{origin: :file, target_version: "c-R_app"}} = walk.(files)
-      assert {:ok, walked} = walk.(@base_files)
+      assert {:ok, %{origin: :file}} = walk.(extends)
+      assert {:ok, walked} = walk.(neither)
       assert %{origin: :setting, stack_id: nil, target_version: "c-R_app"} = walked
       assert walked.document == %{"extends" => Domain.definition(Domain.Software).harness}
+    end
+
+    test "a target of a domain without harness files: no file is read under any choice", ctx do
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
+      input = %{ctx.input | workspace: ctx.scope.workspace}
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: Map.merge(@base_files, @target_files)
+      )
+
+      {:ok, _row} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, named("workspace"),
+          choice: :repository
+        )
+
+      assert {:ok, %{origin: :setting, target_version: nil}} = Walk.run(input)
+      refute Enum.any?(reads(calls()), &match?({"R_app", _path, _at}, &1))
     end
 
     test "who may: owners and admins; a member saves nothing", ctx do

@@ -7,12 +7,18 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
   # Explore texts, which read the code and propose how to build it, the policy file's
-  # place, outside the checkout, and the harness choice's repository and its branch or tag.
+  # place, outside the checkout, and the harness choice's repository and its branch, tag or
+  # commit, the version's name among them.
   @software_sentences [
+    "%{source} has no version named %{ref}. An instance admin corrects the version of this harness source.",
+    "%{source} has no version named %{ref}. Correct the version.",
+    "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
-    "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}.",
+    "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
+    "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
     "Proposed what to do",
@@ -34,7 +40,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
     "Run %{attempt} of %{of} reads the %{item} and these answers, from the start. It proposes what to do, or asks what it still needs to know.",
     "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know.",
-    "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start."
+    "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
+    "tag or version"
   ]
 
   use ApiaryWeb.LingoCatalogueCase,
