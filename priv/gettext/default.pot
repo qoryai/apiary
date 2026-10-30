@@ -10874,6 +10874,11 @@ msgstr ""
 msgid "No targets yet"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "No test link is waiting for the admin who saved these settings."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "No tickets come into %{workspace}'s Backlog"
@@ -14206,6 +14211,11 @@ msgstr ""
 msgid "Saved the mail settings, which sent a test link"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved the mail settings; the relay did not accept the test link"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
@@ -17455,6 +17465,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Top bar"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Tried to send the test link again; the relay did not accept it"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

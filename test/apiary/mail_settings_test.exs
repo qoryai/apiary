@@ -13,6 +13,7 @@ defmodule Apiary.MailSettingsTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{KeyDerivation, Mail}
+  alias ApiaryWeb.Activity.Describer.Core, as: Describer
   alias Apiary.Accounts.{User, UserToken}
   alias Apiary.Mail.{Cache, Password, Settings}
 
@@ -424,7 +425,9 @@ defmodule Apiary.MailSettingsTest do
                "port" => 587,
                "tls" => "always",
                "username" => true,
-               "sender" => true
+               "sender" => true,
+               "result" => "sent",
+               "reply_code" => nil
              }
 
       kept = Jason.encode!([entry.before, entry.after, entry.details])
@@ -432,11 +435,40 @@ defmodule Apiary.MailSettingsTest do
       refute kept =~ "qory@example.com"
       refute kept =~ "\"qory\""
 
-      # A refused save leaves none.
+      assert Describer.sentence(:"instance.mail_save", entry, %{}) ==
+               "Saved the mail settings, which sent a test link"
+
+      # A refused save leaves none, and so does one within the minute, which saves nothing.
       assert {:error, _changeset} =
                Mail.save_settings(scope, %{@attrs | "smtp_relay" => ""}, &url/1)
 
+      assert {:error, {:throttled, _at}} = Mail.save_settings(scope, @attrs, &url/1)
       assert [_one] = entries("instance.mail_save")
+
+      # Saved, and the test link refused: the entry is kept, with the result and the reply
+      # code alone, and says the relay did not accept the link.
+      put_env(Mail, smtp_adapter: Refusing)
+      unthrottle!()
+
+      {{:ok, _settings, %{result: :rejected}}, _log} =
+        with_log(fn -> Mail.save_settings(scope, @attrs, &url/1) end)
+
+      assert [refused] =
+               Enum.filter(entries("instance.mail_save"), &(&1.details["result"] == "rejected"))
+
+      assert Map.take(refused.details, ["result", "reply_code"]) ==
+               %{"result" => "rejected", "reply_code" => "550"}
+
+      refute Jason.encode!(refused.details) =~ "refused"
+
+      assert Describer.sentence(:"instance.mail_save", refused, %{}) ==
+               "Saved the mail settings; the relay did not accept the test link"
+
+      # An entry written before results were kept has the line it had.
+      old = %{entry | details: Map.drop(entry.details, ["result", "reply_code"])}
+
+      assert Describer.sentence(:"instance.mail_save", old, %{}) ==
+               "Saved the mail settings, which sent a test link"
     end
 
     test "a saved password that cannot be read is asked for again, saying so", %{scope: scope} do
@@ -834,6 +866,9 @@ defmodule Apiary.MailSettingsTest do
       assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
       assert entry.details == %{"result" => "sent", "reply_code" => nil}
 
+      assert Describer.sentence(:"instance.mail_resend", entry, %{}) ==
+               "Sent the test link again"
+
       kept = Jason.encode!([entry.before, entry.after, entry.details])
 
       for word <- [@password, token, "qory@example.com", "smtp.example.com"],
@@ -849,8 +884,11 @@ defmodule Apiary.MailSettingsTest do
       assert {row().mail_test_result, row().mail_test_reply_code} == {:rejected, "550"}
       refute Mail.test_link_waiting?(row())
 
-      assert [_one, %{details: %{"result" => "rejected", "reply_code" => "550"}}] =
+      assert [_one, %{details: %{"result" => "rejected", "reply_code" => "550"}} = refused] =
                Enum.sort_by(entries("instance.mail_resend"), & &1.inserted_at, DateTime)
+
+      assert Describer.sentence(:"instance.mail_resend", refused, %{}) ==
+               "Tried to send the test link again; the relay did not accept it"
     end
 
     test "within the minute after the last test send, sends nothing, and says until when",

@@ -373,7 +373,8 @@ defmodule Apiary.Mail do
   the change to every node's cache. It is an `instance.mail_save` entry in the trail of the
   instance's organisation, by the admin, about the organisation: the relay, the port, TLS,
   and whether a username and a sender are set, never the password, the username or the
-  sender's address. The test send's result and reply code are kept in the row
+  sender's address; once the test link is sent, the entry has its result and reply code
+  too. The test send's result and reply code are kept in the row
   (`t:test_send/0`); a link the relay did not accept is ended.
 
   Returns `{:ok, settings, test_send}`, the settings saved whether the test link was sent
@@ -423,7 +424,7 @@ defmodule Apiary.Mail do
 
         token = new_test_link(user)
 
-        with {:ok, _entry} <-
+        with {:ok, entry} <-
                Audit.record(
                  Repo,
                  Scope.in_organisation(scope, organisation),
@@ -431,15 +432,20 @@ defmodule Apiary.Mail do
                  organisation,
                  %{details: saved_details(settings)}
                ),
-             do: {:ok, {settings, token}}
+             do: {:ok, {settings, token, entry}}
       end
     end)
     |> case do
-      {:ok, {settings, token}} ->
+      {:ok, {settings, token, entry}} ->
         Cache.changed()
         settings = %{settings | smtp_password: nil}
         test_send = send_test_link(settings, user, token, url_fun.(token))
-        record_test_send(test_send)
+
+        {:ok, _entry} =
+          Repo.transact(fn ->
+            record_test_send(test_send)
+            add_test_result(entry, test_send)
+          end)
 
         {:ok,
          %{
@@ -569,6 +575,16 @@ defmodule Apiary.Mail do
     {token, user_token} = UserToken.build_email_token(user, @token_context)
     Repo.insert!(user_token)
     token
+  end
+
+  # The save's entry, written before its test send, with the send's result and reply code
+  # added: the result alone, never the relay's text.
+  defp add_test_result(entry, %{result: result, reply_code: reply_code}) do
+    entry
+    |> Ecto.Changeset.change(
+      details: Map.merge(entry.details, %{result: result, reply_code: reply_code})
+    )
+    |> Repo.update()
   end
 
   # Keeps a test send's result in the row, unless a later test send has started since.
@@ -701,9 +717,9 @@ defmodule Apiary.Mail do
     %{sent_at: settings.mail_test_sent_at, result: result, reply_code: reply_code, reason: reason}
   end
 
-  # Delivers the test link, and classes the answer (`test_result/2`). gen_smtp's error does
-  # not say which command the relay refused; its trace function is called with the format
-  # below only when the relay refuses MAIL FROM, the sender address. An exception from the
+  # Delivers the test link, and classes the answer (`test_result/2`). gen_smtp's error has
+  # no field for the command the relay refused; its trace function is called with the
+  # format below only when the relay refuses MAIL FROM, the sender address. An exception from the
   # adapter is the result `:other`.
   defp deliver_test_link(user, url, config, sender) do
     ref = make_ref()
@@ -738,7 +754,7 @@ defmodule Apiary.Mail do
   reason}`, from `answer`, what `Apiary.Mailer.deliver/2` returned through
   `Swoosh.Adapters.SMTP`, which wraps gen_smtp's `{error, Type, Failure}` as
   `{:error, {type, failure}}`. `mail_from_refused` is whether the relay refused the MAIL
-  FROM command, which gen_smtp says only in its trace.
+  FROM command, which only gen_smtp's trace shows.
 
   - A network failure is `:connect`, with its reason, such as `:econnrefused`; a TLS
     alert while it connects, on port 465, is `:tls`.
