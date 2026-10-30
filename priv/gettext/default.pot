@@ -16207,14 +16207,14 @@ msgstr ""
 msgid "The installation couldn't be completed just now. Press Install to try again."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
-#, elixir-autogen, elixir-format
-msgid "The instance holds %{count} diagnostics keys at most. Revoke one to add another."
-msgstr ""
-
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "The instance admin can read the machine's log."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "The instance holds %{count} diagnostics keys at most. Revoke one to add another."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

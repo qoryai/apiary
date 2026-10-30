@@ -435,6 +435,14 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       assert id == dispatch.public_id
       refute Map.has_key?(document, "queue")
+
+      # Why the preparation stopped, as the run page says it, the reason filtered.
+      assert %{"cause" => "machine_not_made", "text" => text} =
+               document["preparation"]["stopped"]
+
+      assert text =~ "No machine was made: Quota key [FILTERED] refused."
+      refute Map.has_key?(document["preparation"]["stopped"], "step")
+      refute Jason.encode!(document) =~ "AQIDBAUG"
     end
 
     test "has no dispatch claimed after the run was registered",
