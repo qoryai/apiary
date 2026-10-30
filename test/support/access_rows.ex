@@ -85,6 +85,7 @@ defmodule Apiary.AccessRows do
       {:"instance_admin.revoke", yes: []},
       {:"account.password_link", yes: []},
       {:"instance.mail_save", yes: []},
+      {:"instance.mail_resend", yes: []},
       {:"instance.mail_on", yes: []},
       {:"instance.rename", yes: []},
       {:"instance.configure", yes: []},

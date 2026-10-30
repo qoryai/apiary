@@ -913,6 +913,91 @@ defmodule Apiary.Runs do
     }
   end
 
+  @harness_fetches_max 200
+
+  @doc """
+  The hosts the workspace's runs reached to fetch their harness (channel `stack`) under the
+  filters, the most recently seen first, `limit:` at most (#{@harness_fetches_max} by
+  default): `%{rows:, total:}`, `total` the hosts there are and `rows`
+  `[%{host:, runs:, attempts:, allowed:, denied:, last_seen_at:, sources:}]`, one row per
+  host. `sources` are the harness sources of the host in the harness records of the runs
+  that fetched it, the most runs first. The filters are
+  the destinations' (`decision`, `target`, `host`, `q`, `tools`, the range). These rows are
+  no destination: no count, view, facet, rail or rule option of the destinations reads
+  them, and no rule is made from one.
+  """
+  def harness_fetches(
+        %Scope{} = scope,
+        %Filters{} = filters,
+        now \\ DateTime.utc_now(),
+        opts \\ []
+      ) do
+    limit = Keyword.get(opts, :limit, @harness_fetches_max)
+    base = connections_in(scope, filters, now, "stack")
+
+    rows =
+      Repo.all(
+        from c in base,
+          group_by: c.host,
+          select: %{
+            host: c.host,
+            runs: count(c.run_id, :distinct),
+            attempts: type(coalesce(sum(c.attempts), 0), :integer),
+            allowed: type(coalesce(sum(c.allowed), 0), :integer),
+            denied: type(coalesce(sum(c.denied), 0), :integer),
+            last_seen_at: max(c.last_seen_at)
+          }
+      )
+      |> Enum.filter(fn row ->
+        case filters.decision do
+          "denied" -> row.denied > 0
+          "allowed" -> row.allowed > 0
+          _all -> true
+        end
+      end)
+      |> Enum.sort_by(&{DateTime.to_unix(&1.last_seen_at, :microsecond), &1.host}, :desc)
+
+    shown = Enum.take(rows, limit)
+    sources = fetch_sources(base, Enum.map(shown, & &1.host))
+
+    %{
+      rows: for(row <- shown, do: Map.put(row, :sources, Map.get(sources, row.host, []))),
+      total: length(rows)
+    }
+  end
+
+  # The sources of each host among the harness records of the runs that fetched it, the
+  # most runs first. A run with no record (a run that is of no queue, or whose record was
+  # deleted) is one the source of which is not recorded.
+  defp fetch_sources(_base, []), do: %{}
+
+  defp fetch_sources(base, hosts) do
+    Repo.all(
+      from [c, r] in base,
+        left_join: h in Apiary.Harnesses.RunHarness,
+        on: h.dispatch_run_id == r.dispatch_run_id,
+        where: c.host in ^hosts,
+        group_by: [c.host, h.pins, h.harness_hidden, is_nil(h.id), h.state],
+        select:
+          {c.host, count(c.run_id, :distinct), h.pins, h.harness_hidden, is_nil(h.id), h.state}
+    )
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {host, groups} ->
+      sources =
+        groups
+        |> Enum.flat_map(fn {_host, runs, pins, hidden, unrecorded, state} ->
+          for source <- Apiary.Harnesses.FetchSource.of(host, pins, hidden, unrecorded, state),
+              do: {source, runs}
+        end)
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+        |> Enum.map(fn {source, counts} -> {source, Enum.sum(counts)} end)
+        |> Enum.sort_by(fn {source, runs} -> {-runs, inspect(source)} end)
+        |> Enum.map(&elem(&1, 0))
+
+      {host, sources}
+    end)
+  end
+
   # Denied first: the destinations whose last attempt was denied, the most denied attempts
   # first and then the most recently seen, as To review weighs them; the rest by
   # first seen, newest first, so such a row does not move when it is seen again (see
@@ -1188,17 +1273,17 @@ defmodule Apiary.Runs do
     %{options: options, total: total}
   end
 
-  # The workspace's connection rows under the filters, joined to their run (for the
-  # target). Only the session's: a run's harness fetch (channel `stack`) to the same
+  # The workspace's connection rows of one channel under the filters, joined to their run
+  # (for the target). The destinations, their counts, facets and rule options read the
+  # session's alone (the default): a run's harness fetch (channel `stack`) to the same
   # destination is a second row of the run, and the workspace's rules do not decide it.
-  defp connections_in(
-         %Scope{
-           organisation: %Organisation{id: organisation_id},
-           workspace: %Workspace{id: workspace_id}
-         } = scope,
-         %Filters{} = f,
-         now
-       ) do
+  # `harness_fetches/3` is the one reader of `"stack"`.
+  defp connections_in(scope, %Filters{} = f, now, channel \\ "session") do
+    %Scope{
+      organisation: %Organisation{id: organisation_id},
+      workspace: %Workspace{id: workspace_id}
+    } = scope
+
     {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
     connections =
@@ -1208,7 +1293,7 @@ defmodule Apiary.Runs do
         on: r.id == c.run_id and r.workspace_id == c.workspace_id,
         where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
         where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
-        where: c.channel == "session"
+        where: c.channel == ^channel
       )
 
     scope

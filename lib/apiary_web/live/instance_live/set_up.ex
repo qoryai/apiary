@@ -36,9 +36,11 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # while the page is open.
   #
   # The mail step holds the form of Instance settings › Mail
-  # (`ApiaryWeb.InstanceLive.MailForm`), with "Save and send a test", and the saved
-  # settings once there are any, with Continue. Once the test link is sent, the step is
-  # done.
+  # (`ApiaryWeb.InstanceLive.MailForm`), with "Save and send a test", the saved settings
+  # once there are any, and Send the test link again while mail waits for the link. The
+  # step is done once mail is on, or the relay accepted the last test link
+  # (`Apiary.Mail.sent_or_on?/1`), with Continue; the step reads it again after each test
+  # send. A test send the relay accepted leads on, as Continue does.
   #
   # Every step has Back to the step before it, where that step has a page, and Skip while
   # it is not done, which leaves the connection as it is: it can be finished later in
@@ -171,7 +173,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     assign(socket,
       step: step,
       steps: SetUpComponents.steps_for(socket.assigns.current_scope, step),
-      mail_state: Mail.shown().state
+      mail_done: Mail.sent_or_on?(Mail.settings())
     )
   end
 
@@ -243,20 +245,30 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
-  # The mail step's test link went out: the last step is done.
-  def handle_info({MailForm, :sent}, socket) do
+  # The relay accepted the mail step's test link: the last step is done.
+  def handle_info({MailForm, :tested, %{result: :sent, sent_at: sent_at}}, socket) do
     email = socket.assigns.current_scope.user.email
 
     {:noreply,
      socket
      |> put_flash(
        :info,
-       gettext("Mail turns on when you follow the link we sent to %{email}, signed in as you.",
-         email: email
+       gettext(
+         "Mail turns on when you follow the link we sent to %{email} at %{time}, signed in as you. The link works until %{expiry}.",
+         email: email,
+         time: Format.datetime(sent_at, seconds: true, zone: true),
+         expiry:
+           sent_at
+           |> DateTime.add(Mail.test_link_minutes(), :minute)
+           |> Format.datetime(zone: true)
        )
      )
      |> finish()}
   end
+
+  # A test send the relay did not accept: the step and the progress read again.
+  def handle_info({MailForm, :tested, _test_send}, socket),
+    do: {:noreply, assign_step(socket, socket.assigns.step)}
 
   # A key arrived at an adapter, it declared where to set it up or connect to it, or the
   # installer made one: the adapters read again.
@@ -321,7 +333,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         <.installing_step :if={@installing} name={@installing} steps={@steps} />
         <.mail_step
           :if={@step == :mail}
-          state={@mail_state}
+          done={@mail_done}
           steps={@steps}
           current_scope={@current_scope}
         />
@@ -454,12 +466,12 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         adapter: name
       )
 
-  attr :state, :atom, required: true
+  attr :done, :boolean, required: true
   attr :steps, :list, required: true
   attr :current_scope, :map, required: true
 
   # The mail step: the form of Instance settings › Mail, with Back, Save and send a test,
-  # and Skip, or Continue once settings are saved.
+  # and Skip, or Continue once the step is done.
   defp mail_step(assigns) do
     ~H"""
     <section id="set-up-mail" class="grid gap-4" aria-labelledby="set-up-name">
@@ -473,12 +485,12 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         step
       >
         <:back><SetUpComponents.back steps={@steps} page={~p"/instance/set-up"} /></:back>
-        <:actions :if={@state in [:pending, :on]}>
+        <:actions :if={@done}>
           <.button id="set-up-continue" type="button" size="md" phx-click="next">
             {gettext("Continue")}
           </.button>
         </:actions>
-        <:actions :if={@state not in [:pending, :on]}><.skip /></:actions>
+        <:actions :if={not @done}><.skip /></:actions>
       </.live_component>
     </section>
     """

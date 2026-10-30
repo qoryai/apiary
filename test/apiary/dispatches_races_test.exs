@@ -24,7 +24,7 @@ defmodule Apiary.DispatchesRacesTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
-  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
+  import Apiary.DispatchedRunsFixtures, only: [registry_image: 2, workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.Races
   import Apiary.WorkItemsFixtures
@@ -834,7 +834,9 @@ defmodule Apiary.DispatchesRacesTest do
   end
 
   describe "a claim of a run held for its build" do
-    @built "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("5e", 32)
+    # The image the build of `round` records: under the registry's place of its
+    # organisation, the only place a claim gives an image from.
+    defp built(round), do: registry_image(round.build.organisation_id, String.duplicate("5e", 32))
 
     # A collection of the round's target `path` with `env-0`, a run held for its build,
     # and the build claimed by `key`: committed.
@@ -860,7 +862,12 @@ defmodule Apiary.DispatchesRacesTest do
           :ok =
             Apiary.Environments.record_build(
               build,
-              %{image: @built, size: 1_048_576, commit: "4b7d0a3f", environment_ref: "env-0"},
+              %{
+                image: built(round),
+                size: 1_048_576,
+                commit: "4b7d0a3f",
+                environment_ref: "env-0"
+              },
               %{system: "code.example.com", path: round.collection.target_path},
               Dispatches.now()
             )
@@ -870,7 +877,7 @@ defmodule Apiary.DispatchesRacesTest do
       end
     end
 
-    # What a claim of `key` took: the held run with `@built`, nothing, or, for `allowed`,
+    # What a claim of `key` took: the held run with `built/1`, nothing, or, for `allowed`,
     # a prebuild; never the held run in the pool's default image.
     defp assert_claim(answer, round, allowed \\ []) do
       case answer do
@@ -879,7 +886,7 @@ defmodule Apiary.DispatchesRacesTest do
 
         {:ok, %{run: %DispatchRun{id: id}, registered: registered}} ->
           if id == round.run.id do
-            assert registered.configured_image == @built
+            assert registered.configured_image == built(round)
             :held_run
           else
             assert %DispatchRun{step: "prebuild"} = Repo.get!(DispatchRun, id)

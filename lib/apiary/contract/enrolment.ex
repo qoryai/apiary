@@ -64,12 +64,13 @@ defmodule Apiary.Contract.Enrolment do
   # A node's kind as an answer names it, an adapter's among them; a private type, so the
   # served docs show its name alone, as an adapter belongs to a feature the documentation
   # does not differ by (`docs: false`).
-  @typep node_kind :: :node | :pool | :gateway | :adapter
+  @typep node_kind :: :node | :pool | :gateway | :adapter | :diagnostics
 
   @members ~w(version code name public_key timestamp proof)
   # A code after its prefix, one of every kind's (`EnrolmentCode.prefixes/0`) or a run
   # code's (`EnrolmentCode.run_prefix/0`, which `Apiary.Runs.RunCode` redeems): together
-  # the contract's pattern, `^qec[npgir]_` and this.
+  # the contract's pattern, `^qec[npgir]_` and this. A diagnostics key's code, `qecd_`, is
+  # outside that pattern, which lists no diagnostics key.
   @code_rest ~r/\A[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @public_key ~r/\A[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\z/
@@ -214,8 +215,10 @@ defmodule Apiary.Contract.Enrolment do
           stored_secrets: boolean,
           apiary_public_key: [map, ...]
         }) :: binary
-  # An adapter's key enrols as any node's: `node_kind` `adapter`, for an `na_` id.
-  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool, :gateway, :adapter] do
+  # An adapter's key enrols as any node's: `node_kind` `adapter`, for an `na_` id; a
+  # diagnostics key too: `diagnostics`, for the instance's `dg_` node.
+  def answer_body(%{node_kind: kind} = answer)
+      when kind in [:node, :pool, :gateway, :adapter, :diagnostics] do
     Jason.encode!(
       Jason.OrderedObject.new([
         {"version", 1},

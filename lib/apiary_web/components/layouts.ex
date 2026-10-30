@@ -422,6 +422,19 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
+    # The keys that read any run's diagnostics, with the `observability` feature, which the
+    # instance has or not, as the adapters. After Nodes, before Mail.
+    diagnostics_keys =
+      admin? && Apiary.Features.on?(:observability) &&
+        %Entry{
+          section: :instance,
+          key: :diagnostics_keys,
+          label: gettext("Diagnostics keys"),
+          icon: "hero-key",
+          path: ~p"/instance/diagnostics-keys",
+          place: :instance
+        }
+
     configuration =
       admin? &&
         %Entry{
@@ -435,7 +448,8 @@ defmodule ApiaryWeb.Layouts do
 
     for %Entry{} = entry <-
           [general] ++
-            ApiaryWeb.Edition.instance_sections(scope) ++ [adapters, nodes, mail, configuration],
+            ApiaryWeb.Edition.instance_sections(scope) ++
+            [adapters, nodes, diagnostics_keys, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 
@@ -493,7 +507,11 @@ defmodule ApiaryWeb.Layouts do
   Search or jump to (the palette), New and the account menu. The sidebar holds the pages
   of the page's scope, which the entry it passes as `nav` belongs to
   (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's,
-  whose pages are their settings. At its foot are the scope's settings, named after the
+  whose pages are their settings. On a workspace's pages its first line is the
+  organisation's name, a link up to the organisation's overview; while the workspace's
+  set-up is not finished (`ApiaryWeb.SetUpComponents.workspace_set_up/1`, the counts' `set_up`),
+  the group Set up follows, with each step of the set-up, a tick on each one done and the
+  page's step current (`set_up_step`). At its foot are the scope's settings, named after the
   level (Workspace settings, Organisation settings), the current entry on every page of
   them, then the Qory Apiary menu, which leads first to Instance settings for whoever may
   open a section of the Instance level, and the control that folds the sidebar to icons,
@@ -599,6 +617,11 @@ defmodule ApiaryWeb.Layouts do
     doc:
       "false for a page that leads a person through steps of a set-up: the top bar and the page, with no sidebar and no second column"
 
+  attr :set_up_step, :atom,
+    default: nil,
+    doc:
+      "on a page of the workspace's set-up, the id of its step, such as `:model`, current in the sidebar's group Set up"
+
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
     attr :navigate, :string, doc: "where the segment leads; none for the page itself"
@@ -661,6 +684,14 @@ defmodule ApiaryWeb.Layouts do
         if(level == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
       )
       |> assign(:show_notices, notices?(assigns.notices, current, assigns.place))
+      # On the workspace's pages alone, as the link up: not on a page of another level
+      # that shows the workspace's sidebar.
+      |> assign(
+        :set_up,
+        if(level == :workspace and assigns.place == :workspace,
+          do: counts_set_up(assigns.counts)
+        )
+      )
       |> assign(
         :menus,
         if(user, do: menus(scope, assigns.memberships, organisation, workspace, place))
@@ -721,6 +752,8 @@ defmodule ApiaryWeb.Layouts do
             instance_path={@instance_path}
             organisation={@organisation}
             menus={@menus}
+            set_up={@set_up}
+            set_up_step={@set_up_step}
           />
         </div>
 
@@ -2034,6 +2067,8 @@ defmodule ApiaryWeb.Layouts do
   attr :instance_path, :string, required: true
   attr :organisation, :any, default: nil
   attr :menus, :map, default: nil
+  attr :set_up, :map, default: nil
+  attr :set_up_step, :atom, default: nil
 
   defp sidebar(assigns) do
     assigns = assign(assigns, :version, version())
@@ -2062,6 +2097,21 @@ defmodule ApiaryWeb.Layouts do
       </div>
 
       <div class="q-sidebar-body">
+        <%!-- On a workspace's page, the way up to its organisation's overview. --%>
+        <.link
+          :if={@place == :workspace and @organisation != nil}
+          id="nav-up"
+          navigate={~p"/#{@organisation}"}
+          class="q-nav-item q-nav-up"
+          title={@organisation.name}
+          phx-mounted={JS.ignore_attributes(["title"])}
+        >
+          <.icon name="hero-arrow-up" class="q-nav-icon size-[18px]" />
+          <span class="q-nav-text">{@organisation.name}</span>
+        </.link>
+
+        <.set_up_group :if={@set_up} set_up={@set_up} current={@set_up_step} />
+
         <nav
           :for={{section, heading, items} <- @groups}
           class="q-nav-group"
@@ -2141,6 +2191,40 @@ defmodule ApiaryWeb.Layouts do
     </aside>
     """
   end
+
+  # The workspace's set-up while it is not finished (`ApiaryWeb.SetUpComponents.workspace_set_up/1`),
+  # at the top of its sidebar: "Set up · 3 of 7", then each step of the flow, a link to its
+  # page, with a tick once it is done, and the page's step current.
+  attr :set_up, :map, required: true
+  attr :current, :atom, default: nil
+
+  defp set_up_group(assigns) do
+    ~H"""
+    <nav id="nav-group-set-up" class="q-nav-group" aria-labelledby="nav-set-up-heading">
+      <p id="nav-set-up-heading" class="q-nav-heading">
+        {gettext("Set up · %{done} of %{total}", done: @set_up.done, total: @set_up.total)}
+      </p>
+      <.link
+        :for={step <- @set_up.steps}
+        id={"nav-set-up-#{step.id}"}
+        navigate={step.path}
+        aria-current={step.id == @current && "page"}
+        class={["q-nav-item q-nav-step", step.done && "is-done"]}
+      >
+        <span class="q-nav-mark" aria-hidden="true">
+          <.icon :if={step.done} name="hero-check-micro" class="size-3" />
+        </span>
+        <span class="q-nav-text">
+          {step.label}<span :if={step.done} class="sr-only">{gettext(", done")}</span>
+        </span>
+      </.link>
+    </nav>
+    """
+  end
+
+  # The set-up of the sidebar's workspace among the counts, nil once it is finished.
+  defp counts_set_up(%{set_up: %{} = set_up}), do: set_up
+  defp counts_set_up(_counts), do: nil
 
   # The second column (`second_column/6`): from 1024 px a column of the level's sections
   # beside the sidebar, under its heading, which names the level and, beneath it, the
@@ -2496,16 +2580,19 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   workspace_landing/1 is where a link to the scope's workspace leads, asked with the
-  scope of that workspace. With the `factory` feature, while its set-up is not finished,
-  the set-up's next step (`ApiaryWeb.SetUpComponents.set_up_path/1`). Else the first
-  page its sidebar shows the reader there, in the sidebar's order (`nav_entries/1`,
-  which an edition adds to), Settings at its foot last. That is the overview wherever the
-  reader may open it; where they may not, as where the record is off or hidden from
-  them, the next page they may. The overview still where the sidebar shows them none.
+  scope of that workspace. With the `factory` feature, while its set-up is not finished
+  (`ApiaryWeb.SetUpComponents.set_up_path/1`), the overview, which lists the set-up's
+  steps. Else the first page its sidebar shows the reader there, in the sidebar's order
+  (`nav_entries/1`, which an edition adds to), Settings at its foot last. That is the
+  overview wherever the reader may open it; where they may not, as where the record is
+  off or hidden from them, the next page they may. The overview still where the sidebar
+  shows them none.
   """
   @spec workspace_landing(Apiary.Accounts.Scope.t()) :: String.t()
   def workspace_landing(%{organisation: organisation, workspace: %{} = workspace} = scope) do
-    ApiaryWeb.SetUpComponents.set_up_path(scope) || first_page(scope, organisation, workspace)
+    if ApiaryWeb.SetUpComponents.set_up_path(scope),
+      do: ~p"/#{organisation}/#{workspace}",
+      else: first_page(scope, organisation, workspace)
   end
 
   defp first_page(scope, organisation, workspace) do

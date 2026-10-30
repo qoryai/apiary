@@ -178,7 +178,7 @@ defmodule ApiaryWeb.CollectionsLiveTest do
              "#work-sources-connect:not([open]) #work-sources-adapter-#{other.public_id}"
            )
 
-    back = URI.encode_query(back: "set-up:sources:workspace=#{ctx.main.slug}")
+    back = URI.encode_query(back: "set-up:sources:workspace=#{ctx.main.public_id}")
 
     assert has_element?(
              lv,
@@ -359,7 +359,7 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     assert words(lv, "#choose-access") =~
              "Not listed? Pick the repositories in the installation's settings."
 
-    back = URI.encode_query(back: "set-up:sources:workspace=#{ctx.main.slug}")
+    back = URI.encode_query(back: "set-up:sources:workspace=#{ctx.main.public_id}")
 
     assert has_element?(
              lv,

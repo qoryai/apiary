@@ -156,7 +156,7 @@ defmodule ApiaryWeb.CollectionsLive do
     assigns =
       assign(assigns,
         id: section_id(assigns.list),
-        back: "set-up:#{assigns.list}:workspace=#{assigns.current_scope.workspace.slug}"
+        back: "set-up:#{assigns.list}:workspace=#{assigns.current_scope.workspace.public_id}"
       )
 
     ~H"""

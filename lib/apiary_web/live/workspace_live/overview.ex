@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
   The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in.
-  With the `factory` feature, while the workspace's set-up is not finished, the page sends
-  the reader to the set-up's next step instead (`ApiaryWeb.SetUpComponents.set_up_path/1`).
-  It
+  With the `factory` feature, while the workspace's set-up is not finished, the page shows
+  the set-up instead (`ApiaryWeb.SetUpComponents.workspace_set_up/1`): "Finish setting up
+  Payments", each step of the set-up with its state and a link to its page, and Continue,
+  to the first step that is not done. Once the test run passed, it
   answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
@@ -102,6 +103,22 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   @denied_filters %Filters{kind: :connections, since: "14d", decision: "denied"}
 
   @impl true
+  def render(%{set_up: %{}} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:overview}
+      width="read"
+    >
+      <:crumb>{gettext("Overview")}</:crumb>
+      <.set_up_list workspace={@current_scope.workspace} set_up={@set_up} />
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -244,13 +261,69 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     """
   end
 
+  attr :workspace, :any, required: true
+  attr :set_up, :map, required: true
+
+  # The set-up while it is not finished: each step with its state, done, the next or to
+  # come, and a link to its page; then Continue, to the next.
+  defp set_up_list(assigns) do
+    ~H"""
+    <section id="overview-set-up" class="grid gap-5" aria-labelledby="overview-set-up-h">
+      <h1 id="overview-set-up-h" class="text-2xl/8 font-semibold tracking-[-0.025em]">
+        {gettext("Finish setting up %{workspace}", workspace: @workspace.name)}
+      </h1>
+      <ol id="overview-set-up-steps" class="q-su-list rounded-box border border-line p-2">
+        <li :for={step <- @set_up.steps}>
+          <.link
+            id={"overview-set-up-#{step.id}"}
+            navigate={step.path}
+            class={["q-su-step", step_state(step, @set_up.next)]}
+            aria-current={step.id == @set_up.next.id && "step"}
+          >
+            <span class="q-su-mark" aria-hidden="true">
+              <.icon :if={step.done} name="hero-check-micro" class="size-3" />
+            </span>
+            <span class="q-su-text">
+              <span class="q-su-nm">{step.label}</span>
+              <span :if={step.done} class="sr-only">{gettext(", done")}</span>
+            </span>
+          </.link>
+        </li>
+      </ol>
+      <div>
+        <.button
+          id="overview-set-up-continue"
+          variant="primary"
+          size="md"
+          navigate={@set_up.next.path}
+        >
+          {gettext("Continue: %{step}", step: @set_up.next.label)}
+        </.button>
+      </div>
+    </section>
+    """
+  end
+
+  defp step_state(%{done: true}, _next), do: "is-done"
+  defp step_state(%{id: id}, %{id: id}), do: "is-current"
+  defp step_state(_step, _next), do: "is-to_come"
+
   ## Lifecycle
 
   @impl true
   def mount(_params, _session, socket) do
-    case SetUpComponents.set_up_path(socket.assigns.current_scope) do
-      nil -> {:ok, open(socket)}
-      path -> {:ok, push_navigate(socket, to: path)}
+    scope = socket.assigns.current_scope
+
+    case SetUpComponents.workspace_set_up(scope) do
+      nil ->
+        {:ok, socket |> assign(:set_up, nil) |> open()}
+
+      set_up ->
+        {:ok,
+         assign(socket,
+           set_up: set_up,
+           page_title: scope.workspace.name <> " · " <> scope.organisation.name
+         )}
     end
   end
 
@@ -262,7 +335,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     posted? = alive > 0 or Runs.recent_runs(scope, 1) != []
     security? = Common.may?(scope, :"security_policy.read")
     # With the `factory` feature, the set-up's steps take the box's place
-    # (`SetUpComponents.set_up_path/1`).
+    # (`SetUpComponents.workspace_set_up/1`).
     factory? = Features.visible?(scope, :factory)
 
     if connected?(socket) do

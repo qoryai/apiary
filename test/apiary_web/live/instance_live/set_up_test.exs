@@ -446,6 +446,15 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
   alias Apiary.{Mail, Setup}
 
+  # An adapter whose relay refuses every email, as `Swoosh.Adapters.SMTP` returns it.
+  defmodule Refusing do
+    @moduledoc false
+    use Swoosh.Adapter
+
+    def deliver(_email, _config),
+      do: {:error, {:send, {:permanent_failure, ~c"smtp.example.com", "550 5.7.1 Refused\r\n"}}}
+  end
+
   setup do
     Apiary.EditionKit.hide_instance_organisation()
     :ok
@@ -479,7 +488,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   # on, as a sign-in sends the admin.
   defp after_mail(scope) do
     if Apiary.Features.on?(:factory),
-      do: ~p"/#{scope.organisation}/set-up?step=sources&workspace=#{scope.workspace.slug}",
+      do: ~p"/#{scope.organisation}/#{scope.workspace.slug}/set-up/sources",
       else: ~p"/"
   end
 
@@ -546,9 +555,13 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
     {to, flash} = assert_redirect(lv)
     assert to == after_mail(scope)
+    sent_at = Mail.settings().mail_test_sent_at
 
     assert flash["info"] ==
-             "Mail turns on when you follow the link we sent to #{user.email}, signed in as you."
+             "Mail turns on when you follow the link we sent to #{user.email} at " <>
+               "#{ApiaryWeb.Format.datetime(sent_at, seconds: true, zone: true)}, signed in as you. " <>
+               "The link works until " <>
+               "#{sent_at |> DateTime.add(60, :minute) |> ApiaryWeb.Format.datetime(zone: true)}."
 
     assert Setup.connections_reviewed?()
 
@@ -568,6 +581,67 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
     lv |> element("#set-up-continue") |> render_click()
     assert {^to, _flash} = assert_redirect(lv)
   end
+
+  # The relay refuses the test link: the step is not done, and says what to check.
+  @tag :feature_sets
+  test "a test link the relay refused keeps the step open with its line, Skip, and Send the test link again, which leads on once sent",
+       %{conn: conn, scope: scope} do
+    before = Application.get_env(:apiary, Mail)
+    Application.put_env(:apiary, Mail, smtp_adapter: Refusing)
+    on_exit(fn -> Application.put_env(:apiary, Mail, before) end)
+    lv = mail_step(conn)
+
+    {_html, _log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        lv
+        |> form("#mail_form",
+          mail: %{
+            "smtp_relay" => "smtp.example.com",
+            "smtp_port" => "587",
+            "smtp_tls" => "always",
+            "smtp_username" => "qory",
+            "smtp_password" => "correct horse battery staple",
+            "mail_from" => ""
+          }
+        )
+        |> render_submit()
+      end)
+
+    assert words(lv, "#mail-result") =~
+             "Check the sender address, and that the relay allows this server's IP address, then send the test link again."
+
+    assert has_element?(lv, "#mail-save button[type=submit]", "Save and send a test")
+    assert has_element?(lv, "#mail-save #mail-resend", "Send the test link again")
+    assert has_element?(lv, "#mail-save #set-up-skip-button", "Skip")
+    refute has_element?(lv, "#set-up-continue")
+    assert {"Mail", :current} in steps(lv)
+    refute Setup.connections_reviewed?()
+
+    # Opened again: the same, and Mail is not done.
+    lv = mail_step(conn)
+    assert has_element?(lv, "#mail-result")
+    refute has_element?(lv, "#set-up-continue")
+    refute {:mail, :done} in mail_shape(scope)
+
+    # Sent again, and accepted: the step is done, and leads on.
+    Application.put_env(:apiary, Mail, before)
+
+    Apiary.Repo.update_all(Apiary.Mail.Settings,
+      set: [mail_test_sent_at: DateTime.add(DateTime.utc_now(), -61, :second)]
+    )
+
+    lv |> element("#mail-resend") |> render_click()
+    assert_received {:email, %{subject: "Turn on mail for Qory Apiary"}}
+    {to, flash} = assert_redirect(lv)
+    assert to == after_mail(scope)
+    assert flash["info"] =~ "Mail turns on when you follow the link we sent to"
+    assert Setup.connections_reviewed?()
+    assert {:mail, :done} in mail_shape(scope)
+  end
+
+  # Each step's id and state, from Your account.
+  defp mail_shape(scope),
+    do: Enum.map(ApiaryWeb.SetUpComponents.steps_for(scope, :account), &{&1.id, &1.state})
 
   test "posts its form, and the password's field has no value", %{conn: conn} do
     path = mail_step_path(conn)
@@ -677,6 +751,17 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
   # The steps of the flow of a new workspace, the first `current`: every step with the
   # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
+  # Choose on the organisation's overview: the new workspace's Name step.
+  defp choose_kind(conn, organisation) do
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+    assert has_element?(lv, "#set-up-card-software")
+
+    lv
+    |> element("#set-up-card-software-choose")
+    |> render_click()
+    |> follow_redirect(conn)
+  end
+
   defp workspace_steps(current) do
     if Apiary.Features.on?(:factory) do
       [{"Name", current}, {"Work sources", :to_come}, {"Destinations", :to_come}] ++
@@ -695,18 +780,22 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       assert conn |> get(path) |> redirected_to() == ~p"/"
     end
 
-    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}/set-up"
+    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}"
     refute Setup.connections_reviewed?()
 
-    # The workspace set-up opens at the type cards, then lists no step under Connect Qory
-    # Apiary.
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up")
-    assert has_element?(lv, "#set-up-card-software")
+    # The organisation's overview has the kind cards; Choose opens the Name step, a page
+    # of the workspace with no indicator and no step of Connect Qory Apiary. With the
+    # `factory` feature, the sidebar's group Set up lists the workspace's steps.
+    {:ok, lv, _html} = choose_kind(conn, organisation)
+    refute has_element?(lv, "#set-up-steps")
 
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?type=software")
-    # Your account is of the instance's progress, so the flow's first step is step 1.
-    assert steps(lv) == workspace_steps(:current)
-    assert count(lv) == "Step 1 of #{length(steps(lv))}"
+    if Apiary.Features.on?(:factory) do
+      assert set_up_group(lv) == workspace_steps(:current)
+      assert set_up_heading(lv) == "Set up · 1 of #{length(workspace_steps(:current))}"
+    else
+      assert set_up_group(lv) == []
+    end
+
     refute has_element?(lv, "#set-up-group-connect")
     refute has_element?(lv, "#set-up-steps-mail")
   end
@@ -731,7 +820,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-skip-button") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=name"
+      assert to == ~p"/#{organisation}"
       assert Setup.connections_reviewed?()
     end
 
@@ -755,29 +844,18 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       # Skip on Mail leads to Name, the first step of the organisation's progress.
       lv |> element("#set-up-skip-button") |> render_click()
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=name"
+      assert to == ~p"/#{organisation}"
 
-      # With no workspace yet, the set-up opens at the type cards; the flow follows.
-      {:ok, lv, _html} = live(conn, to)
-      assert has_element?(lv, "#set-up-card-software")
+      # With no workspace yet, the organisation's overview has the kind cards; Choose opens
+      # the flow, whose steps the sidebar's group Set up counts from 1, apart from the
+      # instance's.
+      {:ok, lv, _html} = choose_kind(conn, organisation)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=name&type=software")
-
-      assert steps(lv) == workspace_steps(:current)
+      assert set_up_group(lv) == workspace_steps(:current)
       steps = length(workspace_steps(:current))
-      assert count(lv) == "Step 1 of #{steps}"
-      assert has_element?(lv, ~s{#set-up-steps progress[value="1"][max="#{steps}"]})
-
-      assert lv
-             |> element("#set-up-step-bar")
-             |> render()
-             |> LazyHTML.from_fragment()
-             |> LazyHTML.text()
-             |> String.split()
-             |> Enum.join(" ") == "Step 1 of #{steps}: Name"
-
-      # No group heading in the organisation's progress.
-      refute has_element?(lv, ".q-su-grp-h")
+      assert set_up_heading(lv) == "Set up · 1 of #{steps}"
+      refute has_element?(lv, "#set-up-steps")
+      refute has_element?(lv, "#nav-set-up-mail")
 
       # Back stays in the organisation's progress: Name is its first step.
       refute has_element?(lv, "#set-up-back")
@@ -791,7 +869,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-continue") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=name"
+      assert to == ~p"/#{organisation}"
       assert Setup.connections_reviewed?()
     end
 

@@ -41,6 +41,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   `repo:` name a target as the line does, its system only where the path is shared, and
   write its id.
 
+  Under the destinations, **Harness fetch** lists the hosts runs reached to fetch their
+  harness (`Apiary.Runs.harness_fetches/3`, `ApiaryWeb.HostComponents.harness_fetches/1`),
+  with the source of each: a separate locked table, with no Allow, no Deny and no
+  expander. They follow the filters but are no destination: the views, counts, rail,
+  facets, suggestions, rows' events and rule options never read them, and no rule is
+  made from one.
+
   A destination's runs are read only when its
   row opens, ten at a time. While batches land the table does not move under the reader:
   "New activity" shows beside the title, which asks again and keeps the open rows open.
@@ -70,6 +77,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.Narrowing
   alias ApiaryWeb.TargetComponents
+
+  import ApiaryWeb.HostComponents, only: [harness_fetches: 1]
 
   @hits_page 10
   @coalesce_ms 250
@@ -442,6 +451,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 ),
               else: gettext("The outcome is that of the last attempt across the runs shown.")}
           </p>
+          <%!-- Harness fetches are no destination: the views, counts, facets and rule options never read them. --%>
+          <.harness_fetches rows={@harness.rows} total={@harness.total} />
         </div>
       </div>
     <% end %>
@@ -490,6 +501,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        # The filters the listing was read for.
        loaded: nil,
        listing: nil,
+       harness: %{rows: [], total: 0},
        views: nil,
        rail: nil,
        rail_query: nil,
@@ -810,6 +822,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        |> assign(
          loaded: filters,
          listing: loaded.listing,
+         harness: loaded.harness,
          views: loaded.views,
          rail: loaded.rail,
          shared: loaded.shared,
@@ -928,6 +941,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         %{
           filters: filters,
           listing: listing,
+          harness: Runs.harness_fetches(scope, filters, now),
           views: Runs.destination_views(scope, filters, now),
           rail: Runs.destination_target_counts(scope, filters, [now: now] ++ rail_opts),
           shared: Runs.shared_paths(scope),

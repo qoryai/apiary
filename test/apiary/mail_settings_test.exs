@@ -13,6 +13,7 @@ defmodule Apiary.MailSettingsTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{KeyDerivation, Mail}
+  alias ApiaryWeb.Activity.Describer.Core, as: Describer
   alias Apiary.Accounts.{User, UserToken}
   alias Apiary.Mail.{Cache, Password, Settings}
 
@@ -31,12 +32,27 @@ defmodule Apiary.MailSettingsTest do
     end
   end
 
-  # An adapter whose relay refuses every email.
+  # An adapter whose relay refuses every email, as `Swoosh.Adapters.SMTP` returns it.
   defmodule Refusing do
     @moduledoc false
     use Swoosh.Adapter
 
-    def deliver(_email, _config), do: {:error, {:permanent_failure, "550 refused"}}
+    def deliver(_email, _config),
+      do: {:error, {:send, {:permanent_failure, ~c"smtp.example.com", "550 refused\r\n"}}}
+  end
+
+  # An adapter that answers what the test put as `{:answer, answer, traces}`, as
+  # `Swoosh.Adapters.SMTP` answers for gen_smtp, after calling the trace function with each
+  # of `traces`, as gen_smtp does; an answer `:raise` raises.
+  defmodule Answering do
+    @moduledoc false
+    use Swoosh.Adapter
+
+    def deliver(_email, config) do
+      {answer, traces} = Process.get(:answer)
+      for format <- traces, do: config[:trace_fun].(format, ["the relay's reply"])
+      if answer == :raise, do: raise("no connection to smtp.example.com"), else: answer
+    end
   end
 
   @attrs %{
@@ -84,10 +100,22 @@ defmodule Apiary.MailSettingsTest do
     token
   end
 
+  # Saves, a minute or more after the last test send.
   defp save!(scope, attrs \\ @attrs) do
-    assert {:ok, %Settings{} = settings, :sent} = Mail.save_settings(scope, attrs, &url/1)
+    unthrottle!()
+
+    assert {:ok, %Settings{} = settings, %{result: :sent}} =
+             Mail.save_settings(scope, attrs, &url/1)
+
     settings
   end
+
+  # The last test send, a minute and a second ago: the next one is allowed.
+  defp unthrottle!,
+    do:
+      Repo.update_all(from(s in Settings, where: not is_nil(s.mail_test_sent_at)),
+        set: [mail_test_sent_at: DateTime.add(DateTime.utc_now(), -61, :second)]
+      )
 
   defp row, do: Repo.get!(Settings, true)
 
@@ -392,6 +420,7 @@ defmodule Apiary.MailSettingsTest do
       assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
       assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
 
+      # Written before the test send, the entry has no result.
       assert entry.details == %{
                "relay" => "smtp.example.com",
                "port" => 587,
@@ -405,11 +434,37 @@ defmodule Apiary.MailSettingsTest do
       refute kept =~ "qory@example.com"
       refute kept =~ "\"qory\""
 
-      # A refused save leaves none.
+      assert Describer.sentence(:"instance.mail_save", entry, %{}) ==
+               "Saved the mail settings and started a test send"
+
+      # A refused save leaves none, and so does one within the minute, which saves nothing.
       assert {:error, _changeset} =
                Mail.save_settings(scope, %{@attrs | "smtp_relay" => ""}, &url/1)
 
+      assert {:error, {:throttled, _at}} = Mail.save_settings(scope, @attrs, &url/1)
       assert [_one] = entries("instance.mail_save")
+    end
+
+    test "a save whose test link the relay refused keeps its entry, which is never changed",
+         %{scope: scope} do
+      put_env(Mail, smtp_adapter: Refusing)
+
+      {{:ok, _settings, %{result: :rejected}}, _log} =
+        with_log(fn -> Mail.save_settings(scope, @attrs, &url/1) end)
+
+      assert [entry] = entries("instance.mail_save")
+      refute Map.has_key?(entry.details, "result") or Map.has_key?(entry.details, "reply_code")
+      refute Jason.encode!(entry.details) =~ "550"
+
+      assert Describer.sentence(:"instance.mail_save", entry, %{}) ==
+               "Saved the mail settings and started a test send"
+
+      # The result is on the row alone; a later test send leaves the entry as it was.
+      assert {row().mail_test_result, row().mail_test_reply_code} == {:rejected, "550"}
+      put_env(Mail, smtp_adapter: Capture)
+      unthrottle!()
+      assert {:ok, %{result: :sent}} = Mail.resend_test_link(scope, &url/1)
+      assert Repo.get!(Apiary.Audit.Entry, entry.id) == entry
     end
 
     test "a saved password that cannot be read is asked for again, saying so", %{scope: scope} do
@@ -507,7 +562,10 @@ defmodule Apiary.MailSettingsTest do
     test "saved, and the test link not sent: the settings are kept, and say so", %{scope: scope} do
       put_env(Mail, smtp_adapter: Refusing)
 
-      assert {:ok, _settings, :not_sent} = Mail.save_settings(scope, @attrs, &url/1)
+      {answer, _log} = with_log(fn -> Mail.save_settings(scope, @attrs, &url/1) end)
+      assert {:ok, settings, %{result: :rejected, reply_code: "550"}} = answer
+
+      assert {settings.mail_test_result, settings.mail_test_reply_code} == {:rejected, "550"}
       assert Mail.state(row()) == :pending
       # No link went out, so none waits.
       refute Mail.test_link_waiting?(row())
@@ -573,6 +631,392 @@ defmodule Apiary.MailSettingsTest do
 
       assert Mail.save_settings(scope, @attrs, &url/1) == {:error, :env}
       assert no_mail_saved?()
+    end
+  end
+
+  describe "a test send's result" do
+    @host ~c"smtp.example.com"
+    @mail_from ~c"Mail FROM rejected: ~p~n"
+
+    # Each answer of `Swoosh.Adapters.SMTP` for gen_smtp 1.3, with the formats gen_smtp
+    # traced, and the result, the reply code and the reason it is.
+    @answers [
+      {{:ok, "250 queued"}, [], {:sent, nil, nil}},
+      {{:error, {:retries_exceeded, {:network_failure, @host, {:error, :econnrefused}}}}, [],
+       {:connect, nil, :econnrefused}},
+      {{:error, {:retries_exceeded, {:network_failure, @host, {:error, :nxdomain}}}}, [],
+       {:connect, nil, :nxdomain}},
+      {{:error,
+        {:retries_exceeded,
+         {:network_failure, @host, {:error, {:tls_alert, {:unknown_ca, ~c"unknown ca"}}}}}}, [],
+       {:tls, nil, nil}},
+      {{:error, {:retries_exceeded, {:temporary_failure, @host, :tls_failed}}}, [],
+       {:tls, nil, nil}},
+      {{:error, {:retries_exceeded, {:missing_requirement, @host, :tls}}}, [], {:tls, nil, nil}},
+      {{:error, {:no_more_hosts, {:permanent_failure, @host, :auth_failed}}}, [],
+       {:login, nil, nil}},
+      {{:error, {:retries_exceeded, {:missing_requirement, @host, :auth}}}, [],
+       {:login, nil, nil}},
+      {{:error,
+        {:send,
+         {:permanent_failure, @host,
+          "550 5.7.1 Sender qory@example.com refused for 192.0.2.7 by smtp.example.com\r\n"}}},
+       [@mail_from], {:sender, "550 5.7.1", nil}},
+      {{:error,
+        {:send,
+         {:permanent_failure, @host,
+          "550 5.7.1 Recipient refused for 192.0.2.7 by smtp.example.com\r\n"}}}, [],
+       {:rejected, "550 5.7.1", nil}},
+      {{:error, {:no_more_hosts, {:permanent_failure, @host, "554 No service\r\n"}}}, [],
+       {:rejected, "554", nil}},
+      {{:error,
+        {:send, {:temporary_failure, @host, "451-4.3.0 Try again later\r\n451 4.3.0 Later\r\n"}}},
+       [], {:temporary, "451 4.3.0", nil}},
+      {{:error, {:retries_exceeded, {:temporary_failure, @host, "421 Too busy\r\n"}}}, [],
+       {:temporary, "421", nil}},
+      {{:error, {:retries_exceeded, {:unexpected_response, @host, ["SMTP? no"]}}}, [],
+       {:other, nil, nil}},
+      {{:error, {:no_more_hosts, {:permanent_failure, @host, :ssl_not_started}}}, [],
+       {:other, nil, nil}},
+      {{:error, {:send, {:permanent_failure, @host, "refused\r\n"}}}, [@mail_from],
+       {:other, nil, nil}},
+      {{:error, :no_credentials}, [], {:other, nil, nil}},
+      {:raise, [], {:other, nil, nil}}
+    ]
+
+    setup do
+      put_env(Mail, smtp_adapter: Answering)
+      :ok
+    end
+
+    test "is classed from the adapter's answer, and keeps the class and the reply code alone",
+         %{scope: scope} do
+      for {answer, traces, {result, code, reason}} <- @answers do
+        Process.put(:answer, {answer, traces})
+        unthrottle!()
+
+        {{:ok, settings, test_send}, log} =
+          with_log(fn -> Mail.save_settings(scope, @attrs, &url/1) end)
+
+        assert {test_send.result, test_send.reply_code, test_send.reason} ==
+                 {result, code, reason},
+               inspect(answer)
+
+        assert {settings.mail_test_result, settings.mail_test_reply_code} == {result, code}
+        row = row()
+        assert {row.mail_test_result, row.mail_test_reply_code} == {result, code}
+        assert DateTime.compare(row.mail_test_sent_at, test_send.sent_at) == :eq
+
+        # Never the relay's text, its host, this server's address or the sender's.
+        %{rows: [kept]} =
+          Repo.query!(
+            "SELECT mail_test_result, mail_test_reply_code FROM instance_settings WHERE id"
+          )
+
+        kept = Enum.join(Enum.reject(kept, &is_nil/1), " ")
+
+        for word <- ["refused", "192.0.2.7", "smtp.example.com", "qory@example.com", "later"],
+            do: refute(kept =~ word)
+
+        if result == :sent do
+          assert log == ""
+          assert Mail.test_link_waiting?(row)
+        else
+          # One line, with the class and the reply code alone; the link is ended.
+          assert log =~ "The test link of the mail settings was not sent: #{result}"
+          if code, do: assert(log =~ ", reply code #{code}")
+
+          for word <- ["192.0.2.7", "smtp.example.com", "qory@example.com", "econnrefused"],
+              do: refute(log =~ word)
+
+          refute Mail.test_link_waiting?(row)
+          assert Repo.all_by(UserToken, context: "instance_mail") == []
+        end
+      end
+    end
+
+    test "test_result/2 tells the sender apart only by gen_smtp's trace of MAIL FROM" do
+      refused =
+        {:error, {:send, {:permanent_failure, @host, "553 5.1.8 Sender address refused\r\n"}}}
+
+      assert Mail.test_result(refused, true) == {:sender, "553 5.1.8", nil}
+      assert Mail.test_result(refused, false) == {:rejected, "553 5.1.8", nil}
+
+      # Refused before the email, as the session opened: never the sender.
+      assert Mail.test_result(
+               {:error, {:no_more_hosts, {:permanent_failure, @host, "554 5.7.1 No\r\n"}}},
+               true
+             ) == {:rejected, "554 5.7.1", nil}
+    end
+
+    test "a save within the minute after the last test send saves and sends nothing, and says until when",
+         %{scope: scope} do
+      Process.put(:answer, {{:ok, "250 queued"}, []})
+      save!(scope)
+      sent_at = row().mail_test_sent_at
+      before = row()
+
+      assert {:error, {:throttled, allowed_at}} =
+               Mail.save_settings(scope, %{@attrs | "mail_from" => "mail@example.com"}, &url/1)
+
+      assert allowed_at == DateTime.add(sent_at, 60, :second)
+      assert Mail.test_send_seconds() == 60
+      assert row() == before
+      assert entries("instance.mail_save") |> length() == 1
+
+      # A minute on, it saves.
+      unthrottle!()
+
+      assert {:ok, _settings, %{result: :sent}} =
+               Mail.save_settings(scope, %{@attrs | "mail_from" => "mail@example.com"}, &url/1)
+
+      assert row().mail_from == "mail@example.com"
+    end
+
+    # The adapter the release uses, against a relay on this machine that answers as told:
+    # gen_smtp traces a refusal of MAIL FROM, and of no other command.
+    test "through Swoosh's SMTP adapter, a relay that refuses the sender, a recipient, or for now",
+         %{scope: scope} do
+      put_env(Mail, smtp_adapter: Swoosh.Adapters.SMTP)
+
+      attrs = %{
+        @attrs
+        | "smtp_relay" => "127.0.0.1",
+          "smtp_tls" => "never",
+          "smtp_username" => "",
+          "smtp_password" => "",
+          "mail_from" => ""
+      }
+
+      for {replies, result, code} <- [
+            {%{"MAIL" => "550 5.7.1 Sender not verified for 192.0.2.7"}, :sender, "550 5.7.1"},
+            {%{"RCPT" => "550 5.1.1 No such recipient"}, :rejected, "550 5.1.1"},
+            {%{"DATA" => "554 5.6.0 Message refused"}, :rejected, "554 5.6.0"},
+            {%{"MAIL" => "451 4.7.1 Try again later"}, :temporary, "451 4.7.1"},
+            {%{}, :sent, nil}
+          ] do
+        {port, relay} = relay(replies)
+        unthrottle!()
+
+        {{:ok, _settings, test_send}, _log} =
+          with_log(fn ->
+            Mail.save_settings(scope, %{attrs | "smtp_port" => to_string(port)}, &url/1)
+          end)
+
+        assert {test_send.result, test_send.reply_code} == {result, code}, inspect(replies)
+        commands = Task.await(relay)
+        assert "MAIL FROM:<#{Apiary.Mailer.default_address()}>" in commands
+      end
+
+      # Nothing listens: the connection is refused.
+      {:ok, socket} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, port} = :inet.port(socket)
+      :ok = :gen_tcp.close(socket)
+      unthrottle!()
+
+      {{:ok, _settings, test_send}, _log} =
+        with_log(fn ->
+          Mail.save_settings(scope, %{attrs | "smtp_port" => to_string(port)}, &url/1)
+        end)
+
+      assert {test_send.result, test_send.reason} == {:connect, :econnrefused}
+    end
+  end
+
+  describe "resend_test_link/2" do
+    setup %{scope: scope} do
+      save!(scope)
+      first = sent_token()
+      unthrottle!()
+      %{first: first}
+    end
+
+    test "for the admin who saved: ends the link sent before, sends a new one, and changes no setting",
+         %{scope: scope, first: first} do
+      before = row()
+
+      assert {:ok, %{result: :sent, reply_code: nil, sent_at: sent_at}} =
+               Mail.resend_test_link(scope, &url/1)
+
+      second = sent_token()
+      refute second == first
+
+      after_ = row()
+      assert DateTime.compare(after_.mail_test_sent_at, sent_at) == :eq
+      assert after_.mail_test_result == :sent
+
+      assert Map.drop(after_, [:mail_test_sent_at]) ==
+               Map.drop(before, [:mail_test_sent_at])
+
+      assert Mail.turn_on(scope, first) == :error
+      assert {:ok, _settings} = Mail.turn_on(scope, second)
+    end
+
+    test "is an instance.mail_resend entry, by the admin, with the result and the reply code alone",
+         %{scope: scope} do
+      assert {:ok, %{result: :sent}} = Mail.resend_test_link(scope, &url/1)
+      token = sent_token()
+
+      assert [entry] = entries("instance.mail_resend")
+      assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
+      assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
+      assert entry.details == %{"result" => "sent", "reply_code" => nil}
+
+      assert Describer.sentence(:"instance.mail_resend", entry, %{}) ==
+               "Sent the test link again"
+
+      kept = Jason.encode!([entry.before, entry.after, entry.details])
+
+      for word <- [@password, token, "qory@example.com", "smtp.example.com"],
+          do: refute(kept =~ word)
+
+      # Refused by the relay: the result, the reply code, and the link ended.
+      put_env(Mail, smtp_adapter: Refusing)
+      unthrottle!()
+
+      {{:ok, %{result: :rejected, reply_code: "550"}}, _log} =
+        with_log(fn -> Mail.resend_test_link(scope, &url/1) end)
+
+      assert {row().mail_test_result, row().mail_test_reply_code} == {:rejected, "550"}
+      refute Mail.test_link_waiting?(row())
+
+      assert [_one, %{details: %{"result" => "rejected", "reply_code" => "550"}} = refused] =
+               Enum.sort_by(entries("instance.mail_resend"), & &1.inserted_at, DateTime)
+
+      assert Describer.sentence(:"instance.mail_resend", refused, %{}) ==
+               "Tried to send the test link again; the relay did not accept it"
+    end
+
+    test "within the minute after the last test send, sends nothing, and says until when",
+         %{scope: scope} do
+      assert {:ok, %{sent_at: sent_at}} = Mail.resend_test_link(scope, &url/1)
+      _token = sent_token()
+      allowed_at = DateTime.add(sent_at, 60, :second)
+
+      assert Mail.resend_test_link(scope, &url/1) == {:error, {:throttled, allowed_at}}
+
+      # A save is held to the same minute.
+      assert Mail.save_settings(scope, @attrs, &url/1) == {:error, {:throttled, allowed_at}}
+      refute_received {:sent, _email, _config}
+      assert [_one] = entries("instance.mail_resend")
+    end
+
+    test "is refused to another instance admin, a sign-in not recent, mail from the environment, and mail already on",
+         %{scope: scope, first: first} do
+      %{scope: other} = with_env_mail(fn -> member_fixture(scope, :owner) end)
+      other = signed_in(other)
+      assert Apiary.Access.instance_admin?(other)
+      before = row()
+
+      assert Mail.resend_test_link(other, &url/1) == {:error, :not_saver}
+      assert Mail.resend_test_link(signed_in(scope, 21), &url/1) == {:error, :sudo}
+      assert Mail.resend_test_link(nil, &url/1) == {:error, :forbidden}
+
+      member = with_env_mail(fn -> member_fixture(scope).scope end)
+      assert Mail.resend_test_link(signed_in(member), &url/1) == {:error, :forbidden}
+
+      put_env(Apiary.Mailer, adapter: Swoosh.Adapters.Test)
+      assert Mail.resend_test_link(scope, &url/1) == {:error, :env}
+      no_env_mail()
+
+      assert row() == before
+      refute_received {:sent, _email, _config}
+      assert entries("instance.mail_resend") == []
+
+      # Mail on: nothing waits for a link.
+      assert {:ok, _settings} = Mail.turn_on(scope, first)
+      assert Mail.resend_test_link(scope, &url/1) == {:error, :not_pending}
+      refute_received {:sent, _email, _config}
+    end
+
+    test "is refused where nothing is saved", %{scope: scope} do
+      Repo.update_all(Settings, set: [smtp_relay: nil])
+      assert Mail.resend_test_link(scope, &url/1) == {:error, :not_pending}
+    end
+  end
+
+  describe "sent_or_on?/1" do
+    test "is true once mail is on, or the relay accepted the last test link", %{scope: scope} do
+      refute Mail.sent_or_on?(nil)
+      save!(scope)
+      _first = sent_token()
+      assert Mail.sent_or_on?(row())
+
+      put_env(Mail, smtp_adapter: Refusing)
+      unthrottle!()
+
+      {{:ok, _settings, %{result: :rejected}}, _log} =
+        with_log(fn -> Mail.save_settings(scope, @attrs, &url/1) end)
+
+      refute Mail.sent_or_on?(row())
+
+      put_env(Mail, smtp_adapter: Capture)
+      save!(scope)
+      assert {:ok, _settings} = Mail.turn_on(scope, sent_token())
+      assert Mail.sent_or_on?(row())
+    end
+  end
+
+  # A relay on this machine, for one connection: it answers each command with its reply in
+  # `replies`, by the command's name, or with one that accepts it. Returns the port, and a
+  # task whose result is the commands it read.
+  defp relay(replies) do
+    {:ok, listen} =
+      :gen_tcp.listen(0, [:binary, packet: :line, active: false, ip: {127, 0, 0, 1}])
+
+    {:ok, port} = :inet.port(listen)
+
+    task =
+      Task.async(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen, 5_000)
+        :ok = :gen_tcp.close(listen)
+        :ok = :gen_tcp.send(socket, "220 relay.example.com\r\n")
+        converse(socket, replies, [])
+      end)
+
+    {port, task}
+  end
+
+  defp converse(socket, replies, commands) do
+    case :gen_tcp.recv(socket, 0, 5_000) do
+      {:ok, line} ->
+        line = String.trim_trailing(line, "\r\n")
+        [name | _rest] = String.split(line, [" ", ":"])
+        name = String.upcase(name)
+
+        reply =
+          case name do
+            "QUIT" -> "221 Bye"
+            "DATA" -> Map.get(replies, "DATA", "250 Queued") |> data(socket)
+            "EHLO" -> "250 relay.example.com"
+            _command -> Map.get(replies, name, "250 OK")
+          end
+
+        :gen_tcp.send(socket, reply <> "\r\n")
+
+        if name == "QUIT" do
+          :gen_tcp.close(socket)
+          Enum.reverse([line | commands])
+        else
+          converse(socket, replies, [line | commands])
+        end
+
+      {:error, _closed} ->
+        Enum.reverse(commands)
+    end
+  end
+
+  # DATA: go ahead, read the email to its last line, and the reply to it.
+  defp data(reply, socket) do
+    :ok = :gen_tcp.send(socket, "354 Go ahead\r\n")
+    read_email(socket)
+    reply
+  end
+
+  defp read_email(socket) do
+    case :gen_tcp.recv(socket, 0, 5_000) do
+      {:ok, ".\r\n"} -> :ok
+      {:ok, _line} -> read_email(socket)
     end
   end
 

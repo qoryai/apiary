@@ -101,6 +101,9 @@ defmodule Apiary.Runs.Run do
 
     field :event_count, :integer, default: 0
     field :denied_count, :integer, default: 0
+    # The secrets found in the run's output and events beyond the 1,000 kept
+    # (`Apiary.Runs.LeakedSecrets`).
+    field :leaked_secrets_omitted, :integer, default: 0
     field :projected_sequence, :integer, default: 0
 
     # The cost the run reported: the sum of `cost_usd` over its session result events

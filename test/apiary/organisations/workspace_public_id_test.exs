@@ -20,7 +20,7 @@ defmodule Apiary.Organisations.WorkspacePublicIdTest do
     Repo.insert!(%Workspace{
       organisation_id: organisation.id,
       name: name,
-      slug: Slug.from_name(name, "workspace"),
+      slug: Slug.from_name(name),
       domain: "software",
       type: "qory.software"
     })

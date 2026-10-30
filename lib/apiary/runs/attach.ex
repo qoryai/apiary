@@ -495,13 +495,16 @@ defmodule Apiary.Runs.Attach do
 
   # The image a run starts in: for a run a workspace's queue handed over, not a prebuild,
   # the image its claim read for it (`runs.configured_image`,
-  # `Apiary.Environments.claim_image/2`); for such a run its claim gave none, the image
+  # `Apiary.Environments.claim_image/2`), read again here through the registry's place of
+  # the run's organisation (`Apiary.Environments.own_image/2`): a claim made before that
+  # check could read an image elsewhere, and such a run starts in the pool's default
+  # image; for such a run its claim gave none, the image
   # the pool that claimed it recorded for the run's target, the one its registration's
   # labels name (`Apiary.Environments.image_for/3`); nil for any other run, which starts
   # in the pool's default.
-  defp image(%Run{configured_image: image}, _workspace, %{step: step, pool_id: pool_id})
+  defp image(%Run{configured_image: image} = run, _workspace, %{step: step, pool_id: pool_id})
        when is_binary(image) and is_binary(pool_id) and step != @prebuild,
-       do: image
+       do: Environments.own_image(image, run.workspace_id)
 
   defp image(%Run{} = run, workspace, %{step: step, pool_id: pool_id})
        when is_binary(pool_id) do

@@ -64,6 +64,7 @@ defmodule Apiary.Dispatches.MachineLogs do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLog, MachineLogStore, RunEnd}
+  alias Apiary.Runs.LeakedSecrets
 
   @default_retention_days 30
   @retention_min 1
@@ -102,7 +103,8 @@ defmodule Apiary.Dispatches.MachineLogs do
              # The record first: its key to the dispatch locks the dispatch's row
              # `FOR KEY SHARE` until the commit, before the file is written, which the
              # retention job's delete of a file with no record waits on (`prune/1`).
-             :ok <- insert(dispatch, log, truncated),
+             {:ok, uploaded_at} <- insert(dispatch, log, truncated),
+             :ok <- LeakedSecrets.record_dispatch(dispatch, :machine_log, log, uploaded_at),
              {:ok, :stored} <- store(dispatch, log) do
           {:ok, dispatch}
         end
@@ -159,7 +161,7 @@ defmodule Apiary.Dispatches.MachineLogs do
     }
 
     case Repo.insert_all(MachineLog, [row], on_conflict: :nothing, conflict_target: :dispatch_id) do
-      {1, _rows} -> :ok
+      {1, _rows} -> {:ok, row.uploaded_at}
       {0, _rows} -> {:error, :machine_log_exists}
     end
   end
@@ -196,7 +198,12 @@ defmodule Apiary.Dispatches.MachineLogs do
     end
   end
 
-  defp read(dispatch_id) do
+  # read/1 is the machine log of the dispatch `dispatch_id`, as `machine_log/2` answers it,
+  # without asking who reads it: for a caller that has asked already, the run's
+  # diagnostics for an instance admin or a diagnostics key (`Apiary.Runs.Diagnostics`).
+  @doc false
+  @spec read(String.t()) :: {:ok, machine_log} | {:error, :not_found | :unreadable}
+  def read(dispatch_id) do
     found =
       Repo.one(
         from l in MachineLog,

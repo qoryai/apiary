@@ -677,8 +677,8 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
-instance's organisation and is its owner, then creates its workspace **Main** in the
-workspace set-up. The instance has that one organisation and that one workspace.
+instance's organisation and is its owner, then creates its workspace on the kind cards of
+the organisation's overview. The instance has that one organisation and that one workspace.
 The organisation is the instance owner, and its owners are the instance's **instance
 admins** ([The instance admins](#the-instance-admins)); to everyone in it, it is an
 organisation like any other. Until the link is used nobody signs up: the sign-up and
@@ -730,7 +730,7 @@ INVITATIONS_PER_DAY=50
 | `DELETION_GRACE_DAYS` | `30` | How many days a deleted workspace or organisation is kept, and can be restored, before it is purged: a whole number from `1` to `90`. Not set, or empty, is the value saved in **Instance settings › Configuration**, else `30`. |
 
 The instance's organisation is not deleted, since its owners run the instance, and neither
-is its workspace Main, its only one: the organisation's settings say so.
+is its only workspace: the organisation's settings say so.
 `DELETION_GRACE_DAYS` is checked at boot all the same, and a value outside the bounds
 stops the boot:
 
@@ -774,20 +774,21 @@ the log is one JSON object per line ([Logs](#logs)), and the sentence above is t
 instance's organisation and your account as its owner, an instance admin, and signs you
 in. It creates no workspace.
 
-The set-up has two progresses, each with a separate list of steps. The instance's
-progress, set up once by an instance admin, is **Your account** and the steps under
-**Connect Qory Apiary**. The organisation's progress sets up a workspace, from its step
-**Name**. Each page of the set-up shows the list of its progress alone, with a mark on
-each step done and **Skipped** under each step skipped.
-On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and **All
-steps**, which opens the list. Each progress counts from step 1. Once you are signed in,
-each step done or skipped is a link to that step where it has a page; **Your account**
-is not. **Back**, at the foot of a step's form, opens the step before it in the same
-progress, so the first step with a page in each progress has no **Back**. A step you open
-again shows what you saved there, and you can change it. The step **Name**, opened again,
-shows the workspace's name and type and **Continue**: the type can't be changed. A column
-headed **About this step**, beside the form or under it on a window narrower than 1024
-px, shows what the step does. Two pages come after the set-up link's page:
+The set-up has two progresses. The instance's progress, set up once by an instance
+admin, is **Your account** and the steps under **Connect Qory Apiary**. Each of its
+pages lists those steps, with a mark on each step done and **Skipped** under each step
+skipped. On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and
+**All steps**, which opens the list, counted from step 1. Once you are signed in, each
+step done or skipped is a link to that step where it has a page; **Your account** is
+not. The organisation's progress sets up a workspace, from its step **Name**. With the
+`factory` feature, the group **Set up** at the top of the workspace's sidebar lists its
+steps, with a check mark on each one done. **Back**, at the foot of a step's form, opens
+the step before it in the same progress, so the first step with a page in each progress
+has no **Back**. A step you open again shows what you saved there, and you can change
+it. The step **Name**, opened again, shows the workspace's name, which an owner or admin
+can change, and its type, which can't be changed. A column headed **About this step**,
+beside the form or under it on a window narrower than 1024 px, shows what the step does.
+Two pages come after the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
@@ -796,17 +797,20 @@ px, shows what the step does. Two pages come after the set-up link's page:
    server's environment sets mail (`SMTP_RELAY`), the page has no **Mail** step, because
    there is nothing to configure. Until an instance admin finishes or skips the page's
    last step, each sign-in of an instance admin opens this page first. Where the page has
-   no step, the set-up link's page leads to the workspace set-up.
-2. **The workspace set-up**, at `/<organisation>/set-up`, creates the organisation's
-   workspace. Its first page, **What will this workspace do?**, shows one card for each
+   no step, the set-up link's page leads to the organisation's overview.
+2. **The organisation's overview**, at `/<organisation>`, creates the organisation's
+   workspace. Under **Choose what your first workspace does**, it shows one card for each
    type of workspace: **Software factory**, where agents change code in your
-   repositories. Select **Choose** on the card. At the step **Name**, the field **Name**
-   reads `Main`, the name of an organisation's first workspace: keep it or type another.
-   The type can't be changed after. **Create workspace** creates Main and opens its
-   overview: `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in
-   of a member of the organisation opens this page, and only an owner creates the
-   workspace. If another owner creates Main while the page is open, the page opens
-   Main's overview without a reload.
+   repositories. Select **Choose** on the card. It creates the workspace, named after the
+   type: *Software factory*, at `/acme/software-factory` for an organisation named
+   `Acme`. The type can't be changed after. **Choose** then opens the workspace's step
+   **Name**: keep the name or type another, such as `Main`, and select **Save and next**.
+   The workspace's address follows its name, so `Main` moves it to `/acme/main`, and the
+   step opens the workspace's overview there. Until the workspace exists, a sign-in of a
+   member of the organisation opens the overview, and only an owner creates the
+   workspace; anyone else sees "An owner of Acme creates the first workspace." If
+   another owner creates the workspace while the page is open, the overview lists it
+   without a reload.
 
 <!-- feature: factory -->
 With the `factory` feature, both pages have more steps:
@@ -821,12 +825,12 @@ With the `factory` feature, both pages have more steps:
   without a key in use, or of one that has not sent the address where it is set up, shows
   what to do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
-- **The workspace set-up** has 7 steps, each at
-  `/<organisation>/set-up?step=<step>&workspace=main` once the workspace exists:
+- **The workspace set-up** has 7 steps, each a page of the workspace once it exists, at
+  `/<organisation>/<workspace>/set-up/<step>`, such as `/acme/main/set-up/sources`:
   **Name**, **Work sources**, **Destinations**, **Model**, **Harness**, **Machines** and
-  **Test run**. **Create workspace** opens **Work sources** in place of the overview, and
-  the set-up opens at the first step that is not done. If another owner creates Main
-  while the page is open, the page opens Main's first step that is not done.
+  **Test run**. The group **Set up** at the top of the workspace's sidebar lists them,
+  with a check mark on each step done, and they open in any order. **Save and next** on
+  **Name**, and **Continue** on the other steps, open the next step.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, open **Connect another source**, or **Connect another
@@ -856,8 +860,8 @@ With the `factory` feature, both pages have more steps:
   workspace**: choose one to reuse it.
 
   [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
-  steps. Until the test run passes, opening Main opens its next step in place of the
-  overview.
+  steps. Until the test run passes, Main's overview lists the steps, with **Continue**
+  to the first step that is not done.
 <!-- /feature -->
 
 The code is 32 random bytes, kept in the database until it is used; it does
@@ -933,10 +937,10 @@ set-up link, given the name of your organisation:
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'
 ```
 
-On an instance that is not set up, it sets it up: it creates the organisation, its
-workspace Main and the account as its owner, makes the set-up link work no more, and
-emails the account its log-in link. Unlike the set-up link, it creates Main itself, of the
-type **Software factory**, so the type cards do not show, and the step **Name** is done.
+On an instance that is not set up, it sets it up: it creates the organisation and
+the account as its owner, with no workspace, makes the set-up link work no more, and
+emails the account its log-in link. As after the set-up link, the owner creates the first
+workspace on the kind cards of the organisation's overview.
 Without the name it is refused and says so. Should the email not go out, the instance is
 set up all the same, and the command says to ask for a link at `/users/log-in` once the
 mail settings work; it never prints the address or the link. Without mail it prints a
@@ -1007,8 +1011,10 @@ To try Qory Apiary with data in it, load the demo into a new instance: synthetic
 people and nodes, all under `example.com` and other example names. Never load it into an
 instance people work in.
 
-1. Set up the instance with the organisation name **Acme**, and create its workspace Main
-   at `/acme/set-up` ([Set up a new instance](#set-up-a-new-instance)).
+1. Set up the instance with the organisation name **Acme**. On Acme's overview, `/acme`,
+   select **Choose** on **Software factory**, and at the step **Name** type `Main`
+   ([Set up a new instance](#set-up-a-new-instance)). The demo fills the workspace at
+   `/acme/main`.
 2. Run on the release:
 
    ```sh

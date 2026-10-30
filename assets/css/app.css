@@ -1752,6 +1752,38 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* The way up to the organisation, the first line of a workspace's sidebar. */
+  .q-nav-up {
+    margin-bottom: 10px;
+  }
+  /* A step of the group Set up: an empty ring, filled with a tick once it is done, a
+     ring around a dot on the page's step. */
+  .q-nav-mark {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    border-radius: 9999px;
+    border: 1.5px solid var(--q-border-strong);
+    background: var(--color-base-100);
+    color: var(--q-faint);
+  }
+  .q-nav-step.is-done .q-nav-mark {
+    border-color: transparent;
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+  .q-nav-step[aria-current]:not(.is-done) .q-nav-mark {
+    border: 2px solid var(--color-primary);
+  }
+  .q-nav-step[aria-current]:not(.is-done) .q-nav-mark::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+  }
   .q-nav-count {
     display: inline-flex;
     flex: none;
@@ -6760,6 +6792,57 @@
   .q-xb-bad {
     border-left-color: var(--color-error);
   }
+  /* Prepare machine: one row per step, the head row of a disclosure as a tool's. */
+  .q-prep {
+    display: grid;
+    gap: 6px;
+  }
+  .q-prep-hd {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .q-prep-hd h2 {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .q-prep-total {
+    margin-left: auto;
+    color: var(--q-muted);
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
+  }
+  .q-prep-steps {
+    display: grid;
+    gap: 2px;
+  }
+  .q-prep-row {
+    padding-inline: 4px;
+  }
+  .q-prep-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .q-prep-ok {
+    color: var(--q-success-soft-content);
+  }
+  .q-prep-bad {
+    color: var(--q-error-soft-content);
+  }
+  .q-prep-facts {
+    display: grid;
+    gap: 2px 12px;
+    font-size: 0.8125rem;
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .q-prep-facts dt {
+    color: var(--q-muted);
+  }
+  .q-prep-cause {
+    color: var(--q-error-soft-content);
+    font-size: 0.875rem;
+  }
   .q-io {
     display: grid;
     gap: 12px;
@@ -10302,6 +10385,17 @@
     color: var(--q-faint);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* An unfinished set-up, "Set-up: 3 of 7 steps", on a separate line under the name,
+     at every width. */
+  .q-wr-nm:has(> .q-wr-su) {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .q-wr-nm .q-wr-su {
+    display: block;
+    order: 3;
+    flex-basis: 100%;
   }
   .q-wr-al {
     display: inline-flex;

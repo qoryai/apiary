@@ -57,8 +57,9 @@ defmodule Apiary.Audit do
   the instance. A password link, which an instance admin or a release command makes for an
   account (`Apiary.Accounts.build_password_link/3`), is an `account.password_link` in that
   organisation's trail too, by the person or the instance, naming the account by user id
-  and never holding the link. Saving the instance's mail settings and turning them on
-  (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
+  and never holding the link. Saving the instance's mail settings, sending their test link
+  again and turning them on (`Apiary.Mail.save_settings/3`, `resend_test_link/2`,
+  `turn_on/2`) are an `instance.mail_save`, an `instance.mail_resend` and an
   `instance.mail_on` there, by the instance admin, never holding the password. Setting the
   product's name (`Apiary.ProductName.rename/2`) is an `instance.rename` there, by the
   instance admin, with the name before and after, nil for none. Saving the instance's

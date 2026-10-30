@@ -43,6 +43,8 @@ defmodule Apiary.Organisations do
   alias Apiary.Accounts.{Scope, User, UserNotifier}
   alias Apiary.Lingo.Domain
 
+  alias ApiaryWeb.ReservedSlugs
+
   alias Apiary.Organisations.{
     Invitation,
     LastWorkspace,
@@ -768,7 +770,7 @@ defmodule Apiary.Organisations do
   form does while it is typed in. `domain`, where the form gives one, is the domain of the
   organisation's first workspace, one of `Apiary.Lingo.Domain.names/0`; without one, the
   workspace is of the default domain (`build_organisation/2`). `domain: :required` asks
-  for one, as the set-up page does: none is the error "Choose a type.". An edition whose
+  for one: none is the error "Choose a type.". No page of the core passes it. An edition whose
   sign-up page asks more checks it on
   this changeset, and is given it when the organisation is created
   (`c:Apiary.Edition.organisation_created/2`, `sign_up_user/3`).
@@ -874,7 +876,10 @@ defmodule Apiary.Organisations do
   Registers a user and places them in an organisation, in one transaction.
 
   Without an invitation token the user gets a new organisation named `organisation_name`,
-  with a slug made from that name, an owner membership, and a workspace named
+  with a slug made from that name, never numbered: a name whose slug another organisation
+  or a page of Qory Apiary has is refused on `organisation_name`, read again where a
+  concurrent sign-up took the slug since the check (`build_organisation/2` with `taken:
+  :refuse`). It gets an owner membership, and a workspace named
   "#{@default_workspace_name}" unless `workspace: false` (`build_organisation/2`): nothing
   is made from the address. Whether it may, is `sign_up_offer/1`'s answer, asked again
   inside the transaction:
@@ -909,8 +914,7 @@ defmodule Apiary.Organisations do
   The invitation may also be given as the struct `get_invitation_by_token/1`
   returned earlier. Either way it is claimed inside the transaction: when someone
   else accepted it in the meantime, nothing is created and the changeset carries
-  an error on `:email`. So it does when every slug picked for the new organisation was
-  taken by a concurrent sign-up before the insert, a few times over.
+  an error on `:email`.
 
   The audit trail has the sign-up, by the new user: `organisation.create` for a new
   organisation, with `details.sign_up` true, `invitation.accept` for an invitation, from
@@ -927,10 +931,11 @@ defmodule Apiary.Organisations do
   account can sign in. `actor: :instance` needs none, and keeps one given, mail or not.
   `password: :required` asks for one whatever the mail, as the set-up page does.
   `domain: :required` asks a sign-up that creates an organisation for the domain of its
-  first workspace, as the set-up page does (`change_sign_up/2`).
+  first workspace (`change_sign_up/2`).
   `workspace: false` creates the organisation with no workspace and asks for no domain:
-  its first workspace comes later (`create_first_workspace/2`), as the sign-up page and
-  the set-up page ask. The answer's `workspace` is then nil.
+  its owner creates the first workspace later, on the kind cards of the organisation's
+  overview (`create_workspace_of_kind/3`). The set-up link, the release command's claim
+  and the sign-up page ask for this. The answer's `workspace` is then nil.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -944,7 +949,7 @@ defmodule Apiary.Organisations do
   The entry names the user by id either way.
 
   `opts` is also for tests: `pick_slug: fun`, given the organisation's name, stands in for
-  the pick of a free slug, and `open:`, a boolean, for the edition's answer to whether a
+  the slug inserted after the check, as one a concurrent sign-up took meanwhile, and `open:`, a boolean, for the edition's answer to whether a
   later sign-up is open.
   """
   @spec sign_up_user(map, %Invitation{} | String.t() | nil, keyword) ::
@@ -1046,15 +1051,6 @@ defmodule Apiary.Organisations do
         {:error, :set_up, :invalid_code, _changes} ->
           {:error, :invalid_code}
 
-        {:error, :organisation, :slug_taken, _changes} ->
-          {:error,
-           form
-           |> Ecto.Changeset.add_error(
-             :email,
-             dgettext_noop("errors", "could not be signed up just now; please try again")
-           )
-           |> Map.put(:action, :insert)}
-
         # A refusal of the sign-up's, or of the edition's steps, on a field of the form.
         {:error, _step, {field, message}, _changes} when is_atom(field) and is_binary(message) ->
           {:error, form |> Ecto.Changeset.add_error(field, message) |> Map.put(:action, :insert)}
@@ -1125,6 +1121,7 @@ defmodule Apiary.Organisations do
       how: & &1.how,
       scope: &sign_up_scope(&1, origin, actor),
       details: &sign_up_details(&1.set_up),
+      taken: :refuse,
       pick_slug: Keyword.get(opts, :pick_slug)
     )
   end
@@ -1260,14 +1257,17 @@ defmodule Apiary.Organisations do
 
   - `:organisation`, the organisation named `name:`, with a slug made from its name
     (`Apiary.Organisations.Slug`); `{:error, changeset}` for a name the organisation's
-    changeset refuses, and `{:error, :slug_taken}` when every slug picked was taken by a
-    concurrent creation, a few times over;
+    changeset refuses. Where the slug is taken or reserved, `taken: :refuse` refuses the
+    name, `{:error, changeset}` with the error on `name`, as a rename does
+    (`change_organisation/2`); without it, the slug is numbered, and the step is
+    `{:error, :slug_taken}` when every slug picked was taken by a concurrent creation, a
+    few times over;
   - `:workspace`, its workspace "#{@default_workspace_name}", of the domain `domain:`
     names, one of `Apiary.Lingo.Domain.names/0`, or of the default domain
     (`Apiary.Lingo.Domain.default/0`) for nil or none; `{:error, changeset}`, the
     workspace's, with its error on `domain`, for a name no domain has; nil with
     `workspace: false`, for an organisation whose first workspace comes later
-    (`create_first_workspace/2`);
+    (`create_workspace_of_kind/3`, `create_first_workspace/2`);
   - `:membership`, its first owner, the person of the caller's change `owner:` names,
     `:user` unless it names another; nil with `owner: nil`, for an organisation whose
     first owner joins later;
@@ -1283,7 +1283,9 @@ defmodule Apiary.Organisations do
   - `:created`, a map of the organisation as the database has it once the edition's steps
     are done, its workspace and its membership.
 
-  `pick_slug:`, given the name, stands in for the pick of a free slug, for tests.
+  `pick_slug:`, given the name, stands in for the pick of a free slug, for tests; with
+  `taken: :refuse`, for the slug inserted after the check, as one another creation took
+  meanwhile.
   """
   @spec build_organisation(Ecto.Multi.t(), keyword) :: Ecto.Multi.t()
   def build_organisation(%Ecto.Multi{} = multi, opts) do
@@ -1294,7 +1296,13 @@ defmodule Apiary.Organisations do
     workspace? = Keyword.get(opts, :workspace, true)
     action = Keyword.get(opts, :action, :"organisation.create")
     details = Keyword.get(opts, :details, %{})
-    pick = Keyword.get(opts, :pick_slug) || (&organisation_slug/1)
+    refuse? = Keyword.get(opts, :taken) == :refuse
+
+    pick =
+      Keyword.get(opts, :pick_slug) ||
+        if(refuse?, do: &Slug.from_name/1, else: &organisation_slug/1)
+
+    insert = if refuse?, do: &insert_organisation_or_refuse/2, else: &insert_organisation/2
     domain = Keyword.get(opts, :domain) || Domain.default().name()
 
     # The caller's changes are given to the steps that need them: the edition's see the
@@ -1305,7 +1313,7 @@ defmodule Apiary.Organisations do
       user = owner && Map.fetch!(outer, owner)
 
       Ecto.Multi.new()
-      |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert_organisation(name, pick) end)
+      |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert.(name, pick) end)
       |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
         if workspace?,
           do: organisation |> main_workspace(domain) |> PublicId.Insert.insert(),
@@ -1373,14 +1381,21 @@ defmodule Apiary.Organisations do
   defp insert_organisation(_name, _pick, 0), do: {:error, :slug_taken}
 
   defp insert_organisation(name, pick, attempts) do
-    case Organisation.changeset(%Organisation{}, %{name: name}) do
-      %Ecto.Changeset{valid?: false} = changeset ->
+    changeset = Organisation.changeset(%Organisation{}, %{name: name})
+    slug = changeset.valid? && pick.(name)
+
+    cond do
+      not changeset.valid? ->
         {:error, changeset}
 
-      changeset ->
+      # A name with no letter or digit from A to Z or 0 to 9 has no slug to number.
+      is_nil(slug) ->
+        {:error, Ecto.Changeset.add_error(changeset, :name, Slug.no_letters())}
+
+      true ->
         with {:ok, %Organisation{id: id} = organisation} <-
                changeset
-               |> Organisation.put_slug(pick.(name))
+               |> Organisation.put_slug(slug)
                |> Repo.insert(on_conflict: :nothing, conflict_target: :slug) do
           if Repo.exists?(from o in Organisation, where: o.id == ^id),
             do: {:ok, organisation},
@@ -1389,23 +1404,71 @@ defmodule Apiary.Organisations do
     end
   end
 
+  # Inserts a new organisation at the slug its name makes, or refuses the name, with the
+  # error on `name`: for a slug a page of Qory Apiary has or another organisation has, one
+  # marked for deletion included, read before the insert. A slug taken since that read
+  # meets the unique index: the insert does nothing then, which would otherwise abort the
+  # transaction, and the name is refused all the same.
+  defp insert_organisation_or_refuse(name, pick) do
+    changeset = Organisation.changeset(%Organisation{}, %{name: name})
+    slug = Slug.from_name(name)
+
+    cond do
+      not changeset.valid? ->
+        {:error, changeset}
+
+      is_nil(slug) ->
+        {:error, Ecto.Changeset.add_error(changeset, :name, Slug.no_letters())}
+
+      slug in ReservedSlugs.organisation() ->
+        {:error,
+         Ecto.Changeset.add_error(changeset, :name, Organisation.page_address(),
+           address: "/#{slug}"
+         )}
+
+      Repo.exists?(from o in Organisation, where: o.slug == ^slug) ->
+        {:error, taken_organisation_address(changeset, slug)}
+
+      true ->
+        slug = pick.(name)
+
+        with {:ok, %Organisation{id: id} = organisation} <-
+               changeset
+               |> Organisation.put_slug(slug)
+               |> Repo.insert(on_conflict: :nothing, conflict_target: :slug) do
+          if Repo.exists?(from o in Organisation, where: o.id == ^id),
+            do: {:ok, organisation},
+            else: {:error, taken_organisation_address(changeset, slug)}
+        end
+    end
+  end
+
+  defp taken_organisation_address(changeset, slug),
+    do:
+      Ecto.Changeset.add_error(changeset, :name, Organisation.taken_address(),
+        address: "/#{slug}"
+      )
+
   defp main_workspace(%Organisation{} = organisation, domain) do
     %Workspace{organisation_id: organisation.id}
     |> Workspace.create_changeset(%{name: @default_workspace_name, domain: domain})
     |> Workspace.put_slug(workspace_slug(organisation, @default_workspace_name))
   end
 
+  # The first free of the name's slug and its numbered variants; nil for a name that gives
+  # no slug.
   defp organisation_slug(name) do
-    name
-    |> Slug.from_name("organisation")
-    |> Slug.pick(ApiaryWeb.ReservedSlugs.organisation(), fn slug ->
-      Repo.exists?(from o in Organisation, where: o.slug == ^slug)
-    end)
+    if base = Slug.from_name(name) do
+      Slug.pick(base, ApiaryWeb.ReservedSlugs.organisation(), fn slug ->
+        Repo.exists?(from o in Organisation, where: o.slug == ^slug)
+      end)
+    end
   end
 
+  # The workspace "Main" of a new organisation, whose name always gives a slug.
   defp workspace_slug(%Organisation{id: organisation_id}, name) do
     name
-    |> Slug.from_name("workspace")
+    |> Slug.from_name()
     |> Slug.pick(ApiaryWeb.ReservedSlugs.workspace(), fn slug ->
       Repo.exists?(
         from w in Workspace, where: w.organisation_id == ^organisation_id and w.slug == ^slug
@@ -1415,34 +1478,140 @@ defmodule Apiary.Organisations do
 
   ## Settings
 
+  @doc """
+  change_organisation/2 is the changeset of a rename of `organisation`: its name, and the
+  address the new name gives it, `/<slug>`, refused where a page or another organisation
+  has it. A slug in `attrs` is ignored.
+  """
   def change_organisation(%Organisation{} = organisation, attrs \\ %{}) do
-    Organisation.changeset(organisation, attrs)
+    changeset = Organisation.changeset(organisation, attrs)
+
+    # A name that does not change keeps the address, as an organisation made before the
+    # address followed the name, or numbered at creation, has it.
+    if Ecto.Changeset.get_change(changeset, :name),
+      do: put_organisation_address(changeset),
+      else: changeset
   end
 
-  @doc "Renames the scope's organisation (`organisation.rename`), with its audit entry."
+  @doc """
+  Renames the scope's organisation (`organisation.rename`), with its audit entry: the name
+  and the slug, which follows the name (`change_organisation/2`). The old addresses, the
+  organisation's and its workspaces', lead nowhere after.
+  """
   def update_organisation(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"organisation.rename", organisation),
-           {:ok, renamed} <- organisation |> Organisation.changeset(attrs) |> Repo.update(),
-           :ok <- record_edit(scope, :"organisation.rename", organisation, renamed, [:name]) do
+           {:ok, renamed} <- organisation |> change_organisation(attrs) |> Repo.update(),
+           :ok <-
+             record_edit(scope, :"organisation.rename", organisation, renamed, [:name, :slug]) do
         {:ok, renamed}
       end
     end)
+    |> case do
+      # Read again outside the transaction, which the refused update ended.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error,
+         refused_again(changeset, fn refused ->
+           organisation
+           |> change_organisation(%{"name" => Ecto.Changeset.get_field(refused, :name)})
+           |> Map.put(:action, :update)
+         end)}
+
+      result ->
+        result
+    end
   end
 
+  # The slug the changeset's name gives the organisation (`Slug.from_name/1`), its address
+  # `/<slug>`. A slug a page of Qory Apiary has refuses the name, and so does one another
+  # organisation has, one marked for deletion included: nothing is numbered. A name
+  # refused already is not asked again, and neither is a new name whose slug is the one the
+  # organisation has. A slug numbered at creation is not the name's: `acme-2` renamed
+  # "ACME" gets `acme`, refused where another organisation has it.
+  defp put_organisation_address(changeset) do
+    slug = changeset |> Ecto.Changeset.get_field(:name) |> Slug.from_name()
+
+    cond do
+      slug == changeset.data.slug ->
+        changeset
+
+      is_nil(slug) ->
+        unless_name_refused(changeset, &Ecto.Changeset.add_error(&1, :name, Slug.no_letters()))
+
+      true ->
+        changeset
+        |> Organisation.put_address(slug)
+        |> unless_name_refused(&refuse_taken_organisation_address(&1, slug))
+    end
+  end
+
+  defp refuse_taken_organisation_address(changeset, slug) do
+    # One marked for deletion has the same error as one in use: whether another
+    # organisation is marked is not this organisation's to know.
+    taken? =
+      Repo.exists?(
+        from o in Organisation,
+          where: o.slug == ^slug,
+          where: ^not_this_organisation(changeset.data.id)
+      )
+
+    cond do
+      slug in ReservedSlugs.organisation() ->
+        Ecto.Changeset.add_error(changeset, :name, Organisation.page_address(),
+          address: "/#{slug}"
+        )
+
+      taken? ->
+        taken_organisation_address(changeset, slug)
+
+      true ->
+        changeset
+    end
+  end
+
+  defp not_this_organisation(nil), do: dynamic(true)
+  defp not_this_organisation(id), do: dynamic([o], o.id != ^id)
+
+  @doc """
+  change_workspace/2 is the changeset of a rename of `workspace`: its name, and the
+  address the new name gives it, refused as `create_workspace/2` refuses one.
+  """
   def change_workspace(%Workspace{} = workspace, attrs \\ %{}) do
-    Workspace.changeset(workspace, attrs)
+    changeset = Workspace.changeset(workspace, attrs)
+
+    # A name that does not change keeps the address, as a workspace made before the
+    # address followed the name has it.
+    if Ecto.Changeset.get_change(changeset, :name),
+      do: put_address(changeset, workspace.organisation_id),
+      else: changeset
   end
 
-  @doc "Renames the scope's workspace (`workspace.rename`), with its audit entry."
+  @doc """
+  Renames the scope's workspace (`workspace.rename`), with its audit entry: the name and
+  the slug, which follows the name (`change_workspace/2`). The old address leads nowhere
+  after.
+  """
   def update_workspace(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"workspace.rename", workspace),
-           {:ok, renamed} <- workspace |> Workspace.changeset(attrs) |> Repo.update(),
-           :ok <- record_edit(scope, :"workspace.rename", workspace, renamed, [:name]) do
+           {:ok, renamed} <- workspace |> change_workspace(attrs) |> Repo.update(),
+           :ok <- record_edit(scope, :"workspace.rename", workspace, renamed, [:name, :slug]) do
         {:ok, renamed}
       end
     end)
+    |> case do
+      # Read again outside the transaction, which the refused update ended.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error,
+         refused_again(changeset, fn refused ->
+           workspace
+           |> change_workspace(%{"name" => Ecto.Changeset.get_field(refused, :name)})
+           |> Map.put(:action, :update)
+         end)}
+
+      result ->
+        result
+    end
   end
 
   # The entry of an edit, when it changed one of `fields`; an edit that changed nothing
@@ -1461,44 +1630,103 @@ defmodule Apiary.Organisations do
 
   @doc """
   change_new_workspace/2 is the changeset of a workspace the scope's organisation would
-  get from `attrs`, for the form that creates one (`create_workspace/2`): its name, its
-  slug as `attrs` gives it, or made from the name where it gives none
-  (`suggest_workspace_slug/2`), and its domain, which `attrs` must give, one of
-  `Apiary.Lingo.Domain.names/0`.
+  get from `attrs`, for the form that creates one (`create_workspace/2`): its name, the
+  slug the name gives it (`suggest_workspace_slug/2`), and its domain, which `attrs` must
+  give, one of `Apiary.Lingo.Domain.names/0`. A slug in `attrs` is ignored.
   """
   @spec change_new_workspace(Scope.t(), map) :: Ecto.Changeset.t()
   def change_new_workspace(%Scope{organisation: %Organisation{} = organisation}, attrs \\ %{}),
     do: new_workspace_changeset(organisation, attrs)
 
   @doc """
-  suggest_workspace_slug/2 is the slug a workspace named `name` would get in the scope's
-  organisation: made from the name (`Apiary.Organisations.Slug.from_name/2`), then the
-  first of it and its numbered variants that no workspace of the organisation holds and
-  no page of the organisation takes.
+  suggest_workspace_slug/2 is the slug a workspace named `name` gets: made from the name
+  (`Apiary.Organisations.Slug.from_name/1`), nil for a name with no letter or digit from A
+  to Z or 0 to 9, which `create_workspace/2` refuses. Where another workspace of the
+  scope's organisation or a page has it, `create_workspace/2` refuses the name; nothing
+  is numbered.
   """
-  @spec suggest_workspace_slug(Scope.t(), String.t() | nil) :: String.t()
-  def suggest_workspace_slug(%Scope{organisation: %Organisation{} = organisation}, name),
-    do: workspace_slug(organisation, name || "")
+  @spec suggest_workspace_slug(Scope.t(), String.t() | nil) :: String.t() | nil
+  def suggest_workspace_slug(%Scope{organisation: %Organisation{}}, name),
+    do: Slug.from_name(name)
 
   @doc """
   create_workspace/2 creates a workspace of the scope's organisation (`workspace.create`,
-  an owner's, asked of the organisation), named `attrs["name"]`, at the slug
-  `attrs["slug"]` or one made from the name, of the domain `attrs["domain"]`, one of
+  an owner's, asked of the organisation), named `attrs["name"]`, at the slug the name
+  gives it (`change_new_workspace/2`), of the domain `attrs["domain"]`, one of
   `Apiary.Lingo.Domain.names/0`, which never changes after, and with nothing in it:
-  no key, no run, its policy in observe. The organisation's row is locked while its
-  workspaces in use are counted against the edition's limit
+  no key, no run, its policy in observe. A slug in `attrs` is ignored. The organisation's
+  row is locked while its workspaces in use are counted against the edition's limit
   (`c:Apiary.Edition.limits/0`), the entry is written in the organisation's trail, and
   the edition is told (`c:Apiary.Edition.workspace_created/3`), all in one transaction.
 
-  `{:ok, workspace}`; `{:error, changeset}` for a name or a slug the workspace refuses,
-  one another workspace of the organisation holds included, and for a domain missing or
-  unknown; `{:error, :limit}` where the
-  organisation has as many workspaces as the edition allows; `Apiary.Access`'s answer.
+  `{:ok, workspace}`; `{:error, changeset}` for a name the workspace refuses: one another
+  workspace of the organisation has, or whose slug another workspace (one marked for
+  deletion included) or a page of the organisation has, with the error on `name`; and
+  for a domain missing or unknown; `{:error, :limit}` where the organisation has as many
+  workspaces as the edition allows; `Apiary.Access`'s answer.
   """
   @spec create_workspace(Scope.t(), map) ::
           {:ok, %Workspace{}} | {:error, Ecto.Changeset.t() | :limit | Access.reason()}
   def create_workspace(%Scope{organisation: %Organisation{}} = scope, attrs),
     do: insert_workspace(scope, attrs, :any)
+
+  @doc """
+  create_workspace_of_kind/3 creates a workspace of the domain `domain` (a module of
+  `Apiary.Lingo.Domain.choices/0`) in the scope's organisation, named after its type as
+  the type's card shows it (`c:Apiary.Lingo.Domain.type_name/0`), such as "Software
+  factory": the first of that name, then "Software factory 2", "Software factory 3" and
+  so on, whose name and slug no workspace of the organisation has, one marked for
+  deletion included, and whose slug no page has. The name is picked under the
+  organisation's lock. `which` is `:first` for the organisation's first workspace, as
+  `create_first_workspace/2` creates it, or `:any`.
+
+  `create_workspace/2`'s answers, and `{:error, :exists}` with `:first` where the
+  organisation has a workspace in use already.
+  """
+  @spec create_workspace_of_kind(Scope.t(), module, :first | :any) ::
+          {:ok, %Workspace{}}
+          | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
+  def create_workspace_of_kind(%Scope{organisation: %Organisation{}} = scope, domain, which)
+      when which in [:first, :any] do
+    insert_workspace(
+      scope,
+      fn organisation ->
+        %{"name" => free_name(organisation, domain.type_name()), "domain" => domain.name()}
+      end,
+      which
+    )
+  end
+
+  # The first of `base`, `base 2`, `base 3`, … whose name and slug no workspace of the
+  # organisation has, and whose slug no page has. A slug is cut to its longest
+  # (`Slug.max_length/0`), so a numbered name is cut first where it must be, to keep its
+  # number in its slug.
+  defp free_name(%Organisation{id: organisation_id}, base) do
+    held =
+      Repo.all(
+        from w in Workspace,
+          where: w.organisation_id == ^organisation_id,
+          select: {w.name, w.slug}
+      )
+
+    names = MapSet.new(held, &elem(&1, 0))
+    slugs = MapSet.new(held, &elem(&1, 1)) |> MapSet.union(MapSet.new(ReservedSlugs.workspace()))
+
+    Stream.iterate(1, &(&1 + 1))
+    |> Stream.map(&numbered(base, &1))
+    |> Enum.find(&(&1 not in names and Slug.from_name(&1) not in slugs))
+  end
+
+  defp numbered(base, 1), do: base
+
+  defp numbered(base, n) do
+    suffix = " #{n}"
+
+    Enum.find_value(String.length(base)..1//-1, base <> suffix, fn length ->
+      name = String.trim_trailing(String.slice(base, 0, length)) <> suffix
+      if String.ends_with?(Slug.from_name(name) || "", "-#{n}"), do: name
+    end)
+  end
 
   @doc """
   create_first_workspace/2 creates the first workspace of the scope's organisation, one
@@ -1525,7 +1753,8 @@ defmodule Apiary.Organisations do
 
   @doc """
   has_workspace?/1 is true when the organisation has a workspace in use: false for one
-  created with none, until `create_first_workspace/2` creates it.
+  created with none, until its first workspace is created (`create_workspace_of_kind/3`,
+  `create_first_workspace/2`).
   """
   @spec has_workspace?(%Organisation{} | Scope.t()) :: boolean
   def has_workspace?(%Scope{organisation: %Organisation{} = organisation}),
@@ -1536,8 +1765,8 @@ defmodule Apiary.Organisations do
 
   @doc """
   workspaces_topic/1 is the `Apiary.PubSub` topic of the organisation `organisation_id`'s
-  workspaces. Once `create_workspace/2` or `create_first_workspace/2` has created one, the
-  topic gets `{:workspace_created, %{organisation_id: id, workspace_id: id}}`.
+  workspaces. Once `create_workspace/2`, `create_first_workspace/2` or
+  `create_workspace_of_kind/3` has created one, the topic gets `{:workspace_created, %{organisation_id: id, workspace_id: id}}`.
   """
   @spec workspaces_topic(Ecto.UUID.t()) :: String.t()
   def workspaces_topic(organisation_id), do: "organisation_workspaces:" <> organisation_id
@@ -1552,26 +1781,45 @@ defmodule Apiary.Organisations do
 
   # `which` is `:first` for the organisation's first workspace, refused once it has one.
   # The topic of its workspaces is told once the transaction has committed.
-  defp insert_workspace(%Scope{} = scope, attrs, which) do
-    with {:ok, workspace} <- insert_workspace_row(scope, attrs, which) do
-      _sent =
-        Phoenix.PubSub.broadcast(
-          Apiary.PubSub,
-          workspaces_topic(workspace.organisation_id),
-          {:workspace_created,
-           %{organisation_id: workspace.organisation_id, workspace_id: workspace.id}}
-        )
+  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which) do
+    case insert_workspace_row(scope, attrs, which) do
+      {:ok, workspace} ->
+        _sent =
+          Phoenix.PubSub.broadcast(
+            Apiary.PubSub,
+            workspaces_topic(workspace.organisation_id),
+            {:workspace_created,
+             %{organisation_id: workspace.organisation_id, workspace_id: workspace.id}}
+          )
 
-      {:ok, workspace}
+        {:ok, workspace}
+
+      # Read again outside the transaction, which the refused insert ended.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error,
+         refused_again(changeset, fn refused ->
+           organisation
+           |> new_workspace_changeset(%{
+             "name" => Ecto.Changeset.get_field(refused, :name),
+             "domain" => Ecto.Changeset.get_field(refused, :domain)
+           })
+           |> Map.put(:action, :insert)
+         end)}
+
+      other ->
+        other
     end
   end
 
+  # `attrs` is the new workspace's, or a function of the organisation that gives them,
+  # called under the organisation's lock.
   defp insert_workspace_row(%Scope{organisation: organisation} = scope, attrs, which) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),
            :ok <- ensure_first(organisation, which),
            :ok <- ensure_within_limit(organisation),
+           attrs = if(is_function(attrs, 1), do: attrs.(organisation), else: attrs),
            {:ok, workspace} <-
              organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
            {:ok, _entry} <-
@@ -1617,38 +1865,106 @@ defmodule Apiary.Organisations do
       )
 
   # A new workspace of the organisation: its name and its domain, as the form gives them,
-  # and its slug, the form's where it gives one, else one made from the name. The form's
-  # params go to the changeset as the form sent them, so a field the person has not used
-  # yet, the domain included, shows no error before the form is sent. The slug goes
-  # through the params too, as a used field, so the form shows what is wrong with a slug
-  # made from the name. A name or a slug another workspace of the organisation has is
-  # refused here as well as by the unique indexes, so the form shows it beside any other
-  # error, a missing domain included.
-  defp new_workspace_changeset(%Organisation{id: organisation_id} = organisation, attrs) do
-    attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
-    name = attrs["name"]
-
-    slug =
-      case attrs["slug"] do
-        given when is_binary(given) and given != "" -> String.trim(given)
-        _none -> workspace_slug(organisation, if(is_binary(name), do: name, else: ""))
-      end
-
-    params = attrs |> Map.delete("_unused_slug") |> Map.put("slug", slug)
+  # and the slug the name gives it (`put_address/2`); a slug the form sends is dropped.
+  # The form's params go to the changeset as the form sent them, so a field the person
+  # has not used yet, the domain included, shows no error before the form is sent. A name
+  # or an address another workspace of the organisation has is refused here as well as
+  # by the unique indexes, so the form shows it beside any other error, a missing domain
+  # included.
+  defp new_workspace_changeset(%Organisation{id: organisation_id}, attrs) do
+    params =
+      attrs
+      |> Map.new(fn {key, value} -> {to_string(key), value} end)
+      |> Map.drop(["slug", "_unused_slug"])
 
     # No domain until the form gives one: the schema's default is no choice of the person's.
     %Workspace{organisation_id: organisation_id, domain: nil}
     |> Workspace.create_changeset(params)
-    |> Workspace.put_slug(slug)
-    |> Ecto.Changeset.unsafe_validate_unique([:organisation_id, :name], Repo,
-      error_key: :name,
-      message: Workspace.taken_name()
-    )
-    |> Ecto.Changeset.unsafe_validate_unique([:organisation_id, :slug], Repo,
-      error_key: :slug,
-      message: Workspace.taken_slug()
-    )
+    |> put_address(organisation_id)
   end
+
+  # The slug the changeset's name gives the workspace (`Slug.from_name/1`), its address
+  # `/:org/<slug>`. A slug a page of the organisation has refuses the name, and so does a
+  # slug or the name itself that another workspace of the organisation has, one marked
+  # for deletion included: nothing is numbered. A name refused already is not asked
+  # again. A name that gives no slug is refused (`Slug.no_letters/0`).
+  defp put_address(changeset, organisation_id) do
+    case changeset |> Ecto.Changeset.get_field(:name) |> Slug.from_name() do
+      nil ->
+        unless_name_refused(changeset, &Ecto.Changeset.add_error(&1, :name, Slug.no_letters()))
+
+      slug ->
+        changeset
+        |> Workspace.put_address(slug)
+        |> unless_name_refused(&refuse_taken_address(&1, organisation_id, slug))
+    end
+  end
+
+  defp unless_name_refused(changeset, check),
+    do: if(Keyword.has_key?(changeset.errors, :name), do: changeset, else: check.(changeset))
+
+  defp refuse_taken_address(changeset, organisation_id, slug) do
+    name = Ecto.Changeset.get_field(changeset, :name)
+    organisation_slug = organisation_slug_of(organisation_id)
+
+    # The workspace with the slug comes first; one with the name alone, made before the
+    # address followed the name, has another slug.
+    holder =
+      Repo.one(
+        from w in Workspace,
+          where: w.organisation_id == ^organisation_id and (w.slug == ^slug or w.name == ^name),
+          where: ^not_this_workspace(changeset.data.id),
+          order_by: [desc: w.slug == ^slug],
+          limit: 1,
+          select: %{name: w.name, slug: w.slug, marked: not is_nil(w.deletion_marked_at)}
+      )
+
+    cond do
+      slug in ReservedSlugs.workspace() ->
+        Ecto.Changeset.add_error(changeset, :name, Workspace.page_address(),
+          address: "/#{organisation_slug}/#{slug}"
+        )
+
+      match?(%{marked: true}, holder) ->
+        Ecto.Changeset.add_error(changeset, :name, Workspace.marked_address(),
+          address: "/#{organisation_slug}/#{holder.slug}"
+        )
+
+      match?(%{slug: ^slug}, holder) ->
+        Ecto.Changeset.add_error(changeset, :name, Workspace.taken_address(),
+          address: "/#{organisation_slug}/#{slug}"
+        )
+
+      holder ->
+        Ecto.Changeset.add_error(changeset, :name, Workspace.taken_name_elsewhere(),
+          name: holder.name
+        )
+
+      true ->
+        changeset
+    end
+  end
+
+  # A name or a slug a unique index refused, taken by another workspace since the
+  # changeset read the table: `rebuild` reads it again, now that the other workspace is
+  # there, so the refusal has the fix first. Any other refusal stays as it is.
+  defp refused_again(%Ecto.Changeset{errors: errors} = changeset, rebuild) do
+    raced? = Enum.any?(errors, fn {_field, {_message, opts}} -> opts[:constraint] == :unique end)
+
+    with true <- raced?,
+         %Ecto.Changeset{errors: [_ | _] = again} = rebuilt <- rebuild.(changeset),
+         true <- Keyword.has_key?(again, :name) do
+      rebuilt
+    else
+      _other -> changeset
+    end
+  end
+
+  defp not_this_workspace(nil), do: dynamic(true)
+  defp not_this_workspace(id), do: dynamic([w], w.id != ^id)
+
+  defp organisation_slug_of(organisation_id),
+    do: Repo.one!(from o in Organisation, where: o.id == ^organisation_id, select: o.slug)
 
   @doc """
   list_workspaces/1 is the workspaces of the scope's organisation in use, by name: none
@@ -2554,10 +2870,10 @@ defmodule Apiary.Organisations do
   **Without a workspace**, a scope at the organisation alone, it invites into the
   organisation while the organisation has no workspace in use (`has_workspace?/1`): the
   invitation has none, `workspace_id` nil, and its person joins the organisation
-  (`accept_invitation/2`). The invitation page then opens the organisation's workspace
-  set-up, `/:org/set-up`, while it has no workspace. The rule is checked again once the
+  (`accept_invitation/2`). The invitation page then opens the organisation's overview,
+  `/:org`, which has the kind cards while it has no workspace. The rule is checked again once the
   organisation's row is locked, so a first workspace created at the same moment
-  (`create_first_workspace/2`) is seen. Once the organisation has a workspace in use, a
+  (`create_workspace_of_kind/3`, `create_first_workspace/2`) is seen. Once the organisation has a workspace in use, a
   scope without one is `{:error, :not_found}`: it has no workspace to send it from.
 
   **With mail** (`Apiary.Mail.configured?/0`) the link is emailed, `{:ok, invitation}`, and

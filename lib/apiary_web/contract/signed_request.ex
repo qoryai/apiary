@@ -26,8 +26,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice, unsigned;
     3. `401` `{"error":"unauthorized"}`, unsigned and the same whatever the cause: a key id
        or signature missing or empty, a key id of the wrong shape (checked before the key
-       is looked up), a key the instance does not hold, has revoked, or that is not a
-       node's key, a row that fails its integrity check, a signature that is not 64 bytes
+       is looked up), a key the instance does not hold, has revoked, or that is not of a
+       kind the pipeline takes (`kinds:`, a node's, a node pool's or a gateway's unless it
+       names others), a row that fails its integrity check, a signature that is not 64 bytes
        of strict base64url or does not verify (cofactorless, `Apiary.Contract.Ed25519`);
     4. `429` `rate_limited` with `Retry-After`, when the plug is given a bucket of the
        key's rate limit (`Apiary.Runs.RateLimit`): `rate_limit: :events` for the events
@@ -51,6 +52,11 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   **Signed answers.** From the moment the request verifies, its answer is signed
   (`ApiaryWeb.Contract.SignedAnswer.register/2`), whatever its status but `401`. A refusal
   after verification is coded: `application/json`, `{"error": "<code>"}`.
+
+  **A diagnostics key.** The run diagnostics route alone is given `kinds: [:diagnostics]`
+  (`ApiaryWeb.Contract.DiagnosticsController`), and no other pipeline takes that kind. Its
+  request is verified, refused and answered as any other GET, but nothing records an
+  instance as seen on its node: the diagnostics node runs nothing.
 
   **What a verified request leaves.** The conn's `access_key` (with its workspace and
   node), `request_signature`, `instance_id` and `contract_version`. The instance is
@@ -103,12 +109,19 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   @unknown_key elem(:crypto.generate_key(:eddsa, :ed25519, <<0::256>>), 0)
 
   @buckets [false, :events, :registration]
+  # The kinds of node whose keys a pipeline takes: the Forager contract's, unless it names
+  # others with `kinds:`.
+  @node_kinds [:node, :pool, :gateway]
+  @kinds @node_kinds ++ [:diagnostics]
 
   def init(opts) do
-    opts = Keyword.validate!(opts, rate_limit: false, content_type: nil)
+    opts = Keyword.validate!(opts, rate_limit: false, content_type: nil, kinds: @node_kinds)
 
     unless opts[:rate_limit] in @buckets,
       do: raise(ArgumentError, "rate_limit is one of #{inspect(@buckets)}")
+
+    unless opts[:kinds] != [] and opts[:kinds] -- @kinds == [],
+      do: raise(ArgumentError, "kinds are some of #{inspect(@kinds)}")
 
     opts
   end
@@ -116,7 +129,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   def call(conn, opts) do
     with :ok <- content_type(conn, opts[:content_type]),
          :ok <- sent_once(conn),
-         {:ok, access_key, signature} <- verify(conn) do
+         {:ok, access_key, signature} <- verify(conn, Keyword.fetch!(opts, :kinds)) do
       LogMetadata.put(access_key)
 
       conn
@@ -190,15 +203,15 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   end
 
   # Every failure is the same `:unauthorized`. The key id's shape is checked before the
-  # key is looked up; a key the instance does not hold, or that is not a node's key, is
-  # verified under the fixed key all the same, and refused.
-  defp verify(conn) do
+  # key is looked up; a key the instance does not hold, or that is not of one of `kinds`,
+  # is verified under the fixed key all the same, and refused.
+  defp verify(conn, kinds) do
     with {:ok, key_id} <- present(conn, "x-qory-access-key-id"),
          {:ok, signature} <- present(conn, "x-qory-signature-ed25519"),
          true <- valid_key_id?(key_id),
          {:ok, raw_signature} <- Ed25519.decode(signature, 64),
          {:ok, message} <- message(conn, key_id) do
-      {access_key, public_key} = lookup(key_id)
+      {access_key, public_key} = lookup(key_id, kinds)
 
       if Ed25519.verify(message, raw_signature, public_key) and access_key != nil,
         do: {:ok, access_key, signature},
@@ -220,7 +233,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   def relayed(%Plug.Conn{method: "POST"} = conn) do
     with {:ok, instance_id} <- present(conn, "x-qory-instance-id"),
          {:ok, _instance_id} <- instance_id(instance_id),
-         {:ok, access_key, _signature} <- verify(conn) do
+         {:ok, access_key, _signature} <- verify(conn, @node_kinds) do
       {:ok, access_key}
     else
       _ -> :unauthorized
@@ -229,15 +242,15 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   def relayed(_conn), do: :unauthorized
 
-  # A key of a node, a node pool or a gateway: the Forager contract's. Any other kind's key
-  # is not a node's key here, refused as one the instance does not hold.
-  defp lookup(key_id) do
+  # A key of a node of one of `kinds`: a node, a node pool or a gateway, the Forager
+  # contract's, unless the pipeline names others. Any other kind's key is refused as one
+  # the instance does not hold.
+  defp lookup(key_id, kinds) do
     case AccessKeys.fetch_for_verification(key_id) do
       {:ok,
        %AccessKey{public_key: <<_::binary-size(32)>> = public_key, node: %Node{kind: kind}} =
-           key}
-      when kind in [:node, :pool, :gateway] ->
-        {key, public_key}
+           key} ->
+        if kind in kinds, do: {key, public_key}, else: {nil, @unknown_key}
 
       _other ->
         {nil, @unknown_key}
@@ -301,6 +314,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   # the window closed, is an authentication failure, refused with 401 further on. `Apiary.Nodes.seen/3` never
   # fails.
   defp seen(_conn, _access_key, _instance_id, :unauthorized), do: :ok
+  defp seen(_conn, %AccessKey{node: %Node{kind: :diagnostics}}, _instance_id, :ok), do: :ok
 
   defp seen(conn, %AccessKey{node: node} = access_key, instance_id, :ok) do
     Nodes.seen(node, %{

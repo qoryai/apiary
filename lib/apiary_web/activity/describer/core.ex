@@ -39,6 +39,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
   def label(:"account.password_link"), do: gettext("Password link made")
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
+  def label(:"instance.mail_resend"), do: gettext("Mail test link sent again")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
   def label(:"instance.rename"), do: gettext("Instance renamed")
   def label(:"instance.configure"), do: gettext("Configuration changed")
@@ -411,8 +412,15 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"account.password_link", _details, _actor),
     do: gettext("Made a password link for a person")
 
+  # A save's entry is written before its test send, so it has no result.
   defp said(:"instance.mail_save", _details, _actor),
-    do: gettext("Saved the mail settings, which sent a test link")
+    do: gettext("Saved the mail settings and started a test send")
+
+  defp said(:"instance.mail_resend", %{"result" => "sent"}, _actor),
+    do: gettext("Sent the test link again")
+
+  defp said(:"instance.mail_resend", _details, _actor),
+    do: gettext("Tried to send the test link again; the relay did not accept it")
 
   defp said(:"instance.mail_on", _details, _actor),
     do: gettext("Turned mail on, by the test link")
@@ -445,6 +453,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"access_key.create_code", %{"installed" => true}, _actor),
     do: gettext("Gave an installed adapter a new one-time code")
 
+  # The instance's diagnostics keys, whose node's public id is `dg_`
+  # (`Apiary.AccessKeys.create_diagnostics_code/2`).
+  defp said(:"access_key.create_code", %{"node_id" => "dg_" <> _}, _actor),
+    do: gettext("Made a code for a diagnostics key")
+
   defp said(:"access_key.create_code", _details, _actor),
     do: gettext("Made a command to connect a node")
 
@@ -472,7 +485,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"adapter.end_grant", _details, _actor), do: gettext("Ended a grant")
 
+  defp said(:"access_key.add", %{"node_id" => "dg_" <> _}, _actor),
+    do: gettext("Added a diagnostics key")
+
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
+
+  defp said(:"access_key.revoke", %{"node_id" => "dg_" <> _}, _actor),
+    do: gettext("Revoked a diagnostics key")
 
   defp said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor),
     do: gettext("Revoked an access key with its deleted node")

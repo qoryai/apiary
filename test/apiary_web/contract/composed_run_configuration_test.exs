@@ -4,15 +4,20 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   # target, beside the security_policy, under the composed document's digest; its reloads
   # and its batches carry the same image and digest, a policy change moving the digest and
   # never the image. A prebuild under a policy that names an image is given the policy
-  # without it, and no run is given an image beside a policy that names one. Every other
-  # run is answered the bytes it was before. A run of the queue is given its run variables
+  # without it, and no run is given an image beside a policy that names one; a prebuild
+  # of a workspace that serves no run configuration, the workspace's default policy
+  # (`ApiaryWeb.Contract.PrebuildPolicyTest`). Every other run is answered the bytes it
+  # was before. A run of the queue is given its run variables
   # after the document's last member, and every digest is that of the bytes sent. Not
   # async, as the other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
-  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, redeemed_run_key!: 1]
+
+  import Apiary.DispatchedRunsFixtures,
+    only: [handover_place_fixture: 1, redeemed_run_key!: 1, registry_image: 2]
+
   import Apiary.NodesFixtures, only: [collection_fixture: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -25,10 +30,27 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
   @moduletag needs: :factory
   # Without the `registry` feature, whose members `ApiaryWeb.RegistryTokenTest`
-  # covers: the features are the whole node's, so the module is not async.
+  # covers: the features are the whole node's, so the module is not async. A claim runs
+  # with it (`claim/1`): only there is a run given an image and a prebuild taken.
   setup {Apiary.DataCase, :without_registry}
 
-  @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
+  # The image a pool recorded: under the registry's place of the scope's organisation,
+  # the only place a claim gives an image from.
+  defp image(ctx), do: registry_image(ctx.scope.organisation.id, String.duplicate("3b9d", 16))
+
+  # A claim of the pool, made with the `registry` feature on and the run configuration's
+  # features as they were: the attach and the reloads after it run without the feature.
+  defp claim(ctx) do
+    previous = Application.get_env(:apiary, :features)
+    Application.put_env(:apiary, :features, Enum.uniq(previous ++ [:registry]))
+
+    try do
+      Dispatches.claim(ctx.key, Dispatches.now())
+    after
+      Application.put_env(:apiary, :features, previous)
+    end
+  end
+
   @naming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example"]},"image":"with-docker"}})
 
   setup do
@@ -79,7 +101,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       workspace_id: ctx.scope.workspace.id,
       pool_id: ctx.pool.id,
       source_collection_id: collection.id,
-      image: @image,
+      image: image(ctx),
       size: 734_003_200,
       commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c",
       built_at: now,
@@ -99,7 +121,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   defp explore!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+    {:ok, claimed} = claim(ctx)
     assert pool_post(ctx, claimed.dispatch, "dispatched").status == 204
     {claimed.registered.node_run_id, redeemed_run_key!(claimed.run_code)}
   end
@@ -112,7 +134,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     {:ok, _queued} =
       {:ok, Apiary.DispatchedRunsFixtures.queue_builds!(collection)}
 
-    {:ok, claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+    {:ok, claimed} = claim(ctx)
     {claimed.registered.node_run_id, redeemed_run_key!(claimed.run_code)}
   end
 
@@ -271,7 +293,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert attached.status == 200
       run = run(run_id)
 
-      composed = ComposedConfiguration.compose(policy.document, @image)
+      composed = ComposedConfiguration.compose(policy.document, image(ctx))
       digest = digest_of(composed, run_id)
       refute digest == policy.digest
 
@@ -279,7 +301,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
                String.replace(
                  policy.document,
                  ~s({"version":1,),
-                 ~s({"version":1,"image":"#{@image}",),
+                 ~s({"version":1,"image":"#{image(ctx)}",),
                  global: false
                )
 
@@ -289,13 +311,13 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert Schema.validate(attached.resp_body) == :ok
       refute_two_images(attached.resp_body)
 
-      assert run.configured_image == @image
+      assert run.configured_image == image(ctx)
       assert run.attach_answer_digest == digest
 
       assert [%ComposedConfiguration{} = row] = composed_rows(ctx)
       assert row.digest == digest
       assert row.document == for_run(composed, run)
-      assert row.image == @image
+      assert row.image == image(ctx)
       assert row.run_configuration_id == policy.id
 
       reloaded = reload(ctx, run_id)
@@ -324,7 +346,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
       {:ok, _rule} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})
       newer = current!(ctx)
-      composed = ComposedConfiguration.compose(newer.document, @image)
+      composed = ComposedConfiguration.compose(newer.document, image(ctx))
       digest = digest_of(composed, run_id)
 
       # The batch tells the run its configuration moved; the reload returns the new policy
@@ -336,14 +358,14 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert reloaded.status == 200
       assert reloaded.resp_body == reload_bytes(composed, run(run_id))
       assert digest_header(reloaded) == [digest]
-      assert Jason.decode!(reloaded.resp_body)["image"] == @image
+      assert Jason.decode!(reloaded.resp_body)["image"] == image(ctx)
 
       # A newer prebuild recorded since gives the run nothing new: its image is fixed.
       Repo.update_all(from(r in Record, where: r.pool_id == ^ctx.pool.id),
         set: [image: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("7e0a", 16)]
       )
 
-      assert Jason.decode!(reload(ctx, run_id).resp_body)["image"] == @image
+      assert Jason.decode!(reload(ctx, run_id).resp_body)["image"] == image(ctx)
       assert batch_digest(ctx, run_id, 4) == digest
     end
 
@@ -381,14 +403,16 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert attached.status == 200
       run = run(run_id)
 
-      composed = ~s({"version":1,"image":"#{@image}"})
+      composed = ~s({"version":1,"image":"#{image(ctx)}"})
       digest = digest_of(composed, run_id)
       assert attached.resp_body == attach_bytes(composed, run)
       assert digest_header(attached) == [digest]
       assert Schema.validate(attached.resp_body) == :ok
-      assert run.configured_image == @image
+      assert run.configured_image == image(ctx)
 
-      assert [%ComposedConfiguration{run_configuration_id: nil, image: @image}] =
+      image = image(ctx)
+
+      assert [%ComposedConfiguration{run_configuration_id: nil, image: ^image}] =
                composed_rows(ctx)
 
       # Never not found: the image is fixed when the run starts.
@@ -409,7 +433,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert attach(ctx, run_id, run_key).status == 200
 
       policy = managed!(ctx)
-      composed = ComposedConfiguration.compose(policy.document, @image)
+      composed = ComposedConfiguration.compose(policy.document, image(ctx))
       digest = digest_of(composed, run_id)
 
       assert batch_digest(ctx, run_id, 2) == digest
@@ -438,7 +462,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       recorded!(ctx, @shop)
       {run_id, run_key} = explore!(ctx)
       assert attach(ctx, run_id, run_key).status == 200
-      assert run(run_id).configured_image == @image
+      assert run(run_id).configured_image == image(ctx)
 
       without_security(fn ->
         assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
@@ -468,7 +492,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       without_security(fn ->
         reloaded = reload(ctx, run_id)
         assert reloaded.status == 200
-        assert Jason.decode!(reloaded.resp_body)["image"] == @image
+        assert Jason.decode!(reloaded.resp_body)["image"] == image(ctx)
         refute Map.has_key?(Jason.decode!(reloaded.resp_body), "security_policy")
       end)
     end
@@ -528,11 +552,6 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       policy = managed!(ctx)
       recorded!(ctx, {"code.example.com", "acme/shop"})
       assert_as_before(ctx, prebuild!(ctx), policy.document)
-    end
-
-    test "a prebuild of an unmanaged workspace", ctx do
-      recorded!(ctx, {"code.example.com", "acme/shop"})
-      assert_as_before(ctx, prebuild!(ctx), nil)
     end
   end
 
@@ -598,7 +617,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       recorded!(ctx, @shop)
       {run_id, run_key} = explore!(ctx)
       assert attach(ctx, run_id, run_key).status == 200
-      assert run(run_id).configured_image == @image
+      assert run(run_id).configured_image == image(ctx)
 
       assert Jason.decode!(policy.document)["security_policy"]["egress"]["allow"] == [
                "api.example"
@@ -607,7 +626,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       naming = naming!(ctx)
 
       composed =
-        ComposedConfiguration.compose(ComposedConfiguration.without_image(@naming), @image)
+        ComposedConfiguration.compose(ComposedConfiguration.without_image(@naming), image(ctx))
 
       digest = digest_of(composed, run_id)
       refute digest == run(run_id).attach_answer_digest
@@ -624,11 +643,13 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       refute_two_images(reloaded.resp_body)
 
       decoded = Jason.decode!(reloaded.resp_body)
-      assert decoded["image"] == @image
+      assert decoded["image"] == image(ctx)
       refute Map.has_key?(decoded["security_policy"], "image")
       assert decoded["security_policy"]["egress"]["allow"] == ["api.example", "cdn.example"]
 
-      assert [%ComposedConfiguration{image: @image} = row] =
+      image = image(ctx)
+
+      assert [%ComposedConfiguration{image: ^image} = row] =
                Enum.filter(composed_rows(ctx), &(&1.digest == digest))
 
       assert row.run_configuration_id == naming.id
@@ -819,13 +840,13 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       attached = attach(ctx, run_id, run_key)
       assert attached.status == 200
       started = run(run_id)
-      assert {started.started_image_from, started.started_image} == {"top_level", @image}
-      assert started.configured_image == @image
+      assert {started.started_image_from, started.started_image} == {"top_level", image(ctx)}
+      assert started.configured_image == image(ctx)
 
       renaming = version!(ctx, @renaming)
 
       composed =
-        ComposedConfiguration.compose(ComposedConfiguration.without_image(@renaming), @image)
+        ComposedConfiguration.compose(ComposedConfiguration.without_image(@renaming), image(ctx))
 
       digest = digest_of(composed, run_id)
 
@@ -833,10 +854,10 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert_gateway_takes(attached, reloaded)
       assert reloaded.resp_body == reload_bytes(composed, run(run_id))
       assert digest_header(reloaded) == [digest]
-      assert named(reloaded.resp_body) == @image
-      assert selected(reloaded.resp_body) == @image
+      assert named(reloaded.resp_body) == image(ctx)
+      assert selected(reloaded.resp_body) == image(ctx)
       assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
-      assert run(run_id).configured_image == @image
+      assert run(run_id).configured_image == image(ctx)
       assert_not_behind(ctx, run_id, digest, renaming)
     end
 

@@ -191,10 +191,12 @@ that sets an account's password, is no role's either: an instance admin makes on
 the instance sends no mail, after a recent sign-in (`Apiary.Accounts.sudo_mode?/2`), asked
 by `Apiary.Access.instance_admin?/1` in the context function, and a release command makes
 one mail or not (`Apiary.Release.password_link/1`).
-Saving the instance's mail settings and turning them on by the test link
-(`instance.mail_save`, `Apiary.Mail.save_settings/3`; `instance.mail_on`,
+Saving the instance's mail settings, sending their test link again, and turning them on by
+the test link (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
+`instance.mail_resend`, `Apiary.Mail.resend_test_link/2`; `instance.mail_on`,
 `Apiary.Mail.turn_on/2`) are no role's either: an instance admin, asked by
-`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Setting
+`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Only the
+admin who saved the settings sends their test link again and turns them on. Setting
 the product's name in Instance settings › General (`instance.rename`,
 `Apiary.ProductName.rename/2`) is an instance admin's too, asked by
 `Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.

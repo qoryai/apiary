@@ -263,7 +263,9 @@ replaces the navigation it is in.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Organisation
   settings): General
-  (name, slug, owners, and its danger zone), People (`/settings/people`: members,
+  (name, slug, owners, and its danger zone; the slug is text under the name, follows the
+  name, and once the name typed changes it, a warning says which addresses stop
+  working; saving opens the page at the new address), People (`/settings/people`: members,
   found by their email with Find a person, `?q=`; invitations, suspensions; Invite
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
   page, below), its one field the email address, and a sent invitation goes back to
@@ -464,6 +466,8 @@ on to the new paths with their query, moved permanently (`ApiaryWeb.MovedControl
 connection as a thing keeps its word: a row is a destination and the connections made to
 it. The Policy page's hosts and paths are its Network access section, which links to the
 page ("See what the runs reached"); the page's rule links lead to the rule there.
+Network access also lists the harness fetches in a separate locked table
+(`ApiaryWeb.HostComponents`), outside its counts, views, facets and rule options.
 
 A target is filtered by the id Qory Apiary gives it, never by its system or its path:
 `?target=tg_…`, several ids joined by commas for the runs of any of them, and
@@ -1184,17 +1188,24 @@ hides its parts on phones in that block.
 
 The set-up is the pages a person goes through before the console: the set-up link
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
-(`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up (`/<org>/set-up`,
-and `/<org>/workspaces/new` for a further workspace, each `?step=<step>`, with
-`&type=<type>` before the workspace exists and `&workspace=<slug>` after). Each step has
-its URL, so a reload or a link opens that step. The signed-in pages show the top bar and
-no sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the
-product's mark and the theme menu.
+(`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: the kind cards, on
+the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces/new`,
+whose Choose creates the workspace, then each step a page of the workspace,
+`/<org>/<workspace>/set-up/<step>`. Each step has its URL,
+so a reload or a link opens that step. The signed-in pages show the top bar and no
+sidebar, but for the steps of a workspace that exists, which show the workspace's
+sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
+mark and the theme menu.
 
-- **The type cards** come first in the workspace set-up, under "What will this workspace
-  do?": one card per type of workspace, "Software factory" the one, each with what you do
-  there, what you connect, and **Choose**, which opens the flow. They show no indicator:
-  the count starts after a card is picked.
+- **The kind cards** (`SetUpComponents.kind_cards/1`) come before the workspace set-up:
+  on the organisation's overview (`/<org>`) while it has no workspace, under "Choose what
+  your first workspace does", and on `/<org>/workspaces/new`, under "What will this
+  workspace do?". There is one card per type of workspace, "Software factory" the one,
+  each with what you do there, what you connect, and **Choose**. **Choose** creates the
+  workspace, named after the type ("Software factory", then "Software factory 2"), and
+  opens its step Name. A person who may not create the first workspace sees "An owner of
+  Acme creates the first workspace." in place of the cards. The cards show no indicator:
+  the count starts at the step Name, in the sidebar's group Set up.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
   settings page's column **About this step** (`.q-context`): the muted colour, no box.
@@ -1207,31 +1218,35 @@ product's mark and the theme menu.
   them.
 - **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
-  result of `c:Apiary.Edition.set_up_steps/2`. Above it: the flow's title, "Set
-  up Main · Software factory" ("Set up a new Software factory" before the workspace
-  exists), "Step 4 of 7" and a progress bar, never a count of the steps left. The
-  instance's steps stand under Connect Qory Apiary. The workspace's steps stand in one
-  list with no heading: Name, Work sources, Destinations, Model, Harness, Machines and
-  Test run, after Your account for a person who is not an instance admin ("Step 5 of
-  8"). Each step has its mark: a filled check when done, a ring in the primary colour and
-  `aria-current="step"` when current, a dash and **Skipped** under a step passed over.
-  Each step done or skipped is a link to that step where it has a page, before the
-  current step or after it; Your account is not, and on the pages read signed out, only
-  Invitation is. An edition's note about a step goes under its name. Below 1280 px the
-  indicator is a bar, "Step 4 of 7: Model", with **All steps**, a
-  disclosure that opens the list; Escape closes it. A page with one step shows no
-  indicator.
+  result of `c:Apiary.Edition.set_up_steps/2`: the instance's steps, under Connect Qory
+  Apiary, and the steps an edition adds. Above it: "Step 2 of 3" and a progress bar,
+  never a count of the steps left. Each step has its mark: a filled check when done, a
+  ring in the primary colour and `aria-current="step"` when current, a dash and
+  **Skipped** under a step passed over. Each step done or skipped is a link to that step
+  where it has a page, before the current step or after it; Your account is not, and on
+  the pages read signed out, only Invitation is. An edition's note about a step goes
+  under its name. Below 1280 px the indicator is a bar, "Step 2 of 3: Mail", with **All
+  steps**, a disclosure that opens the list; Escape closes it. A page with one step
+  shows no indicator, and nor does a step of a workspace: its sidebar's group Set up
+  lists the workspace's steps.
+- **The group Set up** (`Layouts.app/1`) is at the top of the workspace's sidebar, under
+  the link up to the organisation, until the test run passes
+  (`SetUpComponents.workspace_set_up/1`): "Set up · 3 of 7", then each step of the
+  flow, a link to its page, with a filled check when done and the page's step current.
+  The rest of the sidebar stays. Steps open in any order.
 - **Back** (`SetUpComponents.back/1`) is the first button at the form's foot, left of the
   primary one, and opens the step before the current one; its `aria-label` names that
   step ("Back to Mail"). A step with no page before it, such as the one after Your
   account, has no Back. It is the one Back at a form's foot in the console: a step has
   no Cancel, since there is nowhere to go back to but the step before. A step opened
-  again shows what was saved there and can be changed. The step Name, opened again,
-  shows the workspace's name and its type, read only, with **Continue**: the type can't
-  change.
+  again shows what was saved there and can be changed. The step Name has the workspace's
+  name in a field, with its address under it as text, which follows the name; once the
+  name typed gives another address, a warning says which address stops working. **Save
+  and next** renames the workspace. A person who may not rename it sees the name, read
+  only, with **Continue**. The type can't change.
 - **The chooser** (`IntegrationComponents.chooser/1`), with the `factory` feature, is a
-  separate page in the frame, the step current in the indicator:
-  `/<org>/set-up/choose?step=<sources|destinations>&grant=<id>&workspace=<slug>`, opened
+  separate page of the workspace's set-up, the step current in the group Set up:
+  `/<org>/<workspace>/set-up/<sources|destinations>/choose?grant=<id>`, opened
   by **Choose** on a card of Work sources or Destinations
   (`IntegrationComponents.grant_card/1`). Its title is “Choose repositories · GitHub ·
   acme”, in the adapter's word for its collections, with the count, such as “3
@@ -1240,9 +1255,14 @@ product's mark and the theme menu.
   settings › Work sources and › Destinations open the same chooser inside the settings,
   at `/<org>/<workspace>/settings/choose?step=<sources|destinations>&grant=<id>`, with
   the step's section current; there **Back** and **Save** return to the settings page.
-- **A workspace in set-up** opens at its next step: with the `factory` feature, until its
-  test run passes, the overview and every link to the workspace lead to the first step
-  of its set-up that is not done (`SetUpComponents.set_up_path/1`).
+- **A workspace in set-up** opens at its overview: with the `factory` feature, until its
+  test run passes, every link to the workspace leads to the overview, which shows "Finish
+  setting up Main", each step with its state and a link to its page, and **Continue:
+  Model**, to the first step that is not done (`SetUpComponents.workspace_set_up/1`). The
+  organisation's overview shows "Set-up: 3 of 7 steps" under the workspace's name.
+- **The link up** is the first line of the workspace's sidebar on every page of the
+  workspace: the organisation's name, with an arrow up, a link to `/<org>`. The
+  breadcrumb keeps its link to the organisation.
 
 ## Components
 
@@ -1631,6 +1651,31 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
+- **Prepare machine** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
+  from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
+  content while a pending run has no event. One row per step, in the order the steps ran:
+  Machine requested (the claim, with the pool and the machine type, "pool default" while
+  the claim answer has none) and Machine started (from the starter's `dispatched` to the
+  redemption of the run's code) for a run a node pool claimed; then the run's steps, each
+  with qory's name, its first letter in upper case, or "Step" and its number when only its
+  exit is recorded; then Session started. Each row has its state, its start time and its
+  duration, and opens on a click: a step to its output, the last 64 KiB as plain text,
+  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
+  sentence with its date once retention deleted the log lines; Machine started to the
+  machine log for an instance admin, and "The instance admin can read the machine's log."
+  for anyone else. With no machine log recorded, an instance admin reads "No machine log
+  has arrived." until a day has passed since the claim (the least the machine logs'
+  retention can be set to, under which a prune can have deleted the log), and then
+  "Machine logs are kept for 30 days. This machine has none.", with the retention's
+  days in force. A step that exits with code -1 has no exit status, and its line
+  shows no code. A failed row is open, with one cause line under its output that shows
+  the cause, then who fixes it; once retention deleted the run's log lines, "The step's
+  output was deleted under the workspace's log retention, so the cause is no longer
+  shown." in place of who fixes it. Under Machine started the line shows only who fixes
+  it, as the header shows the cause: for the instance's pool, "An instance admin finds
+  the cause in the machine log of the Machine started step."; for any other pool, that
+  its admins read why in the pool's log on its host. The section's duration runs from its first row to
+  the session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's
@@ -1640,8 +1685,14 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
-  "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
-  meta line and the rail as in the timeline's item. A run whose starter sent its outcome
+  its refusal: for a code of a check of the run's settings on the machine
+  (`run_configuration_invalid`, `tool_unknown`, `image_unknown`, `image_not_allowed`,
+  `image_user_root`, `variable_reserved`, `placeholder_conflict`, `mount_mode_conflict`
+  and `mount_contains_forager_files`), "The run's settings did not pass a check on the
+  machine (image_unknown).", with the code in mono in the meta line and the rail; for
+  `engine_unreachable`, "The machine could not check an earlier run's container
+  (engine_unreachable).", the code in mono there too; for any other code, "did not start"
+  and the code in mono ("did not start: image_missing"); with no code, "did not start". A run whose starter sent its outcome
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,

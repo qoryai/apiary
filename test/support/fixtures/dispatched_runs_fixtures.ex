@@ -190,6 +190,32 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
+  An image by its digest, `@sha256:` and `digest`, 64 lower-case hex digits, under the
+  registry's place of the organisation `organisation_id` (`Apiary.Registry.Names`), at
+  `targets/` and `name`, 16 hex digits: `Apiary.Environments.image_for/3` gives it to a
+  run of the organisation. With the `registry` feature on.
+  """
+  def registry_image(organisation_id, digest, name \\ "0123456789abcdef")
+      when byte_size(digest) == 64 do
+    "#{Apiary.Registry.service()}/#{Apiary.InstanceConfig.registry_instance()}/" <>
+      "#{Apiary.Registry.Names.organisation(organisation_id)}/targets/#{name}@sha256:#{digest}"
+  end
+
+  @doc """
+  The member `member` of the documents the claim sent the registered run `run`
+  (`runs.run_documents`), such as `"image_destination"`; nil where they have none.
+  """
+  def sent(%Run{run_documents: documents}, member) when is_binary(documents),
+    do: Jason.decode!(documents)[member]
+
+  @doc """
+  An image by its digest at the `image_destination` the claim sent the registered
+  prebuild `run`: `@sha256:` and `digest`, 64 lower-case hex digits.
+  """
+  def destination_image(%Run{} = run, digest) when byte_size(digest) == 64,
+    do: sent(run, "image_destination") <> "@sha256:" <> digest
+
+  @doc """
   Queues a prebuild of `collection` for its `environment_ref` for every live node pool
   of its workspace (`Apiary.Dispatches.queue_prebuild/3`), with its environment record:
   the prebuilds queued.
@@ -218,9 +244,9 @@ defmodule Apiary.DispatchedRunsFixtures do
   @doc """
   A prebuild of a fresh collection of the scope's workspace, with a target and the
   `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued for every
-  pool of the workspace (`queue_builds!/1`), with its environment record, then claimed under `key`, which registers its run, and its machine started,
-  which hands it over (`dispatched!/1`). The workspace has no other waiting run the pool
-  may take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
+  pool of the workspace (`queue_builds!/1`), with its environment record, then claimed
+  under `key`, which registers its run, and its machine started, which hands it over
+  (`dispatched!/1`). The workspace has no other waiting run the pool may take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
   run_of_queue, run: registered_run}`, each as stored then.
   """
   def prebuild_handed_over!(%Scope{} = scope, %AccessKey{} = key, collection_attrs \\ %{}) do

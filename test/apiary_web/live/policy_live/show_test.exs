@@ -204,11 +204,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#nav-policy-mode")
       assert has_element?(view, "h2", "Qory Apiary serves no policy yet")
 
-      assert text(view, "#policy-unmanaged") =~
-               "Until the first change here, every machine of this workspace runs under its local policy"
-
-      assert text(view, "#policy-unmanaged") =~
-               "renders version 1, and from then on each machine applies it, narrowed by its local policy."
+      assert text(view, "#policy-unmanaged") ==
+               "Until the first change here, every machine of this workspace runs under its " <>
+                 "local policy, the policy set on the machine itself. The first rule you add, or " <>
+                 "a mode you set, renders version 1, and from then on each machine applies it, " <>
+                 "narrowed by its local policy. You can also let a run reach out first and allow " <>
+                 "its hosts from the Network access page, one row at a time."
 
       refute has_element?(view, "#policy-version-pill-copy")
       assert text(view, "#policy-version-pill") == "No version yet"
@@ -224,7 +225,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-export-why") ==
                "Nothing to export yet: the first change here renders version 1."
 
-      assert text(view, "#policy-first-version") =~ "Version 1 is rendered by the first change"
+      assert text(view, "#policy-first-version") ==
+               "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
+
       refute has_element?(view, "#policy-tabs a", "Document")
       assert text(view, "#policy-mode-value") == "Observe"
 

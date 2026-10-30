@@ -85,7 +85,10 @@ defmodule Apiary.Runs.Registration do
   kept on the run, so a repeat is given the same answer. The answer to a registration
   through a gateway is the run key (`Apiary.Runs.RunKey`), which names the gateway, with
   its active keys, at most two, and the attach window granted; the run configuration is
-  given to the gateway at the attach, never to the node that registered the run.
+  given to the gateway at the attach, never to the node that registered the run. A
+  prebuild of a workspace that serves none is given, at its attach and on its reloads,
+  the workspace's default policy composed for it (`Apiary.Policy.default_document/1`),
+  never the document of no policy: its document has a `security_policy`.
 
   `fetch/3` is the reload: the run configuration in force for a run, read by its
   registration's labels, for the active keys of the node that registered it alone, or of
@@ -597,15 +600,7 @@ defmodule Apiary.Runs.Registration do
       {:error, :unmanaged} ->
         with true <- asked(from_no_policy?),
              {:ok, composed} <-
-               ComposedConfiguration.serve(
-                 organisation_id,
-                 workspace_id,
-                 nil,
-                 image,
-                 prebuild?,
-                 fixed?,
-                 members
-               ) do
+               from_no_policy(access_key, image, prebuild?, fixed?, members) do
           {:ok, settings(composed.document, composed.digest, false), composed.image}
         else
           {:error, reason} -> {:error, reason}
@@ -619,6 +614,43 @@ defmodule Apiary.Runs.Registration do
 
   defp asked(fun) when is_function(fun, 0), do: fun.()
   defp asked(value), do: value
+
+  # The document composed for a run of a workspace that serves no run configuration. A
+  # prebuild's is composed from the workspace's default policy
+  # (`Apiary.Policy.default_document/1`), so it always has a `security_policy`: with the
+  # registry's path rules, and in place of the machine's local policy. Any other run's is
+  # composed from no policy, `{"version":1}`. A prebuild whose default policy cannot be
+  # rendered is given none (`{:error, :unavailable}`).
+  defp from_no_policy(access_key, image, prebuild?, fixed?, members) do
+    %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
+
+    if asked(prebuild?) do
+      case Apiary.Policy.default_document(workspace_id) do
+        {:ok, document} ->
+          ComposedConfiguration.serve_default(
+            organisation_id,
+            workspace_id,
+            document,
+            image,
+            fixed?,
+            members
+          )
+
+        {:error, _error} ->
+          {:error, :unavailable}
+      end
+    else
+      ComposedConfiguration.serve(
+        organisation_id,
+        workspace_id,
+        nil,
+        image,
+        prebuild?,
+        fixed?,
+        members
+      )
+    end
+  end
 
   defp settings(access_key, labels) do
     case Serving.fetch(access_key, labels) do

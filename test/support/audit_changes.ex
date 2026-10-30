@@ -90,6 +90,7 @@ defmodule Apiary.AuditChanges do
       :"instance_admin.revoke",
       :"account.password_link",
       :"instance.mail_save",
+      :"instance.mail_resend",
       :"instance.mail_on",
       :"instance.rename",
       :"instance.configure",
@@ -267,7 +268,7 @@ defmodule Apiary.AuditChanges do
     admin = mail_admin()
     before = entries()
 
-    {:ok, _settings, :sent} =
+    {:ok, _settings, %{result: :sent}} =
       Apiary.Mail.save_settings(
         admin,
         @mail_attrs,
@@ -314,6 +315,26 @@ defmodule Apiary.AuditChanges do
       scope: Scope.in_organisation(admin, instance),
       subject: {"organisation", instance.id},
       before: before
+    }
+  end
+
+  # The admin who saved, while mail waits for the test link, in the trail of the
+  # instance's organisation, about the organisation. The new link is the secret the entry
+  # must not keep, and the relay's password too.
+  def make(:"instance.mail_resend", _ctx) do
+    {admin, _token} = mail_saved()
+    before = entries()
+
+    {:ok, %{result: :sent}} =
+      Apiary.Mail.resend_test_link(admin, &"http://localhost/instance/mail/confirm/#{&1}")
+
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: mail_token()
     }
   end
 
@@ -1028,6 +1049,17 @@ defmodule Apiary.AuditChanges do
      )}
   end
 
+  def refuse(:"instance.mail_resend", _ctx) do
+    {admin, _token} = mail_saved()
+    before = entries()
+
+    {before,
+     Apiary.Mail.resend_test_link(
+       mail_signed_in(admin, -21),
+       &"http://localhost/instance/mail/confirm/#{&1}"
+     )}
+  end
+
   def refuse(:"instance.mail_on", _ctx) do
     {admin, token} = mail_saved()
     before = entries()
@@ -1677,17 +1709,29 @@ defmodule Apiary.AuditChanges do
   defp mail_saved do
     admin = mail_admin()
 
-    {:ok, _settings, :sent} =
+    {:ok, _settings, %{result: :sent}} =
       Apiary.Mail.save_settings(
         admin,
         @mail_attrs,
         &"http://localhost/instance/mail/confirm/#{&1}"
       )
 
+    token = mail_token()
+
+    # The next test send comes before the minute the instance waits between two.
+    Repo.update_all(Apiary.Mail.Settings,
+      set: [mail_test_sent_at: DateTime.add(DateTime.utc_now(), -2, :minute)]
+    )
+
+    {admin, token}
+  end
+
+  # The token of the test link in the email sent last.
+  defp mail_token do
     receive do
       {:email, %Swoosh.Email{subject: "Turn on mail for Qory Apiary", text_body: body}} ->
         [_, token] = Regex.run(~r{/instance/mail/confirm/([A-Za-z0-9_-]+)}, body)
-        {admin, token}
+        token
     after
       0 -> raise "no test link was sent"
     end

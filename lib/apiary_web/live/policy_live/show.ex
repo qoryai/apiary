@@ -32,6 +32,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
+  import ApiaryWeb.HostComponents, only: [allowed_hosts: 1]
 
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
@@ -144,11 +145,21 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {:ok, %{activity: unwrap(Policy.rule_activity(scope, nil, Common.use_since()))}}
       end)
       |> assign_async(:fact, fn -> {:ok, %{fact: fact(scope, mode)}} end)
+      |> assign_async(:required_hosts, fn -> {:ok, %{required_hosts: required_hosts(scope)}} end)
     else
       socket
       |> assign(:activity, Phoenix.LiveView.AsyncResult.loading())
       |> assign(:fact, Phoenix.LiveView.AsyncResult.loading())
+      |> assign(:required_hosts, Phoenix.LiveView.AsyncResult.loading())
     end
+  end
+
+  # The hosts Qory Apiary allows for every run, for the list under the rules
+  # (`ApiaryWeb.HostComponents.allowed_hosts/1`).
+  defp required_hosts(scope) do
+    scope.workspace
+    |> Apiary.Policy.RequiredHosts.of()
+    |> Map.put(:admin?, Apiary.Access.instance_admin?(scope))
   end
 
   defp unwrap({:ok, value}), do: value
@@ -1368,7 +1379,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span :if={!@managed?} id="policy-unmanaged">
           {pgettext(
             "plain",
-            "Until the first change here, every machine of this workspace runs under its local policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+            "Until the first change here, every machine of this workspace runs under its local policy, the policy set on the machine itself. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
@@ -1399,7 +1410,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
       >
         {gettext(
-          "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its local policy."
+          "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
         )}
       </p>
       <p
@@ -1482,6 +1493,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
             )}
       </p>
     </section>
+
+    <.allowed_hosts
+      :if={@required_hosts.ok?}
+      groups={@required_hosts.result.groups}
+      target_required?={@required_hosts.result.target_required?}
+      admin?={@required_hosts.result.admin?}
+    />
     """
   end
 

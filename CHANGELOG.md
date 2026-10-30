@@ -12,6 +12,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- An organisation with no workspace shows the kind cards on its overview,
+  `/<organisation>`, under “Choose what your first workspace does”, and
+  `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
+  **Choose** on a card creates the workspace at once, named after its kind, such as
+  “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its
+  step **Name**. A workspace's address follows its name: a rename, on **Name** or in
+  Workspace settings, changes it, and links to the old address stop working, with no
+  redirect. A name whose address another workspace or a page of Qory Apiary has is
+  refused, never numbered: “Choose another name. Another workspace already has the
+  address /acme/payments.”
+- On every page of a workspace, the sidebar's first line is the organisation's name, a
+  link to the organisation's overview.
 - An instance admin can rename the product in Instance settings › General: the browser
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
@@ -33,6 +45,42 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary keeps each step of a run from `dev.qory.run.step_started` and
   `dev.qory.run.step_exited`: a fetch, compose, image, setup, join or wall, with its state,
   exit code and duration, and its log lines under the step's number.
+- A run's Timeline starts with **Prepare machine** and the time the machine took:
+  **Machine requested**, with the pool and the machine type, for a run a node pool
+  claimed; **Machine started**; a row for each step that ran before the session; and
+  **Session started**. Owners, admins and members open a step's row to read its output,
+  the last 64 KiB. A failed step's row is open, with what happened and who fixes it, such
+  as “<step> failed with exit code 1.” and “An admin of Main reads the cause in the step's
+  output.” An instance admin also reads the machine log under **Machine started**; anyone
+  else reads “The instance admin can read the machine's log.” A run that stopped before
+  its session started shows “The run stopped before its session started, at the step
+  <step>.” above the Timeline. The section updates without a reload until the session
+  starts or the run ends.
+- **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
+  for owners, admins and members who may read the run's log. The diagnostics contain the
+  run, its queue entry and claim, how its machine was prepared, its latest 5,000 events at
+  most, the output that belongs to no step, its last 1 MiB, the output of each step, and
+  the secrets found printed in the run, at most 8 MiB in all. Only an instance admin's
+  copy contains the machine logs. A copy contains no key, no run code and no variable
+  value, only the variables' names. Text is copied as Qory Apiary stored it, so a secret a
+  run printed is in the copy. When the copy fails, the menu shows the fix first, such as
+  “Sign in again, then copy again. Your session ended.”
+- Instance settings › **Diagnostics keys**, for instance admins, lists the keys with which
+  a computer reads the diagnostics of any run on the instance, and nothing else, at
+  `GET /v1/runs/<run id>/diagnostics`, in a request signed with the key. **Get the
+  command**, after a recent sign-in, shows `qory apiary enrol <address> <code>` with
+  **Copy command**: the code starts with `qecd_` and works once, within 15 minutes, and
+  the computer makes the key and sends Qory Apiary only its public half. Each key shows
+  who made it, when, when it was last used, and **Revoke…**. An instance has at most 20
+  diagnostics keys. The audit log records each code, each key added and each key revoked.
+- Qory Apiary scans the text a run stores, as it arrives, for keys of a known form: Qory
+  Apiary's keys and codes, and Anthropic, OpenAI, GitHub and GitLab tokens. It scans the
+  run's output, its events, its machine log and the reason its machine was released. It
+  stores where each key is, never the key, at most 1,000 for a run's output and events,
+  and 1,000 each for its machine log and release reason. In the diagnostics, each one
+  found has the line “This secret is compromised: it was printed into the run's log.
+  Replace it.”, or the same with the event, the machine log or the release reason as the
+  place. Text stored before the upgrade is not scanned.
 - `QORY_SETUP_CODE_SHA256` takes the SHA-256 of a set-up code that the install makes. With
   it set, the log shows no set-up link, and the code sets the instance up once
   (`guides/install.md`).
@@ -44,45 +92,49 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   instance admin finishes or skips its last step. On an instance set up before the
   upgrade, the next sign-in of an instance admin opens it too. Where the page has no
   step, a sign-in of an instance admin opens what it opens for anyone else.
+- Instance settings › Mail and the **Mail** step of **Connect Qory Apiary** show the last
+  test send, also after a reload: when the link was sent and until when it works, or the
+  fix first, by cause, such as “Check the username and password, and that the relay allows
+  this server's IP address, then send the test link again. The log-in to the relay failed
+  at 30 Oct 2026, 14:02:09 UTC.” While mail waits for the link, the instance admin who
+  saved the settings has **Send the test link again**, which ends the old link and sends
+  another through the saved settings, with no change to a setting. Qory Apiary sends at
+  most one test link a minute, for a save and a resend alike. The **Mail** step is done
+  once mail is on or the last test link was sent. Qory Apiary stores the time, the result
+  and the relay's reply code of the last send, never the relay's text. In Activity, a save
+  is “Saved the mail settings and started a test send”.
 - While an organisation has no workspace, its owners and admins invite people from
   **People** into the organisation. The invitation page and the sign-up show the
   organisation's name, and **People** lists the invitation with **None** as its workspace.
-  Accepting it opens **Set up your workspace** while the organisation has no workspace,
-  else the organisation's overview. Once the organisation has a workspace, an invitation
-  needs a workspace again.
+  Accepting it opens the organisation's overview. Once the organisation has a workspace,
+  an invitation needs a workspace again.
 - Each page of the set-up with more than one step shows a list of the steps of its part,
   with the part's count. The instance set-up, which an instance admin goes through once,
-  has **Your account** and the steps under **Connect Qory Apiary**. The workspace set-up
-  lists its steps with no heading, after **Your account** for a person who is not an
-  instance admin. Above the list, “Step 1 of 2” and a bar, and in the workspace set-up
-  a title such as “Set up Main · Software factory”; below 1280 px the list is a bar with
-  **All steps**. A step done or skipped is a link to it where it has a page, once you
-  are signed in; **Your account** is not. **Back** at the foot of a form opens the step
-  before in the same part, and each step has an address, such as
-  `/instance/set-up?step=mail` and `/<organisation>/set-up?step=name&type=software`. A
-  person who waits for another to create the first workspace sees no list.
-- The workspace set-up at `/<organisation>/set-up` moves on without a reload when
-  another person creates the organisation's first workspace while the page shows the
-  type cards, the line for a person who waits, or the step **Name**.
+  has **Your account** and the steps under **Connect Qory Apiary**. The sign-up lists
+  **Your account**, then the workspace's steps, with no heading. Above the list, “Step 1
+  of 2” and a bar; below 1280 px the list is a bar with **All steps**. A step done or
+  skipped is a link to it where it has a page, once you are signed in; **Your account** is
+  not. **Back** at the foot of a form opens the step before in the same part, and each
+  step has an address, such as `/instance/set-up?step=mail` and
+  `/<organisation>/<workspace>/set-up/name`. The page of a workspace's step shows no list:
+  with the `factory` feature, the workspace's sidebar lists its steps. A person who waits
+  for another to create the first workspace sees no list.
+- The organisation's overview moves on without a reload when another person creates the
+  organisation's first workspace while it shows the kind cards or the line for a person
+  who waits.
 - An edition can change the set-up's steps and their notes, and, for a person who waits
-  for the first workspace, the page's title, **Set up your workspace** in the core, and
-  a line under **About this step**, through the callbacks `set_up_steps/2`,
-  `set_up_title/2` and `set_up_context/2` of `Apiary.Edition`. The core keeps its steps
-  and the title, and adds no line.
-- **What will this workspace do?** shows a card for each workspace type, with what you do
-  in that kind of workspace, what you connect, and **Choose**. This release has one type,
-  **Software factory**: “Agents change code in your repositories. You connect: where work
-  comes from, where changes go, a model.” The cards show on `/<organisation>/set-up` while
-  the organisation has no workspace, and on `/<organisation>/workspaces/new`, where an
-  owner adds a workspace where the edition allows another. Where the organisation has as
-  many workspaces as the edition allows, that page shows “Acme may have no more
-  workspaces.” in place of the cards. Only owners see the cards: anyone else reads who
-  sets up the first workspace, and `/<organisation>/workspaces/new` is not found for
-  them. **Choose** opens the set-up of a workspace of that type, “Set up a new Software
-  factory”. Its step **Name** has the field **Name**, filled in with Main for the
-  organisation's first workspace and empty for any other, and **Create workspace**,
-  which creates the workspace and opens the next step, or the workspace where there is
-  none. Each workspace stores the type it was made from.
+  for the first workspace, the line on the organisation's overview, “An owner of Acme
+  creates the first workspace.” in the core, through the callbacks `set_up_steps/2` and
+  `first_workspace_waiting_line/1` of `Apiary.Edition`. The core keeps its steps.
+- The kind cards show a card for each workspace type, with what you do in that kind of
+  workspace, what you connect, and **Choose**. This release has one type, **Software
+  factory**: “Agents change code in your repositories. You connect: where work comes
+  from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
+  adds a workspace where the edition allows another. Where the organisation has as many
+  workspaces as the edition allows, that page shows “Acme may have no more workspaces.”
+  in place of the cards. Only owners see the cards: anyone else reads who creates the
+  first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
+  workspace stores the type it was made from.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
   Adapters** lists, before **Mail** where the page has that step. Where an adapter's
@@ -90,15 +142,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   set-up's **Work sources** and **Destinations** list them in the column **About this
   step**, under **In the new tab** or **On** and the adapter's name. Qory Apiary stores
   those steps at each start of the adapter.
-- After a type's card, the workspace set-up has 7 steps: **Name**, **Work sources**,
-  **Destinations**, **Model**, **Harness**, **Machines** and **Test run**, counted
-  “Step 4 of 7”, or “Step 5 of 8” after **Your account**. **Name** creates the workspace,
-  and each later step sets up that workspace: before it exists, the page opens **Name**.
-  Without a step in its address, the page opens the first step that is not done. **Work
+- After a kind's card, the workspace set-up has 7 steps: **Name**, **Work sources**,
+  **Destinations**, **Model**, **Harness**, **Machines** and **Test run**. **Choose** on
+  the card creates the workspace, **Name** renames it, and each later step sets up that
+  workspace. Each step is a page of the workspace, such as `/acme/main/set-up/harness`,
+  and opens in any order; an address with a step you do not see is not found. **Work
   sources**, **Destinations**, **Model** and **Harness** each show where you change them
   later, such as “You can change this later in Workspace settings › Workflow.” Where the
-  edition allows more than one workspace, a workspace added later goes through the same
-  7 steps.
+  edition allows more than one workspace, a workspace added later goes through the same 7
+  steps.
 - Where the edition shows the setting “Available to every workspace in Acme”, **Model**,
   and **Harness** for a harness repository, list first what the organisation shares,
   under “Shared in Acme”, each marked “· every workspace”. On **Model**, **Key** lists
@@ -135,7 +187,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   instance. An instance admin sets one up in Instance settings › Adapters.”, or the same
   for a work destination. The step updates without a reload.
 - **Choose** opens “Choose repositories · GitHub · acme”, at
-  `/acme/set-up/choose?step=sources&grant=<id>&workspace=main`, with two choices, in the
+  `/acme/main/set-up/sources/choose?grant=<id>`, with two choices, in the
   adapter's word for its collections. **All repositories, including new ones** assigns
   to the workspace every repository of the account that no other workspace has. It also
   assigns each one the adapter lists for the account later. **Only selected** lists the
@@ -296,12 +348,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   model key, or the run sends nothing for 10 minutes. Once the test run passes, **Go to
   Main** opens the workspace. **Work items** lists each test work item with the mark
   **Test**.
-- While a workspace's test run has not passed, opening the workspace opens its set-up at
-  the first step that is not done, such as
-  `/<organisation>/set-up?step=harness&workspace=main`: from its address, the sidebar,
-  the breadcrumb, the organisation's list of workspaces and a sign-in. A person who may
-  not act on that step reads who may. Once the test run has passed, the workspace opens
-  at its Overview, which has no set-up list. Its other pages, such as **Backlog** and
+- When the set-up's test run fails, the **Test run** step shows why and what fixes it, by
+  cause, with **Run the test** above it. A test run that stopped while its machine was
+  prepared shows “The test run stopped at <step>.”, the cause line of the run's **Prepare
+  machine** section, and **Open the run's Prepare machine section**. A test run that ended
+  shows how, such as “The test run failed after the session started: <reason>.” or “The
+  test run failed: the run's settings did not pass a check on the machine
+  (image_unknown).”, with **See the run**. A test run that ended before a machine started
+  it shows the fix where the set-up has one: shorten the line in **Say hi to your agent**,
+  choose the model again on the **Model** step, or have an instance admin install the
+  instance's gateway with `QORY_INSTALLED_GATEWAY` where the run's gateway is not allowed
+  to receive its secrets. Else the step shows “No run was recorded, so this step cannot
+  show why.” For a missing model key, the line is “Add a model key on the Model step. The
+  gateway had no model key for the run.”
+- While a workspace's test run has not passed, every link to the workspace and a sign-in
+  open its Overview, which shows “Finish setting up Main”, each step with a check once it
+  is done and a link to its page, and **Continue: Model**, to the first step that is not
+  done. The workspace's sidebar starts with “Set up · 3 of 7” and a link to each step, the
+  page's step current, above its other pages. The organisation's list of workspaces shows
+  “Set-up: 3 of 7 steps” under the workspace's name. A person who may not act on a step
+  reads who may. Once the test run has passed, the Overview, the sidebar and the
+  organisation's list show no set-up. The workspace's other pages, such as **Backlog** and
   **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** lists the organisation's model providers,
   and **New model provider** adds one with its key, and an address for a provider that
@@ -360,6 +427,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the variables of the instance's node pool and gateway, and its modules in the module
   reference. An instance without `factory` serves none of that text.
 <!-- /feature -->
+- The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
+  allows for every run of the workspace, by group, such as **Harness sources**,
+  **Integrations** and **Model providers**, each with its source, what requires it, and a
+  lock: “Host rules do not remove this host.” Anyone who reads the policy sees the list;
+  an IP address shows as “Address hidden” to anyone but an instance admin. Network access
+  lists, under the destinations, the hosts that runs reached to fetch their harness before
+  the first session started, in a table **Harness fetch**, each with its source, such as
+  “The Qory harness”, its runs, attempts and last time seen, and a lock: “Host rules do
+  not apply to a harness fetch.” That table is outside the page's counts, views and rule
+  options. Neither list changes which hosts a run may reach.
 <!-- feature: secrets -->
 - Where an agent, an API or a program of **Workspace settings › Integrations** applies is
   set when it is added, and never changed after. Added from a form with no setting, it
@@ -375,6 +452,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- An organisation's address follows its name, as a workspace's does. A rename in
+  Organisation settings › General changes it, the page opens at the new address, and
+  links to the old one stop working, with no redirect. A sign-up, the set-up link's page
+  and the release command's claim make the address from the name too. A name whose
+  address another organisation or a page of Qory Apiary has is refused there, never
+  numbered: “Choose another name. Another organisation has the address /acme.” The audit
+  log records the old and the new name and address of a rename.
+- A name of an organisation or a workspace with no letter or digit from A to Z or 0 to 9,
+  such as “—”, is refused at a sign-up, a creation and a rename, with “Choose a name with
+  at least one letter or digit from A to Z or 0 to 9. The address is made from those
+  characters.”
 - Where the documentation is not built, `/docs` shows `mix docs` on a separate line, in
   code font, with an icon button **Copy command** that copies the command alone.
 - An enrolment code starts with the prefix of its node's kind: `qecn_` for a node, `qecp_`
@@ -385,9 +473,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
-- The organisation slug `integrations` is reserved as well: a slug made from a name skips
-  it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
-  the slug `integrations-2`.
+- The organisation slug `integrations` is reserved as well: a sign-up or a rename to the
+  name Integrations is refused with “Choose another name. /integrations is a page of Qory
+  Apiary.”
 - An account's email address, at sign-up and when it is changed, and an invitation's
   address refuse a control or format character (a right-to-left override, a zero-width
   space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160
@@ -442,14 +530,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   contents to 65532 before the upgrade, or the release cannot read the keys.
 - The set-up link creates the instance's organisation and its owner's account with no
   workspace. After **Connect Qory Apiary**, the owner creates the first workspace on the
-  workspace set-up, at `/<organisation>/set-up`, which starts with **What will this
-  workspace do?**. Until the organisation has a workspace, each sign-in of a member of
-  the organisation opens that page.
+  kind cards of the organisation's overview, `/<organisation>`. Until the organisation
+  has a workspace, each sign-in of a member of the organisation opens that page.
   On a new instance, `Apiary.Release.grant_instance_admin/2`, the release command an
-  instance admin runs, still creates Main, of the type Software factory. Where an edition
-  offers a sign-up without an invitation, that sign-up creates no workspace either.
-  Create Main before you load the demo: `Apiary.Release.demo()` writes nothing while Acme
-  has no workspace Main.
+  instance admin runs, creates no workspace either. Where an edition offers a sign-up
+  without an invitation, that sign-up creates no workspace either. Before you load the
+  demo, create a workspace and name it Main: `Apiary.Release.demo()` writes nothing while
+  Acme has no workspace Main.
 - Where a step of the set-up needs context, its page has a column **About this step**
   beside the form, or under it below 1024 px, that shows what the step does.
 <!-- feature: factory -->
@@ -481,6 +568,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   machine stopped before it started the run. The run page, its preview and the runs list
   show the cause, the pool's name and the pool's reason. A run whose machine stops before
   it starts the run ends failed at once, not 15 minutes later.
+- A run that did not start because its settings did not pass a check on the machine shows,
+  on its page and in the runs list's preview, “The run's settings did not pass a check on
+  the machine (image_unknown).” in place of “did not start: image_unknown”, and for
+  `engine_unreachable`, “The machine could not check an earlier run's container
+  (engine_unreachable).” Any other code keeps “did not start: <code>”. For a machine of
+  the Qory Pool, the cause line of **Prepare machine** ends with “An instance admin finds
+  the cause in the machine log of the Machine started step.” when the pool made no
+  machine, the machine stopped before it started the run, or the machine did not start the
+  run within 15 minutes.
+<!-- feature: factory -->
+- With a private image registry set (`QORY_REGISTRY` and the `registry` feature), Qory
+  Apiary sends each prebuild the image address of its target, under the instance and the
+  organisation, and a run starts only in an image at its organisation's address. A run
+  whose stored image is elsewhere starts in the pool's default image. Without a registry,
+  no prebuild runs, and a target's page shows “Ask an instance admin to set up a registry
+  to build this target's environment image. Until then, runs start in the pool's default
+  image.” A prebuild in a workspace with no policy version runs under Qory Apiary's
+  default policy, in observe mode with the hosts the integrations require, and its run
+  page shows why on **Not a version made in this workspace**.
+<!-- /feature -->
 
 ### Fixed
 
@@ -504,6 +611,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The log filter replaces an invitation link's token before it looks for `qak_` and an
   enrolment code's prefix. Before, a token that contained one of them could leave up to
   39 of its 43 characters in the log line.
+- The log filter replaces a run key, `qrk_`, and its signature, and a diagnostics key's
+  enrolment code, `qecd_`. The run page's header and **Prepare machine** show a pool's
+  reason for releasing a machine through the same filter.
+- A prebuild's image is accepted only at the place Qory Apiary sent the prebuild, so one
+  organisation's build cannot make another organisation's runs start in its image.
 
 ### Migrations
 
@@ -566,6 +678,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   nullable column, `release_reason`, with a check of 1 to 200 characters that scans
   `dispatches` under a lock that blocks writes. An index on `runs.dispatch_id`, built
   concurrently. The migrations change no row.
+- `instance_settings`: three nullable columns for the last test send of the mail settings,
+  `mail_test_sent_at`, `mail_test_result` and `mail_test_reply_code`, with a check on the
+  result and one on the reply code. The table has one row. It changes no row.
+- `leaked_secrets`: a table, with its checks and indexes, where each secret a run printed
+  is found, never the secret. `runs` and `dispatches`: integer columns with a constant
+  default, 0, which rewrites no row: `leaked_secrets_omitted`,
+  `machine_log_secrets_omitted` and `release_reason_secrets_omitted`.
+- `nodes`: five checks replaced to take a diagnostics key, added `NOT VALID` and validated
+  by a scan that blocks no write, and a unique index `nodes_diagnostics_index` for kind
+  `diagnostics`, built inside the migration, so writes to `nodes` wait until the build
+  ends. They change no row.
 
 ## [0.1.0] - 2026-10-13
 

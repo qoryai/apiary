@@ -405,8 +405,21 @@ the registered run (`runs.run_documents`); every redemption of the run code answ
 claim measures the rest of the 201 with a run key of the run's grant and the server's
 keys, keeps 1,024 bytes free for a second server key, and gives the documents the rest;
 an explore run's input leaves out its oldest comments to fit, and a claim whose documents
-cannot fit is `503` `unavailable`. A prebuild's documents have no `image_destination`:
-Qory Apiary keeps no registry destination for an image. The registered run
+cannot fit is `503` `unavailable`. A prebuild's documents have its destinations in the
+instance's registry: `image_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/targets/<target>`,
+and `environment_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`,
+or, where an environment record of the organisation has an image under that name,
+`environment_image`, that image by its digest (`Apiary.Registry.RunAccess`). They are the
+names the run's registry tokens grant. Prebuilds run only on an instance with a registry
+(`Apiary.Registry.configured?/0`): the `registry` feature on, and `QORY_REGISTRY` set to
+an address whose host has a dot or a port, or is `localhost`. On any other instance no
+prebuild is queued or claimed, no run waits for one, and an explore run starts in its
+pool's default image; a prebuild queued before stays waiting. The instance's registry
+name, the `<instance>` part, is made at the first claim of a prebuild where it is not
+made yet; a claim where it cannot be made is `503` `unavailable`. A prebuild of a
+workspace that serves no run configuration is given, at its attach, the workspace's
+default policy, in `observe` with no rules, composed with the registry's members; where
+that document cannot be composed, its attach is `503` `unavailable`. The registered run
 has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
 `.` and the fingerprint of the instance's key, which the machine redeems once at
 enrolment for the run key, within 15 minutes of the claim (Enrolment). The registered
@@ -546,7 +559,12 @@ any other run is kept with the run's other events, and records nothing; so does 
 whose `image` is not a lower-case name of at most 255 characters with `@sha256:` and 64
 lower-case hexadecimal digits, whose `size` is not an integer from 1 to 2^53 - 1, whose
 `commit` is not 40 or 64 lower-case hexadecimal characters, or whose `environment_ref`
-is not 1 to 200 characters or contains U+0000. Of two such events of one run, the lower
+is not 1 to 200 characters or contains U+0000, or whose `environment_image` breaks the
+rule of `image`. So does an event whose `image` is not at the run's `image_destination`:
+its name before `@sha256:` must be exactly the `image_destination` of the documents the
+registered run keeps; and one whose `environment_image` is not at exactly its
+`environment_destination`, or is not exactly its `environment_image`. Such an event is
+logged as a warning with the run's public id. Of two such events of one run, the lower
 sequence counts, and only the projection that folds it stores it: a later projection of
 the run, and a rebuild of its projection, store nothing. A build whose prebuild took its
 `environment_ref` before the prebuild that made the record's image took its, and the
@@ -1122,8 +1140,13 @@ The fold maps an exit to a state by the first rule that applies
    Lost, and any other reason, or none, Failed.
 
 A run whose `dev.qory.run.refused` reaches Qory Apiary did not start: it is Failed, with the
-refusal's `code` as its reason and no exit time, and says "did not start" and the code
-("did not start: image_unknown"). An exit decides over the refusal, in whichever order the
+refusal's `code` as its reason and no exit time. For a code of a check of the run's
+settings on the machine (`run_configuration_invalid`, `tool_unknown`, `image_unknown`,
+`image_not_allowed`, `image_user_root`, `variable_reserved`, `placeholder_conflict`,
+`mount_mode_conflict` and `mount_contains_forager_files`) its page says "The run's settings
+did not pass a check on the machine (image_unknown).". For `engine_unreachable` it says "The
+machine could not check an earlier run's container (engine_unreachable).", and for any other
+code "did not start" with the code ("did not start: image_missing"). An exit decides over the refusal, in whichever order the
 two are folded; no start or heartbeat folded after either changes the state. The refusal's
 time is kept as `refused_at`, nil once an exit decides over it; the starter's outcome
 leaves it as it is.
