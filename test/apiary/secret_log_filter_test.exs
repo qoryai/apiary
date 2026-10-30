@@ -274,6 +274,56 @@ defmodule Apiary.SecretLogFilterTest do
     end
   end
 
+  describe "a run key" do
+    # A run key's form: `qrk_`, the payload in base64url, `.`, the signature in base64url.
+    defp run_key do
+      payload = Base.url_encode64(~s({"version":1,"run_id":"0b5c"}), padding: false)
+      signature = Base.url_encode64(:crypto.strong_rand_bytes(64), padding: false)
+      "qrk_" <> payload <> "." <> signature
+    end
+
+    test "is replaced whole, its payload, its full stop and its signature, in any case" do
+      key = run_key()
+
+      for written <- [key, String.upcase(key)] do
+        assert filtered_text("got #{written}. Done") == "got [FILTERED]. Done"
+      end
+    end
+
+    test "is replaced in a report's terms and in the metadata" do
+      key = run_key()
+
+      %{msg: {:report, report}, meta: meta} =
+        SecretLogFilter.filter(
+          %{level: :info, msg: {:report, %{body: [key]}}, meta: %{key: key}},
+          nil
+        )
+
+      assert report == %{body: ["[FILTERED]"]}
+      assert meta == %{key: "[FILTERED]"}
+    end
+  end
+
+  describe "filter_text/1" do
+    test "replaces a secret, a run key and every code's prefix, and keeps the rest" do
+      codes =
+        for prefix <- Map.values(EnrolmentCode.prefixes()) ++ [EnrolmentCode.run_prefix()],
+            do: prefix <> @code_body
+
+      for secret <- [@secret, run_key(), "qecd_" <> @code_body | codes] do
+        assert SecretLogFilter.filter_text("line 1\nkey #{secret} here\n") ==
+                 "line 1\nkey [FILTERED] here\n",
+               secret
+      end
+    end
+
+    test "returns text without a secret as it is" do
+      for text <- ["", "qecho is no code", "plain \e[1mbold\e[0m text", <<0xFF, 0x00>>] do
+        assert SecretLogFilter.filter_text(text) == text
+      end
+    end
+  end
+
   describe "a link's token" do
     # A token as the app makes one: 32 random bytes in base64url.
     setup do
