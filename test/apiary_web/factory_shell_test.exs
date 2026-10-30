@@ -213,7 +213,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/model-providers/x1"},
                  {:get, workspace_path(scope, "/settings/model")},
                  # The chooser of set-up's Work sources and Destinations.
-                 {:get, workspace_path(scope, "/set-up/sources/choose")}
+                 {:get, workspace_path(scope, "/set-up/x1/choose")}
                ] ++
                  for(
                    rest <-

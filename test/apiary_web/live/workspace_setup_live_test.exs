@@ -412,12 +412,10 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     %{user: user, organisation: organisation} = sign_up_fixture()
     conn = log_in_user(conn, user)
 
-    # `/acme/set-up` is a workspace's address, and no workspace has the slug `set-up`;
-    # `/acme/set-up/choose` matches no route.
-    assert conn |> get(~p"/#{organisation}" <> "/set-up") |> Map.fetch!(:status) == 404
-
-    assert_raise Phoenix.Router.NoRouteError, fn ->
-      get(conn, ~p"/#{organisation}" <> "/set-up/choose")
+    # `/acme/set-up` and `/acme/set-up/choose` are addresses of a workspace, and no
+    # workspace has the slug `set-up`.
+    for path <- ["/set-up", "/set-up/choose"] do
+      assert conn |> get(~p"/#{organisation}" <> path) |> Map.fetch!(:status) == 404
     end
   end
 
@@ -533,18 +531,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       |> LazyHTML.attribute("href")
 
     href
-  end
-
-  defp first_person do
-    {:ok, %{user: user, organisation: organisation}} =
-      Organisations.sign_up_user(
-        %{email: unique_user_email(), organisation_name: "Acme"},
-        nil,
-        open: true,
-        workspace: false
-      )
-
-    %{user: user, organisation: organisation}
   end
 
   defp joined(organisation, level) do
@@ -3408,9 +3394,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
     conn = log_in_user(conn, user)
 
-    assert_raise ApiaryWeb.NotFound, fn ->
-      get(conn, ~p"/#{organisation}/#{billing.slug}/set-up/sources")
-    end
+    assert conn |> get(~p"/#{organisation}/#{billing.slug}/set-up/sources") |> Map.fetch!(:status) ==
+             404
   end
 end
 

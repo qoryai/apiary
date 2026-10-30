@@ -156,17 +156,19 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert html =~ ~r{<title[^>]*>\s*Main · }
       assert words(lv, "#overview-set-up h1") == "Finish setting up Main"
 
-      assert overview_steps(lv) ==
-               for({label, id} <- flow()) do
-        state =
-          case id do
-            :name -> :done
-            :sources -> :next
-            _other -> :to_come
-          end
+      expected =
+        for {label, id} <- flow() do
+          state =
+            case id do
+              :name -> :done
+              :sources -> :next
+              _other -> :to_come
+            end
 
-        {label, state, step_path(scope, id)}
-      end
+          {label, state, step_path(scope, id)}
+        end
+
+      assert overview_steps(lv) == expected
 
       assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
       refute has_element?(lv, "#overview-activity")
@@ -213,14 +215,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert words(lv, "#nav-set-up-heading") == "Set up · 2 of #{total}"
       assert words(lv, "#nav-set-up-name") == "Name, done"
 
-      assert ApiaryWeb.SetUpSteps.set_up_group(lv) ==
-               for({label, id} <- flow()) do
-        cond do
-          id == :machines -> {label, :current}
-          id in [:name, :harness] -> {label, :done}
-          true -> {label, :to_come}
+      expected =
+        for {label, id} <- flow() do
+          cond do
+            id == :machines -> {label, :current}
+            id in [:name, :harness] -> {label, :done}
+            true -> {label, :to_come}
+          end
         end
-      end
+
+      assert ApiaryWeb.SetUpSteps.set_up_group(lv) == expected
 
       for {_label, id} <- flow() do
         assert href(lv, "#nav-set-up-#{id}") == step_path(scope, id)

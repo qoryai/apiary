@@ -459,8 +459,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   # Each step of a workspace's set-up; the chooser opens the owner's grant in Work sources.
   defp value_of("step", "/:org/:workspace/set-up/:step/choose", _p), do: "sources"
 
-  defp value_of("step", "/:org/:workspace/set-up/:step", _p),
-    do: ~w(name sources destinations model harness machines test)
+  # Name, the step every workspace has, whatever the features.
+  defp value_of("step", "/:org/:workspace/set-up/:step", _p), do: "name"
 
   defp value_of("path", "/docs/*path", _p), do: "no-such-page.html"
   defp value_of("page", "/dev/dashboard" <> _, _p), do: "home"

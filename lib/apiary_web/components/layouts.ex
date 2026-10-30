@@ -670,7 +670,14 @@ defmodule ApiaryWeb.Layouts do
         if(level == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
       )
       |> assign(:show_notices, notices?(assigns.notices, current, assigns.place))
-      |> assign(:set_up, if(level == :workspace, do: counts_set_up(assigns.counts)))
+      # On the workspace's pages alone, as the link up: not on a page of another level
+      # that shows the workspace's sidebar.
+      |> assign(
+        :set_up,
+        if(level == :workspace and assigns.place == :workspace,
+          do: counts_set_up(assigns.counts)
+        )
+      )
       |> assign(
         :menus,
         if(user, do: menus(scope, assigns.memberships, organisation, workspace, place))
