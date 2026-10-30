@@ -10,7 +10,9 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # place, outside the checkout, and the harness choice's repository and its branch, tag or
   # commit, the version's name among them.
   @software_sentences [
+    "%{source} has no version named %{ref}. An instance admin corrects the version of this harness source.",
     "%{source} has no version named %{ref}. Correct the version.",
+    "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",

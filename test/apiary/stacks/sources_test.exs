@@ -175,8 +175,9 @@ defmodule Apiary.Stacks.SourcesTest do
          ctx do
       [_app, harness] = Sources.repositories(ctx.scope)
 
+      # Version not found at HEAD: a repository with no commit.
       for {code, reason} <- [
-            {"version_not_found", {:no_version, "HEAD"}},
+            {"version_not_found", :no_commit},
             {"document_not_text", {:not_text, "harness.yaml"}},
             {"resource_not_covered", :not_covered},
             {"grant_unknown", :not_covered}
@@ -191,11 +192,14 @@ defmodule Apiary.Stacks.SourcesTest do
       end
     end
 
-    test "a call out of time has the seconds it had" do
+    test "a read out of time has the read's seconds; a call with no answer has the call's" do
       adapter = %Node{kind: :adapter, name: "code-host", title: "Code host"}
 
       assert Sources.call(adapter, :late, 30) ==
-               %{adapter: "Code host", cause: :timeout, code: nil, seconds: 30, refusal: nil}
+               %{adapter: "Code host", cause: :late, code: nil, seconds: 30, refusal: nil}
+
+      assert Sources.call(adapter, :timeout, 10) ==
+               %{adapter: "Code host", cause: :timeout, code: nil, seconds: 10, refusal: nil}
 
       failure = %Apiary.Adapters.CallFailure{
         adapter_id: Ecto.UUID.generate(),
@@ -251,7 +255,28 @@ defmodule Apiary.Stacks.SourcesTest do
                  "acme/harness"
                ]
 
-        assert Sources.unplaced(ctx.scope) == [%{adapter: title, cause: cause}]
+        assert Sources.unplaced(ctx.scope) == [
+                 %{id: other.adapter.public_id, adapter: title, cause: cause}
+               ]
+      end
+
+      # An instance whose public address has no host calls no adapter: each adapter with
+      # a call address is unplaced for that.
+      unplaced =
+        Enum.sort_by(
+          [
+            %{
+              id: ctx.adapter.adapter.public_id,
+              adapter: Apiary.Adapters.title(ctx.adapter.adapter),
+              cause: :no_instance_host
+            },
+            %{id: other.adapter.public_id, adapter: title, cause: :no_instance_host}
+          ],
+          &String.downcase(&1.adapter)
+        )
+
+      for host <- [nil, ""] do
+        assert Sources.unplaced(ctx.scope, instance_host: host) == unplaced
       end
     end
 

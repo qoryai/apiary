@@ -2384,6 +2384,31 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert reads.({:no_version, "v9"}) ==
                "acme/harness has no branch, tag or commit named v9. Correct the version."
 
+      # A version an instance admin assigned, which no field on the page changes.
+      assigned = Map.merge(source, %{kind: :assigned, ref: "v9"})
+
+      assert ApiaryWeb.HarnessComponents.read_words({:no_version, "v9"}, assigned, "Acme") ==
+               "acme/harness has no branch, tag or commit named v9. An instance admin corrects " <>
+                 "the version of this harness source."
+
+      # A read at HEAD of a repository with no commit.
+      assert reads.(:no_commit) ==
+               "acme/harness has no commit yet. Push a commit with a qory.yaml or harness.yaml " <>
+                 "at its root that lists the stack under exports."
+
+      # A read with no time left before it read every file, not a call with no answer.
+      late = %{adapter: "GitHub", cause: :late, code: nil, seconds: 30, refusal: nil}
+
+      assert reads.({:call, late}) ==
+               "Qory Apiary stopped reading acme/harness after 30 seconds, before it read " <>
+                 "every file. Try again."
+
+      walk = %{failure: :adapter_unavailable, call_cause: :late, call: late}
+
+      assert ApiaryWeb.HarnessComponents.refusal_words({:walk, walk}, source, "main", "Acme") ==
+               "Qory Apiary stopped reading acme/harness after 30 seconds, before it read " <>
+                 "every file. Try again."
+
       assert reads.({:not_text, "harness.yaml"}) ==
                "Correct harness.yaml in acme/harness: it is not UTF-8 text of at most 256 KiB " <>
                  "without a NUL character."
@@ -2406,8 +2431,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for {cause, code, line} <- [
             {:no_address, nil,
-             "Qory Apiary does not call the GitHub adapter: it has no call address. An " <>
-               "instance admin sets it. The Qory harness works without it."},
+             "Qory Apiary does not call the GitHub adapter: the adapter has no call address. " <>
+               "An instance admin sets the call address. The Qory harness needs no call " <>
+               "address."},
             {:unauthorized, nil,
              "The GitHub adapter did not accept the call from Qory Apiary. Try again. If it " <>
                "repeats, an instance admin checks the adapter's enrolment and that both " <>
@@ -2433,17 +2459,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for {refusal, line} <- [
             {{:address, :link_local},
-             "Qory Apiary does not call the GitHub adapter: its call address leads to a " <>
-               "link-local address. An instance admin sets the adapter's call address. The Qory " <>
-               "harness works without it."},
+             "Qory Apiary does not call the GitHub adapter: the adapter's call address leads " <>
+               "to a link-local address. An instance admin sets the adapter's call address. " <>
+               "The Qory harness needs no call address."},
             {:form,
-             "Qory Apiary does not call the GitHub adapter: its call address is not an https " <>
-               "address at the adapter's host. An instance admin sets it. The Qory harness " <>
-               "works without it."},
+             "Qory Apiary does not call the GitHub adapter: the adapter's call address is not " <>
+               "an https address at the adapter's host. An instance admin corrects the call " <>
+               "address. The Qory harness needs no call address."},
             {:public_host,
              "Qory Apiary does not call the GitHub adapter: the instance's public address " <>
-               "(PUBLIC_URL) has no host name. An instance admin sets it. The Qory harness " <>
-               "works without it."}
+               "(PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory " <>
+               "harness needs no call address."}
           ] do
         not_allowed = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
         assert reads.({:call, Map.put(not_allowed, :refusal, refusal)}) == line
@@ -2460,9 +2486,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         call = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
 
         assert reads.({:call, Map.put(call, :refusal, {:address, kind})}) ==
-                 "Qory Apiary does not call the GitHub adapter: its call address leads to " <>
-                   "#{words}. An instance admin sets the adapter's call address. The Qory " <>
-                   "harness works without it."
+                 "Qory Apiary does not call the GitHub adapter: the adapter's call address " <>
+                   "leads to #{words}. An instance admin sets the adapter's call address. The " <>
+                   "Qory harness needs no call address."
       end
 
       # A save's walk at a call that failed has the same words.
@@ -2583,14 +2609,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       adapter = linked_harness!(ctx, @one_export)
       title = Apiary.Adapters.title(adapter.adapter)
 
-      for {call_url, instance_id, id, line} <- [
+      for {call_url, instance_id, cause, line} <- [
             {nil, nil, "no_address",
-             "Qory Apiary cannot read repositories on this instance: the #{title} adapter has " <>
-               "no call address. An instance admin sets it. The Qory harness works without it."},
+             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter " <>
+               "has no call address. An instance admin sets the call address. The Qory " <>
+               "harness needs no call address."},
             {"https://code-host.example.org/calls/", "instance-1", "not_placed",
-             "Qory Apiary cannot read repositories on this instance: the call address of the " <>
-               "#{title} adapter is not an https address at the adapter's host. An instance " <>
-               "admin sets it. The Qory harness works without it."}
+             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter's " <>
+               "call address is not an https address at the adapter's host. An instance admin " <>
+               "corrects the call address. The Qory harness needs no call address."}
           ] do
         {1, _} =
           Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
@@ -2601,10 +2628,70 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         render_async(lv, 2_000)
         lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
 
-        assert words(lv, "#harness-source-unplaced-#{id}") == line
+        id = "#harness-source-unplaced-#{adapter.adapter.public_id}-#{cause}"
+        assert words(lv, id) == line
         refute has_element?(lv, "#harness-source-none")
         refute render(lv) =~ "code-host.example.org"
       end
+    end
+
+    test "two adapters with no call address: a line for each, with its id", ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      other = Apiary.HarnessReadsFixtures.call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(ctx.scope, other.adapter, :listed)
+
+      Apiary.HarnessReadsFixtures.harness_collection_fixture(
+        connection,
+        @team_git,
+        "example-org/team-harness"
+      )
+
+      {2, _} =
+        Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id in ^[adapter.adapter.id, other.adapter.id]),
+          set: [call_url: nil, call_instance_id: nil]
+        )
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      for node <- [adapter.adapter, other.adapter] do
+        assert words(lv, "#harness-source-unplaced-#{node.public_id}-no_address") ==
+                 "Qory Apiary cannot read the repositories of the " <>
+                   "#{Apiary.Adapters.title(node)} adapter: the adapter has no call address. " <>
+                   "An instance admin sets the call address. The Qory harness needs no call " <>
+                   "address."
+      end
+    end
+
+    test "an instance whose public address has no host: a line for each adapter, before any pick" do
+      form = Phoenix.Component.to_form(%{"choice" => "repository"}, as: :harness)
+
+      html =
+        render_component(&ApiaryWeb.HarnessComponents.choices/1,
+          form: form,
+          linked: [],
+          organisation: "Acme",
+          unplaced: [
+            %{id: "qn_a", adapter: "GitHub", cause: :no_instance_host},
+            %{id: "qn_b", adapter: "Tracker", cause: :no_instance_host}
+          ]
+        )
+
+      for {id, adapter} <- [{"qn_a", "GitHub"}, {"qn_b", "Tracker"}] do
+        assert html
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query("#harness-source-unplaced-#{id}-no_instance_host")
+               |> LazyHTML.text()
+               |> String.split()
+               |> Enum.join(" ") ==
+                 "Qory Apiary cannot read the repositories of the #{adapter} adapter: the " <>
+                   "instance's public address (PUBLIC_URL) has no host name. An instance admin " <>
+                   "sets PUBLIC_URL. The Qory harness needs no call address."
+      end
+
+      refute html =~ "harness-source-none"
     end
 
     # A destination of the workspace: a collection with a target, assigned to it, of an
@@ -2892,6 +2979,52 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
 
       assert harness == "extends:\n  git: \"#{@team_git}\"\n  ref: \"v1\"\n"
+    end
+
+    test "A stack of another repository…: an assigned source whose ref is gone: an instance admin corrects it",
+         ctx do
+      linked_harness!(ctx, %{})
+      instance = Apiary.HarnessReadsFixtures.call_adapter_fixture()
+      admin = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(admin, instance.adapter, :listed)
+
+      Apiary.HarnessReadsFixtures.live_grant_fixture(
+        admin.organisation.id,
+        instance.adapter,
+        connection,
+        "G_i"
+      )
+
+      Apiary.HarnessReadsFixtures.serve_calls([instance],
+        covered: %{instance.adapter.id => %{@team_git => {"G_i", "R_team"}}},
+        files: %{{"R_team", "qory-stack.yaml"} => @root_stack},
+        refuse_at: %{"v9" => "version_not_found"}
+      )
+
+      assignment =
+        Repo.insert!(%Apiary.Harnesses.Assignment{
+          organisation_id: ctx.organisation.id,
+          every_organisation: false,
+          source: %{"git" => @team_git, "ref" => "v9"},
+          created_by_id: admin.user.id
+        })
+
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+
+      lv
+      |> form("#harness-target-form", target_stack: %{source: "assigned:" <> assignment.id})
+      |> render_change()
+
+      render_async(lv, 2_000)
+
+      assert words(lv, "#harness-target-read-error") ==
+               "example-org/team-harness has no branch, tag or commit named v9. An instance " <>
+                 "admin corrects the version of this harness source."
+
+      refute has_element?(lv, "#target_stack_ref")
     end
 
     test "A stack of another repository…: a public address at a branch or tag that cannot be read is refused, and nothing saved",

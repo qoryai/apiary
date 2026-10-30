@@ -463,6 +463,18 @@ defmodule ApiaryWeb.WorkflowLiveTest do
         assert words(view, "#workflow-read-error") == words
       end
     end
+
+    test "a stack that lists no workflow: where to add one",
+         %{conn: conn, path: path, adapter: adapter, covered: covered, linked_id: linked_id} do
+      files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, @stack)
+      serve_calls([adapter], covered: covered, files: files)
+      view = open(conn, path)
+      change(view, %{source: linked_id})
+
+      assert words(view, "#workflow-no-workflow") ==
+               "The stack of acme/harness lists no workflow: add one under workflows in its " <>
+                 "qory-stack.yaml."
+    end
   end
 
   describe "an assigned source" do
@@ -642,6 +654,29 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       render_async(view, 2_000)
       view
+    end
+
+    test "an adapter with no call address: a line at Repository before any pick, with no address",
+         %{conn: conn, path: path, adapter: adapter} do
+      {1, _} =
+        Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
+          set: [call_url: nil, call_instance_id: nil]
+        )
+
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      assert words(view, "#harness-source-unplaced-#{adapter.adapter.public_id}-no_address") ==
+               "Qory Apiary cannot read the repositories of the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter: the adapter has no call " <>
+                 "address. An instance admin sets the call address. The Qory harness needs no " <>
+                 "call address."
+
+      refute has_element?(view, "#harness-source-none")
+      refute render(view) =~ adapter.host
     end
 
     test "without a choice: the Qory harness at Always the latest version, with Change and no Update",

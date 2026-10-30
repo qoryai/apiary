@@ -205,9 +205,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   organisation has no connected repository, “Acme has no connected repository. Connect a
   work source to pick one.” shows under **Repository**. Where an adapter of the connected
   repositories has no call address, or one Qory Apiary does not call, its repositories
-  are not listed, and **Repository** shows, before any pick, “Qory Apiary cannot read
-  repositories on this instance: the GitHub adapter has no call address. An instance
-  admin sets it. The Qory harness works without it.”
+  are not listed, and **Repository** shows, before any pick, a line for that adapter,
+  such as “Qory Apiary cannot read the repositories of the GitHub adapter: the adapter
+  has no call address. An instance admin sets the call address. The Qory harness needs
+  no call address.”
   **Continue** saves the choice. The save reads the branch, tag or commit. Where Qory
   Apiary does not read the stacks of a harness source, or does not save it, the Harness
   step, **Workflow** and the form of **A stack of another repository…** show the cause

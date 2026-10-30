@@ -148,8 +148,8 @@ defmodule Apiary.Stacks.Sources do
   (`Apiary.Adapters.title/1`) and the cause, with no address, host or IP of the
   instance's set-up, which a person who is not an instance admin sees:
 
-    * `:timeout`: no answer within `seconds`, the time the call had, or no time left of
-      the read's `seconds`;
+    * `:timeout`: no answer within `seconds`, the time the call had;
+    * `:late`: no time left of the read's `seconds` before every file was read;
     * `:unreachable`: no connection was made, the host resolved to no address, or a
       proxy answered 502, 503 or 504 (`Apiary.Adapters.CallFailure`'s `:unreachable`);
     * `:no_address`: as `Apiary.Adapters.CallFailure` has it;
@@ -164,6 +164,7 @@ defmodule Apiary.Stacks.Sources do
           adapter: String.t(),
           cause:
             :timeout
+            | :late
             | :unreachable
             | :no_address
             | :not_allowed
@@ -191,7 +192,10 @@ defmodule Apiary.Stacks.Sources do
     * `{:stack_path, file, name, path}`: the root harness file `file` lists the stack
       `name` at `path`, a path a read does not take;
     * `{:call, call}`: a call to an adapter that failed (`t:call/0`);
-    * `{:no_version, ref}`: an adapter refused a read at `ref`, `version_not_found`;
+    * `:no_commit`: an adapter refused a read at `HEAD`, `version_not_found`: a
+      repository with no commit;
+    * `{:no_version, ref}`: an adapter refused a read at any other `ref`,
+      `version_not_found`;
     * `{:not_text, path}`: an adapter refused the read of `path`, `document_not_text`;
     * `{:invalid_section, file, section}`: a file whose `exports` (`:exports`) or stack
       section (`:stack`) is not valid;
@@ -209,6 +213,7 @@ defmodule Apiary.Stacks.Sources do
           | {:no_export, String.t()}
           | {:stack_path, String.t(), String.t(), String.t()}
           | {:call, call}
+          | :no_commit
           | {:no_version, String.t()}
           | {:not_text, String.t()}
           | {:invalid_section, String.t(), :exports | :stack}
@@ -291,12 +296,13 @@ defmodule Apiary.Stacks.Sources do
 
   @typedoc """
   An adapter of connected repositories whose call address Qory Apiary does not call: its
-  shown name, and why: `:no_address` for none, `:no_instance_host` where the instance's
+  public id, its shown name, and why: `:no_address` for none, `:no_instance_host` where the instance's
   public address (`PUBLIC_URL`) has no host name, `:not_placed` for an address that is
   not an https address at the adapter's host (`Apiary.Adapters.CallAddress.host_for/1`).
   It has no address or host, which a person who is not an instance admin sees.
   """
   @type unplaced :: %{
+          id: String.t(),
           adapter: String.t(),
           cause: :no_address | :no_instance_host | :not_placed
         }
@@ -306,22 +312,26 @@ defmodule Apiary.Stacks.Sources do
   # address Qory Apiary does not call, checked without a lookup
   # (`Apiary.Adapters.CallAddress.placed?/1`), by its shown name (`t:unplaced/0`). The
   # repositories of such an adapter are not in `repositories/1`. It makes no call.
-  @spec unplaced(Scope.t()) :: [unplaced]
-  def unplaced(%Scope{organisation: %Organisation{} = organisation}) do
+  # `:instance_host` in `opts` replaces the host of `PUBLIC_URL`, for a test: with none,
+  # no adapter is called, as `placed?/1` has it.
+  @spec unplaced(Scope.t(), keyword) :: [unplaced]
+  def unplaced(%Scope{organisation: %Organisation{} = organisation}, opts \\ []) do
+    host = Keyword.get_lazy(opts, :instance_host, &CallAddress.instance_host/0)
+
     organisation
     |> connected()
     |> Enum.map(fn {_collection, adapter} -> adapter end)
     |> Enum.uniq_by(& &1.id)
-    |> Enum.reject(&CallAddress.placed?/1)
-    |> Enum.map(&%{adapter: Apiary.Adapters.title(&1), cause: unplaced_cause(&1)})
+    |> Enum.reject(&(host not in [nil, ""] and CallAddress.placed?(&1)))
+    |> Enum.map(
+      &%{id: &1.public_id, adapter: Apiary.Adapters.title(&1), cause: unplaced_cause(&1, host)}
+    )
     |> Enum.sort_by(&String.downcase(&1.adapter))
   end
 
-  defp unplaced_cause(%Node{call_url: nil}), do: :no_address
-
-  defp unplaced_cause(%Node{}) do
-    if CallAddress.instance_host() in [nil, ""], do: :no_instance_host, else: :not_placed
-  end
+  defp unplaced_cause(%Node{call_url: nil}, _host), do: :no_address
+  defp unplaced_cause(%Node{}, host) when host in [nil, ""], do: :no_instance_host
+  defp unplaced_cause(%Node{}, _host), do: :not_placed
 
   @doc false
   # assigned/1 is the instance's assignments of the organisation and of every
@@ -623,7 +633,7 @@ defmodule Apiary.Stacks.Sources do
   defp call_failure(_adapter, %CallFailure{cause: :refused, code: "version_not_found"}, _opts, %{
          at: at
        }),
-       do: {:no_version, at}
+       do: if(at == @head, do: :no_commit, else: {:no_version, at})
 
   defp call_failure(_adapter, %CallFailure{cause: :refused, code: "document_not_text"}, _opts, %{
          path: path
@@ -642,13 +652,13 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # call/3 is the call to `adapter`, a node, that failed with `failure`, a
   # `Apiary.Adapters.CallFailure`, its cause `:timeout` or `:unreachable` alone, or
-  # `:late` for no time left, as a page shows it (`t:call/0`), with the seconds the call
-  # had.
+  # `:late` for no time left of the read, as a page shows it (`t:call/0`), with the
+  # seconds the call had, or the read's for `:late`.
   @spec call(Node.t(), CallFailure.t() | :timeout | :unreachable | :late, pos_integer) :: call
   def call(%Node{} = adapter, failure, seconds) do
     {cause, code} =
       case failure do
-        :late -> {:timeout, nil}
+        :late -> {:late, nil}
         cause when cause in [:timeout, :unreachable] -> {cause, nil}
         %CallFailure{cause: :refused, code: "unauthorized", status: 401} -> {:unauthorized, nil}
         %CallFailure{cause: :refused, code: code} -> {:refused, code}
@@ -659,7 +669,7 @@ defmodule Apiary.Stacks.Sources do
       adapter: Apiary.Adapters.title(adapter),
       cause: cause,
       code: code,
-      seconds: if(cause == :timeout, do: seconds),
+      seconds: if(cause in [:timeout, :late], do: seconds),
       refusal: refusal(failure)
     }
   end
