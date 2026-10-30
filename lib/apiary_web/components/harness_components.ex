@@ -885,7 +885,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :unreachable, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary could not connect to the %{adapter} adapter: the connection failed, the adapter's host name had no address, or a proxy answered 502, 503 or 504. Try again. If it repeats, an instance admin checks that the adapter is running.",
+        "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, an instance admin checks that the adapter is running.",
         adapter: adapter
       )
 
@@ -922,7 +922,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :unauthorized, adapter: adapter}, _source),
     do:
       gettext(
-        "The %{adapter} adapter refused the call of Qory Apiary: the call's signature failed its check, the clocks of the two machines differ by more than 300 seconds, or the call repeated an earlier one. Try again. If it repeats, an instance admin checks the adapter's enrolment and clock.",
+        "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, an instance admin checks the adapter's enrolment and that both machines' clocks are right.",
         adapter: adapter
       )
 
@@ -932,21 +932,21 @@ defmodule ApiaryWeb.HarnessComponents do
       ),
       do:
         gettext(
-          "The %{adapter} adapter refused the call of Qory Apiary: the adapter does not implement the contract revision of the call. An instance admin upgrades the adapter.",
+          "The %{adapter} adapter does not implement the contract revision of the call. An instance admin upgrades the adapter.",
           adapter: adapter
         )
 
   def call_words(%{cause: :refused, code: "invalid_request", adapter: adapter}, _source),
     do:
       gettext(
-        "The %{adapter} adapter refused the call of Qory Apiary as not valid under the contract. An instance admin checks that the adapter and Qory Apiary implement the same contract revision.",
+        "The %{adapter} adapter did not accept the call as valid under the contract. An instance admin checks that the adapter and Qory Apiary implement the same contract revision.",
         adapter: adapter
       )
 
   def call_words(%{cause: :refused, code: "source_unavailable", adapter: adapter}, source),
     do:
       gettext(
-        "The %{adapter} adapter could not read %{source}: the source did not answer, was busy, or limited its reads. Try again.",
+        "The %{adapter} adapter could not read %{source}. Try again.",
         adapter: adapter,
         source: label(source)
       )
@@ -954,7 +954,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :refused, code: code, adapter: adapter}, source),
     do:
       gettext(
-        "The %{adapter} adapter refused the read of %{source} with the refusal %{code}. An instance admin checks the log of the adapter.",
+        "The %{adapter} adapter returned the error %{code} for %{source}. An instance admin checks the adapter's log.",
         adapter: adapter,
         source: label(source),
         code: code || ""
@@ -963,7 +963,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :invalid_answer, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary did not accept the answer of the %{adapter} adapter: the answer failed its signature check or its format check, or was over 1 MiB. Try again. If it repeats, an instance admin checks the version and the enrolment of the adapter.",
+        "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, an instance admin checks the version and the enrolment of the adapter.",
         adapter: adapter
       )
 

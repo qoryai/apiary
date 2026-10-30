@@ -2134,9 +2134,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#harness-stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter: the connection failed, the adapter's host name had no address, or a " <>
-                 "proxy answered 502, 503 or 504. Try again. If it repeats, an instance admin " <>
-                 "checks that the adapter is running."
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2410,24 +2409,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "Qory Apiary does not call the GitHub adapter: it has no call address. An " <>
                "instance admin sets it. The Qory harness works without it."},
             {:unauthorized, nil,
-             "The GitHub adapter refused the call of Qory Apiary: the call's signature failed " <>
-               "its check, the clocks of the two machines differ by more than 300 seconds, or " <>
-               "the call repeated an earlier one. Try again. If it repeats, an instance admin " <>
-               "checks the adapter's enrolment and clock."},
+             "The GitHub adapter did not accept the call from Qory Apiary. Try again. If it " <>
+               "repeats, an instance admin checks the adapter's enrolment and that both " <>
+               "machines' clocks are right."},
             {:refused, "unsupported_contract_version",
-             "The GitHub adapter refused the call of Qory Apiary: the adapter does not " <>
-               "implement the contract revision of the call. An instance admin upgrades the " <>
-               "adapter."},
+             "The GitHub adapter does not implement the contract revision of the call. An " <>
+               "instance admin upgrades the adapter."},
             {:refused, "invalid_request",
-             "The GitHub adapter refused the call of Qory Apiary as not valid under the " <>
-               "contract. An instance admin checks that the adapter and Qory Apiary implement " <>
-               "the same contract revision."},
+             "The GitHub adapter did not accept the call as valid under the contract. An " <>
+               "instance admin checks that the adapter and Qory Apiary implement the same " <>
+               "contract revision."},
             {:refused, "source_unavailable",
-             "The GitHub adapter could not read acme/harness: the source did not answer, was " <>
-               "busy, or limited its reads. Try again."},
+             "The GitHub adapter could not read acme/harness. Try again."},
             {:invalid_answer, nil,
-             "Qory Apiary did not accept the answer of the GitHub adapter: the answer failed " <>
-               "its signature check or its format check, or was over 1 MiB. Try again. If it " <>
+             "Qory Apiary did not accept the answer of the GitHub adapter. Try again. If it " <>
                "repeats, an instance admin checks the version and the enrolment of the adapter."},
             {:too_large, nil,
              "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
@@ -2501,9 +2496,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#set-up-harness-refusal") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter: the connection failed, the adapter's host name had no address, or a " <>
-                 "proxy answered 502, 503 or 504. Try again. If it repeats, an instance admin " <>
-                 "checks that the adapter is running."
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       files =
         Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
@@ -2530,9 +2524,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter refused the read of " <>
-                 "acme/harness with the refusal internal. An instance admin checks the log of the " <>
-                 "adapter."
+               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
+                 "internal for acme/harness. An instance admin checks the adapter's log."
 
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
@@ -2545,9 +2538,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter refused the read of " <>
-                 "acme/harness with the refusal internal. An instance admin checks the log of the " <>
-                 "adapter."
+               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
+                 "internal for acme/harness. An instance admin checks the adapter's log."
 
       serve_harness(adapter, %{{"R_harness", "harness.yaml"} => "exports: 7\n"})
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -2808,9 +2800,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#target_stack_stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter: the connection failed, the adapter's host name had no address, or a " <>
-                 "proxy answered 502, 503 or 504. Try again. If it repeats, an instance admin " <>
-                 "checks that the adapter is running."
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       assert has_element?(lv, "#harness-target-save[disabled]")
     end

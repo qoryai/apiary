@@ -396,9 +396,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#workflow-read-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter: the connection failed, the adapter's host name had no address, or a " <>
-                 "proxy answered 502, 503 or 504. Try again. If it repeats, an instance admin " <>
-                 "checks that the adapter is running."
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
       serve_calls([adapter], covered: covered, files: files)
@@ -416,9 +415,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter refused the read of " <>
-                 "acme/harness with the refusal internal. An instance admin checks the log of the " <>
-                 "adapter."
+               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
+                 "internal for acme/harness. An instance admin checks the adapter's log."
 
       files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
       serve_calls([adapter], covered: covered, files: files)
@@ -885,9 +883,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#harness-stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter: the connection failed, the adapter's host name had no address, or a " <>
-                 "proxy answered 502, 503 or 504. Try again. If it repeats, an instance admin " <>
-                 "checks that the adapter is running."
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       files = %{{"R_harness", "qory.yaml"} => "exports: [triage\n"}
       serve_calls([adapter], covered: covered, files: files)
