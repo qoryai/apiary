@@ -2224,6 +2224,15 @@ defmodule ApiaryWeb.OverviewComponents do
         "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
       )
 
+  # Either way the claim ends a run secrets_not_allowed, a key of the gateway made without
+  # stored secrets or a model key that may not be sealed for it, the instance's gateway
+  # passes: its key allows them, and a key of either chain may be sealed for it.
+  defp no_run_words(:secrets_not_allowed, _choice),
+    do:
+      gettext(
+        "The gateway for this run may not receive its secrets, which the run needs. Only the instance's gateway may receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to go through it."
+      )
+
   defp no_run_words(cause, {5, %{locked: false, model_id: model}})
        when cause in [:runtime_unserved, :key_gone, :provider_gone] or
               (cause == :model_gone and is_binary(model)),

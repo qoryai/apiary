@@ -3125,6 +3125,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
     @no_run_lead "The test run ended before a machine started it. "
     @no_run_unknown @no_run_lead <> "No run was recorded, so this step cannot show why."
+    @no_run_secrets @no_run_lead <>
+                      "The gateway for this run may not receive its secrets, which the run " <>
+                      "needs. Only the instance's gateway may receive them. An instance admin " <>
+                      "installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to " <>
+                      "go through it."
 
     # The Test run step's line for `item`'s run ended at its claim on `cause`.
     defp no_run_line(conn, scope, item, cause) do
@@ -3384,7 +3389,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {:key_gone, @no_run_unknown},
             {:model_gone, @no_run_unknown},
             {:provider_gone, @no_run_unknown},
-            {:secrets_not_allowed, @no_run_unknown},
+            {:secrets_not_allowed, @no_run_secrets},
             {:harness_unresolved, @no_run_unknown},
             {:variables_invalid, @no_run_unknown},
             {:closed, @no_run_unknown}
@@ -3436,7 +3441,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # The workspace's choice (level 5), which the Model step saves, with a model.
       workspace_choice = choose.(:workspace, %{model: "claude-opus-5-5"})
 
-      for {cause, line} <- Map.put(fixes, :secrets_not_allowed, @no_run_unknown) do
+      for {cause, line} <- Map.put(fixes, :secrets_not_allowed, @no_run_secrets) do
         assert no_run_line(conn, scope, item, cause) == line, "#{cause}"
       end
 
