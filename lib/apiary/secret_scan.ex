@@ -12,9 +12,9 @@ defmodule Apiary.SecretScan do
     * `access_key`: `qak_` and the 32-byte seed in base64url, 43 characters.
     * `run_key`: `qrk_`, the payload in base64url, `.`, and the 64-byte signature in
       base64url, 86 characters (`Apiary.Runs.RunKey`).
-    * `enrolment_code`: `qecn_`, `qecp_`, `qecg_`, `qeci_` or `qecd_`, then 26 characters of
-      Crockford base32, in either case and in groups split by `-`
-      (`Apiary.AccessKeys.EnrolmentCode`).
+    * `enrolment_code`: the prefix of a kind of node's code
+      (`Apiary.AccessKeys.EnrolmentCode.prefix/1`), then 26 characters of Crockford base32,
+      in either case and in groups split by `-`.
     * `run_code`: `qecr_` and 26 characters, as an enrolment code.
     * `anthropic_api_key`: `sk-ant-` and 32 or more base64url characters. A key
       Anthropic makes, `sk-ant-api03-…`, is 108 characters.
