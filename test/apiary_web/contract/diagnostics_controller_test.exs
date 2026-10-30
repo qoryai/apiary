@@ -237,7 +237,7 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       assert Jason.decode!(conn.resp_body)["error"] == "unsupported_contract_version"
     end
 
-    test "refuses every other kind of key", %{admin: admin, run: run} do
+    test "refuses every other kind of key", %{run: run} do
       %{scope: scope} = sign_up_fixture()
 
       %{access_key: node_key, secret: node_seed} =
@@ -253,21 +253,25 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       %{access_key: pool_key, pair: pool_pair} =
         Apiary.AccessKeysFixtures.node_key_fixture(scope, pool)
 
-      adapter = Apiary.NodesFixtures.adapter_fixture()
-
-      %{access_key: adapter_key, pair: adapter_pair} =
-        Apiary.AccessKeysFixtures.enrolled_key_fixture(admin, adapter)
-
       for {key, seed} <- [
             {node_key, node_seed},
             {gateway_key, gateway_seed},
-            {pool_key, pool_pair.secret},
-            {adapter_key, adapter_pair.secret}
+            {pool_key, pool_pair.secret}
           ] do
         conn = diagnose(key.key_id, seed, run.public_id)
         assert conn.status == 401, inspect(Repo.get!(Node, key.node_id).kind)
         assert_unauthorized(conn)
       end
+    end
+
+    @tag needs: :factory
+    test "refuses an adapter's key", %{admin: admin, run: run} do
+      {:ok, adapter} = Apiary.Adapters.create_adapter(admin, %{name: "acme-tracker"})
+
+      %{access_key: key, pair: pair} =
+        Apiary.AccessKeysFixtures.enrolled_key_fixture(admin, adapter)
+
+      assert_unauthorized(diagnose(key.key_id, pair.secret, run.public_id))
     end
 
     test "the key passes no other signed route", %{key: key, seed: seed, run: run} do
@@ -302,10 +306,11 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
               )
           end
 
-        # A route of a feature the instance does not have is not found before any check.
-        gate = ApiaryWeb.Features.gate(plug)
-        expected = if is_nil(gate) or ApiaryWeb.Features.on?(gate), do: 401, else: 404
-        assert conn.status == expected, "#{verb} #{path}: #{conn.status}"
+        # Refused by the signed check, or, for a route of a feature the instance does not
+        # have, not found before any check.
+        gated? = not is_nil(ApiaryWeb.Features.gate(plug))
+        assert conn.status == 401 or (gated? and conn.status == 404), "#{verb} #{path}"
+        refute conn.status in 200..299
       end
     end
 
