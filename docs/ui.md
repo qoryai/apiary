@@ -1631,6 +1631,20 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
+- **Prepare machine** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
+  from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
+  content while a pending run has no event. One row per step, in the order the steps ran:
+  Machine requested (the claim, with the pool and the machine type, "pool default" while
+  the claim answer has none) and Machine started (from the starter's `dispatched` to the
+  redemption of the run's code) for a run a node pool claimed; then the run's steps, each
+  with qory's name, its first letter in upper case, or "Step" and its number when only its
+  exit is recorded; then Session started. Each row has its state, its start time and its
+  duration, and opens on a click: a step to its output, the last 64 KiB as plain text,
+  for a reader who may read the run's log (`run.read_log`); Machine started to the
+  machine log for an instance admin, and "The instance admin can read the machine's log."
+  for anyone else. A failed row is open, with one cause line under its output that says
+  the cause, then who fixes it. The section's duration runs from its first row to the
+  session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's
