@@ -410,10 +410,16 @@ instance's registry: `image_destination`, `<QORY_REGISTRY>/<instance>/<organisat
 and `environment_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`,
 or, where an environment record of the organisation has an image under that name,
 `environment_image`, that image by its digest (`Apiary.Registry.RunAccess`). They are the
-names the run's registry tokens grant. A claim takes a prebuild only on an instance with
-the `registry` feature on and `QORY_REGISTRY` set; on any other instance no prebuild is
-queued, no run waits for one, and an explore run starts in its pool's default image. The
-registered run
+names the run's registry tokens grant. Prebuilds run only on an instance with a registry
+(`Apiary.Registry.configured?/0`): the `registry` feature on, and `QORY_REGISTRY` set to
+an address whose host has a dot or a port, or is `localhost`. On any other instance no
+prebuild is queued or claimed, no run waits for one, and an explore run starts in its
+pool's default image; a prebuild queued before stays waiting. The instance's registry
+name, the `<instance>` part, is made at the first claim of a prebuild where it is not
+made yet; a claim where it cannot be made is `503` `unavailable`. A prebuild of a
+workspace that serves no run configuration is given, at its attach, the workspace's
+default policy, in `observe` with no rules, composed with the registry's members; where
+that document cannot be composed, its attach is `503` `unavailable`. The registered run
 has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
 `.` and the fingerprint of the instance's key, which the machine redeems once at
 enrolment for the run key, within 15 minutes of the claim (Enrolment). The registered
