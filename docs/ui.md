@@ -1640,11 +1640,16 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
   duration, and opens on a click: a step to its output, the last 64 KiB as plain text,
-  for a reader who may read the run's log (`run.read_log`); Machine started to the
+  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
+  sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
-  for anyone else. A failed row is open, with one cause line under its output that says
-  the cause, then who fixes it; under Machine started only who fixes it, as the header
-  says the cause. The section's duration runs from its first row to the
+  for anyone else. With no machine log recorded, an instance admin reads "No machine log
+  has arrived." until the machine logs' retention days have passed since the claim, and
+  then "This machine's log was deleted after 30 days.", with the retention's days. A step
+  that exits with code -1 has no exit status, and its line shows no code. A failed row is
+  open, with one cause line under its output that shows the cause, then who fixes it
+  (with no pointer to the output once it was pruned); under Machine started only who
+  fixes it, as the header shows the cause. The section's duration runs from its first row to the
   session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the

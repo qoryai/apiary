@@ -2758,6 +2758,11 @@ msgstr ""
 msgid "%{who} denied %{host} on %{paths}"
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} fixes the cause; the step's output was pruned."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} locked %{host}"
@@ -17184,6 +17189,13 @@ msgstr ""
 msgid "This list"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "This machine's log was deleted after %{days} day."
+msgid_plural "This machine's log was deleted after %{days} days."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This node has no such instance."
@@ -17285,6 +17297,7 @@ msgstr ""
 msgid "This run's events were pruned on %{date}, under the workspace's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone."
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "This run's log output was pruned on %{date}, under the workspace's retention. The timeline and the connections are whole."

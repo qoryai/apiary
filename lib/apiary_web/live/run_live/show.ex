@@ -44,6 +44,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   alias Apiary.Access
   alias Apiary.Dispatches
+  alias Apiary.Dispatches.MachineLogs
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -2812,16 +2813,27 @@ defmodule ApiaryWeb.RunLive.Show do
   defp machine_log(_scope, _preparation, {:ok, _text, _truncated} = read), do: read
   defp machine_log(_scope, %{machine: nil}, _read), do: :hidden
 
-  defp machine_log(scope, %{machine: %{dispatch_id: dispatch_id}}, _read) do
+  defp machine_log(scope, %{machine: %{dispatch_id: dispatch_id} = machine}, _read) do
     if Access.instance_admin?(scope) do
       case Dispatches.machine_log(scope, dispatch_id) do
         {:ok, %{text: text, truncated: truncated}} -> {:ok, text, truncated}
         {:error, :unreadable} -> :unreadable
-        {:error, _none} -> :none
+        {:error, _none} -> no_machine_log(machine)
       end
     else
       :hidden
     end
+  end
+
+  # No machine log is recorded: none has arrived, or one did and the machine logs'
+  # retention deleted it, which it can have done only once the retention's days have
+  # passed since the claim.
+  defp no_machine_log(%{requested_at: requested_at}) do
+    days = MachineLogs.retention_days()
+
+    if DateTime.compare(DateTime.add(requested_at, days, :day), DateTime.utc_now()) == :lt,
+      do: {:deleted, days},
+      else: :none
   end
 
   # A reload arrived: the lines after the rows say at which sequence the run reloaded,
