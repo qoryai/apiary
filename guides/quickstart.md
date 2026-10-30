@@ -81,10 +81,11 @@ Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
 same password again, and the **Organisation name**, usually your company's, `Acme` say.
 Then select **Set up**. It creates your account and the organisation, with no workspace
-yet, and signs you in. Each page of the set-up lists its steps, with the current one
-marked: first the instance's steps, then the organisation's in a separate list, each
-counted from step 1. **Back**, at the foot of a step's form, opens the step before it in
-the same list. Two pages follow:
+yet, and signs you in. **Connect Qory Apiary** lists its steps, with the current one
+marked, counted from step 1. With the `factory` feature, the group **Set up** at the top
+of the workspace's sidebar lists the workspace's steps, with a check mark on each one
+done. **Back**, at the foot of a step's form, opens the step before it. Two pages
+follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With

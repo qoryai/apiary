@@ -774,20 +774,21 @@ the log is one JSON object per line ([Logs](#logs)), and the sentence above is t
 instance's organisation and your account as its owner, an instance admin, and signs you
 in. It creates no workspace.
 
-The set-up has two progresses, each with a separate list of steps. The instance's
-progress, set up once by an instance admin, is **Your account** and the steps under
-**Connect Qory Apiary**. The organisation's progress sets up a workspace, from its step
-**Name**. Each page of the set-up shows the list of its progress alone, with a mark on
-each step done and **Skipped** under each step skipped.
-On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and **All
-steps**, which opens the list. Each progress counts from step 1. Once you are signed in,
-each step done or skipped is a link to that step where it has a page; **Your account**
-is not. **Back**, at the foot of a step's form, opens the step before it in the same
-progress, so the first step with a page in each progress has no **Back**. A step you open
-again shows what you saved there, and you can change it. The step **Name**, opened again,
-shows the workspace's name and type and **Continue**: the type can't be changed. A column
-headed **About this step**, beside the form or under it on a window narrower than 1024
-px, shows what the step does. Two pages come after the set-up link's page:
+The set-up has two progresses. The instance's progress, set up once by an instance
+admin, is **Your account** and the steps under **Connect Qory Apiary**. Each of its
+pages lists those steps, with a mark on each step done and **Skipped** under each step
+skipped. On a window narrower than 1280 px, the list is a bar with **Step 2 of 3** and
+**All steps**, which opens the list, counted from step 1. Once you are signed in, each
+step done or skipped is a link to that step where it has a page; **Your account** is
+not. The organisation's progress sets up a workspace, from its step **Name**. With the
+`factory` feature, the group **Set up** at the top of the workspace's sidebar lists its
+steps, with a check mark on each one done. **Back**, at the foot of a step's form, opens
+the step before it in the same progress, so the first step with a page in each progress
+has no **Back**. A step you open again shows what you saved there, and you can change
+it. The step **Name**, opened again, shows the workspace's name, which an owner or admin
+can change, and its type, which can't be changed. A column headed **About this step**,
+beside the form or under it on a window narrower than 1024 px, shows what the step does.
+Two pages come after the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
@@ -828,8 +829,8 @@ With the `factory` feature, both pages have more steps:
   `/<organisation>/<workspace>/set-up/<step>`, such as `/acme/main/set-up/sources`:
   **Name**, **Work sources**, **Destinations**, **Model**, **Harness**, **Machines** and
   **Test run**. The group **Set up** at the top of the workspace's sidebar lists them,
-  with a check mark on each step done, and they open in any order. **Save and next** on **Name**, and **Continue** on the other steps,
-  open the next step.
+  with a check mark on each step done, and they open in any order. **Save and next** on
+  **Name**, and **Continue** on the other steps, open the next step.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, open **Connect another source**, or **Connect another

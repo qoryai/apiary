@@ -1218,20 +1218,17 @@ mark and the theme menu.
   them.
 - **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
-  result of `c:Apiary.Edition.set_up_steps/2`. Above it: the flow's title, "Set
-  up Payments · Software factory", "Step 4 of 7" and a progress bar, never a count of the steps left. The
-  instance's steps stand under Connect Qory Apiary. The workspace's steps stand in one
-  list with no heading: Name, Work sources, Destinations, Model, Harness, Machines and
-  Test run, after Your account for a person who is not an instance admin ("Step 5 of
-  8"). Each step has its mark: a filled check when done, a ring in the primary colour and
-  `aria-current="step"` when current, a dash and **Skipped** under a step passed over.
-  Each step done or skipped is a link to that step where it has a page, before the
-  current step or after it; Your account is not, and on the pages read signed out, only
-  Invitation is. An edition's note about a step goes under its name. Below 1280 px the
-  indicator is a bar, "Step 4 of 7: Model", with **All steps**, a
-  disclosure that opens the list; Escape closes it. A page with one step shows no
-  indicator, and nor does a step of a workspace that exists: its sidebar's group Set up
-  lists the steps.
+  result of `c:Apiary.Edition.set_up_steps/2`: the instance's steps, under Connect Qory
+  Apiary, and the steps an edition adds. Above it: "Step 2 of 3" and a progress bar,
+  never a count of the steps left. Each step has its mark: a filled check when done, a
+  ring in the primary colour and `aria-current="step"` when current, a dash and
+  **Skipped** under a step passed over. Each step done or skipped is a link to that step
+  where it has a page, before the current step or after it; Your account is not, and on
+  the pages read signed out, only Invitation is. An edition's note about a step goes
+  under its name. Below 1280 px the indicator is a bar, "Step 2 of 3: Mail", with **All
+  steps**, a disclosure that opens the list; Escape closes it. A page with one step
+  shows no indicator, and nor does a step of a workspace: its sidebar's group Set up
+  lists the workspace's steps.
 - **The group Set up** (`Layouts.app/1`) is at the top of the workspace's sidebar, under
   the link up to the organisation, until the test run passes
   (`SetUpComponents.workspace_set_up/1`): "Set up · 3 of 7", then each step of the
