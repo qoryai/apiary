@@ -1,43 +1,41 @@
 defmodule ApiaryWeb.WorkspaceSetupLive do
-  # The workspace set-up: `/:org/set-up` (`:show`), the page every organisation with no
-  # workspace in use lands on (`ApiaryWeb.UserAuth.signed_in_path/1`), and
-  # `/:org/workspaces/new` (`:new`), where an owner adds a workspace. Both show the type
-  # cards first, then the flow that sets up a workspace of the type picked, in the set-up's
-  # frame with the progress indicator (`ApiaryWeb.SetUpComponents.frame/1`).
+  # The workspace set-up: `/:org/workspaces/new` (`:new`), where a workspace is created,
+  # and `/:org/:workspace/set-up/<step>` (`:step`), a step of a workspace that exists, a
+  # page of the workspace. `/:org/workspaces/new` shows the type cards first, then Name,
+  # in the set-up's frame with the progress indicator (`ApiaryWeb.SetUpComponents.frame/1`).
+  # A step of a workspace is in the workspace's sidebar, whose group Set up lists the steps
+  # with a tick on each one done and the step current (`ApiaryWeb.Layouts.app/1`), and the
+  # frame shows no indicator.
   #
   # **The type cards.** One card per domain of `Apiary.Lingo.Domain.choices/0` that has a
   # card's words (`card_words/1`): Software alone. Each card has the
   # type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
   # connect, and Choose, which opens the flow with `?type=<name>`. No indicator shows:
-  # the count starts after a card is picked. `/:org/set-up` shows them while the
-  # organisation has no workspace in use, to a person `workspace.create` allows there
+  # the count starts after a card is picked. While the organisation has no workspace in
+  # use, the page sets up its first, for a person `workspace.create` allows there
   # (`Apiary.Access`), and a person whom it does not allow reads who sets it up
   # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
   # edition lists 2 steps or more (the core lists them none) and the context where the
   # edition has a line (`c:Apiary.Edition.set_up_context/2`), under the edition's title
-  # (`c:Apiary.Edition.set_up_title/2`). `/:org/workspaces/new` is a page only for a
-  # person `workspace.create` allows; where the organisation has as many workspaces as the
+  # (`c:Apiary.Edition.set_up_title/2`). Once it has one, the page is only for a person
+  # `workspace.create` allows; where the organisation has as many workspaces as the
   # edition allows (`c:Apiary.Edition.limits/0`), the page shows that line in place of
   # the cards.
   #
-  # **The flow.** `?step=<id>` opens a step of the flow (`Apiary.WorkspaceSetup.flow/0`);
-  # without one, or with one the person does not see, the first step that is not done.
-  # Before the workspace exists, the flow opens Name, whatever the step. The steps of a
-  # workspace that exists take `&workspace=<slug>`, its slug, which the scope resolves as
-  # it does a workspace's pages; without it, the workspace the scope has. Before the
-  # workspace exists, `&type=<name>` is the type picked; a flow with no type shows the
-  # cards. `/:org/set-up` sets up a new workspace while the organisation has none in use,
-  # else the scope's workspace; `/:org/workspaces/new` a new workspace until Name creates
-  # it, then the steps go on at `/:org/set-up`. Once every step of a workspace is done,
-  # `/:org/set-up` without a step sends the person to the workspace's first page. The
-  # steps, in order, each as `Apiary.WorkspaceSetup.done?/3` counts it:
+  # **The flow.** Before the workspace exists, the flow opens Name, whatever the step,
+  # and `&type=<name>` is the type picked; a flow with no type shows the cards. Name
+  # creates the workspace, and the steps go on at its pages. A step of a workspace is
+  # named by its id in the path (`Apiary.WorkspaceSetup.flow/0`); a step the person does
+  # not see, or no step's id, is a path that does not exist. Every step opens in any
+  # order, from the sidebar's group or the Overview's list. The steps, in order, each as
+  # `Apiary.WorkspaceSetup.done?/3` counts it:
   #
   #   * Name: the Name field, "Main" for the organisation's first workspace, and Create
-  #     workspace, with the type picked: on `/:org/set-up`, the organisation's first
+  #     workspace, with the type picked: while the organisation has none, its first
   #     workspace (`Apiary.Organisations.create_first_workspace/2`, which returns
-  #     `{:error, :exists}` for a second, under the organisation's lock), on
-  #     `/:org/workspaces/new` any other (`Apiary.Organisations.create_workspace/2`); once
-  #     the workspace exists, its name, read only, with Continue;
+  #     `{:error, :exists}` for a second, under the organisation's lock), else any other
+  #     (`Apiary.Organisations.create_workspace/2`); once the workspace exists, its name,
+  #     read only, with Continue;
   #   * Work sources and Destinations, with the `factory` feature: a card per live grant
   #     of the organisation's connections (`Apiary.WorkspaceSetup.cards/4`,
   #     `ApiaryWeb.IntegrationComponents.grant_card/1`), of the adapters with items for
@@ -185,12 +183,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     test run adds and when it passes, its harness (`Apiary.Harnesses.Builtin`), what it
   #     leaves alone, and that a pass finishes the set-up.
   #
-  # Every step has Back to the step before it in the indicator, where that step has a
+  # Every step has Back to the step before it in the flow, where that step has a
   # page: Name has none, so Back never leads to the cards or the instance's steps.
   # The page listens to the organisation's workspaces
   # (`Apiary.Organisations.subscribe_workspaces/1`): once its first workspace is made, by
-  # anyone else, the page opens `/:org/set-up` again. The steps of the `factory` feature
-  # are left out of the module reference with the module.
+  # anyone else, a page that sets it up or waits for it opens the organisation's overview,
+  # `/:org`. The steps of the `factory` feature are left out of the module reference with
+  # the module.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -259,44 +258,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_params(params, _uri, socket) do
     scope = socket.assigns.current_scope
     organisation = scope.organisation
-    creates = Access.can?(scope, :"workspace.create", organisation)
 
     case socket.assigns.live_action do
       :new ->
-        if not creates, do: raise(ApiaryWeb.NotFound)
-        {:noreply, open_new(socket, params, :new)}
+        creates = Access.can?(scope, :"workspace.create", organisation)
+        first = not Organisations.has_workspace?(organisation)
 
-      :show ->
         cond do
-          not Organisations.has_workspace?(organisation) and creates ->
-            {:noreply, open_new(socket, params, :set_up)}
-
-          not Organisations.has_workspace?(organisation) ->
-            {:noreply, assign_waiting(socket)}
-
-          is_nil(scope.workspace) ->
-            {:noreply, push_navigate(socket, to: ~p"/#{organisation}")}
-
-          # A patch to another workspace: the scope resolves it as the page mounts.
-          is_binary(params["workspace"]) and params["workspace"] != scope.workspace.slug ->
-            {:noreply,
-             push_navigate(socket,
-               to: ~p"/#{organisation}/set-up?#{Map.take(params, ~w(step workspace))}"
-             )}
-
-          true ->
-            workspace = scope.workspace
-
-            flow =
-              SetUpComponents.flow(
-                organisation,
-                Domain.for_workspace(workspace),
-                workspace,
-                :set_up
-              )
-
-            {:noreply, open_flow(socket, flow, params["step"])}
+          first and creates -> {:noreply, open_new(socket, params, :set_up)}
+          first -> {:noreply, assign_waiting(socket)}
+          creates -> {:noreply, open_new(socket, params, :new)}
+          true -> raise ApiaryWeb.NotFound
         end
+
+      :step ->
+        workspace = scope.workspace
+
+        flow =
+          SetUpComponents.flow(organisation, Domain.for_workspace(workspace), workspace, :set_up)
+
+        {:noreply, open_step(socket, flow, params["step"])}
     end
   end
 
@@ -375,31 +356,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp card_domain(_name), do: nil
 
-  defp card_path(organisation, :set_up, domain),
-    do: ~p"/#{organisation}/set-up?#{[type: domain.name()]}"
-
-  defp card_path(organisation, :new, domain),
+  defp card_path(organisation, domain),
     do: ~p"/#{organisation}/workspaces/new?#{[type: domain.name()]}"
 
   ## The flow
 
-  # The step `?step=` is set to, among the steps the person sees, else the first that is not
-  # done. Before the workspace exists, Name.
+  # Before the workspace exists, Name, whatever the step.
   defp open_flow(socket, %{workspace: nil} = flow, _step_param),
     do: assign_step(socket, flow, :name)
 
-  defp open_flow(socket, flow, step_param) do
+  # A step of a workspace that exists, by its id in the path, among the steps the person
+  # sees; any other id is a path that does not exist.
+  defp open_step(socket, flow, step_param) do
     scope = socket.assigns.current_scope
-    plain = SetUpComponents.steps_for(scope, nil, flow: flow)
     flow_ids = WorkspaceSetup.flow()
-    ids = for %{id: id} <- plain, id in flow_ids, do: id
-    named = Enum.find(ids, &(Atom.to_string(&1) == step_param))
-    pending = Enum.find(plain, &(&1.id in ids and &1.state != :done))
 
-    case named || (pending && pending.id) do
-      nil -> push_navigate(socket, to: Layouts.workspace_landing(scope))
-      current -> assign_step(socket, flow, current)
-    end
+    step =
+      Enum.find_value(SetUpComponents.steps_for(scope, nil, flow: flow), fn %{id: id} ->
+        if id in flow_ids and Atom.to_string(id) == step_param, do: id
+      end)
+
+    if step, do: assign_step(socket, flow, step), else: raise(ApiaryWeb.NotFound)
   end
 
   defp assign_step(socket, flow, step) do
@@ -413,26 +390,42 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       flow: flow,
       step: step,
       steps: steps,
+      # In the workspace, its sidebar's group Set up lists the steps: the frame shows no
+      # indicator.
+      frame_steps: if(flow.workspace, do: [], else: steps),
       title: SetUpComponents.flow_title(flow),
       page_path: page_path(flow),
       next_path: next && next.path,
       page_title: heading(step, flow),
       refusal: nil
     )
+    |> assign_progress()
     |> load_step()
   end
 
-  defp page_path(%{organisation: organisation, page: :new}),
+  defp page_path(%{organisation: organisation, workspace: nil}),
     do: ~p"/#{organisation}/workspaces/new"
 
-  defp page_path(%{organisation: organisation, page: :set_up}), do: ~p"/#{organisation}/set-up"
+  # The prefix of the workspace's steps, which a link to one of them patches; no page.
+  defp page_path(%{organisation: organisation, workspace: workspace}),
+    do: ~p"/#{organisation}/#{workspace}" <> "/set-up"
 
-  # The indicator and the step's data, read again.
+  # The sidebar's group Set up, read again as a step opens or changes
+  # (`ApiaryWeb.SetUpComponents.workspace_set_up/1`); it leaves once the test run passed.
+  defp assign_progress(%{assigns: %{flow: %{workspace: %{}}}} = socket) do
+    progress = SetUpComponents.workspace_set_up(socket.assigns.current_scope)
+    assign(socket, :nav_counts, Map.put(socket.assigns.nav_counts || %{}, :set_up, progress))
+  end
+
+  defp assign_progress(socket), do: socket
+
+  # The indicator, the sidebar's group Set up and the step's data, read again.
   defp reload(%{assigns: %{view: :flow, flow: flow, step: step}} = socket) do
     steps = SetUpComponents.steps_for(socket.assigns.current_scope, step, flow: flow)
 
     socket
-    |> assign(steps: steps)
+    |> assign(steps: steps, frame_steps: if(flow.workspace, do: [], else: steps))
+    |> assign_progress()
     |> load_step()
   end
 
@@ -1238,8 +1231,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     attrs = %{"name" => name, "domain" => flow.domain.name()}
 
-    # On `/:org/set-up` the workspace is the organisation's first: of two owners at once,
-    # one creates it, under the organisation's lock.
+    # While the organisation has no workspace, the workspace is its first: of two owners
+    # at once, one creates it, under the organisation's lock.
     created =
       case flow.page do
         :set_up -> Organisations.create_first_workspace(scope, attrs)
@@ -1272,9 +1265,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       {:error, :limit} ->
         {:noreply, assign(socket, :refusal, :limit)}
 
-      # Someone else created the first workspace a moment before: the page as it opens now.
+      # Someone else created the first workspace a moment before: the organisation's
+      # overview, which lists it.
       {:error, :exists} ->
-        {:noreply, push_navigate(socket, to: ~p"/#{flow.organisation}/set-up")}
+        {:noreply, push_navigate(socket, to: ~p"/#{flow.organisation}")}
 
       {:error, _reason} ->
         {:noreply, push_navigate(socket, to: page_path(flow))}
@@ -1784,16 +1778,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   @impl true
-  # The organisation's first workspace was made by someone else while this page sets up
-  # a new one: the page as it would open now.
+  # The organisation's first workspace was made by someone else while this page sets it
+  # up, or waits for it: the organisation's overview, which lists it.
   def handle_info({:workspace_created, _ids}, %{assigns: assigns} = socket) do
-    new? =
-      assigns.view in [:cards, :waiting] or
-        match?(%{view: :flow, flow: %{workspace: nil}}, assigns)
+    first? =
+      assigns.view == :waiting or match?(%{view: :cards, page: :set_up}, assigns) or
+        match?(%{view: :flow, flow: %{workspace: nil, page: :set_up}}, assigns)
 
-    if new? and assigns.live_action == :show,
-      do:
-        {:noreply, push_navigate(socket, to: ~p"/#{assigns.current_scope.organisation}/set-up")},
+    if first?,
+      do: {:noreply, push_navigate(socket, to: ~p"/#{assigns.current_scope.organisation}")},
       else: {:noreply, socket}
   end
 
@@ -1831,6 +1824,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   ## Render
 
   @impl true
+  # A step of a workspace that exists is a page of the workspace, in its sidebar, the step
+  # current in the group Set up; the cards, the waiting line and Name before the
+  # workspace exists have no sidebar.
+  def render(%{view: :flow, flow: %{workspace: %{}}} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      place={:workspace}
+      set_up_step={@step}
+    >
+      <:crumb>{SetUpComponents.step_label(@step)}</:crumb>
+      <.flow_step {assigns} />
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -1873,7 +1885,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               id={"set-up-card-#{domain.name()}-choose"}
               variant="primary"
               size="md"
-              patch={card_path(@current_scope.organisation, @page, domain)}
+              patch={card_path(@current_scope.organisation, domain)}
             >
               {gettext("Choose")}
             </.button>
@@ -1896,7 +1908,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     assigns = assign(assigns, :context, Edition.set_up_context(assigns.scope, :workspace))
 
     ~H"""
-    <SetUpComponents.frame steps={@steps} page={~p"/#{@scope.organisation}/set-up"}>
+    <SetUpComponents.frame steps={@steps} page={~p"/#{@scope.organisation}/workspaces/new"}>
       <SetUpComponents.heading>{@title}</SetUpComponents.heading>
       <p id="set-up-waiting" class="text-sm/5 text-muted">
         {Edition.first_workspace_waiting_line(@scope.organisation)}
@@ -1909,12 +1921,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
-    # The step exists once the workspace does, on `/:org/set-up`.
+    # The step exists once the workspace does, at `/:org/:workspace/set-up/<step>`.
     assigns =
       assign(assigns, back: "set-up:#{step}:workspace=#{assigns.flow.workspace.slug}")
 
     ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+    <SetUpComponents.frame steps={@frame_steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
       <ul :if={@cards != [] or @waiting != []} id="set-up-grants" class="grid gap-3">
@@ -2058,7 +2070,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp flow_step(%{step: :model} = assigns) do
     ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+    <SetUpComponents.frame steps={@frame_steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
       <.form
@@ -2183,7 +2195,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp flow_step(%{step: :name} = assigns) do
     ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+    <SetUpComponents.frame steps={@frame_steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
       <.notice :if={@refusal == :limit} kind={:error}>
@@ -2251,7 +2263,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       )
 
     ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+    <SetUpComponents.frame steps={@frame_steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
       <p :if={!@may} id="set-up-who-may" class="text-[13.5px]/5 text-muted">{@who_may}</p>
@@ -2390,7 +2402,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       )
 
     ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+    <SetUpComponents.frame steps={@frame_steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
       <div class="grid gap-4">
@@ -2511,7 +2523,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       )
 
     ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+    <SetUpComponents.frame steps={@frame_steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
       <%!-- While the workspace has no pool, a person who may make one chooses: the
@@ -2939,7 +2951,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
-  defp patch?(path, page), do: URI.parse(path).path == page
+  defp patch?(path, page), do: SetUpComponents.same_page?(path, page)
 
   # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide has
   # steps for connecting it, with them.
@@ -2952,6 +2964,5 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # The chooser of `card`'s grant for the step `step` of `flow`'s workspace.
   defp chooser_path(%{organisation: organisation, workspace: workspace}, step, card),
-    do:
-      ~p"/#{organisation}/set-up/choose?#{[step: step, grant: card.grant.public_id, workspace: workspace.slug]}"
+    do: ~p"/#{organisation}/#{workspace}/set-up/#{step}/choose?#{[grant: card.grant.public_id]}"
 end

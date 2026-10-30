@@ -242,8 +242,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
         <p :if={@needs_workspace} id="new-provider-needs-workspace" class="text-[13.5px]/5">
           <.rich text={
             rich_gettext("%{set_up} first, then add a model provider in its Model step.",
-              set_up:
-                {:link, ~p"/#{@current_scope.organisation}/set-up", gettext("Set up a workspace")}
+              set_up: {:link, ~p"/#{@current_scope.organisation}", gettext("Set up a workspace")}
             )
           } />
         </p>
