@@ -5,8 +5,9 @@ defmodule Apiary.Harnesses.BuiltinComposeTest do
   # `-f` takes the vendored stack in place of the section's `extends` source, so qory
   # fetches nothing.
   #
-  # The binary is QORY_BIN, else `qory` on PATH, looked up when the file compiles. With
-  # neither, the tests that run it are skipped, with a reason that points to QORY_BIN.
+  # The binary is QORY_BIN, read when the file compiles. A `qory` on PATH is not used: a
+  # qory older than the pinned commit fails both composes for reasons unrelated to the pin.
+  # With QORY_BIN unset or empty, the tests that run qory are skipped.
   use ExUnit.Case, async: true
 
   alias Apiary.Harnesses.Builtin
@@ -18,10 +19,7 @@ defmodule Apiary.Harnesses.BuiltinComposeTest do
   @fixture Path.expand("../../fixtures/qory-hello", __DIR__)
   @stack Path.join(@fixture, "examples/hello")
 
-  @qory (case System.get_env("QORY_BIN") do
-           bin when bin in [nil, ""] -> System.find_executable("qory")
-           bin -> bin
-         end)
+  @qory System.get_env("QORY_BIN", "")
 
   # The qory.yaml of a test work item's run: the `harness` member of the run's documents
   # (`ApiaryWeb.Contract.DispatchAnswer.documents/1`), from the harness members a claim
@@ -100,9 +98,9 @@ defmodule Apiary.Harnesses.BuiltinComposeTest do
   end
 
   describe "qory harness compose" do
-    if is_nil(@qory) do
+    if @qory == "" do
       @describetag skip:
-                     "no qory binary: set QORY_BIN to the path of a qory binary, or put qory on PATH"
+                     "Set QORY_BIN to a qory built from #{Builtin.document()["extends"]["ref"]} to run this test"
     end
 
     setup do: %{qory: @qory}
