@@ -1,17 +1,23 @@
 // Copies `data-copy` (or the text content of the element `data-copy-target`
 // points at, or the body the same-origin address `data-copy-url` answers) to the
 // clipboard, flips the button into its "Copied" state for 1600 ms and announces it
-// politely: in its own live span, or, for a row's copy, which has none, in the shell's
-// one announcer (`#copy-announcer`). A copy of an address that fails copies nothing and
-// announces the line for its cause instead: `data-failed-network` when no answer came,
+// politely: in the status element `data-status` points at, else in its own live span,
+// or, for a row's copy, which has none, in the shell's one announcer
+// (`#copy-announcer`). A copy of an address that fails copies nothing and writes the
+// line for its cause there instead, kept until the next click: `data-failed-network` when no answer came,
 // `data-failed-gone` for 404, `data-failed-signed-out` for a redirect (to the log-in
 // page), 401 or 403, `data-failed-server` for any other error status, and
 // `data-failed-clipboard` when the browser did not allow the copy.
 export const CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", async () => {
-      const live = this.el.querySelector("[aria-live]") || document.getElementById("copy-announcer")
+      const live =
+        (this.el.dataset.status && document.querySelector(this.el.dataset.status)) ||
+        this.el.querySelector("[aria-live]") ||
+        document.getElementById("copy-announcer")
       if (this.el.dataset.copyUrl) {
+        clearTimeout(this.timer)
+        if (live) live.textContent = ""
         const failure = await copyAnswer(this.el.dataset.copyUrl)
         if (!failure) {
           this.copied(live)

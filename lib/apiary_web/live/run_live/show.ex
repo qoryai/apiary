@@ -218,6 +218,15 @@ defmodule ApiaryWeb.RunLive.Show do
               </p>
             </div>
             <div class="q-run-actions">
+              <%!-- Why Copy diagnostics failed, outside the menu that closes on the click,
+                   kept until the next click (the CopyToClipboard hook writes it). --%>
+              <p
+                id="run-menu-status"
+                role="status"
+                class="max-w-[48ch] text-right text-xs text-base-content/80"
+                phx-update="ignore"
+              >
+              </p>
               <.run_menu
                 run={@run}
                 diagnostics={
@@ -450,6 +459,7 @@ defmodule ApiaryWeb.RunLive.Show do
             tabindex="-1"
             phx-hook="CopyToClipboard"
             data-copy-url={@diagnostics}
+            data-status="#run-menu-status"
             data-copied-words={gettext("Copied")}
             data-failed-network={
               gettext("Check your connection, then copy again. The diagnostics did not arrive.")
@@ -473,7 +483,6 @@ defmodule ApiaryWeb.RunLive.Show do
             data-menu-close
           >
             <.icon name="hero-clipboard-document-list" class="size-4" /> {gettext("Copy diagnostics")}
-            <span class="sr-only" aria-live="polite"></span>
           </button>
         </li>
         <li :if={@log} role="none">

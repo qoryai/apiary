@@ -285,7 +285,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                "Copy diagnostics"
              )
 
-      # A line for each way the copy can fail, which the hook announces instead.
+      # The line a failed copy writes is outside the menu, empty until a copy fails.
+      assert lv |> element("#run-menu-status[role=status]") |> render() =~
+               ~r{\A<p[^>]*></p>\z}
+
+      refute has_element?(lv, "#run-menu-diagnostics [aria-live]")
+      assert has_element?(lv, ~s(#run-menu-diagnostics[data-status="#run-menu-status"]))
+
+      # A line for each way the copy can fail, which the hook writes there instead.
       for {cause, line} <- [
             {"network",
              "Check your connection, then copy again. The diagnostics did not arrive."},
