@@ -1911,7 +1911,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
     # The step exists once the workspace does, on `/:org/set-up`.
     assigns =
-      assign(assigns, back: "set-up:#{step}:workspace=#{assigns.flow.workspace.slug}")
+      assign(assigns, back: "set-up:#{step}:workspace=#{assigns.flow.workspace.public_id}")
 
     ~H"""
     <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>

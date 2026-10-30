@@ -306,7 +306,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       refute ConnectSession.back?("other:sources")
     end
 
-    test "leads to the step of the workspace the install started at", %{
+    test "leads to the step of the workspace the install started at, renamed since", %{
       conn: conn,
       scope: scope,
       pair: pair,
@@ -315,17 +315,22 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       session: session
     } do
       token = return_token(pair.secret, connection.public_id, nonce)
-      back = "set-up:destinations:workspace=#{scope.workspace.slug}"
+      back = "set-up:destinations:workspace=#{scope.workspace.public_id}"
       assert ConnectSession.back?(back)
       refute ConnectSession.back?("set-up:sources:workspace=../x")
+      refute ConnectSession.back?("set-up:sources:workspace=main")
 
-      conn =
+      # Renamed between Install and the return: the return finds it by its public id.
+      {:ok, renamed} = Apiary.Organisations.update_workspace(scope, %{"name" => "Payments"})
+      assert renamed.slug == "payments"
+
+      returned =
         conn
         |> ConnectSession.put(session, back)
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
-      assert redirected_to(conn) ==
-               "/#{scope.organisation.slug}/set-up?step=destinations&workspace=#{scope.workspace.slug}"
+      assert redirected_to(returned) ==
+               "/#{scope.organisation.slug}/set-up?step=destinations&workspace=payments"
     end
 
     test "a back value the session may not keep leads to the integration's page", %{

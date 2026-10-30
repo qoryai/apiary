@@ -15,11 +15,11 @@ defmodule ApiaryWeb.AdapterInstallController do
   #      nonce it gives is kept in the person's session (`ApiaryWeb.ConnectSession`), so
   #      the return comes back in this browser, and the person is sent to the address it
   #      returns, the adapter's connect address with the pass. With a `back` that
-  #      `ApiaryWeb.ConnectSession.back?/1` takes, such as "set-up:sources:workspace=main"
-  #      from the Work sources step of the workspace Main's set-up, the session keeps it
-  #      beside the nonce, and the return leads there
-  #      (`ApiaryWeb.AdapterRedirectController`); a `back` with a workspace's slug is kept
-  #      only for a workspace of the organisation in use
+  #      `ApiaryWeb.ConnectSession.back?/1` takes, such as
+  #      "set-up:sources:workspace=ws_0000000000000000" from the Work sources step of that
+  #      workspace's set-up, the session keeps it beside the nonce, and the return leads
+  #      there (`ApiaryWeb.AdapterRedirectController`); a `back` with a workspace's public
+  #      id is kept only for a workspace of the organisation in use
   #      (`Apiary.Organisations.list_workspaces/1`); any other `back` is ignored. Neither
   #      the pass nor the connect address contains it;
   #   4. when the organisation's connected connection cannot take a new pass yet, as for
@@ -78,8 +78,8 @@ defmodule ApiaryWeb.AdapterInstallController do
       nil ->
         back
 
-      slug ->
-        if Enum.any?(Organisations.list_workspaces(scope), &(&1.slug == slug)),
+      id ->
+        if Enum.any?(Organisations.list_workspaces(scope), &(&1.public_id == id)),
           do: back,
           else: nil
     end

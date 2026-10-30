@@ -11,7 +11,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
   # ended there. Where the session keeps a step of the workspace set-up beside that nonce
   # (`ApiaryWeb.ConnectSession.back?/1`), an install started there, the return leads to
-  # that step, such as `/<org>/set-up?step=sources&workspace=main`, in place of the
+  # that step, such as `/<org>/set-up?step=sources&workspace=payments`, in place of the
   # integration's page. A return the person did not start in this browser gets a page that
   # shows so; a link that contains no connection they reach, and a return that is bad,
   # expired or used, as a path that does not exist, whoever asks, so the response does not
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
         path = ~p"/#{scope.organisation}/settings/integrations/#{connection.adapter}"
 
         case params do
-          %{"return" => token} -> complete(conn, connection, token, path, scope.organisation)
+          %{"return" => token} -> complete(conn, connection, token, path, scope)
           _none -> redirect(conn, to: path)
         end
 
@@ -48,7 +48,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
     end
   end
 
-  defp complete(conn, connection, token, path, organisation) do
+  defp complete(conn, connection, token, path, scope) do
     session_nonce = ConnectSession.fetch(conn, connection.public_id)
 
     case Connections.complete_return(
@@ -61,7 +61,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
         to =
           case ConnectSession.back(conn, connection.public_id) do
             nil -> path
-            back -> back_path(organisation, back)
+            back -> back_path(scope, back) || path
           end
 
         conn
@@ -143,23 +143,34 @@ defmodule ApiaryWeb.AdapterRedirectController do
   end
 
   # The path of the workspace set-up's step that `back` is set to
-  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug, or the type picked.
-  defp back_path(organisation, "set-up"), do: ~p"/#{organisation}/set-up?step=sources"
+  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug as it is now, found by
+  # its public id, or the type picked; nil for a workspace of the organisation no longer
+  # in use.
+  defp back_path(scope, "set-up"), do: ~p"/#{scope.organisation}/set-up?step=sources"
 
-  defp back_path(organisation, back) do
+  defp back_path(scope, back) do
+    organisation = scope.organisation
     [page, step | rest] = String.split(back, ":")
 
     query =
-      [step: step] ++
-        case rest do
-          ["workspace=" <> slug] -> [workspace: slug]
-          [type] -> [type: type]
-          [] -> []
-        end
+      case rest do
+        ["workspace=" <> id] ->
+          case Enum.find(Apiary.Organisations.list_workspaces(scope), &(&1.public_id == id)) do
+            nil -> nil
+            workspace -> [step: step, workspace: workspace.slug]
+          end
 
-    case page do
-      "set-up" -> ~p"/#{organisation}/set-up?#{query}"
-      "new-workspace" -> ~p"/#{organisation}/workspaces/new?#{query}"
+        [type] ->
+          [step: step, type: type]
+
+        [] ->
+          [step: step]
+      end
+
+    case {page, query} do
+      {_page, nil} -> nil
+      {"set-up", query} -> ~p"/#{organisation}/set-up?#{query}"
+      {"new-workspace", query} -> ~p"/#{organisation}/workspaces/new?#{query}"
     end
   end
 end

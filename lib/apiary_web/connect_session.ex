@@ -7,8 +7,10 @@ defmodule ApiaryWeb.ConnectSession do
   # (`Apiary.Adapters.Connections.complete_return/4`).
   #
   # Beside a nonce, the session may keep where the return leads (`back/2`): a word that
-  # `back?/1` takes, such as "set-up:sources:workspace=main" for an install started at
-  # the Work sources step of the workspace Main's set-up, never an address. Neither the
+  # `back?/1` takes, such as "set-up:sources:workspace=ws_0000000000000000" for an install
+  # started at the Work sources step of that workspace's set-up, never an address. The
+  # workspace is named by its public id (`ws_…`), which a rename keeps, so a rename
+  # between Install and the return does not lose it. Neither the
   # pass nor the adapter's return link contains it.
   #
   # The session keeps the last `kept/0` connections a browser started, the latest pass of
@@ -33,11 +35,11 @@ defmodule ApiaryWeb.ConnectSession do
 
   # Whether `back` is a place a return may lead to, besides the integration's page: a step
   # of the workspace set-up that connects, `<page>:<step>`, `<page>:<step>:<type>` before
-  # the workspace exists, or `<page>:<step>:workspace=<slug>` once it does. The page is
+  # the workspace exists, or `<page>:<step>:workspace=<id>` once it does. The page is
   # "set-up" (`/:org/set-up`) or "new-workspace" (`/:org/workspaces/new`), the step
   # "sources" or "destinations", the type a domain's name (`Apiary.Lingo.Domain`), and
-  # the slug a workspace's slug in form; the install checks it against the organisation's
-  # workspaces (`back_workspace/1`). "set-up" alone is the set-up's Work sources step.
+  # the id a workspace's public id in form (`ws_…`); the install checks it against the
+  # organisation's workspaces (`back_workspace/1`). "set-up" alone is the set-up's Work sources step.
   @doc false
   @spec back?(term) :: boolean
   def back?("set-up"), do: true
@@ -47,8 +49,8 @@ defmodule ApiaryWeb.ConnectSession do
       [page, step] ->
         page in @pages and step in @steps
 
-      [page, step, "workspace=" <> slug] ->
-        page in @pages and step in @steps and slug =~ ~r/\A[a-z0-9][a-z0-9-]*\z/
+      [page, step, "workspace=" <> id] ->
+        page in @pages and step in @steps and Apiary.PublicId.valid?("ws", id)
 
       [page, step, type] ->
         page in @pages and step in @steps and type in Domain.names()
@@ -60,12 +62,12 @@ defmodule ApiaryWeb.ConnectSession do
 
   def back?(_back), do: false
 
-  # The slug of the workspace `back` leads to (`back?/1`), nil for a `back` with none.
+  # The public id of the workspace `back` leads to (`back?/1`), nil for a `back` with none.
   @doc false
   @spec back_workspace(term) :: String.t() | nil
   def back_workspace(back) when is_binary(back) do
     case String.split(back, ":") do
-      [_page, _step, "workspace=" <> slug] -> slug
+      [_page, _step, "workspace=" <> id] -> id
       _other -> nil
     end
   end
