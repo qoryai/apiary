@@ -670,6 +670,124 @@ defmodule ApiaryWeb.SetUpComponents do
     """
   end
 
+  ## The kind cards
+
+  @doc """
+  kind_cards/1 is the choice of what a new workspace does: one card per domain of
+  `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
+  type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
+  connect, and Choose, which sends the event `choose_kind` with the domain's name as
+  `type`. The empty organisation overview (`ApiaryWeb.OrganisationLive`) and New
+  workspace (`/:org/workspaces/new`) show it, and each takes the event with
+  `choose_kind/3`. With `limit`, that line shows in place of the cards.
+  """
+  attr :id, :string, default: "set-up-cards"
+  attr :title, :string, required: true
+  attr :heading, :string, default: "h1", values: ~w(h1 h2)
+  attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
+
+  def kind_cards(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :cards,
+        for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
+      )
+
+    ~H"""
+    <div class="grid gap-4">
+      <.dynamic_tag
+        tag_name={@heading}
+        id={"#{@id}-title"}
+        class="text-2xl/8 font-semibold tracking-[-0.025em]"
+      >
+        {@title}
+      </.dynamic_tag>
+      <.notice :if={@limit} kind={:error}>
+        <span id="set-up-limit">{@limit}</span>
+      </.notice>
+      <ul :if={!@limit} id={@id} class="grid gap-3">
+        <li
+          :for={{domain, card} <- @cards}
+          id={"set-up-card-#{domain.name()}"}
+          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+        >
+          <h2 class="font-semibold">{domain.type_name()}</h2>
+          <p class="text-[13.5px]/5">{card.what}</p>
+          <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
+          <div class="flex justify-end">
+            <.button
+              id={"set-up-card-#{domain.name()}-choose"}
+              variant="primary"
+              size="md"
+              phx-click="choose_kind"
+              phx-value-type={domain.name()}
+              phx-disable-with={gettext("Creating")}
+            >
+              {gettext("Choose")}
+            </.button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # The words of a domain's card, nil for a domain without one, which shows no card. A
+  # person reads a card's line where they pick a type, in any locale, so the line is in the
+  # `workspace type` context and keeps the type's words.
+  defp kind_card_words(Domain.Software) do
+    %{
+      what: pgettext("workspace type", "Agents change code in your repositories."),
+      connect: gettext("You connect: where work comes from, where changes go, a model.")
+    }
+  end
+
+  defp kind_card_words(_domain), do: nil
+
+  @doc """
+  choose_kind/3 takes Choose of a kind card (`kind_cards/1`) on `socket`'s page: it creates
+  a workspace of that type in the scope's organisation, named after the type
+  (`Apiary.Organisations.create_workspace_of_kind/3`, with `which`, `:first` on the empty
+  organisation overview), and opens its first set-up step, Name. A type with no card
+  changes nothing. Where someone else created the organisation's first workspace a moment
+  before, or the person may no longer create one, the organisation's overview opens
+  again; where the organisation may have no more, the page says so.
+  """
+  @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
+          Phoenix.LiveView.Socket.t()
+  def choose_kind(socket, type, which) do
+    scope = socket.assigns.current_scope
+    organisation = scope.organisation
+
+    case Enum.find(Domain.choices(), &(&1.name() == type and kind_card_words(&1) != nil)) do
+      nil ->
+        socket
+
+      domain ->
+        case Organisations.create_workspace_of_kind(scope, domain, which) do
+          {:ok, workspace} ->
+            Phoenix.LiveView.push_navigate(socket,
+              to: flow_path(flow(organisation, domain, workspace, :set_up), :name)
+            )
+
+          {:error, :limit} ->
+            Phoenix.LiveView.put_flash(socket, :error, limit_line(organisation))
+
+          {:error, reason} when reason in [:exists, :forbidden, :not_found] ->
+            Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+          {:error, _changeset} ->
+            Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+        end
+    end
+  end
+
+  @doc "limit_line/1 is the line of an organisation that may have no more workspaces."
+  @spec limit_line(%Organisation{}) :: String.t()
+  def limit_line(%Organisation{name: name}),
+    do: gettext("%{organisation} may have no more workspaces.", organisation: name)
+
   attr :id, :string, required: true
   attr :title, :string, required: true, doc: "where the steps happen, such as \"On GitHub\""
 

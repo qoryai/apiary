@@ -174,8 +174,9 @@ defmodule Apiary.Edition do
   @callback first_workspace_line(%Organisation{}) :: String.t()
 
   @doc """
-  The workspace set-up page's line for a person who may not create `organisation`'s first
-  workspace: who does. Translated when it is asked.
+  The line the organisation's overview (`/:org`) shows, in place of the kind cards, to a
+  person who may not create `organisation`'s first workspace: who does. Translated when it
+  is asked.
   """
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 

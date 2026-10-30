@@ -2228,7 +2228,7 @@ msgstr ""
 msgid "%{organisation} has no work source connected yet."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} may have no more workspaces."
 msgstr ""
@@ -3929,7 +3929,7 @@ msgstr ""
 msgid "Agent"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
 msgid "Agents change code in your repositories."
@@ -4351,6 +4351,11 @@ msgstr ""
 msgid "An invitation expires after seven days."
 msgstr ""
 
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "An owner of %{organisation} creates the first workspace."
+msgstr ""
+
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "An owner of the account must approve the updated permissions on %{integration}, then install it again."
@@ -4375,11 +4380,6 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "An owner or an admin of the organisation added you to %{workspace}."
-msgstr ""
-
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "An owner sets up this organisation's first workspace."
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
@@ -5299,7 +5299,7 @@ msgid "Checking the organisations you own"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose"
 msgstr ""
@@ -5389,6 +5389,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the workspace's default mode"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose what your first workspace does"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -6074,11 +6079,6 @@ msgstr ""
 msgid "Create invitation link"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Create workspace"
-msgstr ""
-
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Create your account"
@@ -6110,8 +6110,8 @@ msgstr ""
 msgid "Created the workspace"
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/user_live/registration.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Creating"
 msgstr ""
@@ -11512,6 +11512,7 @@ msgstr ""
 msgid "Nothing was assigned: the page was out of date. It now shows the %{collections} as they are."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/choose_collections_live.ex
@@ -11864,6 +11865,7 @@ msgid "Only owners and admins can change these settings."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins can change these settings. Ask one of them if a name needs to change."
 msgstr ""
@@ -13634,11 +13636,6 @@ msgstr ""
 msgid "Resolved"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Restore %{workspace} in Organisation settings › Workspaces. A deleted workspace keeps its name until it is purged."
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Result"
@@ -14261,6 +14258,11 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Save"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Save and next"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
@@ -19002,7 +19004,7 @@ msgstr ""
 msgid "You confirmed it %{when}. Explore wrote it in run %{run}, shown as plain text."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "You connect: where work comes from, where changes go, a model."
 msgstr ""

@@ -677,6 +677,17 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
   # The steps of the flow of a new workspace, the first `current`: every step with the
   # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
+  # Choose on the organisation's overview: the new workspace's Name step.
+  defp choose_kind(conn, organisation) do
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+    assert has_element?(lv, "#set-up-card-software")
+
+    lv
+    |> element("#set-up-card-software-choose")
+    |> render_click()
+    |> follow_redirect(conn)
+  end
+
   defp workspace_steps(current) do
     if Apiary.Features.on?(:factory) do
       [{"Name", current}, {"Work sources", :to_come}, {"Destinations", :to_come}] ++
@@ -695,15 +706,12 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       assert conn |> get(path) |> redirected_to() == ~p"/"
     end
 
-    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}/set-up"
+    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}"
     refute Setup.connections_reviewed?()
 
-    # The workspace set-up opens at the type cards, then lists no step under Connect Qory
-    # Apiary.
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up")
-    assert has_element?(lv, "#set-up-card-software")
-
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?type=software")
+    # The organisation's overview has the kind cards; Choose opens the Name step, which
+    # lists no step under Connect Qory Apiary.
+    {:ok, lv, _html} = choose_kind(conn, organisation)
     # Your account is of the instance's progress, so the flow's first step is step 1.
     assert steps(lv) == workspace_steps(:current)
     assert count(lv) == "Step 1 of #{length(steps(lv))}"
@@ -757,11 +765,11 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       assert {to, _flash} = assert_redirect(lv)
       assert to == ~p"/#{organisation}/set-up?step=name"
 
-      # With no workspace yet, the set-up opens at the type cards; the flow follows.
-      {:ok, lv, _html} = live(conn, to)
-      assert has_element?(lv, "#set-up-card-software")
-
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=name&type=software")
+      # With no workspace yet, the organisation's overview has the kind cards; Choose opens
+      # the flow.
+      assert {:error, {:live_redirect, %{to: overview}}} = live(conn, to)
+      assert overview == ~p"/#{organisation}"
+      {:ok, lv, _html} = choose_kind(conn, organisation)
 
       assert steps(lv) == workspace_steps(:current)
       steps = length(workspace_steps(:current))

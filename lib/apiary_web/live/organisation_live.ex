@@ -6,8 +6,11 @@ defmodule ApiaryWeb.OrganisationLive do
   count, its denied attempts and its last run), at most six and a link to all of them;
   beside them its people and its details, as lines, not boxes (`docs/ui.md`, Lists).
 
-  An organisation with no workspace in use yet sends the person on to its workspace
-  set-up, `/:org/set-up`. A member who reaches no workspace yet, where the edition says
+  An organisation with no workspace in use yet shows, in place of its workspaces, the kind
+  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`) to a person `workspace.create` allows
+  there, whose Choose creates the first workspace and opens its Name step, and to anyone
+  else one line on who creates it (`c:Apiary.Edition.first_workspace_waiting_line/1`).
+  The page shows that organisation's people and details as for any other. A member who reaches no workspace yet, where the edition says
   which workspaces their level reaches (`c:Apiary.Edition.reaches_workspace?/3`), is told
   so, and led to the People section of the settings, where the owners and admins are listed. Once they reach
   one while the page is open, the member's scope is loaded again (`ApiaryWeb.UserAuth`),
@@ -18,8 +21,8 @@ defmodule ApiaryWeb.OrganisationLive do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Organisations, Policy, Runs}
-  alias ApiaryWeb.UserAuth
+  alias Apiary.{Access, Edition, Organisations, Policy, Runs}
+  alias ApiaryWeb.{SetUpComponents, UserAuth}
 
   # The workspaces shown; beyond them, the link to all of them.
   @shown 6
@@ -36,7 +39,33 @@ defmodule ApiaryWeb.OrganisationLive do
     >
       <:crumb>{gettext("Overview")}</:crumb>
 
-      <div :if={is_nil(@current_scope.workspace)} id="not-added">
+      <div :if={@empty} id="organisation-overview" class="q-org">
+        <div class="q-org-top">
+          <.page_header title={@current_scope.organisation.name}>
+            <:description>{gettext("The organisation's workspaces and its people.")}</:description>
+            <:actions>
+              <ApiaryWeb.Extension.slot name={:organisation_heading} scope={@current_scope} />
+            </:actions>
+          </.page_header>
+        </div>
+
+        <div class="q-org-main">
+          <section id="first-workspace" class="q-blk">
+            <SetUpComponents.kind_cards
+              :if={@creates}
+              title={gettext("Choose what your first workspace does")}
+              heading="h2"
+            />
+            <p :if={!@creates} id="first-workspace-waiting" class="text-sm/5 text-muted">
+              {Edition.first_workspace_waiting_line(@current_scope.organisation)}
+            </p>
+          </section>
+        </div>
+
+        <.side current_scope={@current_scope} people={@people} />
+      </div>
+
+      <div :if={is_nil(@current_scope.workspace) and !@empty} id="not-added">
         <.empty_state
           icon="hero-squares-2x2"
           title={gettext("You have not been added to a workspace yet")}
@@ -126,74 +155,84 @@ defmodule ApiaryWeb.OrganisationLive do
           </section>
         </div>
 
-        <aside class="q-org-side" aria-label={gettext("About the organisation")}>
-          <section id="people" class="q-blk" aria-labelledby="people-title">
-            <div class="q-band">
-              <h2 id="people-title">{gettext("People")}</h2>
-              <span class="q-band-n">{Format.number(length(@people.active))}</span>
-              <span class="q-grow"></span>
-              <.link
-                :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}
-                id="people-invite"
-                navigate={~p"/#{@current_scope.organisation}/settings/people/invite"}
-                class="q-band-do"
-              >
-                {gettext("Invite")}
-              </.link>
-            </div>
-            <div class="q-ppl">
-              <div class="q-avs" aria-hidden="true">
-                <.avatar :for={member <- Enum.take(@people.active, 6)} name={member.user.email} />
-                <span :if={length(@people.active) > 6} class="q-avs-n">
-                  {ngettext("and %{number} more", "and %{number} more", length(@people.active) - 6,
-                    number: Format.number(length(@people.active) - 6)
-                  )}
-                </span>
-              </div>
-              <span id="people-levels">{levels_line(@people)}</span>
-              <span :if={@people.suspended > 0} id="people-suspended">
-                {ngettext("%{number} suspended", "%{number} suspended", @people.suspended,
-                  number: Format.number(@people.suspended)
-                )}
-              </span>
-              <span :if={@people.invitations > 0} id="people-invitations" class="q-hot">
-                {ngettext(
-                  "%{number} invitation pending",
-                  "%{number} invitations pending",
-                  @people.invitations,
-                  number: Format.number(@people.invitations)
-                )}
-              </span>
-            </div>
-            <.link
-              id="people-open"
-              navigate={~p"/#{@current_scope.organisation}/settings/people"}
-              class="q-more"
-            >
-              {gettext("All people")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
-            </.link>
-          </section>
-
-          <section id="about" class="q-blk" aria-labelledby="about-title">
-            <div class="q-band">
-              <h2 id="about-title">{gettext("Details")}</h2>
-            </div>
-            <dl class="q-kvl">
-              <dt>{gettext("Slug")}</dt>
-              <dd class="q-mono">{@current_scope.organisation.slug}</dd>
-              <dt>{gettext("Owners")}</dt>
-              <dd class="truncate" title={Enum.map_join(@people.owners, ", ", & &1.user.email)}>
-                {Enum.map_join(@people.owners, ", ", & &1.user.email)}
-              </dd>
-              <dt>{gettext("Created")}</dt>
-              <dd class="q-muted tabular-nums">
-                {Format.date(@current_scope.organisation.inserted_at)}
-              </dd>
-            </dl>
-          </section>
-        </aside>
+        <.side current_scope={@current_scope} people={@people} />
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :current_scope, :any, required: true
+  attr :people, :map, required: true
+
+  # Beside the workspaces: the organisation's people and its details.
+  defp side(assigns) do
+    ~H"""
+    <aside class="q-org-side" aria-label={gettext("About the organisation")}>
+      <section id="people" class="q-blk" aria-labelledby="people-title">
+        <div class="q-band">
+          <h2 id="people-title">{gettext("People")}</h2>
+          <span class="q-band-n">{Format.number(length(@people.active))}</span>
+          <span class="q-grow"></span>
+          <.link
+            :if={may_invite?(@current_scope)}
+            id="people-invite"
+            navigate={~p"/#{@current_scope.organisation}/settings/people/invite"}
+            class="q-band-do"
+          >
+            {gettext("Invite")}
+          </.link>
+        </div>
+        <div class="q-ppl">
+          <div class="q-avs" aria-hidden="true">
+            <.avatar :for={member <- Enum.take(@people.active, 6)} name={member.user.email} />
+            <span :if={length(@people.active) > 6} class="q-avs-n">
+              {ngettext("and %{number} more", "and %{number} more", length(@people.active) - 6,
+                number: Format.number(length(@people.active) - 6)
+              )}
+            </span>
+          </div>
+          <span id="people-levels">{levels_line(@people)}</span>
+          <span :if={@people.suspended > 0} id="people-suspended">
+            {ngettext("%{number} suspended", "%{number} suspended", @people.suspended,
+              number: Format.number(@people.suspended)
+            )}
+          </span>
+          <span :if={@people.invitations > 0} id="people-invitations" class="q-hot">
+            {ngettext(
+              "%{number} invitation pending",
+              "%{number} invitations pending",
+              @people.invitations,
+              number: Format.number(@people.invitations)
+            )}
+          </span>
+        </div>
+        <.link
+          id="people-open"
+          navigate={~p"/#{@current_scope.organisation}/settings/people"}
+          class="q-more"
+        >
+          {gettext("All people")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+        </.link>
+      </section>
+
+      <section id="about" class="q-blk" aria-labelledby="about-title">
+        <div class="q-band">
+          <h2 id="about-title">{gettext("Details")}</h2>
+        </div>
+        <dl class="q-kvl">
+          <dt>{gettext("Slug")}</dt>
+          <dd class="q-mono">{@current_scope.organisation.slug}</dd>
+          <dt>{gettext("Owners")}</dt>
+          <dd class="truncate" title={Enum.map_join(@people.owners, ", ", & &1.user.email)}>
+            {Enum.map_join(@people.owners, ", ", & &1.user.email)}
+          </dd>
+          <dt>{gettext("Created")}</dt>
+          <dd class="q-muted tabular-nums">
+            {Format.date(@current_scope.organisation.inserted_at)}
+          </dd>
+        </dl>
+      </section>
+    </aside>
     """
   end
 
@@ -296,12 +335,42 @@ defmodule ApiaryWeb.OrganisationLive do
   def mount(_params, _session, socket) do
     organisation = socket.assigns.current_scope.organisation
 
-    # An organisation with no workspace yet has the workspace set-up in place of its
-    # overview.
+    # An organisation with no workspace yet has the kind cards in place of its workspaces.
+    # Once someone creates the first, the page opens again with it.
     if is_nil(socket.assigns.current_scope.workspace) and
-         not Organisations.has_workspace?(organisation),
-       do: {:ok, push_navigate(socket, to: ~p"/#{organisation}/set-up")},
-       else: {:ok, socket |> load() |> UserAuth.on_membership_change(&load/1)}
+         not Organisations.has_workspace?(organisation) do
+      if connected?(socket), do: Organisations.subscribe_workspaces(socket.assigns.current_scope)
+      {:ok, load_empty(socket)}
+    else
+      {:ok, socket |> load() |> UserAuth.on_membership_change(&load/1)}
+    end
+  end
+
+  @impl true
+  # The page that creates the first workspace opens its Name step, not the overview again.
+  def handle_event("choose_kind", %{"type" => type}, %{assigns: %{empty: true}} = socket) do
+    organisation = socket.assigns.current_scope.organisation
+    Phoenix.PubSub.unsubscribe(Apiary.PubSub, Organisations.workspaces_topic(organisation.id))
+    {:noreply, SetUpComponents.choose_kind(socket, type, :first)}
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:workspace_created, _ids}, %{assigns: %{empty: true}} = socket),
+    do: {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.current_scope.organisation}")}
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp load_empty(socket) do
+    scope = socket.assigns.current_scope
+
+    assign(socket,
+      empty: true,
+      page_title: scope.organisation.name,
+      creates: Access.can?(scope, :"workspace.create", scope.organisation),
+      people: people(scope)
+    )
   end
 
   # What the page shows, read again when the reader's membership changes: a member added
@@ -309,6 +378,7 @@ defmodule ApiaryWeb.OrganisationLive do
   defp load(%{assigns: %{current_scope: %{workspace: nil}}} = socket),
     do:
       assign(socket,
+        empty: false,
         page_title: gettext("No workspace yet"),
         workspaces: [],
         landings: %{},
@@ -322,6 +392,7 @@ defmodule ApiaryWeb.OrganisationLive do
     workspaces = reached(socket.assigns.memberships, scope)
 
     socket
+    |> assign(:empty, false)
     # A member who waited on this page for a workspace is told they have one, and offered it.
     |> assign(:added, Map.get(socket.assigns, :waiting, false))
     |> assign(:shown, @shown)
@@ -382,7 +453,7 @@ defmodule ApiaryWeb.OrganisationLive do
     {suspended, active} = Enum.split_with(members, & &1.suspended_at)
 
     invitations =
-      if Access.can?(scope, :"member.invite", scope.workspace),
+      if may_invite?(scope),
         do: length(Organisations.list_invitations(scope)),
         else: 0
 
@@ -394,4 +465,8 @@ defmodule ApiaryWeb.OrganisationLive do
       invitations: invitations
     }
   end
+
+  # An invitation is to a workspace: with none, there is none to send.
+  defp may_invite?(%{workspace: nil}), do: false
+  defp may_invite?(scope), do: Access.can?(scope, :"member.invite", scope.workspace)
 end

@@ -757,9 +757,8 @@ defmodule ApiaryWeb.UserAuth do
   the first workspace they reach in their earliest organisation
   (`Apiary.Organisations.load_home_scope/2`), with the `factory` feature at the set-up's
   next step while its set-up is not finished, else at the first page it shows them
-  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's workspace set-up,
-  `/:org/set-up`, while the organisation has no workspace in use
-  (`Apiary.Organisations.has_workspace?/1`); the organisation's path, `/:org`, for a
+  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's path, `/:org`, while the
+  organisation has no workspace in use, where its overview has the kind cards, and for a
   member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
@@ -781,9 +780,7 @@ defmodule ApiaryWeb.UserAuth do
           ApiaryWeb.Layouts.workspace_landing(scope)
 
         %Scope{organisation: %{} = organisation} ->
-          if Organisations.has_workspace?(organisation),
-            do: ~p"/#{organisation}",
-            else: ~p"/#{organisation}/set-up"
+          ~p"/#{organisation}"
 
         _no_membership ->
           ~p"/users/organisations"

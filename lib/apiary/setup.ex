@@ -349,8 +349,8 @@ defmodule Apiary.Setup do
   `password_confirmation`. It creates the instance's organisation, with no workspace, and
   the account as its owner, and the edition's part of a first sign-up applies
   (`:first_sign_up`). The organisation's first workspace comes later
-  (`Apiary.Organisations.create_first_workspace/2`, from the Name step of the workspace
-  set-up page, `/:org/set-up`).
+  (`Apiary.Organisations.create_workspace_of_kind/3`, from the kind cards of the
+  organisation's overview, `/:org`).
 
   Answers `{:ok, map}` as the sign-up does; `{:error, :already_set_up}` once the instance
   is set up, a set-up a moment before included; `{:error, :invalid_code}` for a code that
