@@ -412,13 +412,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"account.password_link", _details, _actor),
     do: gettext("Made a password link for a person")
 
-  # A save's entry has its test send's result; an entry written before results were kept
-  # has none, and has the line of an accepted send.
-  defp said(:"instance.mail_save", %{"result" => result}, _actor) when result != "sent",
-    do: gettext("Saved the mail settings; the relay did not accept the test link")
-
+  # A save's entry is written before its test send, so it has no result.
   defp said(:"instance.mail_save", _details, _actor),
-    do: gettext("Saved the mail settings, which sent a test link")
+    do: gettext("Saved the mail settings and started a test send")
 
   defp said(:"instance.mail_resend", %{"result" => "sent"}, _actor),
     do: gettext("Sent the test link again")

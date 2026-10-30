@@ -420,14 +420,13 @@ defmodule Apiary.MailSettingsTest do
       assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
       assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
 
+      # Written before the test send, the entry has no result.
       assert entry.details == %{
                "relay" => "smtp.example.com",
                "port" => 587,
                "tls" => "always",
                "username" => true,
-               "sender" => true,
-               "result" => "sent",
-               "reply_code" => nil
+               "sender" => true
              }
 
       kept = Jason.encode!([entry.before, entry.after, entry.details])
@@ -436,7 +435,7 @@ defmodule Apiary.MailSettingsTest do
       refute kept =~ "\"qory\""
 
       assert Describer.sentence(:"instance.mail_save", entry, %{}) ==
-               "Saved the mail settings, which sent a test link"
+               "Saved the mail settings and started a test send"
 
       # A refused save leaves none, and so does one within the minute, which saves nothing.
       assert {:error, _changeset} =
@@ -444,31 +443,28 @@ defmodule Apiary.MailSettingsTest do
 
       assert {:error, {:throttled, _at}} = Mail.save_settings(scope, @attrs, &url/1)
       assert [_one] = entries("instance.mail_save")
+    end
 
-      # Saved, and the test link refused: the entry is kept, with the result and the reply
-      # code alone, and says the relay did not accept the link.
+    test "a save whose test link the relay refused keeps its entry, which is never changed",
+         %{scope: scope} do
       put_env(Mail, smtp_adapter: Refusing)
-      unthrottle!()
 
       {{:ok, _settings, %{result: :rejected}}, _log} =
         with_log(fn -> Mail.save_settings(scope, @attrs, &url/1) end)
 
-      assert [refused] =
-               Enum.filter(entries("instance.mail_save"), &(&1.details["result"] == "rejected"))
+      assert [entry] = entries("instance.mail_save")
+      refute Map.has_key?(entry.details, "result") or Map.has_key?(entry.details, "reply_code")
+      refute Jason.encode!(entry.details) =~ "550"
 
-      assert Map.take(refused.details, ["result", "reply_code"]) ==
-               %{"result" => "rejected", "reply_code" => "550"}
+      assert Describer.sentence(:"instance.mail_save", entry, %{}) ==
+               "Saved the mail settings and started a test send"
 
-      refute Jason.encode!(refused.details) =~ "refused"
-
-      assert Describer.sentence(:"instance.mail_save", refused, %{}) ==
-               "Saved the mail settings; the relay did not accept the test link"
-
-      # An entry written before results were kept has the line it had.
-      old = %{entry | details: Map.drop(entry.details, ["result", "reply_code"])}
-
-      assert Describer.sentence(:"instance.mail_save", old, %{}) ==
-               "Saved the mail settings, which sent a test link"
+      # The result is on the row alone; a later test send leaves the entry as it was.
+      assert {row().mail_test_result, row().mail_test_reply_code} == {:rejected, "550"}
+      put_env(Mail, smtp_adapter: Capture)
+      unthrottle!()
+      assert {:ok, %{result: :sent}} = Mail.resend_test_link(scope, &url/1)
+      assert Repo.get!(Apiary.Audit.Entry, entry.id) == entry
     end
 
     test "a saved password that cannot be read is asked for again, saying so", %{scope: scope} do

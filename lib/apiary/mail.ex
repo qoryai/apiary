@@ -373,8 +373,8 @@ defmodule Apiary.Mail do
   the change to every node's cache. It is an `instance.mail_save` entry in the trail of the
   instance's organisation, by the admin, about the organisation: the relay, the port, TLS,
   and whether a username and a sender are set, never the password, the username or the
-  sender's address; once the test link is sent, the entry has its result and reply code
-  too. The test send's result and reply code are kept in the row
+  sender's address. The entry is written before the test send and never changed: the
+  test send's result and reply code are kept in the row
   (`t:test_send/0`); a link the relay did not accept is ended.
 
   Returns `{:ok, settings, test_send}`, the settings saved whether the test link was sent
@@ -424,7 +424,7 @@ defmodule Apiary.Mail do
 
         token = new_test_link(user)
 
-        with {:ok, entry} <-
+        with {:ok, _entry} <-
                Audit.record(
                  Repo,
                  Scope.in_organisation(scope, organisation),
@@ -432,20 +432,15 @@ defmodule Apiary.Mail do
                  organisation,
                  %{details: saved_details(settings)}
                ),
-             do: {:ok, {settings, token, entry}}
+             do: {:ok, {settings, token}}
       end
     end)
     |> case do
-      {:ok, {settings, token, entry}} ->
+      {:ok, {settings, token}} ->
         Cache.changed()
         settings = %{settings | smtp_password: nil}
         test_send = send_test_link(settings, user, token, url_fun.(token))
-
-        {:ok, _entry} =
-          Repo.transact(fn ->
-            record_test_send(test_send)
-            add_test_result(entry, test_send)
-          end)
+        record_test_send(test_send)
 
         {:ok,
          %{
@@ -575,16 +570,6 @@ defmodule Apiary.Mail do
     {token, user_token} = UserToken.build_email_token(user, @token_context)
     Repo.insert!(user_token)
     token
-  end
-
-  # The save's entry, written before its test send, with the send's result and reply code
-  # added: the result alone, never the relay's text.
-  defp add_test_result(entry, %{result: result, reply_code: reply_code}) do
-    entry
-    |> Ecto.Changeset.change(
-      details: Map.merge(entry.details, %{result: result, reply_code: reply_code})
-    )
-    |> Repo.update()
   end
 
   # Keeps a test send's result in the row, unless a later test send has started since.

@@ -14208,12 +14208,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Saved the mail settings, which sent a test link"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Saved the mail settings; the relay did not accept the test link"
+msgid "Saved the mail settings and started a test send"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
