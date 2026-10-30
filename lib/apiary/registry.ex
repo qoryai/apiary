@@ -77,6 +77,29 @@ defmodule Apiary.Registry do
   end
 
   @doc false
+  # configured?/0 is whether the instance has a registry its prebuilds push to: the
+  # feature on, `QORY_REGISTRY` set to an address an image name can start with, and the
+  # instance's registry name made (`Apiary.InstanceConfig.registry_instance/0`). An image
+  # name starts with a host that has a dot or a port, or is `localhost`: Docker reads a
+  # first part without either as a path on Docker Hub. Without a registry, no prebuild is
+  # queued or claimed (`Apiary.Environments`, `Apiary.Dispatches`).
+  @spec configured?() :: boolean
+  def configured? do
+    Features.on?(:registry) and image_host?(Application.get_env(:apiary, :registry_setting)) and
+      Apiary.Registry.Names.instance?(Apiary.InstanceConfig.registry_instance())
+  end
+
+  defp image_host?(setting) do
+    case parse(setting) do
+      {:ok, %{service: service, host: host}} ->
+        String.contains?(service, [".", ":"]) or host == "localhost"
+
+      _unset_or_invalid ->
+        false
+    end
+  end
+
+  @doc false
   # service/0 is `QORY_REGISTRY` as set: the token's `aud`, and the `service` a token
   # request must have.
   @spec service() :: String.t()

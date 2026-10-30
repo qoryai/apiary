@@ -27,6 +27,8 @@ defmodule Apiary.Dispatches.RunEndTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
+    # A claim takes a prebuild only of a workspace that serves a run configuration.
+    Apiary.DispatchedRunsFixtures.served!(scope)
     pool = pool_fixture(scope)
     %{access_key: key} = enrolled_key_fixture(scope, pool)
     %{scope: scope, pool: pool, key: key}
@@ -774,10 +776,18 @@ defmodule Apiary.Dispatches.RunEndTest do
       held = [held!(ctx)]
       document = ~s({"version":1,"security_policy":{"version":1,"image":"with-docker"}})
 
+      # The version after the one the workspace serves since its setup (`served!/1`).
+      version =
+        Repo.one(
+          from c in Apiary.Policy.RunConfiguration,
+            where: c.workspace_id == ^ctx.scope.workspace.id,
+            select: max(c.version)
+        )
+
       Repo.insert!(%Apiary.Policy.RunConfiguration{
         organisation_id: ctx.scope.organisation.id,
         workspace_id: ctx.scope.workspace.id,
-        version: 1,
+        version: version + 1,
         document: document,
         digest: Apiary.Policy.Render.digest(document),
         rendered_at: DateTime.utc_now()

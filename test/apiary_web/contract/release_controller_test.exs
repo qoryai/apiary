@@ -57,6 +57,8 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
     # The clock's time as the test begins, which `now_time/0` counts down from.
     Process.put(:now_time, {SignedRequest.now(), 0})
     %{scope: scope} = sign_up_fixture()
+    # A claim takes a prebuild only of a workspace that serves a run configuration.
+    Apiary.DispatchedRunsFixtures.served!(scope)
     Map.put(handover_place_fixture(scope), :scope, scope)
   end
 

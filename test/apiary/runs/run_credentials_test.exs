@@ -43,6 +43,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
   # `secrets_not_allowed` under a key that is not (the last describe).
   setup do
     %{scope: scope} = sign_up_fixture()
+    # A claim takes a prebuild only of a workspace that serves a run configuration.
+    Apiary.DispatchedRunsFixtures.served!(scope)
     Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 

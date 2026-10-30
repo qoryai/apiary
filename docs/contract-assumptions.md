@@ -405,8 +405,18 @@ the registered run (`runs.run_documents`); every redemption of the run code answ
 claim measures the rest of the 201 with a run key of the run's grant and the server's
 keys, keeps 1,024 bytes free for a second server key, and gives the documents the rest;
 an explore run's input leaves out its oldest comments to fit, and a claim whose documents
-cannot fit is `503` `unavailable`. A prebuild's documents have no `image_destination`:
-Qory Apiary keeps no registry destination for an image. The registered run
+cannot fit is `503` `unavailable`. A prebuild's documents have its destinations in the
+instance's registry: `image_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/targets/<target>`,
+and `environment_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`,
+or, where an environment record of the organisation has an image under that name,
+`environment_image`, that image by its digest (`Apiary.Registry.RunAccess`). They are the
+names the run's registry tokens grant. A claim takes a prebuild only on an instance with
+the `registry` feature on and `QORY_REGISTRY` set; on any other instance no prebuild is
+queued, no run waits for one, and an explore run starts in its pool's default image. A
+claim also takes a prebuild only of a workspace that serves a run configuration: without
+one, the prebuild's documents would have no `security_policy`, and the machine's local
+policy would apply to it. The prebuild waits until the workspace serves one. The
+registered run
 has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
 `.` and the fingerprint of the instance's key, which the machine redeems once at
 enrolment for the run key, within 15 minutes of the claim (Enrolment). The registered
@@ -544,7 +554,12 @@ any other run is kept with the run's other events, and records nothing; so does 
 whose `image` is not a lower-case name of at most 255 characters with `@sha256:` and 64
 lower-case hexadecimal digits, whose `size` is not an integer from 1 to 2^53 - 1, whose
 `commit` is not 40 or 64 lower-case hexadecimal characters, or whose `environment_ref`
-is not 1 to 200 characters or contains U+0000. Of two such events of one run, the lower
+is not 1 to 200 characters or contains U+0000, or whose `environment_image` breaks the
+rule of `image`. So does an event whose `image` is not at the run's `image_destination`:
+its name before `@sha256:` must be exactly the `image_destination` of the documents the
+registered run keeps; and one whose `environment_image` is not at exactly its
+`environment_destination`, or is not exactly its `environment_image`. Such an event is
+logged as a warning with the run's public id. Of two such events of one run, the lower
 sequence counts, and only the projection that folds it stores it: a later projection of
 the run, and a rebuild of its projection, store nothing. A build whose prebuild took its
 `environment_ref` before the prebuild that made the record's image took its, and the

@@ -30,6 +30,8 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
+    # A claim takes a prebuild only of a workspace that serves a run configuration.
+    Apiary.DispatchedRunsFixtures.served!(scope)
     Map.put(handover_place_fixture(scope), :scope, scope)
   end
 
