@@ -2144,7 +2144,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # the set-up's Test run step shows (`ApiaryWeb.WorkspaceSetupLive`).
   def passed_line(%{node: %{name: name} = pool}) do
     if instance_node?(pool),
-      do: gettext("Test run passed: the agent answered on a machine of the instance's pool."),
+      do: gettext("Test run passed: the agent answered on a machine of the Qory Pool."),
       else: gettext("Test run passed: the agent answered on a machine of %{pool}.", pool: name)
   end
 

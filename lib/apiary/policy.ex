@@ -162,6 +162,29 @@ defmodule Apiary.Policy do
   end
 
   @doc """
+  The run configuration rendered for the workspace `workspace_id` with no change made:
+  the mode `observe`, no rule of the workspace or of a target, and the hosts the
+  integrations reaching the workspace and the level above require, as every holder's
+  document is rendered. Stored nowhere: a prebuild of a workspace that serves no run
+  configuration is given it (`Apiary.Runs.Registration`). `{:ok, bytes}`, or
+  `{:error, error}` where the render refuses, as the first change would.
+  """
+  @spec default_document(Ecto.UUID.t()) :: {:ok, binary} | {:error, Error.t()}
+  def default_document(workspace_id) when is_binary(workspace_id) do
+    %Workspace{} = stored = Repo.get!(Workspace, workspace_id)
+    workspace = %{stored | egress_mode: "observe"}
+
+    document(
+      workspace,
+      nil,
+      nil,
+      [],
+      [],
+      {above(workspace), Connections.egress_hosts(workspace)}
+    )
+  end
+
+  @doc """
   What the sidebar shows of the policy, in one query: whether the workspace's policy is
   managed (`managed?/1`), the workspace's mode, the modes the workspace's targets set
   for themselves, one per target that has one, in no particular order, and `floor`,
@@ -414,8 +437,9 @@ defmodule Apiary.Policy do
   with `integrations: true` has them.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
-  # The pages read the policy here, and show no integration's host until the pages'
-  # words for those hosts are reviewed: this clause leaves them out until then.
+  # The pages read the policy here, so its rule lists show no integration's host. The
+  # Policy page lists those hosts apart, as "Allowed for every run"
+  # (`Apiary.Policy.RequiredHosts`).
   def effective(%Scope{} = scope, holder), do: effective(scope, holder, integrations: false)
 
   @doc """
@@ -980,6 +1004,15 @@ defmodule Apiary.Policy do
   @spec policy_digests(Scope.t(), [String.t() | nil]) :: %{String.t() => String.t()}
   def policy_digests(%Scope{workspace: %Workspace{id: workspace_id}}, digests),
     do: ComposedConfiguration.policy_digests(workspace_id, digests)
+
+  @doc """
+  Whether `digest`, as a run reported it, is of the default policy a prebuild of the
+  scope's workspace was given while the workspace served no run configuration
+  (`Apiary.Policy.ComposedConfiguration.default_policy?/2`). False for nil.
+  """
+  @spec default_policy_digest?(Scope.t(), String.t() | nil) :: boolean
+  def default_policy_digest?(%Scope{workspace: %Workspace{id: workspace_id}}, digest),
+    do: ComposedConfiguration.default_policy?(workspace_id, digest)
 
   ## Bulk reads, for a page that lists
 

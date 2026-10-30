@@ -17,7 +17,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
-  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2, registry_image: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
@@ -66,7 +66,15 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
     )
   end
 
+  # A record of the pool and the collection; `@image` stands for the organisation's image
+  # at its place in the registry (`own/1`), the only image a run is given.
   defp record!(scope, pool, collection, attrs) do
+    attrs =
+      Map.update(Map.new(attrs), :image, nil, fn
+        @image -> own(scope)
+        image -> image
+      end)
+
     Repo.insert!(
       struct(
         Record,
@@ -82,6 +90,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       )
     )
   end
+
+  # The organisation's image of the target with `@digest`, under its place in the registry.
+  defp own(scope), do: registry_image(scope.organisation.id, @digest)
 
   defp built(at, attrs \\ []) do
     Map.merge(
@@ -195,6 +206,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#{pool_id(pool)}-running")
     end
 
+    # A claim takes a prebuild only on an instance with a registry.
+    @tag needs: [:factory, :registry]
     test "a build running", %{conn: conn, scope: scope, path: path} do
       pool = pool_fixture(scope)
       shop = collection(scope)
@@ -211,6 +224,22 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#{pool_id(pool)}-waiting")
     end
 
+    @tag needs: [:factory, :registry]
+    test "an image stored outside the organisation's place in the registry: the pool's default image, no image or built time",
+         %{conn: conn, scope: scope, path: path} do
+      pool = pool_fixture(scope, name: "mac-pool")
+      shop = collection(scope)
+      foreign = "registry.other.example/acme/shop-env@sha256:" <> @digest
+      record!(scope, pool, shop, built(DateTime.utc_now(), image: foreign))
+      view = open(conn, path)
+
+      assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
+      refute has_element?(view, "#{pool_id(pool)}-image")
+      refute has_element?(view, "#{pool_id(pool)}-built")
+      refute has_element?(view, "#{pool_id(pool)}-held")
+      refute render(view) =~ "registry.other.example"
+    end
+
     test "the image: in mono, its digest shortened, the whole reference its title, when built, from its commit",
          %{conn: conn, scope: scope, path: path} do
       pool = pool_fixture(scope, name: "mac-pool")
@@ -218,11 +247,12 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       at = DateTime.utc_now()
       record!(scope, pool, shop, built(at))
       view = open(conn, path)
+      [name, _digest] = String.split(own(scope), "@sha256:")
 
       assert has_element?(
                view,
-               ~s(#{pool_id(pool)}-image.q-tgt-env-image[title="#{@image}"]),
-               "registry.example.com:5000/acme/shop-env@sha256:3a1b9c2d4e5f…"
+               ~s(#{pool_id(pool)}-image.q-tgt-env-image[title="#{own(scope)}"]),
+               name <> "@sha256:3a1b9c2d4e5f…"
              )
 
       refute text(view, "#{pool_id(pool)}-image") =~ @digest
@@ -428,6 +458,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#{pool_id(pool)}-commit")
     end
 
+    # A run is given only an image under its organisation's place in the registry.
+    @tag needs: [:factory, :registry]
     test "two collections whose records differ in built target: the image a run of the target starts in, never the newer build for another target",
          %{conn: conn, scope: scope, shop: shop, path: path} do
       pool = pool_fixture(scope)
@@ -435,8 +467,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
       earlier = DateTime.add(DateTime.utc_now(), -600, :second)
       later = DateTime.add(earlier, 300, :second)
+      image = registry_image(scope.organisation.id, @digest)
 
-      for_shop = record!(scope, pool, first, built(earlier))
+      for_shop = record!(scope, pool, first, built(earlier, image: image))
 
       record!(
         scope,
@@ -445,9 +478,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
         built(later, image: @other_image, built_target_path: "acme/old")
       )
 
-      assert Environments.image_for(pool, shop) == @image
+      assert Environments.image_for(pool, shop) == image
       view = open(conn, path)
-      assert has_element?(view, "#{pool_id(pool)}-image[title='#{@image}']")
+      assert has_element?(view, "#{pool_id(pool)}-image[title='#{image}']")
       refute has_element?(view, "#{pool_id(pool)}-held")
 
       for_shop |> Ecto.Changeset.change(built_target_path: "acme/old") |> Repo.update!()
@@ -462,6 +495,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
              )
     end
 
+    @tag needs: [:factory, :registry]
     test "a build of an environment_ref its collection no longer has serves no run, even when it is the newest build for the target",
          %{scope: scope, shop: shop} do
       pool = pool_fixture(scope)
@@ -469,11 +503,12 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
       now = DateTime.utc_now()
       earlier = DateTime.add(now, -600, :second)
+      image = registry_image(scope.organisation.id, @digest)
 
       stale = record!(scope, pool, first, built(now, image: @other_image, built_ref: "env-0"))
-      record!(scope, pool, second, built(earlier, built_ref: "env-2"))
+      record!(scope, pool, second, built(earlier, built_ref: "env-2", image: image))
 
-      assert Environments.image_for(pool, shop) == @image
+      assert Environments.image_for(pool, shop) == image
 
       Repo.delete_all(from r in Record, where: r.id != ^stale.id and r.pool_id == ^pool.id)
       assert Environments.image_for(pool, shop) == nil
@@ -513,6 +548,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#{pool_id(mac)}-policy")
     end
 
+    @tag needs: [:factory, :registry]
     test "the workspace's policy sets an image: a pool's failure, waiting and running lines stay",
          %{conn: conn, scope: scope, path: path} do
       mac = pool_fixture(scope, name: "mac-pool")

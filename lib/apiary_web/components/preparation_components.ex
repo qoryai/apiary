@@ -48,8 +48,9 @@ defmodule ApiaryWeb.PreparationComponents do
 
   @doc """
   The section. `machine_log` is what the caller read of the machine's log: `{:ok, text,
-  truncated}` for an instance admin, `:none` while no log has arrived, `:unreadable`
-  for one whose file cannot be read, and `:hidden` for anyone else.
+  truncated}` for an instance admin, `:none` while no log has arrived, `{:deleted, days}`
+  once a log that arrived can have been deleted (`days` is the machine logs' retention),
+  `:unreadable` for one whose file cannot be read, and `:hidden` for anyone else.
   """
   attr :id, :string, default: "prepare-machine"
   attr :preparation, :map, required: true
@@ -112,7 +113,12 @@ defmodule ApiaryWeb.PreparationComponents do
             duration_ms={step.duration_ms}
             sent
           >
-            <.output :if={step.output} id={"#{@id}-step-#{step.number}-output"} output={step.output} />
+            <.output
+              :if={step.output}
+              id={"#{@id}-step-#{step.number}-output"}
+              output={step.output}
+              pruned_at={@preparation.log_pruned_at}
+            />
             <.cause
               :if={@preparation.stopped && @preparation.stopped.step == step.number}
               id={"#{@id}-cause"}
@@ -201,6 +207,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
   attr :id, :string, required: true
   attr :output, :map, required: true
+  attr :pruned_at, :any, default: nil, doc: "when retention deleted the run's log lines"
 
   defp output(assigns) do
     ~H"""
@@ -209,7 +216,15 @@ defmodule ApiaryWeb.PreparationComponents do
         {gettext("The output is cut: this is its last 64 KiB.")}
       </p>
       <pre :if={@output.text != ""}>{ExternalText.lines(@output.text)}</pre>
-      <p :if={@output.text == ""} class="text-sm text-faint">{gettext("No output.")}</p>
+      <p :if={@output.text == "" and is_nil(@pruned_at)} class="text-sm text-faint">
+        {gettext("No output.")}
+      </p>
+      <p :if={@output.text == "" and @pruned_at} class="text-sm text-faint">
+        {gettext(
+          "This run's log output was pruned on %{date}, under the workspace's retention. The timeline and the connections are whole.",
+          date: Format.date(@pruned_at)
+        )}
+      </p>
     </div>
     """
   end
@@ -237,6 +252,21 @@ defmodule ApiaryWeb.PreparationComponents do
   defp machine_log(%{log: :none} = assigns) do
     ~H"""
     <p id={@id} class="text-sm text-faint">{gettext("No machine log has arrived.")}</p>
+    """
+  end
+
+  defp machine_log(%{log: {:deleted, days}} = assigns) do
+    assigns = assign(assigns, :days, days)
+
+    ~H"""
+    <p id={@id} class="text-sm text-faint">
+      {ngettext(
+        "Machine logs are kept for %{days} day. This machine has none.",
+        "Machine logs are kept for %{days} days. This machine has none.",
+        @days,
+        days: @days
+      )}
+    </p>
     """
   end
 

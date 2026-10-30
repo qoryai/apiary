@@ -7,7 +7,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
   """
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.Midnight
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
@@ -15,6 +17,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
   alias Apiary.Dispatches
   alias Apiary.Runs.Projector
+  alias ApiaryWeb.Format
 
   @moduletag needs: :factory
   @moduletag :tmp_dir
@@ -116,6 +119,39 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert lv |> element("#prepare-machine-step-1 #prepare-machine-cause") |> render() =~
                "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
                  "#{ctx.scope.workspace.name} reads the cause in the step&#39;s output."
+    end
+
+    test "a step whose output retention deleted shows when it was pruned", ctx do
+      zone = reader_at_noon(ctx.scope.user)
+      {:ok, workspace} = Apiary.Retention.update_retention(ctx.scope, %{log_retention_days: 7})
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(
+          run,
+          steps(true) ++
+            [
+              {5, "run.exited",
+               %{"state" => "failed", "exit_code" => 128, "duration_ms" => 7_000}}
+            ]
+        )
+
+      now = DateTime.add(DateTime.utc_now(), 10 * 86_400, :second)
+      assert %{runs_pruned: 1} = Apiary.Retention.prune_workspace(workspace, now: now)
+      lv = open(ctx.conn, ctx.scope, run)
+      date = Format.with_time_zone(zone, fn -> Format.date(DateTime.utc_now()) end)
+
+      output = lv |> element("#prepare-machine-step-1-output") |> render()
+      refute output =~ "No output."
+
+      assert output =~
+               "This run&#39;s log output was pruned on #{date}, under the workspace&#39;s " <>
+                 "retention. The timeline and the connections are whole."
+
+      assert lv |> element("#prepare-machine-cause") |> render() =~
+               "Fetch git.example.com/acme/shop failed with exit code 128. The step&#39;s " <>
+                 "output was deleted under the workspace&#39;s log retention, so the cause is " <>
+                 "no longer shown."
     end
 
     test "a released run: Machine started is open with who fixes it, the header the cause",
@@ -259,6 +295,30 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       :ok
     end
 
+    # The machine logs' retention, as `MACHINE_LOG_RETENTION_DAYS` sets it.
+    defp put_retention_days(days) do
+      before = Application.fetch_env(:apiary, :machine_log_retention_days)
+      Application.put_env(:apiary, :machine_log_retention_days, days)
+
+      on_exit(fn ->
+        case before do
+          {:ok, value} -> Application.put_env(:apiary, :machine_log_retention_days, value)
+          :error -> Application.delete_env(:apiary, :machine_log_retention_days)
+        end
+      end)
+    end
+
+    # The dispatch, claimed `hours` hours ago.
+    defp claimed!(dispatch, hours) do
+      at = DateTime.add(DateTime.utc_now(), -hours * 3_600, :second)
+
+      {1, _} =
+        Apiary.Repo.update_all(
+          from(d in Apiary.Dispatches.Dispatch, where: d.id == ^dispatch.id),
+          set: [claimed_at: at]
+        )
+    end
+
     setup :register_and_log_in_user
 
     test "Machine started shows the machine log", ctx do
@@ -286,6 +346,43 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       assert lv |> element("#prepare-machine-machine-log") |> render() =~
                "No machine log has arrived."
+    end
+
+    test "with no machine log, shows it may still arrive until the least retention passed",
+         ctx do
+      put_retention_days(14)
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+
+      claimed!(dispatch, 23)
+
+      log =
+        ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
+
+      assert log =~ "No machine log has arrived."
+
+      claimed!(dispatch, 25)
+
+      log =
+        ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
+
+      assert log =~ "Machine logs are kept for 14 days. This machine has none."
+      refute log =~ "No machine log has arrived."
+    end
+
+    # A prune under a 1-day setting deleted the log on day 2; the setting is 30 days on
+    # day 5.
+    test "with no machine log after the setting was raised, never shows it may arrive", ctx do
+      put_retention_days(30)
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      claimed!(dispatch, 5 * 24)
+
+      log =
+        ctx.conn |> open(ctx.scope, run) |> element("#prepare-machine-machine-log") |> render()
+
+      assert log =~ "Machine logs are kept for 30 days. This machine has none."
+      refute log =~ "No machine log has arrived."
     end
   end
 end

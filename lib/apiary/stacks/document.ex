@@ -444,6 +444,24 @@ defmodule Apiary.Stacks.Document do
     Regex.replace(~r/[^\S ]|[\x{00}-\x{1F}\x{7F}-\x{9F}]/u, shown, "\u{FFFD}")
   end
 
+  @doc false
+  # repository/1 is the repository path of a harness address, such as `acme/web-harness`
+  # for `https://code.example.com/acme/web-harness.git`; else the address as `shown/1`
+  # writes it, without `https://`. "" for a value that is no string.
+  @spec repository(term) :: String.t()
+  def repository(git) when is_binary(git) do
+    with %URI{host: host, path: "/" <> _ = path} when is_binary(host) and host != "" <-
+           URI.parse(git),
+         trimmed when trimmed != "" <-
+           path |> String.trim("/") |> String.replace_suffix(".git", "") do
+      trimmed
+    else
+      _other -> git |> shown() |> String.replace_prefix("https://", "")
+    end
+  end
+
+  def repository(_git), do: ""
+
   defp schema(section, definition \\ "harness_section") do
     case JSV.validate(section, root(definition), cast: false) do
       {:ok, _section} ->

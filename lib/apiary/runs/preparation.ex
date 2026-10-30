@@ -5,7 +5,7 @@ defmodule Apiary.Runs.Preparation do
   records Qory Apiary keeps for every run: the run's dispatch, its steps
   (`Apiary.Runs.Step`) with their log lines, and its first `dev.qory.session.started`.
 
-  `read/2` returns a map with four members:
+  `read/2` returns a map with five members:
 
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
       pool claimed. `requested_at` is the claim; `started` spans from the starter's
@@ -14,7 +14,9 @@ defmodule Apiary.Runs.Preparation do
     * `steps`: the run's steps by number, each with its output: the last 64 KiB of its
       log lines as plain text (`Apiary.Runs.Record.plain_lines/1`), and whether that is
       cut (`t:step/0`). The output is nil for a reader who may not read the run's log
-      (`run.read_log`).
+      (`run.read_log`), and empty once retention deleted the run's log lines.
+    * `log_pruned_at`: when retention deleted the run's log lines (`runs.log_pruned_at`),
+      nil while they are kept.
     * `session_started_at`: the time of the run's first `dev.qory.session.started`; nil
       before the session starts and once retention deleted the run's events.
     * `stopped`: why the preparation failed, nil while it has not (`t:stopped/0`).
@@ -113,6 +115,7 @@ defmodule Apiary.Runs.Preparation do
   @type t :: %{
           machine: machine | nil,
           steps: [step],
+          log_pruned_at: DateTime.t() | nil,
           session_started_at: DateTime.t() | nil,
           stopped: stopped | nil
         }
@@ -127,15 +130,17 @@ defmodule Apiary.Runs.Preparation do
   def read(%Scope{} = scope, %Run{} = run, opts \\ []) do
     attempt = attempt(scope, run)
     log? = Keyword.get_lazy(opts, :log, fn -> Access.can?(scope, :"run.read_log", run) end)
-    steps = for step <- Record.steps(scope, run), do: step(scope, run, step, log?)
+    kept? = is_nil(run.log_pruned_at)
+    steps = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
     session_started_at = Record.session_started_at(scope, run)
     machine = machine(run, attempt, steps, session_started_at)
 
     %{
       machine: machine,
       steps: steps,
+      log_pruned_at: run.log_pruned_at,
       session_started_at: session_started_at,
-      stopped: stopped(scope, attempt, machine, steps)
+      stopped: stopped(scope, run, attempt, machine, steps)
     }
   end
 
@@ -262,7 +267,9 @@ defmodule Apiary.Runs.Preparation do
 
   ## The steps
 
-  defp step(scope, run, %Step{} = step, log?) do
+  # A step's output is read while the run's log lines are kept (`kept?`), and is empty
+  # once retention deleted them.
+  defp step(scope, run, %Step{} = step, log?, kept?) do
     %{
       number: step.step,
       name: name(step.name),
@@ -272,7 +279,7 @@ defmodule Apiary.Runs.Preparation do
       started_at: step.started_at,
       exited_at: step.exited_at,
       duration_ms: step.duration_ms,
-      output: if(log?, do: output(scope, run, step.step))
+      output: if(log?, do: output(scope, run, step.step, kept?))
     }
   end
 
@@ -288,7 +295,9 @@ defmodule Apiary.Runs.Preparation do
 
   # The step's output as plain text, at most #{@output_bytes} bytes: the end of it when it
   # is longer, without the line the cut fell in, unless that line is all there is.
-  defp output(scope, run, number) do
+  defp output(_scope, _run, _number, false), do: %{text: "", truncated: false}
+
+  defp output(scope, run, number, true) do
     %{bytes: bytes, total: total} = Record.step_tail(scope, run, number, @output_bytes)
     cut? = total > byte_size(bytes)
     lines = Record.plain_lines(bytes)
@@ -312,13 +321,13 @@ defmodule Apiary.Runs.Preparation do
 
   ## Why it stopped
 
-  defp stopped(scope, %{failure: {cause, _at}}, machine, _steps) do
+  defp stopped(scope, _run, %{failure: {cause, _at}}, machine, _steps) do
     {fixer, who} = pool_fixer(scope, machine.pool)
     {what, fix} = machine_line(cause, machine, who, log_place(machine.pool))
     %{cause: cause, step: nil, fixer: fixer, text: what <> " " <> fix, fix: fix}
   end
 
-  defp stopped(scope, _attempt, machine, steps) do
+  defp stopped(scope, run, _attempt, machine, steps) do
     case Enum.find(steps, &(&1.state == "failed")) do
       nil ->
         nil
@@ -329,7 +338,7 @@ defmodule Apiary.Runs.Preparation do
             do: pool_fixer(scope, machine && machine.pool),
             else: workspace_fixer(scope)
 
-        {what, fix} = step_line(step, who)
+        {what, fix} = step_line(step, who, run.log_pruned_at)
 
         %{
           cause: :step_failed,
@@ -369,16 +378,26 @@ defmodule Apiary.Runs.Preparation do
   defp reads_why(who, place),
     do: gettext("%{who} reads why in %{place}.", who: who, place: place)
 
-  defp step_line(%{exit_code: code} = step, who) when is_integer(code) do
+  # An exit code of -1 is no exit status (the Forager contract's `dev.qory.run.step_exited`),
+  # so the line shows none.
+  defp step_line(%{exit_code: code} = step, who, pruned_at)
+       when is_integer(code) and code != -1 do
     {gettext("%{step} failed with exit code %{code}.", step: step_name(step), code: code),
-     reads_cause(who)}
+     reads_cause(who, pruned_at)}
   end
 
-  defp step_line(step, who),
-    do: {gettext("%{step} failed.", step: step_name(step)), reads_cause(who)}
+  defp step_line(step, who, pruned_at),
+    do: {gettext("%{step} failed.", step: step_name(step)), reads_cause(who, pruned_at)}
 
-  defp reads_cause(who),
+  # Once retention deleted the run's log lines, the step's output is gone.
+  defp reads_cause(who, nil),
     do: gettext("%{who} reads the cause in the step's output.", who: who)
+
+  defp reads_cause(_who, _pruned_at) do
+    gettext(
+      "The step's output was deleted under the workspace's log retention, so the cause is no longer shown."
+    )
+  end
 
   @doc """
   What the run page calls a step: its name (`t:step/0`), or "Step" and its number when

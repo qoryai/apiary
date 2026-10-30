@@ -464,6 +464,8 @@ on to the new paths with their query, moved permanently (`ApiaryWeb.MovedControl
 connection as a thing keeps its word: a row is a destination and the connections made to
 it. The Policy page's hosts and paths are its Network access section, which links to the
 page ("See what the runs reached"); the page's rule links lead to the rule there.
+Network access also lists the harness fetches in a separate locked table
+(`ApiaryWeb.HostComponents`), outside its counts, views, facets and rule options.
 
 A target is filtered by the id Qory Apiary gives it, never by its system or its path:
 `?target=tg_…`, several ids joined by commas for the runs of any of them, and
@@ -1640,12 +1642,20 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
   duration, and opens on a click: a step to its output, the last 64 KiB as plain text,
-  for a reader who may read the run's log (`run.read_log`); Machine started to the
+  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
+  sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
-  for anyone else. A failed row is open, with one cause line under its output that says
-  the cause, then who fixes it; under Machine started only who fixes it, as the header
-  says the cause. The section's duration runs from its first row to the
-  session's start, or to the failed row's end.
+  for anyone else. With no machine log recorded, an instance admin reads "No machine log
+  has arrived." until a day has passed since the claim (the least the machine logs'
+  retention can be set to, under which a prune can have deleted the log), and then
+  "Machine logs are kept for 30 days. This machine has none.", with the retention's
+  days in force. A step that exits with code -1 has no exit status, and its line
+  shows no code. A failed row is open, with one cause line under its output that shows
+  the cause, then who fixes it; once retention deleted the run's log lines, "The step's
+  output was deleted under the workspace's log retention, so the cause is no longer
+  shown." in place of who fixes it. Under Machine started the line shows only who fixes
+  it, as the header shows the cause. The section's duration runs from its first row to
+  the session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

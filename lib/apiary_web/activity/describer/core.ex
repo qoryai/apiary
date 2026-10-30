@@ -39,6 +39,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
   def label(:"account.password_link"), do: gettext("Password link made")
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
+  def label(:"instance.mail_resend"), do: gettext("Mail test link sent again")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
   def label(:"instance.rename"), do: gettext("Instance renamed")
   def label(:"instance.configure"), do: gettext("Configuration changed")
@@ -411,8 +412,15 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"account.password_link", _details, _actor),
     do: gettext("Made a password link for a person")
 
+  # A save's entry is written before its test send, so it has no result.
   defp said(:"instance.mail_save", _details, _actor),
-    do: gettext("Saved the mail settings, which sent a test link")
+    do: gettext("Saved the mail settings and started a test send")
+
+  defp said(:"instance.mail_resend", %{"result" => "sent"}, _actor),
+    do: gettext("Sent the test link again")
+
+  defp said(:"instance.mail_resend", _details, _actor),
+    do: gettext("Tried to send the test link again; the relay did not accept it")
 
   defp said(:"instance.mail_on", _details, _actor),
     do: gettext("Turned mail on, by the test link")

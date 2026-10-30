@@ -12,8 +12,10 @@ defmodule Apiary.Environments.RetiredImageMigrationTest do
   # older migration ran after a newer one. The log is kept from the output and shown
   # only when a test fails.
   @moduletag :capture_log
-  @moduletag needs: :factory
+  # A run is given only an image under its organisation's place in the registry.
+  @moduletag needs: [:factory, :registry]
 
+  import Apiary.DispatchedRunsFixtures, only: [registry_image: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -27,7 +29,7 @@ defmodule Apiary.Environments.RetiredImageMigrationTest do
   @validate {20_261_023_090_100, Apiary.Repo.Migrations.ValidateTheHeldRunChecks,
              "validate_the_held_run_checks"}
 
-  @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
+  defp image(ctx), do: registry_image(ctx.scope.organisation.id, String.duplicate("3b9d", 16))
 
   setup_all do
     for {version, migration, name} <- [@forget, @hold, @validate],
@@ -72,7 +74,7 @@ defmodule Apiary.Environments.RetiredImageMigrationTest do
         Ecto.UUID.dump!(ctx.scope.workspace.id),
         Ecto.UUID.dump!(ctx.pool.id),
         Ecto.UUID.dump!(collection.id),
-        @image,
+        image(ctx),
         collection.target_system,
         collection.target_path,
         if(retired?, do: DateTime.utc_now())
@@ -114,12 +116,14 @@ defmodule Apiary.Environments.RetiredImageMigrationTest do
              failed_at: %DateTime{}
            } = Repo.get!(Record, retired_id)
 
-    assert %Record{image: @image, reported_ref: "env-1", built_ref: "env-1"} =
+    image = image(ctx)
+
+    assert %Record{image: ^image, reported_ref: "env-1", built_ref: "env-1"} =
              Repo.get!(Record, kept_id)
 
     # Both collections have `env-1`: only the record that was not retired serves a run.
     assert Environments.image_for(ctx.pool, target(retired)) == nil
-    assert Environments.image_for(ctx.pool, target(kept)) == @image
+    assert Environments.image_for(ctx.pool, target(kept)) == image(ctx)
   end
 
   test "once the held-run migration has run, up changes nothing", ctx do
@@ -131,7 +135,7 @@ defmodule Apiary.Environments.RetiredImageMigrationTest do
         workspace_id: ctx.scope.workspace.id,
         pool_id: ctx.pool.id,
         source_collection_id: collection.id,
-        image: @image,
+        image: image(ctx),
         size: 734_003_200,
         commit: "9c1e4a7b",
         built_at: DateTime.utc_now(),
@@ -145,6 +149,6 @@ defmodule Apiary.Environments.RetiredImageMigrationTest do
     up!(@forget)
 
     assert Repo.get!(Record, record.id) == record
-    assert Environments.image_for(ctx.pool, target(collection)) == @image
+    assert Environments.image_for(ctx.pool, target(collection)) == image(ctx)
   end
 end

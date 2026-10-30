@@ -44,6 +44,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   alias Apiary.Access
   alias Apiary.Dispatches
+  alias Apiary.Dispatches.MachineLogs
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -308,6 +309,7 @@ defmodule ApiaryWeb.RunLive.Show do
           quiet={@quiet_for != nil}
           tips={@tips}
           version={@reported_version}
+          default_policy={@default_policy}
           in_force={@in_force}
           digests={@digests}
           security={@security}
@@ -842,6 +844,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :quiet, :boolean, required: true
   attr :tips, :map, required: true
   attr :version, :any, default: nil
+  attr :default_policy, :boolean, default: false
   attr :in_force, :any, default: nil
   attr :digests, :map, required: true
   attr :security, :boolean, required: true
@@ -977,6 +980,7 @@ defmodule ApiaryWeb.RunLive.Show do
               tips={@tips}
               version={@version}
               reported={@digests.reported || @digests.applied}
+              default_policy={@default_policy}
               in_force={@in_force}
               last_seq={@run.projected_sequence}
             />
@@ -1235,6 +1239,11 @@ defmodule ApiaryWeb.RunLive.Show do
     doc: "the version the reported digest names here, when one does"
 
   attr :reported, :string, default: nil, doc: "the run configuration digest the run reported"
+
+  attr :default_policy, :boolean,
+    default: false,
+    doc: "whether the reported digest is of the default policy a prebuild was given"
+
   attr :in_force, :any, default: nil, doc: "the version in force, only while the run is behind"
   attr :last_seq, :integer, default: nil
 
@@ -1272,7 +1281,11 @@ defmodule ApiaryWeb.RunLive.Show do
           {short_digest(@version.digest)}
         </small>
       <% @reported -> %>
-        <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
+        <span
+          id="policy-unrendered"
+          tabindex="0"
+          title={if @default_policy, do: @tips.default_policy, else: @tips.unrendered}
+        >
           <small class="ml-1 font-mono">{short_digest(shown_sent(@reported))}</small>
           <small class="block">{gettext("Not a version made in this workspace")}</small>
         </span>
@@ -1328,7 +1341,11 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       unrendered:
         gettext(
-          "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
+          "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
+        ),
+      default_policy:
+        gettext(
+          "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
         )
     }
   end
@@ -1370,6 +1387,7 @@ defmodule ApiaryWeb.RunLive.Show do
        target: nil,
        digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
        reported_version: nil,
+       default_policy: false,
        in_force: nil,
        versions: %{},
        effective: nil,
@@ -1762,9 +1780,10 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # A pool's run starts on its pool: the Run started item shows the pool's name in place
-  # of the host its `run.started` reported (`place_of/1`).
+  # of the host its `run.started` reported (`place_of/1`), "the Qory Pool" for the
+  # instance's pool (`ApiaryWeb.NodeComponents.in_text/2`).
   defp with_pool(items, %Run{dispatch_run_id: id} = run) when is_binary(id) do
-    pool = with {:pool, name} <- place_of(run), do: name
+    pool = with {:pool, _name} <- place_of(run), do: ApiaryWeb.NodeComponents.in_text(run.node)
 
     Enum.map(items, fn
       %{kind: :run_started} = item -> Map.put(item, :host, pool)
@@ -2409,6 +2428,9 @@ defmodule ApiaryWeb.RunLive.Show do
     assign(socket,
       digests: digests,
       reported_version: reported,
+      default_policy:
+        is_nil(reported) and
+          Policy.default_policy_digest?(scope, digests.reported || digests.applied),
       in_force: in_force,
       versions: known
     )
@@ -2857,16 +2879,28 @@ defmodule ApiaryWeb.RunLive.Show do
   defp machine_log(_scope, _preparation, {:ok, _text, _truncated} = read), do: read
   defp machine_log(_scope, %{machine: nil}, _read), do: :hidden
 
-  defp machine_log(scope, %{machine: %{dispatch_id: dispatch_id}}, _read) do
+  defp machine_log(scope, %{machine: %{dispatch_id: dispatch_id} = machine}, _read) do
     if Access.instance_admin?(scope) do
       case Dispatches.machine_log(scope, dispatch_id) do
         {:ok, %{text: text, truncated: truncated}} -> {:ok, text, truncated}
         {:error, :unreadable} -> :unreadable
-        {:error, _none} -> :none
+        {:error, _none} -> no_machine_log(machine)
       end
     else
       :hidden
     end
+  end
+
+  # No machine log is recorded: none has arrived, or one did and the machine logs'
+  # retention deleted it. A prune deletes under the setting in force when it runs, which
+  # can be lower than today's, so a log can be gone once the setting's least days have
+  # passed since the claim. The line shows today's setting.
+  defp no_machine_log(%{requested_at: requested_at}) do
+    least = MachineLogs.retention_min_days()
+
+    if DateTime.compare(DateTime.add(requested_at, least, :day), DateTime.utc_now()) == :lt,
+      do: {:deleted, MachineLogs.retention_days()},
+      else: :none
   end
 
   # A reload arrived: the lines after the rows say at which sequence the run reloaded,

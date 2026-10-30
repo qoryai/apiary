@@ -177,7 +177,7 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
   test "an event the page has no control for leaves the page up, and no password in a log line",
        %{conn: conn} do
     Process.flag(:trap_exit, true)
-    events = ["validate", "change", "no_such_event", "", "SAVE", "save "]
+    events = ["validate", "change", "no_such_event", "", "SAVE", "save ", "RESEND", "resend "]
 
     {downs, log} = with_log([level: :error], fn -> sweep(conn, events, payloads()) end)
 
@@ -185,10 +185,24 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
     assert downs == []
   end
 
+  # Send the test link again: the form reads none of its payload. With nothing saved, it
+  # sends nothing.
+  test "a resend with any payload leaves the page up, sends nothing, and no password in a log line",
+       %{conn: conn} do
+    Process.flag(:trap_exit, true)
+
+    {downs, log} =
+      with_log([level: :error], fn -> sweep(conn, ["resend"], Enum.take(payloads(), 40)) end)
+
+    refute log =~ @marker
+    assert downs == []
+    refute_received {:email, %{subject: "Turn on mail for Qory Apiary"}}
+  end
+
   test "an event sent to the page, not its form, leaves the page up, and no password in a log line",
        %{conn: conn} do
     Process.flag(:trap_exit, true)
-    events = ["save", "validate", "no_such_event"]
+    events = ["save", "resend", "validate", "no_such_event"]
 
     {downs, log} =
       with_log([level: :error], fn -> sweep(conn, events, Enum.take(payloads(), 12), :page) end)

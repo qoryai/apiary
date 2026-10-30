@@ -51,6 +51,16 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
     end)
   end
 
+  # The ids of the Nodes page's rows of nodes, in their order.
+  defp row_ids(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#nodes [id]")
+    |> LazyHTML.attribute("id")
+    |> Enum.filter(&Regex.match?(~r/\Anode-n[a-z]_[0-9a-z]+\z/, &1))
+  end
+
   defp words(lv, selector) do
     lv
     |> element(selector)
@@ -74,7 +84,13 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
          %{conn: conn, pool: pool, gateway: gateway} do
       {:ok, lv, html} = live(conn, ~p"/instance/nodes")
 
-      assert html =~ "The node pool and the gateway that run with this instance."
+      assert html =~
+               "The Qory Pool and the Qory Gateway that run with this instance. Qory Apiary " <>
+                 "makes them and writes their one-time codes. The Qory Pool takes the runs of " <>
+                 "every workspace that has no pool. The Qory Gateway serves every organisation."
+
+      assert words(lv, "#instance-node-#{pool.public_id}-name") == "Qory Pool"
+      assert words(lv, "#instance-node-#{gateway.public_id}-name") == "Qory Gateway"
       assert has_element?(lv, "#instance-node-#{pool.public_id}-kind", "Node pool")
       assert has_element?(lv, "#instance-node-#{gateway.public_id}-kind", "Gateway")
       assert has_element?(lv, "#instance-node-#{pool.public_id}-state", "Never seen")
@@ -111,6 +127,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       assert has_element?(lv, "#node-running", "i_b")
       assert has_element?(lv, "#node-about-limit", "10")
       refute has_element?(lv, "#node-running a")
+      assert words(lv, "#settings-section-title") == "Qory Pool"
     end
 
     test "the gateway's Overview has its URL", %{conn: conn, gateway: gateway} do
@@ -118,6 +135,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       assert has_element?(lv, "#node-about-url", "https://gateway.example")
       refute has_element?(lv, "#node-instances")
+      assert words(lv, "#settings-section-title") == "Qory Gateway"
     end
 
     test "another node is a path that does not exist", %{conn: conn, admin: admin} do
@@ -139,7 +157,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       assert html =~ "Qory Apiary writes this node&#39;s one-time code to its folder."
       assert html =~ "When you revoke the key, Qory Apiary writes a new code"
       refute html =~ "This instance has no setting for this node"
-      assert words(lv, "#key-#{key.key_id}-secret") == "Stays on shared-pool; it is never shown"
+      assert words(lv, "#key-#{key.key_id}-secret") == "Stays on the Qory Pool; it is never shown"
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
       refute html =~ "command"
 
@@ -189,7 +207,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       lv |> form("#node-form", node: %{instance_limit: "4"}) |> render_submit()
       assert Repo.reload!(pool).instance_limit == 4
-      assert render(lv) =~ "shared-pool is saved."
+      assert render(lv) =~ "The Qory Pool is saved."
 
       assert [%Entry{actor_kind: :person, actor_id: actor_id} = entry] =
                Repo.all(
@@ -219,11 +237,16 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       {:ok, lv, _html} =
         live(log_in_user(build_conn(), user), ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
 
-      assert has_element?(
-               lv,
-               "#node-#{pool.public_id}-level",
-               "Instance pool: takes this workspace's runs while it has no node pool in use."
-             )
+      assert words(lv, "#node-#{pool.public_id}-level") ==
+               "The instance provides the Qory Pool to every workspace that has no pool. " <>
+                 "It belongs to no workspace or organisation."
+
+      assert words(lv, "#node-#{gateway.public_id}-level") ==
+               "The instance provides the Qory Gateway to every organisation. " <>
+                 "It belongs to no workspace or organisation."
+
+      assert words(lv, "#node-#{pool.public_id}-name") == "Qory Pool"
+      assert words(lv, "#node-#{gateway.public_id}-name") == "Qory Gateway"
 
       assert has_element?(lv, "#node-#{pool.public_id}-state", "1 running")
       assert has_element?(lv, "#nodes", "i_ours")
@@ -241,6 +264,8 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
                lv,
                ~s|#node-#{pool.public_id}-link[href="/instance/nodes/#{pool.public_id}"]|
              )
+
+      assert words(lv, "#node-#{pool.public_id}-link") == "Qory Pool"
     end
 
     test "has no instance pool while the workspace has a pool in use",
@@ -277,6 +302,33 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       {:ok, lv, _html} = live(conn, nodes <> "?q=shared-gate")
       assert has_element?(lv, "#node-#{gateway.public_id}")
       refute has_element?(lv, "#node-#{pool.public_id}")
+
+      {:ok, lv, _html} = live(conn, nodes <> "?q=qory")
+      assert has_element?(lv, "#node-#{gateway.public_id}")
+      assert has_element?(lv, "#node-#{pool.public_id}")
+      refute has_element?(lv, "#node-#{ours.public_id}")
+
+      {:ok, lv, _html} = live(conn, nodes <> "?q=Qory+Pool")
+      assert has_element?(lv, "#node-#{pool.public_id}")
+      refute has_element?(lv, "#node-#{gateway.public_id}")
+    end
+
+    test "sorts the instance's nodes by the names it shows, Qory Gateway and Qory Pool",
+         %{pool: pool, gateway: gateway} do
+      %{scope: scope, user: user} = sign_up_fixture()
+      ours = node_fixture(scope, %{name: "Quarry"})
+      conn = log_in_user(build_conn(), user)
+      nodes = ~p"/#{scope.organisation}/#{scope.workspace}/nodes"
+
+      for path <- [nodes, nodes <> "?sort=seen"] do
+        {:ok, lv, _html} = live(conn, path)
+
+        assert row_ids(lv) == [
+                 "node-#{gateway.public_id}",
+                 "node-#{pool.public_id}",
+                 "node-#{ours.public_id}"
+               ]
+      end
     end
   end
 
@@ -296,7 +348,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
         {:ok, _lv, html} = live(conn, path)
 
         assert html =~
-                 "On Default gateway, runs go through shared-gateway, the default for this instance."
+                 "On Default gateway, runs go through the Qory Gateway, the default for this instance."
       end
     end
 
@@ -307,20 +359,60 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       assert has_element?(lv, ~s|optgroup[label="This workspace"] option[value="#{ours.id}"]|)
       assert has_element?(lv, ~s|optgroup[label="This instance"] option[value="#{gateway.id}"]|)
+
+      assert words(lv, ~s|optgroup[label="This instance"] option[value="#{gateway.id}"]|) ==
+               "Qory Gateway"
     end
 
-    test "the node's Overview, Settings and Access key tabs name the gateway of this instance",
+    test "the command, its Forager file and Configure a machine say the Qory Gateway",
+         %{scope: scope, member: conn, node: node} do
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}"
+      {:ok, lv, _html} = live(conn, base <> "/access-key")
+      lv |> element("#code-new-button") |> render_click()
+
+      assert words(lv, "#code-issued-header-description") ==
+               "The command connects #{node.name} by itself, through the Qory Gateway: it " <>
+                 "makes the machine's key there, saves it, and writes Qory Apiary's address " <>
+                 "and public key and the gateway's address into the Forager file. The secret " <>
+                 "never leaves the machine."
+
+      assert words(lv, "#code-issued-via-ca") ==
+               "If the Qory Gateway's certificate is signed by a private certificate " <>
+                 "authority, add --via-ca-file and that authority's PEM file."
+
+      %{access_key: key} = enrolled_key_fixture(scope, node, %{label: "current"})
+      {:ok, lv, _html} = live(conn, base <> "/access-key/keys/#{key.key_id}/forager-file")
+      assert render(lv) =~ "# the Qory Gateway"
+      refute render(lv) =~ "# the gateway"
+
+      {:ok, lv, _html} = live(conn, base <> "/access-key")
+
+      assert words(lv, "#node-configure-steps-1") =~
+               "Point the node at Qory Apiary, through the Qory Gateway."
+
+      assert words(lv, "#node-configure-steps-1") =~
+               "via sends every request to Qory Apiary through the Qory Gateway."
+    end
+
+    test "the node's Overview, Settings and Access key tabs name the Qory Gateway",
          %{scope: scope, member: conn, node: node} do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}"
 
       {:ok, _lv, html} = live(conn, base)
-      assert html =~ "shared-gateway of this instance"
+      assert html =~ "Qory Gateway"
+      refute html =~ "of this instance"
 
       {:ok, _lv, html} = live(conn, base <> "/settings")
-      assert html =~ "the default for this instance"
 
-      {:ok, _lv, html} = live(conn, base <> "/access-key")
-      assert html =~ "shared-gateway of this instance"
+      assert html =~
+               "On Default gateway, runs go through the Qory Gateway, the default for this " <>
+                 "instance. On Direct, they go through no gateway."
+
+      {:ok, lv, _html} = live(conn, base <> "/access-key")
+
+      assert words(lv, "#node-gateway") ==
+               "Runs of #{node.name} go through the Qory Gateway, at https://gateway.example. " <>
+                 "The Qory Gateway has no active access key, so it isn't connected."
     end
   end
 

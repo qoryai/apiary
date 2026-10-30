@@ -12,7 +12,14 @@ defmodule Apiary.Environments do
   # ## A run held for its build: `holds?/1`, `held/1`, `hold_builds/3`, `queue_builds/2`
   #
   # A pool builds a collection's `environment_ref` when a run needs it, and never ahead
-  # of one: a listing, an assign and a new node pool queue no build. In a workspace whose
+  # of one: a listing, an assign and a new node pool queue no build. A build pushes its
+  # image to the instance's registry, so an instance without one
+  # (`Apiary.Registry.configured?/0`) holds no run, its claims queue no build, and a
+  # Rebuild there answers `{:error, :not_found}`: the rules here that ask whether a domain
+  # has prebuilds (`holds?/1`) read no, and the runs start in the pool's default image.
+  # A target's page shows that, with no Rebuild (`section/2`, `:no_registry`). A claim
+  # there takes no prebuild
+  # (`Apiary.Dispatches.waiting_query/1`). In a workspace whose
   # domain has prebuilds (`holds?/1`, `Apiary.Lingo.Domain.prebuilds?/1`), a waiting run
   # that is not a prebuild, of a work item whose target a live collection of the
   # workspace with an `environment_ref` has, is held for a node pool while no record of
@@ -104,7 +111,12 @@ defmodule Apiary.Environments do
   # `environment_ref`, and of their records for the pool built for that target
   # (`built_target_system`, `built_target_path`) whose `built_ref` is the collection's
   # `environment_ref`, the one built last (`built_at`) gives its `image`; nil when there
-  # is none.
+  # is none, and nil when that image is not under the organisation's place in the
+  # registry, `<QORY_REGISTRY>/<instance>/<organisation>/` (`Apiary.Registry.Names`): a
+  # build's image is checked against the place its prebuild was sent
+  # (`Apiary.Dispatches.Built`), and an image stored before that check may be elsewhere.
+  # Such an image still counts as built for `held/1`, so a claim gives its run the pool's
+  # default.
   #
   # ## A build recorded: `record_build/4`
   #
@@ -194,7 +206,10 @@ defmodule Apiary.Environments do
   # any other workspace: `state`, `:no_pool` where the workspace has no live
   # node pool, `:no_environment` where no live collection assigned to the workspace with the
   # target names an `environment_ref`, no pool's record of one keeps an image, and no prebuild
-  # of one waits, is claimed or is handed over, else `:pools`; `named`, whether one of those
+  # of one waits, is claimed or is handed over, `:no_registry` where one of those
+  # collections names an `environment_ref` on an instance without a registry
+  # (`Apiary.Registry.configured?/0`), with no pool lines: no build runs there and the
+  # target's runs start in the pool's default image; else `:pools`; `named`, whether one of those
   # collections names an `environment_ref`; and `pools`, one line for each live pool of the
   # workspace, by id. Where the run configuration in force for the target names an image in
   # its `security_policy` (`Apiary.Policy.ComposedConfiguration.names_image?/1`), on an
@@ -202,7 +217,9 @@ defmodule Apiary.Environments do
   # Else, where the target names an environment, a pool's line gives the image a run of the
   # target on the pool is given (`image_for/2`): the newest record of those collections for
   # the pool built for the target whose `built_ref` is its collection's `environment_ref`,
-  # with its image, `built_at` and `commit`, and `serves` `:image`; where there is none,
+  # with its image, `built_at` and `commit`, and `serves` `:image`; where that record's
+  # image is outside the organisation's place in the registry (`own?/2`), `serves`
+  # `:default`, with no image, as the run starts in the pool's default; where there is none,
   # `serves` is `:held`, as the target's runs wait for that build (`held/1`), with no image,
   # whatever older image a record keeps. Where the target names none, `serves` is `:retired`
   # where a record of the pool keeps an image, else `:default`. `failure` is the cause of the
@@ -212,7 +229,7 @@ defmodule Apiary.Environments do
 
   import Ecto.Query, only: [dynamic: 2, from: 2]
 
-  alias Apiary.{Access, Audit, Dispatches, Features, Policy, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Features, InstanceConfig, Policy, Registry, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.DispatchRun
@@ -221,6 +238,7 @@ defmodule Apiary.Environments do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
+  alias Apiary.Registry.Names
   alias Apiary.Runs.Target
   alias Apiary.WorkItems.WorkItem
 
@@ -419,12 +437,20 @@ defmodule Apiary.Environments do
       do: image_for(pool, workspace_id, target)
 
   # image_for/3 is the image a run of `pool` in the workspace `workspace_id` for `target`
-  # starts in, or nil: the instance's pool's runs are in many workspaces.
+  # starts in, or nil: the instance's pool's runs are in many workspaces. Only an image
+  # under the workspace's organisation in the registry (`own?/2`) is given.
   @doc false
   @spec image_for(Node.t(), Ecto.UUID.t(), %{system: String.t(), path: String.t()}) ::
           String.t() | nil
-  def image_for(%Node{kind: :pool, id: pool_id}, workspace_id, %{system: system, path: path})
+  def image_for(%Node{kind: :pool} = pool, workspace_id, %{system: system, path: path} = target)
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
+    image = stored_image(pool, workspace_id, target)
+    if own?(image, workspace_id), do: image
+  end
+
+  # The image the newest build of `target` for `pool` stored, whatever its place: what
+  # holds a run (`held/1`) reads too.
+  defp stored_image(%Node{id: pool_id}, workspace_id, %{system: system, path: path}) do
     Repo.one(
       from [r, c] in served(workspace_id, system, path),
         where: r.pool_id == ^pool_id and r.built_ref == c.environment_ref,
@@ -433,6 +459,34 @@ defmodule Apiary.Environments do
         select: r.image
     )
   end
+
+  # Whether `image` is under the registry's place of the organisation of the workspace
+  # `workspace_id`, `<QORY_REGISTRY>/<instance>/<organisation>/`
+  # (`Apiary.Registry.Names`): the only place a prebuild of the organisation is sent to
+  # push (`Apiary.Dispatches.Built`). An image stored before that check, at another
+  # place, is given to no run. False on an instance without a registry (`placed?/2`
+  # alone does not ask).
+  defp own?(image, workspace_id), do: Registry.configured?() and placed?(image, workspace_id)
+
+  # Whether `image` is under that place, whatever the feature `registry` says: false
+  # where `QORY_REGISTRY` is unset, and where the instance's registry name is not made
+  # yet, as no image can be under it. The name is read, never made, here.
+  defp placed?(image, workspace_id) when is_binary(image) do
+    with {:ok, %{service: service}} <-
+           Registry.parse(Application.get_env(:apiary, :registry_setting)),
+         instance when is_binary(instance) <- InstanceConfig.read_registry_instance(),
+         organisation_id when is_binary(organisation_id) <-
+           Repo.one(from w in Workspace, where: w.id == ^workspace_id, select: w.organisation_id) do
+      String.starts_with?(
+        image,
+        "#{service}/#{instance}/#{Names.organisation(organisation_id)}/"
+      )
+    else
+      _no_registry_name_or_workspace -> false
+    end
+  end
+
+  defp placed?(nil, _workspace_id), do: false
 
   # The records of the workspace `workspace_id` that keep an image built for the target
   # `system` and `path`, of a live collection with that target and an `environment_ref`,
@@ -453,7 +507,9 @@ defmodule Apiary.Environments do
   # claim_image/2 is the image a claim of `pool` gives an explore run of `work_item`
   # (the moduledoc): `{:ok, image}` for the image `image_for/2` reads for its target,
   # `{:ok, nil}` for a run that starts in the pool's default, and `:held` for a run held
-  # for the pool's build of its target (`held/1`).
+  # for the pool's build of its target (`held/1`). A stored image outside the
+  # organisation's place in the registry (`own?/2`) holds no run, as `held/1` reads it,
+  # and is not given: the run starts in the pool's default.
   @doc false
   @spec claim_image(Node.t(), WorkItem.t()) :: {:ok, String.t() | nil} | :held
   def claim_image(
@@ -466,13 +522,22 @@ defmodule Apiary.Environments do
 
     cond do
       not prebuilt?(workspace_id) -> {:ok, nil}
-      image = image_for(pool, workspace_id, target) -> {:ok, image}
+      image = stored_image(pool, workspace_id, target) -> {:ok, own_image(image, workspace_id)}
       named?(workspace_id, target) and unset_by_policy?(workspace_id, work_item) -> :held
       true -> {:ok, nil}
     end
   end
 
   def claim_image(%Node{}, %WorkItem{}), do: {:ok, nil}
+
+  # own_image/2 is `image` where it is under the registry's place of the organisation of
+  # the workspace `workspace_id` (`placed?/2`), else nil: what a run is given of an image
+  # a claim read. An attach reads its run's `configured_image` through it too: the claim
+  # that set it had a registry, and the attach checks the image's place alone.
+  @doc false
+  @spec own_image(String.t() | nil, Ecto.UUID.t()) :: String.t() | nil
+  def own_image(image, workspace_id) when is_binary(workspace_id),
+    do: if(placed?(image, workspace_id), do: image)
 
   # Whether the run configuration in force for the target of `work_item`, of the
   # workspace `workspace_id`, names no image (`unset_by_policy/1`).
@@ -817,7 +882,7 @@ defmodule Apiary.Environments do
 
   @typedoc "A target's environment, as its page says it (the moduledoc)."
   @type section :: %{
-          state: :no_pool | :no_environment | :pools,
+          state: :no_pool | :no_environment | :no_registry | :pools,
           named: boolean,
           pools: [pool_line]
         }
@@ -882,12 +947,28 @@ defmodule Apiary.Environments do
           named,
           Map.get(records, pool.id, []),
           Map.get(runs, pool.id, []),
-          if(policy?, do: :policy, else: Map.get(served, pool.id))
+          if(policy?, do: :policy, else: given(Map.get(served, pool.id), target.workspace_id))
         )
       end
 
-    %{state: section_state(pools, named, lines), named: named != [], pools: lines}
+    case section_state(pools, named, lines) do
+      :pools when named != [] ->
+        if Registry.configured?(),
+          do: %{state: :pools, named: true, pools: lines},
+          else: %{state: :no_registry, named: true, pools: []}
+
+      state ->
+        %{state: state, named: named != [], pools: lines}
+    end
   end
+
+  # The record a pool's line shows as the image runs start in: `record` where its image
+  # is under the organisation's place in the registry (`own?/2`), `:foreign` where it is
+  # not, as no run is given it; nil for none.
+  defp given(%Record{image: image} = record, workspace_id),
+    do: if(own?(image, workspace_id), do: record, else: :foreign)
+
+  defp given(nil, _workspace_id), do: nil
 
   defp section_state([], _named, _lines), do: :no_pool
 
@@ -950,6 +1031,7 @@ defmodule Apiary.Environments do
   end
 
   defp serves(%Record{}, _named, _records), do: :image
+  defp serves(:foreign, _named, _records), do: :default
   defp serves(nil, _named, _records), do: :held
 
   # The newest `built_at` of `records`, nil where none keeps a build.
@@ -992,7 +1074,7 @@ defmodule Apiary.Environments do
   """
 
   # holds?/1 is whether the runs of the workspace `workspace_id` wait for their target's
-  # build: its domain has prebuilds (the moduledoc).
+  # build: its domain has prebuilds, on an instance with a registry (the moduledoc).
   @doc false
   @spec holds?(Ecto.UUID.t()) :: boolean
   def holds?(workspace_id) when is_binary(workspace_id), do: prebuilt?(workspace_id)
@@ -1032,17 +1114,22 @@ defmodule Apiary.Environments do
   end
 
   # The condition, on a workspace bound `:workspace`, that its domain has prebuilds
-  # (`Apiary.Lingo.Domain.prebuilds?/1`): a stored name no domain has any more reads as
-  # the default's, as `Apiary.Lingo.Domain.for_workspace/1` reads it.
+  # (`Apiary.Lingo.Domain.prebuilds?/1`), on an instance with a registry
+  # (`Apiary.Registry.configured?/0`): a stored name no domain has any more reads as the
+  # default's, as `Apiary.Lingo.Domain.for_workspace/1` reads it.
   defp prebuilt_domain do
     prebuilt = for {name, domain} <- Domain.domains(), domain.prebuilds?(), do: name
     default = Domain.default().prebuilds?()
 
-    dynamic(
-      [workspace: s],
-      s.domain in ^prebuilt or
-        (type(^default, :boolean) and (s.domain not in ^Domain.names() or is_nil(s.domain)))
-    )
+    if Registry.configured?() do
+      dynamic(
+        [workspace: s],
+        s.domain in ^prebuilt or
+          (type(^default, :boolean) and (s.domain not in ^Domain.names() or is_nil(s.domain)))
+      )
+    else
+      dynamic([workspace: _s], false)
+    end
   end
 
   # unset_by_policy/1 is the condition, on a work item bound `:work_item` of the
@@ -1302,11 +1389,16 @@ defmodule Apiary.Environments do
   defp due?(%Collection{}), do: false
 
   # Those of `workspace_ids` whose domain has prebuilds (`Apiary.Lingo.Domain.prebuilds?/1`),
-  # read without a lock: a workspace's domain never changes.
+  # read without a lock: a workspace's domain never changes. None on an instance without
+  # a registry (`Apiary.Registry.configured?/0`): a prebuild pushes its image there.
   defp prebuilt_workspaces(workspace_ids) do
-    Repo.all(from w in Workspace, where: w.id in ^workspace_ids)
-    |> Enum.filter(&Domain.prebuilds?/1)
-    |> MapSet.new(& &1.id)
+    if Registry.configured?() do
+      Repo.all(from w in Workspace, where: w.id in ^workspace_ids)
+      |> Enum.filter(&Domain.prebuilds?/1)
+      |> MapSet.new(& &1.id)
+    else
+      MapSet.new()
+    end
   end
 
   defp prebuilt?(workspace_id),

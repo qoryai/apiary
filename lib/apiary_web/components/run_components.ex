@@ -2321,7 +2321,8 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   place_of/1 is where a run ran, as the pages show it in place of a host: `{:pool, name}`,
   the name of the node pool whose dispatch handed the run over, or claimed it for a run
-  whose start failed (`dispatch_id`); `{:host, host}`, the host
+  whose start failed (`dispatch_id`), "Qory Pool" for the instance's pool
+  (`ApiaryWeb.NodeComponents.shown_name/1`); `{:host, host}`, the host
   the run's `run.started` reported, for every other run; nil for a run with neither. A
   pool's run whose node was not read is nil, so that the host, one of the pool's
   machines, is not shown in the pool's name's place. `Apiary.Runs.Place` is the same in a
@@ -2340,7 +2341,7 @@ defmodule ApiaryWeb.RunComponents do
   def place_of(%{host: host}, _node) when is_binary(host), do: {:host, host}
   def place_of(_run, _node), do: nil
 
-  defp pool_place(%{kind: :pool, name: name}), do: {:pool, name}
+  defp pool_place(%{kind: :pool} = pool), do: {:pool, ApiaryWeb.NodeComponents.shown_name(pool)}
   defp pool_place(_not_read), do: nil
 
   @doc """
@@ -2378,12 +2379,12 @@ defmodule ApiaryWeb.RunComponents do
     <%= cond do %>
       <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
         <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
-          {@node.name}
+          {ApiaryWeb.NodeComponents.shown_name(@node)}
         </.link>
       <% @node && is_nil(@node.deleted_at) -> %>
-        {@node.name}
+        {ApiaryWeb.NodeComponents.shown_name(@node)}
       <% @node -> %>
-        {gettext("%{name} (deleted)", name: @node.name)}
+        {gettext("%{name} (deleted)", name: ApiaryWeb.NodeComponents.shown_name(@node))}
       <% true -> %>
         <span class="text-faint">{gettext("n/a")}</span>
     <% end %>

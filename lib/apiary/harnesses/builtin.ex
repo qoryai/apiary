@@ -18,7 +18,7 @@ defmodule Apiary.Harnesses.Builtin do
   @moduledoc false
 
   @git "https://github.com/qoryai/qory"
-  @ref "2148b3ae11eff8ccbeb93d1a7c10aeb05595c95b"
+  @ref "fd0a7da85ca956469a0113daeb4b44f938d82019"
   @path "examples/hello"
   @workflow "hello"
 

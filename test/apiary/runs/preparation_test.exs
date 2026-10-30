@@ -353,6 +353,22 @@ defmodule Apiary.Runs.PreparationTest do
                  "reads the cause in the step's output."
     end
 
+    test "a refused join has no exit status: its line shows no exit code", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+
+      run =
+        project!(run, [
+          step_started(1, 1, "join session 1", "join"),
+          step_exited(2, 1, "failed", -1)
+        ])
+
+      assert %{steps: [%{exit_code: -1}], stopped: stopped} = Preparation.read(ctx.scope, run)
+
+      assert stopped.text ==
+               "Join session 1 failed. An admin of #{ctx.scope.workspace.name} reads the " <>
+                 "cause in the step's output."
+    end
+
     test "a step with only its exit: no name and no start, named by its number", ctx do
       run = ctx.scope |> run_fixture() |> project!([step_exited(1, 1, "failed", 2)])
 
@@ -403,6 +419,40 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{steps: [%{output: %{text: "ready", truncated: false}}]} =
                Preparation.read(ctx.scope, run)
+    end
+  end
+
+  describe "a run whose log output retention deleted" do
+    test "has steps with no output, and a cause line that shows the output was deleted",
+         ctx do
+      {:ok, workspace} = Apiary.Retention.update_retention(ctx.scope, %{log_retention_days: 7})
+
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          step_started(1, 1, "setup", "setup"),
+          {2, "run.log", step_log_data(1, "make: *** [setup] Error 2\n")},
+          step_exited(3, 1, "failed", 2),
+          {4, "run.exited", %{"state" => "failed", "exit_code" => 2, "duration_ms" => 1_000}}
+        ])
+
+      now = DateTime.add(DateTime.utc_now(), 10 * 86_400, :second)
+      assert %{runs_pruned: 1} = Apiary.Retention.prune_workspace(workspace, now: now)
+      run = Repo.get!(Run, run.id)
+      assert %DateTime{} = run.log_pruned_at
+
+      assert %{
+               log_pruned_at: pruned_at,
+               steps: [%{output: %{text: "", truncated: false}}],
+               stopped: stopped
+             } = Preparation.read(ctx.scope, run)
+
+      assert pruned_at == run.log_pruned_at
+
+      assert stopped.text ==
+               "Setup failed with exit code 2. The step's output was deleted under the " <>
+                 "workspace's log retention, so the cause is no longer shown."
     end
   end
 
