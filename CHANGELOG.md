@@ -559,11 +559,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   index on `adapter_grants` (`id`, `organisation_id`), built inside the migration too.
   `adapter_grants` comes with this release, so on an upgrade from 0.1.0 it is empty when
   this migration runs. It changes no row.
-- `runs`: three nullable columns, `start_failure`, `start_failed_at` and `dispatch_id`,
-  with checks on them. The check `runs_run_settings_check` is replaced to accept run
-  settings on a run whose start failed; adding it scans `runs` under a lock that blocks
-  writes. `dispatches`: a nullable column, `release_reason`, 1 to 200 characters. An
-  index on `runs.dispatch_id`, built concurrently. The migrations change no row.
+- `runs`: two nullable columns, `start_failure` and `start_failed_at`, with two checks
+  on them, and a nullable column `dispatch_id`, with a foreign key to `dispatches`. The
+  check `runs_run_settings_check` is replaced to accept run settings on a run whose start
+  failed. The three checks scan `runs` under a lock that blocks writes. `dispatches`: a
+  nullable column, `release_reason`, with a check of 1 to 200 characters that scans
+  `dispatches` under a lock that blocks writes. An index on `runs.dispatch_id`, built
+  concurrently. The migrations change no row.
 
 ## [0.1.0] - 2026-10-13
 
