@@ -31,7 +31,7 @@ defmodule Apiary.SecretScanTest do
         run_key: "qrk_" <> String.duplicate("e", 20) <> "." <> String.duplicate("s", 86),
         enrolment_code: "qecn_7K3M9P2Q4R6S8T0V1W5X3Y9Z2A",
         run_code: "qecr_7K3M9P2Q4R6S8T0V1W5X3Y9Z2A",
-        anthropic_api_key: "sk-ant-" <> String.duplicate("a", 32),
+        anthropic_api_key: "sk-ant-api03-" <> String.duplicate("a", 32),
         openai_api_key: "sk-proj-" <> String.duplicate("b", 40),
         github_token: "ghp_" <> String.duplicate("c", 36),
         gitlab_token: "glpat-" <> String.duplicate("d", 20)
@@ -49,6 +49,8 @@ defmodule Apiary.SecretScanTest do
     test "finds the other formats of each issuer" do
       for {kind, secret} <- [
             anthropic_api_key: "sk-ant-api03-" <> String.duplicate("x", 93) <> "AA",
+            anthropic_api_key: "sk-ant-admin01-" <> String.duplicate("x", 93) <> "AA",
+            anthropic_api_key: "sk-ant-oat01-" <> String.duplicate("x", 93) <> "AA",
             openai_api_key: "sk-" <> @alnum48,
             openai_api_key: "sk-svcacct-" <> String.duplicate("q", 40),
             openai_api_key: "sk-admin-" <> String.duplicate("q", 40),
@@ -76,6 +78,15 @@ defmodule Apiary.SecretScanTest do
         "sk-" <> @alnum48 <> "9",
         "sk-ant-placeholder",
         "sk-ant-" <> String.duplicate("a", 31),
+        "sk-ant-" <> String.duplicate("a", 40),
+        "sk-ant-api03-" <> String.duplicate("a", 31),
+        "xqak_" <> @b64,
+        "helpdesk-admin-service-account-token-production-eu-west-1-7f9c8d",
+        "kiosk-admin-console-deployment-5d8f7c9b6-abcde-fghij-klmno",
+        "feature/task-proj-management-dashboard-frontend-rewrite-v2",
+        "helpdesk-svcacct-reader-binding-for-namespace-production-eu",
+        "flask-ant-colony-simulation-backend-service-v3",
+        "my-glpat-rotation-script-for-ci-jobs",
         "sk-proj-" <> String.duplicate("b", 39),
         "task-" <> @alnum48,
         "risk-" <> @alnum48,
@@ -97,7 +108,7 @@ defmodule Apiary.SecretScanTest do
       for text <- near_misses, do: assert(SecretScan.scan(text) == [], text)
     end
 
-    test "finds a secret right after a letter or a digit, as a colour code or an encoding puts it" do
+    test "finds a secret after a colour code, an escape, a URL encoding or `_`" do
       ghp = "ghp_" <> String.duplicate("c", 36)
       ant = "sk-ant-api03-" <> String.duplicate("x", 93) <> "AA"
 
@@ -107,7 +118,8 @@ defmodule Apiary.SecretScanTest do
             {"https://ci.example/?token%3D#{ghp}&x=1", ghp},
             {"Authorization: Bearer%20#{ant}", ant},
             {"MY_TOKEN_#{ghp}", ghp},
-            {"xqak_" <> @b64, "qak_" <> @b64}
+            {"a\\t#{ant}", ant},
+            {"XQAK_" <> "\e[1;32m" <> "qak_" <> @b64, "qak_" <> @b64}
           ] do
         assert found(text) == [secret], text
       end

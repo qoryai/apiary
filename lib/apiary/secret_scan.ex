@@ -7,11 +7,12 @@ defmodule Apiary.SecretScan do
 
   Each kind is a prefix and a body of a fixed or a least length, the shortest that the
   issuer's format makes, with no letter, digit, `_` or `-` right after it, so a longer
-  word (`sk-learn`) is none. A prefix may follow any character: a terminal colour code
-  (`\e[32m`), an escape (`\n` written out), a URL encoding (`%3D`, `%20`) or a variable's
-  name (`MY_TOKEN_`) puts a letter or a digit right before it. The one exception is the
-  first format of an OpenAI key, `sk-` and 48 letters and digits, whose prefix is short:
-  it needs no letter, digit, `_` or `-` right before it, so `task-…` is none.
+  word (`sk-learn`) is none. Right before the prefix stands no letter, digit, `_` or `-`,
+  so a hyphenated name that contains a prefix (`helpdesk-admin-…`, `my-glpat-…`) is none;
+  or one of the contexts that put a letter or a digit there: a terminal colour code
+  (`\e[32m`), an escape written out (`\n`, `\t`), a URL encoding (`%3D`, `%20`), or `_`,
+  as in a variable's name (`MY_TOKEN_`). The first format of an OpenAI key, `sk-` and 48
+  letters and digits, whose prefix is short, allows no context.
 
     * `access_key`: `qak_` and the 32-byte seed in base64url, 43 characters.
     * `run_key`: `qrk_`, the payload in base64url, `.`, and the 64-byte signature in
@@ -20,8 +21,9 @@ defmodule Apiary.SecretScan do
       (`Apiary.AccessKeys.EnrolmentCode.prefix/1`), then 26 characters of Crockford base32,
       in either case and in groups split by `-`.
     * `run_code`: `qecr_` and 26 characters, as an enrolment code.
-    * `anthropic_api_key`: `sk-ant-` and 32 or more base64url characters. A key
-      Anthropic makes, `sk-ant-api03-…`, is 108 characters.
+    * `anthropic_api_key`: `sk-ant-`, the key's type and version (`api03-`, `admin01-`,
+      `oat01-`: `api`, `admin` or `oat` and two digits), and 32 or more base64url
+      characters. An API key, `sk-ant-api03-…`, is 108 characters.
     * `openai_api_key`: `sk-proj-`, `sk-svcacct-` or `sk-admin-` and 40 or more base64url
       characters, or a key of the first format, `sk-` and 48 letters and digits.
     * `github_token`: `ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_` and 36 or more letters and
@@ -52,19 +54,38 @@ defmodule Apiary.SecretScan do
           | :gitlab_token
   @type finding :: %{kind: kind, offset: non_neg_integer, length: pos_integer}
 
-  # A byte mode regex: a text is any bytes, and offsets are byte offsets. The names sort
-  # as `Regex.scan/3` returns the groups, by name.
-  @secrets ~r/(?:(?<access_key>qak_[A-Za-z0-9_-]{43})|(?<run_key>qrk_[A-Za-z0-9_-]{20,1957}\.[A-Za-z0-9_-]{86})|(?<run_code>(?i:qecr_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])|(?<enrolment_code>(?i:qec[npgid]_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])|(?<anthropic_api_key>sk-ant-[A-Za-z0-9_-]{32,})|(?<openai_api_key>sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}|(?<![A-Za-z0-9_-])sk-[A-Za-z0-9]{48})|(?<github_token>gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,})|(?<gitlab_token>glpat-[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*))(?![A-Za-z0-9_-])/
-  @kinds [
+  # A byte mode regex: a text is any bytes, and offsets are byte offsets. What may stand
+  # right before a prefix: no letter, digit, `_` or `-`; or `_`; a written-out escape
+  # (`\n`); a URL encoding (`%3D`); or a terminal colour code (`\e[32m`), which the match
+  # takes and the named groups leave out. The bare `sk-` form allows the first alone.
+  @before ~S"(?:(?<![A-Za-z0-9_-])|(?<=_)|(?<=\\[a-z])|(?<=%[0-9A-Fa-f]{2})|\e\[[0-9;]*m)"
+  @secrets Regex.compile!(
+             "(?:" <>
+               @before <>
+               "(?:(?<access_key>qak_[A-Za-z0-9_-]{43})" <>
+               ~S"|(?<run_key>qrk_[A-Za-z0-9_-]{20,1957}\.[A-Za-z0-9_-]{86})" <>
+               "|(?<run_code>(?i:qecr_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])" <>
+               "|(?<enrolment_code>(?i:qec[npgid]_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])" <>
+               ~S"|(?<anthropic_api_key>sk-ant-(?:api|admin|oat)\d\d-[A-Za-z0-9_-]{32,})" <>
+               "|(?<openai_api_key>sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,})" <>
+               "|(?<github_token>gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,})" <>
+               ~S"|(?<gitlab_token>glpat-[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*))" <>
+               "|(?<![A-Za-z0-9_-])(?<openai_api_key_first>sk-[A-Za-z0-9]{48}))" <>
+               "(?![A-Za-z0-9_-])"
+           )
+  # The kind of each named group, in the order `Regex.scan/3` returns them: by name.
+  @groups [
     :access_key,
     :anthropic_api_key,
     :enrolment_code,
     :github_token,
     :gitlab_token,
     :openai_api_key,
+    :openai_api_key,
     :run_code,
     :run_key
   ]
+  @kinds Enum.uniq(@groups)
 
   # The longest run of a secret's characters kept from the end of a text for its next
   # part, where a secret that the text's end cut in two starts: longer than any secret of
@@ -84,7 +105,7 @@ defmodule Apiary.SecretScan do
     |> Regex.scan(text, return: :index, capture: :all_names)
     |> Enum.flat_map(fn groups ->
       {kind, {offset, length}} =
-        @kinds |> Enum.zip(groups) |> Enum.find(fn {_kind, {offset, _}} -> offset >= 0 end)
+        @groups |> Enum.zip(groups) |> Enum.find(fn {_kind, {offset, _}} -> offset >= 0 end)
 
       if valid?(kind, binary_part(text, offset, length)),
         do: [%{kind: kind, offset: offset, length: length}],
