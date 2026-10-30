@@ -8,10 +8,14 @@ defmodule Apiary.Runs.LeakedSecrets do
   **What is scanned** (`Apiary.SecretScan.scan/1`), each once, as it is stored:
 
     * the run's output, each log chunk as the projection stores it
-      (`Apiary.Runs.Projector`). A chunk is scanned after the end of the chunk before it in
-      the same step that a secret may start in (`Apiary.SecretScan.carry/1`), so a secret
-      that two chunks split is found; that end comes from the same pass of the projection,
-      or from the chunks stored before it;
+      (`Apiary.Runs.Projector`). A chunk is scanned after the end of the step's chunk
+      before it that a secret may start in (`Apiary.SecretScan.carry/1`), so a secret that
+      two chunks split is found, when every event between the two chunks is stored, as
+      a heartbeat or another step's output between them is. That end comes from the same
+      pass of the projection, or from the chunks stored before it. A chunk with an event
+      still missing before it starts a new text, so no two pieces that were not printed
+      together are read as one secret; a secret split across a missing event is not
+      found;
     * the data of each event other than `dev.qory.run.log`, whose output is in the log
       chunks, as `event_text/1` writes it, in the same pass;
     * a dispatch's machine log, when Qory Apiary stores it;
@@ -56,7 +60,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   @spec record_run(Run.t(), [map], [struct]) :: :ok
   def record_run(%Run{} = run, chunks, events) do
     times = Map.new(events, &{&1.sequence, &1.time})
-    rows = output_rows(run, chunks, times) ++ event_rows(events)
+    rows = output_rows(run, chunks, events, times) ++ event_rows(events)
     store_run(run, rows)
   end
 
@@ -126,24 +130,26 @@ defmodule Apiary.Runs.LeakedSecrets do
   # The secrets in the run's output: each step's chunks, and those of no step, in sequence
   # order, each scanned after the end of the text before it that a secret may start in.
   # A secret is found once its last byte is stored, and kept where its first byte is.
-  # The end is carried only from the chunk whose sequence is the one before, of the same
-  # step: a chunk that arrives late, or one with a gap before it, starts a new text, so no
-  # two pieces that were not printed together are read as one secret. A secret split
-  # across a gap is not found.
-  defp output_rows(run, chunks, times) do
+  # The end is carried from the step's chunk before, across the events between them when
+  # each one is stored (`between?/3`): a chunk with an event still missing before it starts
+  # a new text, so no two pieces that were not printed together are read as one secret.
+  defp output_rows(run, chunks, events, times) do
+    stored = stored(run, events)
+
     chunks
     |> Enum.group_by(& &1.step)
     |> Enum.flat_map(fn {step, chunks} ->
       [first | _] = chunks = Enum.sort_by(chunks, & &1.sequence)
 
-      {tail, parts} = before(run, step, first)
-
       {rows, _carry} =
-        Enum.flat_map_reduce(chunks, {tail, parts, first.sequence - 1}, fn chunk, carried ->
+        Enum.flat_map_reduce(chunks, before(run, step, first, stored), fn chunk, carried ->
           {tail, parts} =
             case carried do
-              {tail, parts, previous} when previous == chunk.sequence - 1 -> {tail, parts}
-              _gap -> {"", []}
+              {tail, parts, previous} when is_integer(previous) ->
+                if between?(stored, previous, chunk.sequence), do: {tail, parts}, else: {"", []}
+
+              _nothing ->
+                {"", []}
             end
 
           base = byte_size(tail)
@@ -174,11 +180,11 @@ defmodule Apiary.Runs.LeakedSecrets do
     end)
   end
 
-  # The end of the step's output stored right before `first` that a secret in `first` may
-  # start in, with the chunks it is in: the chunks of the same step whose sequences run
-  # without a gap up to the one before `first`'s. Read only when `first` starts with a
-  # character a secret is made of.
-  defp before(run, step, %{sequence: sequence, bytes: <<byte, _::binary>>})
+  # The end of the step's output stored before `first` that a secret in `first` may start
+  # in, with the chunks it is in and the last one's sequence: the step's chunks back from
+  # `first` as long as every event between two of them is stored. Read only when `first`
+  # starts with a character a secret is made of.
+  defp before(run, step, %{sequence: sequence, bytes: <<byte, _::binary>>}, stored)
        when byte in ?A..?Z or byte in ?a..?z or byte in ?0..?9 or byte in ~c"_.-" do
     chunks =
       Repo.all(
@@ -192,20 +198,35 @@ defmodule Apiary.Runs.LeakedSecrets do
         log: false
       )
 
+    {joined, _next} =
+      Enum.reduce_while(chunks, {[], sequence}, fn {previous, _bytes} = chunk, {joined, next} ->
+        if between?(stored, previous, next),
+          do: {:cont, {[chunk | joined], previous}},
+          else: {:halt, {joined, next}}
+      end)
+
     {text, parts} =
-      chunks
-      |> Enum.with_index(1)
-      |> Enum.take_while(fn {{previous, _bytes}, back} -> previous == sequence - back end)
-      |> Enum.map(&elem(&1, 0))
-      |> Enum.reverse()
-      |> Enum.reduce({"", []}, fn {sequence, bytes}, {text, parts} ->
+      Enum.reduce(joined, {"", []}, fn {sequence, bytes}, {text, parts} ->
         {text <> bytes, parts ++ [{sequence, byte_size(text)}]}
       end)
 
-    carry(text, parts)
+    {tail, parts} = carry(text, parts)
+    last = if joined == [], do: nil, else: joined |> List.last() |> elem(0)
+    {tail, parts, last}
   end
 
-  defp before(_run, _step, _first), do: {"", []}
+  defp before(_run, _step, _first, _stored), do: {"", [], nil}
+
+  # The events stored as a pass begins: every sequence up to the run's projected
+  # sequence, below which none is missing, and those of the pass.
+  defp stored(%Run{projected_sequence: projected}, events),
+    do: {projected || 0, MapSet.new(events, & &1.sequence)}
+
+  # Whether every event between sequences `from` and `to` is stored.
+  defp between?({projected, pass}, from, to) do
+    first = max(from + 1, projected + 1)
+    first > to - 1 or Enum.all?(first..(to - 1)//1, &MapSet.member?(pass, &1))
+  end
 
   defp same_step(nil), do: dynamic([l], is_nil(l.step))
   defp same_step(step), do: dynamic([l], l.step == ^step)
