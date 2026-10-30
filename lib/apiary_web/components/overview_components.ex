@@ -2230,7 +2230,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp no_run_words(:secrets_not_allowed, _choice),
     do:
       gettext(
-        "The gateway for this run may not receive its secrets, which the run needs. Only the instance's gateway may receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to go through it."
+        "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to go through it."
       )
 
   defp no_run_words(cause, {5, %{locked: false, model_id: model}})

@@ -3126,8 +3126,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     @no_run_lead "The test run ended before a machine started it. "
     @no_run_unknown @no_run_lead <> "No run was recorded, so this step cannot show why."
     @no_run_secrets @no_run_lead <>
-                      "The gateway for this run may not receive its secrets, which the run " <>
-                      "needs. Only the instance's gateway may receive them. An instance admin " <>
+                      "The gateway for this run is not allowed to receive its secrets, which " <>
+                      "the run needs. Only the instance's gateway is allowed to receive them. " <>
+                      "An instance admin " <>
                       "installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to " <>
                       "go through it."
 
