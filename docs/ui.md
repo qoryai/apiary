@@ -1647,11 +1647,12 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   has arrived." until the machine logs' retention days have passed since the claim, and
   then "Machine logs are kept for 30 days. This machine has none.", with the
   retention's days. A step that exits with code -1 has no exit status, and its line
-  shows no code. A failed row is
-  open, with one cause line under its output that shows the cause, then who fixes it
-  (with no pointer to the output once it was pruned); under Machine started only who
-  fixes it, as the header shows the cause. The section's duration runs from its first row to the
-  session's start, or to the failed row's end.
+  shows no code. A failed row is open, with one cause line under its output that shows
+  the cause, then who fixes it; once retention deleted the run's log lines, "The step's
+  output was deleted under the workspace's log retention, so the cause is no longer
+  shown." in place of who fixes it. Under Machine started the line shows only who fixes
+  it, as the header shows the cause. The section's duration runs from its first row to
+  the session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

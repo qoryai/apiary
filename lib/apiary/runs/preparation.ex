@@ -388,8 +388,11 @@ defmodule Apiary.Runs.Preparation do
   defp reads_cause(who, nil),
     do: gettext("%{who} reads the cause in the step's output.", who: who)
 
-  defp reads_cause(who, _pruned_at),
-    do: gettext("%{who} fixes the cause; the step's output was pruned.", who: who)
+  defp reads_cause(_who, _pruned_at) do
+    gettext(
+      "The step's output was deleted under the workspace's log retention, so the cause is no longer shown."
+    )
+  end
 
   @doc """
   What the run page calls a step: its name (`t:step/0`), or "Step" and its number when

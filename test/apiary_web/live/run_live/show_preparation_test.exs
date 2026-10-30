@@ -149,8 +149,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                  "retention. The timeline and the connections are whole."
 
       assert lv |> element("#prepare-machine-cause") |> render() =~
-               "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
-                 "#{ctx.scope.workspace.name} fixes the cause; the step&#39;s output was pruned."
+               "Fetch git.example.com/acme/shop failed with exit code 128. The step&#39;s " <>
+                 "output was deleted under the workspace&#39;s log retention, so the cause is " <>
+                 "no longer shown."
     end
 
     test "a released run: Machine started is open with who fixes it, the header the cause",

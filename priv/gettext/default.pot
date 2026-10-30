@@ -2758,11 +2758,6 @@ msgstr ""
 msgid "%{who} denied %{host} on %{paths}"
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "%{who} fixes the cause; the step's output was pruned."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} locked %{host}"
@@ -16779,6 +16774,11 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "The stack of %{source} lists no workflow: add one under %{key} in its %{file}."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "The step's output was deleted under the workspace's log retention, so the cause is no longer shown."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex

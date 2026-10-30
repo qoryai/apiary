@@ -423,7 +423,8 @@ defmodule Apiary.Runs.PreparationTest do
   end
 
   describe "a run whose log output retention deleted" do
-    test "has steps with no output, and a cause line that points at no output", ctx do
+    test "has steps with no output, and a cause line that shows the output was deleted",
+         ctx do
       {:ok, workspace} = Apiary.Retention.update_retention(ctx.scope, %{log_retention_days: 7})
 
       run =
@@ -450,8 +451,8 @@ defmodule Apiary.Runs.PreparationTest do
       assert pruned_at == run.log_pruned_at
 
       assert stopped.text ==
-               "Setup failed with exit code 2. An admin of #{ctx.scope.workspace.name} " <>
-                 "fixes the cause; the step's output was pruned."
+               "Setup failed with exit code 2. The step's output was deleted under the " <>
+                 "workspace's log retention, so the cause is no longer shown."
     end
   end
 
