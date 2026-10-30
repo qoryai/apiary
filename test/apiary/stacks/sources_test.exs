@@ -154,7 +154,9 @@ defmodule Apiary.Stacks.SourcesTest do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files, down: true)
 
       assert Sources.exports(ctx.scope, harness) ==
-               {:error, {:call, %{adapter: title, cause: :unreachable, code: nil, seconds: nil}}}
+               {:error,
+                {:call,
+                 %{adapter: title, cause: :unreachable, code: nil, seconds: nil, refusal: nil}}}
 
       serve_calls([ctx.adapter],
         covered: ctx.covered,
@@ -162,7 +164,9 @@ defmodule Apiary.Stacks.SourcesTest do
         refuse_at: %{"HEAD" => "internal"}
       )
 
-      refused = {:call, %{adapter: title, cause: :refused, code: "internal", seconds: nil}}
+      refused =
+        {:call, %{adapter: title, cause: :refused, code: "internal", seconds: nil, refusal: nil}}
+
       assert Sources.exports(ctx.scope, harness) == {:error, refused}
       assert Sources.read(ctx.scope, harness) == {:error, refused}
     end
@@ -191,7 +195,7 @@ defmodule Apiary.Stacks.SourcesTest do
       adapter = %Node{kind: :adapter, name: "code-host", title: "Code host"}
 
       assert Sources.call(adapter, :late, 30) ==
-               %{adapter: "Code host", cause: :timeout, code: nil, seconds: 30}
+               %{adapter: "Code host", cause: :timeout, code: nil, seconds: 30, refusal: nil}
 
       failure = %Apiary.Adapters.CallFailure{
         adapter_id: Ecto.UUID.generate(),
@@ -204,6 +208,24 @@ defmodule Apiary.Stacks.SourcesTest do
       }
 
       assert %{cause: :unauthorized, code: nil} = Sources.call(adapter, failure, 10)
+
+      # A refused address keeps its kind, and no IP.
+      for {refusal, kept} <- [
+            {{:address, {169, 254, 169, 254}, :metadata}, {:address, :metadata}},
+            {:form, :form},
+            {:public_host, :public_host}
+          ] do
+        not_allowed = %{failure | cause: :not_allowed, code: nil, status: nil, refusal: refusal}
+
+        assert Sources.call(adapter, not_allowed, 10) ==
+                 %{
+                   adapter: "Code host",
+                   cause: :not_allowed,
+                   code: nil,
+                   seconds: nil,
+                   refusal: kept
+                 }
+      end
     end
 
     test "an adapter whose call address Qory Apiary does not call lists no repository, and is unplaced",
@@ -451,7 +473,9 @@ defmodule Apiary.Stacks.SourcesTest do
 
       title = Apiary.Adapters.title(ctx.adapter.adapter)
 
-      unreachable = {:call, %{adapter: title, cause: :unreachable, code: nil, seconds: nil}}
+      unreachable =
+        {:call, %{adapter: title, cause: :unreachable, code: nil, seconds: nil, refusal: nil}}
+
       for _n <- 1..10, do: assert(Sources.read(ctx.scope, source) == {:error, unreachable})
 
       assert calls() != []

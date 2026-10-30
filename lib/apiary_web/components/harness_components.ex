@@ -896,10 +896,26 @@ defmodule ApiaryWeb.HarnessComponents do
         adapter: adapter
       )
 
+  def call_words(%{cause: :not_allowed, refusal: {:address, kind}, adapter: adapter}, _source),
+    do:
+      gettext(
+        "Qory Apiary does not call the %{adapter} adapter: its call address leads to %{kind}. An instance admin sets the adapter's call address. The Qory harness works without it.",
+        adapter: adapter,
+        kind: address_kind_words(kind)
+      )
+
+  def call_words(%{cause: :not_allowed, refusal: :public_host, adapter: adapter}, _source),
+    do:
+      gettext(
+        "Qory Apiary does not call the %{adapter} adapter: the instance's public address (PUBLIC_URL) has no host name. An instance admin sets it. The Qory harness works without it.",
+        adapter: adapter
+      )
+
+  # `:form`, the one refusal left.
   def call_words(%{cause: :not_allowed, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary does not call the %{adapter} adapter at its call address. An instance admin sets the adapter's call address. The Qory harness works without it.",
+        "Qory Apiary does not call the %{adapter} adapter: its call address is not an https address at the adapter's host. An instance admin sets it. The Qory harness works without it.",
         adapter: adapter
       )
 
@@ -959,6 +975,18 @@ defmodule ApiaryWeb.HarnessComponents do
       )
 
   def call_words(_call, source), do: exited_words(source)
+
+  # The kind of an address Qory Apiary does not call (`Apiary.Adapters.CallAddress`),
+  # with no IP.
+  defp address_kind_words(:link_local), do: gettext("a link-local address")
+  defp address_kind_words(:metadata), do: gettext("a cloud metadata address")
+  defp address_kind_words(:unspecified), do: gettext("the unspecified address")
+  defp address_kind_words(:multicast), do: gettext("a multicast address")
+  defp address_kind_words(:broadcast), do: gettext("a broadcast address")
+  defp address_kind_words(:reserved), do: gettext("a reserved address")
+
+  defp address_kind_words(:loopback),
+    do: gettext("a loopback address written as an IPv6 address")
 
   # The file `file` of `source`, whose `exports` or stack section is not valid.
   defp section_words(file, :exports, source),

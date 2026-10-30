@@ -152,7 +152,10 @@ defmodule Apiary.Stacks.Sources do
       the read's `seconds`;
     * `:unreachable`: no connection was made, the host resolved to no address, or a
       proxy answered 502, 503 or 504 (`Apiary.Adapters.CallFailure`'s `:unreachable`);
-    * `:no_address` and `:not_allowed`: as `Apiary.Adapters.CallFailure` has them;
+    * `:no_address`: as `Apiary.Adapters.CallFailure` has it;
+    * `:not_allowed`: as `Apiary.Adapters.CallFailure` has it, with `refusal`, why:
+      `:form`, `:public_host`, or `{:address, kind}`, the kind of the address the host
+      resolves to (`Apiary.Adapters.CallAddress`), without the address;
     * `:unauthorized`: an unsigned 401;
     * `:refused`: any other refusal, with its code in `code`;
     * `:invalid_answer` and `:too_large`: as `Apiary.Adapters.CallFailure` has them.
@@ -169,7 +172,8 @@ defmodule Apiary.Stacks.Sources do
             | :invalid_answer
             | :too_large,
           code: String.t() | nil,
-          seconds: pos_integer | nil
+          seconds: pos_integer | nil,
+          refusal: :form | :public_host | {:address, CallAddress.kind()} | nil
         }
 
   @typedoc """
@@ -655,9 +659,21 @@ defmodule Apiary.Stacks.Sources do
       adapter: Apiary.Adapters.title(adapter),
       cause: cause,
       code: code,
-      seconds: if(cause == :timeout, do: seconds)
+      seconds: if(cause == :timeout, do: seconds),
+      refusal: refusal(failure)
     }
   end
+
+  # Why Qory Apiary does not call an adapter, without the address its host resolves to:
+  # a page that is not an instance admin's shows no IP of the instance's set-up.
+  defp refusal(%CallFailure{cause: :not_allowed, refusal: {:address, _ip, kind}}),
+    do: {:address, kind}
+
+  defp refusal(%CallFailure{cause: :not_allowed, refusal: refusal})
+       when refusal in [:form, :public_host],
+       do: refusal
+
+  defp refusal(_failure), do: nil
 
   # The link of a covered result under a live grant the rule allows; nil for none.
   defp linked(

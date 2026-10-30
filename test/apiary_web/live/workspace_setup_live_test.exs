@@ -2409,9 +2409,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {:no_address, nil,
              "Qory Apiary does not call the GitHub adapter: it has no call address. An " <>
                "instance admin sets it. The Qory harness works without it."},
-            {:not_allowed, nil,
-             "Qory Apiary does not call the GitHub adapter at its call address. An instance " <>
-               "admin sets the adapter's call address. The Qory harness works without it."},
             {:unauthorized, nil,
              "The GitHub adapter refused the call of Qory Apiary: the call's signature failed " <>
                "its check, the clocks of the two machines differ by more than 300 seconds, or " <>
@@ -2437,6 +2434,40 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "KiB. Tell an instance admin."}
           ] do
         assert reads.(call.(cause, code)) == line
+      end
+
+      for {refusal, line} <- [
+            {{:address, :link_local},
+             "Qory Apiary does not call the GitHub adapter: its call address leads to a " <>
+               "link-local address. An instance admin sets the adapter's call address. The Qory " <>
+               "harness works without it."},
+            {:form,
+             "Qory Apiary does not call the GitHub adapter: its call address is not an https " <>
+               "address at the adapter's host. An instance admin sets it. The Qory harness " <>
+               "works without it."},
+            {:public_host,
+             "Qory Apiary does not call the GitHub adapter: the instance's public address " <>
+               "(PUBLIC_URL) has no host name. An instance admin sets it. The Qory harness " <>
+               "works without it."}
+          ] do
+        not_allowed = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
+        assert reads.({:call, Map.put(not_allowed, :refusal, refusal)}) == line
+      end
+
+      for {kind, words} <- [
+            metadata: "a cloud metadata address",
+            unspecified: "the unspecified address",
+            multicast: "a multicast address",
+            broadcast: "a broadcast address",
+            reserved: "a reserved address",
+            loopback: "a loopback address written as an IPv6 address"
+          ] do
+        call = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
+
+        assert reads.({:call, Map.put(call, :refusal, {:address, kind})}) ==
+                 "Qory Apiary does not call the GitHub adapter: its call address leads to " <>
+                   "#{words}. An instance admin sets the adapter's call address. The Qory " <>
+                   "harness works without it."
       end
 
       # A save's walk at a call that failed has the same words.
