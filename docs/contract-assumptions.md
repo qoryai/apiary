@@ -477,9 +477,11 @@ A lease that lapsed unswept is freed first, and that is committed: the run waits
 queue again, or a prebuild ends `superseded` while another prebuild of its collection,
 pool and `environment_ref` waits, and is answered `410` `gone`. A dispatch handed over accepts `dispatched`
 whatever its `lease_until`, and records the time of the first one alone. When a run
-leaves the claim other than by its handover, its lease lapsing, a release or the close
-of its work item, its registered run is deleted with the run code, and the code redeems
-nothing from then on.
+leaves the claim other than by its handover, its lease lapsing or a release ends its
+registered run `failed`, with the reason `lease_lapsed` or `machine_not_made`, and the
+close of its work item deletes it with the run code; either way the code redeems
+nothing from then on. The failed run keeps its id and its page, and leaves the run of the
+queue, so the next claim registers a new run.
 
 Once handed over, such a run ends with its registered run, in one of three ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded,
@@ -595,13 +597,13 @@ for a dispatch that ended, or of a run that ended; `409` `machine_exists` for a 
 handed over, by its `dispatched` or by the redemption of its run code; `409`
 `lease_expired` for a dispatch that is stale or past its `lease_until`; and `503`
 `unavailable` last, after which nothing was written. Else the signed `204`, with no body:
-the dispatch ends `released`, its slot is freed, its registered run is deleted with its
-run code, and the run waits again, as when its lease lapses: an explore run with the
+the dispatch ends `released`, its slot is freed, its registered run ends `failed` with
+the reason `machine_not_made`, and the run waits again, as when its lease lapses: an explore run with the
 same `run_id` and `queued_at`, its work item left exploring; a prebuild with its
 `environment_ref`, or it ends `superseded` while another prebuild of its collection,
 pool and `environment_ref` waits. A release records no failure on a prebuild's environment
-record. Qory Apiary keeps every release's reason in its audit entry, and shows it
-nowhere. A release holds its run's work item, or a prebuild's environment record, before
+record. Qory Apiary keeps every release's reason in its audit entry and on the
+dispatch, and the page of the failed run shows it. A release holds its run's work item, or a prebuild's environment record, before
 anything of the queue, then locks as `dispatched` does; a work item is never locked after
 a run of the queue, so a release, a close, `dispatched`, a redemption and the sweep take
 turns, and of two releases at once one acts and the other is `410` `gone`.
@@ -627,7 +629,10 @@ machine log (`Apiary.Dispatches.machine_log/2`). The retention job deletes a mac
 `MACHINE_LOG_RETENTION_DAYS` days after its upload, 30 unless set, from 1 to 365, or the
 value an instance admin saved, file then row, and an hour-old file whose row is gone; the
 purge of an organisation or a workspace deletes the files of its machine logs before its
-rows. No audit entry is written for an upload.
+rows. No audit entry is written for an upload. Once the log is kept, a dispatch handed over
+whose run has not redeemed its run code ends that run at once: the run is `failed`, with
+the reason `machine_stopped`, and its run of the queue and the dispatch end `lost`, as the
+lost-run check ends them at the code's expiry (`Apiary.Dispatches.RunEnd.machine_stopped/1`).
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
@@ -947,8 +952,8 @@ run key, is answered in the same order, and the two `409`s of the ledger and the
 never apply to it: no access key is made, and its public key enters no ledger. Its `401`
 is also a code at or past its 15 minutes from the claim, a code of a run that has
 ended (no longer pending or running, released, given its outcome, its events pruned, or
-its run of the queue ended), a code whose registered run was deleted because its dispatch
-left the claim before its handover, and a code redeemed before by another public key. Its `201`
+its run of the queue ended), a code whose registered run was deleted because its work
+item was closed before its handover, and a code redeemed before by another public key. Its `201`
 carries `version`, `run_id`, `run_key`, `apiary_public_key` and `documents`, in that
 order, `documents` the run's documents as its claim encoded them (A run of the queue):
 the run key is made at the

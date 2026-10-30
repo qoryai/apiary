@@ -239,6 +239,15 @@ defmodule Apiary.Runs.Run do
     # moved its `backstop_at` back to the end of that silence (`Apiary.Dispatches.RunEnd`).
     # Nil for every other run. Not folded: a rebuild keeps it.
     field :silenced_at, :utc_datetime_usec
+    # A run a node pool's claim registered whose machine never started it
+    # (`Apiary.Dispatches.Handover.fail_start/3`): why, `start_failure`, one of
+    # `start_failures/0`, and when, `start_failed_at`, set together; and the dispatch
+    # whose claim registered it, `dispatch_id`, nil once the dispatch is deleted. The run
+    # reads as failed with `start_failure` as its reason (`Apiary.Runs.Fold.settle/1`).
+    # Nil for every other run. Not folded: a rebuild keeps them.
+    field :start_failure, :string
+    field :start_failed_at, :utc_datetime_usec
+    belongs_to :dispatch, Apiary.Dispatches.Dispatch
     # For such a run, not a prebuild: the image its attach gave it, its pool's recorded
     # image for its target (`Apiary.Environments.image_for/2`), named at the top level of
     # every run configuration it is answered from then on
@@ -293,10 +302,21 @@ defmodule Apiary.Runs.Run do
   def lost_days, do: 7
 
   @doc """
+  Why a run a node pool's claim registered never started (`start_failure`):
+  `machine_not_made`, its pool's starter released its dispatch; `lease_lapsed`, the
+  dispatch's lease lapsed before its handover; `machine_stopped`, the machine's log
+  arrived before the machine redeemed the run's code. The `CHECK` on the column allows
+  these three and no other.
+  """
+  def start_failures, do: ~w(machine_not_made lease_lapsed machine_stopped)
+
+  @doc """
   Whether the run was refused at its start and never started: failed with no exit time, as
   the fold stores a `dev.qory.run.refused` (`Apiary.Runs.Fold`), its `reason` the refusal's
   code, if it gave one. An exit decides over a refusal, so a run with an exit time is not,
-  and so does its starter's outcome, so a run given one is not either.
+  and so does its starter's outcome, so a run given one is not either. A run whose
+  machine never started it (`start_failure`) is failed with no exit time too, its
+  `reason` that cause, and reads the same.
   """
   @spec refused?(t() | map()) :: boolean()
   def refused?(%{state: "failed", exited_at: nil} = run),

@@ -206,6 +206,65 @@ defmodule ApiaryWeb.RunComponentsTest do
              }) == "crashed"
     end
 
+    test "a run whose machine never started it reads its cause" do
+      failed = %Apiary.Runs.Run{state: "failed", start_failed_at: ~U[2026-10-30 12:00:00Z]}
+
+      released = %{
+        failed
+        | reason: "machine_not_made",
+          start_failure: "machine_not_made",
+          dispatch: %Apiary.Dispatches.Dispatch{release_reason: "No capacity in eu-1"}
+      }
+
+      assert RunComponents.reason_words(released) == "No machine was made: No capacity in eu-1."
+      assert RunComponents.exit_note(released) == "No machine was made: No capacity in eu-1."
+
+      # The reason's closing full stop gives way to the sentence's.
+      assert RunComponents.reason_words(%{
+               released
+               | dispatch: %Apiary.Dispatches.Dispatch{release_reason: "No capacity."}
+             }) == "No machine was made: No capacity."
+
+      # Without its dispatch's reason, the run reads as one that did not start.
+      assert RunComponents.reason_words(%{released | dispatch: nil}) ==
+               "did not start: machine_not_made"
+
+      assert RunComponents.reason_words(%{
+               failed
+               | reason: "lease_lapsed",
+                 start_failure: "lease_lapsed"
+             }) == "The pool did not start a machine within 10 minutes."
+
+      assert RunComponents.reason_words(%{
+               failed
+               | reason: "machine_stopped",
+                 start_failure: "machine_stopped"
+             }) == "The machine stopped before it started the run."
+
+      html =
+        render_component(&RunComponents.end_reason/1,
+          run: %{failed | reason: "lease_lapsed", start_failure: "lease_lapsed"}
+        )
+
+      assert html =~ "The pool did not start a machine within 10 minutes."
+      refute html =~ "font-mono"
+
+      # Lost with its run code never redeemed: it did not start within the code's time.
+      unredeemed = %Apiary.Runs.Run{
+        state: "lost",
+        run_code_expires_at: ~U[2026-10-30 12:15:00Z],
+        lost_at: ~U[2026-10-30 12:15:01Z]
+      }
+
+      assert RunComponents.reason_words(unredeemed) ==
+               "The machine did not start the run within 15 minutes of the request."
+
+      assert RunComponents.reason_words(%{unredeemed | run_code_public_key: <<1::256>>}) == nil
+
+      assert RunComponents.reason_words(%{unredeemed | attached_at: ~U[2026-10-30 12:01:00Z]}) ==
+               nil
+    end
+
     test "a reason stored under its earlier name reads as the new one" do
       for {earlier, now} <- [
             {"issuer_unreachable", "credential_check_unreachable"},

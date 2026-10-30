@@ -1,8 +1,9 @@
 defmodule Apiary.Runs.Place do
   @moduledoc """
   Where a run ran, in a query, as the pages show it (`ApiaryWeb.RunComponents.place_of/1`):
-  for a run a node pool's dispatch handed over (`dispatch_run_id` set), the name of the
-  pool, the run's node; for every other run, the host its `run.started` reported. The host
+  for a run a node pool's dispatch handed over (`dispatch_run_id` set), or claimed for a
+  run whose start failed (`dispatch_id` set), the name of the pool, the run's node; for
+  every other run, the host its `run.started` reported. The host
   of a pool's run is one of the pool's machines, which the runs list's Filter, a target's
   Machines and a key's hosts leave out.
   """
@@ -16,8 +17,9 @@ defmodule Apiary.Runs.Place do
     quote do
       type(
         fragment(
-          "CASE WHEN ? IS NULL THEN ? ELSE (SELECT pn.name FROM nodes AS pn WHERE pn.id = ? AND pn.kind = 'pool') END",
+          "CASE WHEN COALESCE(?, ?) IS NULL THEN ? ELSE (SELECT pn.name FROM nodes AS pn WHERE pn.id = ? AND pn.kind = 'pool') END",
           unquote(run).dispatch_run_id,
+          unquote(run).dispatch_id,
           unquote(run).host,
           unquote(run).node_id
         ),
