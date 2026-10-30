@@ -178,8 +178,9 @@ defmodule Apiary.Release do
 
   On an instance that is not set up yet it sets the instance up instead, from a shell, in
   place of its set-up link (`Apiary.Setup`): it is the instance's first sign-up, with
-  `email` and `organisation_name`, which creates the instance's organisation, its
-  workspace Main and the account as its owner, and marks the set-up code used, so the
+  `email` and `organisation_name`, which creates the instance's organisation and the
+  account as its owner, with no workspace: the owner chooses the first one on the kind
+  cards of the organisation's overview, `/:org`. It marks the set-up code used, so the
   link works no more. With `QORY_SETUP_CODE_SHA256` set, it marks the preset used as
   well, and the preset code sets the instance up no more, a purge of the instance's
   organisation later included. With mail (`Apiary.Mail.configured?/0`) it sends the account its
