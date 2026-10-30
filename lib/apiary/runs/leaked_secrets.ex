@@ -381,8 +381,10 @@ defmodule Apiary.Runs.LeakedSecrets do
 
   `opts`:
 
-    * `machine_log`, the machine log's text when the reader reads it; without it, the
-      secrets of the machine log are left out and not counted.
+    * `machine_logs`, whether the reader reads machine logs (false by default): without
+      it, the secrets of the machine log are left out and not counted.
+    * `machine_log`, the machine log's text, for the values; nil once it cannot be read,
+      as after the retention deleted it, when its secrets have no value.
     * `events`, the query of the run's events the reader reads
       (the edition's `client_reads`): a secret in an event outside it has no value.
 
@@ -391,8 +393,11 @@ defmodule Apiary.Runs.LeakedSecrets do
   """
   @spec read(Run.t(), struct | nil, keyword) :: {[entry], non_neg_integer}
   def read(%Run{} = run, dispatch, opts) do
+    machine_logs? = Keyword.get(opts, :machine_logs, false)
     machine_log = Keyword.get(opts, :machine_log)
-    places = if(machine_log, do: ["machine_log", "release_reason"], else: ["release_reason"])
+
+    places =
+      if(machine_logs?, do: ["machine_log", "release_reason"], else: ["release_reason"])
 
     rows =
       Repo.all(
@@ -411,7 +416,7 @@ defmodule Apiary.Runs.LeakedSecrets do
     omitted =
       run.leaked_secrets_omitted + length(over) +
         if(dispatch, do: dispatch.release_reason_secrets_omitted, else: 0) +
-        if(dispatch && machine_log, do: dispatch.machine_log_secrets_omitted, else: 0)
+        if(dispatch && machine_logs?, do: dispatch.machine_log_secrets_omitted, else: 0)
 
     events = event_data(Keyword.fetch!(opts, :events), shown)
 

@@ -453,6 +453,30 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert document["leaked_secrets_omitted"] == 0
     end
 
+    test "keeps a machine log's secrets for an instance admin once the retention deleted it, without their value",
+         %{schema: schema, scope: scope, run: run, dispatch: dispatch} = ctx do
+      :ok =
+        Dispatches.upload_machine_log(ctx.key, dispatch.public_id, %{
+          log: "token #{@github}\n",
+          truncated: false
+        })
+
+      {1, _} =
+        Repo.delete_all(
+          from l in Apiary.Dispatches.MachineLog, where: l.dispatch_id == ^dispatch.id
+        )
+
+      assert Apiary.Access.instance_admin?(scope)
+      document = valid!(schema, Jason.decode!(Diagnostics.encode(run, scope)))
+      assert document["machine_logs"] == []
+      dispatch_id = dispatch.public_id
+
+      assert [%{"place" => "machine_log", "dispatch" => ^dispatch_id} = leaked] =
+               document["leaked_secrets"]
+
+      refute Map.has_key?(leaked, "value")
+    end
+
     test "lists a secret in the release reason of a run whose start failed",
          %{schema: schema, scope: scope} = ctx do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)

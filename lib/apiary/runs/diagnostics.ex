@@ -144,7 +144,8 @@ defmodule Apiary.Runs.Diagnostics do
 
     {leaked, leaked_omitted} =
       LeakedSecrets.read(run, dispatch,
-        machine_log: if(machine_logs?, do: machine_log && machine_log.text),
+        machine_logs: machine_logs?,
+        machine_log: machine_log && machine_log.text,
         events: events_query(scope, run)
       )
 
