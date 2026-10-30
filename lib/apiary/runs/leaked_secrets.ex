@@ -12,11 +12,10 @@ defmodule Apiary.Runs.LeakedSecrets do
       before it that a secret may start in (`Apiary.SecretScan.carry/1`). That end comes
       from the same pass of the projection, or from the chunks stored before it. A secret
       that two chunks split is found when each event between them, such as a heartbeat or
-      another step's output, is in the pass that projects the second chunk, or was
-      projected when no earlier event of the run was missing (at or below
-      `runs.projected_sequence`). Otherwise the second chunk starts a new text, so no two
-      pieces that were not printed together are read as one secret, and the secret is not
-      found;
+      another step's output, is in the pass that projects the second chunk, or is at or
+      below `runs.projected_sequence` as that pass begins, so that no event before it is
+      still missing. Otherwise the second chunk starts a new text, so no two pieces that
+      were not printed together are read as one secret, and the secret is not found;
     * the data of each event other than `dev.qory.run.log`, whose output is in the log
       chunks, as `event_text/1` writes it, in the same pass;
     * a dispatch's machine log, when Qory Apiary stores it;
@@ -132,9 +131,8 @@ defmodule Apiary.Runs.LeakedSecrets do
   # order, each scanned after the end of the text before it that a secret may start in.
   # A secret is found once its last byte is stored, and kept where its first byte is.
   # The end is carried from the step's chunk before when each event between them is in
-  # this pass or at or below the run's projected sequence, below which none is missing
-  # (`between?/3`). Otherwise the chunk starts a new text: an event that has not arrived,
-  # or one projected in an earlier pass while an earlier event was missing, breaks it.
+  # this pass, or at or below the run's projected sequence as the pass begins, so that no
+  # event before it is still missing (`between?/3`). Otherwise the chunk starts a new text.
   defp output_rows(run, chunks, events, times) do
     stored = stored(run, events)
 

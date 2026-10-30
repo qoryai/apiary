@@ -162,7 +162,8 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     end
   end
 
-  test "reads no secret across an event that has not arrived", ctx do
+  test "reads no secret across an event that has not arrived, and finds it once it has",
+       ctx do
     {head, tail} = String.split_at(ctx.secret, 10)
 
     # Both pieces in one pass, without the event between them.
@@ -186,7 +187,7 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert rows(ctx.run) == []
 
     # The event between the pieces projected while an earlier event of the run had not
-    # arrived: it counts as missing for the pass of the second piece.
+    # arrived, and that event still missing as the pass of the second piece begins.
     other = run_fixture(ctx.scope, %{public_id: Run.new_public_id()})
 
     events_fixture(other, [
@@ -198,6 +199,24 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     events_fixture(other, [{4, "run.log", log_data(tail <> "\n")}])
     project!(other)
     assert rows(other) == []
+
+    # The same, with the earlier event arriving before the pass of the second piece: no
+    # event before the one between is missing then, and the secret is found.
+    late = run_fixture(ctx.scope, %{public_id: Run.new_public_id()})
+
+    events_fixture(late, [
+      {2, "run.log", log_data("key " <> head)},
+      {3, "run.heartbeat", @heartbeat}
+    ])
+
+    project!(late)
+    events_fixture(late, [{1, "run.log", log_data("start\n")}])
+    project!(late)
+    assert Repo.get!(Run, late.id).projected_sequence == 3
+    events_fixture(late, [{4, "run.log", log_data(tail <> "\n")}])
+    project!(late)
+
+    assert [%{source_sequence: 2, offset: 4, length: 47}] = rows(late)
   end
 
   test "finds a secret that starts a chunk after a colour code that ends the one before",
