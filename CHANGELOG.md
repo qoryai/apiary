@@ -22,6 +22,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   redirect. A name whose address another workspace or a page of Qory Apiary has is
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
+- On every page of a workspace, the sidebar's first line is the organisation's name, a
+  link to the organisation's overview.
 - An instance admin can rename the product in Instance settings › General: the browser
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
@@ -56,13 +58,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   starts or the run ends.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
   for owners, admins and members who may read the run's log. The diagnostics contain the
-  run, its queue entry and claim, how its machine was prepared, its events, at most 5,000
-  and the latest first, the output that belongs to no step, its last 1 MiB, the output of
-  each step, and the secrets found printed in the run, at most 8 MiB in all. Only an
-  instance admin's copy contains the machine logs. A copy contains no key, no run code and
-  no variable value, only the variables' names. Text is copied as Qory Apiary stored it,
-  so a secret a run printed is in the copy. When the copy fails, the menu shows the fix
-  first, such as “Sign in again, then copy again. Your session ended.”
+  run, its queue entry and claim, how its machine was prepared, its latest 5,000 events at
+  most, the output that belongs to no step, its last 1 MiB, the output of each step, and
+  the secrets found printed in the run, at most 8 MiB in all. Only an instance admin's
+  copy contains the machine logs. A copy contains no key, no run code and no variable
+  value, only the variables' names. Text is copied as Qory Apiary stored it, so a secret a
+  run printed is in the copy. When the copy fails, the menu shows the fix first, such as
+  “Sign in again, then copy again. Your session ended.”
 - Instance settings › **Diagnostics keys**, for instance admins, lists the keys with which
   a computer reads the diagnostics of any run on the instance, and nothing else, at
   `GET /v1/runs/<run id>/diagnostics`, in a request signed with the key. **Get the
@@ -74,10 +76,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary scans the text a run stores, as it arrives, for keys of a known form: Qory
   Apiary's keys and codes, and Anthropic, OpenAI, GitHub and GitLab tokens. It scans the
   run's output, its events, its machine log and the reason its machine was released. It
-  stores where each key is, never the key, at most 1,000 for a run. In the diagnostics,
-  each one found has the line “This secret is compromised: it was printed into the run's
-  log. Replace it.”, or the same with the event, the machine log or the release reason as
-  the place. Text stored before the upgrade is not scanned.
+  stores where each key is, never the key, at most 1,000 for a run's output and events,
+  and 1,000 each for its machine log and release reason. In the diagnostics, each one
+  found has the line “This secret is compromised: it was printed into the run's log.
+  Replace it.”, or the same with the event, the machine log or the release reason as the
+  place. Text stored before the upgrade is not scanned.
 - `QORY_SETUP_CODE_SHA256` takes the SHA-256 of a set-up code that the install makes. With
   it set, the log shows no set-up link, and the code sets the instance up once
   (`guides/install.md`).
@@ -93,13 +96,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   test send, also after a reload: when the link was sent and until when it works, or the
   fix first, by cause, such as “Check the username and password, and that the relay allows
   this server's IP address, then send the test link again. The log-in to the relay failed
-  at 14:02:09 UTC.” While mail waits for the link, the instance admin who saved the
-  settings has **Send the test link again**, which ends the old link and sends another
-  through the saved settings, with no change to a setting. Qory Apiary sends at most one
-  test link a minute, for a save and a resend alike. The **Mail** step is done once mail
-  is on or the last test link was sent. Qory Apiary stores the time, the result and the
-  relay's reply code of the last send, never the relay's text. In Activity, a save is
-  “Saved the mail settings and started a test send”.
+  at 30 Oct 2026, 14:02:09 UTC.” While mail waits for the link, the instance admin who
+  saved the settings has **Send the test link again**, which ends the old link and sends
+  another through the saved settings, with no change to a setting. Qory Apiary sends at
+  most one test link a minute, for a save and a resend alike. The **Mail** step is done
+  once mail is on or the last test link was sent. Qory Apiary stores the time, the result
+  and the relay's reply code of the last send, never the relay's text. In Activity, a save
+  is “Saved the mail settings and started a test send”.
 - While an organisation has no workspace, its owners and admins invite people from
   **People** into the organisation. The invitation page and the sign-up show the
   organisation's name, and **People** lists the invitation with **None** as its workspace.
@@ -114,8 +117,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   not. **Back** at the foot of a form opens the step before in the same part, and each
   step has an address, such as `/instance/set-up?step=mail` and
   `/<organisation>/<workspace>/set-up/name`. The page of a workspace's step shows no list:
-  the workspace's sidebar lists its steps. A person who waits for another to create the
-  first workspace sees no list.
+  with the `factory` feature, the workspace's sidebar lists its steps. A person who waits
+  for another to create the first workspace sees no list.
 - The organisation's overview moves on without a reload when another person creates the
   organisation's first workspace while it shows the kind cards or the line for a person
   who waits.
@@ -346,11 +349,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Main** opens the workspace. **Work items** lists each test work item with the mark
   **Test**.
 - When the set-up's test run fails, the **Test run** step shows why and what fixes it, by
-  cause, with **Run the test** under the line. A test run that stopped while its machine
-  was prepared shows “The test run stopped at <step>.”, the cause line of the run's
-  **Prepare machine** section, and **Open the run's Prepare machine section**. A test run
-  that ended shows how, such as “The test run failed after the session started: <reason>.”
-  or “The test run failed: the run's settings did not pass a check on the machine
+  cause, with **Run the test** above it. A test run that stopped while its machine was
+  prepared shows “The test run stopped at <step>.”, the cause line of the run's **Prepare
+  machine** section, and **Open the run's Prepare machine section**. A test run that ended
+  shows how, such as “The test run failed after the session started: <reason>.” or “The
+  test run failed: the run's settings did not pass a check on the machine
   (image_unknown).”, with **See the run**. A test run that ended before a machine started
   it shows the fix where the set-up has one: shorten the line in **Say hi to your agent**,
   choose the model again on the **Model** step, or have an instance admin install the
@@ -366,8 +369,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Set-up: 3 of 7 steps” under the workspace's name. A person who may not act on a step
   reads who may. Once the test run has passed, the Overview, the sidebar and the
   organisation's list show no set-up. The workspace's other pages, such as **Backlog** and
-  **Runs**, open whatever the state of its set-up. On every page of a workspace, the
-  sidebar's first line is the organisation's name, a link to the organisation's overview.
+  **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** lists the organisation's model providers,
   and **New model provider** adds one with its key, and an address for a provider that
   needs one, such as LiteLLM; no page shows a key once it is saved. Under **Key**: “Qory
@@ -572,7 +574,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `engine_unreachable`, “The machine could not check an earlier run's container
   (engine_unreachable).” Any other code keeps “did not start: <code>”. For a machine of
   the Qory Pool, the cause line of **Prepare machine** ends with “An instance admin finds
-  the cause in the machine log of the Machine started step.”
+  the cause in the machine log of the Machine started step.” when the pool made no
+  machine, the machine stopped before it started the run, or the machine did not start the
+  run within 15 minutes.
+<!-- feature: factory -->
 - With a private image registry set (`QORY_REGISTRY` and the `registry` feature), Qory
   Apiary sends each prebuild the image address of its target, under the instance and the
   organisation, and a run starts only in an image at its organisation's address. A run
@@ -582,6 +587,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   image.” A prebuild in a workspace with no policy version runs under Qory Apiary's
   default policy, in observe mode with the hosts the integrations require, and its run
   page shows why on **Not a version made in this workspace**.
+<!-- /feature -->
 
 ### Fixed
 
