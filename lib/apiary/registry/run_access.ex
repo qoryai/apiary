@@ -102,12 +102,29 @@ defmodule Apiary.Registry.RunAccess do
 
       %{
         entry: entry(run),
-        hosts: [instance_host(), Registry.host()],
+        hosts: hosts(),
         instance_host: instance_host(),
         registry_host: Registry.host(),
         paths: paths(run, names)
       }
     end
+  end
+
+  @doc false
+  # hosts/0 is the hosts `member/1` gains for a run with registry access: the instance's
+  # and the registry's.
+  @spec hosts() :: [String.t()]
+  def hosts, do: [instance_host(), Registry.host()]
+
+  @doc false
+  # workspace_hosts/0 is `hosts/0` as the pages list it, with what each host is: `[]`
+  # unless the feature `registry` is on. Only a run through a gateway gains them
+  # (`applies?/1`).
+  @spec workspace_hosts() :: [%{host: String.t(), kind: :instance | :registry}]
+  def workspace_hosts do
+    if Features.on?(:registry),
+      do: [%{host: instance_host(), kind: :instance}, %{host: Registry.host(), kind: :registry}],
+      else: []
   end
 
   @doc false
