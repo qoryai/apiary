@@ -2,7 +2,8 @@ defmodule Apiary.Dispatches.MachineLogsTest do
   # Each dispatch's machine log (`Apiary.Dispatches.MachineLogs`,
   # `Apiary.Dispatches.MachineLogStore`): the file, named by the dispatch id alone, mode
   # 0600, in the folder and nowhere else; the record linked to the dispatch and its run;
-  # one per dispatch; no folder set refused and nothing kept; the read, an instance
+  # one per dispatch; no folder set refused and nothing kept; a run whose machine never
+  # redeemed its code ended at once; the read, an instance
   # admin's alone; the retention job's pruning and its setting; and the purge. What the
   # route answers is `ApiaryWeb.Contract.MachineLogControllerTest`'s. Not async: the
   # folder and the setting are the whole node's.
@@ -16,8 +17,10 @@ defmodule Apiary.Dispatches.MachineLogsTest do
 
   alias Apiary.{Deletion, Dispatches, InstanceConfig, Repo, Retention}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.{Dispatch, MachineLog, MachineLogs, MachineLogStore}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLog, MachineLogs, MachineLogStore}
+  alias Apiary.Environments.Record
   alias Apiary.Organisations.Organisation
+  alias Apiary.Runs.Run
 
   @moduletag needs: :factory
   @moduletag :tmp_dir
@@ -165,6 +168,81 @@ defmodule Apiary.Dispatches.MachineLogsTest do
       log = capture_log(fn -> assert upload(ctx, dispatch) == {:error, :unavailable} end)
       assert log =~ ~r/a machine log could not be stored: :e(exist|notdir)\n/
       assert record(dispatch) == nil
+    end
+  end
+
+  describe "a run whose machine never redeemed its code" do
+    test "ends at once once the log arrives: failed, machine_stopped; its run of the queue and dispatch lost",
+         ctx do
+      {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+      %{dispatch: dispatch, run: queued, registered: registered} = dispatched!(ctx.key)
+      assert %Run{state: "pending"} = registered
+      assert Apiary.Dispatches.Slots.held(ctx.pool.id) == 1
+
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Runs.topic(registered.workspace_id))
+      assert upload(ctx, dispatch) == :ok
+
+      assert %Run{
+               state: "failed",
+               reason: "machine_stopped",
+               start_failure: "machine_stopped",
+               start_failed_at: %DateTime{},
+               lost_at: nil
+             } = failed = Repo.get!(Run, registered.id)
+
+      assert {failed.dispatch_id, failed.dispatch_run_id} == {dispatch.id, queued.id}
+      assert %DispatchRun{state: :ended, end_cause: :lost} = Repo.get!(DispatchRun, queued.id)
+      assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}} = Repo.get!(Dispatch, dispatch.id)
+      assert Apiary.Dispatches.Slots.held(ctx.pool.id) == 0
+      assert_received {:run_changed, %Run{id: id, state: "failed"}} when id == registered.id
+
+      # The lost-run check at the code's expiry changes nothing more.
+      Apiary.Runs.Liveness.check(DateTime.add(DateTime.utc_now(), 1000, :second))
+      assert %Run{state: "failed", reason: "machine_stopped"} = Repo.get!(Run, registered.id)
+    end
+
+    test "stays as it is when its machine redeemed the code first", ctx do
+      {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+
+      %{dispatch: dispatch, run: queued, registered: registered, run_code: code} =
+        dispatched!(ctx.key)
+
+      _run_key = redeemed_run_key!(code)
+      assert upload(ctx, dispatch) == :ok
+
+      assert %Run{state: "pending", start_failure: nil} = Repo.get!(Run, registered.id)
+      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, queued.id)
+    end
+
+    test "stays as it is when the dispatch was not handed over: its release or lapse decides",
+         ctx do
+      dispatch = claimed!(ctx)
+      assert upload(ctx, dispatch) == :ok
+
+      run = Repo.one!(from r in Run, where: r.dispatch_run_id == ^dispatch.dispatch_run_id)
+      assert %Run{state: "pending", start_failure: nil} = run
+      assert %DispatchRun{state: :claimed} = Repo.get!(DispatchRun, dispatch.dispatch_run_id)
+    end
+
+    test "keeps the cause of a release that came first", ctx do
+      dispatch = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No capacity."})
+      assert upload(ctx, dispatch) == :ok
+
+      assert %Run{state: "failed", start_failure: "machine_not_made"} =
+               Repo.one!(from r in Run, where: r.dispatch_id == ^dispatch.id)
+    end
+
+    test "of a prebuild records its build lost, as the code's expiry would", ctx do
+      %{dispatch: dispatch, run: run, collection: collection} =
+        prebuild_handed_over!(ctx.scope, ctx.key)
+
+      assert upload(ctx, dispatch) == :ok
+
+      assert %Run{state: "failed", start_failure: "machine_stopped"} = Repo.get!(Run, run.id)
+
+      assert %Record{failure_cause: :lost} =
+               Repo.get_by!(Record, source_collection_id: collection.id, pool_id: ctx.pool.id)
     end
   end
 

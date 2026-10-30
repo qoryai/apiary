@@ -3,8 +3,8 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # The end of a run of the queue once it was handed over (`Apiary.Dispatches.DispatchRun`,
   # `:handed_over`), with its dispatches and the slot its dispatch holds. The run registered
-  # for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names it) ends in one of three ways,
-  # a prebuild in one of two, and the first to come decides the end cause:
+  # for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names it) ends in one of four ways,
+  # a prebuild in one of three, and the first to come decides the end cause:
   #
   # - its exit once folded, whatever its state: `run_ended`, by the projection that folded
   #   it, right after its pass (`run_ended/1`, from `Apiary.Runs.Projector`). A run that
@@ -34,13 +34,18 @@ defmodule Apiary.Dispatches.RunEnd do
   #   between its pass and its end, and, for a run that is not a prebuild, one whose exit
   #   its projection skipped unfolded (`Apiary.Runs.Projector`). A run that is not a
   #   prebuild whose refusal was folded and whose end was not written ends `run_refused`
-  #   the same way.
+  #   the same way;
+  # - its machine's log, when it arrives before the machine redeemed the run's code
+  #   (`machine_stopped/1`, from `Apiary.Dispatches.MachineLogs`): `lost`, as the lost-run
+  #   check ends it at the code's expiry, at once. The registered run fails,
+  #   `machine_stopped` (`runs.start_failure`), where the check would mark it lost; the
+  #   check ends `lost` such a run whose end was not written.
   #
   # A prebuild the check ends `lost` records that end as its last build's failure, on the
   # environment record of its collection and of its pool, the one that claimed it
   # (`Apiary.Environments.record_end_failure/3`): `lost` when its gateway never attached
-  # it by its run key's `attach_by` or it went silent, `timed_out` when nothing ended it
-  # by its backstop.
+  # it by its run key's `attach_by`, its machine stopped before it redeemed the run's code
+  # or it went silent, `timed_out` when nothing ended it by its backstop.
   # Its run of the queue and its dispatch end `lost` either way. A prebuild its exit ends,
   # `run_ended`, records its last build's failure there too when the exit is `failed` or
   # `lost` (`Apiary.Runs.Fold.exit_state/2`), as that state; any other exit records no
@@ -444,6 +449,66 @@ defmodule Apiary.Dispatches.RunEnd do
 
   def refused(%Run{}), do: []
 
+  # machine_stopped/1 ends at once, once the machine log of `dispatch` arrived
+  # (`Apiary.Dispatches.MachineLogs.upload/3`), the run the dispatch was handed over for
+  # whose machine never redeemed the run's code: still `pending`, never attached, its
+  # code unredeemed, with no exit, refusal, outcome or release. The registered run fails,
+  # `machine_stopped` (`start_failure`), with the dispatch as its `dispatch_id`, and the
+  # run of the queue and the dispatch end `lost`, as the lost-run check ends them at the
+  # code's expiry (`lose/1`), with what that end does for a prebuild's build. In a
+  # separate transaction, the run of the queue locked first, then the registered run.
+  # Nothing changes for a dispatch not handed over, of a run of the queue not handed over
+  # any more, or of a run that redeemed its code. The ids of the workspaces whose slots
+  # changed, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  @doc false
+  @spec machine_stopped(Dispatch.t()) :: [Ecto.UUID.t() | Settle.told()]
+  def machine_stopped(%Dispatch{
+        id: dispatch_id,
+        dispatch_run_id: id,
+        handed_over_at: %DateTime{}
+      }) do
+    {:ok, {changed, failed}} =
+      Repo.transact(fn ->
+        held = hold(id)
+        now = now()
+
+        with %DispatchRun{state: :handed_over} = dispatch_run <- lock(id),
+             %Run{} = run <-
+               Repo.one(from r in Run, where: r.dispatch_run_id == ^id, lock: "FOR UPDATE"),
+             true <- unstarted?(run) do
+          failed =
+            run
+            |> Ecto.Changeset.change(
+              state: "failed",
+              reason: "machine_stopped",
+              lost_at: nil,
+              start_failure: "machine_stopped",
+              start_failed_at: now,
+              dispatch_id: dispatch_id,
+              updated_at: now
+            )
+            |> Repo.update!()
+
+          {:ok, {finish(dispatch_run, failed, :lost, now, held), failed}}
+        else
+          _started_or_ended -> {:ok, {[], nil}}
+        end
+      end)
+
+    if failed, do: Apiary.Runs.broadcast_changed(failed)
+    changed
+  end
+
+  def machine_stopped(%Dispatch{}), do: []
+
+  # A registered run through a gateway whose code was never redeemed, that never
+  # attached, and that has no exit, refusal, outcome, release or start failure.
+  defp unstarted?(%Run{} = run) do
+    run.state == "pending" and is_nil(run.attached_at) and not is_nil(run.run_code_sha256) and
+      is_nil(run.run_code_public_key) and is_nil(run.start_failure) and
+      is_nil(run.released_at) and not outcome_or_exit?(run) and is_nil(run.refused_at)
+  end
+
   # lose/1 ends, at `now`, the runs of the queue handed over whose registered run its
   # gateway never attached by its `attach_by`, or that has no exit by its `backstop_at`,
   # or that is silent (`lost`), or whose exit came and whose end was not written
@@ -464,7 +529,8 @@ defmodule Apiary.Dispatches.RunEnd do
            (not is_nil(r.outcome_state) or not is_nil(r.exited_at) or not is_nil(r.exit_state) or
               not is_nil(r.refused_at))) or
           (d.step == ^@prebuild and (not is_nil(r.exited_at) or not is_nil(r.exit_state))) or
-          not is_nil(r.released_at) or (is_nil(r.attached_at) and r.attach_by < ^now) or
+          not is_nil(r.released_at) or not is_nil(r.start_failure) or
+          (is_nil(r.attached_at) and r.attach_by < ^now) or
           r.backstop_at < ^now or
           (not is_nil(r.attached_at) and is_nil(r.exited_at) and is_nil(r.exit_state) and
              fragment(
@@ -575,7 +641,8 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # A prebuild lost: its build failed, `lost` at its run key's `attach_by`, never
-  # attached, or once silent, else `timed_out` at its backstop. A prebuild its exit
+  # attached, once its machine stopped before it redeemed the run's code, or once silent,
+  # else `timed_out` at its backstop. A prebuild its exit
   # ended: its build failed, `failed` or `lost` as its exit, when the exit is one of those
   # two; any other exit records nothing. The last good build kept either way; the runs
   # held for the build go on as `Apiary.Environments.build_failed/6` says. A prebuild
@@ -613,7 +680,11 @@ defmodule Apiary.Dispatches.RunEnd do
   defp failure(:run_ended, _run, _now), do: nil
 
   defp failure(:lost, run, now),
-    do: if(unattached_past?(run, now) or silent?(run, now), do: :lost, else: :timed_out)
+    do:
+      if(stopped?(run) or unattached_past?(run, now) or silent?(run, now),
+        do: :lost,
+        else: :timed_out
+      )
 
   # A prebuild ends by its exit, whatever its state, a release recorded on its registered
   # run (`released_at`, which only a release before a release after the handover was
@@ -622,6 +693,7 @@ defmodule Apiary.Dispatches.RunEnd do
     cond do
       exited?(run) -> :run_ended
       not is_nil(run.released_at) -> :released
+      stopped?(run) -> :lost
       unattached_past?(run, now) or past?(run.backstop_at, now) or silent?(run, now) -> :lost
       true -> nil
     end
@@ -632,6 +704,7 @@ defmodule Apiary.Dispatches.RunEnd do
       outcome_or_exit?(run) -> :run_ended
       not is_nil(run.released_at) -> :released
       refused?(run) -> :run_refused
+      stopped?(run) -> :lost
       true -> by_exit(exit_stored(run), run, now)
     end
   end
@@ -682,6 +755,10 @@ defmodule Apiary.Dispatches.RunEnd do
       unprojected -> if true in unprojected, do: :unprojected, else: :projected
     end
   end
+
+  # Its machine stopped before it redeemed the run's code (`machine_stopped/1`).
+  defp stopped?(%Run{start_failure: "machine_stopped"}), do: true
+  defp stopped?(%Run{}), do: false
 
   defp unattached_past?(%Run{attached_at: nil, attach_by: attach_by}, now),
     do: past?(attach_by, now)

@@ -10588,6 +10588,11 @@ msgstr ""
 msgid "No machine has posted a run to this workspace yet."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "No machine was made: %{reason}."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
@@ -16261,9 +16266,19 @@ msgstr ""
 msgid "The log was pruned."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The machine did not start the run within 15 minutes of the request."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The machine stopped before it started the run."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -16439,6 +16454,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The policy event was pruned with the run's events on %{date}."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The pool did not start a machine within 10 minutes."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
