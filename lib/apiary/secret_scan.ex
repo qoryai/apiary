@@ -10,8 +10,10 @@ defmodule Apiary.SecretScan do
   word (`sk-learn`) is none. Right before the prefix stands no letter, digit, `_` or `-`,
   so a hyphenated name that contains a prefix (`helpdesk-admin-…`, `my-glpat-…`) is none;
   or one of the contexts that put a letter or a digit there: a terminal colour code
-  (`\e[32m`), an escape written out (`\n`, `\t`), a URL encoding (`%3D`, `%20`), or `_`,
-  as in a variable's name (`MY_TOKEN_`). The first format of an OpenAI key, `sk-` and 48
+  (`\e[32m`), an escape written out (`\n`, `\t`), or a URL encoding (`%3D`, `%20`).
+  Before a prefix that ends in `_` (`qak_`, `qrk_`, `qecn_`, `ghp_`, `github_pat_`), `_`
+  may stand too, as in a variable's name (`MY_TOKEN_ghp_…`); before `sk-…-` or `glpat-`
+  it may not, so `my_glpat-…` is none. The first format of an OpenAI key, `sk-` and 48
   letters and digits, whose prefix is short, allows no context.
 
     * `access_key`: `qak_` and the 32-byte seed in base64url, 43 characters.
@@ -55,20 +57,24 @@ defmodule Apiary.SecretScan do
   @type finding :: %{kind: kind, offset: non_neg_integer, length: pos_integer}
 
   # A byte mode regex: a text is any bytes, and offsets are byte offsets. What may stand
-  # right before a prefix: no letter, digit, `_` or `-`; or `_`; a written-out escape
-  # (`\n`); a URL encoding (`%3D`); or a terminal colour code (`\e[32m`), which the match
-  # takes and the named groups leave out. The bare `sk-` form allows the first alone.
-  @before ~S"(?:(?<![A-Za-z0-9_-])|(?<=_)|(?<=\\[a-z])|(?<=%[0-9A-Fa-f]{2})|\e\[[0-9;]*m)"
+  # right before a prefix: no letter, digit, `_` or `-`; a written-out escape (`\n`); a
+  # URL encoding (`%3D`); or a terminal colour code (`\e[32m`), which the match takes and
+  # the named groups leave out. Before a prefix that ends in `_`, also `_`. The bare `sk-`
+  # form allows the first alone.
+  @before ~S"(?:(?<![A-Za-z0-9_-])|(?<=\\[a-z])|(?<=%[0-9A-Fa-f]{2})|\e\[[0-9;]*m)"
+  @before_underscore "(?:" <> @before <> "|(?<=_))"
   @secrets Regex.compile!(
              "(?:" <>
-               @before <>
+               @before_underscore <>
                "(?:(?<access_key>qak_[A-Za-z0-9_-]{43})" <>
                ~S"|(?<run_key>qrk_[A-Za-z0-9_-]{20,1957}\.[A-Za-z0-9_-]{86})" <>
                "|(?<run_code>(?i:qecr_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])" <>
                "|(?<enrolment_code>(?i:qec[npgid]_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])" <>
-               ~S"|(?<anthropic_api_key>sk-ant-(?:api|admin|oat)\d\d-[A-Za-z0-9_-]{32,})" <>
+               "|(?<github_token>gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}))" <>
+               "|" <>
+               @before <>
+               ~S"(?:(?<anthropic_api_key>sk-ant-(?:api|admin|oat)\d\d-[A-Za-z0-9_-]{32,})" <>
                "|(?<openai_api_key>sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,})" <>
-               "|(?<github_token>gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,})" <>
                ~S"|(?<gitlab_token>glpat-[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*))" <>
                "|(?<![A-Za-z0-9_-])(?<openai_api_key_first>sk-[A-Za-z0-9]{48}))" <>
                "(?![A-Za-z0-9_-])"

@@ -88,6 +88,10 @@ defmodule Apiary.SecretScanTest do
         "helpdesk-svcacct-reader-binding-for-namespace-production-eu",
         "flask-ant-colony-simulation-backend-service-v3",
         "my-glpat-rotation-script-for-ci-jobs",
+        "my_glpat-rotation-script-for-ci-jobs",
+        "project_sk-proj-management-dashboard-frontend",
+        "project_sk-proj-management-dashboard-frontend-build-and-release",
+        "deploy_sk-ant-admin01-rotation-script-for-production-jobs",
         "sk-proj-" <> String.duplicate("b", 39),
         "task-" <> @alnum48,
         "risk-" <> @alnum48,
@@ -109,7 +113,7 @@ defmodule Apiary.SecretScanTest do
       for text <- near_misses, do: assert(SecretScan.scan(text) == [], text)
     end
 
-    test "finds a secret after a colour code, an escape, a URL encoding or `_`" do
+    test "finds a secret after a colour code, an escape, a URL encoding, or `_` before `…_`" do
       ghp = "ghp_" <> String.duplicate("c", 36)
       ant = "sk-ant-api03-" <> String.duplicate("x", 93) <> "AA"
 
@@ -119,6 +123,7 @@ defmodule Apiary.SecretScanTest do
             {"https://ci.example/?token%3D#{ghp}&x=1", ghp},
             {"Authorization: Bearer%20#{ant}", ant},
             {"MY_TOKEN_#{ghp}", ghp},
+            {"MY_KEY_qak_" <> @b64, "qak_" <> @b64},
             {"a\\t#{ant}", ant},
             {"XQAK_" <> "\e[1;32m" <> "qak_" <> @b64, "qak_" <> @b64}
           ] do
