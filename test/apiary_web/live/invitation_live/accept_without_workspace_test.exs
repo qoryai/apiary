@@ -102,7 +102,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     assert has_element?(lv, ~s{#set-up-steps-invitation[href="/invitations/#{token}"]})
   end
 
-  test "signed in: accepts and lands on the workspace set-up", %{
+  test "signed in: accepts and lands on the organisation, which leads to the set-up", %{
     conn: conn,
     token: token,
     organisation: organisation
@@ -111,7 +111,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     conn = log_in_user(conn, user)
 
     {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
-    set_up = ~p"/#{organisation}/set-up"
+    set_up = ~p"/#{organisation}"
 
     assert {:error, {:redirect, %{to: ^set_up}}} =
              lv |> element("button", "Accept invitation") |> render_click()
@@ -121,7 +121,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     assert membership.level == :member
 
     # A member does not create the first workspace: the page says who does.
-    {:ok, lv, _html} = live(conn, set_up)
+    {:ok, lv, _html} = conn |> live(set_up) |> follow_redirect(conn)
     assert has_element?(lv, "#set-up-waiting")
     refute has_element?(lv, "#set-up-form")
 

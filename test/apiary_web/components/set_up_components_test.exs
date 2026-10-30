@@ -89,7 +89,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       organisation = admin.organisation
 
       assert Enum.find(steps, &(&1.id == :sources)).path ==
-               "/#{organisation.slug}/set-up?step=sources&workspace=#{admin.workspace.slug}"
+               "/#{organisation.slug}/#{admin.workspace.slug}/set-up/sources"
 
       assert Enum.all?(steps, &is_nil(&1.note))
 
@@ -191,9 +191,9 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert Enum.all?(steps, &(&1.progress == :organisation))
       assert Enum.map(steps, & &1.group) == List.duplicate(nil, 8)
 
-      # The default flow is at the set-up, which shows the type cards first.
+      # The default flow is at New workspace, which shows the type cards first.
       assert Enum.find(steps, &(&1.id == :sources)).path ==
-               "/#{scope.organisation.slug}/set-up?step=sources"
+               "/#{scope.organisation.slug}/workspaces/new?step=sources"
 
       refute Enum.any?(steps, &Map.has_key?(&1, :heading))
 
@@ -206,7 +206,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       steps = SetUpComponents.steps_for(scope, :name, flow: flow)
 
       assert Enum.find(steps, &(&1.id == :model)).path ==
-               "/#{scope.organisation.slug}/set-up?step=model&type=software"
+               "/#{scope.organisation.slug}/workspaces/new?step=model&type=software"
 
       assert SetUpComponents.flow_title(flow) == "Set up a new Software factory"
     end
@@ -414,7 +414,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         label: "Name",
         group: nil,
         state: :done,
-        path: "/acme/set-up?step=name",
+        path: "/acme/main/set-up/name",
         note: nil,
         progress: :organisation
       },
@@ -423,7 +423,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         label: "Model",
         group: nil,
         state: :current,
-        path: "/acme/set-up?step=model",
+        path: "/acme/main/set-up/model",
         note: "Harbour Ops does this",
         progress: :organisation
       }
@@ -459,7 +459,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         render_component(&SetUpComponents.steps/1,
           steps: @steps,
           title: "Set up Payments · Software factory",
-          page: "/acme/set-up"
+          page: "/acme/main/set-up"
         )
 
       assert ApiaryWeb.SetUpSteps.steps(html_doc(html)) == [
@@ -486,7 +486,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       html =
         render_component(&SetUpComponents.steps/1,
           steps: current(@steps, :mail) |> List.update_at(1, &%{&1 | state: :skipped}),
-          page: "/acme/set-up"
+          page: "/acme/main/set-up"
         )
 
       assert ApiaryWeb.SetUpSteps.steps(html_doc(html)) == [
@@ -585,14 +585,14 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       # Name starts this organisation's progress: no Back to Mail.
       refute render_component(&SetUpComponents.back/1,
                steps: current(@steps, :name),
-               page: "/acme/set-up"
+               page: "/acme/main/set-up"
              ) =~ "set-up-back"
 
-      html = render_component(&SetUpComponents.back/1, steps: @steps, page: "/acme/set-up")
+      html = render_component(&SetUpComponents.back/1, steps: @steps, page: "/acme/main/set-up")
       doc = LazyHTML.from_fragment(html)
 
       assert doc |> LazyHTML.query("#set-up-back") |> LazyHTML.attribute("href") ==
-               ["/acme/set-up?step=name"]
+               ["/acme/main/set-up/name"]
 
       assert doc |> LazyHTML.query("#set-up-back") |> LazyHTML.attribute("aria-label") ==
                ["Back to Name"]

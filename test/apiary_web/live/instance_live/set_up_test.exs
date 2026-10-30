@@ -479,7 +479,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   # on, as a sign-in sends the admin.
   defp after_mail(scope) do
     if Apiary.Features.on?(:factory),
-      do: ~p"/#{scope.organisation}/set-up?step=sources&workspace=#{scope.workspace.slug}",
+      do: ~p"/#{scope.organisation}/#{scope.workspace.slug}/set-up/sources",
       else: ~p"/"
   end
 
@@ -695,15 +695,15 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       assert conn |> get(path) |> redirected_to() == ~p"/"
     end
 
-    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}/set-up"
+    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}"
     refute Setup.connections_reviewed?()
 
     # The workspace set-up opens at the type cards, then lists no step under Connect Qory
     # Apiary.
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up")
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
     assert has_element?(lv, "#set-up-card-software")
 
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?type=software")
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?type=software")
     # Your account is of the instance's progress, so the flow's first step is step 1.
     assert steps(lv) == workspace_steps(:current)
     assert count(lv) == "Step 1 of #{length(steps(lv))}"
@@ -731,7 +731,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-skip-button") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=name"
+      assert to == ~p"/#{organisation}/workspaces/new?step=name"
       assert Setup.connections_reviewed?()
     end
 
@@ -755,13 +755,13 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       # Skip on Mail leads to Name, the first step of the organisation's progress.
       lv |> element("#set-up-skip-button") |> render_click()
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=name"
+      assert to == ~p"/#{organisation}/workspaces/new?step=name"
 
       # With no workspace yet, the set-up opens at the type cards; the flow follows.
       {:ok, lv, _html} = live(conn, to)
       assert has_element?(lv, "#set-up-card-software")
 
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=name&type=software")
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?step=name&type=software")
 
       assert steps(lv) == workspace_steps(:current)
       steps = length(workspace_steps(:current))
@@ -791,7 +791,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-continue") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=name"
+      assert to == ~p"/#{organisation}/workspaces/new?step=name"
       assert Setup.connections_reviewed?()
     end
 

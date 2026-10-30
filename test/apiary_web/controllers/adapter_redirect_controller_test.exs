@@ -272,7 +272,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> ConnectSession.put(session, "set-up")
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
-      assert redirected_to(conn) == "/#{scope.organisation.slug}/set-up?step=sources"
+      assert redirected_to(conn) == "/#{scope.organisation.slug}"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "is connected."
       assert get_session(conn, "connect_passes") == nil
       assert %Connection{state: :connected} = reload(connection)
@@ -325,7 +325,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
       assert redirected_to(conn) ==
-               "/#{scope.organisation.slug}/set-up?step=destinations&workspace=#{scope.workspace.slug}"
+               "/#{scope.organisation.slug}/#{scope.workspace.slug}/set-up/destinations"
     end
 
     test "a back value the session may not keep leads to the integration's page", %{

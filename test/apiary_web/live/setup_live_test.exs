@@ -156,14 +156,14 @@ defmodule ApiaryWeb.SetupLiveTest do
       [membership] =
         email |> Apiary.Accounts.get_user_by_email() |> Apiary.Organisations.list_memberships()
 
-      assert redirected_to(conn) == ~p"/#{membership.organisation}/set-up"
+      assert redirected_to(conn) == ~p"/#{membership.organisation}"
 
       # The instance's connections, opened anyway, send on the same way, and mark nothing.
       conn = conn |> recycle() |> get(~p"/instance/set-up")
       assert redirected_to(conn) == ~p"/"
 
       assert conn |> recycle() |> get(~p"/") |> redirected_to() ==
-               ~p"/#{membership.organisation}/set-up"
+               ~p"/#{membership.organisation}"
 
       refute Setup.connections_reviewed?()
     end

@@ -387,7 +387,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
         Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
 
       refute Apiary.Organisations.has_workspace?(organisation)
-      assert redirected_to(conn) == ~p"/#{organisation}/set-up"
+      assert redirected_to(conn) == ~p"/#{organisation}"
     end
 
     test "with mail, creates the organisation with no workspace too", %{conn: conn} do
