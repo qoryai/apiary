@@ -269,7 +269,7 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
       <.settings_page section={:diagnostics_keys} title={gettext("Diagnostics keys")}>
         <:subtitle>
           {gettext(
-            "A diagnostics key reads the diagnostics of any run on this instance, and nothing else."
+            "With a diagnostics key, a computer reads the diagnostics of any run on this instance, and nothing else."
           )}
         </:subtitle>
 
@@ -280,7 +280,7 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
             count={length(@keys)}
           >
             <p :if={@keys == []} id="diagnostics-keys-empty" class="text-[13px]/5 text-muted">
-              {gettext("No diagnostics key yet.")}
+              {gettext("This instance has no diagnostics key.")}
             </p>
             <ul :if={@keys != []} class="grid gap-3">
               <%= for key <- @keys do %>
@@ -337,13 +337,16 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
 
           <SettingsComponents.part id="diagnostics-keys-add" title={gettext("Add a key")}>
             <p id="diagnostics-keys-add-intro" class="text-[13px]/5 text-muted">
-              {gettext(
-                "You get one command to run on the computer that reads run diagnostics. It carries a one-time code, not a key, which works once within 15 minutes. The computer makes the key and sends Qory Apiary only its public half."
+              <%!-- "The code" is the one-time code, the plain word (`pgettext("plain", …)`). --%>
+              {pgettext(
+                "plain",
+                "You get one command to run on the computer that reads run diagnostics. It contains a one-time code, not a key. The code works once, within %{minutes} minutes. The computer makes the key and sends Qory Apiary only its public half.",
+                minutes: AccessKeys.code_ttl_minutes()
               )}
             </p>
             <p :if={@full} id="diagnostics-keys-full" class="text-[13px]/5 text-muted">
               {gettext(
-                "The instance holds %{count} diagnostics keys at most. Revoke one to add another.",
+                "This instance has at most %{count} diagnostics keys. Revoke one to add another.",
                 count: AccessKeys.diagnostics_key_limit()
               )}
             </p>

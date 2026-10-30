@@ -17,6 +17,8 @@ defmodule ApiaryWeb.Contract.DiagnosticsController do
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :observability
 
+  require Logger
+
   alias Apiary.{AccessKeys, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.{Diagnostics, Run}
@@ -36,6 +38,9 @@ defmodule ApiaryWeb.Contract.DiagnosticsController do
       _none -> conn |> put_status(404) |> json(%{error: "not_found"})
     end
   rescue
-    _exception -> conn |> put_status(503) |> json(%{error: "unavailable"})
+    exception ->
+      # The class alone: the message can carry the run's data.
+      Logger.error("run diagnostics not built: #{inspect(exception.__struct__)}")
+      conn |> put_status(503) |> json(%{error: "unavailable"})
   end
 end

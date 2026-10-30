@@ -1013,6 +1013,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-menu-copy[data-copy="#{run.public_id}"]))
       refute has_element?(lv, "#run-menu-raw")
       refute has_element?(lv, "#run-menu-download")
+      # Copy diagnostics copies the log, so it is not offered either.
+      refute has_element?(lv, "#run-menu-diagnostics")
+      refute html =~ "/runs/#{run.public_id}/diagnostics"
       refute html =~ "/runs/#{run.public_id}/log"
       refute html =~ "/runs/#{run.public_id}/terminal"
 

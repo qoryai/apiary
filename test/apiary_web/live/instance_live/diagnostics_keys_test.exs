@@ -66,7 +66,11 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
       assert html =~
                ~r{<title[^>]*>\s*Diagnostics keys · Instance settings · Qory Apiary\s*</title>}
 
-      assert has_element?(view, "#diagnostics-keys-empty", "No diagnostics key yet.")
+      assert has_element?(
+               view,
+               "#diagnostics-keys-empty",
+               "This instance has no diagnostics key."
+             )
 
       view |> element("#code-new-button") |> render_click()
       assert_patch(view, ~p"/instance/diagnostics-keys/new-code")

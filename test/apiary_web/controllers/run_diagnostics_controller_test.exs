@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.RunDiagnosticsControllerTest do
   # Copy diagnostics on the run page reads `GET /:org/:workspace/runs/:run_id/diagnostics`
   # (`ApiaryWeb.RunDiagnosticsController`): the run's diagnostics document, valid under the
-  # vendored contract, built for the reader: the log for a reader of the Terminal, never
-  # the machine logs for a reader who is no instance admin; a run of another workspace is
-  # not found.
+  # vendored contract, built for the reader: never the machine logs for a reader who is no
+  # instance admin; not found for a reader without the run's Terminal, and for a run of
+  # another workspace.
   use ApiaryWeb.ConnCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -45,7 +45,7 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
     document
   end
 
-  test "answers the run's document, filtered, with its log and no machine log", %{
+  test "answers the run's document, as stored, with its log and no machine log", %{
     conn: conn,
     run: run,
     path: path
@@ -56,21 +56,20 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
 
     assert document["run"]["id"] == run.public_id
     assert document["log"] == %{"text" => "hello\n", "truncated" => false}
-    assert [%{"data" => %{"note" => "[FILTERED]"}}] = document["events"]
+    assert [%{"data" => %{"note" => "qak_" <> _}}] = document["events"]
     refute Map.has_key?(document, "machine_logs")
-    refute conn.resp_body =~ "qak_"
   end
 
-  test "leaves out the log where the run's Terminal is hidden from the reader", %{
+  test "is not found for a reader from whom the run's Terminal is hidden", %{
     conn: conn,
     path: path
   } do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
     :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
 
-    document = conn |> get(path) |> document()
-    refute Map.has_key?(document, "log")
-    assert Map.has_key?(document, "events")
+    conn = get(conn, path)
+    assert conn.status == 404
+    assert conn.resp_body == "not found"
   end
 
   test "a run of another workspace, or no run, is not found", %{conn: conn, scope: scope} do

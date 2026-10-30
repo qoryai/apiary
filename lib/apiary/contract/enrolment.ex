@@ -70,7 +70,7 @@ defmodule Apiary.Contract.Enrolment do
   # A code after its prefix, one of every kind's (`EnrolmentCode.prefixes/0`) or a run
   # code's (`EnrolmentCode.run_prefix/0`, which `Apiary.Runs.RunCode` redeems): together
   # the contract's pattern, `^qec[npgir]_` and this. A diagnostics key's code, `qecd_`, is
-  # outside that pattern, which does not list it yet.
+  # outside that pattern, which lists no diagnostics key.
   @code_rest ~r/\A[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @public_key ~r/\A[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\z/

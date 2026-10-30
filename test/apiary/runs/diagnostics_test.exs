@@ -1,10 +1,10 @@
 defmodule Apiary.Runs.DiagnosticsTest do
   # The run diagnostics document (`Apiary.Runs.Diagnostics`): every document it builds is
   # valid under the vendored contract (`priv/contract/diagnostics/v1/`), whose fixtures
-  # are checked first; what each reader reads; the secret filter on every text; the
+  # are checked first; what each reader reads; every text as stored, a secret too; the
   # events' and the log's bounds; the size cap; and a run whose events or log the
-  # retention removed. Not async: a test of an instance admin hides the instance's
-  # organisation, a row every test shares.
+  # retention removed. Not async: a test of an instance admin hides the
+  # instance's organisation, a row every test shares.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -29,8 +29,6 @@ defmodule Apiary.Runs.DiagnosticsTest do
     assert DiagnosticsSchema.validate(schema, decoded) == :ok
     decoded
   end
-
-  defp everything, do: %{log: true, machine_logs: true}
 
   defp chunk!(%Run{} = run, sequence, bytes, step \\ nil) do
     Repo.insert!(%LogChunk{
@@ -93,7 +91,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
         |> Repo.update!()
 
       now = ~U[2026-10-30 10:20:00.123456Z]
-      document = valid!(schema, Diagnostics.document(run, everything(), now: now))
+      document = valid!(schema, Diagnostics.document(run, :instance, now: now))
 
       assert document["version"] == 1
       assert document["time"] == "2026-10-30T10:20:00Z"
@@ -125,35 +123,66 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert document["log"] == %{"text" => "", "truncated" => false}
     end
 
-    test "leaves out the log and the machine logs for a reader without the rights",
-         %{schema: schema, run: run} do
-      document = valid!(schema, Diagnostics.document(run, %{log: false, machine_logs: false}))
-      refute Map.has_key?(document, "log")
+    test "leaves out the machine logs for a person who is no instance admin",
+         %{schema: schema, scope: scope, run: run} do
+      %{scope: member} = join_fixture(scope, user_fixture())
+      refute Apiary.Access.instance_admin?(member)
+
+      document = valid!(schema, Diagnostics.document(run, member))
       refute Map.has_key?(document, "machine_logs")
-      assert Map.has_key?(document, "events")
+      assert Map.has_key?(document, "log") and Map.has_key?(document, "events")
     end
 
-    test "passes every text through the secret filter, and replaces U+0000 and bytes outside UTF-8",
+    test "reads a person's events as the edition narrows them, and a key's as the instance's",
+         %{schema: schema, scope: scope, run: run} do
+      events_fixture(run, [{1, "run.started", %{}}, {2, "run.exited", %{"exit_code" => 0}}])
+      :ok = Apiary.Edition.put_test_stub(__MODULE__.NarrowsPeople)
+
+      person = valid!(schema, Diagnostics.document(run, scope))
+      assert person["events"] == [] and person["events_omitted"] == 0
+
+      key = valid!(schema, Diagnostics.document(run, :instance))
+      assert [%{"sequence" => 1}, %{"sequence" => 2}] = key["events"]
+      assert key["events_omitted"] == 0
+    end
+
+    test "leaves out the log events, whose output is in the log, and counts none of them",
          %{schema: schema, run: run} do
       events_fixture(run, [
-        {1, "run.log", %{"note" => "key #{@secret}", @run_key => [%{"code" => @code}, 1]}}
+        {1, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("key #{@secret}\n")}},
+        {2, "run.started", %{}},
+        {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("again #{@secret}\n")}}
+      ])
+
+      chunk!(run, 1, "key #{@secret}\n")
+      json = Jason.encode!(Diagnostics.document(run, :instance))
+      document = valid!(schema, Jason.decode!(json))
+
+      assert [%{"sequence" => 2}] = document["events"]
+      assert document["events_omitted"] == 0
+      refute json =~ binary_part(Base.encode64("key #{@secret}\n"), 4, 12)
+      assert document["log"]["text"] == "key #{@secret}\n"
+    end
+
+    test "keeps every text as stored, a secret too, and replaces U+0000 and bytes outside UTF-8",
+         %{schema: schema, run: run} do
+      events_fixture(run, [
+        {1, "run.started", %{"note" => "key #{@secret}", @run_key => [%{"code" => @code}, 1]}}
       ])
 
       chunk!(run, 2, "token #{@run_key} and #{@code}\n")
       chunk!(run, 3, <<"nul ", 0, " and ", 0xFF, " end">>)
 
-      json = Diagnostics.document(run, everything()) |> Jason.encode!()
-      document = valid!(schema, Diagnostics.document(run, everything()))
+      json = Diagnostics.document(run, :instance) |> Jason.encode!()
+      document = valid!(schema, Diagnostics.document(run, :instance))
 
-      for secret <- ["qak_", "qrk_", "qecn_", "AQIDBAUG", "c2lnbmF0", "7K3M9P2Q"] do
-        refute json =~ secret, secret
-      end
+      for secret <- [@secret, @run_key, @code], do: assert(json =~ secret)
 
       assert [%{"data" => data}] = document["events"]
-      assert data == %{"note" => "key [FILTERED]", "[FILTERED]" => [%{"code" => "[FILTERED]"}, 1]}
+      assert data == %{"note" => "key #{@secret}", @run_key => [%{"code" => @code}, 1]}
 
       assert document["log"]["text"] ==
-               "token [FILTERED] and [FILTERED]\nnul \u{FFFD} and \u{FFFD} end"
+               "token #{@run_key} and #{@code}\nnul \u{FFFD} and \u{FFFD} end"
     end
 
     test "has the last events, as many as it holds, and counts the earlier ones",
@@ -179,7 +208,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       for batch <- Enum.chunk_every(rows, 1_000), do: Repo.insert_all(Apiary.Runs.Event, batch)
 
-      document = valid!(schema, Diagnostics.document(run, everything()))
+      document = valid!(schema, Diagnostics.document(run, :instance))
       assert length(document["events"]) == max
       assert document["events_omitted"] == 7
       assert hd(document["events"])["sequence"] == 8
@@ -195,7 +224,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       chunk!(run, 4, "é" <> String.duplicate("c", 99_999))
 
       %{"log" => %{"text" => text, "truncated" => true}} =
-        valid!(schema, Diagnostics.document(run, everything()))
+        valid!(schema, Diagnostics.document(run, :instance))
 
       assert byte_size(text) == mib
       refute text =~ "step output"
@@ -227,7 +256,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       for batch <- Enum.chunk_every(rows, 500), do: Repo.insert_all(Apiary.Runs.Event, batch)
       chunk!(run, 3_001, String.duplicate("\e[1m", 200_000))
 
-      document = Diagnostics.document(run, everything())
+      document = Diagnostics.document(run, :instance)
       assert byte_size(Jason.encode!(document)) <= Diagnostics.max_bytes()
       document = valid!(schema, document)
 
@@ -241,7 +270,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
          %{schema: schema, run: run} do
       chunk!(run, 1, String.duplicate("\e", 100_000))
 
-      document = Diagnostics.document(run, everything(), max_bytes: 200_000)
+      document = Diagnostics.document(run, :instance, max_bytes: 200_000)
       assert byte_size(Jason.encode!(document)) <= 200_000
       document = valid!(schema, document)
 
@@ -254,18 +283,30 @@ defmodule Apiary.Runs.DiagnosticsTest do
       chunk!(run, 2, "line\n")
 
       log_pruned = run |> Ecto.Changeset.change(log_pruned_at: now()) |> Repo.update!()
-      document = valid!(schema, Diagnostics.document(log_pruned, everything()))
+      document = valid!(schema, Diagnostics.document(log_pruned, :instance))
       refute Map.has_key?(document, "log")
       assert [_event] = document["events"]
 
       pruned =
         log_pruned |> Ecto.Changeset.change(events_pruned_at: now()) |> Repo.update!()
 
-      document = valid!(schema, Diagnostics.document(pruned, everything()))
+      document = valid!(schema, Diagnostics.document(pruned, :instance))
       refute Map.has_key?(document, "log")
       refute Map.has_key?(document, "events")
       refute Map.has_key?(document, "events_omitted")
     end
+  end
+
+  defmodule NarrowsPeople do
+    @moduledoc false
+    # A person reads no event of a run; the instance reads every one
+    # (`c:Apiary.Edition.client_reads/4`).
+    import Ecto.Query, only: [where: 2]
+
+    def client_reads(%Apiary.Accounts.Scope{user: %{}}, :run_events, _run, query),
+      do: where(query, false)
+
+    def client_reads(_scope, _kind, _run, subject), do: subject
   end
 
   describe "a run's preparation" do
@@ -288,9 +329,9 @@ defmodule Apiary.Runs.DiagnosticsTest do
       %{scope: scope, run: run}
     end
 
-    test "has the steps with their output, filtered, and why it stopped",
+    test "has the steps with their output as stored, and why it stopped",
          %{schema: schema, run: run} do
-      document = valid!(schema, Diagnostics.document(run, everything()))
+      document = valid!(schema, Diagnostics.document(run, :instance))
 
       assert %{
                "steps" => [
@@ -301,7 +342,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
                    "state" => "succeeded",
                    "exit_code" => 0,
                    "duration_ms" => 100,
-                   "output" => %{"text" => "Cloning with [FILTERED]", "truncated" => false}
+                   "output" => %{"text" => "Cloning with #{@secret}", "truncated" => false}
                  },
                  %{"number" => 2, "state" => "failed", "exit_code" => 2}
                ],
@@ -314,16 +355,6 @@ defmodule Apiary.Runs.DiagnosticsTest do
              } = document["preparation"]
 
       assert text =~ "Setup failed with exit code 2."
-      refute Jason.encode!(document) =~ "AQIDBAUG"
-    end
-
-    test "a reader without the log reads each step's output as empty and cut",
-         %{schema: schema, run: run} do
-      document = valid!(schema, Diagnostics.document(run, %{log: false, machine_logs: false}))
-
-      for step <- document["preparation"]["steps"] do
-        assert step["output"] == %{"text" => "", "truncated" => true}
-      end
     end
   end
 
@@ -354,7 +385,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       run =
         run
         |> Ecto.Changeset.change(
-          registration_variables: %{"API_TOKEN" => @secret, "LEVEL" => "1"}
+          registration_variables: %{"API_TOKEN" => "variable-value-7f3a", "LEVEL" => "1"}
         )
         |> Repo.update!()
 
@@ -386,10 +417,10 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       assert id == dispatch.public_id and pool == ctx.pool.public_id
 
-      assert [%{"dispatch" => ^id, "truncated" => false, "text" => "booted with [FILTERED]\n"}] =
+      assert [%{"dispatch" => ^id, "truncated" => false, "text" => "booted with #{@code}\n"}] =
                document["machine_logs"]
 
-      refute json =~ "AQIDBAUG"
+      refute json =~ "variable-value-7f3a"
 
       run_fields = Map.keys(document["run"])
 
@@ -409,7 +440,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert Map.has_key?(document, "log")
     end
 
-    test "a run whose start failed has the dispatch it keeps, with the release reason filtered",
+    test "a run whose start failed has the dispatch it keeps, with the release reason",
          %{schema: schema, run: run, dispatch: dispatch} do
       {1, _} =
         Repo.update_all(from(d in Apiary.Dispatches.Dispatch, where: d.id == ^dispatch.id),
@@ -428,21 +459,20 @@ defmodule Apiary.Runs.DiagnosticsTest do
         )
         |> Repo.update!()
 
-      document = valid!(schema, Diagnostics.document(run, everything()))
+      document = valid!(schema, Diagnostics.document(run, :instance))
 
-      assert [%{"id" => id, "release_reason" => "Quota key [FILTERED] refused"}] =
+      assert [%{"id" => id, "release_reason" => "Quota key #{@secret} refused"}] =
                document["dispatches"]
 
       assert id == dispatch.public_id
       refute Map.has_key?(document, "queue")
 
-      # Why the preparation stopped, as the run page says it, the reason filtered.
+      # Why the preparation stopped, as the run page's Prepare machine section says it.
       assert %{"cause" => "machine_not_made", "text" => text} =
                document["preparation"]["stopped"]
 
-      assert text =~ "No machine was made: Quota key [FILTERED] refused."
+      assert text =~ "No machine was made: Quota key #{@secret} refused."
       refute Map.has_key?(document["preparation"]["stopped"], "step")
-      refute Jason.encode!(document) =~ "AQIDBAUG"
     end
 
     test "has no dispatch claimed after the run was registered",
@@ -454,7 +484,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       run = Repo.get!(Run, run.id)
 
-      document = valid!(schema, Diagnostics.document(run, everything()))
+      document = valid!(schema, Diagnostics.document(run, :instance))
       assert document["dispatches"] == []
     end
   end

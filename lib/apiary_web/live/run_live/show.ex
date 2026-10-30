@@ -220,7 +220,8 @@ defmodule ApiaryWeb.RunLive.Show do
               <.run_menu
                 run={@run}
                 diagnostics={
-                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/diagnostics"
+                  Access.can?(@current_scope, :"run.read_log", @run) &&
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/diagnostics"
                 }
                 log={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
@@ -393,7 +394,7 @@ defmodule ApiaryWeb.RunLive.Show do
     required: true,
     doc: "the log's path, or false for a reader who may not read it"
 
-  attr :diagnostics, :string,
+  attr :diagnostics, :any,
     required: true,
     doc: "the path of the run's diagnostics document, as the reader may read it"
 
@@ -437,9 +438,9 @@ defmodule ApiaryWeb.RunLive.Show do
           </button>
         </li>
         <%!-- The run's diagnostics document, read when the reader clicks and copied as
-             it is (`ApiaryWeb.RunDiagnosticsController`): the run, as the reader may read
-             it, for a chat or an issue. --%>
-        <li role="none">
+             it is (`ApiaryWeb.RunDiagnosticsController`): the run, with its log, for a chat
+             or an issue. Only for a reader of the run's log, which the document has. --%>
+        <li :if={@diagnostics} role="none">
           <button
             id="run-menu-diagnostics"
             type="button"

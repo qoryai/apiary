@@ -60,7 +60,7 @@ defmodule Apiary.Nodes.Node do
   # The kinds the schema reads and writes: those of `all_kinds/0`, an adapter, which is
   # the instance's and is made through `Apiary.Adapters` alone (`adapter_changeset/2`), and
   # the instance's diagnostics node, which holds the diagnostics keys and is made through
-  # `Apiary.AccessKeys.Diagnostics` alone (`diagnostics_changeset/0`).
+  # `Apiary.AccessKeys` alone (`diagnostics_changeset/0`).
   @schema_kinds @all_kinds ++ [:adapter, :diagnostics]
   @choices [:direct, :default, :named]
   @max_limit 10_000
@@ -261,7 +261,7 @@ defmodule Apiary.Nodes.Node do
 
   @doc false
   # The changeset that makes the instance's diagnostics node, which holds the diagnostics
-  # keys (`Apiary.AccessKeys.Diagnostics`): of the kind `diagnostics`, named
+  # keys (`Apiary.AccessKeys`): of the kind `diagnostics`, named
   # `diagnostics`, with no organisation, no workspace, no instance limit and no gateway,
   # its public id `dg_`. The database holds it to one in use (`nodes_diagnostics_index`).
   @spec diagnostics_changeset() :: Ecto.Changeset.t()

@@ -21,19 +21,20 @@ defmodule Apiary.Runs.Diagnostics do
   alone. A value outside its pattern in the contract is left out, as a member the run has
   not got is.
 
-  **Who reads what** (`rights/2`). The reader is a person's scope, who reads the run
-  (`run.read`), or the scope of a diagnostics key. `log` is there for a reader who may
-  read the run's log (`run.read_log`) and for a diagnostics key, and so are the steps'
-  output, which a reader without the log reads as an empty text marked as cut, since the
-  contract asks every step for one; `machine_logs` for an
-  instance admin (`Apiary.Access.instance_admin?/1`) and for a diagnostics key. `log` and
-  `events` are also left out once the retention removed them (`runs.log_pruned_at`,
-  `runs.events_pruned_at`).
+  **Who reads what.** The reader is a person who reads the run and its log (`run.read`
+  and `run.read_log`; the caller checks both), or a diagnostics key, which reads as the
+  instance (`Apiary.AccessKeys.diagnostics_scope/1`). Either reads the log and the steps'
+  output. `machine_logs` is there for an instance admin (`Apiary.Access.instance_admin?/1`)
+  and for a diagnostics key. The events are read as the run page reads them, through the
+  edition (`c:Apiary.Edition.client_reads/4`, `:run_events`), under the person's scope or
+  the instance's; the `dev.qory.run.log` events are left out, as their output is in `log`
+  and in the steps' output already. `log` and `events` are also left out once the
+  retention removed them (`runs.log_pruned_at`, `runs.events_pruned_at`).
 
-  **Text.** Every text member is valid UTF-8, each byte that is not part of it replaced
-  by U+FFFD, holds no U+0000, also replaced by U+FFFD, and has passed the secret filter
-  (`Apiary.SecretLogFilter.filter_text/1`): keys of an event's data and strings at any
-  depth in it too.
+  **Text.** Every text member is the stored text as it is: valid UTF-8, each byte that
+  is not part of it replaced by U+FFFD, and no U+0000, also replaced by U+FFFD; keys of
+  an event's data and strings at any depth in it too. A secret printed into the run's
+  output stays in the document, so that the reader sees it.
 
   **Its size.** The encoded document is at most `max_bytes/0` bytes. The members other
   than the events are written first. While they are larger than that, the log loses its
@@ -45,7 +46,7 @@ defmodule Apiary.Runs.Diagnostics do
 
   import Ecto.Query, only: [from: 2, dynamic: 1, dynamic: 2]
 
-  alias Apiary.{Access, AccessKeys, Repo, SecretLogFilter}
+  alias Apiary.{Access, AccessKeys, Edition, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
@@ -57,11 +58,8 @@ defmodule Apiary.Runs.Diagnostics do
   @max_bytes 8 * 1024 * 1024
   @max_events 5_000
   @max_log_bytes 1024 * 1024
-  # The log is read from its end in pages of this many chunks, and this many bytes more
-  # than it keeps, so a secret that starts before the part kept is filtered whole before
-  # the cut.
+  # The log is read from its end in pages of this many chunks.
   @log_page 500
-  @log_margin 64 * 1024
   # The events' sizes are read in pages of this many.
   @event_page 1_000
   # What an event's members other than its data take, at most, encoded, beside its data.
@@ -69,6 +67,8 @@ defmodule Apiary.Runs.Diagnostics do
   # What the document's `events_omitted` and the commas between the events may add to the
   # size measured without them.
   @slack 64
+
+  @log_event "dev.qory.run.log"
 
   @code ~r/\A[a-z][a-z0-9_]{0,63}\z/
   @step ~r/\A[a-z][a-z_]{0,39}\z/
@@ -80,8 +80,11 @@ defmodule Apiary.Runs.Diagnostics do
   @typedoc "The document: a map with string keys, as JSON has it."
   @type document :: %{String.t() => term}
 
-  @typedoc "What the reader reads beyond the run: its log, and the machine logs."
-  @type rights :: %{log: boolean, machine_logs: boolean}
+  @typedoc """
+  Who reads the document: a person's scope, in the run's workspace, or `:instance`, a
+  diagnostics key, which reads as the instance.
+  """
+  @type reader :: Scope.t() | :instance
 
   @doc "max_bytes/0 is the most bytes the encoded document holds: 8 MiB."
   @spec max_bytes() :: pos_integer
@@ -96,51 +99,43 @@ defmodule Apiary.Runs.Diagnostics do
   def max_log_bytes, do: @max_log_bytes
 
   @doc """
-  rights/2 is what `scope` reads of `run` beyond the run itself (the moduledoc): its log,
-  for a reader who may read it (`run.read_log`), and the machine logs, for an instance
-  admin; both for a diagnostics key (`Apiary.AccessKeys.diagnostics_scope/1`).
-  """
-  @spec rights(Scope.t(), Run.t()) :: rights
-  def rights(%Scope{access_key: %AccessKey{} = key} = scope, %Run{} = run) do
-    case AccessKeys.diagnostics_scope(key) do
-      :instance -> %{log: true, machine_logs: true}
-      nil -> person_rights(scope, run)
-    end
-  end
-
-  def rights(%Scope{} = scope, %Run{} = run), do: person_rights(scope, run)
-
-  defp person_rights(scope, run) do
-    %{
-      log: Access.can?(scope, :"run.read_log", run),
-      machine_logs: Access.instance_admin?(scope)
-    }
-  end
-
-  @doc """
   encode/3 is the document about `run` for `scope`, encoded as JSON, at most
-  `max_bytes/0` bytes. The caller has read `run` under the scope.
+  `max_bytes/0` bytes: for the person of `scope`, or, for the scope of a diagnostics key,
+  as the instance. The caller has read `run` under the scope, and checked that a person
+  reads its log.
 
   `opts`: `now`, the document's time (the current time).
   """
   @spec encode(Run.t(), Scope.t(), keyword) :: String.t()
   def encode(%Run{} = run, %Scope{} = scope, opts \\ []) do
     run
-    |> document(rights(scope, run), opts)
+    |> document(reader(scope), opts)
     |> Jason.encode!()
   end
 
+  defp reader(%Scope{access_key: %AccessKey{} = key} = scope) do
+    if AccessKeys.diagnostics_scope(key) == :instance, do: :instance, else: scope
+  end
+
+  defp reader(%Scope{} = scope), do: scope
+
   @doc """
-  document/3 is the document about `run` for a reader with `rights`, as a map, whose
-  encoding is at most `max_bytes/0` bytes (`:max_bytes` in `opts` sets another bound, for
-  a test of the cut). `opts`: `now`, the document's time (the current time).
+  document/3 is the document about `run` for `reader`, as a map, whose encoding is at
+  most `max_bytes/0` bytes (`:max_bytes` in `opts` sets another bound, for a test of the
+  cut). `opts`: `now`, the document's time (the current time).
   """
-  @spec document(Run.t(), rights, keyword) :: document
-  def document(%Run{} = run, %{log: log?, machine_logs: machine_logs?}, opts \\ []) do
+  @spec document(Run.t(), reader, keyword) :: document
+  def document(%Run{} = run, reader, opts \\ []) do
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
     max_bytes = Keyword.get(opts, :max_bytes, @max_bytes)
     run = Repo.preload(run, [:organisation, :workspace, :gateway, :dispatch_run], force: true)
     dispatch = dispatch(run)
+
+    {scope, machine_logs?} =
+      case reader do
+        :instance -> {Scope.for_instance(run.organisation, run.workspace), true}
+        %Scope{} = scope -> {scope, Access.instance_admin?(scope)}
+      end
 
     base =
       %{
@@ -149,15 +144,15 @@ defmodule Apiary.Runs.Diagnostics do
         "instance" => instance(),
         "run" => run_member(run),
         "dispatches" => if(dispatch, do: [dispatch_member(dispatch)], else: []),
-        "preparation" => preparation(run, log?)
+        "preparation" => preparation(scope, run)
       }
       |> put("queue", queue(run.dispatch_run))
-      |> put("log", if(log? and is_nil(run.log_pruned_at), do: log(run)))
+      |> put("log", if(is_nil(run.log_pruned_at), do: log(run)))
       |> put("machine_logs", if(machine_logs?, do: machine_logs(dispatch)))
       |> fit(max_bytes)
 
     if is_nil(run.events_pruned_at) do
-      events(run, base, max_bytes)
+      events(scope, run, base, max_bytes)
     else
       base
     end
@@ -274,15 +269,13 @@ defmodule Apiary.Runs.Diagnostics do
     |> put("stale_at", time(dispatch.stale_at))
     |> put("ended_at", time(dispatch.ended_at))
     |> put("end_cause", dispatch.end_cause && code(Atom.to_string(dispatch.end_cause)))
-    |> put("release_reason", bounded(dispatch.release_reason, 200))
+    |> put("release_reason", nonempty(dispatch.release_reason))
   end
 
-  # The preparation (`Apiary.Runs.Preparation`), read in the run's workspace, with the
-  # steps' output for a reader of the log. The contract asks every step for its output: a
-  # reader without the log gets an empty text, marked as cut.
-  defp preparation(%Run{} = run, log?) do
-    preparation =
-      Preparation.read(Scope.for_instance(run.organisation, run.workspace), run, log: log?)
+  # The preparation (`Apiary.Runs.Preparation`), read under `scope` with the steps'
+  # output.
+  defp preparation(%Scope{} = scope, %Run{} = run) do
+    preparation = Preparation.read(scope, run, log: true)
 
     %{"steps" => Enum.map(preparation.steps, &step_member/1)}
     |> put("session_started_at", time(preparation.session_started_at))
@@ -295,7 +288,7 @@ defmodule Apiary.Runs.Diagnostics do
       "state" => step.state,
       "output" => output_member(step.output)
     }
-    |> put("name", bounded(step.name, nil))
+    |> put("name", nonempty(step.name))
     |> put("kind", step.kind && code(step.kind))
     |> put("exit_code", if(step.exit_code in @int32, do: step.exit_code))
     |> put("started_at", time(step.started_at))
@@ -309,15 +302,13 @@ defmodule Apiary.Runs.Diagnostics do
   defp output_member(%{text: text, truncated: truncated}),
     do: %{"text" => text(text), "truncated" => truncated}
 
-  defp output_member(nil), do: %{"text" => "", "truncated" => true}
-
   defp stopped_member(nil), do: nil
 
   defp stopped_member(%{cause: cause, step: step, fixer: fixer, text: line}) do
     %{
       "cause" => Atom.to_string(cause),
       "fixer" => Atom.to_string(fixer),
-      "text" => bounded(line, nil) || "\u{FFFD}"
+      "text" => nonempty(line) || "\u{FFFD}"
     }
     |> put("step", if(cause == :step_failed, do: step))
   end
@@ -353,7 +344,7 @@ defmodule Apiary.Runs.Diagnostics do
       Repo.one(from l in chunks, select: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0))
       |> to_integer()
 
-    {bytes, whole?} = read_log_tail(chunks, @max_log_bytes + @log_margin, total)
+    {bytes, whole?} = read_log_tail(chunks, @max_log_bytes, total)
     {kept, cut?} = bytes |> text() |> last_bytes(@max_log_bytes)
     %{"text" => kept, "truncated" => cut? or not whole?}
   end
@@ -394,34 +385,55 @@ defmodule Apiary.Runs.Diagnostics do
 
   ## The events
 
-  # The run's events, the latest first, as many as fit in what `document` leaves of
-  # `max_bytes`, at most `@max_events`, put back in sequence order.
-  defp events(%Run{id: run_id}, document, max_bytes) do
-    total = Repo.one(from e in Event, where: e.run_id == ^run_id, select: count(e.id))
+  # The run's events that `scope` reads, the latest first, as many as fit in what
+  # `document` leaves of `max_bytes`, at most `@max_events`, put back in sequence order;
+  # and how many earlier ones are left out, counted below the oldest kept, so that an
+  # event stored since is not counted.
+  defp events(%Scope{} = scope, %Run{} = run, document, max_bytes) do
+    events = events_query(scope, run)
     budget = max_bytes - byte_size(Jason.encode!(document)) - @slack
-    sizes = event_sizes(run_id, budget)
+    sizes = event_sizes(events, budget)
 
     kept =
       case sizes do
         [] -> []
-        _sizes -> read_events(run_id, sizes, budget)
+        _sizes -> read_events(events, sizes, budget)
+      end
+
+    omitted =
+      case kept do
+        [] ->
+          Repo.one(from e in events, select: count(e.id))
+
+        [%{"sequence" => oldest} | _] ->
+          Repo.one(from e in events, where: e.sequence < ^oldest, select: count(e.id))
       end
 
     document
     |> Map.put("events", kept)
-    |> Map.put("events_omitted", total - length(kept))
+    |> Map.put("events_omitted", max(omitted, 0))
+  end
+
+  # The run's events as the run page reads them for `scope` (`Apiary.Runs.Record`), the
+  # edition narrowing them (`:run_events`), without the `dev.qory.run.log` events.
+  defp events_query(%Scope{} = scope, %Run{id: id} = run) do
+    query =
+      from e in Event,
+        where: e.organisation_id == ^run.organisation_id and e.workspace_id == ^run.workspace_id,
+        where: e.run_id == ^id and e.type != @log_event
+
+    Edition.client_reads(scope, :run_events, run, query)
   end
 
   # The sequences and the estimated sizes of the latest events whose estimates fit in
   # `budget`, the latest first: the size of an event's data as the database writes it,
   # and its other members' at most.
-  defp event_sizes(run_id, budget), do: event_sizes(run_id, budget, nil, [], 0)
+  defp event_sizes(events, budget), do: event_sizes(events, budget, nil, [], 0)
 
-  defp event_sizes(run_id, budget, before, acc, count) do
+  defp event_sizes(events, budget, before, acc, count) do
     page =
       Repo.all(
-        from e in Event,
-          where: e.run_id == ^run_id,
+        from e in events,
           where: ^before_event(before),
           order_by: [desc: e.sequence],
           limit: @event_page,
@@ -444,7 +456,7 @@ defmodule Apiary.Runs.Diagnostics do
       Enum.reverse(acc)
     else
       {last, _size} = hd(acc)
-      event_sizes(run_id, budget, last, acc, count)
+      event_sizes(events, budget, last, acc, count)
     end
   end
 
@@ -453,12 +465,12 @@ defmodule Apiary.Runs.Diagnostics do
 
   # The events of `sizes`, read whole and encoded, the latest first, as many as fit in
   # `budget` once encoded; in sequence order.
-  defp read_events(run_id, [{latest, _size} | _] = sizes, budget) do
+  defp read_events(events, [{latest, _size} | _] = sizes, budget) do
     {oldest, _size} = List.last(sizes)
 
     Repo.all(
-      from e in Event,
-        where: e.run_id == ^run_id and e.sequence >= ^oldest and e.sequence <= ^latest,
+      from e in events,
+        where: e.sequence >= ^oldest and e.sequence <= ^latest,
         order_by: [desc: e.sequence],
         select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
     )
@@ -548,12 +560,11 @@ defmodule Apiary.Runs.Diagnostics do
   ## Values
 
   # Text as the document holds it: valid UTF-8, each byte outside it replaced by U+FFFD,
-  # U+0000 replaced by U+FFFD, through the secret filter.
+  # U+0000 replaced by U+FFFD.
   defp text(value) when is_binary(value) do
     value
     |> String.replace_invalid("\u{FFFD}")
     |> String.replace(<<0>>, "\u{FFFD}")
-    |> SecretLogFilter.filter_text()
   end
 
   # The last `limit` bytes of `text`, valid UTF-8, starting at a character, and whether
@@ -573,22 +584,19 @@ defmodule Apiary.Runs.Diagnostics do
 
   defp code(value), do: matching(value, @code)
 
-  # A value of the contract's pattern, once through the secret filter: a value the filter
-  # changes is left out, as one outside the pattern is.
+  # A value of the contract's pattern; nil for one outside it.
   defp matching(value, regex) when is_binary(value) do
-    if SecretLogFilter.filter_text(value) == value and Regex.match?(regex, value), do: value
+    if Regex.match?(regex, value), do: value
   end
 
   defp matching(_value, _regex), do: nil
 
-  # A text member of 1 to `max` characters (code points, as JSON Schema counts them), nil
-  # outside that.
-  defp bounded(nil, _max), do: nil
+  # A text member of 1 character or more, nil for nothing or an empty text.
+  defp nonempty(nil), do: nil
 
-  defp bounded(value, max) when is_binary(value) do
+  defp nonempty(value) when is_binary(value) do
     shown = text(value)
-    count = shown |> String.to_charlist() |> length()
-    if count >= 1 and (is_nil(max) or count <= max), do: shown
+    if shown != "", do: shown
   end
 
   defp time(nil), do: nil

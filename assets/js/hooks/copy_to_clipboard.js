@@ -56,7 +56,8 @@ export const CopyToClipboard = {
 async function copyAnswer(url) {
   const body = fetch(url, {credentials: "same-origin", headers: {accept: "application/json"}})
     .then((answer) => {
-      if (!answer.ok) throw new Error(`status ${answer.status}`)
+      // A signed-out reader is sent to the log-in page: its HTML is no answer to copy.
+      if (!answer.ok || answer.redirected) throw new Error(`status ${answer.status}`)
       return answer.text()
     })
   try {
