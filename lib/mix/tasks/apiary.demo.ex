@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   without it, in the first workspace that has a key that is not revoked, under its newest
   such key: on a new instance, the workspace Main, once a key is added to a node there.
   The set-up link (`Apiary.Setup`) creates no workspace: an owner creates Main on the
-  workspace set-up page, `/<org>/set-up`.
+  workspace set-up page, `/<org>/workspaces/new`.
 
   Nothing is inserted from here. A run goes the way Forager's goes: its registration, read
   by `Apiary.Runs.Registration.parse/1` and stored by `Apiary.Runs.Registration.register/3`,

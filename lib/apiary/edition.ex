@@ -168,7 +168,7 @@ defmodule Apiary.Edition do
 
   @doc """
   The workspace set-up page's line on which workspace `organisation`'s first one is, under
-  its title, for a person who may create it, on `/:org/set-up`, translated when it is
+  its title, for a person who may create it, on `/:org/workspaces/new`, translated when it is
   asked.
   """
   @callback first_workspace_line(%Organisation{}) :: String.t()
@@ -198,13 +198,13 @@ defmodule Apiary.Edition do
   @doc """
   The line the set-up's column About this step shows for `scope` on the step `step_id`,
   such as `:workspace`, where the page has no line of the core's: on the workspace
-  set-up page (`/:org/set-up`) for a person who may not create the organisation's first
+  set-up page (`/:org/workspaces/new`) for a person who may not create the organisation's first
   workspace. Nil shows no column. Translated when it is asked. The core answers nil.
   """
   @callback set_up_context(Scope.t() | nil, step_id :: term) :: String.t() | nil
 
   @doc """
-  The title of the workspace set-up page (`/:org/set-up`) for `scope`, while the
+  The title of the workspace set-up page (`/:org/workspaces/new`) for `scope`, while the
   organisation has no workspace in use and the scope's person may not create it; `step`
   is nil there. Translated when it is called. The core returns "Set up your workspace".
   """

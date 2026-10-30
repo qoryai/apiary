@@ -2662,8 +2662,8 @@ defmodule Apiary.Organisations do
   **Without a workspace**, a scope at the organisation alone, it invites into the
   organisation while the organisation has no workspace in use (`has_workspace?/1`): the
   invitation has none, `workspace_id` nil, and its person joins the organisation
-  (`accept_invitation/2`). The invitation page then opens the organisation's workspace
-  set-up, `/:org/set-up`, while it has no workspace. The rule is checked again once the
+  (`accept_invitation/2`). The invitation page then opens the organisation, `/:org`,
+  which leads to the workspace set-up while it has no workspace. The rule is checked again once the
   organisation's row is locked, so a first workspace created at the same moment
   (`create_first_workspace/2`) is seen. Once the organisation has a workspace in use, a
   scope without one is `{:error, :not_found}`: it has no workspace to send it from.

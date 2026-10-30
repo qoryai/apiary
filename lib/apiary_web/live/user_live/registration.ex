@@ -6,7 +6,8 @@ defmodule ApiaryWeb.UserLive.Registration do
   `Apiary.Organisations.sign_up_offer/1` answers on mount: before the instance is set
   up, nothing, and the page says to use its set-up link
   (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation with no
-  workspace, whose owner lands on the workspace set-up (`/:org/set-up`) once signed in;
+  workspace, whose owner lands on the organisation (`/:org`) once signed in, which leads to
+  the workspace set-up;
   and nothing where none is open, where the page says sign-up is by invitation.
   `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
 

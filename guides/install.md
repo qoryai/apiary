@@ -797,7 +797,8 @@ px, shows what the step does. Two pages come after the set-up link's page:
    there is nothing to configure. Until an instance admin finishes or skips the page's
    last step, each sign-in of an instance admin opens this page first. Where the page has
    no step, the set-up link's page leads to the workspace set-up.
-2. **The workspace set-up**, at `/<organisation>/set-up`, creates the organisation's
+2. **The workspace set-up**, at `/<organisation>/workspaces/new`, where
+   `/<organisation>` sends you, creates the organisation's
    workspace. Its first page, **What will this workspace do?**, shows one card for each
    type of workspace: **Software factory**, where agents change code in your
    repositories. Select **Choose** on the card. At the step **Name**, the field **Name**
@@ -805,8 +806,8 @@ px, shows what the step does. Two pages come after the set-up link's page:
    The type can't be changed after. **Create workspace** creates Main and opens its
    overview: `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in
    of a member of the organisation opens this page, and only an owner creates the
-   workspace. If another owner creates Main while the page is open, the page opens
-   Main's overview without a reload.
+   workspace. If another owner creates Main while the page is open, the page opens the
+   organisation's overview, which lists Main, without a reload.
 
 <!-- feature: factory -->
 With the `factory` feature, both pages have more steps:
@@ -821,12 +822,12 @@ With the `factory` feature, both pages have more steps:
   without a key in use, or of one that has not sent the address where it is set up, shows
   what to do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
-- **The workspace set-up** has 7 steps, each at
-  `/<organisation>/set-up?step=<step>&workspace=main` once the workspace exists:
-  **Name**, **Work sources**, **Destinations**, **Model**, **Harness**, **Machines** and
-  **Test run**. **Create workspace** opens **Work sources** in place of the overview, and
-  the set-up opens at the first step that is not done. If another owner creates Main
-  while the page is open, the page opens Main's first step that is not done.
+- **The workspace set-up** has 7 steps, each a page of the workspace once it exists, at
+  `/<organisation>/main/set-up/<step>`: **Name**, **Work sources**, **Destinations**,
+  **Model**, **Harness**, **Machines** and **Test run**. The group **Set up** at the top
+  of the workspace's sidebar lists them, with a check mark on each step done, and they
+  open in any order. **Create workspace** opens **Work sources**. If another owner
+  creates Main while the page is open, the page opens the organisation's overview.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, open **Connect another source**, or **Connect another
@@ -856,8 +857,8 @@ With the `factory` feature, both pages have more steps:
   workspace**: choose one to reuse it.
 
   [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
-  steps. Until the test run passes, opening Main opens its next step in place of the
-  overview.
+  steps. Until the test run passes, Main's overview lists the steps, with **Continue**
+  to the first step that is not done.
 <!-- /feature -->
 
 The code is 32 random bytes, kept in the database until it is used; it does
@@ -1008,7 +1009,7 @@ people and nodes, all under `example.com` and other example names. Never load it
 instance people work in.
 
 1. Set up the instance with the organisation name **Acme**, and create its workspace Main
-   at `/acme/set-up` ([Set up a new instance](#set-up-a-new-instance)).
+   at `/acme` ([Set up a new instance](#set-up-a-new-instance)).
 2. Run on the release:
 
    ```sh

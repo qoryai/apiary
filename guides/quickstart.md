@@ -90,7 +90,8 @@ the same list. Two pages follow:
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. The workspace set-up, at `http://localhost:4100/acme/set-up`. Its first page, **What
+2. The workspace set-up, at `http://localhost:4100/acme/workspaces/new`, where
+   `http://localhost:4100/acme` sends you. Its first page, **What
    will this workspace do?**, shows the card **Software factory**, whose words this
    guide uses: select **Choose**. At the step **Name**, keep the name `Main` and select
    **Create workspace**.
@@ -283,9 +284,10 @@ version.
 ## 8. Set up Main and run the test
 
 With the `factory` feature, the workspace set-up goes on after **Create workspace**, at
-`http://localhost:4100/acme/set-up?step=<step>&workspace=main`. Until a test run passes,
-opening Main, `http://localhost:4100/acme/main`, opens its next step in place of the
-overview. The list of steps shows a check mark on each step once it is done:
+`http://localhost:4100/acme/main/set-up/<step>`, a page of Main. Until a test run passes,
+the group **Set up** at the top of Main's sidebar lists the steps, and Main's overview,
+`http://localhost:4100/acme/main`, lists them too, with **Continue** to the next step.
+Each list shows a check mark on each step once it is done:
 
 | Step | Done when |
 |---|---|

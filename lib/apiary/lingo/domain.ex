@@ -94,7 +94,7 @@ defmodule Apiary.Lingo.Domain do
 
   @doc """
   The domain's name as a type of workspace: the title of its card on the set-up's type
-  cards, at `/:org/set-up` and `/:org/workspaces/new`, and of its line where a person picks a new
+  cards, at `/:org/workspaces/new`, and of its line where a person picks a new
   workspace's type from a list (`ApiaryWeb.WorkspaceComponents.type_field/1`):
   "Software factory". Translated in the locale of the caller's process.
   """

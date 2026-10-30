@@ -86,9 +86,8 @@ and do not go through Gettext.
 ## Domains and their words
 
 A workspace's domain is its **type**, chosen when the workspace is created and fixed
-after: on the type cards of the workspace set-up, at `/:org/set-up` for an
-organisation's first workspace and at `/:org/workspaces/new` for any other, and on an
-edition's form. A card's title is the domain's name (`c:Apiary.Lingo.Domain.type_name/0`):
+after: on the type cards of the workspace set-up, at `/:org/workspaces/new` for an
+organisation's first workspace and any other, and on an edition's form. A card's title is the domain's name (`c:Apiary.Lingo.Domain.type_name/0`):
 "Software factory", the one card. The Type field of an edition's form
 (`ApiaryWeb.WorkspaceComponents.type_field/1`) shows each domain's name and line
 (`type_line/0`): "Software factory", "For work on code. Each ticket needs a
