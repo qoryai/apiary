@@ -1088,7 +1088,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
         gateway ->
           [via, via_url] = AccessKeys.via_lines(gateway.url)
-          {[under_gateway(via)], [{under_gateway(via_url), "# the gateway #{gateway.name}"}]}
+
+          {[under_gateway(via)],
+           [{under_gateway(via_url), "# the gateway #{NodeComponents.shown_name(gateway)}"}]}
       end
 
     width = (marked ++ via_marked) |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
@@ -1116,12 +1118,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp point_title(%Node{kind: :pool}, nil), do: gettext("Point the node pool at Qory Apiary.")
 
   defp point_title(%Node{kind: :pool}, gateway),
-    do: gettext("Point the node pool at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+    do:
+      gettext("Point the node pool at Qory Apiary, through %{gateway}.",
+        gateway: NodeComponents.shown_name(gateway)
+      )
 
   defp point_title(_node, nil), do: gettext("Point the node at Qory Apiary.")
 
   defp point_title(_node, gateway),
-    do: gettext("Point the node at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+    do:
+      gettext("Point the node at Qory Apiary, through %{gateway}.",
+        gateway: NodeComponents.shown_name(gateway)
+      )
 
   attr :id, :string, required: true
   attr :node, Node, required: true
@@ -1135,7 +1143,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <.rich text={
         rich_gettext("%{via} sends every request to Qory Apiary through %{gateway}.",
           via: {:m, "via"},
-          gateway: @through.name
+          gateway: NodeComponents.shown_name(@through)
         )
       } />
       <span :if={@node.kind == :pool}>
@@ -1356,7 +1364,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 gettext(
                   "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
                   name: @node.name,
-                  gateway: @through.name
+                  gateway: NodeComponents.shown_name(@through)
                 ),
               else:
                 gettext(

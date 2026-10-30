@@ -3315,7 +3315,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(conn, test_path(scope))
 
       assert words(lv, "#set-up-test-passed") ==
-               "Test run passed: the agent answered on a machine of the instance's pool. " <>
+               "Test run passed: the agent answered on a machine of the Qory Pool. " <>
                  "See the run"
     end
 
@@ -4129,8 +4129,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
 
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]:not([disabled])")
-    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
-    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
     refute has_element?(lv, "#set-up-pool-instance-check")
 
@@ -4141,8 +4141,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     lv = open(ctx, member(ctx.organisation))
     assert has_element?(lv, "#set-up-pool-instance-radio[checked][disabled]")
-    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
-    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
     refute has_element?(lv, "#set-up-pool-workspace")
     assert read_only?(lv)
     assert words(lv, "#set-up-continue") == "Continue"
@@ -4167,9 +4167,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
                "that joined the pool."
 
     assert words(lv, "#set-up-context #set-up-machines-pools") ==
-             "The shared pool is the instance's pool, where the instance has one. It takes " <>
+             "The Qory Pool is the instance's pool, where the instance has one. It takes " <>
                "the runs of every workspace that has no pool. A pool for #{workspace} takes " <>
-               "the runs of #{workspace} alone: once you add it, the shared pool stops taking " <>
+               "the runs of #{workspace} alone: once you add it, the Qory Pool stops taking " <>
                "them. To join a machine to the pool, get the command and run it on that machine."
 
     assert words(lv, "#set-up-context #set-up-machines-why") ==
@@ -4180,10 +4180,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
        ctx do
-    line = "Only an instance admin checks the instance's pool and gateway."
+    line = "Only an instance admin checks the Qory Pool and the Qory Gateway."
 
     lv = open(ctx)
-    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
     assert words(lv, "#set-up-pool-instance-who-may") == line
@@ -4210,7 +4210,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
     lv = open(ctx)
-    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
     assert has_element?(lv, "#set-up-continue")
   end
@@ -4258,7 +4258,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
 
     assert words(lv, "#set-up-pool-instance-who-may") ==
-             "Only an instance admin checks the instance's pool and gateway."
+             "Only an instance admin checks the Qory Pool and the Qory Gateway."
 
     refute has_element?(lv, "#set-up-pool-instance-check")
     assert has_element?(lv, "#set-up-skip")
@@ -4367,13 +4367,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     lv = open(ctx)
 
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
-    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
-    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
     refute has_element?(lv, "#set-up-pool-workspace-radio[checked]")
     assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
 
     assert words(lv, "#set-up-pool-workspace-line") ==
-             "Runs in #{workspace.name} then wait for this pool, and the shared pool stops serving them."
+             "Runs in #{workspace.name} then wait for this pool, and the Qory Pool stops taking them."
 
     refute has_element?(lv, "#set-up-pool-add-button")
 
@@ -4719,8 +4719,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
 
-    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
-    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
     refute has_element?(lv, "#set-up-pool-instance-radio[checked]")
     assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
     assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
@@ -4731,7 +4731,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
 
     assert words(lv, "#set-up-pool-remove-line") ==
-             "Remove the pool #{pool.name}? Runs in #{workspace.name} then use the instance's pool."
+             "Remove the pool #{pool.name}? Runs in #{workspace.name} then use the Qory Pool."
 
     refute has_element?(lv, "#set-up-pool-remove-enrolled")
     assert words(lv, "#set-up-pool-remove-button") == "Remove pool"
@@ -4777,7 +4777,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert serving == instance_pool.id
 
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
-    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
     refute has_element?(lv, "#set-up-pool-workspace-radio[checked]")
     refute has_element?(lv, id)
     refute has_element?(lv, "#{id}-command")
@@ -4868,7 +4868,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
 
-    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
     assert has_element?(lv, "#set-up-pool-instance-radio[disabled]")
     refute has_element?(lv, "#set-up-pool-instance-radio[checked]")

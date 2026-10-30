@@ -2540,7 +2540,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               disabled={@shared_off}
               class="radio radio-sm radio-primary"
             />
-            <span id={"#{id}-name"} class="q-choice-h">{gettext("Shared: the instance's pool")}</span>
+            <span id={"#{id}-name"} class="q-choice-h">{gettext("Qory Pool")}</span>
             <span id={"#{id}-state"} class="q-choice-p">
               <span class={["q-sdot", ready?(line) && "q-sdot-completed"]}>
                 <i aria-hidden="true"></i><span>{pool_state_line(line.state)}</span>
@@ -2557,7 +2557,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <span :if={@pool_removing} id="set-up-pool-remove" class="q-choice-p grid gap-2">
               <span id="set-up-pool-remove-line" class="text-base-content">
                 {gettext(
-                  "Remove the pool %{pool}? Runs in %{workspace} then use the instance's pool.",
+                  "Remove the pool %{pool}? Runs in %{workspace} then use the Qory Pool.",
                   pool: @pool_removable.name,
                   workspace: @flow.workspace.name
                 )}
@@ -2597,7 +2597,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             </span>
             <span id="set-up-pool-workspace-line" class="q-choice-p">
               {gettext(
-                "Runs in %{workspace} then wait for this pool, and the shared pool stops serving them.",
+                "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them.",
                 workspace: @flow.workspace.name
               )}
             </span>
@@ -2629,7 +2629,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           />
           <span :if={!@only} aria-hidden="true"></span>
           <span id={"#{id}-name"} class="q-choice-h">
-            <span :if={line.instance}>{gettext("The instance's pool")}</span>
+            <span :if={line.instance}>{gettext("Qory Pool")}</span>
             <span :if={!line.instance and act != :pool}>{line.pool.name}</span>
             <.link
               :if={act == :pool}
@@ -2709,7 +2709,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
         <p id="set-up-machines-pools">
           {gettext(
-            "The shared pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the shared pool stops taking them. To join a machine to the pool, get the command and run it on that machine.",
+            "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine.",
             workspace: @flow.workspace.name
           )}
         </p>
@@ -2879,7 +2879,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # The state of a pool's line on the Machines step.
   defp pool_state_line({:ready, gateway}),
-    do: gettext("Ready · gateway: %{gateway}", gateway: gateway.name)
+    do:
+      gettext("Ready · gateway: %{gateway}",
+        gateway: ApiaryWeb.NodeComponents.shown_name(gateway)
+      )
 
   defp pool_state_line({:not_ready, :no_pool}), do: gettext("Not ready: no pool")
   defp pool_state_line({:not_ready, :no_active_key}), do: gettext("Not ready: no active key")

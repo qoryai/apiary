@@ -8523,11 +8523,6 @@ msgstr ""
 msgid "Instance limit"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Instance pool: takes this workspace's runs while it has no node pool in use."
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Instance renamed"
@@ -11687,7 +11682,7 @@ msgstr ""
 
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
-msgid "Only an instance admin checks the instance's pool and gateway."
+msgid "Only an instance admin checks the Qory Pool and the Qory Gateway."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -12809,6 +12804,17 @@ msgstr ""
 msgid "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Gateway"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Pool"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory asked %{number} question before it can propose what to do."
@@ -13291,7 +13297,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Remove the pool %{pool}? Runs in %{workspace} then use the instance's pool."
+msgid "Remove the pool %{pool}? Runs in %{workspace} then use the Qory Pool."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -14002,7 +14008,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Runs in %{workspace} then wait for this pool, and the shared pool stops serving them."
+msgid "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -14710,11 +14716,6 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Shared in %{organisation}"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Shared: the instance's pool"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -15473,7 +15474,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Test run passed: the agent answered on a machine of the instance's pool."
+msgid "Test run passed: the agent answered on a machine of the Qory Pool."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15722,6 +15723,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The Forager file's lines for this key. Nothing here is secret."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/nodes.ex
+#, elixir-autogen, elixir-format
+msgid "The Qory Pool and the Qory Gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The Qory Pool takes the runs of every workspace that has no pool. The Qory Gateway serves every organisation."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -16030,9 +16041,14 @@ msgstr ""
 msgid "The installation couldn't be completed just now. Press Install to try again."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The instance's pool"
+msgid "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -16244,11 +16260,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The next page shows the secret once, with everything else the machine needs, for you to set where %{name} runs."
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/nodes.ex
-#, elixir-autogen, elixir-format
-msgid "The node pool and the gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The pool takes the runs of every workspace that has no node pool in use. The gateway serves every organisation."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -16616,11 +16627,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "The shared pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the shared pool stops taking them. To join a machine to the pool, get the command and run it on that machine."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

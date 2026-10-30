@@ -2287,7 +2287,7 @@ defmodule ApiaryWeb.RunComponents do
   @spec place_of(map, map | nil) :: {:pool, String.t()} | {:host, String.t()} | nil
   def place_of(%{dispatch_run_id: id}, node) when is_binary(id) do
     case node do
-      %{kind: :pool, name: name} -> {:pool, name}
+      %{kind: :pool} = pool -> {:pool, ApiaryWeb.NodeComponents.shown_name(pool)}
       _not_read -> nil
     end
   end
@@ -2330,12 +2330,12 @@ defmodule ApiaryWeb.RunComponents do
     <%= cond do %>
       <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
         <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
-          {@node.name}
+          {ApiaryWeb.NodeComponents.shown_name(@node)}
         </.link>
       <% @node && is_nil(@node.deleted_at) -> %>
-        {@node.name}
+        {ApiaryWeb.NodeComponents.shown_name(@node)}
       <% @node -> %>
-        {gettext("%{name} (deleted)", name: @node.name)}
+        {gettext("%{name} (deleted)", name: ApiaryWeb.NodeComponents.shown_name(@node))}
       <% true -> %>
         <span class="text-faint">{gettext("n/a")}</span>
     <% end %>

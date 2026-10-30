@@ -43,8 +43,9 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   # Where the instance has a node pool and a gateway (`Apiary.Nodes.Installed`), with the
   # feature `factory`, which the documentation does not show, the list has the instance's
-  # gateway, and the instance's pool while the workspace has no node pool in use, with a
-  # sentence saying so. The pool's row has this workspace's running instances alone, and
+  # gateway, and the instance's pool while the workspace has no node pool in use, named
+  # Qory Gateway and Qory Pool (`ApiaryWeb.NodeComponents.shown_name/1`), each with a
+  # sentence that the instance provides it. The pool's row has this workspace's running instances alone, and
   # no limit. Only an instance admin sees their names as links, to Instance settings ›
   # Nodes.
 
@@ -749,17 +750,17 @@ defmodule ApiaryWeb.NodeLive.Index do
                     id={"node-#{node.public_id}-link"}
                     navigate={node_path(@current_scope, node)}
                     class="q-title q-cut hover:underline"
-                    title={node.name}
+                    title={NodeComponents.shown_name(node)}
                   >
-                    {node.name}
+                    {NodeComponents.shown_name(node)}
                   </.link>
                   <span
                     :if={instance?(node) and !@instance_admin}
                     id={"node-#{node.public_id}-name"}
                     class="q-title q-cut"
-                    title={node.name}
+                    title={NodeComponents.shown_name(node)}
                   >
-                    {node.name}
+                    {NodeComponents.shown_name(node)}
                   </span>
                   <span class="q-side q-mono" title={node.public_id}>{node.public_id}</span>
                   <.side_words
@@ -767,7 +768,16 @@ defmodule ApiaryWeb.NodeLive.Index do
                     id={"node-#{node.public_id}-level"}
                     text={
                       gettext(
-                        "Instance pool: takes this workspace's runs while it has no node pool in use."
+                        "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
+                      )
+                    }
+                  />
+                  <.side_words
+                    :if={instance?(node) and node.kind == :gateway}
+                    id={"node-#{node.public_id}-level"}
+                    text={
+                      gettext(
+                        "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
                       )
                     }
                   />

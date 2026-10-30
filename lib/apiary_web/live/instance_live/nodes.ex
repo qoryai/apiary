@@ -57,7 +57,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
       <.settings_page section={:nodes} title={gettext("Nodes")} measure="list">
         <:subtitle>
           {gettext(
-            "The node pool and the gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The pool takes the runs of every workspace that has no node pool in use. The gateway serves every organisation."
+            "The Qory Pool and the Qory Gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The Qory Pool takes the runs of every workspace that has no pool. The Qory Gateway serves every organisation."
           )}
         </:subtitle>
 
@@ -75,7 +75,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
                 navigate={~p"/instance/nodes/#{node.public_id}"}
                 class="font-medium hover:underline"
               >
-                {node.name}
+                {NodeComponents.shown_name(node)}
               </.link>
               <span class="q-mono text-[12.5px] text-muted">{node.public_id}</span>
             </span>

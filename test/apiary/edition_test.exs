@@ -48,7 +48,7 @@ defmodule Apiary.EditionTest do
          %{scope: scope} do
       for edition <- [Apiary.Edition.Core, Apiary.Edition] do
         assert edition.machines_who_may(scope, scope.workspace, :instance) ==
-                 "Only an instance admin checks the instance's pool and gateway."
+                 "Only an instance admin checks the Qory Pool and the Qory Gateway."
 
         assert edition.machines_who_may(scope, scope.workspace, :workspace) ==
                  "Only owners and admins add a pool and join a machine to it."

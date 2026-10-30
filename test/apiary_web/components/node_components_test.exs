@@ -226,7 +226,13 @@ defmodule ApiaryWeb.NodeComponentsTest do
 
   describe "via_ca_line/1" do
     test "names --via-ca-file for a gateway, and is nothing without one" do
-      gateway = %Node{kind: :gateway, name: "edge-01", url: "https://edge.example.com"}
+      gateway = %Node{
+        kind: :gateway,
+        name: "edge-01",
+        url: "https://edge.example.com",
+        organisation_id: Ecto.UUID.generate()
+      }
+
       assigns = %{gateway: gateway}
 
       html = rendered_to_string(~H|<NodeComponents.via_ca_line id="ca" gateway={@gateway} />|)
@@ -241,6 +247,34 @@ defmodule ApiaryWeb.NodeComponentsTest do
 
       assert rendered_to_string(~H|<NodeComponents.via_ca_line id="ca" gateway={@gateway} />|)
              |> String.trim() == ""
+    end
+  end
+
+  describe "shown_name/1" do
+    test "names the instance's pool and gateway Qory Pool and Qory Gateway, and any other node by its name" do
+      organisation_id = Ecto.UUID.generate()
+      workspace_id = Ecto.UUID.generate()
+
+      assert NodeComponents.shown_name(%Node{kind: :pool, name: "pool"}) == "Qory Pool"
+      assert NodeComponents.shown_name(%Node{kind: :gateway, name: "gateway"}) == "Qory Gateway"
+
+      assert NodeComponents.shown_name(%Node{
+               kind: :pool,
+               name: "edge-pool",
+               organisation_id: organisation_id,
+               workspace_id: workspace_id
+             }) == "edge-pool"
+
+      assert NodeComponents.shown_name(%Node{
+               kind: :gateway,
+               name: "edge-01",
+               organisation_id: organisation_id
+             }) == "edge-01"
+
+      assert ApiaryWeb.RunComponents.place_of(
+               %{dispatch_run_id: Ecto.UUID.generate()},
+               %Node{kind: :pool, name: "pool"}
+             ) == {:pool, "Qory Pool"}
     end
   end
 end
