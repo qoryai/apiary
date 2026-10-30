@@ -53,8 +53,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ]
 
   alias Apiary.Runs.Preparation
-  alias Apiary.WorkItems.ExploreView
-  alias ApiaryWeb.{Format, WorkItemComponents}
+  alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
   ## The summary
@@ -2193,26 +2192,37 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # A test run with no run record: the words the work item page has for its run of the
-  # queue's end cause (`ApiaryWeb.WorkItemComponents.unstarted_cause_words/1`).
-  def test_failed(%{cause: :no_run, dispatch_run: dispatch_run} = assigns) do
-    words =
-      WorkItemComponents.unstarted_cause_words(%{
-        end_cause: dispatch_run.end_cause,
-        harness_failure: ExploreView.harness_failure(dispatch_run)
-      })
-
-    assigns = assign(assigns, :words, words)
+  # A test run with no run record: why, by its run of the queue's end cause, where the
+  # set-up has a fix for that cause.
+  def test_failed(%{cause: :no_run, dispatch_run: %{end_cause: cause}} = assigns) do
+    assigns = assign(assigns, :words, no_run_words(cause))
 
     ~H"""
     {gettext("The test run ended before a machine started it.")}
-    {@words || gettext("No run was recorded, so this step cannot show why.")}
+    {@words}
     """
   end
 
   def test_failed(assigns) do
     ~H"{failed_line(@cause)}"
   end
+
+  # What fixes a test run that ended at its claim, and why it ended
+  # (`Apiary.Dispatches.Handover`, `Apiary.Dispatches.RunSettings`). The other causes of
+  # the claim have no fix on the set-up's steps.
+  defp no_run_words(:inputs_invalid),
+    do:
+      gettext(
+        "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
+      )
+
+  defp no_run_words(:runtime_unserved),
+    do:
+      gettext(
+        "Choose the model again on the Model step, then press Run the test. The chosen runtime is no longer in Qory Apiary's catalogue, or the chosen model provider no longer serves it."
+      )
+
+  defp no_run_words(_cause), do: gettext("No run was recorded, so this step cannot show why.")
 
   defp failed_line(:no_machine),
     do:

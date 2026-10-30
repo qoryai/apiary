@@ -2791,7 +2791,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp no_result_words(%{end_cause: :harness_unresolved} = run),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
-       unstarted_cause_words(run)}
+       harness_failure_words(run[:harness_failure])}
 
   defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}),
     do:
@@ -2800,10 +2800,10 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
-  defp no_result_words(%{end_cause: cause} = run) when cause in @unstarted,
+  defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
-       unstarted_cause_words(run)}
+       unstarted_words(cause)}
 
   defp no_result_words(%{outcome: :none}),
     do:
@@ -2825,20 +2825,6 @@ defmodule ApiaryWeb.WorkItemComponents do
        gettext(
          "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
        )}
-
-  @doc false
-  # unstarted_cause_words/1 is what a member does about a run that ended before it
-  # started, and why, by its `end_cause` and `harness_failure` (a run map of
-  # `Apiary.WorkItems.ExploreView`): the words of a failed harness walk
-  # (`harness_failure_words/1`) or of a cause at the claim or the build
-  # (`unstarted_words/1`); nil for a cause with no words here.
-  def unstarted_cause_words(%{end_cause: :harness_unresolved} = run),
-    do: harness_failure_words(run[:harness_failure])
-
-  def unstarted_cause_words(%{end_cause: cause}) when cause in @unstarted,
-    do: unstarted_words(cause)
-
-  def unstarted_cause_words(_run), do: nil
 
   # What a member does about a run that stopped at a call to an adapter
   # (`Apiary.Adapters.Calls`), and what happened to the call, by its cause.

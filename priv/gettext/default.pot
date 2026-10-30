@@ -5380,6 +5380,11 @@ msgstr ""
 msgid "Choose the mode for %{target}"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the model again on the Model step, then press Run the test. The chosen runtime is no longer in Qory Apiary's catalogue, or the chosen model provider no longer serves it."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the shared harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares a harness already."
@@ -14845,6 +14850,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
