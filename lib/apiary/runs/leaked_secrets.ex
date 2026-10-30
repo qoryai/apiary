@@ -254,6 +254,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   defp store_run(_run, []), do: :ok
 
   defp store_run(%Run{} = run, rows) do
+    rows = longest(rows)
     sequences = rows |> Enum.map(& &1.source_sequence) |> Enum.uniq()
 
     kept =
@@ -280,7 +281,25 @@ defmodule Apiary.Runs.LeakedSecrets do
       )
     end
 
-    store_new(run, Enum.uniq_by(new, &{&1.source_sequence, &1.offset}))
+    store_new(run, new)
+  end
+
+  # One row for each place a secret starts, the longest found there, in the order found:
+  # a secret that one pass's chunks split is found at the end of the first chunk, cut
+  # short, and again, whole, with the next.
+  defp longest(rows) do
+    {order, best} =
+      Enum.reduce(rows, {[], %{}}, fn row, {order, best} ->
+        key = {row.source_sequence, row.offset}
+
+        case best do
+          %{^key => kept} when kept.length >= row.length -> {order, best}
+          %{^key => _shorter} -> {order, Map.put(best, key, row)}
+          _new -> {[key | order], Map.put(best, key, row)}
+        end
+      end)
+
+    order |> Enum.reverse() |> Enum.map(&Map.fetch!(best, &1))
   end
 
   defp store_new(_run, []), do: :ok

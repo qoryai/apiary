@@ -120,6 +120,24 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert value == ctx.secret
   end
 
+  test "keeps the whole of a secret that two chunks of one pass split", ctx do
+    key = "sk-ant-api03-" <> String.duplicate("x", 93) <> "AA"
+    assert byte_size(key) == 108
+    {head, tail} = String.split_at(key, 60)
+
+    events_fixture(ctx.run, [
+      {1, "run.log", log_data("export KEY=" <> head)},
+      {2, "run.log", log_data(tail <> "\n")}
+    ])
+
+    project!(ctx.run)
+
+    assert [%{kind: "anthropic_api_key", source_sequence: 1, offset: 11, length: 108}] =
+             rows(ctx.run)
+
+    assert {[%{value: ^key}], 0} = read(ctx.run)
+  end
+
   test "keeps the first 1000, counts the rest, and counts none twice when rebuilt", ctx do
     text = Enum.map_join(1..1001, "\n", fn _ -> @github end)
     events_fixture(ctx.run, [{1, "run.log", log_data(text)}])
