@@ -74,6 +74,32 @@ defmodule Apiary.Runs.HarnessFetchesTest do
     assert %{denied: 1} = by_host["other.example"]
   end
 
+  test "a host no pin matches says the walk is not read yet or failed, else not a source", ctx do
+    egress(ctx.run, [stack("other.example"), stack("code.example")])
+
+    sources = fn ->
+      ctx.scope
+      |> Runs.harness_fetches(fx())
+      |> Map.fetch!(:rows)
+      |> Map.new(&{&1.host, &1.sources})
+    end
+
+    walk(ctx.run, %{state: :resolved, origin: :none, failure: nil})
+
+    assert %{"other.example" => [:none], "code.example" => [{:repository, "acme/tools"}]} =
+             sources.()
+
+    walk(ctx.run, %{state: :pending, origin: nil, failure: nil})
+
+    assert %{"other.example" => [:pending], "code.example" => [{:repository, "acme/tools"}]} =
+             sources.()
+
+    walk(ctx.run, %{state: :failed, origin: nil, failure: "invalid"})
+
+    assert %{"other.example" => [:failed], "code.example" => [{:repository, "acme/tools"}]} =
+             sources.()
+  end
+
   test "a hidden harness shows no source, a run with no record has none recorded", ctx do
     walk(ctx.run, %{harness_hidden: true})
     egress(ctx.run, [stack("code.example")])

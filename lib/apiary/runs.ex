@@ -977,15 +977,16 @@ defmodule Apiary.Runs do
         left_join: h in Apiary.Harnesses.RunHarness,
         on: h.dispatch_run_id == r.dispatch_run_id,
         where: c.host in ^hosts,
-        group_by: [c.host, h.pins, h.harness_hidden, is_nil(h.id)],
-        select: {c.host, count(c.run_id, :distinct), h.pins, h.harness_hidden, is_nil(h.id)}
+        group_by: [c.host, h.pins, h.harness_hidden, is_nil(h.id), h.state],
+        select:
+          {c.host, count(c.run_id, :distinct), h.pins, h.harness_hidden, is_nil(h.id), h.state}
     )
     |> Enum.group_by(&elem(&1, 0))
     |> Map.new(fn {host, groups} ->
       sources =
         groups
-        |> Enum.flat_map(fn {_host, runs, pins, hidden, unrecorded} ->
-          for source <- Apiary.Harnesses.FetchSource.of(host, pins, hidden, unrecorded),
+        |> Enum.flat_map(fn {_host, runs, pins, hidden, unrecorded, state} ->
+          for source <- Apiary.Harnesses.FetchSource.of(host, pins, hidden, unrecorded, state),
               do: {source, runs}
         end)
         |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))

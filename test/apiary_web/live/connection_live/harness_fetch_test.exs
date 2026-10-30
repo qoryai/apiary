@@ -192,5 +192,24 @@ defmodule ApiaryWeb.ConnectionLive.HarnessFetchTest do
       Apiary.Repo.update_all(Apiary.Harnesses.RunHarness, set: [harness_hidden: true])
       assert text(open(conn, scope), "#harness-fetch-rows") =~ "A hidden harness"
     end
+
+    test "says a host no pin matches is not a source, not read yet, or not readable",
+         %{conn: conn, scope: scope} do
+      import Apiary.SealedRunsFixtures
+      import Apiary.RunEventsFixtures
+
+      run = sealed_run_fixture(scope).run
+      event_fixture(run, 20, "run.egress", egress_data(@fetch), time: DateTime.utc_now())
+      {:ok, _run} = Apiary.Runs.Projector.project(run)
+
+      for {walk, words} <- [
+            {[state: :resolved, origin: :none, failure: nil], "Not a harness source"},
+            {[state: :pending, origin: nil, failure: nil], "The harness is not read yet"},
+            {[state: :failed, origin: nil, failure: "invalid"], "The harness could not be read"}
+          ] do
+        Apiary.Repo.update_all(Apiary.Harnesses.RunHarness, set: [pins: []] ++ walk)
+        assert text(open(conn, scope), "#harness-fetch-rows") =~ words
+      end
+    end
   end
 end

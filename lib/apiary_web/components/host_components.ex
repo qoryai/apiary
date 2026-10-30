@@ -250,6 +250,8 @@ defmodule ApiaryWeb.HostComponents do
     do: gettext("The harness source %{source}", source: name)
 
   def source_words(:hidden), do: gettext("A hidden harness")
+  def source_words(:pending), do: gettext("The harness is not read yet")
+  def source_words(:failed), do: gettext("The harness could not be read")
   def source_words(:none), do: gettext("Not a harness source")
   def source_words(:unrecorded), do: gettext("Source not recorded")
   def source_words({:integration, name}), do: gettext("The integration %{name}", name: name)
