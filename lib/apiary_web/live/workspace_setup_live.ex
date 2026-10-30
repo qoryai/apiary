@@ -142,22 +142,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
-  #     whom `node.create` allows on it chooses: Shared, the instance's pool, chosen
-  #     first, or A pool for the workspace, with the line that the shared pool then stops
-  #     serving its runs, and Add node pool, which makes a pool of the workspace
+  #     whom `node.create` allows on it chooses: Qory Pool, the instance's pool, chosen
+  #     first, or A pool for the workspace, with the line that the Qory Pool then stops
+  #     taking its runs, and Add pool, which makes a pool of the workspace
   #     (`Apiary.Nodes.create_node/2`) named `Apiary.WorkspaceSetup.pool_name/1`. Where
   #     another node of the workspace has that name, no pool is made, and the line under
-  #     Add node pool says to rename that node. Anyone else sees the instance's pool, read
+  #     Add pool says to rename that node. Anyone else sees the instance's pool, read
   #     only, shown chosen. Once the workspace has one pool, a person whom `node.delete`
   #     allows on it sees the same choice, the workspace's pool chosen, and the pool's
-  #     line under it. Shared opens on its row the confirmation of the removal, with the
+  #     line under it. Qory Pool opens on its row the confirmation of the removal, with the
   #     line that the pool's machines stop taking runs where a machine enrolled on it
   #     (`Apiary.AccessKeys.active_key?/1`), Remove pool, which deletes the pool
   #     (`Apiary.Nodes.delete_node/2`), and Cancel. Then the instance's pool serves the
-  #     workspace again, shown chosen. Where the instance has no pool, Shared shows not
-  #     ready for no pool, cannot be chosen, and the step offers no removal. Otherwise, once the workspace has a pool, its pools
-  #     show with no choice, and a pool that is the only one shows chosen. With 2 pools or
-  #     more, the step offers no removal. On each line of a pool whose
+  #     workspace again, shown chosen. Where the instance has no pool, Qory Pool shows not
+  #     ready for no pool, cannot be chosen, and the step offers no removal. Otherwise,
+  #     once the workspace has a pool, its pools show with no choice, and a pool that is
+  #     the only one shows chosen. With 2 pools or more, the step offers no removal. On
+  #     each line of a pool whose
   #     `access_key.create_code` allows the person, while the pool has fewer than 2
   #     active keys, Get the command, or Get a new command while a code of it is
   #     outstanding, makes a code (`Apiary.AccessKeys.create_enrolment_code/3`), and the
@@ -595,7 +596,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
-  # else. `makes_pool` is of Add node pool (`node.create`); `pool_codes` has, for each pool
+  # else. `makes_pool` is of Add pool (`node.create`); `pool_codes` has, for each pool
   # of the workspace whose command the person may get (`access_key.create_code`), its
   # outstanding codes and its keys. The command got stays while its code is outstanding,
   # on a read again of the step; an entry to the step, which assigns `step` anew, starts
@@ -603,7 +604,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # pool. `shared_line` is the line of the instance's pool, for a person who keeps the
   # choice once the
   # workspace has its one pool (`keeps_choice?/2`); `pool_removable` is the pool that
-  # Shared offers to remove (`removable_pool/2`); the confirmation of its removal stays open
+  # Qory Pool offers to remove (`removable_pool/2`); the confirmation of its removal stays open
   # on a read again of the step (`pool_removing`), and an entry to the step starts with it
   # closed. The page listens to each pool of the workspace once (`pool_listened`), and reads
   # the step again as the first outstanding code expires (`pool_timer`).
@@ -1401,8 +1402,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       when choice in ["shared", "workspace"],
       do: {:noreply, assign(socket, pool_choice: choice, pool_taken: nil)}
 
-  # Once the workspace has its pool, for a person who may remove it: Shared opens the
-  # confirmation of the removal on the Shared row, and the workspace's pool closes it.
+  # Once the workspace has its pool, for a person who may remove it: Qory Pool opens the
+  # confirmation of the removal on the Qory Pool row, and the workspace's pool closes it.
   def handle_event(
         "choose_pool",
         %{"pool" => %{"choice" => choice}},
@@ -1439,7 +1440,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # Add node pool: a pool of the workspace, named by `Apiary.WorkspaceSetup.pool_name/1`.
+  # Add pool: a pool of the workspace, named by `Apiary.WorkspaceSetup.pool_name/1`.
   # Where the workspace has a pool by then, from a second click or someone else, the step
   # reads again and shows it.
   def handle_event(
@@ -2540,7 +2541,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               disabled={@shared_off}
               class="radio radio-sm radio-primary"
             />
-            <span id={"#{id}-name"} class="q-choice-h">{gettext("Shared: the instance's pool")}</span>
+            <span id={"#{id}-name"} class="q-choice-h">{gettext("Qory Pool")}</span>
             <span id={"#{id}-state"} class="q-choice-p">
               <span class={["q-sdot", ready?(line) && "q-sdot-completed"]}>
                 <i aria-hidden="true"></i><span>{pool_state_line(line.state)}</span>
@@ -2557,7 +2558,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <span :if={@pool_removing} id="set-up-pool-remove" class="q-choice-p grid gap-2">
               <span id="set-up-pool-remove-line" class="text-base-content">
                 {gettext(
-                  "Remove the pool %{pool}? Runs in %{workspace} then use the instance's pool.",
+                  "Remove the pool %{pool}? Runs in %{workspace} then use the Qory Pool.",
                   pool: @pool_removable.name,
                   workspace: @flow.workspace.name
                 )}
@@ -2597,7 +2598,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             </span>
             <span id="set-up-pool-workspace-line" class="q-choice-p">
               {gettext(
-                "Runs in %{workspace} then wait for this pool, and the shared pool stops serving them.",
+                "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them.",
                 workspace: @flow.workspace.name
               )}
             </span>
@@ -2608,7 +2609,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <div :if={@choosing and @pool_choice == "workspace"} id="set-up-pool-add" class="grid gap-2">
         <div>
           <.button id="set-up-pool-add-button" phx-click="add_pool" size="md">
-            {gettext("Add node pool")}
+            {gettext("Add pool")}
           </.button>
         </div>
         <p :if={@pool_taken} id="set-up-pool-taken" class="text-[13px]/5 text-error">
@@ -2629,7 +2630,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           />
           <span :if={!@only} aria-hidden="true"></span>
           <span id={"#{id}-name"} class="q-choice-h">
-            <span :if={line.instance}>{gettext("The instance's pool")}</span>
+            <span :if={line.instance}>{gettext("Qory Pool")}</span>
             <span :if={!line.instance and act != :pool}>{line.pool.name}</span>
             <.link
               :if={act == :pool}
@@ -2703,18 +2704,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <:context>
         <p id="set-up-what">
           {gettext(
-            "A node pool takes runs from the queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue."
+            "A pool takes the waiting runs of %{workspace} and starts each run on a machine that joined the pool.",
+            workspace: @flow.workspace.name
           )}
         </p>
         <p id="set-up-machines-pools">
           {gettext(
-            "The instance's pool, where the instance has one, runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone.",
+            "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment.",
             workspace: @flow.workspace.name
           )}
         </p>
         <p id="set-up-machines-why">
           {gettext(
-            "The runs of work items need a ready pool: one with an active key, and a gateway with an active key. Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
+            "A pool is ready when a machine has joined it and its runs go through a gateway that has an active access key. Runs of work items need a ready pool, because Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
           )}
         </p>
       </:context>
@@ -2742,14 +2744,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`Apiary.AccessKeys.active_key?/1`), the first rule of its state.
   defp enrolled?(%{state: state}), do: state != {:not_ready, :no_active_key}
 
-  # Whether the step keeps the choice of Shared or the workspace's pool once the workspace
+  # Whether the step keeps the choice of Qory Pool or the workspace's pool once the workspace
   # has a pool: for its only pool, and a person whom `node.delete` allows on it. Where the
   # workspace has 2 pools or more, the step keeps no choice, since any of them stops the
   # instance's pool serving the workspace.
   defp keeps_choice?(scope, [pool]), do: Access.can?(scope, :"node.delete", pool)
   defp keeps_choice?(_scope, _pools), do: false
 
-  # The pool of the workspace that the step offers to remove, to choose Shared again: the
+  # The pool of the workspace that the step offers to remove, to choose Qory Pool again: the
   # workspace's only pool, where the step keeps the choice and the instance has a pool
   # (`shared_line`); else nil.
   defp removable_pool([pool], %{pool: %{}}), do: pool
@@ -2833,7 +2835,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply, socket |> assign(pool_issued: issued) |> reload()}
 
       {:error, :forbidden} ->
-        why = gettext("Only owners and admins connect a node.")
+        why = gettext("Only owners and admins add a pool and join a machine to it.")
 
         {:noreply,
          socket
@@ -2855,7 +2857,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_at_limit?(keys),
     do: Enum.count(keys, &is_nil(&1.revoked_at)) >= Apiary.AccessKeys.key_limit()
 
-  # Whether Add node pool was refused for the name: another node of the workspace in use
+  # Whether Add pool was refused for the name: another node of the workspace in use
   # has it (`nodes_live_name_index`).
   defp pool_name_taken?(%Ecto.Changeset{errors: errors}) do
     Enum.any?(errors, fn
@@ -2867,7 +2869,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end)
   end
 
-  # The line under Add node pool where another node of the workspace has the pool's name.
+  # The line under Add pool where another node of the workspace has the pool's name.
   defp pool_taken_line(name, workspace),
     do:
       gettext(
@@ -2878,7 +2880,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # The state of a pool's line on the Machines step.
   defp pool_state_line({:ready, gateway}),
-    do: gettext("Ready · gateway: %{gateway}", gateway: gateway.name)
+    do:
+      gettext("Ready · gateway: %{gateway}",
+        gateway: ApiaryWeb.NodeComponents.shown_name(gateway)
+      )
 
   defp pool_state_line({:not_ready, :no_pool}), do: gettext("Not ready: no pool")
   defp pool_state_line({:not_ready, :no_active_key}), do: gettext("Not ready: no active key")

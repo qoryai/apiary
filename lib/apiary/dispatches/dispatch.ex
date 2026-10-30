@@ -17,8 +17,10 @@ defmodule Apiary.Dispatches.Dispatch do
   # first, before `lease_until`; `stale_at` when its lease lapsed before a handover, at
   # or after `lease_until`, never both. `ended_at` and `end_cause` are set together
   # (`Apiary.Dispatches.DispatchRun.end_causes/0`). `slot_freed_at` is when the slot of the
-  # pool's instance limit it took at the claim was freed, once. At most one dispatch of a
-  # run is live and not stale at a time.
+  # pool's instance limit it took at the claim was freed, once. `release_reason` is the
+  # starter's reason of a release, 1 to 200 characters, nil for a dispatch not released
+  # (`Apiary.Dispatches.Release`). At most one dispatch of a run is live and not stale at
+  # a time.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -48,6 +50,7 @@ defmodule Apiary.Dispatches.Dispatch do
     field :ended_at, :utc_datetime_usec
     field :end_cause, Ecto.Enum, values: DispatchRun.end_causes()
     field :slot_freed_at, :utc_datetime_usec
+    field :release_reason, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

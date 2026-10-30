@@ -18,8 +18,9 @@ defmodule Apiary.Runs.Outcome do
 
   `give/4` stores it on the run. A key `Apiary.Access` does not let post
   (`run.post_events`) is `{:error, :not_found}`, and so is a run of a workspace's queue,
-  which a node pool claimed (`dispatch_run_id`), whatever the key: such a run ends by its
-  exit, its refusal or the lost-run check, never by an outcome. Then, the first that
+  which a node pool claimed (`dispatch_run_id`), or was claimed by until its start failed
+  (`dispatch_id`), whatever the key: such a run ends by its exit, its refusal, the
+  lost-run check or its failed start, never by an outcome. Then, the first that
   applies:
 
     1. a repeat: the same outcome again, under any active key of the node the run is
@@ -155,7 +156,7 @@ defmodule Apiary.Runs.Outcome do
     with :ok <- may_post(Scope.for_access_key(access_key)),
          true <- Batch.uuid?(run_id) || {:error, :not_found},
          %Run{} = held <- held(access_key, run_id) || {:error, :not_found},
-         true <- is_nil(held.dispatch_run_id) || {:error, :not_found},
+         true <- direct?(held) || {:error, :not_found},
          {:ok, %{run: run, repeated: repeated}} <- store(held, access_key, outcome, digest, now) do
       if not repeated, do: Runs.broadcast_changed(run)
       {:ok, %{run: run, repeated: repeated}}
@@ -181,9 +182,14 @@ defmodule Apiary.Runs.Outcome do
     Repo.one(
       from r in Run,
         where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^run_id,
-        select: struct(r, [:id, :dispatch_run_id])
+        select: struct(r, [:id, :dispatch_run_id, :dispatch_id])
     )
   end
+
+  # Neither a run of a workspace's queue nor one a claim registered whose start failed and
+  # that left its run of the queue (`dispatch_id`).
+  defp direct?(%Run{dispatch_run_id: nil, dispatch_id: nil}), do: true
+  defp direct?(%Run{}), do: false
 
   # Under the run's projection lock and its row's, as a projection writes it, so a pass
   # and the outcome never write over each other: whichever comes second reads the other's.

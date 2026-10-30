@@ -17,8 +17,9 @@ defmodule Apiary.Runs.RunCode do
   # after the claim, and what its run key will grant is kept (`run_code_grant`). The
   # lost-run check and liveness read `attach_by` as for any run through a gateway not yet
   # attached, so a run whose code is never redeemed is lost at the code's expiry. While
-  # the claim holds, its registered run lives with it: a lease that lapses, a release or
-  # a close deletes it, with its code (`Apiary.Dispatches.Handover.drop/1`).
+  # the claim holds, its registered run lives with it: a lease that lapses or a release
+  # ends it failed (`Apiary.Dispatches.Handover.fail_start/3`), and a close deletes it,
+  # with its code (`Apiary.Dispatches.Handover.drop/1`).
   #
   # **At the redemption** (`redeem/2`), in the order of every enrolment code:
   #

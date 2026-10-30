@@ -1088,7 +1088,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
         gateway ->
           [via, via_url] = AccessKeys.via_lines(gateway.url)
-          {[under_gateway(via)], [{under_gateway(via_url), "# the gateway #{gateway.name}"}]}
+
+          {[under_gateway(via)], [{under_gateway(via_url), gateway_comment(gateway)}]}
       end
 
     width = (marked ++ via_marked) |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
@@ -1100,6 +1101,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         Enum.map(pins, &under_gateway/1) ++ via_head ++ Enum.map(via_marked, pad),
       "\n"
     ) <> "\n"
+  end
+
+  # The comment beside the `via` address line: the gateway by name, or the Qory Gateway.
+  defp gateway_comment(gateway) do
+    if NodeComponents.instance_node?(gateway),
+      do: "# the Qory Gateway",
+      else: "# the gateway #{gateway.name}"
   end
 
   # A line of `Apiary.AccessKeys`, indented as it sits under `server:`, moved under
@@ -1116,12 +1124,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp point_title(%Node{kind: :pool}, nil), do: gettext("Point the node pool at Qory Apiary.")
 
   defp point_title(%Node{kind: :pool}, gateway),
-    do: gettext("Point the node pool at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+    do:
+      gettext("Point the node pool at Qory Apiary, through %{gateway}.",
+        gateway: NodeComponents.in_text(gateway)
+      )
 
   defp point_title(_node, nil), do: gettext("Point the node at Qory Apiary.")
 
   defp point_title(_node, gateway),
-    do: gettext("Point the node at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+    do:
+      gettext("Point the node at Qory Apiary, through %{gateway}.",
+        gateway: NodeComponents.in_text(gateway)
+      )
 
   attr :id, :string, required: true
   attr :node, Node, required: true
@@ -1135,7 +1149,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <.rich text={
         rich_gettext("%{via} sends every request to Qory Apiary through %{gateway}.",
           via: {:m, "via"},
-          gateway: @through.name
+          gateway: NodeComponents.in_text(@through)
         )
       } />
       <span :if={@node.kind == :pool}>
@@ -1351,18 +1365,26 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <section id="code-issued" class="q-form-page" aria-labelledby="code-issued-header-title">
         <.page_header id="code-issued-header" title={command_title(@node)}>
           <:description>
-            {if @through,
-              do:
+            {cond do
+              NodeComponents.instance_node?(@through) ->
+                gettext(
+                  "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
+                  name: @node.name
+                )
+
+              @through ->
                 gettext(
                   "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
                   name: @node.name,
                   gateway: @through.name
-                ),
-              else:
+                )
+
+              true ->
                 gettext(
                   "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine.",
                   name: @node.name
-                )}
+                )
+            end}
           </:description>
         </.page_header>
 
@@ -2524,7 +2546,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dd id={"#{@dom}-secret"}>
           {cond do
             installed_key?(@key, @node) and @node.kind != :adapter ->
-              gettext("Stays on %{name}; it is never shown", name: @node.name)
+              gettext("Stays on %{name}; it is never shown", name: NodeComponents.in_text(@node))
 
             installed_key?(@key, @node) ->
               gettext("Kept by the adapter; never shown")

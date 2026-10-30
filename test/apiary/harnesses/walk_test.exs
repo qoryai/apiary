@@ -2083,7 +2083,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
   describe "a test work item's run" do
     @builtin_git "https://github.com/qoryai/qory"
-    @builtin_ref "2148b3ae11eff8ccbeb93d1a7c10aeb05595c95b"
+    @builtin_ref "fd0a7da85ca956469a0113daeb4b44f938d82019"
     @builtin "extends: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
 
     defp test_run!(scope) do

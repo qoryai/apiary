@@ -35,9 +35,11 @@ defmodule Apiary.Dispatches.Release do
   #
   # ## The release
   #
-  # The dispatch ends, `released`, the slot it took is freed once, and the run registered
-  # at its claim is deleted with its run code (`Apiary.Dispatches.Handover.drop/1`), so
-  # the code redeems no more. Then the run waits again, as when its lease lapses:
+  # The dispatch ends, `released`, with the starter's reason as its `release_reason`, the
+  # slot it took is freed once, and the run registered at its claim ends failed,
+  # `machine_not_made`, and leaves the run of the queue
+  # (`Apiary.Dispatches.Handover.fail_start/3`), so the code redeems no more. Then the run
+  # of the queue waits again, as when its lease lapses:
   #
   #   - an explore run waits in its workspace's queue again with the same `run_id` and the
   #     same `queued_at`, so it takes back its place in the queue. The work item is left as
@@ -56,7 +58,8 @@ defmodule Apiary.Dispatches.Release do
   # transaction: `dispatch.release`, by the pool's key, about the pool, its `details` the
   # dispatch's public id, the step, `handed_over` (false), then what came of the run, one
   # of `waits` (true: it waits again) or `superseded` (true: it ended so), and the
-  # `reason`. The reason is kept there and shown nowhere. A refusal writes no entry: it
+  # `reason`. The reason is kept there and on the dispatch, and the page of the run that
+  # failed shows it. A refusal writes no entry: it
   # commits what the lapse of step
   # 4 wrote, and nothing else. An exception rolls the transaction back, is logged by its
   # module alone, never the key or the reason, and is `{:error, :unavailable}`. Once it
@@ -70,11 +73,14 @@ defmodule Apiary.Dispatches.Release do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Audit, Environments, Repo}
+  require Logger
+
+  alias Apiary.{Audit, Environments, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Slots}
   alias Apiary.Organisations.Organisation
+  alias Apiary.Runs.Run
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
@@ -96,12 +102,12 @@ defmodule Apiary.Dispatches.Release do
         with :ok <- Handover.not_ended(locked),
              :ok <- no_machine(locked),
              :ok <- Handover.lease_held(locked) do
-          give_back(locked, release)
+          give_back(Map.put(locked, :reason, reason), release)
         end
       end)
       |> Handover.answered()
       |> case do
-        {:ok, _released} -> :ok
+        {:ok, %{failed: failed}} -> broadcast_failed(failed)
         {:error, _reason} = refused -> refused
       end
     else
@@ -129,7 +135,7 @@ defmodule Apiary.Dispatches.Release do
   ## The run waits again
 
   defp give_back(%{run: %DispatchRun{step: @prebuild}} = locked, release) do
-    changed = end_dispatch(locked)
+    {changed, failed} = end_dispatch(locked)
     run = locked.run
 
     came =
@@ -138,11 +144,11 @@ defmodule Apiary.Dispatches.Release do
         else: %{"waits" => true}
 
     record(locked, release, came, locked.key.node)
-    {:done, {:ok, %{run: nil}}, changed}
+    {:done, {:ok, %{run: nil, failed: failed}}, changed}
   end
 
   defp give_back(%{run: %DispatchRun{} = run} = locked, release) do
-    changed = end_dispatch(locked)
+    {changed, failed} = end_dispatch(locked)
 
     {1, _rows} =
       Repo.update_all(
@@ -151,21 +157,34 @@ defmodule Apiary.Dispatches.Release do
       )
 
     record(locked, release, %{"waits" => true}, locked.key.node)
-    {:done, {:ok, %{run: nil}}, changed}
+    {:done, {:ok, %{run: nil, failed: failed}}, changed}
   end
 
-  # The dispatch ended, `released`, its slot freed once, and the run registered at its
-  # claim deleted with its run code: the workspace whose slots changed.
-  defp end_dispatch(%{dispatch: %Dispatch{id: id} = dispatch, run: run, now: now}) do
+  # The dispatch ended, `released`, with the starter's reason, its slot freed once, and
+  # the run registered at its claim failed, `machine_not_made`: the workspace whose slots
+  # changed, and the ids of the runs that failed.
+  defp end_dispatch(%{dispatch: %Dispatch{id: id} = dispatch, run: run, now: now} = locked) do
     {1, _rows} =
       Repo.update_all(from(d in Dispatch, where: d.id == ^id),
-        set: [ended_at: now, end_cause: :released, updated_at: now]
+        set: [ended_at: now, end_cause: :released, release_reason: locked.reason, updated_at: now]
       )
 
-    _dropped = Handover.drop([run.id])
+    failed = Handover.fail_start([{run.id, id}], "machine_not_made", now)
 
     _freed = Slots.free_slot(dispatch, now)
-    [dispatch.workspace_id]
+    {[dispatch.workspace_id], failed}
+  end
+
+  # Once the release commits, the run that failed is told, as any run that changes
+  # (`Apiary.Runs.broadcast_changed/1`). A failure of it is logged by its kind alone and
+  # never changes the answer.
+  defp broadcast_failed(ids) do
+    Repo.all(from r in Run, where: r.id in ^ids) |> Enum.each(&Runs.broadcast_changed/1)
+    :ok
+  rescue
+    exception ->
+      Logger.error("a failed run could not be told: #{inspect(exception.__struct__)}")
+      :ok
   end
 
   # The one audit entry, in the transaction, about `subject`, the key's pool, in the trail

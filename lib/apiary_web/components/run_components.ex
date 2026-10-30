@@ -48,6 +48,7 @@ defmodule ApiaryWeb.RunComponents do
   alias ApiaryWeb.PolicyComponents
 
   alias Apiary.Runs
+  alias Apiary.Dispatches.Dispatch
   alias Apiary.Runs.Run
   alias Phoenix.LiveView.JS
 
@@ -180,15 +181,56 @@ defmodule ApiaryWeb.RunComponents do
   A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
   the refusal's code as its reason, reads the same.
 
+  A run a node pool's claim registered whose machine never started it reads its cause
+  (`start_words/1`): "No machine was made: <the starter's reason>.", "The pool did not
+  start a machine within 10 minutes.", "The machine stopped before it started the run.",
+  and, for a run lost with its run code never redeemed, "The machine did not start the run
+  within 15 minutes of the request."
+
   Nil when there is no reason, for `run_closed`, and for a value that is no code.
   """
   @spec reason_words(map()) :: String.t() | nil
   def reason_words(%Run{} = run) do
-    if Run.refused?(run), do: refusal_words(run.reason), else: given_words(run)
+    cond do
+      words = start_words(run) -> words
+      Run.refused?(run) -> refusal_words(run.reason)
+      true -> given_words(run)
+    end
   end
 
   def reason_words(%{refused: code}), do: refusal_words(code)
   def reason_words(run), do: given_words(run)
+
+  # Why a run a node pool's claim registered never started (`Apiary.Runs.Run.start_failure`),
+  # as its cause line. A release reads with the starter's reason, shown as a text an
+  # external system sent (`Apiary.ExternalText.line/1`) and its one closing full stop
+  # left out for the sentence's, from the run's dispatch when it is loaded and still has it; without it, the run reads as refused, "did not
+  # start: machine_not_made". A run lost through a gateway that never attached it, whose
+  # run code was never redeemed, did not start within the code's 15 minutes
+  # (`Apiary.Runs.RunCode.ttl_seconds/0`). Nil for any other run.
+  defp start_words(%Run{start_failure: "machine_not_made", dispatch: %Dispatch{} = dispatch})
+       when is_binary(dispatch.release_reason),
+       do:
+         gettext("No machine was made: %{reason}.",
+           reason:
+             dispatch.release_reason
+             |> Apiary.ExternalText.line()
+             |> String.replace_suffix(".", "")
+         )
+
+  defp start_words(%Run{start_failure: "lease_lapsed"}),
+    do: gettext("The pool did not start a machine within 10 minutes.")
+
+  defp start_words(%Run{start_failure: "machine_stopped"}),
+    do: gettext("The machine stopped before it started the run.")
+
+  defp start_words(
+         %Run{state: "lost", attached_at: nil, exited_at: nil, outcome_state: nil} = run
+       )
+       when not is_nil(run.run_code_expires_at) and is_nil(run.run_code_public_key),
+       do: gettext("The machine did not start the run within 15 minutes of the request.")
+
+  defp start_words(%Run{}), do: nil
 
   defp refusal_words(code) do
     case refusal_code(code) do
@@ -230,7 +272,9 @@ defmodule ApiaryWeb.RunComponents do
   attr :class, :any, default: nil
 
   def end_reason(assigns) do
-    code = if Run.refused?(assigns.run), do: refusal_code(assigns.run.reason)
+    code =
+      if Run.refused?(assigns.run) and is_nil(start_words(assigns.run)),
+        do: refusal_code(assigns.run.reason)
 
     {before, rest} =
       if code,
@@ -2274,7 +2318,9 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   place_of/1 is where a run ran, as the pages show it in place of a host: `{:pool, name}`,
-  the name of the node pool whose dispatch handed the run over; `{:host, host}`, the host
+  the name of the node pool whose dispatch handed the run over, or claimed it for a run
+  whose start failed (`dispatch_id`), "Qory Pool" for the instance's pool
+  (`ApiaryWeb.NodeComponents.shown_name/1`); `{:host, host}`, the host
   the run's `run.started` reported, for every other run; nil for a run with neither. A
   pool's run whose node was not read is nil, so that the host, one of the pool's
   machines, is not shown in the pool's name's place. `Apiary.Runs.Place` is the same in a
@@ -2285,15 +2331,16 @@ defmodule ApiaryWeb.RunComponents do
   def place_of(run), do: place_of(run, Map.get(run, :node))
 
   @spec place_of(map, map | nil) :: {:pool, String.t()} | {:host, String.t()} | nil
-  def place_of(%{dispatch_run_id: id}, node) when is_binary(id) do
-    case node do
-      %{kind: :pool, name: name} -> {:pool, name}
-      _not_read -> nil
-    end
-  end
+  def place_of(%{dispatch_run_id: id}, node) when is_binary(id), do: pool_place(node)
+
+  # A run whose start failed left its run of the queue, and keeps its dispatch.
+  def place_of(%{dispatch_id: id}, node) when is_binary(id), do: pool_place(node)
 
   def place_of(%{host: host}, _node) when is_binary(host), do: {:host, host}
   def place_of(_run, _node), do: nil
+
+  defp pool_place(%{kind: :pool} = pool), do: {:pool, ApiaryWeb.NodeComponents.shown_name(pool)}
+  defp pool_place(_not_read), do: nil
 
   @doc """
   Where a run ran (`place_of/1`), in one span: a pool's name as text, a host in `class`;
@@ -2330,12 +2377,12 @@ defmodule ApiaryWeb.RunComponents do
     <%= cond do %>
       <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
         <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
-          {@node.name}
+          {ApiaryWeb.NodeComponents.shown_name(@node)}
         </.link>
       <% @node && is_nil(@node.deleted_at) -> %>
-        {@node.name}
+        {ApiaryWeb.NodeComponents.shown_name(@node)}
       <% @node -> %>
-        {gettext("%{name} (deleted)", name: @node.name)}
+        {gettext("%{name} (deleted)", name: ApiaryWeb.NodeComponents.shown_name(@node))}
       <% true -> %>
         <span class="text-faint">{gettext("n/a")}</span>
     <% end %>

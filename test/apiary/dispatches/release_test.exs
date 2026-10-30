@@ -4,7 +4,8 @@ defmodule Apiary.Dispatches.ReleaseTest do
   # before anything else and committed, a dispatch handed over by its `dispatched` or by
   # the redemption of its run code `machine_exists`, writing nothing; an explore run that
   # waits again, and a prebuild that waits again or is superseded, with no failure
-  # recorded; the registered run deleted with its run code; and the one audit entry,
+  # recorded; the registered run failed, `machine_not_made`, out of its run of the queue,
+  # and the starter's reason kept on the dispatch; and the one audit entry,
   # about the pool. A release that cannot be written is
   # `ApiaryWeb.Contract.ReleaseControllerTest`'s.
   use Apiary.DataCase, async: true
@@ -133,8 +134,8 @@ defmodule Apiary.Dispatches.ReleaseTest do
       )
   end
 
-  # The dispatch ended `released`, its slot freed at its end, the registered run of its
-  # run of the queue deleted with its run code.
+  # The dispatch ended `released`, its slot freed at its end, and its run of the queue
+  # with no registered run: the one its claim registered failed and left it.
   defp released!(ctx, dispatch, queued) do
     assert %Dispatch{end_cause: :released, ended_at: %DateTime{} = at, slot_freed_at: at} =
              dispatch!(dispatch)
@@ -310,6 +311,64 @@ defmodule Apiary.Dispatches.ReleaseTest do
       assert again.dispatch_run_id == queued.id
       assert again.id != dispatch.id
     end
+
+    test "keeps the registered run, failed, machine_not_made, with the starter's reason on the dispatch",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+
+      assert release(ctx.key, dispatch) == :ok
+
+      assert %Dispatch{release_reason: @reason} = dispatch!(dispatch)
+      failed = Repo.get!(Run, registered.id)
+
+      assert %Run{
+               state: "failed",
+               reason: "machine_not_made",
+               start_failure: "machine_not_made",
+               start_failed_at: %DateTime{},
+               dispatch_run_id: nil,
+               run_documents: nil,
+               exited_at: nil,
+               outcome_state: nil
+             } = failed
+
+      assert failed.dispatch_id == dispatch.id
+      assert failed.public_id == registered.public_id
+      assert failed.node_run_id != queued.run_id
+
+      # Its page reads the starter's reason, and the pool it was claimed by.
+      {:ok, shown} = Apiary.Runs.Record.fetch_run(ctx.scope, failed.public_id)
+
+      assert ApiaryWeb.RunComponents.reason_words(shown) ==
+               "No machine was made: The job could not start."
+
+      assert ApiaryWeb.RunComponents.place_of(shown) == {:pool, ctx.pool.name}
+
+      # The runs list finds it under its pool's name.
+      by_pool = Apiary.Runs.Filters.parse(%{"host" => ctx.pool.name}, :runs)
+      assert Apiary.Runs.count_runs(ctx.scope, by_pool) == 1
+
+      # No outcome reaches it, under the pool's key.
+      assert give_outcome(ctx.key, failed, "succeeded") == {:error, :not_found}
+
+      # The work waits again: the work item explores, its one run is queued with no
+      # result, and nothing reads the failed run as the run of the queue's.
+      assert Repo.get!(WorkItem, work_item.id).state == :exploring
+      assert %DispatchRun{state: :waiting, result_outcome: nil} = queue_run!(queued)
+      assert registered(queued) == nil
+
+      assert [%{place: :queued, run: nil}] =
+               Apiary.WorkItems.Explore.steps(work_item.id, :all, DateTime.utc_now())
+
+      # The next claim registers a new run of the same run of the queue, under its run
+      # id; the failed run stays as it was.
+      %{registered: next} = claimed!(ctx)
+      assert next.id != failed.id
+      assert next.node_run_id == queued.run_id
+      assert registered(queued).id == next.id
+      assert Repo.get!(Run, failed.id) == failed
+    end
   end
 
   describe "a prebuild" do
@@ -326,6 +385,9 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       assert %Record{failure_cause: nil, failure_reason: nil, failed_at: nil, image: @image} =
                record!(record)
+
+      assert %Run{state: "failed", start_failure: "machine_not_made", dispatch_run_id: nil} =
+               Repo.one!(from r in Run, where: r.dispatch_id == ^dispatch.id)
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
         "step" => "prebuild",

@@ -120,9 +120,14 @@ defmodule ApiaryWeb.InstanceLive.Node do
   defp titled(%{assigns: %{node: node, current_scope: scope}} = socket) do
     parts =
       case socket.assigns.live_action do
-        :overview -> [node.name]
-        action when action in [:access_key, :revoke] -> [gettext("Access key"), node.name]
-        :settings -> [gettext("Settings"), node.name]
+        :overview ->
+          [NodeComponents.shown_name(node)]
+
+        action when action in [:access_key, :revoke] ->
+          [gettext("Access key"), NodeComponents.shown_name(node)]
+
+        :settings ->
+          [gettext("Settings"), NodeComponents.shown_name(node)]
       end
 
     assign(
@@ -156,7 +161,10 @@ defmodule ApiaryWeb.InstanceLive.Node do
         {:noreply,
          socket
          |> assign(node: updated, form: limit_form(Installed.change_instance_limit(updated)))
-         |> put_flash(:info, gettext("%{name} is saved.", name: updated.name))}
+         |> put_flash(
+           :info,
+           gettext("%{name} is saved.", name: NodeComponents.in_text(updated, :start))
+         )}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, limit_form(changeset))}
@@ -206,9 +214,11 @@ defmodule ApiaryWeb.InstanceLive.Node do
       place={:instance}
       section={:nodes}
     >
-      <:crumb navigate={@live_action != :overview && @paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@live_action != :overview && @paths.overview}>
+        {NodeComponents.shown_name(@node)}
+      </:crumb>
 
-      <.settings_page section={:nodes} title={@node.name}>
+      <.settings_page section={:nodes} title={NodeComponents.shown_name(@node)}>
         <:subtitle>
           <span id="node-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span id="node-kind">{NodeComponents.kind_label(@node.kind)}</span>

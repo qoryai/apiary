@@ -69,6 +69,33 @@ defmodule Apiary.Dispatches.HandoverTest do
   defp dispatch!(%Dispatch{id: id}), do: Repo.get!(Dispatch, id)
   defp queue_run!(%DispatchRun{id: id}), do: Repo.get!(DispatchRun, id)
   defp runs, do: Repo.aggregate(Run, :count)
+
+  # The runs registered for a run of the queue, a run whose start failed left out.
+  defp queue_runs,
+    do: Repo.aggregate(from(r in Run, where: not is_nil(r.dispatch_run_id)), :count)
+
+  # The run the claim `claimed` registered, failed with `cause` once it left its run of
+  # the queue: its id and its public id kept, its node's run id another, its dispatch the
+  # claim's.
+  defp start_failed!(%{registered: registered, dispatch: dispatch}, cause) do
+    run = Repo.get!(Run, registered.id)
+
+    assert %Run{
+             state: "failed",
+             reason: ^cause,
+             start_failure: ^cause,
+             start_failed_at: %DateTime{},
+             dispatch_run_id: nil,
+             run_documents: nil
+           } = run
+
+    assert run.dispatch_id == dispatch.id
+    assert run.public_id == registered.public_id
+    assert run.node_run_id != registered.node_run_id
+    assert run.node_instance_id == run.node_run_id
+    run
+  end
+
   defp dispatches, do: Repo.aggregate(Dispatch, :count)
 
   # The inputs of the run's documents, as JSON decodes them.
@@ -314,7 +341,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert run.dispatch_run_id == claimed.run.id
     end
 
-    test "superseded while its lease lapsed is gone, its registered run deleted", ctx do
+    test "superseded while its lease lapsed is gone, its registered run failed", ctx do
       {collection, queued} = prebuild!(ctx)
       claimed = claimed!(ctx)
 
@@ -326,7 +353,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert dispatched(ctx.key, claimed) == {:error, :gone}
       assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(queued)
       assert %Dispatch{end_cause: :run_ended, stale_at: %DateTime{}} = dispatch!(claimed)
-      assert runs() == 0
+      assert queue_runs() == 0
+      start_failed!(claimed, "lease_lapsed")
     end
 
     test "ends collection_ended when its collection ended, was unassigned, moved or lost its target",
@@ -503,16 +531,22 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert queue_run!(queued).state == :waiting
       assert Slots.held(ctx.pool.id) == 0
-      assert runs() == 0
+      assert queue_runs() == 0
+      failed = start_failed!(claimed, "lease_lapsed")
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
 
-      # A later claim registers the run anew, with another code; the stale dispatch stays
-      # lease_expired.
+      # A later claim registers the run anew, with another code, under the run of the
+      # queue's run id; the stale dispatch stays lease_expired, and the failed run stays
+      # failed.
       later = claimed!(ctx)
       assert later.run_code != claimed.run_code
       assert later.registered.id != claimed.registered.id
+      assert later.registered.node_run_id == claimed.registered.node_run_id
+      assert later.registered.dispatch_run_id == queued.id
       assert dispatched(ctx.key, later) == :ok
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
+      assert Repo.get!(Run, failed.id).state == "failed"
+      assert runs() == 2
     end
   end
 
@@ -658,7 +692,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert %DispatchRun{state: :ended, end_cause: :ticket_gone} = queue_run!(queued)
       assert %Dispatch{end_cause: :run_ended} = dispatch!(stale)
       assert Slots.held(ctx.pool.id) == 0
-      assert runs() == 0
+      assert queue_runs() == 0
+      start_failed!(stale, "lease_lapsed")
     end
 
     test "is ended, and the claim takes the next waiting run", ctx do
@@ -933,7 +968,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
       assert %Dispatch{stale_at: %DateTime{}, dispatched_at: nil} = dispatch!(claimed)
       assert queue_run!(queued).state == :waiting
-      assert runs() == 0
+      assert queue_runs() == 0
+      start_failed!(claimed, "lease_lapsed")
     end
   end
 

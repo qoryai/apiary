@@ -85,7 +85,8 @@ defmodule Apiary.Runs.Fold do
   applied as any other. A run whose end Qory recorded without an outcome (`released_at`,
   not folded either) is cancelled with the reason `released`, whatever its exit said;
   that step comes just before the outcome's, so an outcome stored before decides over
-  it.
+  it. A run whose machine never started it (`start_failure`, not folded either) is
+  failed, its reason that cause, in a step before both.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
   the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -246,11 +247,18 @@ defmodule Apiary.Runs.Fold do
   # (`released_at`, `Apiary.Dispatches.RunEnd`) is cancelled with the reason `released`,
   # whatever its exit said, and not lost; then its outcome, should one have been stored
   # before a run of the queue was refused one, decides over that as over all the rest
-  # (`outcome/1`). No outcome is recorded for a release. Every other run is `outcome/1`
+  # (`outcome/1`). No outcome is recorded for a release. A run whose machine never
+  # started it (`start_failure`, `Apiary.Dispatches.Handover.fail_start/3`) is failed,
+  # its reason that cause, and not lost, before both. Every other run is `outcome/1`
   # alone.
   @doc false
   @spec settle(map()) :: map()
-  def settle(run), do: run |> released() |> outcome()
+  def settle(run), do: run |> start_failed() |> released() |> outcome()
+
+  defp start_failed(%{start_failure: failure} = run) when is_binary(failure),
+    do: Map.merge(run, %{state: "failed", reason: failure, lost_at: nil})
+
+  defp start_failed(run), do: run
 
   defp released(%{released_at: %DateTime{}} = run) do
     if Map.get(run, :outcome_state) in @outcome_states,

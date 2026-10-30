@@ -117,14 +117,18 @@ defmodule Apiary.Dispatches.Handover do
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
-  # of the queue leaves `claimed` other than by its handover, its lease lapsed
-  # (`Apiary.Dispatches.Slots`), its starter released it (`Apiary.Dispatches.Release`) or
-  # its work item was closed (`Apiary.Dispatches.cancel_for_close/2`), the registered run
-  # is deleted with its run code, in the same transaction (`drop/1`): the code redeems no
-  # more, and a run that waits again is registered anew, with a new code, by the claim
-  # that takes it next. A dispatch is handed over at its first `dispatched`, or at the
-  # first redemption of its run code (`Apiary.Runs.RunCode.redeem/2`), whichever comes
-  # first.
+  # of the queue leaves `claimed` other than by its handover, in the same transaction:
+  #
+  #   - its lease lapsed (`Apiary.Dispatches.Slots`) or its starter released it
+  #     (`Apiary.Dispatches.Release`): the registered run ends failed, `lease_lapsed` or
+  #     `machine_not_made`, and leaves the run of the queue (`fail_start/3`);
+  #   - its work item was closed (`Apiary.Dispatches.cancel_for_close/2`): the registered
+  #     run is deleted with its run code (`drop/1`).
+  #
+  # Either way the code redeems no more, and a run that waits again is registered anew,
+  # with a new code, by the claim that takes it next. A dispatch is handed over at its
+  # first `dispatched`, or at the first redemption of its run code
+  # (`Apiary.Runs.RunCode.redeem/2`), whichever comes first.
   #
   # A refusal of `dispatched/3` commits what the lapse of step 3 wrote. Once the
   # transaction commits, the workspaces whose queue or slots changed are told. An
@@ -364,8 +368,8 @@ defmodule Apiary.Dispatches.Handover do
   # drop/1 deletes the runs registered for the runs of the queue `dispatch_run_ids` that
   # never attached and whose run code was never redeemed, with their run codes, inside
   # the caller's transaction, which holds those runs of the queue: what a run of the
-  # queue leaving `claimed` other than by its handover does (the moduledoc). The ids of
-  # the runs deleted.
+  # queue leaving `claimed` because its work item was closed does (the moduledoc). The
+  # ids of the runs deleted.
   @doc false
   @spec drop([Ecto.UUID.t()]) :: [Ecto.UUID.t()]
   def drop([]), do: []
@@ -381,6 +385,59 @@ defmodule Apiary.Dispatches.Handover do
       )
 
     ids
+  end
+
+  # fail_start/3 ends failed, at `now`, the runs registered for the runs of the queue of
+  # `attempts`, `{dispatch_run_id, dispatch_id}` pairs, that never attached and whose run
+  # code was never redeemed, inside the caller's transaction, which holds those runs of
+  # the queue and dispatches: what a run of the queue leaving `claimed` by a release
+  # (`machine_not_made`) or by the lapse of its lease (`lease_lapsed`) does (the
+  # moduledoc). Each such run keeps its id and its page:
+  #
+  #   - `start_failure` the cause and `start_failed_at` `now`, so it reads as failed with
+  #     the cause as its reason (`Apiary.Runs.Fold.settle/1`), and `dispatch_id` the
+  #     dispatch whose claim registered it;
+  #   - no run of the queue (`dispatch_run_id` nil), so the next claim of its run of the
+  #     queue registers a run of its own, and nothing that reads a run of the queue's
+  #     registered run reads this one;
+  #   - a fresh `node_run_id`, its instance id the same, as the next claim registers its
+  #     run under the run of the queue's `run_id`. No claim answer, starter or machine has
+  #     the old one: only a redemption of the run code answers it;
+  #   - no documents (`run_documents`): its code redeems no more, as the run ended.
+  #
+  # The ids of the runs that failed.
+  @doc false
+  @spec fail_start([{Ecto.UUID.t(), Ecto.UUID.t()}], String.t(), DateTime.t()) ::
+          [Ecto.UUID.t()]
+  def fail_start(attempts, cause, %DateTime{} = now)
+      when is_list(attempts) and cause in ["machine_not_made", "lease_lapsed"] do
+    Enum.flat_map(attempts, fn {dispatch_run_id, dispatch_id} ->
+      run_id = Ecto.UUID.generate()
+
+      {_count, ids} =
+        Repo.update_all(
+          from(r in Run,
+            where: r.dispatch_run_id == ^dispatch_run_id,
+            where: is_nil(r.attached_at) and is_nil(r.run_code_public_key),
+            select: r.id
+          ),
+          set: [
+            state: "failed",
+            reason: cause,
+            lost_at: nil,
+            start_failure: cause,
+            start_failed_at: now,
+            dispatch_id: dispatch_id,
+            dispatch_run_id: nil,
+            node_run_id: run_id,
+            node_instance_id: run_id,
+            run_documents: nil,
+            updated_at: now
+          ]
+        )
+
+      ids
+    end)
   end
 
   # hand_over/2 hands the claimed dispatch `dispatch` of the run of the queue

@@ -359,17 +359,17 @@ later.
 5. **Machines.** **Which machines run the runs in Main?** shows the node pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
    shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
-   node pool, you choose between **Shared: the instance's pool** and **A pool for
+   node pool, you choose between **Qory Pool** and **A pool for
    Main**. The test run passes only through the instance's gateway, set with
    `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
    `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
    pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added
    on **Nodes** gets a key without stored secrets, so a test run through it ends before
    a machine starts it. On an install with the instance's pool and gateway, keep
-   **Shared: the instance's pool**; an instance admin selects **Check the nodes**, which
+   **Qory Pool**; an instance admin selects **Check the nodes**, which
    opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
    or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
-   for this pool, and the shared pool stops serving them." Its **Add node pool** adds a
+   for this pool, and the Qory Pool stops taking them." Its **Add pool** adds a
    node pool with the name Main. **Get the command** then shows "On the machine for the
    pool Main, run:" and the enrol command, with **Copy command**. Under it, the step
    shows the command that installs qory. Run it first on the Linux machine with Docker
@@ -380,18 +380,17 @@ later.
    ```
 
    Then run the enrol command on that machine. Once Main has its one pool, owners and
-   admins can go back to the instance's pool: choose **Shared: the instance's pool**,
+   admins can go back to the instance's pool: choose **Qory Pool**,
    then **Remove pool**. The step deletes Main's pool, and that pool's machines stop
-   taking runs. Once Main has its pool and the instance has none, **Shared: the
-   instance's pool** shows "Not ready: no pool" and cannot be chosen. **Skip** opens
-   **Test run**.
+   taking runs. Once Main has its pool and the instance has none, **Qory Pool** shows
+   "Not ready: no pool" and cannot be chosen. **Skip** opens **Test run**.
 6. **Test run.** In **Say hi to your agent**, keep `Hi! Where are you running?`, or write
    another greeting, and select **Run the test**. The step shows "The test run is queued
    for a machine.", then "The test run is running.", with **See the run** once a machine
    has registered the run. While no pool is ready, the step shows "Runs need a ready
    pool. See Machines." in place of **Run the test**.
 
-A pass shows "Test run passed: the agent answered on a machine of the instance's pool.",
+A pass shows "Test run passed: the agent answered on a machine of the Qory Pool.",
 with Main's node pool by name in place of the instance's pool, or "…on a machine." for a
 run with no node, and **See the run**: the agent's output is in the run's log. Owners,
 admins and members run the test. If the step shows another line, follow its first
