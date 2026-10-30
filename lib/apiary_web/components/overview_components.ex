@@ -53,7 +53,8 @@ defmodule ApiaryWeb.OverviewComponents do
     ]
 
   alias Apiary.Runs.Preparation
-  alias ApiaryWeb.Format
+  alias Apiary.WorkItems.ExploreView
+  alias ApiaryWeb.{Format, WorkItemComponents}
   alias Phoenix.LiveView.JS
 
   ## The summary
@@ -2162,6 +2163,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # Prepare machine section (`Apiary.Runs.Preparation`), with a link to that section;
   # any other run its end as the run page shows it. `path` is the run page's path.
   attr :cause, :atom, required: true
+  attr :dispatch_run, :any, default: nil
   attr :run, :any, default: nil
   attr :preparation, :map, default: nil
   attr :path, :string, default: nil
@@ -2191,6 +2193,23 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # A test run with no run record: the words the work item page has for its run of the
+  # queue's end cause (`ApiaryWeb.WorkItemComponents.unstarted_cause_words/1`).
+  def test_failed(%{cause: :no_run, dispatch_run: dispatch_run} = assigns) do
+    words =
+      WorkItemComponents.unstarted_cause_words(%{
+        end_cause: dispatch_run.end_cause,
+        harness_failure: ExploreView.harness_failure(dispatch_run)
+      })
+
+    assigns = assign(assigns, :words, words)
+
+    ~H"""
+    {gettext("The test run ended before a machine started it.")}
+    {@words || gettext("No run was recorded, so this step cannot show why.")}
+    """
+  end
+
   def test_failed(assigns) do
     ~H"{failed_line(@cause)}"
   end
@@ -2210,12 +2229,6 @@ defmodule ApiaryWeb.OverviewComponents do
         "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
       )
 
-  defp failed_line(:no_run),
-    do:
-      gettext(
-        "The test run ended before a machine started it, and no run was recorded, so the cause is unknown. Run the test again; if it ends the same way, tell an instance admin."
-      )
-
   # How a test run's run ended, as the run page's header shows its state and reason
   # (`ApiaryWeb.RunComponents.exit_note/1`), after the session started where it did. A
   # refusal whose code the run page has words for (`refusal_cause/1`) has a line of its
@@ -2232,7 +2245,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
       :engine_unreachable ->
         gettext(
-          "The test run failed: the machine could not connect to its container engine (%{code}).",
+          "The test run failed: the machine could not check an earlier run's container (%{code}).",
           code: code
         )
 

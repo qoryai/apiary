@@ -2337,6 +2337,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <span id="set-up-test-failed" data-cause={elem(@test_state, 1)}>
           <OverviewComponents.test_failed
             cause={elem(@test_state, 1)}
+            dispatch_run={@test.dispatch_run}
             run={@test.run}
             preparation={@test_preparation}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}

@@ -793,7 +793,7 @@ defmodule Apiary.WorkspaceSetup do
             where: d.work_item_id == ^work_item.id,
             order_by: [desc: d.take_in, desc: d.attempt],
             limit: 1,
-            preload: [run: :node]
+            preload: [run: :node, harness_walk: :failed_adapter]
         )
 
     if dispatch_run do

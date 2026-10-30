@@ -10808,6 +10808,11 @@ msgstr ""
 msgid "No run of this target was denied anything in the last 14 days."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No run was recorded, so this step cannot show why."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "No run yet"
@@ -16333,7 +16338,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "The machine could not connect to its container engine (%{code})."
+msgid "The machine could not check an earlier run's container (%{code})."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -16857,7 +16862,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The test run ended before a machine started it, and no run was recorded, so the cause is unknown. Run the test again; if it ends the same way, tell an instance admin."
+msgid "The test run ended before a machine started it."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -16887,7 +16892,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The test run failed: the machine could not connect to its container engine (%{code})."
+msgid "The test run failed: the machine could not check an earlier run's container (%{code})."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

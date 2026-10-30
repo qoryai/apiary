@@ -137,7 +137,11 @@ defmodule Apiary.WorkItems.ExploreView do
     }
   end
 
-  defp harness_failure(%{end_cause: :harness_unresolved, harness_walk: %RunHarness{} = walk}) do
+  @doc false
+  # harness_failure/1 is why the harness walk of `dispatch_run`, a run of the queue ended
+  # `harness_unresolved` with its walk (`harness_walk`) and the walk's adapter
+  # (`failed_adapter`) loaded, failed: the run map's `harness_failure`; nil for any other.
+  def harness_failure(%{end_cause: :harness_unresolved, harness_walk: %RunHarness{} = walk}) do
     %{
       code: walk.failure,
       source: walk.failed_source,
@@ -146,7 +150,7 @@ defmodule Apiary.WorkItems.ExploreView do
     }
   end
 
-  defp harness_failure(_dispatch_run), do: nil
+  def harness_failure(_dispatch_run), do: nil
 
   # The adapter a failed walk names: its title, read from its node, else the name the walk
   # kept, for a walk that failed before walks kept the adapter's id and once the adapter's

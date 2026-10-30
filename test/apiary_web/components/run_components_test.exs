@@ -310,7 +310,11 @@ defmodule ApiaryWeb.RunComponentsTest do
                "did not start: model_key_missing"
 
       assert RunComponents.reason_words(%{refused | reason: "engine_unreachable"}) ==
-               "The machine could not connect to its container engine (engine_unreachable)."
+               "The machine could not check an earlier run's container (engine_unreachable)."
+
+      for code <- ~w(image_missing mount_shared_with_run mount_through_link) do
+        assert RunComponents.reason_words(%{refused | reason: code}) == "did not start: #{code}"
+      end
 
       assert RunComponents.reason_words(%{refused | reason: "issuer_unreachable"}) ==
                "did not start: credential_check_unreachable"
@@ -327,7 +331,7 @@ defmodule ApiaryWeb.RunComponentsTest do
                "The run's settings did not pass a check on the machine (image_unknown)."
 
       assert RunComponents.reason_words(%{refused: "example_server_code"}) ==
-               "The run's settings did not pass a check on the machine (example_server_code)."
+               "did not start: example_server_code"
 
       assert RunComponents.reason_words(%{refused: "issuer_unreachable"}) ==
                "did not start: credential_check_unreachable"
@@ -430,7 +434,7 @@ defmodule ApiaryWeb.RunComponentsTest do
         words = RunComponents.reason_words(%{refused: code})
 
         assert words =~ "did not start: " or words =~ "did not pass a check on the machine (" or
-                 words =~ "could not connect to its container engine (",
+                 words =~ "could not check an earlier run's container (",
                code
 
         refute words =~ "issuer", code

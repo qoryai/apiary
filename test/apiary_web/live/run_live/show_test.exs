@@ -2707,7 +2707,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              )
     end
 
-    test "a run refused because its machine reached no container engine: those words, the code in mono",
+    test "a run refused because its machine could not check an earlier run's container: those words, the code in mono",
          %{conn: conn, scope: scope} do
       run =
         projected(scope, [
@@ -2719,7 +2719,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
         assert words_of(lv, reason) ==
-                 "The machine could not connect to its container engine (engine_unreachable)."
+                 "The machine could not check an earlier run's container (engine_unreachable)."
 
         assert words_of(lv, "#{reason} .font-mono") == "engine_unreachable"
       end

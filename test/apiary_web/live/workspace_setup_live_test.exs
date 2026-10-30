@@ -519,6 +519,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Grant, GrantRule}
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
   alias Apiary.Runs.{Run, Step}
@@ -3345,8 +3346,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "(image_unknown). See the run"},
             {[state: :ended, end_cause: :run_refused, end_detail: "engine_unreachable"],
              %{state: "failed", reason: "engine_unreachable"}, "ended",
-             "The test run failed: the machine could not connect to its container engine " <>
+             "The test run failed: the machine could not check an earlier run's container " <>
                "(engine_unreachable). See the run"},
+            {[state: :ended, end_cause: :run_refused, end_detail: "image_missing"],
+             %{state: "failed", reason: "image_missing"}, "ended",
+             "The test run failed. See the run"},
             {[state: :ended, end_cause: :run_refused, end_detail: nil],
              %{state: "failed", reason: nil}, "ended",
              "The test run failed: did not start. See the run"},
@@ -3354,12 +3358,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "The test run was lost. See the run"},
             {[state: :ended, end_cause: :released],
              %{state: "cancelled", reason: "no_longer_needed"}, "ended",
-             "The test run was cancelled: no longer needed. See the run"},
-            {[state: :ended, end_cause: :harness_unresolved, result_outcome: :error], nil,
-             "no_run",
-             "The test run ended before a machine started it, and no run was recorded, so " <>
-               "the cause is unknown. Run the test again; if it ends the same way, tell an " <>
-               "instance admin."}
+             "The test run was cancelled: no longer needed. See the run"}
           ] do
         Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
         test_run!(item, changes, run_attrs)
@@ -3370,6 +3369,70 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
+    end
+
+    test "no run recorded, its harness walk failed: the work item page's words for the walk",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      [queued] = Repo.all(from d in DispatchRun, where: d.work_item_id == ^item.id)
+
+      Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+        set: [state: :failed, origin: nil, document: nil, pins: [], failure: "walk_error"]
+      )
+
+      test_run!(item, state: :ended, end_cause: :harness_unresolved, result_outcome: :error)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert has_element?(lv, "#set-up-test-failed[data-cause=no_run]")
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run ended before a machine started it. Run Explore again, and if " <>
+                 "the run ends the same way, ask the instance admin to check the instance's " <>
+                 "log. The harness walk stopped on an error in Qory Apiary."
+
+      assert has_element?(lv, "#set-up-test-run", "Run the test")
+    end
+
+    test "no run recorded, ended at its claim: the work item page's words for the cause", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, state: :ended, end_cause: :variables_invalid, result_outcome: :error)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run ended before a machine started it. Fix the variables in the " <>
+                 "workspace's settings, then run Explore again. One of the run's variables " <>
+                 "breaks a variable rule."
+    end
+
+    test "no run recorded, its model key gone at its claim: no words for it, so the step says so",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, state: :ended, end_cause: :key_gone, result_outcome: :error)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert has_element?(lv, "#set-up-test-failed[data-cause=no_run]")
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run ended before a machine started it. No run was recorded, so this " <>
+                 "step cannot show why."
+    end
+
+    test "no run recorded, its harness walk failed with no failure kept: no words, so the step says so",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, state: :ended, end_cause: :harness_unresolved, result_outcome: :error)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run ended before a machine started it. No run was recorded, so this " <>
+                 "step cannot show why."
     end
 
     test "a failure after the session started: the run's end and reason, and See the run", %{

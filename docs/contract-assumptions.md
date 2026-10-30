@@ -1122,11 +1122,13 @@ The fold maps an exit to a state by the first rule that applies
    Lost, and any other reason, or none, Failed.
 
 A run whose `dev.qory.run.refused` reaches Qory Apiary did not start: it is Failed, with the
-refusal's `code` as its reason and no exit time. Its page says the run's settings did not
-pass a check on the machine, with the code ("The run's settings did not pass a check on the
-machine (image_unknown)."). For `engine_unreachable` it says "The machine could not connect
-to its container engine (engine_unreachable).", and for `model_key_missing` "did not start"
-with the code ("did not start: model_key_missing"). An exit decides over the refusal, in whichever order the
+refusal's `code` as its reason and no exit time. For a code of a check of the run's
+settings on the machine (`run_configuration_invalid`, `tool_unknown`, `image_unknown`,
+`image_not_allowed`, `image_user_root`, `variable_reserved`, `placeholder_conflict`,
+`mount_mode_conflict` and `mount_contains_forager_files`) its page says "The run's settings
+did not pass a check on the machine (image_unknown).". For `engine_unreachable` it says "The
+machine could not check an earlier run's container (engine_unreachable).", and for any other
+code "did not start" with the code ("did not start: image_missing"). An exit decides over the refusal, in whichever order the
 two are folded; no start or heartbeat folded after either changes the state. The refusal's
 time is kept as `refused_at`, nil once an exit decides over it; the starter's outcome
 leaves it as it is.

@@ -153,6 +153,12 @@ defmodule ApiaryWeb.RunComponents do
   # and _, up to 64 characters.
   @reason_code ~r/\A[a-z][a-z0-9_]{0,63}\z/
 
+  # The refusal codes of a check of the run's settings on the machine
+  # (`refusal_cause/1`).
+  @settings_checks ~w(run_configuration_invalid tool_unknown image_unknown image_not_allowed
+                      image_user_root variable_reserved placeholder_conflict
+                      mount_mode_conflict mount_contains_forager_files)
+
   # The names Forager gave three of its own reasons before `stopped`,
   # `credential_check_unreachable` and `credential_check_invalid`. It writes them no more, and
   # no starter can send them; exits stored with them read as the new names.
@@ -180,7 +186,7 @@ defmodule ApiaryWeb.RunComponents do
   `dev.qory.run.refused`, an earlier name read as the new one. A code of a check of the
   run's settings on the machine (`refusal_cause/1`) reads "The run's settings did not pass
   a check on the machine (image_unknown).", `engine_unreachable` "The machine could not
-  connect to its container engine (engine_unreachable).", any other code "did not start"
+  check an earlier run's container (engine_unreachable).", any other code "did not start"
   and the code, and no code "did not start". A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`),
   failed with no exit and the refusal's code as its reason, reads the same.
 
@@ -251,7 +257,7 @@ defmodule ApiaryWeb.RunComponents do
         )
 
       :engine_unreachable ->
-        gettext("The machine could not connect to its container engine (%{code}).",
+        gettext("The machine could not check an earlier run's container (%{code}).",
           code: shown
         )
 
@@ -261,20 +267,15 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  The cause a refusal's code has words for: `:engine_unreachable` for `engine_unreachable`,
-  the machine's container engine not answering; nil for `model_key_missing`, which has a
-  fix of its own, for the causes of a machine that never started the run
-  (`Apiary.Runs.Run.start_failures/0`), and for Forager's reasons read under their new
-  names (`stopped`, `credential_check_unreachable`, `credential_check_invalid`); and
-  `:settings_check`, a check of the run's settings on the machine, for any other code.
+  The cause a refusal's code has words for: `:settings_check`, a check of the run's
+  settings on the machine, for the codes of `#{inspect(@settings_checks)}`;
+  `:engine_unreachable` for `engine_unreachable`, the machine's check of an earlier run's
+  container; nil for any other code, which reads "did not start" and the code.
   """
   @spec refusal_cause(String.t()) :: :settings_check | :engine_unreachable | nil
+  def refusal_cause(code) when code in @settings_checks, do: :settings_check
   def refusal_cause("engine_unreachable"), do: :engine_unreachable
-
-  def refusal_cause(code) do
-    if code not in ["model_key_missing" | Run.start_failures() ++ Map.values(@earlier_reasons)],
-      do: :settings_check
-  end
+  def refusal_cause(_code), do: nil
 
   # An outcome its starter sent with no state, stored as cancelled with the reason `stopped`
   # (`Apiary.Runs.Outcome`), which no starter may give itself.
