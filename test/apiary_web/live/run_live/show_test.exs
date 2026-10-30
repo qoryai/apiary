@@ -285,6 +285,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                "Copy diagnostics"
              )
 
+      # A line for each way the copy can fail, which the hook announces instead.
+      for {cause, line} <- [
+            {"network",
+             "Check your connection, then copy again. The diagnostics did not arrive."},
+            {"gone",
+             "Reload the page, then copy again. This run, or your access to its log, is gone."},
+            {"signed-out", "Sign in again, then copy again. Your session ended."},
+            {"server",
+             "Copy again in a minute. Qory Apiary could not build the diagnostics. " <>
+               "If it fails again, tell your instance admin."},
+            {"clipboard",
+             "Allow this page to use the clipboard, then copy again. " <>
+               "The browser did not allow the copy."}
+          ] do
+        assert has_element?(lv, ~s(#run-menu-diagnostics[data-failed-#{cause}="#{line}"])),
+               cause
+      end
+
       ids =
         lv
         |> element("#run-menu ul")

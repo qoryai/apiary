@@ -449,7 +449,25 @@ defmodule ApiaryWeb.RunLive.Show do
             phx-hook="CopyToClipboard"
             data-copy-url={@diagnostics}
             data-copied-words={gettext("Copied")}
-            data-failed-words={gettext("Not copied. Try again.")}
+            data-failed-network={
+              gettext("Check your connection, then copy again. The diagnostics did not arrive.")
+            }
+            data-failed-gone={
+              gettext(
+                "Reload the page, then copy again. This run, or your access to its log, is gone."
+              )
+            }
+            data-failed-signed-out={gettext("Sign in again, then copy again. Your session ended.")}
+            data-failed-server={
+              gettext(
+                "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
+              )
+            }
+            data-failed-clipboard={
+              gettext(
+                "Allow this page to use the clipboard, then copy again. The browser did not allow the copy."
+              )
+            }
             data-menu-close
           >
             <.icon name="hero-clipboard-document-list" class="size-4" /> {gettext("Copy diagnostics")}

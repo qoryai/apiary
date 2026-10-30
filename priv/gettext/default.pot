@@ -4150,6 +4150,11 @@ msgstr ""
 msgid "Allow or deny"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Allow this page to use the clipboard, then copy again. The browser did not allow the copy."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Allow with paths…"
@@ -5286,6 +5291,11 @@ msgstr ""
 msgid "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Check your connection, then copy again. The diagnostics did not arrive."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check your email"
@@ -5859,6 +5869,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory Apiary never received it, and it can't be shown again."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -11214,11 +11229,6 @@ msgstr ""
 msgid "Not connected"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Not copied. Try again."
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
@@ -13305,6 +13315,11 @@ msgstr ""
 msgid "Released on"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page, then copy again. This run, or your access to its log, is gone."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Reloaded."
@@ -15043,6 +15058,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Shown to you once, for the machine's or the CI's secret store"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in again, then copy again. Your session ended."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
