@@ -5,7 +5,8 @@ defmodule ApiaryWeb.PreparationComponents do
   order the steps ran: Machine requested and Machine started for a run a node pool
   claimed, then the run's steps, then Session started. Each row has its state, its start
   time and its duration, and opens on a click to its output; a failed row is open, with
-  the cause line under its output.
+  the cause line under its output. Under Machine started the line is its second sentence
+  alone, who fixes the cause: the run's header shows the first as the run's reason.
 
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
@@ -98,7 +99,7 @@ defmodule ApiaryWeb.PreparationComponents do
             <.cause
               :if={@preparation.stopped && @preparation.stopped.step == nil}
               id={"#{@id}-cause"}
-              text={@preparation.stopped.text}
+              text={@preparation.stopped.fix}
             />
           </.row>
         </li>

@@ -29,7 +29,7 @@ defmodule Apiary.Runs.Preparation do
 
   alias Apiary.{Access, ExternalText, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.{Dispatch, MachineLog}
+  alias Apiary.Dispatches.Dispatch
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
   alias Apiary.Runs.{Record, Run, Step}
@@ -99,13 +99,15 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   Why the preparation failed: the cause, the number of the failed step for `:step_failed`
-  (nil for any other cause), who can fix it, and the cause line the run page shows.
+  (nil for any other cause), who can fix it, and the cause line: `text`, what happened
+  and who fixes it, and `fix`, its second sentence alone.
   """
   @type stopped :: %{
           cause: cause,
           step: pos_integer | nil,
           fixer: fixer,
-          text: String.t()
+          text: String.t(),
+          fix: String.t()
         }
 
   @type t :: %{
@@ -137,59 +139,62 @@ defmodule Apiary.Runs.Preparation do
 
   ## The dispatch
 
-  # The run's dispatch, with its pool, and how the attempt failed, if it did: one read of
-  # the run's dispatch, so the place that finds it is this function alone.
+  # The run's dispatch, with its pool, and how the attempt failed, if it did. This
+  # function alone finds the dispatch.
   #
-  # The dispatch is the last one claimed of the run's run of the queue; a run no node pool
-  # claimed has none. The failure: `machine_not_made` for a dispatch its starter released;
-  # `lease_lapsed` for one whose lease lapsed before a handover; `machine_stopped` for a
-  # run whose code was not redeemed when the dispatch's machine log arrived;
-  # `code_not_redeemed` for a run lost with its code never redeemed.
-  defp attempt(scope, %Run{dispatch_run_id: id} = run) when is_binary(id) do
-    dispatch =
-      Repo.one(
-        from d in Dispatch,
-          where:
-            d.dispatch_run_id == ^id and d.organisation_id == ^scope.organisation.id and
-              d.workspace_id == ^scope.workspace.id,
-          order_by: [desc: d.claimed_at, desc: d.id],
-          limit: 1,
-          preload: [pool: :organisation]
-      )
-
-    case dispatch do
-      %Dispatch{} -> %{dispatch: dispatch, failure: failure(run, dispatch)}
+  # The dispatch is the one whose claim registered the run (`dispatch_id`) for a run whose
+  # start failed, else the last one claimed of the run's run of the queue; a run no node
+  # pool claimed has none, and neither has a run whose dispatch was deleted since. The
+  # failure is the run's `start_failure` (`Apiary.Runs.Run.start_failures/0`) at
+  # `start_failed_at`, or `code_not_redeemed` for a run lost with its code never redeemed.
+  defp attempt(scope, %Run{} = run) do
+    case dispatch(scope, run) do
+      %Dispatch{} = dispatch -> %{dispatch: dispatch, failure: failure(run)}
       nil -> %{dispatch: nil, failure: nil}
     end
   end
 
-  defp attempt(_scope, %Run{}), do: %{dispatch: nil, failure: nil}
+  defp dispatch(scope, %Run{dispatch_id: id}) when is_binary(id),
+    do: Repo.one(from d in dispatches(scope), where: d.id == ^id)
 
-  defp failure(_run, %Dispatch{end_cause: :released} = dispatch),
-    do: {:machine_not_made, dispatch.ended_at}
-
-  defp failure(_run, %Dispatch{stale_at: %DateTime{} = at}), do: {:lease_lapsed, at}
-
-  defp failure(run, dispatch) do
-    cond do
-      not unredeemed?(run) -> nil
-      at = machine_log_at(dispatch) -> {:machine_stopped, at}
-      code_lost?(run) -> {:code_not_redeemed, run.lost_at || run.run_code_expires_at}
-      true -> nil
-    end
+  defp dispatch(scope, %Run{dispatch_run_id: id}) when is_binary(id) do
+    Repo.one(
+      from d in dispatches(scope),
+        where: d.dispatch_run_id == ^id,
+        order_by: [desc: d.claimed_at, desc: d.id],
+        limit: 1
+    )
   end
 
-  defp unredeemed?(%Run{run_code_expires_at: %DateTime{}, run_code_public_key: nil}), do: true
-  defp unredeemed?(%Run{}), do: false
+  defp dispatch(_scope, %Run{}), do: nil
 
-  # Lost with no attach, no exit and no outcome: the code's 15 minutes ran out.
-  defp code_lost?(%Run{state: "lost", attached_at: nil, exited_at: nil, outcome_state: nil}),
-    do: true
+  defp dispatches(%Scope{organisation: organisation, workspace: workspace}) do
+    from d in Dispatch,
+      where: d.organisation_id == ^organisation.id and d.workspace_id == ^workspace.id,
+      preload: [pool: :organisation]
+  end
+
+  defp failure(%Run{start_failure: "machine_not_made", start_failed_at: at}),
+    do: {:machine_not_made, at}
+
+  defp failure(%Run{start_failure: "lease_lapsed", start_failed_at: at}),
+    do: {:lease_lapsed, at}
+
+  defp failure(%Run{start_failure: "machine_stopped", start_failed_at: at}),
+    do: {:machine_stopped, at}
+
+  defp failure(%Run{} = run) do
+    if code_lost?(run), do: {:code_not_redeemed, run.lost_at || run.run_code_expires_at}
+  end
+
+  # Lost with no attach, no exit and no outcome, its code never redeemed: the code's 15
+  # minutes ran out.
+  defp code_lost?(
+         %Run{state: "lost", attached_at: nil, exited_at: nil, outcome_state: nil} = run
+       ),
+       do: not is_nil(run.run_code_expires_at) and is_nil(run.run_code_public_key)
 
   defp code_lost?(%Run{}), do: false
-
-  defp machine_log_at(%Dispatch{id: id}),
-    do: Repo.one(from l in MachineLog, where: l.dispatch_id == ^id, select: l.uploaded_at)
 
   ## The machine
 
@@ -217,8 +222,7 @@ defmodule Apiary.Runs.Preparation do
       pool: pool(dispatch.pool, run),
       machine_type: nil,
       requested_at: dispatch.claimed_at,
-      # The starter's reason, where the dispatch row has the column.
-      release_reason: Map.get(dispatch, :release_reason),
+      release_reason: dispatch.release_reason,
       started: %{
         state: state,
         started_at: started_at,
@@ -305,13 +309,8 @@ defmodule Apiary.Runs.Preparation do
 
   defp stopped(scope, %{failure: {cause, _at}}, machine, _steps) do
     {fixer, who} = pool_fixer(scope, machine.pool)
-
-    %{
-      cause: cause,
-      step: nil,
-      fixer: fixer,
-      text: machine_line(cause, machine, who, log_place(machine.pool))
-    }
+    {what, fix} = machine_line(cause, machine, who, log_place(machine.pool))
+    %{cause: cause, step: nil, fixer: fixer, text: what <> " " <> fix, fix: fix}
   end
 
   defp stopped(scope, _attempt, machine, steps) do
@@ -325,55 +324,56 @@ defmodule Apiary.Runs.Preparation do
             do: pool_fixer(scope, machine && machine.pool),
             else: workspace_fixer(scope)
 
-        %{cause: :step_failed, step: step.number, fixer: fixer, text: step_line(step, who)}
+        {what, fix} = step_line(step, who)
+
+        %{
+          cause: :step_failed,
+          step: step.number,
+          fixer: fixer,
+          text: what <> " " <> fix,
+          fix: fix
+        }
     end
   end
 
+  # Each cause line is two sentences: what happened, then who fixes it. The first sentence
+  # of a machine's cause is the one the run's header shows as the run's reason
+  # (`ApiaryWeb.RunComponents.reason_words/1`), but for a lapsed lease, which names the
+  # pool here.
   defp machine_line(:machine_not_made, machine, who, place) do
-    gettext("No machine was made: %{reason}. %{who} reads why in %{place}.",
-      reason: reason(machine.release_reason),
-      who: who,
-      place: place
-    )
+    {gettext("No machine was made: %{reason}.", reason: reason(machine.release_reason)),
+     reads_why(who, place)}
   end
 
   defp machine_line(:lease_lapsed, machine, who, _place) do
-    gettext(
-      "%{pool} did not start a machine within 10 minutes. %{who} checks that %{pool} is running.",
-      pool: pool_name(machine.pool),
-      who: who
-    )
+    pool = pool_name(machine.pool)
+
+    {gettext("%{pool} did not start a machine within 10 minutes.", pool: pool),
+     gettext("%{who} checks that %{pool} is running.", who: who, pool: pool)}
   end
 
   defp machine_line(:code_not_redeemed, _machine, who, place) do
-    gettext(
-      "The machine did not start the run within 15 minutes of the request. %{who} reads why in %{place}.",
-      who: who,
-      place: place
-    )
+    {gettext("The machine did not start the run within 15 minutes of the request."),
+     reads_why(who, place)}
   end
 
   defp machine_line(:machine_stopped, _machine, who, place) do
-    gettext("The machine stopped before it started the run. %{who} reads why in %{place}.",
-      who: who,
-      place: place
-    )
+    {gettext("The machine stopped before it started the run."), reads_why(who, place)}
   end
+
+  defp reads_why(who, place),
+    do: gettext("%{who} reads why in %{place}.", who: who, place: place)
 
   defp step_line(%{exit_code: code} = step, who) when is_integer(code) do
-    gettext("%{step} failed with exit code %{code}. %{who} reads the cause in the step's output.",
-      step: step_name(step),
-      code: code,
-      who: who
-    )
+    {gettext("%{step} failed with exit code %{code}.", step: step_name(step), code: code),
+     reads_cause(who)}
   end
 
-  defp step_line(step, who) do
-    gettext("%{step} failed. %{who} reads the cause in the step's output.",
-      step: step_name(step),
-      who: who
-    )
-  end
+  defp step_line(step, who),
+    do: {gettext("%{step} failed.", step: step_name(step)), reads_cause(who)}
+
+  defp reads_cause(who),
+    do: gettext("%{who} reads the cause in the step's output.", who: who)
 
   @doc """
   What the run page calls a step: its name (`t:step/0`), or "Step" and its number when
@@ -385,7 +385,7 @@ defmodule Apiary.Runs.Preparation do
 
   # The starter's reason as a line an external system sent, with its one closing full
   # stop left out for the sentence's.
-  defp reason(nil), do: gettext("no reason given")
+  defp reason(nil), do: gettext("n/a")
 
   defp reason(reason),
     do: reason |> ExternalText.line() |> String.replace_suffix(".", "")

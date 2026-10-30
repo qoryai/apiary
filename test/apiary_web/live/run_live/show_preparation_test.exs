@@ -118,6 +118,31 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                  "#{ctx.scope.workspace.name} reads the cause in the step&#39;s output."
     end
 
+    test "a released run: Machine started is open with who fixes it, the header the cause",
+         ctx do
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+
+      {:ok, _queued} =
+        Apiary.Repo.transact(fn ->
+          Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
+        end)
+
+      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#prepare-machine-started[open]")
+      refute has_element?(lv, "#prepare-machine-requested[open]")
+
+      assert lv |> element("#prepare-machine-cause") |> render() =~
+               ">An admin of #{ctx.scope.workspace.name} reads why in the log of build-pool on its host.</p>"
+
+      assert render(lv) =~ "No machine was made: No capacity in the region."
+      refute lv |> element("#prepare-machine") |> render() =~ "No machine was made"
+    end
+
     test "a pending run with no event shows the section in place of the wait", ctx do
       %{run: run} = claimed_run(ctx.scope)
 

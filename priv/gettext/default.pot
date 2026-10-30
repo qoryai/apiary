@@ -2325,7 +2325,7 @@ msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
-msgid "%{pool} did not start a machine within 10 minutes. %{who} checks that %{pool} is running."
+msgid "%{pool} did not start a machine within 10 minutes."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -2507,12 +2507,12 @@ msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
-msgid "%{step} failed with exit code %{code}. %{who} reads the cause in the step's output."
+msgid "%{step} failed with exit code %{code}."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
-msgid "%{step} failed. %{who} reads the cause in the step's output."
+msgid "%{step} failed."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -2743,6 +2743,11 @@ msgstr ""
 msgid "%{who} changed the policy above this workspace"
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} checks that %{pool} is running."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} denied %{host}"
@@ -2756,6 +2761,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} locked %{host}"
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} reads the cause in the step's output."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} reads why in %{place}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -10582,10 +10597,6 @@ msgid "No machine log has arrived."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "No machine was made: %{reason}. %{who} reads why in %{place}."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "No machine was made: %{reason}."
@@ -16264,10 +16275,6 @@ msgid "The log was pruned."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "The machine did not start the run within 15 minutes of the request. %{who} reads why in %{place}."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine did not start the run within 15 minutes of the request."
@@ -16289,10 +16296,6 @@ msgid "The machine log is cut: this is its last part."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "The machine stopped before it started the run. %{who} reads why in %{place}."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine stopped before it started the run."
@@ -19973,6 +19976,7 @@ msgstr ""
 msgid "most runs first"
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
 #: lib/apiary/runs/record/timeline.ex
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -20039,11 +20043,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "no policy, every connection is observed"
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "no reason given"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
