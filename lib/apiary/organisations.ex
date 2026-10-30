@@ -1785,10 +1785,14 @@ defmodule Apiary.Organisations do
           address: "/#{organisation_slug}/#{holder.slug}"
         )
 
-      holder ->
+      match?(%{slug: ^slug}, holder) ->
         Ecto.Changeset.add_error(changeset, :name, Workspace.taken_address(),
-          name: holder.name,
-          address: "/#{organisation_slug}/#{holder.slug}"
+          address: "/#{organisation_slug}/#{slug}"
+        )
+
+      holder ->
+        Ecto.Changeset.add_error(changeset, :name, Workspace.taken_name_elsewhere(),
+          name: holder.name
         )
 
       true ->

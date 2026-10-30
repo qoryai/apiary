@@ -118,7 +118,7 @@ defmodule ApiaryWeb.NewWorkspaceFormTest do
     assert has_element?(
              lv,
              "#workspace_name-error",
-             "Choose another name. A workspace marked for deletion has the address /#{scope.organisation.slug}/main."
+             "Choose another name. A workspace marked for deletion still has the address /#{scope.organisation.slug}/main."
            )
   end
 

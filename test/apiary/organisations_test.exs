@@ -602,7 +602,7 @@ defmodule Apiary.OrganisationsTest do
       {1, _rows} =
         Repo.update_all(from(w in Workspace, where: w.id == ^data.id), set: [slug: "lake"])
 
-      message = "Choose another name. Data already has the address /#{org}/lake."
+      message = "Choose another name. Another workspace is already named Data."
 
       assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => "Data"})
       assert %{name: [^message]} = errors_on(changeset)
@@ -615,7 +615,7 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{
                name: [
-                 "Choose another name. A workspace marked for deletion has the address /#{org}/lake."
+                 "Choose another name. A workspace marked for deletion still has the address /#{org}/lake."
                ]
              } == errors_on(changeset)
     end
@@ -643,9 +643,10 @@ defmodule Apiary.OrganisationsTest do
       mark_workspace(old)
 
       for {name, message} <- [
-            {"data!", "Choose another name. Data already has the address /#{org}/data."},
+            {"data!",
+             "Choose another name. Another workspace already has the address /#{org}/data."},
             {"OLD",
-             "Choose another name. A workspace marked for deletion has the address /#{org}/old."},
+             "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
             {"Audit log", "Choose another name. /#{org}/audit-log is a page of Qory Apiary."}
           ] do
         assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => name})
@@ -868,7 +869,7 @@ defmodule Apiary.OrganisationsTest do
       assert %{
                domain: ["Choose a type."],
                name: [
-                 "Choose another name. A workspace marked for deletion has the address " <>
+                 "Choose another name. A workspace marked for deletion still has the address " <>
                    ^address <> "."
                ]
              } = errors_on(changeset)
@@ -939,7 +940,7 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{
                name: [
-                 "Choose another name. A workspace marked for deletion has the address /#{org}/#{main.slug}."
+                 "Choose another name. A workspace marked for deletion still has the address /#{org}/#{main.slug}."
                ]
              } == errors_on(changeset)
     end
@@ -1237,7 +1238,7 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{
                name: [
-                 "Choose another name. A workspace marked for deletion has the address " <>
+                 "Choose another name. A workspace marked for deletion still has the address " <>
                    ^address <> "."
                ]
              } = errors_on(changeset)

@@ -281,9 +281,10 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=name&workspace=main")
 
       for {name, message} <- [
-            {"billing", "Choose another name. Billing already has the address /#{org}/billing."},
+            {"billing",
+             "Choose another name. Another workspace already has the address /#{org}/billing."},
             {"Old",
-             "Choose another name. A workspace marked for deletion has the address /#{org}/old."},
+             "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
             {"Settings", "Choose another name. /#{org}/settings is a page of Qory Apiary."}
           ] do
         lv |> form("#set-up-form", workspace: %{name: name}) |> render_submit()
