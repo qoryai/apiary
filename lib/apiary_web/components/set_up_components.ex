@@ -64,8 +64,9 @@ defmodule ApiaryWeb.SetUpComponents do
      the `secrets` feature too; without `factory`, Name alone. `flow:` is the flow the
      page sets up (`flow/5`). Without it, the flow of the workspace the scope has once
      the organisation has a workspace, and before, of a new workspace of the default
-     type at `/:org/set-up`, for a person who may create it (`workspace.create`); none
-     for anyone else. Signed out, every step, none done and none with a page, where the
+     type, for a person who may create it (`workspace.create`), whose step paths, at
+     `/:org/set-up`, send the person to the organisation's overview and its kind cards;
+     none for anyone else. Signed out, every step, none done and none with a page, where the
      organisation is still to be made; Name alone where it is the invitation's and has
      no workspace.
 
@@ -252,7 +253,8 @@ defmodule ApiaryWeb.SetUpComponents do
   The flow a page sets up (`flow/5`): the organisation, the type of the workspace
   (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and the page that runs
   it: `:set_up`, `/:org/set-up`, or `:new`, `/:org/workspaces/new`. `type` is whether
-  the step's paths name the type, as once a card is picked.
+  the step's paths name the type (`&type=<name>`); no page of the core sets it, since a
+  card's **Choose** creates the workspace.
   """
   @type flow :: %{
           organisation: %Organisation{},
@@ -265,7 +267,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
   or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
-  in `opts`, the step's paths name the type, as once a card is picked.
+  in `opts`, the step's paths name the type.
   """
   @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
   def flow(organisation, domain, workspace, page, opts \\ []),

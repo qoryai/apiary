@@ -191,7 +191,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert Enum.all?(steps, &(&1.progress == :organisation))
       assert Enum.map(steps, & &1.group) == List.duplicate(nil, 8)
 
-      # The default flow is at the set-up, which shows the type cards first.
+      # The default flow is at the set-up, which opens the overview's kind cards.
       assert Enum.find(steps, &(&1.id == :sources)).path ==
                "/#{scope.organisation.slug}/set-up?step=sources"
 

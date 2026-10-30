@@ -167,9 +167,9 @@ defmodule Apiary.Edition do
   @callback first_sign_up_line() :: String.t()
 
   @doc """
-  The workspace set-up page's line on which workspace `organisation`'s first one is, under
-  its title, for a person who may create it, on `/:org/set-up`, translated when it is
-  asked.
+  A line on which workspace `organisation`'s first one is, for a person who may create
+  it, translated when it is asked. No core page shows it: the type screen of
+  `/:org/set-up` showed it, and the kind cards of `/:org` replaced that screen.
   """
   @callback first_workspace_line(%Organisation{}) :: String.t()
 
@@ -198,16 +198,18 @@ defmodule Apiary.Edition do
 
   @doc """
   The line the set-up's column About this step shows for `scope` on the step `step_id`,
-  such as `:workspace`, where the page has no line of the core's: on the workspace
-  set-up page (`/:org/set-up`) for a person who may not create the organisation's first
-  workspace. Nil shows no column. Translated when it is asked. The core answers nil.
+  such as `:workspace`, where the page has no line of the core's. Nil shows no column.
+  Translated when it is asked. The core answers nil. No core page asks it: the page that
+  did, `/:org/set-up` for a person who may not create the organisation's first
+  workspace, now opens the organisation's overview `/:org`.
   """
   @callback set_up_context(Scope.t() | nil, step_id :: term) :: String.t() | nil
 
   @doc """
-  The title of the workspace set-up page (`/:org/set-up`) for `scope`, while the
-  organisation has no workspace in use and the scope's person may not create it; `step`
-  is nil there. Translated when it is called. The core returns "Set up your workspace".
+  The title of the workspace set-up for `scope`, while the organisation has no workspace
+  in use and the scope's person may not create it; `step` is nil there. Translated when
+  it is called. The core returns "Set up your workspace". No core page calls it: in that
+  state `/:org/set-up` opens the organisation's overview `/:org`.
   """
   @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
 
