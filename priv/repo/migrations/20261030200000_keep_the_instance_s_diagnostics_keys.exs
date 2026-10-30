@@ -13,7 +13,7 @@ defmodule Apiary.Repo.Migrations.KeepTheInstanceSDiagnosticsKeys do
   # - `nodes_diagnostics_index`: one in use.
   #
   # The checks are added NOT VALID, so the change scans no row under a lock that blocks
-  # writes to the table; `20261030150100_validate_the_diagnostics_checks` validates them.
+  # writes to the table; `20261030200100_validate_the_diagnostics_checks` validates them.
   @public_id "^(nd|np|ng|na|dg)_[0-9a-hjkmnp-tv-z]{16}$"
   @before_public_id "^(nd|np|ng|na)_[0-9a-hjkmnp-tv-z]{16}$"
 
