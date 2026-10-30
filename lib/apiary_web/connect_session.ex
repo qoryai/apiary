@@ -36,7 +36,7 @@ defmodule ApiaryWeb.ConnectSession do
   # Whether `back` is a place a return may lead to, besides the integration's page: a step
   # of the workspace set-up that connects, `<page>:<step>`, `<page>:<step>:<type>` before
   # the workspace exists, or `<page>:<step>:workspace=<id>` once it does. The page is
-  # "set-up" (`/:org/set-up`) or "new-workspace" (`/:org/workspaces/new`), the step
+  # "set-up" (`/:org/:workspace/set-up/<step>`) or "new-workspace", the step
   # "sources" or "destinations", the type a domain's name (`Apiary.Lingo.Domain`), and
   # the id a workspace's public id in form (`ws_…`); the install checks it against the
   # organisation's workspaces (`back_workspace/1`). "set-up" alone is the set-up's Work sources step.

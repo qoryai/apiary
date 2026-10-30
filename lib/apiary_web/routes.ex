@@ -600,16 +600,10 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # The workspace set-up: the flow that sets up a workspace, `?step=<id>`, a
-              # workspace's steps with `&workspace=<slug>`; with no workspace in the
-              # scope, `/set-up` opens the overview and its kind cards. `/workspaces/new`
-              # has the kind cards for a further workspace, for an owner.
-              live "/set-up", WorkspaceSetupLive, :show
+              # New workspace: the kind cards for a further workspace, for an owner.
+              # Choose creates it; its steps are pages of the workspace
+              # (`/:org/:workspace/set-up/<step>`).
               live "/workspaces/new", WorkspaceSetupLive, :new
-              # The chooser of the set-up's steps Work sources and Destinations, with the
-              # `factory` feature: which collections of one grant a workspace has,
-              # `?step=<id>&grant=<ag_…>&workspace=<slug>`.
-              live "/set-up/choose", ChooseCollectionsLive, :set_up
               # The organisation's audit trail, a page of its sidebar beside the overview,
               # for the readers `audit.read` allows. It was a section of the settings,
               # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
@@ -683,6 +677,12 @@ defmodule ApiaryWeb.Routes do
 
             scope "/:org/:workspace" do
               live "/", WorkspaceLive.Overview, :index
+              # The workspace's set-up, a page for each step of the flow, by its id
+              # (`Apiary.WorkspaceSetup.flow/0`), in the workspace's sidebar; and the
+              # chooser of the steps Work sources and Destinations, with the `factory`
+              # feature: which collections of one grant the workspace has, `?grant=<ag_…>`.
+              live "/set-up/:step", WorkspaceSetupLive, :step
+              live "/set-up/:step/choose", ChooseCollectionsLive, :set_up
               # The record: the runs of the workspace, and where they reached out to (Network
               # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index

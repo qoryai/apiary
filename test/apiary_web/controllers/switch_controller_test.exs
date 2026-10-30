@@ -327,6 +327,12 @@ defmodule ApiaryWeb.SwitchControllerTest do
             assert landing == {rest, view}, rest
         end
       end
+
+      # A step of the set-up, and its chooser, land on the other workspace's overview.
+      for page <- ["/set-up/model", "/set-up/sources/choose"] do
+        assert SwitchController.landing(ApiaryWeb.Router, "acme", "production", page) ==
+                 {"", ApiaryWeb.WorkspaceLive.Overview}
+      end
     end
   end
 

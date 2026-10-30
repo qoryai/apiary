@@ -168,8 +168,8 @@ defmodule Apiary.Edition do
 
   @doc """
   A line on which workspace `organisation`'s first one is, for a person who may create
-  it, translated when it is asked. No core page shows it: the type screen of
-  `/:org/set-up` showed it, and the kind cards of `/:org` replaced that screen.
+  it, translated when it is asked. No core page shows it: the type screen of the
+  workspace set-up showed it, and the kind cards of `/:org` replaced that screen.
   """
   @callback first_workspace_line(%Organisation{}) :: String.t()
 
@@ -199,9 +199,9 @@ defmodule Apiary.Edition do
   @doc """
   The line the set-up's column About this step shows for `scope` on the step `step_id`,
   such as `:workspace`, where the page has no line of the core's. Nil shows no column.
-  Translated when it is asked. The core answers nil. No core page asks it: the page that
-  did, `/:org/set-up` for a person who may not create the organisation's first
-  workspace, now opens the organisation's overview `/:org`.
+  Translated when it is asked. The core answers nil. No core page asks it: a person who
+  may not create the organisation's first workspace reads who does on the organisation's
+  overview `/:org`.
   """
   @callback set_up_context(Scope.t() | nil, step_id :: term) :: String.t() | nil
 
@@ -209,7 +209,7 @@ defmodule Apiary.Edition do
   The title of the workspace set-up for `scope`, while the organisation has no workspace
   in use and the scope's person may not create it; `step` is nil there. Translated when
   it is called. The core returns "Set up your workspace". No core page calls it: in that
-  state `/:org/set-up` opens the organisation's overview `/:org`.
+  state the person lands on the organisation's overview `/:org`.
   """
   @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
 

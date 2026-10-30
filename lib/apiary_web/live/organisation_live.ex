@@ -6,6 +6,10 @@ defmodule ApiaryWeb.OrganisationLive do
   count, its denied attempts and its last run), at most six and a link to all of them;
   beside them its people and its details, as lines, not boxes (`docs/ui.md`, Lists).
 
+  A workspace whose set-up is not finished shows "Set-up: 3 of 7 steps" under its name,
+  and its line leads to its overview, which lists the set-up's steps
+  (`ApiaryWeb.SetUpComponents.workspace_set_up/1`).
+
   An organisation with no workspace in use yet shows, in place of its workspaces, the kind
   cards (`ApiaryWeb.SetUpComponents.kind_cards/1`) to a person `workspace.create` allows
   there, whose Choose creates the first workspace and opens its Name step, and to anyone
@@ -131,6 +135,7 @@ defmodule ApiaryWeb.OrganisationLive do
                 <.workspace_row
                   workspace={workspace}
                   landing={@landings[workspace.id]}
+                  set_up={@set_ups[workspace.id]}
                   facts={@facts.ok? && @facts.result[workspace.id]}
                   mode={@modes[workspace.id]}
                 />
@@ -238,12 +243,17 @@ defmodule ApiaryWeb.OrganisationLive do
 
   attr :workspace, :any, required: true
   attr :landing, :string, required: true, doc: "where the workspace's link leads"
+
+  attr :set_up, :map,
+    default: nil,
+    doc: "its set-up while it is not finished (`ApiaryWeb.SetUpComponents.workspace_set_up/1`)"
+
   attr :facts, :any, required: true, doc: "the workspace's facts, nil while they load"
   attr :mode, :string, default: nil
 
   # A workspace, one line: its name (the title), how many targets and its policy's mode in
-  # faint words, what is alive, its runs a day with their count, its denied attempts and
-  # its last run.
+  # faint words, how many steps of its set-up are done while it is not finished, what is
+  # alive, its runs a day with their count, its denied attempts and its last run.
   defp workspace_row(assigns) do
     ~H"""
     <.link
@@ -253,6 +263,15 @@ defmodule ApiaryWeb.OrganisationLive do
     >
       <span class="q-wr-nm">
         <b>{@workspace.name}</b>
+        <span :if={@set_up} id={"workspace-#{@workspace.id}-set-up"} class="q-wr-su">
+          {ngettext(
+            "Set-up: %{done} of %{total} step",
+            "Set-up: %{done} of %{total} steps",
+            @set_up.total,
+            done: @set_up.done,
+            total: @set_up.total
+          )}
+        </span>
         <span :if={@facts}>{workspace_note(@facts, @mode)}</span>
       </span>
       <%= if @facts do %>
@@ -390,6 +409,7 @@ defmodule ApiaryWeb.OrganisationLive do
         page_title: gettext("No workspace yet"),
         workspaces: [],
         landings: %{},
+        set_ups: %{},
         modes: %{},
         waiting: true,
         added: false
@@ -407,7 +427,7 @@ defmodule ApiaryWeb.OrganisationLive do
     |> assign(:waiting, false)
     |> assign(:page_title, scope.organisation.name)
     |> assign(:workspaces, workspaces)
-    |> assign(:landings, landings(scope, workspaces))
+    |> assign_landings(scope, workspaces)
     |> assign(:modes, modes(scope, workspaces))
     |> assign(:people, people(scope))
     |> assign_async(:facts, fn -> {:ok, %{facts: Runs.workspace_facts(scope, workspaces)}} end)
@@ -423,24 +443,34 @@ defmodule ApiaryWeb.OrganisationLive do
     end
   end
 
-  # Where each workspace's link leads: with the `factory` feature, the set-up's next step
-  # while its set-up is not finished; else the first page its sidebar shows the reader there
-  # (`ApiaryWeb.Layouts.workspace_landing/1`), asked with the scope they would have in it
-  # (`Apiary.Organisations.workspace_scopes/1`), one read for them all; the page's
-  # workspace with the page's scope, and a workspace that read did not find at its
-  # overview, as before.
-  defp landings(scope, workspaces) do
+  # Where each workspace's link leads, and its set-up while it is not finished
+  # (`ApiaryWeb.SetUpComponents.workspace_set_up/1`), asked with the scope the reader would have
+  # in it (`Apiary.Organisations.workspace_scopes/1`), one read for them all: with the
+  # `factory` feature, its overview while its set-up is not finished; else the first page
+  # its sidebar shows the reader there (`ApiaryWeb.Layouts.workspace_landing/1`). The
+  # page's workspace with the page's scope, and a workspace that read did not find at its
+  # overview, with no set-up, as before.
+  defp assign_landings(socket, scope, workspaces) do
     scopes = Map.put(Organisations.workspace_scopes(scope), scope.workspace.id, scope)
 
-    for workspace <- workspaces, into: %{} do
-      landing =
+    found =
+      for workspace <- workspaces, into: %{} do
         case Map.fetch(scopes, workspace.id) do
-          {:ok, here} -> Layouts.workspace_landing(here)
-          :error -> ~p"/#{scope.organisation}/#{workspace}"
-        end
+          {:ok, here} ->
+            case SetUpComponents.workspace_set_up(here) do
+              nil -> {workspace.id, {Layouts.workspace_landing(here), nil}}
+              set_up -> {workspace.id, {~p"/#{scope.organisation}/#{workspace}", set_up}}
+            end
 
-      {workspace.id, landing}
-    end
+          :error ->
+            {workspace.id, {~p"/#{scope.organisation}/#{workspace}", nil}}
+        end
+      end
+
+    assign(socket,
+      landings: Map.new(found, fn {id, {landing, _set_up}} -> {id, landing} end),
+      set_ups: for({id, {_landing, %{} = set_up}} <- found, into: %{}, do: {id, set_up})
+    )
   end
 
   # The policy's default mode of each workspace whose policy the reader may read, where the

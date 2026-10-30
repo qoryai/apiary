@@ -51,7 +51,10 @@ defmodule ApiaryWeb.SwitchController do
     "/policy/versions/:n" => "/policy/history",
     "/policy/versions/:n/export" => "/policy/history",
     "/settings/danger" => "/settings",
-    "/settings/delete" => "/settings"
+    "/settings/delete" => "/settings",
+    # A step of the set-up lands on the overview, which lists the other workspace's steps.
+    "/set-up/:step" => "",
+    "/set-up/:step/choose" => ""
   }
 
   def show(conn, %{"section" => section} = params) do

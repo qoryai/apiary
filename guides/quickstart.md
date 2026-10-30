@@ -81,10 +81,11 @@ Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
 same password again, and the **Organisation name**, usually your company's, `Acme` say.
 Then select **Set up**. It creates your account and the organisation, with no workspace
-yet, and signs you in. Each page of the set-up lists its steps, with the current one
-marked: first the instance's steps, then the organisation's in a separate list, each
-counted from step 1. **Back**, at the foot of a step's form, opens the step before it in
-the same list. Two pages follow:
+yet, and signs you in. **Connect Qory Apiary** lists its steps, with the current one
+marked, counted from step 1. With the `factory` feature, the group **Set up** at the top
+of the workspace's sidebar lists the workspace's steps, with a check mark on each one
+done. **Back**, at the foot of a step's form, opens the step before it. Two pages
+follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
@@ -107,8 +108,8 @@ With the `factory` feature, **Connect Qory Apiary** has one step for each adapte
 select **Skip**, or **Continue** where the step is set up already, or set the adapter up
 as [Set up a new instance](install.md#set-up-a-new-instance) shows.
 
-**Save and next** then opens **Work sources**, the next step of Main's set-up, in place
-of the overview, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
+**Save and next** on **Name** then opens **Work sources**, the next step of Main's
+set-up, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
 to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
 sidebar, but Main's overview has no box for them, and their node does not count for the
 step **Machines**, which counts node pools only.
@@ -286,10 +287,11 @@ version.
 <!-- feature: factory -->
 ## 8. Set up Main and run the test
 
-With the `factory` feature, the workspace set-up goes on after the step **Name**, at
-`http://localhost:4100/acme/set-up?step=<step>&workspace=main`. Until a test run passes,
-opening Main, `http://localhost:4100/acme/main`, opens its next step in place of the
-overview. The list of steps shows a check mark on each step once it is done:
+With the `factory` feature, the workspace set-up goes on after **Name**, at
+`http://localhost:4100/acme/main/set-up/<step>`, a page of Main. Until a test run passes,
+the group **Set up** at the top of Main's sidebar lists the steps, and Main's overview,
+`http://localhost:4100/acme/main`, lists them too, with **Continue** to the next step.
+Each list shows a check mark on each step once it is done:
 
 | Step | Done when |
 |---|---|

@@ -11,7 +11,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
   # ended there. Where the session keeps a step of the workspace set-up beside that nonce
   # (`ApiaryWeb.ConnectSession.back?/1`), an install started there, the return leads to
-  # that step, such as `/<org>/set-up?step=sources&workspace=payments`, in place of the
+  # that step, such as `/<org>/main/set-up/sources`, in place of the
   # integration's page. A return the person did not start in this browser gets a page that
   # shows so; a link that contains no connection they reach, and a return that is bad,
   # expired or used, as a path that does not exist, whoever asks, so the response does not
@@ -143,34 +143,20 @@ defmodule ApiaryWeb.AdapterRedirectController do
   end
 
   # The path of the workspace set-up's step that `back` is set to
-  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug as it is now, found by
-  # its public id, or the type picked; nil for a workspace of the organisation no longer
-  # in use.
-  defp back_path(scope, "set-up"), do: ~p"/#{scope.organisation}/set-up?step=sources"
-
+  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's public id, the step's page in
+  # the workspace, at its address as it is now; nil for a workspace of the organisation no
+  # longer in use. Without a workspace, the organisation's overview, which leads to its
+  # workspaces.
   defp back_path(scope, back) do
-    organisation = scope.organisation
-    [page, step | rest] = String.split(back, ":")
+    case String.split(back, ":") do
+      [_page, step, "workspace=" <> id] ->
+        case Enum.find(Apiary.Organisations.list_workspaces(scope), &(&1.public_id == id)) do
+          nil -> nil
+          workspace -> ~p"/#{scope.organisation}/#{workspace}/set-up/#{step}"
+        end
 
-    query =
-      case rest do
-        ["workspace=" <> id] ->
-          case Enum.find(Apiary.Organisations.list_workspaces(scope), &(&1.public_id == id)) do
-            nil -> nil
-            workspace -> [step: step, workspace: workspace.slug]
-          end
-
-        [type] ->
-          [step: step, type: type]
-
-        [] ->
-          [step: step]
-      end
-
-    case {page, query} do
-      {_page, nil} -> nil
-      {"set-up", query} -> ~p"/#{organisation}/set-up?#{query}"
-      {"new-workspace", query} -> ~p"/#{organisation}/workspaces/new?#{query}"
+      _other ->
+        ~p"/#{scope.organisation}"
     end
   end
 end

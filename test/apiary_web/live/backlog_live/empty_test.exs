@@ -144,7 +144,7 @@ defmodule ApiaryWeb.BacklogLive.EmptyTest do
       assert words(view, "#backlog-empty-connect") == "Connect a work source"
 
       assert attribute(view, "#backlog-empty-connect", "href") ==
-               ["/#{ctx.scope.organisation.slug}/set-up"]
+               ["/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/set-up/sources"]
 
       refute html =~ "Not Found"
       refute has_element?(view, "#backlog-empty-who")
