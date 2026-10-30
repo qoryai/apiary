@@ -22,8 +22,25 @@ defmodule Apiary.Dispatches.Built do
   # (`Apiary.Runs.Fold`): `image` as the provisioner contract's `$defs/image`, a
   # lower-case name of at most 255 characters, `@sha256:` and 64 lower-case hexadecimal
   # digits; `size` an integer from 1 to 2^53 - 1; `commit` 40 or 64 lower-case
-  # hexadecimal characters; `environment_ref` 1 to 200 characters with no U+0000. An
-  # event that breaks one of them records nothing.
+  # hexadecimal characters; `environment_ref` 1 to 200 characters with no U+0000; and
+  # `environment_image`, when the event has it, of the form of `image`. An event that
+  # breaks one of them records nothing.
+  #
+  # ## Where the image is
+  #
+  # The claim sent the prebuild its destinations in the registry, in the run's documents,
+  # which the registered run keeps as they were sent (`runs.run_documents`,
+  # `Apiary.Dispatches.Handover`). The image's place, its name before `@sha256:`, must be
+  # exactly the documents' `image_destination`. An `environment_image` the event has must
+  # be at exactly the documents' `environment_destination`, or be exactly the documents'
+  # `environment_image`, the one the build started from. An image elsewhere, another
+  # organisation's, another instance's, another registry's or a path that only starts
+  # with the destination, records nothing, and is logged as a warning with the run's
+  # public id and the member, never the image. So is a report of a run whose documents
+  # have no destination: one registered before the claim sent them. The destinations are
+  # read from the documents and never made again: the environment image's name depends
+  # on the run configuration in force (`Apiary.Registry.Names.environment_key/5`), which
+  # may change between the claim and the report.
   #
   # ## What is stored
   #
@@ -55,6 +72,8 @@ defmodule Apiary.Dispatches.Built do
 
   import Ecto.Query, only: [from: 2]
 
+  require Logger
+
   alias Apiary.{Environments, Repo}
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Dispatches.DispatchRun
@@ -79,8 +98,9 @@ defmodule Apiary.Dispatches.Built do
 
   # record/1 stores the image the prebuild `run` reported (the moduledoc): `:recorded`
   # when the record was written, `:kept` when the record already had that build or a
-  # newer one, `:refused` for a run that is not a prebuild handed over or an event that
-  # breaks its rules, and `:none` when the run has no such event.
+  # newer one, `:refused` for a run that is not a prebuild handed over, an event that
+  # breaks its rules or an image away from the run's destinations, and `:none` when the
+  # run has no such event.
   @doc false
   @spec record(Run.t()) :: :recorded | :kept | :refused | :none
   def record(%Run{id: run_id, dispatch_run_id: dispatch_run_id})
@@ -89,9 +109,11 @@ defmodule Apiary.Dispatches.Built do
       Repo.transact(fn ->
         with {:ok, data} <- reported(run_id),
              %DispatchRun{} = dispatch_run <- prebuild(dispatch_run_id),
-             {:ok, build} <- build(data) do
+             {:ok, build} <- build(data),
+             run = Repo.get!(Run, run_id),
+             :ok <- placed(run, build) do
           held = Environments.lock_record(dispatch_run.pool_id, dispatch_run.source_collection_id)
-          {:ok, {store(held, dispatch_run, Repo.get!(Run, run_id), build), dispatch_run}}
+          {:ok, {store(held, dispatch_run, run, build), dispatch_run}}
         else
           :none -> {:ok, :none}
           _refused -> {:ok, :refused}
@@ -143,22 +165,100 @@ defmodule Apiary.Dispatches.Built do
     )
   end
 
-  # The event's data held to its rules (the moduledoc): `{:ok, build}` or :error.
+  # The event's data held to its rules (the moduledoc): `{:ok, build}` or :error. The
+  # build's `environment_image` is nil where the event has none.
   defp build(%{} = data) do
     with image when is_binary(image) <- data["image"],
-         true <- byte_size(image) <= @max_image_bytes and Regex.match?(@image, image),
+         true <- image?(image),
          size when is_integer(size) and size in 1..@max_size//1 <- data["size"],
          commit when is_binary(commit) <- data["commit"],
          true <- Regex.match?(@commit, commit),
          ref when is_binary(ref) <- data["environment_ref"],
-         true <- AdapterWire.text?(ref, 1, @max_ref) do
-      {:ok, %{image: image, size: size, commit: commit, environment_ref: ref}}
+         true <- AdapterWire.text?(ref, 1, @max_ref),
+         {:ok, environment_image} <- environment_image(data) do
+      {:ok,
+       %{
+         image: image,
+         size: size,
+         commit: commit,
+         environment_ref: ref,
+         environment_image: environment_image
+       }}
     else
       _ -> :error
     end
   end
 
   defp build(_data), do: :error
+
+  defp environment_image(%{"environment_image" => image}) do
+    if is_binary(image) and image?(image), do: {:ok, image}, else: :error
+  end
+
+  defp environment_image(_data), do: {:ok, nil}
+
+  defp image?(image), do: byte_size(image) <= @max_image_bytes and Regex.match?(@image, image)
+
+  # :ok when the build's images are where the run's documents sent them (the moduledoc),
+  # :error otherwise, with a warning.
+  defp placed(%Run{} = run, build) do
+    case destinations(run) do
+      {:ok, image_destination, environment} ->
+        cond do
+          place(build.image) != image_destination ->
+            refused(run, "image", "is not at the run's image_destination")
+
+          not environment_placed?(build.environment_image, environment) ->
+            refused(run, "environment_image", "is not the environment image the run was sent")
+
+          true ->
+            :ok
+        end
+
+      :error ->
+        refused(run, "image", "cannot be checked: the run's documents have no image_destination")
+    end
+  end
+
+  # The destinations in the documents the claim sent the run: `{:ok, image_destination,
+  # environment}`, with `{:destination, place}` or `{:image, image}`, or :error.
+  defp destinations(%Run{run_documents: documents}) when is_binary(documents) do
+    case Jason.decode(documents) do
+      {:ok, %{"image_destination" => image_destination} = decoded}
+      when is_binary(image_destination) ->
+        case decoded do
+          %{"environment_destination" => place} when is_binary(place) ->
+            {:ok, image_destination, {:destination, place}}
+
+          %{"environment_image" => image} when is_binary(image) ->
+            {:ok, image_destination, {:image, image}}
+
+          _neither ->
+            :error
+        end
+
+      _no_destination ->
+        :error
+    end
+  end
+
+  defp destinations(%Run{}), do: :error
+
+  defp environment_placed?(nil, _environment), do: true
+  defp environment_placed?(image, {:destination, place}), do: place(image) == place
+  defp environment_placed?(image, {:image, sent}), do: image == sent
+
+  # An image's place: its name before `@sha256:`. The image matched `@image`, so its name
+  # has no `@`.
+  defp place(image), do: image |> String.split("@", parts: 2) |> hd()
+
+  defp refused(%Run{public_id: public_id}, member, why) do
+    Logger.warning(
+      "a prebuild's report was not recorded: its #{member} #{why} (run #{public_id})"
+    )
+
+    :error
+  end
 
   # The build recorded on `held`, the record locked first, unless the record has a newer
   # build or this one already.

@@ -4572,6 +4572,11 @@ msgstr ""
 msgid "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: %{adapter} declares no call address, so Qory Apiary could not call it for %{what}."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Ask for a release again"
@@ -12910,6 +12915,11 @@ msgstr ""
 msgid "Qory Apiary links no stored secret to it."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
@@ -16861,11 +16871,6 @@ msgstr ""
 msgid "The run reloaded its policy: version %{n}."
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run stopped before its session started, at the step %{step}."
@@ -16894,6 +16899,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run's page, %{run}, shows what it did."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -17422,6 +17432,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This path cannot be written as a path rule."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -18154,11 +18169,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version}."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its local policy."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

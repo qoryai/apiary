@@ -46,10 +46,11 @@ defmodule ApiaryWeb.TargetLive.Show do
   # default image and why, or, where the policy in force for the target sets an image,
   # that runs use the image set in the policy; whether a build runs
   # or waits; and the last build's failure, never the reason a starter gave. Where no pool
-  # serves the workspace, or the target names no environment, one line says so instead.
-  # Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for whoever
-  # may ask for one (`target.rebuild_environment`), where the target names an environment
-  # and a pool serves the workspace; a reader who may not sees no button. After it, under
+  # serves the workspace, or the target names no environment, one line says so instead;
+  # so does one line, with no Rebuild, on an instance without a registry, where no build
+  # runs. Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for
+  # whoever may ask for one (`target.rebuild_environment`), where the target names an
+  # environment and a pool serves the workspace; a reader who may not sees no button. After it, under
   # the same condition, where the workspace's domain has a label for a run's paths
   # (`Apiary.Lingo.Domain.paths_label/1`), what its runs also read
   # (`Apiary.Targets.further_repositories/1`), one path a line, with Change, for those who
@@ -692,6 +693,15 @@ defmodule ApiaryWeb.TargetLive.Show do
             class="q-tgt-card-empty"
           >
             {gettext("No pool serves the workspace of this target.")}
+          </p>
+          <p
+            :if={@environment.state == :no_registry}
+            id="target-environment-no-registry"
+            class="q-tgt-card-empty"
+          >
+            {gettext(
+              "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
+            )}
           </p>
           <p
             :if={@environment.state == :no_environment}

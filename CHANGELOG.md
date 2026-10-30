@@ -504,6 +504,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The log filter replaces an invitation link's token before it looks for `qak_` and an
   enrolment code's prefix. Before, a token that contained one of them could leave up to
   39 of its 43 characters in the log line.
+- A prebuild's image is accepted only at the place Qory Apiary sent the prebuild, so one
+  organisation's build cannot make another organisation's runs start in its image.
 
 ### Migrations
 

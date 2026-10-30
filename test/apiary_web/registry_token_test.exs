@@ -804,6 +804,33 @@ defmodule ApiaryWeb.RegistryTokenTest do
     assert Application.fetch_env(:apiary, :registry_instance) == :error
   end
 
+  test "whether the instance has a registry, and the name's read for an image's place, write nothing" do
+    Repo.query!("DELETE FROM instance_settings")
+    assert Registry.configured?()
+    assert InstanceConfig.read_registry_instance() == nil
+    assert Repo.all(from s in "instance_settings", select: s.registry_instance) == []
+
+    name = InstanceConfig.registry_instance()
+    assert InstanceConfig.read_registry_instance() == name
+  end
+
+  test "the name made is kept as the node's copy where the node keeps one, so the row is written once" do
+    config = Application.get_env(:apiary, Apiary.Registry.InstanceName)
+
+    on_exit(fn ->
+      Application.put_env(:apiary, Apiary.Registry.InstanceName, config)
+      Application.delete_env(:apiary, :registry_instance)
+    end)
+
+    Application.put_env(:apiary, Apiary.Registry.InstanceName, enabled: true)
+    name = InstanceConfig.registry_instance()
+    assert Application.fetch_env(:apiary, :registry_instance) == {:ok, name}
+
+    Repo.query!("DELETE FROM instance_settings")
+    assert InstanceConfig.registry_instance() == name
+    assert Repo.all(from s in "instance_settings", select: s.registry_instance) == []
+  end
+
   test "the instance's registry name is made once and stored" do
     name = InstanceConfig.registry_instance()
     assert Names.instance?(name)
