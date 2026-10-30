@@ -3154,11 +3154,6 @@ msgstr ""
 msgid "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "A node pool takes runs from the queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A node runs one instance at a time."
@@ -3177,6 +3172,16 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "A pool for %{workspace}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A pool is ready when a machine has joined it and its runs go through a gateway that has an active access key. Runs of work items need a ready pool, because Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A pool takes the waiting runs of %{workspace} and starts each run on a machine that joined the pool."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -3748,7 +3753,6 @@ msgid "Add node"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add node pool"
 msgstr ""
@@ -3756,6 +3760,11 @@ msgstr ""
 #: lib/apiary_web/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Add one so the nodes in %{organisation}'s workspaces can send runs through it."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add pool"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -11736,6 +11745,11 @@ msgstr ""
 msgid "Only owners and admins add a node's keys."
 msgstr ""
 
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins add a pool and join a machine to it."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins add model providers."
@@ -11805,7 +11819,6 @@ msgstr ""
 msgid "Only owners and admins clear instances."
 msgstr ""
 
-#: lib/apiary/edition/core.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -16022,11 +16035,6 @@ msgstr ""
 msgid "The instance's pool"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "The instance's pool, where the instance has one, runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half."
@@ -16563,11 +16571,6 @@ msgstr ""
 msgid "The runs could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "The runs of work items need a ready pool: one with an active key, and a gateway with an active key. Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
@@ -16613,6 +16616,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The shared pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the shared pool stops taking them. To join a machine to the pool, get the command and run it on that machine."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

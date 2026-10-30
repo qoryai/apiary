@@ -216,7 +216,7 @@ defmodule Apiary.Edition do
   # `:instance` for the instance's pool and gateway, `:workspace` for a pool of the
   # workspace. Translated when it is asked. The core answers "Only an instance admin
   # checks the instance's pool and gateway." for `:instance`, and "Only owners and admins
-  # connect a node." for `:workspace`.
+  # add a pool and join a machine to it." for `:workspace`.
   @doc false
   @callback machines_who_may(Scope.t(), %Workspace{}, pool :: :instance | :workspace) ::
               String.t()

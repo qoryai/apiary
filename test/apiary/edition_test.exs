@@ -51,7 +51,7 @@ defmodule Apiary.EditionTest do
                  "Only an instance admin checks the instance's pool and gateway."
 
         assert edition.machines_who_may(scope, scope.workspace, :workspace) ==
-                 "Only owners and admins connect a node."
+                 "Only owners and admins add a pool and join a machine to it."
       end
     end
   end

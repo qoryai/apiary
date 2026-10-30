@@ -4148,7 +4148,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-continue") == "Continue"
   end
 
-  test "About this step shows what a pool and a node are, which pool takes which runs, and why",
+  test "About this step shows what a pool does, which pool takes which runs, and when it is ready",
        ctx do
     lv = open(ctx)
     workspace = ctx.scope.workspace.name
@@ -4163,19 +4163,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              ["set-up-what", "set-up-machines-pools", "set-up-machines-why"]
 
     assert words(lv, "#set-up-context #set-up-what") ==
-             "A node pool takes runs from the queue and starts them on the machines that " <>
-               "joined the pool. A node is one permanent machine, and takes no runs from the " <>
-               "queue."
+             "A pool takes the waiting runs of #{workspace} and starts each run on a machine " <>
+               "that joined the pool."
 
     assert words(lv, "#set-up-context #set-up-machines-pools") ==
-             "The instance's pool, where the instance has one, runs beside this Qory Apiary " <>
-               "and takes the runs of every workspace that has no pool. A pool for " <>
-               "#{workspace} takes the runs of #{workspace} alone."
+             "The shared pool is the instance's pool, where the instance has one. It takes " <>
+               "the runs of every workspace that has no pool. A pool for #{workspace} takes " <>
+               "the runs of #{workspace} alone: once you add it, the shared pool stops taking " <>
+               "them. To join a machine to the pool, get the command and run it on that machine."
 
     assert words(lv, "#set-up-context #set-up-machines-why") ==
-             "The runs of work items need a ready pool: one with an active key, and a " <>
-               "gateway with an active key. Qory Apiary returns a run's secrets, such as its " <>
-               "model key, only to a gateway, encrypted to the gateway's access key."
+             "A pool is ready when a machine has joined it and its runs go through a gateway " <>
+               "that has an active access key. Runs of work items need a ready pool, because " <>
+               "Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
   end
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
@@ -4291,7 +4291,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#{id}-radio[checked][disabled]")
     assert words(lv, "#{id}-name") == pool.name
     refute has_element?(lv, "#{id}-name a")
-    assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+
+    assert words(lv, "#{id}-who-may") ==
+             "Only owners and admins add a pool and join a machine to it."
+
     assert read_only?(lv)
 
     _pool_key = enrolled_key_fixture(ctx.scope, pool)
@@ -4376,7 +4379,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     choose_workspace_pool(lv)
     assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
-    assert words(lv, "#set-up-pool-add-button") == "Add node pool"
+    assert words(lv, "#set-up-pool-add-button") == "Add pool"
     refute has_element?(lv, "#set-up-pool-taken")
 
     lv |> form("#set-up-pool-choice", pool: %{choice: "shared"}) |> render_change()
@@ -4385,7 +4388,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert workspace_pools(workspace) == []
   end
 
-  test "Add node pool makes a pool named as the workspace, and the instance's pool stops serving it",
+  test "Add pool makes a pool named as the workspace, and the instance's pool stops serving it",
        ctx do
     instance_pool = ready_instance!()
     workspace = ctx.scope.workspace
@@ -4422,7 +4425,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     lv |> element("#set-up-pool-add-button") |> render_click()
     assert [pool] = workspace_pools(workspace)
 
-    # The page sent Add node pool again, as a second click would.
+    # The page sent Add pool again, as a second click would.
     render_click(lv, "add_pool", %{})
     assert [^pool] = workspace_pools(workspace)
 
@@ -4451,7 +4454,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-pool-taken") ==
              "Rename the node #{node.name} on the Nodes page, then add the pool. A node of #{workspace.name} already has that name."
 
-    # Once the node has another name, Add node pool makes the pool.
+    # Once the node has another name, Add pool makes the pool.
     node |> Ecto.Changeset.change(name: "build-renamed") |> Repo.update!()
     lv |> element("#set-up-pool-add-button") |> render_click()
     assert [%Node{name: name}] = workspace_pools(workspace)
@@ -4670,7 +4673,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
-  test "a person who may make a pool, and may not get its command: Add node pool, then who acts",
+  test "a person who may make a pool, and may not get its command: Add pool, then who acts",
        ctx do
     :ok = Apiary.Edition.put_test_stub(NoCodes)
     lv = open(ctx)
@@ -4682,7 +4685,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     id = "#set-up-pool-#{pool.public_id}"
     refute has_element?(lv, "#{id}-code")
     refute has_element?(lv, "#{id}-name a")
-    assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+
+    assert words(lv, "#{id}-who-may") ==
+             "Only owners and admins add a pool and join a machine to it."
 
     render_click(lv, "pool_code", %{"pool" => pool.public_id})
     refute has_element?(lv, "#{id}-command")

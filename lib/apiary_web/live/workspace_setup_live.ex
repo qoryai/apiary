@@ -144,10 +144,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
   #     whom `node.create` allows on it chooses: Shared, the instance's pool, chosen
   #     first, or A pool for the workspace, with the line that the shared pool then stops
-  #     serving its runs, and Add node pool, which makes a pool of the workspace
+  #     serving its runs, and Add pool, which makes a pool of the workspace
   #     (`Apiary.Nodes.create_node/2`) named `Apiary.WorkspaceSetup.pool_name/1`. Where
   #     another node of the workspace has that name, no pool is made, and the line under
-  #     Add node pool says to rename that node. Anyone else sees the instance's pool, read
+  #     Add pool says to rename that node. Anyone else sees the instance's pool, read
   #     only, shown chosen. Once the workspace has one pool, a person whom `node.delete`
   #     allows on it sees the same choice, the workspace's pool chosen, and the pool's
   #     line under it. Shared opens on its row the confirmation of the removal, with the
@@ -595,7 +595,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
-  # else. `makes_pool` is of Add node pool (`node.create`); `pool_codes` has, for each pool
+  # else. `makes_pool` is of Add pool (`node.create`); `pool_codes` has, for each pool
   # of the workspace whose command the person may get (`access_key.create_code`), its
   # outstanding codes and its keys. The command got stays while its code is outstanding,
   # on a read again of the step; an entry to the step, which assigns `step` anew, starts
@@ -1439,7 +1439,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # Add node pool: a pool of the workspace, named by `Apiary.WorkspaceSetup.pool_name/1`.
+  # Add pool: a pool of the workspace, named by `Apiary.WorkspaceSetup.pool_name/1`.
   # Where the workspace has a pool by then, from a second click or someone else, the step
   # reads again and shows it.
   def handle_event(
@@ -2608,7 +2608,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <div :if={@choosing and @pool_choice == "workspace"} id="set-up-pool-add" class="grid gap-2">
         <div>
           <.button id="set-up-pool-add-button" phx-click="add_pool" size="md">
-            {gettext("Add node pool")}
+            {gettext("Add pool")}
           </.button>
         </div>
         <p :if={@pool_taken} id="set-up-pool-taken" class="text-[13px]/5 text-error">
@@ -2703,18 +2703,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <:context>
         <p id="set-up-what">
           {gettext(
-            "A node pool takes runs from the queue and starts them on the machines that joined the pool. A node is one permanent machine, and takes no runs from the queue."
+            "A pool takes the waiting runs of %{workspace} and starts each run on a machine that joined the pool.",
+            workspace: @flow.workspace.name
           )}
         </p>
         <p id="set-up-machines-pools">
           {gettext(
-            "The instance's pool, where the instance has one, runs beside this Qory Apiary and takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone.",
+            "The shared pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the shared pool stops taking them. To join a machine to the pool, get the command and run it on that machine.",
             workspace: @flow.workspace.name
           )}
         </p>
         <p id="set-up-machines-why">
           {gettext(
-            "The runs of work items need a ready pool: one with an active key, and a gateway with an active key. Qory Apiary returns a run's secrets, such as its model key, only to a gateway, encrypted to the gateway's access key."
+            "A pool is ready when a machine has joined it and its runs go through a gateway that has an active access key. Runs of work items need a ready pool, because Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
           )}
         </p>
       </:context>
@@ -2855,7 +2856,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_at_limit?(keys),
     do: Enum.count(keys, &is_nil(&1.revoked_at)) >= Apiary.AccessKeys.key_limit()
 
-  # Whether Add node pool was refused for the name: another node of the workspace in use
+  # Whether Add pool was refused for the name: another node of the workspace in use
   # has it (`nodes_live_name_index`).
   defp pool_name_taken?(%Ecto.Changeset{errors: errors}) do
     Enum.any?(errors, fn
@@ -2867,7 +2868,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end)
   end
 
-  # The line under Add node pool where another node of the workspace has the pool's name.
+  # The line under Add pool where another node of the workspace has the pool's name.
   defp pool_taken_line(name, workspace),
     do:
       gettext(

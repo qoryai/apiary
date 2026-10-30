@@ -252,7 +252,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   may not go through, or a gateway with no active key. While the workspace has no pool,
   owners and admins choose **Shared: the instance's pool**, chosen first, or **A pool
   for Main**: “Runs in Main then wait for this pool, and the shared pool stops serving
-  them.” Its **Add node pool** adds a node pool to the workspace with the workspace's
+  them.” Its **Add pool** adds a node pool to the workspace with the workspace's
   name, cut to 80 characters. Where another node of the workspace has that name, the
   step shows a line to rename that node first. Once the workspace has one pool, owners
   and admins keep the same choice, with the workspace's pool chosen. While the instance

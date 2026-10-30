@@ -369,7 +369,7 @@ later.
    **Shared: the instance's pool**; an instance admin selects **Check the nodes**, which
    opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
    or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
-   for this pool, and the shared pool stops serving them." Its **Add node pool** adds a
+   for this pool, and the shared pool stops serving them." Its **Add pool** adds a
    node pool with the name Main. **Get the command** then shows "On the machine for the
    pool Main, run:" and the enrol command, with **Copy command**. Under it, the step
    shows the command that installs qory. Run it first on the Linux machine with Docker

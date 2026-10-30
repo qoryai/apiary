@@ -77,7 +77,7 @@ defmodule Apiary.Edition.Core do
     do: gettext("Only an instance admin checks the instance's pool and gateway.")
 
   def machines_who_may(_scope, _workspace, :workspace),
-    do: gettext("Only owners and admins connect a node.")
+    do: gettext("Only owners and admins add a pool and join a machine to it.")
 
   @impl true
   def above_workspace(_workspace), do: nil
