@@ -20,8 +20,9 @@ defmodule Apiary.Organisations.Organisation do
   @derive {Phoenix.Param, key: :slug}
   schema "organisations" do
     field :name, :string
-    # Made from the name: at creation by `put_slug/2`, numbered where it is taken, and on
-    # each rename by `put_address/2`; never cast from a form.
+    # Made from the name: at creation by `put_slug/2`, where a taken one refuses the name
+    # (`taken: :refuse`, a sign-up's) or is numbered, and on each rename by
+    # `put_address/2`; never cast from a form.
     field :slug, :string
     # The edition's (see the moduledoc); never cast from a form.
     field :edition, :map, virtual: true, default: %{}

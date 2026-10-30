@@ -237,7 +237,7 @@ defmodule Apiary.Release do
         grant_existing(email)
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        IO.puts("Not created: #{changeset_errors(changeset)}.")
+        IO.puts("Not created: #{changeset_errors(changeset)}" |> full_stop())
         {:error, :invalid}
     end
   end
@@ -266,6 +266,10 @@ defmodule Apiary.Release do
   # the terminal's scrollback. Each message is filled in by
   # `Apiary.Setup.error_messages/1`, which never turns an option such as a list of
   # fields into text.
+  # A message that ends a sentence already, such as "Choose another name. … of Qory
+  # Apiary.", takes no second full stop.
+  defp full_stop(text), do: if(String.ends_with?(text, "."), do: text, else: text <> ".")
+
   defp changeset_errors(changeset) do
     changeset
     |> Apiary.Setup.error_messages()

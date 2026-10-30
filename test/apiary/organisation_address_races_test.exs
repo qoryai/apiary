@@ -1,5 +1,5 @@
 defmodule Apiary.OrganisationAddressRacesTest do
-  # A rename that reads an address as free while another organisation's rename
+  # A rename or a sign-up that reads an address as free while another organisation's rename
   # takes it and has not committed yet. Each side is on a connection of its own, outside
   # the SQL sandbox, so each commits and each waits on the other's locks as it would in
   # production. Not async: what these tests commit is visible to every other test while
@@ -13,6 +13,7 @@ defmodule Apiary.OrganisationAddressRacesTest do
   import Apiary.Races
 
   alias Apiary.{Organisations, Repo}
+  alias Apiary.Accounts.User
   alias Apiary.Organisations.{Organisation, Slug}
 
   setup_all :clean_up_leftovers
@@ -50,6 +51,32 @@ defmodule Apiary.OrganisationAddressRacesTest do
     message = taken(target)
     assert [{^message, _keys}] = Keyword.get_values(changeset.errors, :name) |> render()
     assert Repo.get!(Organisation, organisation.id).slug == organisation.slug
+  end
+
+  test "a sign-up waiting on the other's rename to the same address is refused on the name" do
+    target = name("Target")
+    {held, held_backend} = hold_rename(target)
+    address = email()
+
+    second =
+      start(fn ->
+        Organisations.sign_up_user(
+          %{email: address, organisation_name: String.upcase(target)},
+          nil,
+          open: true
+        )
+      end)
+
+    await_blocked(second.backend, held_backend)
+    commit(held)
+
+    assert {:error, %Ecto.Changeset{} = changeset} = Task.await(second.task)
+    message = taken(target)
+
+    assert [{^message, _keys}] =
+             Keyword.get_values(changeset.errors, :organisation_name) |> render()
+
+    refute Repo.get_by(User, email: address)
   end
 
   # Each error as its message with its bindings filled in.

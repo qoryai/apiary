@@ -242,7 +242,8 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   the organisation's overview and creates its first workspace there, as after the set-up
   link.
 - **One way to create an organisation.** `Apiary.Organisations.build_organisation/2` is
-  the one way, for a sign-up and for each of an edition's ways: the slug, the workspace
+  the one way, for a sign-up and for each of an edition's ways: the slug, made from the
+  name (a sign-up refuses a name whose slug is taken, `taken: :refuse`), the workspace
   Main unless `workspace: false`, the owner membership, the edition's steps and the entry
   that begins its trail.
 - **The instance admins** are the owners of the instance's organisation

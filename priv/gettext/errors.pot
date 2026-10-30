@@ -276,11 +276,6 @@ msgstr ""
 msgid "cannot sign up here without an invitation: ask an owner or an admin of your organisation to invite you"
 msgstr ""
 
-#: lib/apiary/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "could not be signed up just now; please try again"
-msgstr ""
-
 #: lib/apiary/accounts/user.ex
 #, elixir-autogen, elixir-format
 msgid "did not change"

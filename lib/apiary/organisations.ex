@@ -876,7 +876,10 @@ defmodule Apiary.Organisations do
   Registers a user and places them in an organisation, in one transaction.
 
   Without an invitation token the user gets a new organisation named `organisation_name`,
-  with a slug made from that name, an owner membership, and a workspace named
+  with a slug made from that name, never numbered: a name whose slug another organisation
+  or a page of Qory Apiary has is refused on `organisation_name`, read again where a
+  concurrent sign-up took the slug since the check (`build_organisation/2` with `taken:
+  :refuse`). It gets an owner membership, and a workspace named
   "#{@default_workspace_name}" unless `workspace: false` (`build_organisation/2`): nothing
   is made from the address. Whether it may, is `sign_up_offer/1`'s answer, asked again
   inside the transaction:
@@ -911,8 +914,7 @@ defmodule Apiary.Organisations do
   The invitation may also be given as the struct `get_invitation_by_token/1`
   returned earlier. Either way it is claimed inside the transaction: when someone
   else accepted it in the meantime, nothing is created and the changeset carries
-  an error on `:email`. So it does when every slug picked for the new organisation was
-  taken by a concurrent sign-up before the insert, a few times over.
+  an error on `:email`.
 
   The audit trail has the sign-up, by the new user: `organisation.create` for a new
   organisation, with `details.sign_up` true, `invitation.accept` for an invitation, from
@@ -947,7 +949,7 @@ defmodule Apiary.Organisations do
   The entry names the user by id either way.
 
   `opts` is also for tests: `pick_slug: fun`, given the organisation's name, stands in for
-  the pick of a free slug, and `open:`, a boolean, for the edition's answer to whether a
+  the slug inserted after the check, as one a concurrent sign-up took meanwhile, and `open:`, a boolean, for the edition's answer to whether a
   later sign-up is open.
   """
   @spec sign_up_user(map, %Invitation{} | String.t() | nil, keyword) ::
@@ -1049,15 +1051,6 @@ defmodule Apiary.Organisations do
         {:error, :set_up, :invalid_code, _changes} ->
           {:error, :invalid_code}
 
-        {:error, :organisation, :slug_taken, _changes} ->
-          {:error,
-           form
-           |> Ecto.Changeset.add_error(
-             :email,
-             dgettext_noop("errors", "could not be signed up just now; please try again")
-           )
-           |> Map.put(:action, :insert)}
-
         # A refusal of the sign-up's, or of the edition's steps, on a field of the form.
         {:error, _step, {field, message}, _changes} when is_atom(field) and is_binary(message) ->
           {:error, form |> Ecto.Changeset.add_error(field, message) |> Map.put(:action, :insert)}
@@ -1128,6 +1121,7 @@ defmodule Apiary.Organisations do
       how: & &1.how,
       scope: &sign_up_scope(&1, origin, actor),
       details: &sign_up_details(&1.set_up),
+      taken: :refuse,
       pick_slug: Keyword.get(opts, :pick_slug)
     )
   end
@@ -1263,8 +1257,11 @@ defmodule Apiary.Organisations do
 
   - `:organisation`, the organisation named `name:`, with a slug made from its name
     (`Apiary.Organisations.Slug`); `{:error, changeset}` for a name the organisation's
-    changeset refuses, and `{:error, :slug_taken}` when every slug picked was taken by a
-    concurrent creation, a few times over;
+    changeset refuses. Where the slug is taken or reserved, `taken: :refuse` refuses the
+    name, `{:error, changeset}` with the error on `name`, as a rename does
+    (`change_organisation/2`); without it, the slug is numbered, and the step is
+    `{:error, :slug_taken}` when every slug picked was taken by a concurrent creation, a
+    few times over;
   - `:workspace`, its workspace "#{@default_workspace_name}", of the domain `domain:`
     names, one of `Apiary.Lingo.Domain.names/0`, or of the default domain
     (`Apiary.Lingo.Domain.default/0`) for nil or none; `{:error, changeset}`, the
@@ -1286,7 +1283,9 @@ defmodule Apiary.Organisations do
   - `:created`, a map of the organisation as the database has it once the edition's steps
     are done, its workspace and its membership.
 
-  `pick_slug:`, given the name, stands in for the pick of a free slug, for tests.
+  `pick_slug:`, given the name, stands in for the pick of a free slug, for tests; with
+  `taken: :refuse`, for the slug inserted after the check, as one another creation took
+  meanwhile.
   """
   @spec build_organisation(Ecto.Multi.t(), keyword) :: Ecto.Multi.t()
   def build_organisation(%Ecto.Multi{} = multi, opts) do
@@ -1297,7 +1296,13 @@ defmodule Apiary.Organisations do
     workspace? = Keyword.get(opts, :workspace, true)
     action = Keyword.get(opts, :action, :"organisation.create")
     details = Keyword.get(opts, :details, %{})
-    pick = Keyword.get(opts, :pick_slug) || (&organisation_slug/1)
+    refuse? = Keyword.get(opts, :taken) == :refuse
+
+    pick =
+      Keyword.get(opts, :pick_slug) ||
+        if(refuse?, do: &Slug.from_name(&1, "organisation"), else: &organisation_slug/1)
+
+    insert = if refuse?, do: &insert_organisation_or_refuse/2, else: &insert_organisation/2
     domain = Keyword.get(opts, :domain) || Domain.default().name()
 
     # The caller's changes are given to the steps that need them: the edition's see the
@@ -1308,7 +1313,7 @@ defmodule Apiary.Organisations do
       user = owner && Map.fetch!(outer, owner)
 
       Ecto.Multi.new()
-      |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert_organisation(name, pick) end)
+      |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert.(name, pick) end)
       |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
         if workspace?,
           do: organisation |> main_workspace(domain) |> PublicId.Insert.insert(),
@@ -1391,6 +1396,48 @@ defmodule Apiary.Organisations do
         end
     end
   end
+
+  # Inserts a new organisation at the slug its name makes, or refuses the name, with the
+  # error on `name`: for a slug a page of Qory Apiary has or another organisation has, one
+  # marked for deletion included, read before the insert. A slug taken since that read
+  # meets the unique index: the insert does nothing then, which would otherwise abort the
+  # transaction, and the name is refused all the same.
+  defp insert_organisation_or_refuse(name, pick) do
+    changeset = Organisation.changeset(%Organisation{}, %{name: name})
+    slug = Slug.from_name(name || "", "organisation")
+
+    cond do
+      not changeset.valid? ->
+        {:error, changeset}
+
+      slug in ReservedSlugs.organisation() ->
+        {:error,
+         Ecto.Changeset.add_error(changeset, :name, Organisation.page_address(),
+           address: "/#{slug}"
+         )}
+
+      Repo.exists?(from o in Organisation, where: o.slug == ^slug) ->
+        {:error, taken_organisation_address(changeset, slug)}
+
+      true ->
+        slug = pick.(name)
+
+        with {:ok, %Organisation{id: id} = organisation} <-
+               changeset
+               |> Organisation.put_slug(slug)
+               |> Repo.insert(on_conflict: :nothing, conflict_target: :slug) do
+          if Repo.exists?(from o in Organisation, where: o.id == ^id),
+            do: {:ok, organisation},
+            else: {:error, taken_organisation_address(changeset, slug)}
+        end
+    end
+  end
+
+  defp taken_organisation_address(changeset, slug),
+    do:
+      Ecto.Changeset.add_error(changeset, :name, Organisation.taken_address(),
+        address: "/#{slug}"
+      )
 
   defp main_workspace(%Organisation{} = organisation, domain) do
     %Workspace{organisation_id: organisation.id}
@@ -1497,9 +1544,7 @@ defmodule Apiary.Organisations do
         )
 
       taken? ->
-        Ecto.Changeset.add_error(changeset, :name, Organisation.taken_address(),
-          address: "/#{slug}"
-        )
+        taken_organisation_address(changeset, slug)
 
       true ->
         changeset
