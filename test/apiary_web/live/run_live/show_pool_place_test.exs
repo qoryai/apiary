@@ -14,6 +14,8 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.{Runs, Targets}
   alias Apiary.Runs.{Filters, Projector}
 
@@ -200,4 +202,39 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
              local_key.id => %{count: 1, host: @laptop}
            }
   end
+
+  test "a run of the Qory Pool shows Qory Pool on its page, in the Filter, its link, a target's Machines and a key's hosts",
+       %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run, key: key} do
+    instance = instance_pool_fixture(%{name: "pool", installed_as: "pool"})
+
+    {1, _rows} =
+      Apiary.Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^pool_run.id),
+        set: [node_id: instance.id]
+      )
+
+    ids = [pool_run.id, local_run.id]
+
+    assert %{options: options} = Runs.run_facets(scope, %Filters{}).host
+    assert Enum.sort(options) == [{"Qory Pool", "Qory Pool", 1}, {@laptop, @laptop, 1}]
+    assert Runs.matching_ids(scope, %Filters{host: "Qory Pool"}, ids) == [pool_run.id]
+    assert Runs.matching_ids(scope, %Filters{host: "pool"}, ids) == []
+
+    lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?host=Qory+Pool")
+    assert has_element?(lv, "#run-#{pool_run.public_id}")
+    refute has_element?(lv, "#run-#{local_run.public_id}")
+
+    target = Apiary.Repo.get!(Apiary.Runs.Target, pool_run.target_id)
+
+    assert {[{@laptop, 1}, {"Qory Pool", 1}], 1} =
+             counted(fn -> Targets.machines(scope, target) end)
+
+    since = DateTime.add(t0(), -86_400, :second)
+    assert %{^key => %{host: "Qory Pool"}} = remap(Runs.hosts_by_key(scope, [key.id], since), key)
+
+    lv = run_page(conn, scope, pool_run)
+    assert has_element?(lv, "#run-meta #run-host", "Qory Pool")
+    assert lv |> element("#e-1 .q-s") |> render() =~ "on the Qory Pool, without a wall"
+  end
+
+  defp remap(hosts, key), do: %{key => hosts[key.id]}
 end

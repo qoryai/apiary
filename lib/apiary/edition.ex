@@ -215,8 +215,8 @@ defmodule Apiary.Edition do
   # and is not ready, for the person of `scope`, who may not act on it. `pool` is
   # `:instance` for the instance's pool and gateway, `:workspace` for a pool of the
   # workspace. Translated when it is asked. The core answers "Only an instance admin
-  # checks the instance's pool and gateway." for `:instance`, and "Only owners and admins
-  # connect a node." for `:workspace`.
+  # checks the Qory Pool and the Qory Gateway." for `:instance`, and "Only owners and admins
+  # add a pool and join a machine to it." for `:workspace`.
   @doc false
   @callback machines_who_may(Scope.t(), %Workspace{}, pool :: :instance | :workspace) ::
               String.t()

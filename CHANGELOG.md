@@ -250,17 +250,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Each shows “Ready · gateway: <gateway>”, or **Not ready** and why. The reasons are: no
   pool, no active key, a gateway choice of Direct, no gateway, a gateway the pool's runs
   may not go through, or a gateway with no active key. While the workspace has no pool,
-  owners and admins choose **Shared: the instance's pool**, chosen first, or **A pool
-  for Main**: “Runs in Main then wait for this pool, and the shared pool stops serving
-  them.” Its **Add node pool** adds a node pool to the workspace with the workspace's
-  name, cut to 80 characters. Where another node of the workspace has that name, the
-  step shows a line to rename that node first. Once the workspace has one pool, owners
-  and admins keep the same choice, with the workspace's pool chosen. While the instance
-  has no pool, **Shared: the instance's pool** then shows “Not ready: no pool”, cannot
-  be chosen, and the step offers no removal. Otherwise, choosing **Shared: the
-  instance's pool** shows “Remove the pool Main? Runs in Main then use the instance's
-  pool.”, with **Remove pool** and **Cancel**. For a pool with an active key, it also
-  shows “The machines in Main stop taking runs, because the pool's access key is
+  owners and admins choose **Qory Pool**, chosen first, or **A pool for Main**: “Runs in
+  Main then wait for this pool, and the Qory Pool stops taking them.” Its **Add pool**
+  adds a node pool to the workspace with the workspace's name, cut to 80 characters.
+  Where another node of the workspace has that name, the step shows a line to rename
+  that node first. Once the workspace has one pool, owners and admins keep the same
+  choice, with the workspace's pool chosen. While the instance has no pool, **Qory Pool**
+  then shows “Not ready: no pool”, cannot be chosen, and the step offers no removal.
+  Otherwise, choosing **Qory Pool** shows “Remove the pool Main? Runs in Main then use
+  the Qory Pool.”, with **Remove pool** and **Cancel**. For a pool with an active key, it
+  also shows “The machines in Main stop taking runs, because the pool's access key is
   revoked.” **Remove pool** deletes the pool, and the instance's pool runs the
   workspace's runs again. With 2 pools or more, and for anyone else, the step shows the
   pools with no choice and offers no removal. On a pool of the workspace with fewer than
@@ -279,10 +278,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Under a pool that is not ready, an instance admin has **Check the nodes** for the
   instance's pool. For a pool of the workspace, owners and admins have its name as a
   link to its page. Anyone else reads who acts, such as “Only an instance admin checks
-  the instance's pool and gateway.” While the workspace has no pool, anyone who may not
-  add one sees the instance's pool, read only. The step is done once a pool is ready.
-  **About this step** explains what a node pool and a node are, which pool takes the
-  workspace's runs, and what makes a pool ready.
+  the Qory Pool and the Qory Gateway.” While the workspace has no pool, anyone who may not
+  add one sees the Qory Pool, read only. The step is done once a pool is ready. **About
+  this step** explains what a pool does, which pool takes the workspace's runs, what
+  makes a pool ready, and that every run gets an isolated environment.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
   agent** with **Run the test**, with no work source; owners, admins and members run it
   once a pool that serves the workspace is ready. Before that, the step shows “Runs need

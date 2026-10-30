@@ -43,10 +43,11 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   # Where the instance has a node pool and a gateway (`Apiary.Nodes.Installed`), with the
   # feature `factory`, which the documentation does not show, the list has the instance's
-  # gateway, and the instance's pool while the workspace has no node pool in use, with a
-  # sentence saying so. The pool's row has this workspace's running instances alone, and
-  # no limit. Only an instance admin sees their names as links, to Instance settings ›
-  # Nodes.
+  # gateway, and the instance's pool while the workspace has no node pool in use, named
+  # Qory Gateway and Qory Pool (`ApiaryWeb.NodeComponents.shown_name/1`), each with a
+  # sentence that the instance provides it. The pool's row has this workspace's running
+  # instances alone, and no limit. Only an instance admin sees their names as links, to
+  # Instance settings › Nodes.
 
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
@@ -176,7 +177,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       Enum.sort_by(
         Nodes.list_nodes(scope, narrowing) ++
           organisation_gateways(scope, narrowing) ++ listed_instance,
-        &{&1.name, &1.id}
+        &{NodeComponents.shown_name(&1), &1.id}
       )
 
     activity = scope |> Nodes.activity(nodes, now) |> with_keys_used(listed_instance, now)
@@ -228,12 +229,14 @@ defmodule ApiaryWeb.NodeLive.Index do
   end
 
   # Whether an instance's node is under the search and the kind, as
-  # `Apiary.Nodes.list_nodes/2` narrows the workspace's.
+  # `Apiary.Nodes.list_nodes/2` narrows the workspace's; the search also matches the name
+  # the list shows, Qory Pool or Qory Gateway (`ApiaryWeb.NodeComponents.shown_name/1`).
   defp narrowed_in?(node, narrowing) do
     q = narrowing[:q] && String.downcase(String.trim(narrowing[:q]))
 
     (is_nil(narrowing[:kind]) or node.kind == narrowing[:kind]) and
       (is_nil(q) or String.contains?(String.downcase(node.name), q) or
+         String.contains?(String.downcase(NodeComponents.shown_name(node)), q) or
          String.contains?(String.downcase(node.public_id), q))
   end
 
@@ -262,16 +265,16 @@ defmodule ApiaryWeb.NodeLive.Index do
     Enum.sort_by(nodes, fn node ->
       case activity[node.id] do
         %{running: [_ | _]} ->
-          {0, 0, node.name}
+          {0, 0, NodeComponents.shown_name(node)}
 
         %{} = activity ->
           case NodeComponents.seen_at(activity) do
-            nil -> {2, 0, node.name}
-            at -> {1, -DateTime.to_unix(at, :microsecond), node.name}
+            nil -> {2, 0, NodeComponents.shown_name(node)}
+            at -> {1, -DateTime.to_unix(at, :microsecond), NodeComponents.shown_name(node)}
           end
 
         nil ->
-          {2, 0, node.name}
+          {2, 0, NodeComponents.shown_name(node)}
       end
     end)
   end
@@ -749,17 +752,17 @@ defmodule ApiaryWeb.NodeLive.Index do
                     id={"node-#{node.public_id}-link"}
                     navigate={node_path(@current_scope, node)}
                     class="q-title q-cut hover:underline"
-                    title={node.name}
+                    title={NodeComponents.shown_name(node)}
                   >
-                    {node.name}
+                    {NodeComponents.shown_name(node)}
                   </.link>
                   <span
                     :if={instance?(node) and !@instance_admin}
                     id={"node-#{node.public_id}-name"}
                     class="q-title q-cut"
-                    title={node.name}
+                    title={NodeComponents.shown_name(node)}
                   >
-                    {node.name}
+                    {NodeComponents.shown_name(node)}
                   </span>
                   <span class="q-side q-mono" title={node.public_id}>{node.public_id}</span>
                   <.side_words
@@ -767,7 +770,16 @@ defmodule ApiaryWeb.NodeLive.Index do
                     id={"node-#{node.public_id}-level"}
                     text={
                       gettext(
-                        "Instance pool: takes this workspace's runs while it has no node pool in use."
+                        "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
+                      )
+                    }
+                  />
+                  <.side_words
+                    :if={instance?(node) and node.kind == :gateway}
+                    id={"node-#{node.public_id}-level"}
+                    text={
+                      gettext(
+                        "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
                       )
                     }
                   />

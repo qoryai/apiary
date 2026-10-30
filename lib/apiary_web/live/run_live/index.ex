@@ -555,7 +555,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
           assign(assigns,
             kind: :node,
-            node_name: if(node, do: node.name, else: value),
+            node_name: if(node, do: ApiaryWeb.NodeComponents.in_text(node), else: value),
             page:
               node && Access.can?(scope, :"node.read", node) &&
                 ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}",
