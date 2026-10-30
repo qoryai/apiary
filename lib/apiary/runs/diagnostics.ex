@@ -15,7 +15,9 @@ defmodule Apiary.Runs.Diagnostics do
   (`Apiary.Runs.Preparation`), each with its output, and why it stopped; `events`, the
   run's last events, at most `max_events/0`, with `events_omitted`; `log`, the run's
   output that belongs to no step, its last `max_log_bytes/0` bytes, with `truncated`;
-  and `machine_logs`. Each member is written from the run's columns one by one, so a
+  `machine_logs`; and `leaked_secrets`, the secrets found in the run's text when it was
+  stored, with `leaked_secrets_omitted` (`Apiary.Runs.LeakedSecrets`). A secret of a
+  machine log is listed only in a document with `machine_logs`. Each member is written from the run's columns one by one, so a
   column marked `redact: true` on the run (the run key, the run code's hash, the registry
   credential's hash, the provider's ids) is never in it, and the variables appear by name
   alone. A value outside its pattern in the contract is left out, as a member the run has
@@ -34,7 +36,8 @@ defmodule Apiary.Runs.Diagnostics do
   **Text.** Every text member is the stored text as it is: valid UTF-8, each byte that
   is not part of it replaced by U+FFFD, and no U+0000, also replaced by U+FFFD; keys of
   an event's data and strings at any depth in it too. A secret printed into the run's
-  output stays in the document, so that the reader sees it.
+  output stays in the document, so that the reader sees it, and is listed in
+  `leaked_secrets`.
 
   **Its size.** The encoded document is at most `max_bytes/0` bytes. The members other
   than the events are written first. While they are larger than that, the log loses its
@@ -52,7 +55,7 @@ defmodule Apiary.Runs.Diagnostics do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Event, LogChunk, Preparation, Run}
+  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Run}
   alias Apiary.WorkItems.WorkItem
 
   @max_bytes 8 * 1024 * 1024
@@ -137,6 +140,14 @@ defmodule Apiary.Runs.Diagnostics do
         %Scope{} = scope -> {scope, Access.instance_admin?(scope)}
       end
 
+    machine_log = if(machine_logs? and dispatch, do: machine_log(dispatch))
+
+    {leaked, leaked_omitted} =
+      LeakedSecrets.read(run, dispatch,
+        machine_log: if(machine_logs?, do: machine_log && machine_log.text),
+        events: events_query(scope, run)
+      )
+
     base =
       %{
         "version" => 1,
@@ -144,11 +155,13 @@ defmodule Apiary.Runs.Diagnostics do
         "instance" => instance(),
         "run" => run_member(run),
         "dispatches" => if(dispatch, do: [dispatch_member(dispatch)], else: []),
-        "preparation" => preparation(scope, run)
+        "preparation" => preparation(scope, run),
+        "leaked_secrets" => Enum.map(leaked, &leaked_member/1),
+        "leaked_secrets_omitted" => leaked_omitted
       }
       |> put("queue", queue(run.dispatch_run))
       |> put("log", if(is_nil(run.log_pruned_at), do: log(run)))
-      |> put("machine_logs", if(machine_logs?, do: machine_logs(dispatch)))
+      |> put("machine_logs", if(machine_logs?, do: machine_logs(machine_log)))
       |> fit(max_bytes)
 
     if is_nil(run.events_pruned_at) do
@@ -314,24 +327,40 @@ defmodule Apiary.Runs.Diagnostics do
   end
 
   # The machine log of the run's dispatch, where it has one that can be read.
-  defp machine_logs(%Dispatch{public_id: public_id}) do
+  defp machine_log(%Dispatch{public_id: public_id}) do
     case MachineLogs.read(public_id) do
-      {:ok, log} ->
-        [
-          %{
-            "dispatch" => public_id,
-            "uploaded_at" => time(log.uploaded_at),
-            "truncated" => log.truncated,
-            "text" => text(log.text)
-          }
-        ]
-
-      {:error, _none} ->
-        []
+      {:ok, log} -> log
+      {:error, _none} -> nil
     end
   end
 
   defp machine_logs(nil), do: []
+
+  defp machine_logs(log) do
+    [
+      %{
+        "dispatch" => log.dispatch_id,
+        "uploaded_at" => time(log.uploaded_at),
+        "truncated" => log.truncated,
+        "text" => text(log.text)
+      }
+    ]
+  end
+
+  # A secret found in the run's text (`Apiary.Runs.LeakedSecrets`).
+  defp leaked_member(secret) do
+    %{
+      "kind" => secret.kind,
+      "place" => secret.place,
+      "time" => time(secret.at),
+      "message" => secret.message
+    }
+    |> put("step", secret.step)
+    |> put("sequence", secret.sequence)
+    |> put("dispatch", secret.dispatch)
+    |> put("id", secret.id)
+    |> put("value", secret.value && text(secret.value))
+  end
 
   ## The log
 

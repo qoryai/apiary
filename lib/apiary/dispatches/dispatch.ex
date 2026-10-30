@@ -51,6 +51,10 @@ defmodule Apiary.Dispatches.Dispatch do
     field :end_cause, Ecto.Enum, values: DispatchRun.end_causes()
     field :slot_freed_at, :utc_datetime_usec
     field :release_reason, :string
+    # The secrets found in the machine log and in the release reason beyond the 1,000 kept
+    # for each (`Apiary.Runs.LeakedSecrets`).
+    field :machine_log_secrets_omitted, :integer, default: 0
+    field :release_reason_secrets_omitted, :integer, default: 0
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

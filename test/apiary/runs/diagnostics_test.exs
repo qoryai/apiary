@@ -1,9 +1,9 @@
 defmodule Apiary.Runs.DiagnosticsTest do
   # The run diagnostics document (`Apiary.Runs.Diagnostics`): every document it builds is
   # valid under the vendored contract (`priv/contract/diagnostics/v1/`), whose fixtures
-  # are checked first; what each reader reads; every text as stored, a secret too; the
-  # events' and the log's bounds; the size cap; and a run whose events or log the
-  # retention removed. Not async: a test of an instance admin hides the
+  # are checked first; what each reader reads; every text as stored, a secret too, and the
+  # secrets listed; the events' and the log's bounds; the size cap; and a run whose events
+  # or log the retention removed. Not async: a test of an instance admin hides the
   # instance's organisation, a row every test shares.
   use Apiary.DataCase, async: false
 
@@ -19,6 +19,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
   @code "qecn_7K3M9P2Q4R6S8T0V1W5X3Y9Z2A"
   @run_key "qrk_eyJ2ZXJzaW9uIjoxfQ.c2lnbmF0dXJlLWJ5dGVz"
+  @github "ghp_" <> String.duplicate("c", 36)
 
   setup_all do
     %{schema: DiagnosticsSchema.root()}
@@ -47,7 +48,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       dir = DiagnosticsSchema.fixtures_dir()
       valid = Path.wildcard(Path.join(dir, "diagnostics/*.json"))
       invalid = Path.wildcard(Path.join(dir, "invalid/*.json"))
-      assert length(valid) == 4 and length(invalid) == 9
+      assert length(valid) == 4 and length(invalid) == 16
 
       for file <- valid do
         assert DiagnosticsSchema.validate(schema, file |> File.read!() |> Jason.decode!()) ==
@@ -135,15 +136,24 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
     test "reads a person's events as the edition narrows them, and a key's as the instance's",
          %{schema: schema, scope: scope, run: run} do
-      events_fixture(run, [{1, "run.started", %{}}, {2, "run.exited", %{"exit_code" => 0}}])
+      events_fixture(run, [
+        {1, "run.started", %{"token" => @github}},
+        {2, "run.exited", %{"exit_code" => 0}}
+      ])
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
       :ok = Apiary.Edition.put_test_stub(__MODULE__.NarrowsPeople)
 
       person = valid!(schema, Diagnostics.document(run, scope))
       assert person["events"] == [] and person["events_omitted"] == 0
+      # The secret is listed, without the value of an event the person does not read.
+      assert [%{"place" => "event", "sequence" => 1} = leaked] = person["leaked_secrets"]
+      refute Map.has_key?(leaked, "value")
 
       key = valid!(schema, Diagnostics.document(run, :instance))
       assert [%{"sequence" => 1}, %{"sequence" => 2}] = key["events"]
       assert key["events_omitted"] == 0
+      assert [%{"place" => "event", "value" => @github}] = key["leaked_secrets"]
     end
 
     test "leaves out the log events, whose output is in the log, and counts none of them",
@@ -377,7 +387,99 @@ defmodule Apiary.Runs.DiagnosticsTest do
       %{scope: scope} = sign_up_fixture()
       place = handover_place_fixture(scope)
       handed = handed_over_fixture(scope, place.key)
-      Map.merge(handed, %{scope: scope, key: place.key, pool: place.pool})
+      Map.merge(handed, %{scope: scope, key: place.key, seed: place.seed, pool: place.pool})
+    end
+
+    test "lists the secrets the run and its machine log printed, the machine log's for the instance alone",
+         %{schema: schema, scope: scope, run: run, dispatch: dispatch} = ctx do
+      secret = "qak_" <> Base.url_encode64(ctx.seed, padding: false)
+
+      events_fixture(run, [
+        {1, "run.step_started", %{"step" => 1, "name" => "fetch acme/shop", "kind" => "fetch"}},
+        {2, "run.log", step_log_data(1, "key #{secret}\n")},
+        {3, "run.started", %{"note" => @github}}
+      ])
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
+
+      :ok =
+        Dispatches.upload_machine_log(ctx.key, dispatch.public_id, %{
+          log: "booted with #{secret}\n",
+          truncated: false
+        })
+
+      document = valid!(schema, Diagnostics.document(run, :instance))
+      key_id = ctx.key.key_id
+      dispatch_id = dispatch.public_id
+
+      assert [
+               %{
+                 "kind" => "access_key",
+                 "place" => "step",
+                 "step" => 1,
+                 "id" => ^key_id,
+                 "value" => ^secret,
+                 "message" =>
+                   "This key is compromised: it was printed into the run's log. Replace it."
+               },
+               %{"kind" => "github_token", "place" => "event", "sequence" => 3} = event,
+               %{
+                 "kind" => "access_key",
+                 "place" => "machine_log",
+                 "dispatch" => ^dispatch_id,
+                 "id" => ^key_id,
+                 "value" => ^secret,
+                 "message" =>
+                   "This key is compromised: it was printed into the machine log. Replace it."
+               } = machine_log
+             ] = document["leaked_secrets"]
+
+      refute Map.has_key?(event, "id")
+      assert event["value"] == @github
+      assert document["leaked_secrets_omitted"] == 0
+      refute Map.has_key?(machine_log, "step") or Map.has_key?(machine_log, "sequence")
+
+      # Every text is the stored text, the secret in it.
+      assert [%{"output" => %{"text" => "key " <> ^secret}} | _] =
+               document["preparation"]["steps"]
+
+      assert [%{"text" => "booted with " <> _}] = document["machine_logs"]
+
+      # A member reads no machine log, and the secret in it is neither listed nor counted.
+      %{scope: member} = join_fixture(scope, user_fixture())
+      document = valid!(schema, Jason.decode!(Diagnostics.encode(run, member)))
+      refute Map.has_key?(document, "machine_logs")
+      assert ["step", "event"] = Enum.map(document["leaked_secrets"], & &1["place"])
+      assert document["leaked_secrets_omitted"] == 0
+    end
+
+    test "lists a secret in the release reason of a run whose start failed",
+         %{schema: schema, scope: scope} = ctx do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      assert :ok =
+               Dispatches.release(ctx.key, dispatch.public_id, %{
+                 reason: "Quota token #{@github} refused"
+               })
+
+      run = Repo.one!(from r in Run, where: r.dispatch_id == ^dispatch.id)
+      document = valid!(schema, Diagnostics.document(run, :instance))
+      dispatch_id = dispatch.public_id
+
+      assert [
+               %{
+                 "kind" => "github_token",
+                 "place" => "release_reason",
+                 "dispatch" => ^dispatch_id,
+                 "value" => @github,
+                 "message" => message
+               } = leaked
+             ] = document["leaked_secrets"]
+
+      refute Map.has_key?(leaked, "id")
+      assert message =~ "This key is compromised"
     end
 
     test "has its dispatch, its queue row, its variables by name and its machine log",

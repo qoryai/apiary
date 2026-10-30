@@ -3062,11 +3062,6 @@ msgstr ""
 msgid "A destination with both allowed and denied attempts counts in each."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
-#, elixir-autogen, elixir-format
-msgid "A diagnostics key reads the diagnostics of any run on this instance, and nothing else."
-msgstr ""
-
 #: lib/apiary/policy/export.ex
 #, elixir-autogen, elixir-format
 msgid "A file outside the folder the runs work in, given with: %{command}"
@@ -10531,11 +10526,6 @@ msgstr ""
 msgid "No destination matches them in this range."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
-#, elixir-autogen, elixir-format
-msgid "No diagnostics key yet."
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "No end recorded"
@@ -16212,11 +16202,6 @@ msgstr ""
 msgid "The instance admin can read the machine's log."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
-#, elixir-autogen, elixir-format
-msgid "The instance holds %{count} diagnostics keys at most. Revoke one to add another."
-msgstr ""
-
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "The instance's pool"
@@ -17215,6 +17200,16 @@ msgstr ""
 msgid "This instance doesn't accept integrations from this source."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "This instance has at most %{count} diagnostics keys. Revoke one to add another."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "This instance has no diagnostics key."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/node.ex
 #, elixir-autogen, elixir-format
 msgid "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
@@ -17255,6 +17250,26 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This key is compromised: it was printed into an event of the run. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This key is compromised: it was printed into the machine log. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This key is compromised: it was printed into the reason the machine was released. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This key is compromised: it was printed into the run's log. Replace it."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -18438,6 +18453,11 @@ msgstr ""
 msgid "With Qory Apiary"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "With a diagnostics key, a computer reads the diagnostics of any run on this instance, and nothing else."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "With a generated key, set these where the machine runs qory."
@@ -19087,7 +19107,8 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #, elixir-autogen, elixir-format
-msgid "You get one command to run on the computer that reads run diagnostics. It carries a one-time code, not a key, which works once within 15 minutes. The computer makes the key and sends Qory Apiary only its public half."
+msgctxt "plain"
+msgid "You get one command to run on the computer that reads run diagnostics. It contains a one-time code, not a key. The code works once, within %{minutes} minutes. The computer makes the key and sends Qory Apiary only its public half."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
