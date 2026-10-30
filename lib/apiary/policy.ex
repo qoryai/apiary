@@ -1004,6 +1004,15 @@ defmodule Apiary.Policy do
   def policy_digests(%Scope{workspace: %Workspace{id: workspace_id}}, digests),
     do: ComposedConfiguration.policy_digests(workspace_id, digests)
 
+  @doc """
+  Whether `digest`, as a run reported it, is of the default policy a prebuild of the
+  scope's workspace was given while the workspace served no run configuration
+  (`Apiary.Policy.ComposedConfiguration.default_policy?/2`). False for nil.
+  """
+  @spec default_policy_digest?(Scope.t(), String.t() | nil) :: boolean
+  def default_policy_digest?(%Scope{workspace: %Workspace{id: workspace_id}}, digest),
+    do: ComposedConfiguration.default_policy?(workspace_id, digest)
+
   ## Bulk reads, for a page that lists
 
   @bulk_max 500

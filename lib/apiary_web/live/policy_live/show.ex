@@ -1399,7 +1399,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
       >
         {gettext(
-          "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its local policy."
+          "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
         )}
       </p>
       <p

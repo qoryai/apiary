@@ -224,7 +224,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-export-why") ==
                "Nothing to export yet: the first change here renders version 1."
 
-      assert text(view, "#policy-first-version") =~ "Version 1 is rendered by the first change"
+      assert text(view, "#policy-first-version") ==
+               "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
+
       refute has_element?(view, "#policy-tabs a", "Document")
       assert text(view, "#policy-mode-value") == "Observe"
 

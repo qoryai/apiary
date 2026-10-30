@@ -864,6 +864,24 @@ defmodule Apiary.Policy.ComposedConfiguration do
   def from_no_policy?(_workspace_id, nil), do: false
 
   @doc """
+  Whether the document with that digest was composed from the workspace's default policy
+  (`serve_default/6`): composed from no run configuration, with a `security_policy`. Only
+  a prebuild of a workspace that serves no run configuration is given one.
+  """
+  @spec default_policy?(Ecto.UUID.t(), String.t() | nil) :: boolean
+  def default_policy?(workspace_id, digest) when is_binary(workspace_id) and is_binary(digest) do
+    Repo.exists?(
+      from c in __MODULE__,
+        where:
+          c.workspace_id == ^workspace_id and c.digest == ^digest and
+            is_nil(c.run_configuration_id),
+        where: fragment("jsonb_exists(?::jsonb, ?)", c.document, @security_policy)
+    )
+  end
+
+  def default_policy?(_workspace_id, nil), do: false
+
+  @doc """
   Each of `digests` that is a composed document's of the workspace, and never a stored
   run configuration's, with the digest of the run configuration it was composed from, or
   of the document of no policy (`Apiary.Policy.Render.no_policy_document/0`) for one

@@ -140,6 +140,18 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     view
   end
 
+  # The tooltip of the policy digest that is no version here.
+  defp unrendered_title(view) do
+    [title] =
+      view
+      |> element("#policy-unrendered")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.attribute("title")
+
+    title
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -278,6 +290,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#policy-unrendered") ==
                "0f0f0f0f0f0f Not a version made in this workspace"
 
+      assert unrendered_title(view) ==
+               "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
+
       refute has_element?(view, "#run-facts a.q-ver")
     end
 
@@ -307,6 +322,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert text(view, "#policy-unrendered") ==
                String.slice(hex, 0, 12) <> " Not a version made in this workspace"
+
+      assert unrendered_title(view) ==
+               "This prebuild ran under Qory Apiary's default policy, because this workspace has no policy version yet."
 
       refute render(view) =~ String.slice(no_policy_hex, 0, 12)
       refute text(view, "#run-facts") =~ "no policy"
