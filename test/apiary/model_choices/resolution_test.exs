@@ -60,6 +60,24 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     resolution
   end
 
+  describe "in_effect/1" do
+    test "is the choice the resolution takes its provider from: locked first, then the most specific" do
+      five = at(5, model_id: "big")
+      four = at(4, model_id: "small")
+      locked = %{five | locked: true}
+      no_provider = at(2, connection_id: nil, tiers: %{"fast" => "small"})
+
+      assert {4, ^four} = Resolution.in_effect(input([five, four, no_provider]))
+      assert {5, ^locked} = Resolution.in_effect(input([locked, four]))
+      assert {5, ^five} = Resolution.in_effect(input([five, four], workflow: nil))
+      assert Resolution.in_effect(input([no_provider])) == nil
+
+      # A choice whose provider is not among the providers is still the one in effect.
+      gone = at(5, connection_id: "00000000-0000-0000-0000-0000000000c9")
+      assert {5, ^gone} = Resolution.in_effect(input([gone]))
+    end
+  end
+
   describe "the provider, the key, the model and the effort" do
     test "come from the most specific level that chose a provider" do
       choices = for level <- 2..6, do: at(level, model_id: "level#{level}", value_id: "k#{level}")

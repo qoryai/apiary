@@ -154,14 +154,16 @@ defmodule Apiary.WorkspaceSetup do
   The latest test run: `:waiting` for a machine, `:running` once claimed, `:passed`, or
   `{:failed, cause}`: `:no_machine` (it waited more than 5 minutes), `:model_key_missing`
   (its gateway refused it for a missing model key), `:silent` (lost: no word from it for
-  10 minutes) or `:other`. `run` is the run its claim registered, nil before.
+  10 minutes), `:ended` (its run ended in any other way: the run's preparation
+  (`Apiary.Runs.Preparation`) and end say why), or `:no_run` (it ended before a claim
+  registered a run). `run` is the run its claim registered, nil before.
   """
   @type test_run :: %{
           state:
             :waiting
             | :running
             | :passed
-            | {:failed, :no_machine | :model_key_missing | :silent | :other},
+            | {:failed, :no_machine | :model_key_missing | :silent | :ended | :no_run},
           work_item: WorkItem.t(),
           dispatch_run: DispatchRun.t(),
           run: Run.t() | nil
@@ -822,5 +824,6 @@ defmodule Apiary.WorkspaceSetup do
   defp test_state(%DispatchRun{end_cause: :lost}, %Run{silenced_at: %DateTime{}}, _now),
     do: {:failed, :silent}
 
-  defp test_state(_dispatch_run, _run, _now), do: {:failed, :other}
+  defp test_state(_dispatch_run, %Run{}, _now), do: {:failed, :ended}
+  defp test_state(_dispatch_run, nil, _now), do: {:failed, :no_run}
 end

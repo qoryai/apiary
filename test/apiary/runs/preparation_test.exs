@@ -269,8 +269,10 @@ defmodule Apiary.Runs.PreparationTest do
                fixer: :instance_admin,
                text:
                  "The machine did not start the run within 15 minutes of the request. " <>
-                   "An instance admin reads why in this step's machine log.",
-               fix: "An instance admin reads why in this step's machine log."
+                   "An instance admin finds the cause in the machine log of the Machine " <>
+                   "started step.",
+               fix:
+                 "An instance admin finds the cause in the machine log of the Machine started step."
              }
     end
 

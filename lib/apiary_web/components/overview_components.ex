@@ -37,18 +37,22 @@ defmodule ApiaryWeb.OverviewComponents do
   import ApiaryWeb.RunComponents,
     only: [
       beat: 1,
+      exit_note: 1,
       format_seconds: 1,
       given_title: 1,
       heard_at: 1,
+      refusal_cause: 1,
       relative_time: 1,
       rule_panel: 1,
       short_id: 1,
+      shown_refusal_code: 1,
       shown_target_label: 3,
       state_label: 1,
       target_name: 1,
       tool_mark: 1
     ]
 
+  alias Apiary.Runs.Preparation
   alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
@@ -2152,37 +2156,195 @@ defmodule ApiaryWeb.OverviewComponents do
   def passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
 
   @doc false
-  # failed_line/2 is the line of a test run that failed for `cause`, the fix first, which
-  # the set-up's Test run step shows.
-  def failed_line(:no_machine, _run),
+  # test_failed/1 is the line of a test run that failed for `cause`
+  # (`Apiary.WorkspaceSetup.test_run/2`), which the set-up's Test run step shows. A run
+  # that stopped while its machine was prepared shows the step and the cause line of its
+  # Prepare machine section (`Apiary.Runs.Preparation`), with a link to that section;
+  # any other run its end as the run page shows it. `path` is the run page's path.
+  attr :cause, :atom, required: true
+  attr :dispatch_run, :any, default: nil
+  attr :run, :any, default: nil
+  attr :preparation, :map, default: nil
+
+  attr :choice, :any,
+    default: nil,
+    doc: "the model choice a new test run takes, as `{level, choice}`"
+
+  attr :path, :string, default: nil
+
+  def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
+      when cause in [:ended, :silent] do
+    assigns =
+      assign(assigns, step: Preparation.stopped_step(assigns.preparation), text: stopped.text)
+
+    ~H"""
+    <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
+      <:part name={:step}><.external_text text={@step} /></:part>
+    </.rich>
+    {@text}
+    <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
+      {gettext("Open the run's Prepare machine section")}
+    </.link>
+    """
+  end
+
+  def test_failed(%{cause: :ended} = assigns) do
+    assigns = assign(assigns, :line, ended_line(assigns.run, assigns.preparation))
+
+    ~H"""
+    {@line}
+    <.link navigate={@path} class="q-link">{gettext("See the run")}</.link>
+    """
+  end
+
+  # A test run with no run record: why, by its run of the queue's end cause, where the
+  # set-up has a fix for that cause.
+  def test_failed(%{cause: :no_run, dispatch_run: %{end_cause: cause}} = assigns) do
+    assigns = assign(assigns, :words, no_run_words(cause, assigns.choice))
+
+    ~H"""
+    {gettext("The test run ended before a machine started it.")}
+    {@words}
+    """
+  end
+
+  def test_failed(assigns) do
+    ~H"{failed_line(@cause)}"
+  end
+
+  # What fixes a test run that ended at its claim, and why it ended
+  # (`Apiary.Dispatches.Handover`, `Apiary.Dispatches.RunSettings`). A cause of the model
+  # choice has words only while the choice in effect is the Model step's, the workspace's
+  # (level 5) and not locked; model_gone only where that choice names a model, whose
+  # effort is then the part no longer offered. The other causes of the claim have no fix
+  # on the set-up's steps.
+  defp no_run_words(:inputs_invalid, _choice),
+    do:
+      gettext(
+        "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
+      )
+
+  # Either way the claim ends a run secrets_not_allowed, a key of the gateway made without
+  # stored secrets or a model key that may not be sealed for it, the instance's gateway
+  # passes: its key allows them, and a key of either chain may be sealed for it.
+  defp no_run_words(:secrets_not_allowed, _choice),
+    do:
+      gettext(
+        "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to go through it."
+      )
+
+  defp no_run_words(cause, {5, %{locked: false, model_id: model}})
+       when cause in [:runtime_unserved, :key_gone, :provider_gone] or
+              (cause == :model_gone and is_binary(model)),
+       do: model_step_words(cause)
+
+  defp no_run_words(_cause, _choice),
+    do: gettext("No run was recorded, so this step cannot show why.")
+
+  defp model_step_words(:runtime_unserved),
+    do:
+      gettext(
+        "Choose the model again on the Model step, then press Run the test. The chosen runtime is no longer in Qory Apiary's catalogue, or the chosen model provider no longer serves it."
+      )
+
+  defp model_step_words(:key_gone),
+    do:
+      gettext(
+        "The model key chosen for this workspace is no longer one of its model provider's keys. Choose another model or provider on the Model step, then press Run the test."
+      )
+
+  defp model_step_words(:model_gone),
+    do:
+      gettext(
+        "The effort chosen for this model is no longer offered. Choose another model on the Model step, then press Run the test."
+      )
+
+  defp model_step_words(:provider_gone),
+    do:
+      gettext(
+        "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
+      )
+
+  defp failed_line(:no_machine),
     do:
       gettext(
         "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
       )
 
-  def failed_line(:model_key_missing, _run),
-    do:
-      gettext(
-        "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
-      )
+  defp failed_line(:model_key_missing),
+    do: gettext("Add a model key on the Model step. The gateway had no model key for the run.")
 
-  def failed_line(:silent, _run),
+  defp failed_line(:silent),
     do:
       gettext(
         "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
       )
 
-  def failed_line(:other, nil),
+  # How a test run's run ended, as the run page's header shows its state and reason
+  # (`ApiaryWeb.RunComponents.exit_note/1`), after the session started where it did. A
+  # refusal whose code the run page has words for (`refusal_cause/1`) has a line of its
+  # own; any other refusal with a code has no words, so its line has no reason.
+  defp ended_line(run, preparation) do
+    code = shown_refusal_code(run)
+
+    case code && refusal_cause(code) do
+      :settings_check ->
+        gettext(
+          "The test run failed: the run's settings did not pass a check on the machine (%{code}).",
+          code: code
+        )
+
+      :engine_unreachable ->
+        gettext(
+          "The test run failed: the machine could not check an earlier run's container (%{code}).",
+          code: code
+        )
+
+      _none ->
+        session? = match?(%{session_started_at: %DateTime{}}, preparation)
+        reason = if is_nil(code), do: exit_note(run)
+        ended_line(run.state, session?, reason)
+    end
+  end
+
+  defp ended_line("failed", true, nil),
+    do: gettext("The test run failed after the session started.")
+
+  defp ended_line("failed", true, reason),
+    do: gettext("The test run failed after the session started: %{reason}.", reason: reason)
+
+  defp ended_line("failed", false, nil), do: gettext("The test run failed.")
+
+  defp ended_line("failed", false, reason),
+    do: gettext("The test run failed: %{reason}.", reason: reason)
+
+  defp ended_line("lost", true, nil),
+    do: gettext("The test run was lost after the session started.")
+
+  defp ended_line("lost", true, reason),
+    do: gettext("The test run was lost after the session started: %{reason}.", reason: reason)
+
+  defp ended_line("lost", false, nil), do: gettext("The test run was lost.")
+
+  defp ended_line("lost", false, reason),
+    do: gettext("The test run was lost: %{reason}.", reason: reason)
+
+  defp ended_line("cancelled", true, nil),
+    do: gettext("The test run was cancelled after the session started.")
+
+  defp ended_line("cancelled", true, reason),
     do:
-      gettext(
-        "Check the other steps of this list, then press Run the test again. The test run ended before a machine started it."
+      gettext("The test run was cancelled after the session started: %{reason}.",
+        reason: reason
       )
 
-  def failed_line(:other, _run),
-    do:
-      gettext(
-        "Read the run's log, then press Run the test again. The test run ended without passing."
-      )
+  defp ended_line("cancelled", false, nil), do: gettext("The test run was cancelled.")
+
+  defp ended_line("cancelled", false, reason),
+    do: gettext("The test run was cancelled: %{reason}.", reason: reason)
+
+  # A run of another state whose test run ended: completed, but not by its exit.
+  defp ended_line(_state, _session, _reason), do: gettext("The test run ended without passing.")
 
   # The two ways to connect a node or pool, its kind's way first: a machine runs a
   # command, a pool's shared key is generated in the browser.

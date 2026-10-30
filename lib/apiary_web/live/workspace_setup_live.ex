@@ -165,8 +165,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
   #     pool, whose See Machines links to the Machines step, and no Run the test. Then the
-  #     test run's state (`Apiary.WorkspaceSetup.test_run/2`): waiting,
-  #     running, passed, or one of four failures, read again as the workspace's queue and
+  #     test run's state (`Apiary.WorkspaceSetup.test_run/2`): waiting, running, passed,
+  #     or a failure, with the run's preparation (`Apiary.Runs.Preparation`) for a run that
+  #     failed, read again as the workspace's queue and
   #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
   #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
   #     whom `work_item.take_in` does not allow sees who may. About this step has what the
@@ -195,9 +196,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   alias Apiary.Adapters.Collections
   alias Apiary.Adapters.Connections, as: AdapterConnections
+  alias Apiary.Dispatches.RunSettings
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stacks.Sources
 
   alias ApiaryWeb.{
@@ -588,6 +590,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     |> assign(
       test: test,
       test_state: test && test.state,
+      test_preparation: test_preparation(scope, workspace, test),
+      test_choice: test_choice(test),
       machines: Edition.machines_ready(workspace),
       may: Access.can?(scope, :"work_item.take_in", workspace),
       who_may:
@@ -600,6 +604,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
     |> wait_for_machine()
   end
+
+  # How a failed test run's machine was prepared, for its run's step and cause line.
+  defp test_preparation(scope, workspace, %{state: {:failed, _cause}, run: %Run{} = run}),
+    do: Preparation.read(%{scope | workspace: workspace}, run)
+
+  defp test_preparation(_scope, _workspace, _test), do: nil
+
+  # The model choice a new test run takes, for a test run that ended at its claim on a
+  # cause of its model choice, so the line names the Model step only where its choice is
+  # the one in effect.
+  defp test_choice(%{state: {:failed, :no_run}, dispatch_run: %{end_cause: cause} = queued})
+       when cause in [:runtime_unserved, :key_gone, :model_gone, :provider_gone],
+       do: RunSettings.choice_in_effect(queued)
+
+  defp test_choice(_test), do: nil
 
   # Whether the step `id` of `flow` is done, by its rule: the indicator marks the current
   # step as current, done or not.
@@ -2169,14 +2188,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </.notice>
       <.notice :if={@failed?} kind={:error}>
         <span id="set-up-test-failed" data-cause={elem(@test_state, 1)}>
-          {OverviewComponents.failed_line(elem(@test_state, 1), @test.run)}
-          <.link
-            :if={elem(@test_state, 1) == :other and @test.run}
-            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
-            class="q-link"
-          >
-            {gettext("See the run")}
-          </.link>
+          <OverviewComponents.test_failed
+            cause={elem(@test_state, 1)}
+            dispatch_run={@test.dispatch_run}
+            run={@test.run}
+            preparation={@test_preparation}
+            choice={@test_choice}
+            path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+          />
         </span>
       </.notice>
 

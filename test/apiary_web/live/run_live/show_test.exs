@@ -2728,7 +2728,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#rail-reason")
     end
 
-    test "a run refused at its start: Failed, it did not start and its code, after the state and under it",
+    test "a run refused at its start: Failed, the check of its settings and its code, after the state and under it",
          %{conn: conn, scope: scope} do
       run =
         projected(scope, [
@@ -2744,10 +2744,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(
                lv,
                "#run-meta #run-state + #run-reason",
-               "did not start: image_unknown"
+               "The run's settings did not pass a check on the machine (image_unknown)."
              )
 
-      assert has_element?(lv, "#run-facts #rail-reason", "did not start: image_unknown")
+      assert has_element?(
+               lv,
+               "#run-facts #rail-reason",
+               "The run's settings did not pass a check on the machine (image_unknown)."
+             )
+    end
+
+    test "a run refused because its machine could not check an earlier run's container: those words, the code in mono",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.refused", %{"code" => "engine_unreachable"}}
+        ])
+
+      {:ok, lv, _html} = run_page(conn, scope, run)
+
+      for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
+        assert words_of(lv, reason) ==
+                 "The machine could not check an earlier run's container (engine_unreachable)."
+
+        assert words_of(lv, "#{reason} .font-mono") == "engine_unreachable"
+      end
     end
 
     test "the timeline's last item: Run ended for every end, its mark the state's", %{
@@ -3137,8 +3159,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         {:ok, lv, _html} = run_page(conn, scope, run)
 
         assert words_of(lv, "#run-meta #run-state") == "Failed"
-        assert words_of(lv, "#run-meta #run-reason") == "did not start: image_unknown"
-        assert words_of(lv, "#run-facts #rail-reason") == "did not start: image_unknown"
+
+        assert words_of(lv, "#run-meta #run-reason") ==
+                 "The run's settings did not pass a check on the machine (image_unknown)."
+
+        assert words_of(lv, "#run-facts #rail-reason") ==
+                 "The run's settings did not pass a check on the machine (image_unknown)."
+
         # the code in mono, as the timeline's item has it; the words around it are not
         for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
           assert words_of(lv, "#{reason} .font-mono") == "image_unknown"

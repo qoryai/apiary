@@ -156,6 +156,24 @@ defmodule Apiary.Dispatches.RunSettings do
 
   def hold(%DispatchRun{}), do: nil
 
+  # choice_in_effect/1 is the model choice that a claim of the run of the queue
+  # `dispatch_run` would take its provider from if it ran now
+  # (`Apiary.ModelChoices.Resolution.in_effect/1`), read without a lock: `{level, choice}`,
+  # or nil for none or for a run of another step.
+  @doc false
+  @spec choice_in_effect(DispatchRun.t()) ::
+          {ModelChoices.ModelChoice.level(), ModelChoices.ModelChoice.t()} | nil
+  def choice_in_effect(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id}) do
+    workspace = Repo.get!(Workspace, workspace_id)
+    target = target(workspace, id)
+
+    Resolution.in_effect(
+      ModelChoices.choices_for(workspace, target, Stacks.workflow(workspace, target))
+    )
+  end
+
+  def choice_in_effect(%DispatchRun{}), do: nil
+
   # The minutes the time limits come to for `workflow`, nil for no limit or no workflow.
   defp time_limit(_workspace, _target, nil), do: nil
 

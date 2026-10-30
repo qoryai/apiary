@@ -1672,7 +1672,9 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   the cause, then who fixes it; once retention deleted the run's log lines, "The step's
   output was deleted under the workspace's log retention, so the cause is no longer
   shown." in place of who fixes it. Under Machine started the line shows only who fixes
-  it, as the header shows the cause. The section's duration runs from its first row to
+  it, as the header shows the cause: for the instance's pool, "An instance admin finds
+  the cause in the machine log of the Machine started step."; for any other pool, that
+  its admins read why in the pool's log on its host. The section's duration runs from its first row to
   the session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
@@ -1683,8 +1685,14 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
-  "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
-  meta line and the rail as in the timeline's item. A run whose starter sent its outcome
+  its refusal: for a code of a check of the run's settings on the machine
+  (`run_configuration_invalid`, `tool_unknown`, `image_unknown`, `image_not_allowed`,
+  `image_user_root`, `variable_reserved`, `placeholder_conflict`, `mount_mode_conflict`
+  and `mount_contains_forager_files`), "The run's settings did not pass a check on the
+  machine (image_unknown).", with the code in mono in the meta line and the rail; for
+  `engine_unreachable`, "The machine could not check an earlier run's container
+  (engine_unreachable).", the code in mono there too; for any other code, "did not start"
+  and the code in mono ("did not start: image_missing"); with no code, "did not start". A run whose starter sent its outcome
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,
