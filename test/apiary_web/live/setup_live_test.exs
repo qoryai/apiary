@@ -213,20 +213,21 @@ defmodule ApiaryWeb.SetupLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
       email = unique_user_email()
 
-      lv
-      |> form("#setup_form", user: params(%{"email" => email, "organisation_name" => "Users"}))
-      |> render_submit()
+      for {name, message} <- [
+            {"Users", "Choose another name. /users is a page of Qory Apiary."},
+            {"株式会社",
+             "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+               "The address is made from those characters."}
+          ] do
+        lv
+        |> form("#setup_form", user: params(%{"email" => email, "organisation_name" => name}))
+        |> render_submit()
 
-      assert has_element?(lv, "#setup_form [name='user[organisation_name]'][aria-invalid]")
-
-      assert has_element?(
-               lv,
-               "#setup_form",
-               "Choose another name. /users is a page of Qory Apiary."
-             )
-
-      refute Apiary.Accounts.get_user_by_email(email)
-      refute Setup.set_up?()
+        assert has_element?(lv, "#setup_form [name='user[organisation_name]'][aria-invalid]")
+        assert has_element?(lv, "#setup_form", message)
+        refute Apiary.Accounts.get_user_by_email(email)
+        refute Setup.set_up?()
+      end
     end
 
     test "a wrong code is a path that does not exist", %{conn: conn, code: code} do

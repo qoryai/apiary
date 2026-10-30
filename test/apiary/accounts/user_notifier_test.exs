@@ -190,7 +190,7 @@ defmodule Apiary.Accounts.UserNotifierTest do
             "Café Société",
             "wwwork",
             # Persian, with a zero-width non-joiner inside a word.
-            "می\u200Cخواهم",
+            "Team می\u200Cخواهم",
             # An emoji sequence joined by zero-width joiners.
             "Family 👨\u200D👩\u200D👧"
           ] do

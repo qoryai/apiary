@@ -181,7 +181,7 @@ defmodule Apiary.OrganisationsFixtures do
 
     %Workspace{organisation_id: organisation.id}
     |> Workspace.create_changeset(%{name: name, domain: "software"})
-    |> Workspace.put_slug(Slug.from_name(name, "workspace"))
+    |> Workspace.put_slug(Slug.from_name(name))
     |> Repo.insert!()
   end
 

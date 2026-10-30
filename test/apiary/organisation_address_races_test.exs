@@ -31,8 +31,7 @@ defmodule Apiary.OrganisationAddressRacesTest do
   end
 
   defp taken(target),
-    do:
-      "Choose another name. Another organisation has the address /#{Slug.from_name(target, "organisation")}."
+    do: "Choose another name. Another organisation has the address /#{Slug.from_name(target)}."
 
   test "a rename waiting on the other's rename to the same address is refused, with the address" do
     %{scope: scope, organisation: organisation} = sign_up()

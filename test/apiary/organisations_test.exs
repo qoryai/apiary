@@ -11,6 +11,9 @@ defmodule Apiary.OrganisationsTest do
   alias Apiary.Audit.Entry
   alias Apiary.Organisations.{Invitation, LastWorkspace, Membership, Organisation, Workspace}
 
+  @no_letters "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+                "The address is made from those characters."
+
   describe "sign_up_user/2" do
     test "creates the user, the organisation it names, a Main workspace and an owner membership" do
       {:ok,
@@ -204,6 +207,20 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{domain: ["is invalid"]} = errors_on(changeset)
       refute Repo.exists?(from o in Organisation, where: o.name == "Acme Unknown")
+    end
+
+    test "a name with no letter or digit from A to Z or 0 to 9 is refused, numbered or not" do
+      for opts <- [[], [taken: :refuse]] do
+        assert {:error, :organisation, changeset, _changes} =
+                 build_organisation("株式会社", opts)
+
+        assert %{name: [@no_letters]} = errors_on(changeset)
+      end
+
+      refute Repo.exists?(from o in Organisation, where: o.name == "株式会社")
+
+      assert {:ok, %{organisation: %Organisation{slug: "societe-generale-etudes"}}} =
+               build_organisation("Société Générale Études", [])
     end
   end
 
@@ -561,7 +578,8 @@ defmodule Apiary.OrganisationsTest do
         assert %{name: ["must not contain control characters"]} = errors_on(changeset)
       end
 
-      for name <- ["می#{<<0x200C::utf8>>}خواهم", "👩#{<<0x200D::utf8>>}💻 builds"] do
+      # (A name needs a letter or digit from A to Z or 0 to 9 for its address.)
+      for name <- ["Team می#{<<0x200C::utf8>>}خواهم", "👩#{<<0x200D::utf8>>}💻 builds"] do
         assert {:ok, _} = Organisations.update_workspace(owner_scope, %{name: name})
       end
 
@@ -579,7 +597,7 @@ defmodule Apiary.OrganisationsTest do
     test "a rename changes the slug, and the trail has the old and the new" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       name = fresh_name("Payments")
-      slug = Organisations.Slug.from_name(name, "organisation")
+      slug = Organisations.Slug.from_name(name)
 
       assert {:ok, %Organisation{slug: ^slug} = renamed} =
                Organisations.update_organisation(scope, %{"name" => name, "slug" => "kept"})
@@ -657,7 +675,10 @@ defmodule Apiary.OrganisationsTest do
             {marked.name <> "!",
              "Choose another name. Another organisation has the address /#{marked.slug}."},
             {"Settings", "Choose another name. /settings is a page of Qory Apiary."},
-            {"Users", "Choose another name. /users is a page of Qory Apiary."}
+            {"Users", "Choose another name. /users is a page of Qory Apiary."},
+            # No letter or digit from A to Z or 0 to 9: no address to give it.
+            {"株式会社", @no_letters},
+            {"Ωμέγα", @no_letters}
           ] do
         assert {:error, changeset} = Organisations.update_organisation(scope, %{"name" => name})
         assert %{name: [^message]} = errors_on(changeset)
@@ -762,7 +783,8 @@ defmodule Apiary.OrganisationsTest do
              "Choose another name. Another workspace already has the address /#{org}/data."},
             {"OLD",
              "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
-            {"Audit log", "Choose another name. /#{org}/audit-log is a page of Qory Apiary."}
+            {"Audit log", "Choose another name. /#{org}/audit-log is a page of Qory Apiary."},
+            {"株式会社", @no_letters}
           ] do
         assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => name})
         assert %{name: [^message]} = errors_on(changeset)
@@ -1043,6 +1065,25 @@ defmodule Apiary.OrganisationsTest do
       end
 
       assert Organisations.suggest_workspace_slug(scope, "New") == "new"
+    end
+
+    test "a name with no letter or digit from A to Z or 0 to 9 is refused; accents are dropped" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      for name <- ["株式会社", "Ωμέγα"] do
+        assert {:error, changeset} =
+                 Organisations.create_workspace(scope, %{"domain" => "software", "name" => name})
+
+        assert %{name: [@no_letters]} == errors_on(changeset)
+        assert Organisations.suggest_workspace_slug(scope, name) == nil
+      end
+
+      assert {:ok, %Workspace{slug: "donnees-equipe"}} =
+               Organisations.create_workspace(scope, %{
+                 "domain" => "software",
+                 "name" => "Données Équipe"
+               })
     end
 
     test "a name whose address a workspace marked for deletion has is refused" do

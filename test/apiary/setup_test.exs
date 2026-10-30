@@ -435,6 +435,22 @@ defmodule Apiary.SetupTest do
       refute Setup.set_up?()
     end
 
+    test "the release command's claim refuses a name with no letter or digit from A to Z or 0 to 9" do
+      code = Setup.code!()
+
+      assert {{:error, :invalid}, output} =
+               ExUnit.CaptureIO.with_io(fn ->
+                 Apiary.Release.grant_instance_admin("claim@example.com", "株式会社")
+               end)
+
+      assert output ==
+               "Not created: organisation_name Choose a name with at least one letter or digit " <>
+                 "from A to Z or 0 to 9. The address is made from those characters.\n"
+
+      assert {^code, nil} = stored()
+      refute Setup.set_up?()
+    end
+
     test "the release command's claim marks the code used" do
       code = Setup.code!()
 
