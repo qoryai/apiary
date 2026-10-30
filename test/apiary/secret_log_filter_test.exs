@@ -34,6 +34,16 @@ defmodule Apiary.SecretLogFilterTest do
     end
   end
 
+  test "filter_text/1's doc names its callers, and not the diagnostics, which keep the text" do
+    {:docs_v1, _, :elixir, _, _, _, docs} = Code.fetch_docs(Apiary.SecretLogFilter)
+
+    [doc] =
+      for {{:function, :filter_text, 1}, _, _, %{"en" => doc}, _} <- docs, do: doc
+
+    assert doc =~ "ApiaryWeb.RunComponents" and doc =~ "Apiary.Runs.Preparation"
+    refute doc =~ "such as a run's diagnostics"
+  end
+
   test "is installed at boot, once" do
     %{filters: filters} = :logger.get_primary_config()
     assert Keyword.has_key?(filters, :apiary_access_key_secrets)

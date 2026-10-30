@@ -287,8 +287,10 @@ defmodule Apiary.SecretLogFilter do
   filter_text/1 is `text` with each secret in it replaced, as the filter replaces it in a
   log event's message: `qak_`, `qrk_` and an enrolment code's prefix, in any case, with
   the characters after them, by `[FILTERED]`, and a link's token in a path or a query by
-  its name. Any other text is returned as it is. For text Qory Apiary hands out that is
-  not a log line, such as a run's diagnostics (`Apiary.Runs.Diagnostics`).
+  its name. Any other text is returned as it is. For text Qory Apiary shows that is not a
+  log line: the pool's release reason on the run page, in its header
+  (`ApiaryWeb.RunComponents`) and in its Prepare machine section
+  (`Apiary.Runs.Preparation`). A run's diagnostics keep every text as stored.
   """
   @spec filter_text(String.t()) :: String.t()
   def filter_text(text) when is_binary(text),
