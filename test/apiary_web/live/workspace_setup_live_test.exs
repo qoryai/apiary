@@ -8,6 +8,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   # `factory` feature, and `ApiaryWeb.WorkspaceSetupLive.ModelTest` the Model step.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
@@ -91,7 +92,6 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       # The organisation's people and details, as for any other.
       assert has_element?(lv, "#people")
       assert has_element?(lv, "#about")
-      refute has_element?(lv, "#people-invite")
 
       # Example has no card's words, so it has no card.
       assert has_element?(lv, "#set-up-card-software h2", "Software factory")
@@ -159,6 +159,46 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                Organisations.list_workspaces(
                  Organisations.load_scope(Scope.for_user(user), organisation.id)
                )
+    end
+
+    test "an owner and an admin see Invite and the invitations pending", %{conn: conn} do
+      %{user: owner, organisation: organisation} = sign_up_without_workspace()
+      admin = joined(organisation, :admin)
+      member = joined(organisation, :member)
+      # An owner whose address is confirmed invites.
+      owner =
+        owner |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now(:second)) |> Repo.update!()
+
+      scope = Organisations.load_scope(Scope.for_user(owner), organisation.id)
+
+      {:ok, _invitation} =
+        Organisations.invite_member(scope, %{"email" => unique_user_email()}, &"/i/#{&1}")
+
+      for user <- [owner, admin] do
+        {:ok, lv, _html} = build_conn() |> log_in_user(user) |> live(~p"/#{organisation}")
+
+        assert href(lv, "#people-invite") == ~p"/#{organisation}/settings/people/invite"
+        assert words(lv, "#people-invitations") == "1 invitation pending"
+      end
+
+      {:ok, lv, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}")
+      refute has_element?(lv, "#people-invite")
+      refute has_element?(lv, "#people-invitations")
+    end
+
+    test "Choose after someone else created the first workspace opens the overview again",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}")
+
+      # Written straight into the table: the page hears nothing of it.
+      workspace_fixture(organisation, "Billing")
+
+      assert {:error, {:live_redirect, %{to: to}}} = choose(lv)
+      assert to == ~p"/#{organisation}"
+
+      assert [%Workspace{name: "Billing"}] =
+               Repo.all(from w in Workspace, where: w.organisation_id == ^organisation.id)
     end
 
     test "anyone workspace.create does not allow is told who creates the first workspace", %{

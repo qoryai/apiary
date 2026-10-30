@@ -229,8 +229,8 @@ defmodule ApiaryWeb.SetUpComponents do
 
   # The flow a page shows without naming one: the workspace the scope has, of its
   # organisation, once the organisation has a workspace; before, a new workspace of the
-  # default type for a person who may create it, at `/:org/set-up`, which shows the type
-  # cards first; else none.
+  # default type for a person who may create it, whose step paths, at `/:org/set-up`, send
+  # the person to the organisation's overview and its kind cards; else none.
   defp default_flow(%Scope{organisation: organisation} = scope) do
     cond do
       Organisations.has_workspace?(organisation) ->

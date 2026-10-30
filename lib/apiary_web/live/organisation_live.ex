@@ -347,11 +347,19 @@ defmodule ApiaryWeb.OrganisationLive do
   end
 
   @impl true
-  # The page that creates the first workspace opens its Name step, not the overview again.
+  # The page that creates the first workspace opens its Name step, not the overview again:
+  # it stops listening while it creates, and listens again where nothing was created.
   def handle_event("choose_kind", %{"type" => type}, %{assigns: %{empty: true}} = socket) do
-    organisation = socket.assigns.current_scope.organisation
-    Phoenix.PubSub.unsubscribe(Apiary.PubSub, Organisations.workspaces_topic(organisation.id))
-    {:noreply, SetUpComponents.choose_kind(socket, type, :first)}
+    scope = socket.assigns.current_scope
+
+    Phoenix.PubSub.unsubscribe(
+      Apiary.PubSub,
+      Organisations.workspaces_topic(scope.organisation.id)
+    )
+
+    socket = SetUpComponents.choose_kind(socket, type, :first)
+    if is_nil(socket.redirected), do: Organisations.subscribe_workspaces(scope)
+    {:noreply, socket}
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
@@ -466,7 +474,8 @@ defmodule ApiaryWeb.OrganisationLive do
     }
   end
 
-  # An invitation is to a workspace: with none, there is none to send.
-  defp may_invite?(%{workspace: nil}), do: false
-  defp may_invite?(scope), do: Access.can?(scope, :"member.invite", scope.workspace)
+  # Asked of the organisation where there is no workspace: an invitation sent while it has
+  # none is to the organisation (`Apiary.Organisations.invite_member/3`).
+  defp may_invite?(scope),
+    do: Access.can?(scope, :"member.invite", scope.workspace || scope.organisation)
 end
