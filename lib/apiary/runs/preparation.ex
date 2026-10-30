@@ -402,6 +402,19 @@ defmodule Apiary.Runs.Preparation do
   def step_name(%{name: name}) when is_binary(name), do: name
   def step_name(%{number: number}), do: gettext("Step %{number}", number: number)
 
+  @doc """
+  The step a preparation stopped at, as the run page names it: Machine started for a
+  cause of the machine, else the failed step's name (`step_name/1`); nil while it has not
+  stopped.
+  """
+  @spec stopped_step(t) :: String.t() | nil
+  def stopped_step(%{stopped: %{step: nil}}), do: gettext("Machine started")
+
+  def stopped_step(%{stopped: %{step: number}, steps: steps}),
+    do: steps |> Enum.find(&(&1.number == number)) |> step_name()
+
+  def stopped_step(_preparation), do: nil
+
   # The starter's reason as a line an external system sent, with its one closing full
   # stop left out for the sentence's.
   defp reason(nil), do: gettext("n/a")

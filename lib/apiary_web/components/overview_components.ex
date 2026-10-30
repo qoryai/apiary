@@ -37,6 +37,7 @@ defmodule ApiaryWeb.OverviewComponents do
   import ApiaryWeb.RunComponents,
     only: [
       beat: 1,
+      exit_note: 1,
       format_seconds: 1,
       given_title: 1,
       heard_at: 1,
@@ -49,6 +50,7 @@ defmodule ApiaryWeb.OverviewComponents do
       tool_mark: 1
     ]
 
+  alias Apiary.Runs.Preparation
   alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
@@ -2152,37 +2154,111 @@ defmodule ApiaryWeb.OverviewComponents do
   def passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
 
   @doc false
-  # failed_line/2 is the line of a test run that failed for `cause`, the fix first, which
-  # the set-up's Test run step shows.
-  def failed_line(:no_machine, _run),
+  # test_failed/1 is the line of a test run that failed for `cause`
+  # (`Apiary.WorkspaceSetup.test_run/2`), which the set-up's Test run step shows. A run
+  # that stopped while its machine was prepared shows the step and the cause line of its
+  # Prepare machine section (`Apiary.Runs.Preparation`), with a link to that section;
+  # any other run its end as the run page shows it. `path` is the run page's path.
+  attr :cause, :atom, required: true
+  attr :run, :any, default: nil
+  attr :preparation, :map, default: nil
+  attr :path, :string, default: nil
+
+  def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
+      when cause in [:ended, :silent] do
+    assigns =
+      assign(assigns, step: Preparation.stopped_step(assigns.preparation), text: stopped.text)
+
+    ~H"""
+    <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
+      <:part name={:step}><.external_text text={@step} /></:part>
+    </.rich>
+    {@text}
+    <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
+      {gettext("Open the run's Prepare machine section")}
+    </.link>
+    """
+  end
+
+  def test_failed(%{cause: :ended} = assigns) do
+    assigns = assign(assigns, :line, ended_line(assigns.run, assigns.preparation))
+
+    ~H"""
+    {@line}
+    <.link navigate={@path} class="q-link">{gettext("See the run")}</.link>
+    """
+  end
+
+  def test_failed(assigns) do
+    ~H"{failed_line(@cause)}"
+  end
+
+  defp failed_line(:no_machine),
     do:
       gettext(
         "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
       )
 
-  def failed_line(:model_key_missing, _run),
-    do:
-      gettext(
-        "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
-      )
+  defp failed_line(:model_key_missing),
+    do: gettext("Add a model key on the Model step. The gateway had no model key for the run.")
 
-  def failed_line(:silent, _run),
+  defp failed_line(:silent),
     do:
       gettext(
         "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
       )
 
-  def failed_line(:other, nil),
+  defp failed_line(:no_run),
     do:
       gettext(
-        "Check the other steps of this list, then press Run the test again. The test run ended before a machine started it."
+        "The test run ended before a machine started it. No run was recorded, so this step cannot show why."
       )
 
-  def failed_line(:other, _run),
+  # How a test run's run ended, as the run page's header shows its state and reason
+  # (`ApiaryWeb.RunComponents.exit_note/1`), after the session started where it did.
+  defp ended_line(run, preparation) do
+    session? = match?(%{session_started_at: %DateTime{}}, preparation)
+    ended_line(run.state, session?, exit_note(run))
+  end
+
+  defp ended_line("failed", true, nil),
+    do: gettext("The test run failed after the session started.")
+
+  defp ended_line("failed", true, reason),
+    do: gettext("The test run failed after the session started: %{reason}.", reason: reason)
+
+  defp ended_line("failed", false, nil), do: gettext("The test run failed.")
+
+  defp ended_line("failed", false, reason),
+    do: gettext("The test run failed: %{reason}.", reason: reason)
+
+  defp ended_line("lost", true, nil),
+    do: gettext("The test run was lost after the session started.")
+
+  defp ended_line("lost", true, reason),
+    do: gettext("The test run was lost after the session started: %{reason}.", reason: reason)
+
+  defp ended_line("lost", false, nil), do: gettext("The test run was lost.")
+
+  defp ended_line("lost", false, reason),
+    do: gettext("The test run was lost: %{reason}.", reason: reason)
+
+  defp ended_line("cancelled", true, nil),
+    do: gettext("The test run was cancelled after the session started.")
+
+  defp ended_line("cancelled", true, reason),
     do:
-      gettext(
-        "Read the run's log, then press Run the test again. The test run ended without passing."
+      gettext("The test run was cancelled after the session started: %{reason}.",
+        reason: reason
       )
+
+  defp ended_line("cancelled", false, nil), do: gettext("The test run was cancelled.")
+
+  defp ended_line("cancelled", false, reason),
+    do: gettext("The test run was cancelled: %{reason}.", reason: reason)
+
+  # A run of another state whose test run ended: completed, but not by its exit.
+  defp ended_line(_state, _session, _reason), do: gettext("The test run ended without passing.")
 
   # The two ways to connect a node or pool, its kind's way first: a machine runs a
   # command, a pool's shared key is generated in the browser.

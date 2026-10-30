@@ -509,17 +509,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   import ApiaryWeb.SetUpSteps
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.AccessKeysFixtures, only: [enrolled_key_fixture: 2]
   import Apiary.AccountsFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [events_fixture: 2, session_started_data: 0]
 
   alias Apiary.{AccessKeys, Dispatches, Organisations, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Grant, GrantRule}
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Run, Step}
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
@@ -3319,26 +3321,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "See the run"
     end
 
-    test "each failure, the fix first, with Run the test", %{conn: conn, scope: scope} do
+    test "each failure, the fix first where there is one, with Run the test", %{
+      conn: conn,
+      scope: scope
+    } do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, item} = WorkItems.take_in_test(scope, @line)
 
       for {changes, run_attrs, cause, line} <- [
             {[state: :ended, end_cause: :run_refused, end_detail: "model_key_missing"],
              %{state: "failed", reason: "model_key_missing"}, "model_key_missing",
-             "Add a model key in Organisation settings › Model providers. The gateway had no " <>
-               "model key for the run."},
+             "Add a model key on the Model step. The gateway had no model key for the run."},
             {[state: :ended, end_cause: :lost, end_detail: nil],
              %{state: "lost", silenced_at: DateTime.utc_now()}, "silent",
              "Check that the gateway is running in Instance settings › Nodes. The machine " <>
                "stopped sending for 10 minutes."},
-            {[state: :ended, end_cause: :run_ended], %{state: "failed"}, "other",
-             "Read the run's log, then press Run the test again. The test run ended without " <>
-               "passing. See the run"},
+            {[state: :ended, end_cause: :run_ended],
+             %{state: "failed", exit_code: 1, exited_at: DateTime.utc_now()}, "ended",
+             "The test run failed: exit 1. See the run"},
+            {[state: :ended, end_cause: :run_refused, end_detail: "image_unknown"],
+             %{state: "failed", reason: "image_unknown"}, "ended",
+             "The test run failed: did not start: image_unknown. See the run"},
+            {[state: :ended, end_cause: :lost, end_detail: nil], %{state: "lost"}, "ended",
+             "The test run was lost. See the run"},
+            {[state: :ended, end_cause: :released],
+             %{state: "cancelled", reason: "no_longer_needed"}, "ended",
+             "The test run was cancelled: no longer needed. See the run"},
             {[state: :ended, end_cause: :harness_unresolved, result_outcome: :error], nil,
-             "other",
-             "Check the other steps of this list, then press Run the test again. The test run " <>
-               "ended before a machine started it."}
+             "no_run",
+             "The test run ended before a machine started it. No run was recorded, so this " <>
+               "step cannot show why."}
           ] do
         Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
         test_run!(item, changes, run_attrs)
@@ -3346,8 +3358,128 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
         assert words(lv, "#set-up-test-failed") == line
+        refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
+    end
+
+    test "a failure after the session started: the run's end and reason, and See the run", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      now = DateTime.utc_now()
+
+      for {run_attrs, line} <- [
+            {%{state: "failed", reason: "no_model_key", exit_code: 1, exited_at: now},
+             "The test run failed after the session started: no model key."},
+            {%{state: "failed", exited_at: now},
+             "The test run failed after the session started."},
+            {%{state: "lost", reason: "session_lost", exited_at: now},
+             "The test run was lost after the session started: stopped responding."},
+            {%{state: "lost"}, "The test run was lost after the session started."},
+            {%{state: "cancelled", reason: "no_longer_needed"},
+             "The test run was cancelled after the session started: no longer needed."},
+            {%{state: "cancelled"}, "The test run was cancelled after the session started."}
+          ] do
+        Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
+        run = test_run!(item, [state: :ended, end_cause: :run_ended], run_attrs)
+        events_fixture(run, [{1, "session.started", session_started_data()}])
+        {:ok, lv, _html} = live(conn, test_path(scope))
+
+        assert has_element?(lv, "#set-up-test-failed[data-cause=ended]")
+        assert words(lv, "#set-up-test-failed") == line <> " See the run"
+
+        assert href(lv, "#set-up-test-failed a") ==
+                 ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+
+        assert has_element?(lv, "#set-up-test-run", "Run the test")
+      end
+    end
+
+    test "a run that stopped at a step of its preparation: the step, its cause line, and the link to Prepare machine",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+
+      run =
+        test_run!(item, [state: :ended, end_cause: :run_ended], %{
+          state: "failed",
+          exit_code: 128
+        })
+
+      Repo.insert!(%Step{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id,
+        step: 1,
+        name: "fetch git.example.com/acme/shop",
+        kind: "fetch",
+        state: "failed",
+        exit_code: 128
+      })
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert has_element?(lv, "#set-up-test-failed[data-cause=ended]")
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run stopped at Fetch git.example.com/acme/shop. Fetch " <>
+                 "git.example.com/acme/shop failed with exit code 128. An admin of " <>
+                 "#{scope.workspace.name} reads the cause in the step's output. Open the " <>
+                 "run's Prepare machine section"
+
+      assert words(lv, "#set-up-test-preparation") == "Open the run's Prepare machine section"
+
+      assert href(lv, "#set-up-test-preparation") ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <>
+                 "#prepare-machine"
+
+      assert has_element?(lv, "#set-up-test-run", "Run the test")
+    end
+
+    test "a run whose machine stopped before it started the run: Machine started, and its cause line",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      pool = pool_fixture(scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(scope, pool)
+      [queued] = Repo.all(from d in DispatchRun, where: d.work_item_id == ^item.id)
+      now = DateTime.utc_now()
+
+      dispatch =
+        Repo.insert!(%Dispatch{
+          organisation_id: item.organisation_id,
+          workspace_id: item.workspace_id,
+          dispatch_run_id: queued.id,
+          pool_id: pool.id,
+          access_key_id: key.id,
+          claimed_at: now,
+          lease_until: %{
+            DateTime.truncate(DateTime.add(now, 600, :second), :second)
+            | microsecond: {0, 6}
+          }
+        })
+
+      run =
+        test_run!(item, [state: :ended, end_cause: :lost], %{
+          state: "failed",
+          dispatch_id: dispatch.id,
+          start_failure: "machine_stopped",
+          start_failed_at: now
+        })
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run stopped at Machine started. The machine stopped before it " <>
+                 "started the run. An admin of #{scope.workspace.name} reads why in the log " <>
+                 "of build-pool on its host. Open the run's Prepare machine section"
+
+      assert href(lv, "#set-up-test-preparation") ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <>
+                 "#prepare-machine"
     end
 
     test "Run the test after a failure takes a new test in and closes the failed one", %{

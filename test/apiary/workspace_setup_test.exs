@@ -445,7 +445,7 @@ defmodule Apiary.WorkspaceSetupTest do
 
       # Another refusal is no missing key.
       end_test!(item, [end_cause: :run_refused, end_detail: "image_unknown"], %{state: "failed"})
-      assert read.() == {:failed, :other}
+      assert read.() == {:failed, :ended}
 
       end_test!(item, [end_cause: :lost, end_detail: nil], %{
         state: "lost",
@@ -456,16 +456,16 @@ defmodule Apiary.WorkspaceSetupTest do
 
       # Lost, never attached or past its backstop: not silent.
       end_test!(item, [end_cause: :lost], %{state: "lost"})
-      assert read.() == {:failed, :other}
+      assert read.() == {:failed, :ended}
 
       # Ended by its exit, failed.
       end_test!(item, [end_cause: :run_ended], %{state: "failed"})
-      assert read.() == {:failed, :other}
+      assert read.() == {:failed, :ended}
 
       # Ended before a machine took it: no registered run.
       end_test!(item, end_cause: :harness_unresolved, result_outcome: :error)
 
-      assert %{state: {:failed, :other}, run: nil} =
+      assert %{state: {:failed, :no_run}, run: nil} =
                WorkspaceSetup.test_run(ctx.workspace, DateTime.utc_now())
 
       refute Edition.test_run_passed?(ctx.workspace)
