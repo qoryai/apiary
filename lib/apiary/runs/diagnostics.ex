@@ -10,7 +10,9 @@ defmodule Apiary.Runs.Diagnostics do
   `run`, the run's id, state, reason, exit, times, organisation, workspace, step,
   workflow, work item, target, gateway and the names of its variables; `queue`, the
   state and end cause of the run's row in its workspace's queue; `dispatches`, the
-  dispatch whose claim registered the run, at most one; `preparation`; `events`, the
+  dispatch whose claim registered the run, at most one, with the starter's release
+  reason; `preparation`, the steps from the machine's start to the session's
+  (`Apiary.Runs.Preparation`), each with its output, and why it stopped; `events`, the
   run's last events, at most `max_events/0`, with `events_omitted`; `log`, the run's
   output that belongs to no step, its last `max_log_bytes/0` bytes, with `truncated`;
   and `machine_logs`. Each member is written from the run's columns one by one, so a
@@ -21,7 +23,9 @@ defmodule Apiary.Runs.Diagnostics do
 
   **Who reads what** (`rights/2`). The reader is a person's scope, who reads the run
   (`run.read`), or the scope of a diagnostics key. `log` is there for a reader who may
-  read the run's log (`run.read_log`) and for a diagnostics key; `machine_logs` for an
+  read the run's log (`run.read_log`) and for a diagnostics key, and so are the steps'
+  output, which a reader without the log reads as an empty text marked as cut, since the
+  contract asks every step for one; `machine_logs` for an
   instance admin (`Apiary.Access.instance_admin?/1`) and for a diagnostics key. `log` and
   `events` are also left out once the retention removed them (`runs.log_pruned_at`,
   `runs.events_pruned_at`).
@@ -47,7 +51,7 @@ defmodule Apiary.Runs.Diagnostics do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Event, LogChunk, Run}
+  alias Apiary.Runs.{Event, LogChunk, Preparation, Run}
   alias Apiary.WorkItems.WorkItem
 
   @max_bytes 8 * 1024 * 1024
@@ -145,7 +149,7 @@ defmodule Apiary.Runs.Diagnostics do
         "instance" => instance(),
         "run" => run_member(run),
         "dispatches" => if(dispatch, do: [dispatch_member(dispatch)], else: []),
-        "preparation" => preparation(run)
+        "preparation" => preparation(run, log?)
       }
       |> put("queue", queue(run.dispatch_run))
       |> put("log", if(log? and is_nil(run.log_pruned_at), do: log(run)))
@@ -231,11 +235,18 @@ defmodule Apiary.Runs.Diagnostics do
 
   defp queue(nil), do: nil
 
-  # The dispatch whose claim registered the run: of the run's row in the queue, the one
-  # claimed last at or before the run's row was written. A claim writes its run in the
-  # transaction that writes the dispatch, at the claim's time, and a dispatch released or
-  # lapsed before its handover takes its run with it, so no later dispatch of the row is
-  # the run's. Nil for a run registered without a claim.
+  # The dispatch whose claim registered the run. A run whose start failed keeps it in
+  # `dispatch_id`. Any other run: of the run's row in the queue, the one claimed last at
+  # or before the run's row was written. A claim writes its run in the transaction that
+  # writes the dispatch, at the claim's time, and a dispatch released or lapsed before
+  # its handover takes its run with it, so no later dispatch of the row is the run's. Nil
+  # for a run registered without a claim.
+  defp dispatch(%Run{dispatch_id: id}) when is_binary(id),
+    do:
+      Repo.one(
+        from d in Dispatch, join: p in assoc(d, :pool), where: d.id == ^id, preload: [pool: p]
+      )
+
   defp dispatch(%Run{dispatch_run_id: nil}), do: nil
 
   defp dispatch(%Run{dispatch_run_id: id} = run) do
@@ -263,11 +274,53 @@ defmodule Apiary.Runs.Diagnostics do
     |> put("stale_at", time(dispatch.stale_at))
     |> put("ended_at", time(dispatch.ended_at))
     |> put("end_cause", dispatch.end_cause && code(Atom.to_string(dispatch.end_cause)))
+    |> put("release_reason", bounded(dispatch.release_reason, 200))
   end
 
-  # The preparation's steps, from the start of the machine to the start of the session.
-  # Until the preparation's data is read, the document has none.
-  defp preparation(%Run{}), do: %{"steps" => []}
+  # The preparation (`Apiary.Runs.Preparation`), read in the run's workspace, with the
+  # steps' output for a reader of the log. The contract asks every step for its output: a
+  # reader without the log gets an empty text, marked as cut.
+  defp preparation(%Run{} = run, log?) do
+    preparation =
+      Preparation.read(Scope.for_instance(run.organisation, run.workspace), run, log: log?)
+
+    %{"steps" => Enum.map(preparation.steps, &step_member/1)}
+    |> put("session_started_at", time(preparation.session_started_at))
+    |> put("stopped", stopped_member(preparation.stopped))
+  end
+
+  defp step_member(step) do
+    %{
+      "number" => step.number,
+      "state" => step.state,
+      "output" => output_member(step.output)
+    }
+    |> put("name", bounded(step.name, nil))
+    |> put("kind", step.kind && code(step.kind))
+    |> put("exit_code", if(step.exit_code in @int32, do: step.exit_code))
+    |> put("started_at", time(step.started_at))
+    |> put("exited_at", time(step.exited_at))
+    |> put(
+      "duration_ms",
+      if(is_integer(step.duration_ms) and step.duration_ms >= 0, do: step.duration_ms)
+    )
+  end
+
+  defp output_member(%{text: text, truncated: truncated}),
+    do: %{"text" => text(text), "truncated" => truncated}
+
+  defp output_member(nil), do: %{"text" => "", "truncated" => true}
+
+  defp stopped_member(nil), do: nil
+
+  defp stopped_member(%{cause: cause, step: step, fixer: fixer, text: line}) do
+    %{
+      "cause" => Atom.to_string(cause),
+      "fixer" => Atom.to_string(fixer),
+      "text" => bounded(line, nil) || "\u{FFFD}"
+    }
+    |> put("step", if(cause == :step_failed, do: step))
+  end
 
   # The machine log of the run's dispatch, where it has one that can be read.
   defp machine_logs(%Dispatch{public_id: public_id}) do
@@ -527,6 +580,16 @@ defmodule Apiary.Runs.Diagnostics do
   end
 
   defp matching(_value, _regex), do: nil
+
+  # A text member of 1 to `max` characters (code points, as JSON Schema counts them), nil
+  # outside that.
+  defp bounded(nil, _max), do: nil
+
+  defp bounded(value, max) when is_binary(value) do
+    shown = text(value)
+    count = shown |> String.to_charlist() |> length()
+    if count >= 1 and (is_nil(max) or count <= max), do: shown
+  end
 
   defp time(nil), do: nil
   defp time(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()

@@ -115,11 +115,16 @@ defmodule Apiary.Runs.Preparation do
           stopped: stopped | nil
         }
 
-  @doc "The preparation of `run` for the reader of `scope`: the moduledoc."
-  @spec read(Scope.t(), Run.t()) :: t
-  def read(%Scope{} = scope, %Run{} = run) do
+  @doc """
+  The preparation of `run` for the reader of `scope`: the moduledoc. `opts`: `log`,
+  whether the steps' output is read, by default whether `scope` may read the run's log
+  (`run.read_log`). `Apiary.Runs.Diagnostics` sets it for a diagnostics key, which reads
+  every run's log and has no scope in the run's workspace.
+  """
+  @spec read(Scope.t(), Run.t(), keyword) :: t
+  def read(%Scope{} = scope, %Run{} = run, opts \\ []) do
     attempt = attempt(scope, run)
-    log? = Access.can?(scope, :"run.read_log", run)
+    log? = Keyword.get_lazy(opts, :log, fn -> Access.can?(scope, :"run.read_log", run) end)
     steps = for step <- Record.steps(scope, run), do: step(scope, run, step, log?)
     session_started_at = Record.session_started_at(scope, run)
     machine = machine(run, attempt, steps, session_started_at)

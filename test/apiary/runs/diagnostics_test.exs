@@ -268,6 +268,65 @@ defmodule Apiary.Runs.DiagnosticsTest do
     end
   end
 
+  describe "a run's preparation" do
+    setup do
+      %{scope: scope} = sign_up_fixture()
+      run = run_fixture(scope, %{public_id: Run.new_public_id()})
+
+      events_fixture(run, [
+        {1, "run.started", started_data()},
+        {2, "run.step_started", %{"step" => 1, "name" => "fetch acme/shop", "kind" => "fetch"}},
+        {3, "run.log", step_log_data(1, "Cloning with #{@secret}\n")},
+        {4, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+        {5, "run.step_started", %{"step" => 2, "name" => "setup", "kind" => "setup"}},
+        {6, "run.step_exited",
+         %{"step" => 2, "state" => "failed", "exit_code" => 2, "duration_ms" => 50}}
+      ])
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
+      %{scope: scope, run: run}
+    end
+
+    test "has the steps with their output, filtered, and why it stopped",
+         %{schema: schema, run: run} do
+      document = valid!(schema, Diagnostics.document(run, everything()))
+
+      assert %{
+               "steps" => [
+                 %{
+                   "number" => 1,
+                   "name" => "Fetch acme/shop",
+                   "kind" => "fetch",
+                   "state" => "succeeded",
+                   "exit_code" => 0,
+                   "duration_ms" => 100,
+                   "output" => %{"text" => "Cloning with [FILTERED]", "truncated" => false}
+                 },
+                 %{"number" => 2, "state" => "failed", "exit_code" => 2}
+               ],
+               "stopped" => %{
+                 "cause" => "step_failed",
+                 "step" => 2,
+                 "fixer" => "workspace_admin",
+                 "text" => text
+               }
+             } = document["preparation"]
+
+      assert text =~ "Setup failed with exit code 2."
+      refute Jason.encode!(document) =~ "AQIDBAUG"
+    end
+
+    test "a reader without the log reads each step's output as empty and cut",
+         %{schema: schema, run: run} do
+      document = valid!(schema, Diagnostics.document(run, %{log: false, machine_logs: false}))
+
+      for step <- document["preparation"]["steps"] do
+        assert step["output"] == %{"text" => "", "truncated" => true}
+      end
+    end
+  end
+
   describe "a run of a workspace's queue" do
     @describetag needs: :factory
     @describetag :tmp_dir
@@ -348,6 +407,34 @@ defmodule Apiary.Runs.DiagnosticsTest do
       document = valid!(schema, Jason.decode!(Diagnostics.encode(run, member)))
       refute Map.has_key?(document, "machine_logs")
       assert Map.has_key?(document, "log")
+    end
+
+    test "a run whose start failed has the dispatch it keeps, with the release reason filtered",
+         %{schema: schema, run: run, dispatch: dispatch} do
+      {1, _} =
+        Repo.update_all(from(d in Apiary.Dispatches.Dispatch, where: d.id == ^dispatch.id),
+          set: [release_reason: "Quota key #{@secret} refused"]
+        )
+
+      run =
+        run
+        |> Ecto.Changeset.change(
+          dispatch_run_id: nil,
+          dispatch_id: dispatch.id,
+          state: "failed",
+          reason: "machine_not_made",
+          start_failure: "machine_not_made",
+          start_failed_at: now()
+        )
+        |> Repo.update!()
+
+      document = valid!(schema, Diagnostics.document(run, everything()))
+
+      assert [%{"id" => id, "release_reason" => "Quota key [FILTERED] refused"}] =
+               document["dispatches"]
+
+      assert id == dispatch.public_id
+      refute Map.has_key?(document, "queue")
     end
 
     test "has no dispatch claimed after the run was registered",
