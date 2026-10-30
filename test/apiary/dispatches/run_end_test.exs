@@ -1140,6 +1140,22 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert Fold.settle(%{released | released_at: nil}) == %{released | released_at: nil}
     end
+
+    test "a start that failed is failed, its cause the reason, over a pending or lost state" do
+      for cause <- Apiary.Runs.Run.start_failures(), state <- ["pending", "lost"] do
+        run = %{
+          state: state,
+          reason: nil,
+          lost_at: ~U[2026-10-17 12:00:00Z],
+          start_failure: cause,
+          released_at: nil,
+          outcome_state: nil,
+          outcome_reason: nil
+        }
+
+        assert %{state: "failed", reason: ^cause, lost_at: nil} = Fold.settle(run)
+      end
+    end
   end
 
   test "the backstop's lose/1 runs nothing for a run of the queue with no registered run",

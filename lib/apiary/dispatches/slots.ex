@@ -17,8 +17,8 @@ defmodule Apiary.Dispatches.Slots do
   #   the dispatches of some runs of the queue (`{:runs, ids}`, as an undo asks): a
   #   dispatch whose lease lapsed before its handover (`now` at or after `lease_until`,
   #   neither handed over, stale nor ended) is marked stale at `now`, its slot freed, the
-  #   run registered at its claim deleted with its run code
-  #   (`Apiary.Dispatches.Handover.drop/1`), and its run, claimed, waits in its
+  #   run registered at its claim failed, `lease_lapsed`, and out of its run of the queue
+  #   (`Apiary.Dispatches.Handover.fail_start/3`), and its run, claimed, waits in its
   #   workspace's queue again with the same `run_id` and
   #   the same `queued_at`, so it takes back its place in the queue; except a prebuild
   #   whose collection, node pool and `environment_ref` have another prebuild waiting: one
@@ -270,19 +270,25 @@ defmodule Apiary.Dispatches.Slots do
           Repo.update_all(
             from(d in lapsed(pool, now),
               where: d.dispatch_run_id in ^run_ids,
-              select: {d.dispatch_run_id, d.workspace_id}
+              select: {d.dispatch_run_id, d.workspace_id, d.id}
             ),
             set: [stale_at: now, slot_freed_at: now, updated_at: now]
           )
 
-        {stale_runs, stale_workspaces} = Enum.unzip(stale)
-        stale_runs = MapSet.new(stale_runs)
+        stale_dispatches = Map.new(stale, fn {run_id, _workspace_id, id} -> {run_id, id} end)
+        stale_workspaces = Enum.map(stale, &elem(&1, 1))
 
-        claimed = Enum.filter(runs, &(MapSet.member?(stale_runs, &1.id) and &1.state == :claimed))
+        claimed =
+          Enum.filter(runs, &(Map.has_key?(stale_dispatches, &1.id) and &1.state == :claimed))
+
         {prebuilds, others} = Enum.split_with(claimed, &(&1.step == DispatchRun.prebuild()))
 
-        # The runs registered at their claims go, with their run codes.
-        _dropped = Handover.drop(Enum.map(claimed, & &1.id))
+        # The runs registered at their claims fail, `lease_lapsed`, and leave their runs
+        # of the queue.
+        _failed =
+          claimed
+          |> Enum.map(&{&1.id, Map.fetch!(stale_dispatches, &1.id)})
+          |> Handover.fail_start("lease_lapsed", now)
 
         {_count, _rows} =
           Repo.update_all(

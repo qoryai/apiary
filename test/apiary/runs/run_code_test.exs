@@ -273,7 +273,7 @@ defmodule Apiary.Runs.RunCodeTest do
       assert {:ok, _redeemed} = redeem(ctx, ed25519_key_pair(), at(ctx, 899))
     end
 
-    test "of a code of a claim its starter released before its handover, the run deleted",
+    test "of a code of a claim its starter released before its handover, the run failed",
          ctx do
       claimed = claimed!(ctx)
       :ok = Dispatches.release(ctx.key, claimed.dispatch.public_id, %{reason: "stopped"})
@@ -285,7 +285,9 @@ defmodule Apiary.Runs.RunCodeTest do
              ) ==
                {:error, :unauthorized}
 
-      refute Repo.get(Run, claimed.run.id)
+      assert %Run{state: "failed", start_failure: "machine_not_made", dispatch_run_id: nil} =
+               Repo.get!(Run, claimed.run.id)
+
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, claimed.queued.id)
     end
 
@@ -301,9 +303,13 @@ defmodule Apiary.Runs.RunCodeTest do
       assert %Run{run_key_payload: nil} = Repo.get!(Run, claimed.run.id)
       assert %Dispatch{handed_over_at: nil} = Repo.get!(Dispatch, claimed.dispatch.id)
 
-      # Swept: the run waits again, and its registered run is deleted with its code.
+      # Swept: the run waits again, and its registered run failed, out of the run of the
+      # queue: its code redeems no more.
       Dispatches.sweep(past_lease)
-      refute Repo.get(Run, claimed.run.id)
+
+      assert %Run{state: "failed", start_failure: "lease_lapsed", dispatch_run_id: nil} =
+               Repo.get!(Run, claimed.run.id)
+
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, claimed.queued.id)
 
       assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: past_lease) ==
