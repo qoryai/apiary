@@ -288,7 +288,7 @@ defmodule Apiary.Runs.Diagnostics do
   # The preparation (`Apiary.Runs.Preparation`), read under `scope` with the steps'
   # output.
   defp preparation(%Scope{} = scope, %Run{} = run) do
-    preparation = Preparation.read(scope, run, log: true)
+    preparation = Preparation.read(scope, run, log: true, release_reason: :as_stored)
 
     %{"steps" => Enum.map(preparation.steps, &step_member/1)}
     |> put("session_started_at", time(preparation.session_started_at))

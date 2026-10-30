@@ -29,7 +29,7 @@ defmodule Apiary.Runs.Preparation do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, ExternalText, Repo}
+  alias Apiary.{Access, ExternalText, Repo, SecretLogFilter}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Dispatch
   alias Apiary.Nodes.Node
@@ -121,10 +121,15 @@ defmodule Apiary.Runs.Preparation do
         }
 
   @doc """
-  The preparation of `run` for the reader of `scope`: the moduledoc. `opts`: `log`,
-  whether the steps' output is read, by default whether `scope` may read the run's log
-  (`run.read_log`). `Apiary.Runs.Diagnostics` sets it for a diagnostics key, which reads
-  every run's log and has no scope in the run's workspace.
+  The preparation of `run` for the reader of `scope`: the moduledoc. `opts`:
+
+    * `log`, whether the steps' output is read, by default whether `scope` may read the
+      run's log (`run.read_log`). `Apiary.Runs.Diagnostics` sets it for a diagnostics
+      key, which reads every run's log and has no scope in the run's workspace.
+    * `release_reason`, how `stopped`'s text has the pool's release reason: `:filtered`,
+      by default, through the secret filter (`Apiary.SecretLogFilter.filter_text/1`), as
+      the run page's header has it; `:as_stored` for the diagnostics document, which
+      keeps every text as stored.
   """
   @spec read(Scope.t(), Run.t(), keyword) :: t
   def read(%Scope{} = scope, %Run{} = run, opts \\ []) do
@@ -140,7 +145,15 @@ defmodule Apiary.Runs.Preparation do
       steps: steps,
       log_pruned_at: run.log_pruned_at,
       session_started_at: session_started_at,
-      stopped: stopped(scope, run, attempt, machine, steps)
+      stopped:
+        stopped(
+          scope,
+          run,
+          attempt,
+          machine,
+          steps,
+          Keyword.get(opts, :release_reason, :filtered)
+        )
     }
   end
 
@@ -321,13 +334,14 @@ defmodule Apiary.Runs.Preparation do
 
   ## Why it stopped
 
-  defp stopped(scope, _run, %{failure: {cause, _at}}, machine, _steps) do
+  defp stopped(scope, _run, %{failure: {cause, _at}}, machine, _steps, release_reason) do
     {fixer, who} = pool_fixer(scope, machine.pool)
+    machine = %{machine | release_reason: reason(machine.release_reason, release_reason)}
     {what, fix} = machine_line(cause, machine, who, log_place(machine.pool))
     %{cause: cause, step: nil, fixer: fixer, text: what <> " " <> fix, fix: fix}
   end
 
-  defp stopped(scope, run, _attempt, machine, steps) do
+  defp stopped(scope, run, _attempt, machine, steps, _release_reason) do
     case Enum.find(steps, &(&1.state == "failed")) do
       nil ->
         nil
@@ -355,7 +369,7 @@ defmodule Apiary.Runs.Preparation do
   # (`ApiaryWeb.RunComponents.reason_words/1`), but for a lapsed lease, which names the
   # pool here.
   defp machine_line(:machine_not_made, machine, who, place) do
-    {gettext("No machine was made: %{reason}.", reason: reason(machine.release_reason)),
+    {gettext("No machine was made: %{reason}.", reason: machine.release_reason),
      reads_why(who, place)}
   end
 
@@ -408,10 +422,13 @@ defmodule Apiary.Runs.Preparation do
   def step_name(%{number: number}), do: gettext("Step %{number}", number: number)
 
   # The starter's reason as a line an external system sent, with its one closing full
-  # stop left out for the sentence's.
-  defp reason(nil), do: gettext("n/a")
+  # stop left out for the sentence's, through the secret filter unless kept as stored.
+  defp reason(nil, _how), do: gettext("n/a")
 
-  defp reason(reason),
+  defp reason(reason, :filtered),
+    do: reason |> SecretLogFilter.filter_text() |> reason(:as_stored)
+
+  defp reason(reason, :as_stored),
     do: reason |> ExternalText.line() |> String.replace_suffix(".", "")
 
   defp pool_name(%{name: name}), do: name
