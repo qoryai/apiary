@@ -17252,26 +17252,6 @@ msgctxt "plain"
 msgid "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
 msgstr ""
 
-#: lib/apiary/runs/leaked_secrets.ex
-#, elixir-autogen, elixir-format
-msgid "This key is compromised: it was printed into an event of the run. Replace it."
-msgstr ""
-
-#: lib/apiary/runs/leaked_secrets.ex
-#, elixir-autogen, elixir-format
-msgid "This key is compromised: it was printed into the machine log. Replace it."
-msgstr ""
-
-#: lib/apiary/runs/leaked_secrets.ex
-#, elixir-autogen, elixir-format
-msgid "This key is compromised: it was printed into the reason the machine was released. Replace it."
-msgstr ""
-
-#: lib/apiary/runs/leaked_secrets.ex
-#, elixir-autogen, elixir-format
-msgid "This key is compromised: it was printed into the run's log. Replace it."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
@@ -17406,6 +17386,26 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "This run's session events could not be recorded: the %{wall} it ran behind runs inside a virtual machine. The run has connections and no session timeline."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into an event of the run. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into the machine log. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into the reason the machine was released. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into the run's log. Replace it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

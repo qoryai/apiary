@@ -86,7 +86,7 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert id == ctx.key.key_id
 
     assert hd(entries).message ==
-             "This key is compromised: it was printed into the run's log. Replace it."
+             "This secret is compromised: it was printed into the run's log. Replace it."
   end
 
   test "finds a secret that two chunks of a step split, in one pass and in two", ctx do

@@ -481,17 +481,18 @@ defmodule Apiary.Runs.LeakedSecrets do
   @doc "message/1 is what the document says of a secret found at `place`."
   @spec message(String.t()) :: String.t()
   def message(place) when place in ["step", "log"],
-    do: gettext("This key is compromised: it was printed into the run's log. Replace it.")
+    do: gettext("This secret is compromised: it was printed into the run's log. Replace it.")
 
   def message("event"),
-    do: gettext("This key is compromised: it was printed into an event of the run. Replace it.")
+    do:
+      gettext("This secret is compromised: it was printed into an event of the run. Replace it.")
 
   def message("machine_log"),
-    do: gettext("This key is compromised: it was printed into the machine log. Replace it.")
+    do: gettext("This secret is compromised: it was printed into the machine log. Replace it.")
 
   def message("release_reason"),
     do:
       gettext(
-        "This key is compromised: it was printed into the reason the machine was released. Replace it."
+        "This secret is compromised: it was printed into the reason the machine was released. Replace it."
       )
 end

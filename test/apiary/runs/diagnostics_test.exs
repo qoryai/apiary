@@ -420,7 +420,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
                  "id" => ^key_id,
                  "value" => ^secret,
                  "message" =>
-                   "This key is compromised: it was printed into the run's log. Replace it."
+                   "This secret is compromised: it was printed into the run's log. Replace it."
                },
                %{"kind" => "github_token", "place" => "event", "sequence" => 3} = event,
                %{
@@ -430,7 +430,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
                  "id" => ^key_id,
                  "value" => ^secret,
                  "message" =>
-                   "This key is compromised: it was printed into the machine log. Replace it."
+                   "This secret is compromised: it was printed into the machine log. Replace it."
                } = machine_log
              ] = document["leaked_secrets"]
 
@@ -479,7 +479,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
              ] = document["leaked_secrets"]
 
       refute Map.has_key?(leaked, "id")
-      assert message =~ "This key is compromised"
+      assert message =~ "This secret is compromised"
     end
 
     test "has its dispatch, its queue row, its variables by name and its machine log",
