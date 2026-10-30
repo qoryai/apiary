@@ -1418,20 +1418,99 @@ defmodule Apiary.Organisations do
 
   ## Settings
 
+  @doc """
+  change_organisation/2 is the changeset of a rename of `organisation`: its name, and the
+  address the new name gives it, `/<slug>`, refused where a page or another organisation
+  has it. A slug in `attrs` is ignored.
+  """
   def change_organisation(%Organisation{} = organisation, attrs \\ %{}) do
-    Organisation.changeset(organisation, attrs)
+    changeset = Organisation.changeset(organisation, attrs)
+
+    # A name that does not change keeps the address, as an organisation made before the
+    # address followed the name, or numbered at creation, has it.
+    if Ecto.Changeset.get_change(changeset, :name),
+      do: put_organisation_address(changeset),
+      else: changeset
   end
 
-  @doc "Renames the scope's organisation (`organisation.rename`), with its audit entry."
+  @doc """
+  Renames the scope's organisation (`organisation.rename`), with its audit entry: the name
+  and the slug, which follows the name (`change_organisation/2`). The old addresses, the
+  organisation's and its workspaces', lead nowhere after.
+  """
   def update_organisation(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"organisation.rename", organisation),
-           {:ok, renamed} <- organisation |> Organisation.changeset(attrs) |> Repo.update(),
-           :ok <- record_edit(scope, :"organisation.rename", organisation, renamed, [:name]) do
+           {:ok, renamed} <- organisation |> change_organisation(attrs) |> Repo.update(),
+           :ok <-
+             record_edit(scope, :"organisation.rename", organisation, renamed, [:name, :slug]) do
         {:ok, renamed}
       end
     end)
+    |> case do
+      # Read again outside the transaction, which the refused update ended.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error,
+         refused_again(changeset, fn refused ->
+           organisation
+           |> change_organisation(%{"name" => Ecto.Changeset.get_field(refused, :name)})
+           |> Map.put(:action, :update)
+         end)}
+
+      result ->
+        result
+    end
   end
+
+  # The slug the changeset's name gives the organisation (`Slug.from_name/2`), its address
+  # `/<slug>`. A slug a page of Qory Apiary has refuses the name, and so does one another
+  # organisation has, one marked for deletion included: nothing is numbered. A name
+  # refused already is not asked again, and neither is the slug the organisation has, which
+  # a name that changes only in case or punctuation keeps.
+  defp put_organisation_address(changeset) do
+    name = Ecto.Changeset.get_field(changeset, :name)
+    slug = Slug.from_name(if(is_binary(name), do: name, else: ""), "organisation")
+
+    if slug == changeset.data.slug,
+      do: changeset,
+      else:
+        changeset
+        |> Organisation.put_address(slug)
+        |> unless_name_refused(&refuse_taken_organisation_address(&1, slug))
+  end
+
+  defp refuse_taken_organisation_address(changeset, slug) do
+    holder =
+      Repo.one(
+        from o in Organisation,
+          where: o.slug == ^slug,
+          where: ^not_this_organisation(changeset.data.id),
+          select: %{marked: not is_nil(o.deletion_marked_at)}
+      )
+
+    cond do
+      slug in ReservedSlugs.organisation() ->
+        Ecto.Changeset.add_error(changeset, :name, Organisation.page_address(),
+          address: "/#{slug}"
+        )
+
+      match?(%{marked: true}, holder) ->
+        Ecto.Changeset.add_error(changeset, :name, Organisation.marked_address(),
+          address: "/#{slug}"
+        )
+
+      holder ->
+        Ecto.Changeset.add_error(changeset, :name, Organisation.taken_address(),
+          address: "/#{slug}"
+        )
+
+      true ->
+        changeset
+    end
+  end
+
+  defp not_this_organisation(nil), do: dynamic(true)
+  defp not_this_organisation(id), do: dynamic([o], o.id != ^id)
 
   @doc """
   change_workspace/2 is the changeset of a rename of `workspace`: its name, and the

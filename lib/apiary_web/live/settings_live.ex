@@ -18,7 +18,7 @@ defmodule ApiaryWeb.SettingsLive do
     events and their logs, and what the daily job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
-  A slug is shown, not edited. Deleting asks to type the
+  A slug is shown, not edited: it follows the name. Deleting asks to type the
   slug, in place, never in a dialog, each at a separate path: the organisation's and this
   workspace's in their danger zone's line, expanded on General
   (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`
@@ -123,13 +123,11 @@ defmodule ApiaryWeb.SettingsLive do
           disabled={!may?(@current_scope, :"organisation.rename")}
           required
         />
-        <p id="organisation-slug" class="text-[13px]/[20px] text-muted">
-          <.rich text={
-            rich_gettext("Its pages are under %{path}. Renaming the organisation keeps it.",
-              path: {:m, ~p"/#{@current_scope.organisation}"}
-            )
-          } />
-        </p>
+        <SettingsComponents.organisation_address
+          id="organisation-slug"
+          organisation={@current_scope.organisation}
+          form={@organisation_form}
+        />
         <SettingsComponents.save :if={may?(@current_scope, :"organisation.rename")}>
           <.button
             type="submit"
@@ -652,14 +650,12 @@ defmodule ApiaryWeb.SettingsLive do
     scope = socket.assigns.current_scope
 
     case Organisations.update_organisation(scope, params) do
+      # The address follows the name: the page opens again at the organisation's new one.
       {:ok, organisation} ->
         {:noreply,
          socket
-         |> assign(:current_scope, %{scope | organisation: organisation})
-         # The browser title names the organisation.
-         |> assign_section()
-         |> assign_forms()
-         |> put_flash(:info, gettext("Organisation renamed to %{name}.", name: organisation.name))}
+         |> put_flash(:info, gettext("Organisation renamed to %{name}.", name: organisation.name))
+         |> push_navigate(to: ~p"/#{organisation}/settings")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :organisation_form, to_form(changeset))}

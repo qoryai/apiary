@@ -131,8 +131,10 @@ asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
 from the names given at set-up: an organisation named `Acme` gives `/acme/main`, and the runs
-are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
-a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
+are at `/acme/main/runs`. A slug follows the name: renaming the organisation or the
+workspace changes its slug, and links to the old address stop working. A link to a page
+names its workspace, so a colleague in the organisation opens the same page, and anyone
+else gets *Not Found*.
 
 The people of the organisation are under **Organisation settings › People**, `/<organisation>/settings/people`, each
 at one of three levels, and every one of them reaches the workspace; the workspace's **Workspace

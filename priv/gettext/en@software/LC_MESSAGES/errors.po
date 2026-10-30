@@ -56,6 +56,7 @@ msgstr ""
 msgid "Choose another default key for %{provider} first: %{value} is its default key."
 msgstr ""
 
+#: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another name. %{address} is a page of Qory Apiary."
@@ -64,6 +65,16 @@ msgstr ""
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another name. A workspace marked for deletion still has the address %{address}."
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. An organisation marked for deletion still has the address %{address}."
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. Another organisation has the address %{address}."
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
