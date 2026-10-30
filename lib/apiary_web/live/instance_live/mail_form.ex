@@ -16,8 +16,9 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   relay accepted the email, when it went out and until when the link works; where it did
   not, what to check, and the time and the reply code. That admin has **Send the test
   link again** (`Apiary.Mail.resend_test_link/2`); another instance admin sees who the
-  link is for, the failed send's result, and that a save sends them one. A save or a
-  send within the minute after the last test send sends nothing and says when to try
+  link is for, or that no link waits, the failed send's result, and that a save sends them
+  one. A save or a
+  send within the minute after the last test send sends nothing and shows when to try
   again.
 
   The password is never shown: its field is always empty, and the form keeps neither the
@@ -25,10 +26,10 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   field stays empty and nothing it is bound to changes (`Apiary.Mail.save_settings/3`).
 
   `step` is the mail step's form: its button is "Save and send a test", with the step's
-  `back` before it and its `actions` at the end of the row, and it says neither that mail
-  is off nor what a save sends, which the step's context says; **Send the test link
-  again** stands beside its button. After each test send, by a save or sent again, it
-  tells the page that holds it, `{ApiaryWeb.InstanceLive.MailForm, :tested, test_send}`
+  `back` before it and its `actions` at the end of the row, and it shows neither that mail
+  is off nor what a save sends, which are in the step's context column; **Send the test
+  link again** is beside its button. After each test send, by a save or sent again, it
+  sends the page's process `{ApiaryWeb.InstanceLive.MailForm, :tested, test_send}`
   (`t:Apiary.Mail.test_send/0`).
 
   A save after the sign-in has grown old leads to the log-in page, as the settings page's
@@ -221,10 +222,13 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
             </div>
           <% end %>
           <%= if @state == :pending and not @saver do %>
-            <p id="mail-pending" class="q-foot-note">
+            <p :if={@link_waiting} id="mail-pending" class="q-foot-note">
               {gettext(
                 "Mail turns on when the admin who saved these settings follows the link we sent them."
               )}
+            </p>
+            <p :if={not @link_waiting} id="mail-no-link" class="q-foot-note">
+              {gettext("No test link is waiting for the admin who saved these settings.")}
             </p>
             <p :if={failed?(@last)} id="mail-result" class="q-foot-note">
               {result_line(@last, @reason)}
@@ -353,8 +357,8 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
     end
   end
 
-  # After a test send: the reason a connection failed, kept for this page alone; and the
-  # page that holds the mail step told.
+  # After a test send: the reason a connection failed, kept for this page alone; and, on
+  # the mail step, the test send sent to the page's process.
   defp tested(socket, test_send, notice) do
     if socket.assigns.step, do: send(self(), {__MODULE__, :tested, test_send})
     assign(socket, notice: notice, reason: {test_send.sent_at, test_send.reason})
@@ -459,8 +463,8 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
       |> Format.datetime(zone: true)
 
   # What the form shows, read now: where mail comes from, and the saved settings, their
-  # state, whether a test link waits, the last test send, and the form. None of it holds a
-  # password, given or saved (`Apiary.Mail.shown/0`): of the settings, the form keeps when
+  # state, whether a test link waits, the last test send, and the form. None of it contains
+  # a password, given or saved (`Apiary.Mail.shown/0`): of the settings, the form keeps when
   # mail turned on, whether its reader saved them, the last test send, and the form.
   defp load(socket) do
     %{settings: settings, state: state, password_saved: password_saved} = Mail.shown()

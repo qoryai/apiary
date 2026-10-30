@@ -355,6 +355,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       assert text(view, "#mail-other-admin") ==
                "To get a test link at your address, save the settings."
 
+      refute has_element?(view, "#mail-no-link")
       refute has_element?(view, "#mail-resend")
       refute has_element?(view, "#mail-arrive")
       refute has_element?(view, "#mail-result")
@@ -684,8 +685,11 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       Mail.put_test_source(:none)
       {:ok, view, _html} = live(log_in_user(build_conn(), other.user), ~p"/instance/mail")
 
-      assert text(view, "#mail-pending") ==
-               "Mail turns on when the admin who saved these settings follows the link we sent them."
+      # No link went out: none waits.
+      refute has_element?(view, "#mail-pending")
+
+      assert text(view, "#mail-no-link") ==
+               "No test link is waiting for the admin who saved these settings."
 
       assert text(view, "#mail-result") =~ "The relay refused the email at"
 
@@ -712,13 +716,19 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute has_element?(view, "#mail-result")
       assert has_element?(view, "#mail-resend")
 
-      # Another admin sees who the link is for, and how to get one.
+      # Another admin sees that no link waits, and how to get one.
       Mail.put_test_source(:env)
       other = member_fixture(scope, :owner)
       Mail.put_test_source(:none)
       {:ok, view, _html} = live(log_in_user(build_conn(), other.user), ~p"/instance/mail")
-      assert has_element?(view, "#mail-pending")
-      assert has_element?(view, "#mail-other-admin")
+      refute has_element?(view, "#mail-pending")
+
+      assert text(view, "#mail-no-link") ==
+               "No test link is waiting for the admin who saved these settings."
+
+      assert text(view, "#mail-other-admin") ==
+               "To get a test link at your address, save the settings."
+
       refute has_element?(view, "#mail-resend")
     end
 
