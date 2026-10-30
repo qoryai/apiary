@@ -258,8 +258,8 @@ defmodule ApiaryWeb.UserLive.Registration do
         do: Map.drop(user_params, ~w(password password_confirmation)),
         else: user_params
 
-    # An organisation it creates has no workspace: its owner lands on the workspace set-up
-    # (`ApiaryWeb.WorkspaceSetupLive`) and makes the first one there.
+    # An organisation it creates has no workspace: its owner lands on the organisation's
+    # overview (`ApiaryWeb.OrganisationLive`) and makes the first one from its kind cards.
     case Organisations.sign_up_user(user_params, socket.assigns.invitation_token,
            origin: socket.assigns.origin,
            workspace: false
