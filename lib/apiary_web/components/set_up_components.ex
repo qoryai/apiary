@@ -64,8 +64,9 @@ defmodule ApiaryWeb.SetUpComponents do
      the `secrets` feature too; without `factory`, Name alone. `flow:` is the flow the
      page sets up (`flow/5`). Without it, the flow of the workspace the scope has once
      the organisation has a workspace, and before, of a new workspace of the default
-     type at `/:org/set-up`, for a person who may create it (`workspace.create`); none
-     for anyone else. Signed out, every step, none done and none with a page, where the
+     type, for a person who may create it (`workspace.create`), whose step paths, at
+     `/:org/set-up`, send the person to the organisation's overview and its kind cards;
+     none for anyone else. Signed out, every step, none done and none with a page, where the
      organisation is still to be made; Name alone where it is the invitation's and has
      no workspace.
 
@@ -230,8 +231,8 @@ defmodule ApiaryWeb.SetUpComponents do
 
   # The flow a page shows without naming one: the workspace the scope has, of its
   # organisation, once the organisation has a workspace; before, a new workspace of the
-  # default type for a person who may create it, at `/:org/set-up`, which shows the type
-  # cards first; else none.
+  # default type for a person who may create it, whose step paths, at `/:org/set-up`, send
+  # the person to the organisation's overview and its kind cards; else none.
   defp default_flow(%Scope{organisation: organisation} = scope) do
     cond do
       Organisations.has_workspace?(organisation) ->
@@ -252,7 +253,8 @@ defmodule ApiaryWeb.SetUpComponents do
   The flow a page sets up (`flow/5`): the organisation, the type of the workspace
   (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and the page that runs
   it: `:set_up`, `/:org/set-up`, or `:new`, `/:org/workspaces/new`. `type` is whether
-  the step's paths name the type, as once a card is picked.
+  the step's paths name the type (`&type=<name>`); no page of the core sets it, since a
+  card's **Choose** creates the workspace.
   """
   @type flow :: %{
           organisation: %Organisation{},
@@ -265,7 +267,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
   or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
-  in `opts`, the step's paths name the type, as once a card is picked.
+  in `opts`, the step's paths name the type.
   """
   @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
   def flow(organisation, domain, workspace, page, opts \\ []),
@@ -670,6 +672,124 @@ defmodule ApiaryWeb.SetUpComponents do
     </div>
     """
   end
+
+  ## The kind cards
+
+  @doc """
+  kind_cards/1 is the choice of what a new workspace does: one card per domain of
+  `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
+  type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
+  connect, and Choose, which sends the event `choose_kind` with the domain's name as
+  `type`. The empty organisation overview (`ApiaryWeb.OrganisationLive`) and New
+  workspace (`/:org/workspaces/new`) show it, and each takes the event with
+  `choose_kind/3`. With `limit`, that line shows in place of the cards.
+  """
+  attr :id, :string, default: "set-up-cards"
+  attr :title, :string, required: true
+  attr :heading, :string, default: "h1", values: ~w(h1 h2)
+  attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
+
+  def kind_cards(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :cards,
+        for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
+      )
+
+    ~H"""
+    <div class="grid gap-4">
+      <.dynamic_tag
+        tag_name={@heading}
+        id={"#{@id}-title"}
+        class="text-2xl/8 font-semibold tracking-[-0.025em]"
+      >
+        {@title}
+      </.dynamic_tag>
+      <.notice :if={@limit} kind={:error}>
+        <span id="set-up-limit">{@limit}</span>
+      </.notice>
+      <ul :if={!@limit} id={@id} class="grid gap-3">
+        <li
+          :for={{domain, card} <- @cards}
+          id={"set-up-card-#{domain.name()}"}
+          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+        >
+          <h2 class="font-semibold">{domain.type_name()}</h2>
+          <p class="text-[13.5px]/5">{card.what}</p>
+          <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
+          <div class="flex justify-end">
+            <.button
+              id={"set-up-card-#{domain.name()}-choose"}
+              variant="primary"
+              size="md"
+              phx-click="choose_kind"
+              phx-value-type={domain.name()}
+              phx-disable-with={gettext("Creating")}
+            >
+              {gettext("Choose")}
+            </.button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # The words of a domain's card, nil for a domain without one, which shows no card. A
+  # person reads a card's line where they pick a type, in any locale, so the line is in the
+  # `workspace type` context and keeps the type's words.
+  defp kind_card_words(Domain.Software) do
+    %{
+      what: pgettext("workspace type", "Agents change code in your repositories."),
+      connect: gettext("You connect: where work comes from, where changes go, a model.")
+    }
+  end
+
+  defp kind_card_words(_domain), do: nil
+
+  @doc """
+  choose_kind/3 takes Choose of a kind card (`kind_cards/1`) on `socket`'s page: it creates
+  a workspace of that type in the scope's organisation, named after the type
+  (`Apiary.Organisations.create_workspace_of_kind/3`, with `which`, `:first` on the empty
+  organisation overview), and opens its first set-up step, Name. A type with no card
+  changes nothing. Where someone else created the organisation's first workspace a moment
+  before, or the person may no longer create one, the organisation's overview opens
+  again; where the organisation may have no more, the page says so.
+  """
+  @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
+          Phoenix.LiveView.Socket.t()
+  def choose_kind(socket, type, which) do
+    scope = socket.assigns.current_scope
+    organisation = scope.organisation
+
+    case Enum.find(Domain.choices(), &(&1.name() == type and kind_card_words(&1) != nil)) do
+      nil ->
+        socket
+
+      domain ->
+        case Organisations.create_workspace_of_kind(scope, domain, which) do
+          {:ok, workspace} ->
+            Phoenix.LiveView.push_navigate(socket,
+              to: flow_path(flow(organisation, domain, workspace, :set_up), :name)
+            )
+
+          {:error, :limit} ->
+            Phoenix.LiveView.put_flash(socket, :error, limit_line(organisation))
+
+          {:error, reason} when reason in [:exists, :forbidden, :not_found] ->
+            Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+          {:error, _changeset} ->
+            Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+        end
+    end
+  end
+
+  @doc "limit_line/1 is the line of an organisation that may have no more workspaces."
+  @spec limit_line(%Organisation{}) :: String.t()
+  def limit_line(%Organisation{name: name}),
+    do: gettext("%{organisation} may have no more workspaces.", organisation: name)
 
   attr :id, :string, required: true
   attr :title, :string, required: true, doc: "where the steps happen, such as \"On GitHub\""

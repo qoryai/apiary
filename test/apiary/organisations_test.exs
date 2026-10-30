@@ -572,11 +572,177 @@ defmodule Apiary.OrganisationsTest do
     end
   end
 
+  describe "a workspace's address follows its name" do
+    test "a rename changes the slug, and the trail has the old and the new" do
+      %{scope: scope, organisation: organisation, workspace: main} = sign_up_fixture()
+
+      assert {:ok, %Workspace{name: "Payments", slug: "payments"} = renamed} =
+               Organisations.update_workspace(scope, %{"name" => "Payments", "slug" => "kept"})
+
+      assert renamed.public_id == main.public_id
+
+      assert %Entry{before: before, after: after_} =
+               Repo.one!(
+                 from e in Entry,
+                   where: e.organisation_id == ^organisation.id and e.action == "workspace.rename"
+               )
+
+      assert before == %{"name" => "Main", "slug" => "main"}
+      assert after_ == %{"name" => "Payments", "slug" => "payments"}
+
+      # The old address is free for another workspace.
+      assert %Workspace{slug: "main"} = workspace_fixture(organisation, "Main")
+    end
+
+    test "a name another workspace has at another address is refused, with its address" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      org = organisation.slug
+      data = workspace_fixture(organisation, "Data")
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^data.id), set: [slug: "lake"])
+
+      message = "Choose another name. Another workspace is already named Data."
+
+      assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => "Data"})
+      assert %{name: [^message]} = errors_on(changeset)
+
+      mark_workspace(Repo.reload!(data))
+      scope = mark_only_workspace(scope)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "software"})
+
+      assert %{
+               name: [
+                 "Choose another name. A workspace marked for deletion still has the address /#{org}/lake."
+               ]
+             } == errors_on(changeset)
+    end
+
+    test "a name that does not change keeps the slug" do
+      %{scope: scope, workspace: main} = sign_up_fixture()
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^main.id), set: [slug: "old"])
+
+      scope = %{scope | workspace: %{main | slug: "old"}}
+
+      assert {:ok, %Workspace{slug: "old"}} =
+               Organisations.update_workspace(scope, %{"name" => "Main"})
+
+      refute Organisations.change_workspace(scope.workspace, %{"name" => "Main"}).changes[:slug]
+    end
+
+    test "a rename to an address that is taken is refused, with the fix first" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      org = organisation.slug
+      _data = workspace_fixture(organisation, "Data")
+      old = workspace_fixture(organisation, "Old")
+
+      mark_workspace(old)
+
+      for {name, message} <- [
+            {"data!",
+             "Choose another name. Another workspace already has the address /#{org}/data."},
+            {"OLD",
+             "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
+            {"Audit log", "Choose another name. /#{org}/audit-log is a page of Qory Apiary."}
+          ] do
+        assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => name})
+        assert %{name: [^message]} = errors_on(changeset)
+
+        assert %{name: [^message]} =
+                 errors_on(Organisations.change_workspace(scope.workspace, %{"name" => name}))
+      end
+
+      assert %Workspace{name: "Main", slug: "main"} = Repo.reload!(scope.workspace)
+    end
+  end
+
+  describe "create_workspace_of_kind/3" do
+    test "names the workspace after its type, and numbers a name taken" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+      domain = Apiary.Lingo.Domain.Software
+
+      assert {:ok, %Workspace{name: "Software factory", slug: "software-factory"} = first} =
+               Organisations.create_workspace_of_kind(scope, domain, :any)
+
+      assert first.domain == "software"
+
+      # Marked, it keeps its name and its address: the next is the second.
+      mark_workspace(first)
+
+      assert {:ok, %Workspace{name: "Software factory 2", slug: "software-factory-2"}} =
+               Organisations.create_workspace_of_kind(scope, domain, :any)
+
+      # A name free whose address is taken is passed over too.
+      %Workspace{organisation_id: organisation.id}
+      |> Workspace.create_changeset(%{name: "Other", domain: "software"})
+      |> Workspace.put_slug("software-factory-3")
+      |> Repo.insert!()
+      |> mark_workspace()
+
+      mark_workspace(Repo.get_by!(Workspace, slug: "software-factory-2"))
+
+      assert {:ok, %Workspace{name: "Software factory 4", slug: "software-factory-4"}} =
+               Organisations.create_workspace_of_kind(scope, domain, :any)
+    end
+
+    defmodule LongKind do
+      # A type whose name alone fills a slug: a number is kept in the slug all the same.
+      def type_name, do: "Customer care for every channel and every region"
+      def name, do: "software"
+    end
+
+    test "a type name as long as a slug keeps the number in the slug" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:ok, first} = Organisations.create_workspace_of_kind(scope, LongKind, :any)
+      assert first.name == LongKind.type_name()
+      assert first.slug == "customer-care-for-every-channel-and-ever"
+      mark_workspace(first)
+
+      assert {:ok, second} = Organisations.create_workspace_of_kind(scope, LongKind, :any)
+      assert second.name == "Customer care for every channel and ev 2"
+      assert second.slug == "customer-care-for-every-channel-and-ev-2"
+      mark_workspace(second)
+
+      assert {:ok, %{slug: "customer-care-for-every-channel-and-ev-3"}} =
+               Organisations.create_workspace_of_kind(scope, LongKind, :any)
+    end
+
+    test "with :first, the organisation's first workspace, once" do
+      {:ok, %{user: user}} =
+        Organisations.sign_up_user(
+          %{email: unique_user_email(), organisation_name: "Kind Co"},
+          nil,
+          open: true,
+          workspace: false
+        )
+
+      scope = Organisations.load_scope(Scope.for_user(user))
+
+      assert {:ok, %Workspace{name: "Software factory"}} =
+               Organisations.create_workspace_of_kind(scope, Apiary.Lingo.Domain.Software, :first)
+
+      assert {:error, :exists} =
+               Organisations.create_workspace_of_kind(scope, Apiary.Lingo.Domain.Software, :first)
+    end
+  end
+
   describe "create_workspace/2" do
     # The core's edition allows one workspace in use, the one the organisation was made
     # with: another is created in its place once it is marked for deletion. The scope,
     # loaded again, then holds no workspace.
     defp mark_only_workspace(%{workspace: workspace} = scope) do
+      mark_workspace(workspace)
+      Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+    end
+
+    defp mark_workspace(workspace) do
       now = DateTime.utc_now()
 
       workspace
@@ -586,8 +752,6 @@ defmodule Apiary.OrganisationsTest do
         purge_trigger: "grace_period"
       )
       |> Repo.update!()
-
-      Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
     end
 
     test "an owner creates one, named, at a slug made from the name, empty and in observe" do
@@ -672,7 +836,6 @@ defmodule Apiary.OrganisationsTest do
 
       refute Phoenix.Component.used_input?(form[:domain])
       assert Phoenix.Component.used_input?(form[:name])
-      assert Phoenix.Component.used_input?(form[:slug])
 
       form =
         scope
@@ -686,7 +849,6 @@ defmodule Apiary.OrganisationsTest do
         |> Phoenix.Component.to_form()
 
       refute Phoenix.Component.used_input?(form[:domain])
-      assert Phoenix.Component.used_input?(form[:slug])
 
       form =
         Phoenix.Component.to_form(
@@ -696,20 +858,23 @@ defmodule Apiary.OrganisationsTest do
       assert Phoenix.Component.used_input?(form[:domain])
     end
 
-    test "with no domain, a name and a slug another workspace has are refused all the same" do
+    test "with no domain, a name another workspace has is refused all the same" do
       %{scope: scope, workspace: main} = sign_up_fixture()
       scope = mark_only_workspace(scope)
-      taken = %{"name" => main.name, "slug" => main.slug}
+      taken = %{"name" => main.name}
+      address = "/#{scope.organisation.slug}/#{main.slug}"
 
       assert {:error, changeset} = Organisations.create_workspace(scope, taken)
 
       assert %{
                domain: ["Choose a type."],
-               name: ["is already the name of a workspace in this organisation"],
-               slug: ["is already the slug of a workspace in this organisation"]
+               name: [
+                 "Choose another name. A workspace marked for deletion still has the address " <>
+                   ^address <> "."
+               ]
              } = errors_on(changeset)
 
-      assert %{domain: [_], name: [_], slug: [_]} =
+      assert %{domain: [_], name: [_]} =
                errors_on(Organisations.change_new_workspace(scope, taken))
 
       # With a domain, the same: the check reads the database before the insert, and the
@@ -717,91 +882,67 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, changeset} =
                Organisations.create_workspace(scope, Map.put(taken, "domain", "software"))
 
-      assert %{name: [_], slug: [_]} = errors_on(changeset)
+      assert %{name: [_]} = errors_on(changeset)
       refute Map.has_key?(errors_on(changeset), :domain)
     end
 
-    test "the slug is the form's where it gives one, and checked as a slug" do
+    test "the address is the name's: a slug passed in is ignored" do
       %{scope: scope} = sign_up_fixture()
       scope = mark_only_workspace(scope)
 
-      assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{
-                 domain: "software",
-                 name: "Data",
-                 slug: "Data Lake"
-               })
+      for slug <- ["lake", "Data Lake", "settings", ""] do
+        changeset =
+          Organisations.change_new_workspace(scope, %{
+            "domain" => "software",
+            "name" => "Data",
+            "slug" => slug
+          })
 
-      assert %{slug: [_rule]} = errors_on(changeset)
+        assert Ecto.Changeset.get_field(changeset, :slug) == "data"
+        assert changeset.valid?
+      end
 
-      assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{
-                 domain: "software",
-                 name: "Data",
-                 slug: "settings"
-               })
-
-      assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
-
-      assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{
-                 domain: "software",
-                 name: "Data",
-                 slug: "gateways"
-               })
-
-      assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
-
-      assert Organisations.suggest_workspace_slug(scope, "Gateways") == "gateways-2"
-
-      assert {:ok, %{slug: "lake"}} =
+      assert {:ok, %{slug: "data"}} =
                Organisations.create_workspace(scope, %{
                  domain: "software",
                  name: "Data",
                  slug: " lake "
                })
+
+      assert Organisations.suggest_workspace_slug(scope, "Data") == "data"
     end
 
-    test "a name kept back is never a workspace's slug: it gets the slug with -2" do
+    test "a name whose address is a page of Qory Apiary is refused, never numbered" do
       %{scope: scope} = sign_up_fixture()
       scope = mark_only_workspace(scope)
+      org = scope.organisation.slug
 
-      assert Organisations.suggest_workspace_slug(scope, "New") == "new-2"
+      for name <- ["New", "API", "Gateways", "Settings"] do
+        slug = String.downcase(name)
 
-      assert {:ok, %{slug: "api-2"}} =
-               Organisations.create_workspace(scope, %{"domain" => "software", "name" => "API"})
+        assert {:error, changeset} =
+                 Organisations.create_workspace(scope, %{"domain" => "software", "name" => name})
+
+        assert %{name: ["Choose another name. /#{org}/#{slug} is a page of Qory Apiary."]} ==
+                 errors_on(changeset)
+      end
+
+      assert Organisations.suggest_workspace_slug(scope, "New") == "new"
     end
 
-    test "a name or a slug another workspace of the organisation holds is refused" do
+    test "a name whose address a workspace marked for deletion has is refused" do
       %{scope: scope, workspace: main} = sign_up_fixture()
       scope = mark_only_workspace(scope)
-
-      # The marked one still holds its name and slug.
-      assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{domain: "software", name: main.name})
-
-      assert %{name: [_taken]} = errors_on(changeset)
+      org = scope.organisation.slug
 
       assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{
-                 domain: "software",
-                 name: "Another",
-                 slug: main.slug
-               })
+               Organisations.create_workspace(scope, %{domain: "software", name: "MAIN"})
 
-      assert %{slug: [_taken]} = errors_on(changeset)
-
-      # Made from a name whose slug is taken, the next free one is picked.
-      assert Organisations.suggest_workspace_slug(scope, main.name) == "#{main.slug}-2"
-      assert Organisations.suggest_workspace_slug(scope, "Data") == "data"
-      assert Organisations.suggest_workspace_slug(scope, "") == "workspace"
-
-      assert {:ok, %{name: "Main ", slug: "main-2"}} =
-               Organisations.create_workspace(scope, %{
-                 domain: "software",
-                 name: "Main ",
-                 slug: ""
-               })
+      assert %{
+               name: [
+                 "Choose another name. A workspace marked for deletion still has the address /#{org}/#{main.slug}."
+               ]
+             } == errors_on(changeset)
     end
 
     test "an empty name is refused, and the form's changeset says so" do
@@ -1093,8 +1234,14 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, changeset} =
                Organisations.create_first_workspace(scope, %{"domain" => "software"})
 
-      assert %{name: ["is already the name of a workspace in this organisation"]} =
-               errors_on(changeset)
+      address = "/#{scope.organisation.slug}/main"
+
+      assert %{
+               name: [
+                 "Choose another name. A workspace marked for deletion still has the address " <>
+                   ^address <> "."
+               ]
+             } = errors_on(changeset)
 
       assert Organisations.list_workspaces(scope) == []
     end

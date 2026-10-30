@@ -600,10 +600,10 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # The workspace set-up: the type cards while the organisation has no
-              # workspace, then the flow that sets one up, `?step=<id>`, a workspace's
-              # steps with `&workspace=<slug>`; and the cards, then the flow, for a new
-              # workspace, for an owner.
+              # The workspace set-up: the flow that sets up a workspace, `?step=<id>`, a
+              # workspace's steps with `&workspace=<slug>`; with no workspace in the
+              # scope, `/set-up` opens the overview and its kind cards. `/workspaces/new`
+              # has the kind cards for a further workspace, for an owner.
               live "/set-up", WorkspaceSetupLive, :show
               live "/workspaces/new", WorkspaceSetupLive, :new
               # The chooser of the set-up's steps Work sources and Destinations, with the

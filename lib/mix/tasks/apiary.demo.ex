@@ -16,9 +16,9 @@ defmodule Mix.Tasks.Apiary.Demo do
   nothing. `--file` replays one `events.jsonl` instead, with the registration beside it. The run lands in the
   workspace of the access key named by `--key`, a node's key id, on that key's node;
   without it, in the first workspace that has a key that is not revoked, under its newest
-  such key: on a new instance, the workspace Main, once a key is added to a node there.
-  The set-up link (`Apiary.Setup`) creates no workspace: an owner creates Main on the
-  workspace set-up page, `/<org>/set-up`.
+  such key: on a new instance, the first workspace, once a key is added to a node there.
+  The set-up link (`Apiary.Setup`) creates no workspace: an owner creates one from the
+  kind cards of the organisation's overview, `/<org>`.
 
   Nothing is inserted from here. A run goes the way Forager's goes: its registration, read
   by `Apiary.Runs.Registration.parse/1` and stored by `Apiary.Runs.Registration.register/3`,
