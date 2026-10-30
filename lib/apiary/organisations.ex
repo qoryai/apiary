@@ -1300,7 +1300,7 @@ defmodule Apiary.Organisations do
 
     pick =
       Keyword.get(opts, :pick_slug) ||
-        if(refuse?, do: &Slug.from_name(&1, "organisation"), else: &organisation_slug/1)
+        if(refuse?, do: &Slug.from_name/1, else: &organisation_slug/1)
 
     insert = if refuse?, do: &insert_organisation_or_refuse/2, else: &insert_organisation/2
     domain = Keyword.get(opts, :domain) || Domain.default().name()
@@ -1381,14 +1381,21 @@ defmodule Apiary.Organisations do
   defp insert_organisation(_name, _pick, 0), do: {:error, :slug_taken}
 
   defp insert_organisation(name, pick, attempts) do
-    case Organisation.changeset(%Organisation{}, %{name: name}) do
-      %Ecto.Changeset{valid?: false} = changeset ->
+    changeset = Organisation.changeset(%Organisation{}, %{name: name})
+    slug = changeset.valid? && pick.(name)
+
+    cond do
+      not changeset.valid? ->
         {:error, changeset}
 
-      changeset ->
+      # A name with no letter or digit from A to Z or 0 to 9 has no slug to number.
+      is_nil(slug) ->
+        {:error, Ecto.Changeset.add_error(changeset, :name, Slug.no_letters())}
+
+      true ->
         with {:ok, %Organisation{id: id} = organisation} <-
                changeset
-               |> Organisation.put_slug(pick.(name))
+               |> Organisation.put_slug(slug)
                |> Repo.insert(on_conflict: :nothing, conflict_target: :slug) do
           if Repo.exists?(from o in Organisation, where: o.id == ^id),
             do: {:ok, organisation},
@@ -1404,11 +1411,14 @@ defmodule Apiary.Organisations do
   # transaction, and the name is refused all the same.
   defp insert_organisation_or_refuse(name, pick) do
     changeset = Organisation.changeset(%Organisation{}, %{name: name})
-    slug = Slug.from_name(name || "", "organisation")
+    slug = Slug.from_name(name)
 
     cond do
       not changeset.valid? ->
         {:error, changeset}
+
+      is_nil(slug) ->
+        {:error, Ecto.Changeset.add_error(changeset, :name, Slug.no_letters())}
 
       slug in ReservedSlugs.organisation() ->
         {:error,
@@ -1445,17 +1455,20 @@ defmodule Apiary.Organisations do
     |> Workspace.put_slug(workspace_slug(organisation, @default_workspace_name))
   end
 
+  # The first free of the name's slug and its numbered variants; nil for a name that gives
+  # no slug.
   defp organisation_slug(name) do
-    name
-    |> Slug.from_name("organisation")
-    |> Slug.pick(ApiaryWeb.ReservedSlugs.organisation(), fn slug ->
-      Repo.exists?(from o in Organisation, where: o.slug == ^slug)
-    end)
+    if base = Slug.from_name(name) do
+      Slug.pick(base, ApiaryWeb.ReservedSlugs.organisation(), fn slug ->
+        Repo.exists?(from o in Organisation, where: o.slug == ^slug)
+      end)
+    end
   end
 
+  # The workspace "Main" of a new organisation, whose name always gives a slug.
   defp workspace_slug(%Organisation{id: organisation_id}, name) do
     name
-    |> Slug.from_name("workspace")
+    |> Slug.from_name()
     |> Slug.pick(ApiaryWeb.ReservedSlugs.workspace(), fn slug ->
       Repo.exists?(
         from w in Workspace, where: w.organisation_id == ^organisation_id and w.slug == ^slug
@@ -1509,22 +1522,27 @@ defmodule Apiary.Organisations do
     end
   end
 
-  # The slug the changeset's name gives the organisation (`Slug.from_name/2`), its address
+  # The slug the changeset's name gives the organisation (`Slug.from_name/1`), its address
   # `/<slug>`. A slug a page of Qory Apiary has refuses the name, and so does one another
   # organisation has, one marked for deletion included: nothing is numbered. A name
   # refused already is not asked again, and neither is a new name whose slug is the one the
   # organisation has. A slug numbered at creation is not the name's: `acme-2` renamed
   # "ACME" gets `acme`, refused where another organisation has it.
   defp put_organisation_address(changeset) do
-    name = Ecto.Changeset.get_field(changeset, :name)
-    slug = Slug.from_name(if(is_binary(name), do: name, else: ""), "organisation")
+    slug = changeset |> Ecto.Changeset.get_field(:name) |> Slug.from_name()
 
-    if slug == changeset.data.slug,
-      do: changeset,
-      else:
+    cond do
+      slug == changeset.data.slug ->
+        changeset
+
+      is_nil(slug) ->
+        unless_name_refused(changeset, &Ecto.Changeset.add_error(&1, :name, Slug.no_letters()))
+
+      true ->
         changeset
         |> Organisation.put_address(slug)
         |> unless_name_refused(&refuse_taken_organisation_address(&1, slug))
+    end
   end
 
   defp refuse_taken_organisation_address(changeset, slug) do
@@ -1622,13 +1640,14 @@ defmodule Apiary.Organisations do
 
   @doc """
   suggest_workspace_slug/2 is the slug a workspace named `name` gets: made from the name
-  (`Apiary.Organisations.Slug.from_name/2`). Where another workspace of the scope's
-  organisation or a page has it, `create_workspace/2` refuses the name; nothing is
-  numbered.
+  (`Apiary.Organisations.Slug.from_name/1`), nil for a name with no letter or digit from A
+  to Z or 0 to 9, which `create_workspace/2` refuses. Where another workspace of the
+  scope's organisation or a page has it, `create_workspace/2` refuses the name; nothing
+  is numbered.
   """
-  @spec suggest_workspace_slug(Scope.t(), String.t() | nil) :: String.t()
+  @spec suggest_workspace_slug(Scope.t(), String.t() | nil) :: String.t() | nil
   def suggest_workspace_slug(%Scope{organisation: %Organisation{}}, name),
-    do: Slug.from_name(name || "", "workspace")
+    do: Slug.from_name(name)
 
   @doc """
   create_workspace/2 creates a workspace of the scope's organisation (`workspace.create`,
@@ -1695,7 +1714,7 @@ defmodule Apiary.Organisations do
 
     Stream.iterate(1, &(&1 + 1))
     |> Stream.map(&numbered(base, &1))
-    |> Enum.find(&(&1 not in names and Slug.from_name(&1, "workspace") not in slugs))
+    |> Enum.find(&(&1 not in names and Slug.from_name(&1) not in slugs))
   end
 
   defp numbered(base, 1), do: base
@@ -1705,7 +1724,7 @@ defmodule Apiary.Organisations do
 
     Enum.find_value(String.length(base)..1//-1, base <> suffix, fn length ->
       name = String.trim_trailing(String.slice(base, 0, length)) <> suffix
-      if String.ends_with?(Slug.from_name(name, "workspace"), "-#{n}"), do: name
+      if String.ends_with?(Slug.from_name(name) || "", "-#{n}"), do: name
     end)
   end
 
@@ -1864,18 +1883,21 @@ defmodule Apiary.Organisations do
     |> put_address(organisation_id)
   end
 
-  # The slug the changeset's name gives the workspace (`Slug.from_name/2`), its address
+  # The slug the changeset's name gives the workspace (`Slug.from_name/1`), its address
   # `/:org/<slug>`. A slug a page of the organisation has refuses the name, and so does a
   # slug or the name itself that another workspace of the organisation has, one marked
   # for deletion included: nothing is numbered. A name refused already is not asked
-  # again.
+  # again. A name that gives no slug is refused (`Slug.no_letters/0`).
   defp put_address(changeset, organisation_id) do
-    name = Ecto.Changeset.get_field(changeset, :name)
-    slug = Slug.from_name(if(is_binary(name), do: name, else: ""), "workspace")
+    case changeset |> Ecto.Changeset.get_field(:name) |> Slug.from_name() do
+      nil ->
+        unless_name_refused(changeset, &Ecto.Changeset.add_error(&1, :name, Slug.no_letters()))
 
-    changeset
-    |> Workspace.put_address(slug)
-    |> unless_name_refused(&refuse_taken_address(&1, organisation_id, slug))
+      slug ->
+        changeset
+        |> Workspace.put_address(slug)
+        |> unless_name_refused(&refuse_taken_address(&1, organisation_id, slug))
+    end
   end
 
   defp unless_name_refused(changeset, check),

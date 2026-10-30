@@ -5,14 +5,15 @@ defmodule Apiary.Organisations.Slug do
 
   A slug is 1 to 40 characters of lowercase `a`–`z`, `0`–`9` and hyphens, and starts
   and ends with a letter or a digit. An organisation's is made from the name when it is
-  created (`from_name/2`) and again on each rename. A sign-up and a rename refuse a name
+  created (`from_name/1`) and again on each rename. A sign-up and a rename refuse a name
   whose slug is taken (`Apiary.Organisations.sign_up_user/3`,
   `Apiary.Organisations.change_organisation/2`); an edition's way of creating one that
   does not pass `taken: :refuse` to `Apiary.Organisations.build_organisation/2` numbers
   it (`pick/3`). A workspace's is made from the name at
   creation and on each rename, and a name whose slug is taken is refused
-  (`Apiary.Organisations.change_workspace/2`). A slug is never one of the names the
-  router reserves (`ApiaryWeb.ReservedSlugs`).
+  (`Apiary.Organisations.change_workspace/2`). A name with no letter or digit from A to
+  Z or 0 to 9 gives no slug, and every one of these ways refuses it (`no_letters/0`). A
+  slug is never one of the names the router reserves (`ApiaryWeb.ReservedSlugs`).
 
   The migration that gave the existing rows their slugs made them the same way, with a
   copy of these rules as they were then.
@@ -46,17 +47,19 @@ defmodule Apiary.Organisations.Slug do
   def max_length, do: @max_length
 
   @doc """
-  from_name/2 makes a slug from a name: accents dropped, lowercased, every run of other
-  characters one hyphen, cut to `max_length/0`. A name with nothing left gives `fallback`.
+  from_name/1 makes a slug from a name: accents dropped, lowercased, every run of other
+  characters one hyphen, cut to `max_length/0`. A name with no letter or digit from A to Z
+  or 0 to 9 left gives nil: it has no address, and the caller refuses it
+  (`no_letters/0`).
 
-      iex> Apiary.Organisations.Slug.from_name("Café Société, Platform", "workspace")
+      iex> Apiary.Organisations.Slug.from_name("Café Société, Platform")
       "cafe-societe-platform"
 
-      iex> Apiary.Organisations.Slug.from_name("—", "workspace")
-      "workspace"
+      iex> Apiary.Organisations.Slug.from_name("—")
+      nil
   """
-  @spec from_name(String.t(), String.t()) :: String.t()
-  def from_name(name, fallback) when is_binary(name) do
+  @spec from_name(String.t() | nil) :: String.t() | nil
+  def from_name(name) when is_binary(name) do
     slug =
       name
       |> :unicode.characters_to_nfd_binary()
@@ -65,8 +68,19 @@ defmodule Apiary.Organisations.Slug do
       |> String.replace(~r/[^a-z0-9]+/, "-")
       |> trim()
 
-    if slug == "", do: fallback, else: slug
+    if slug == "", do: nil, else: slug
   end
+
+  def from_name(_name), do: nil
+
+  @doc "no_letters/0 is the error of a name that gives no slug (`from_name/1`), on the name."
+  @spec no_letters() :: String.t()
+  def no_letters,
+    do:
+      dgettext_noop(
+        "errors",
+        "Choose a name with at least one letter or digit from A to Z or 0 to 9. The address is made from those characters."
+      )
 
   @doc """
   pick/3 is the first of `base`, `base-2`, `base-3`, … that is not in `reserved` and for

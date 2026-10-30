@@ -33,6 +33,11 @@ msgstr ""
 msgid "Change the model choices that use the key %{value} first: %{places}."
 msgstr ""
 
+#: lib/apiary/organisations/slug.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a name with at least one letter or digit from A to Z or 0 to 9. The address is made from those characters."
+msgstr ""
+
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a type."

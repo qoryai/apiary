@@ -115,7 +115,7 @@ defmodule Apiary.Organisations.Organisation do
 
   @doc """
   put_address/2 gives a renamed organisation the slug its new name makes
-  (`Apiary.Organisations.Slug.from_name/2`, always of a slug's characters). Whether a page
+  (`Apiary.Organisations.Slug.from_name/1`, always of a slug's characters). Whether a page
   or another organisation has it is asked by the caller
   (`Apiary.Organisations.change_organisation/2`); the unique index answers for one taken
   since, on the name.

@@ -122,6 +122,24 @@ defmodule ApiaryWeb.NewWorkspaceFormTest do
            )
   end
 
+  test "a name with no letter or digit from A to Z or 0 to 9 is refused, on the name",
+       %{scope: scope} do
+    {:ok, lv, _html} = open(scope)
+
+    lv
+    |> form("#new-workspace", workspace: %{name: "株式会社", domain: "example"})
+    |> render_submit()
+
+    assert has_element?(
+             lv,
+             "#workspace_name-error",
+             "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+               "The address is made from those characters."
+           )
+
+    refute has_element?(lv, "#created")
+  end
+
   test "a type chosen and a free name create the workspace", %{scope: scope} do
     {:ok, lv, _html} = open(scope)
 
