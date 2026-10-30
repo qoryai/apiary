@@ -4170,7 +4170,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              "The Qory Pool is the instance's pool, where the instance has one. It takes " <>
                "the runs of every workspace that has no pool. A pool for #{workspace} takes " <>
                "the runs of #{workspace} alone: once you add it, the Qory Pool stops taking " <>
-               "them. To join a machine to the pool, get the command and run it on that machine."
+               "them. To join a machine to the pool, get the command and run it on that machine. " <>
+               "Every run gets an isolated environment."
 
     assert words(lv, "#set-up-context #set-up-machines-why") ==
              "A pool is ready when a machine has joined it and its runs go through a gateway " <>

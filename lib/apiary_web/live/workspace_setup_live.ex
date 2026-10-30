@@ -2709,7 +2709,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
         <p id="set-up-machines-pools">
           {gettext(
-            "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine.",
+            "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment.",
             workspace: @flow.workspace.name
           )}
         </p>
