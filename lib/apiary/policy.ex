@@ -161,6 +161,28 @@ defmodule Apiary.Policy do
     Repo.exists?(from c in RunConfiguration, where: c.workspace_id == ^workspace_id)
   end
 
+  # default_document/1 is the run configuration rendered for the workspace `workspace_id`
+  # with no change made: the mode `observe`, no rule of the workspace or of a target, and
+  # the hosts the integrations reaching the workspace and the level above require, as
+  # `render_holders/3` renders a holder. Stored nowhere: a prebuild of a workspace that
+  # serves no run configuration is given it (`Apiary.Runs.Registration`). `{:ok, bytes}`,
+  # or `{:error, error}` where the render refuses, as the first change would.
+  @doc false
+  @spec default_document(Ecto.UUID.t()) :: {:ok, binary} | {:error, Error.t()}
+  def default_document(workspace_id) when is_binary(workspace_id) do
+    %Workspace{} = stored = Repo.get!(Workspace, workspace_id)
+    workspace = %{stored | egress_mode: "observe"}
+
+    document(
+      workspace,
+      nil,
+      nil,
+      [],
+      [],
+      {above(workspace), Connections.egress_hosts(workspace)}
+    )
+  end
+
   @doc """
   What the sidebar shows of the policy, in one query: whether the workspace's policy is
   managed (`managed?/1`), the workspace's mode, the modes the workspace's targets set
