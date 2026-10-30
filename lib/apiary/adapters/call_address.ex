@@ -7,30 +7,38 @@ defmodule Apiary.Adapters.CallAddress do
   #
   #   1. `{:error, :no_address}` when the adapter declares no `call_url`: Qory Apiary makes
   #      no call to it;
-  #   2. `{:error, :not_allowed}` for an address that is not `https://`, has user
-  #      information, a query or a fragment, or a path that does not end with `/`, and for
-  #      a host that is not exactly the adapter's name as its node has it, then `.`, then
-  #      the instance's public name (the host of `PUBLIC_URL`), compared without case;
-  #      always when `PUBLIC_URL` has no host. An adapter named `tracker` on the instance
-  #      `qory.example.com` is called at `https://tracker.qory.example.com/…` and nowhere
-  #      else;
-  #   3. the host is resolved, every address it has: `{:error, :not_allowed}` when any is
-  #      forbidden (`Apiary.Integrations.Fetch.Address`: loopback, link-local with the
-  #      cloud metadata address `169.254.169.254`, the other metadata addresses,
-  #      unspecified, multicast and broadcast), `{:error, :unresolved}` when it has none.
-  #      A private address is allowed: inside the instance's network the adapter's name
-  #      leads to the reverse proxy's private address, and step 2 limits the host;
+  #   2. `{:error, {:not_allowed, :form}}` for an address that is not `https://`, has
+  #      user information, a query or a fragment, or a path that does not end with `/`,
+  #      and for a host that is not exactly the adapter's name as its node has it, then
+  #      `.`, then the instance's public name (the host of `PUBLIC_URL`), compared without
+  #      case; `{:error, {:not_allowed, :public_host}}` when `PUBLIC_URL` has no host. An
+  #      adapter named `tracker` on the instance `qory.example.com` is called at
+  #      `https://tracker.qory.example.com/…` and nowhere else;
+  #   3. the host is resolved, every address it has: `{:error, {:not_allowed, {:address,
+  #      ip, kind}}}` for the first address that is forbidden
+  #      (`Apiary.Integrations.Fetch.Address`), its kind `:link_local`, `:metadata` (the
+  #      cloud metadata address `169.254.169.254` and the others), `:unspecified`,
+  #      `:multicast`, `:broadcast`, `:reserved` (`240.0.0.0/4`) or `:loopback`;
+  #      `{:error, :unresolved}` when it has none. A private
+  #      address is allowed: inside the instance's network the adapter's name leads to the
+  #      reverse proxy's private address, and step 2 limits the host. A loopback address,
+  #      `127.0.0.0/8` or `::1`, is allowed too, which `Fetch.Address` forbids: an adapter
+  #      may run on the instance's machine. A loopback address written inside an IPv6 one,
+  #      such as `::ffff:127.0.0.1`, stays forbidden;
   #   4. `{:ok, target}`: the base address, the host, the port, the first address, which
   #      the call connects to with the host kept for `Host`, SNI and the certificate's
   #      check, so a second lookup cannot send it elsewhere, and the adapter's instance id
   #      the call is signed for.
   #
-  # The resolver is `opts[:resolver]`, else `config :apiary, Apiary.Adapters.Calls,
-  # resolver:`, else the system's (`Apiary.Integrations.Fetch.DNS`): a module with
-  # `resolve/1` or a function of a host.
+  # The instance's public name is `opts[:instance_host]`, else the host of `PUBLIC_URL`
+  # (`instance_host/0`). The resolver is `opts[:resolver]`, else `config :apiary,
+  # Apiary.Adapters.Calls, resolver:`, else the system's (`Apiary.Integrations.Fetch.DNS`):
+  # a module with `resolve/1` or a function of a host.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
+
+  import Bitwise
 
   alias Apiary.Adapters.Wire
   alias Apiary.Integrations.Fetch
@@ -46,8 +54,15 @@ defmodule Apiary.Adapters.CallAddress do
           instance_id: String.t()
         }
 
+  @typedoc "The kind of a forbidden address an adapter's host resolves to."
+  @type kind ::
+          :link_local | :metadata | :unspecified | :multicast | :broadcast | :reserved | :loopback
+
+  @typedoc "Why an address is not allowed."
+  @type not_allowed :: :form | :public_host | {:address, :inet.ip_address(), kind}
+
   @typedoc "Why an adapter is not called."
-  @type refusal :: :no_address | :not_allowed | :unresolved
+  @type refusal :: :no_address | {:not_allowed, not_allowed} | :unresolved
 
   @doc false
   @spec check(Node.t(), keyword) :: {:ok, target} | {:error, refusal}
@@ -56,7 +71,7 @@ defmodule Apiary.Adapters.CallAddress do
   def check(%Node{kind: :adapter, call_url: url, call_instance_id: instance_id} = adapter, opts)
       when is_binary(url) and is_binary(instance_id) do
     with {:ok, uri} <- parse(url),
-         :ok <- host(uri.host, adapter),
+         :ok <- host(uri.host, adapter, opts),
          {:ok, address} <- resolve(uri.host, opts) do
       {:ok,
        %{
@@ -76,7 +91,10 @@ defmodule Apiary.Adapters.CallAddress do
   # without a lookup: what the instance admin's page of the adapter shows.
   @spec placed?(Node.t()) :: boolean
   def placed?(%Node{kind: :adapter, call_url: url} = adapter) when is_binary(url) do
-    with {:ok, uri} <- parse(url), :ok <- host(uri.host, adapter), do: true, else: (_ -> false)
+    with {:ok, uri} <- parse(url),
+         :ok <- host(uri.host, adapter, []),
+         do: true,
+         else: (_ -> false)
   end
 
   def placed?(%Node{}), do: false
@@ -95,24 +113,24 @@ defmodule Apiary.Adapters.CallAddress do
          when is_binary(host) and host != "" <- URI.parse(url) do
       {:ok, uri}
     else
-      _other -> {:error, :not_allowed}
+      _other -> {:error, {:not_allowed, :form}}
     end
   end
 
   # Exactly `<adapter name>.<instance's public name>`.
-  defp host(host, %Node{name: name}) when is_binary(name) do
-    case instance_host() do
+  defp host(host, %Node{name: name}, opts) when is_binary(name) do
+    case Keyword.get_lazy(opts, :instance_host, &instance_host/0) do
       instance when is_binary(instance) and instance != "" ->
         if String.downcase(host) == String.downcase(name <> "." <> instance),
           do: :ok,
-          else: {:error, :not_allowed}
+          else: {:error, {:not_allowed, :form}}
 
       _none ->
-        {:error, :not_allowed}
+        {:error, {:not_allowed, :public_host}}
     end
   end
 
-  defp host(_host, _adapter), do: {:error, :not_allowed}
+  defp host(_host, _adapter, _opts), do: {:error, {:not_allowed, :form}}
 
   @doc false
   # The host of the instance's public address, `PUBLIC_URL`'s.
@@ -132,14 +150,44 @@ defmodule Apiary.Adapters.CallAddress do
 
     case lookup(host, resolver) do
       {:ok, [_ | _] = addresses} ->
-        if Enum.any?(addresses, &(Address.classify(&1) == :forbidden)),
-          do: {:error, :not_allowed},
-          else: {:ok, hd(addresses)}
+        case Enum.reject(addresses, &allowed?/1) do
+          [] -> {:ok, hd(addresses)}
+          [ip | _] -> {:error, {:not_allowed, {:address, ip, kind(ip)}}}
+        end
 
       _none ->
         {:error, :unresolved}
     end
   end
+
+  # Step 3's rule: `Fetch.Address`'s, with loopback allowed.
+  defp allowed?({127, _, _, _}), do: true
+  defp allowed?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp allowed?(address), do: Address.classify(address) != :forbidden
+
+  # The kind of a forbidden address, by `Fetch.Address.classify/1`'s forbidden classes in
+  # its order: an IPv6 address that carries an IPv4 one is the kind of the IPv4 one.
+  defp kind({169, 254, 169, 254}), do: :metadata
+  defp kind({100, 100, 100, 200}), do: :metadata
+  defp kind({192, 0, 0, 192}), do: :metadata
+  defp kind({0, _, _, _}), do: :unspecified
+  defp kind({127, _, _, _}), do: :loopback
+  defp kind({169, 254, _, _}), do: :link_local
+  defp kind({255, 255, 255, 255}), do: :broadcast
+  defp kind({a, _, _, _}) when a in 224..239, do: :multicast
+  defp kind({_, _, _, _}), do: :reserved
+  defp kind({0, 0, 0, 0, 0, 0xFFFF, hi, lo}), do: kind(v4(hi, lo))
+  defp kind({0, 0, 0, 0, 0, 0, 0, 0}), do: :unspecified
+  defp kind({0, 0, 0, 0, 0, 0, 0, 1}), do: :loopback
+  defp kind({0, 0, 0, 0, 0, 0, hi, lo}), do: kind(v4(hi, lo))
+  defp kind({0x64, 0xFF9B, 0, 0, 0, 0, hi, lo}), do: kind(v4(hi, lo))
+  defp kind({0x64, 0xFF9B, 1, _, _, _, hi, lo}), do: kind(v4(hi, lo))
+  defp kind({0x2002, hi, lo, _, _, _, _, _}), do: kind(v4(hi, lo))
+  defp kind({0xFD00, 0x0EC2, _, _, _, _, _, _}), do: :metadata
+  defp kind({first, _, _, _, _, _, _, _}) when (first &&& 0xFFC0) == 0xFE80, do: :link_local
+  defp kind({_, _, _, _, _, _, _, _}), do: :multicast
+
+  defp v4(hi, lo), do: {hi >>> 8, hi &&& 0xFF, lo >>> 8, lo &&& 0xFF}
 
   defp lookup(host, resolver) when is_function(resolver, 1), do: resolver.(host)
   defp lookup(host, resolver) when is_atom(resolver), do: resolver.resolve(host)
