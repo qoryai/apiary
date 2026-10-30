@@ -62,11 +62,9 @@ defmodule Apiary.SecretScan do
     :run_key
   ]
 
-  # The characters a secret is made of, at the end of a text: a secret that a text cut
-  # in two starts in this run.
-  @token_end ~r/[A-Za-z0-9_.-]*\z/
-  # The longest run of them kept for the next part of a text: longer than any secret of a
-  # bounded kind.
+  # The longest run of a secret's characters kept from the end of a text for its next
+  # part, where a secret that the text's end cut in two starts: longer than any secret of
+  # a bounded kind.
   @carry_bytes 4096
 
   @doc "kinds/0 is every kind `scan/1` finds."
@@ -102,8 +100,24 @@ defmodule Apiary.SecretScan do
   """
   @spec carry(binary) :: binary
   def carry(text) when is_binary(text) do
-    [{start, length}] = Regex.run(@token_end, text, return: :index)
-    if length <= @carry_bytes, do: binary_part(text, start, length), else: ""
+    size = byte_size(text)
+    length = token_end(text, size - 1, 0)
+    if length <= @carry_bytes, do: binary_part(text, size - length, length), else: ""
+  end
+
+  # The length of the run of a secret's characters that ends `text` at byte `at`, read
+  # backwards, and no further than one byte past the most kept.
+  defp token_end(_text, at, length) when at < 0 or length > @carry_bytes, do: length
+
+  defp token_end(text, at, length) do
+    case :binary.at(text, at) do
+      byte
+      when byte in ?A..?Z or byte in ?a..?z or byte in ?0..?9 or byte in [?_, ?., ?-] ->
+        token_end(text, at - 1, length + 1)
+
+      _other ->
+        length
+    end
   end
 
   @doc """
