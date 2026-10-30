@@ -17,6 +17,7 @@ defmodule Apiary.Policy.RequiredHostsTest do
   alias Apiary.Policy.{ComposedConfiguration, RequiredHosts}
   alias Apiary.Registry.RunAccess
   alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, Target}
+  alias Apiary.Stacks
 
   @apply [
     %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/{target.path}/*"]}
@@ -61,6 +62,77 @@ defmodule Apiary.Policy.RequiredHostsTest do
       group = RequiredHosts.harness(scope.workspace)
       assert hosts(group) == Enum.sort(run_members(run).stack_hosts)
       assert [%{source: :qory, required_by: :instance}] = group.rows
+    end
+
+    # The run is given the pins of the harness sources in `gits`; the list has the hosts
+    # its stack_hosts has for the same sources.
+    defp same_as_run(scope, gits) do
+      run = sealed_run_fixture(scope).run
+
+      RunHarness
+      |> Repo.get_by!(dispatch_run_id: run.dispatch_run_id)
+      |> Ecto.Changeset.change(
+        pins: for(git <- gits, do: %{"git" => git, "ref" => "main", "at" => "x"})
+      )
+      |> Repo.update!()
+
+      group = RequiredHosts.harness(scope.workspace)
+      assert hosts(group) == Enum.sort(run_members(run).stack_hosts)
+      group.rows
+    end
+
+    defp harness_document(git), do: "extends:\n  git: \"#{git}\"\n  ref: \"main\"\n"
+
+    test "a harness repository the workspace chose is this workspace's choice" do
+      %{scope: scope} = sign_up_fixture()
+      git = "https://code.example/acme/harness"
+
+      {:ok, _stack} =
+        Stacks.put_stack(scope, {:workspace, scope.workspace}, harness_document(git),
+          choice: :repository
+        )
+
+      assert [%{host: "code.example", source: {:repository, "acme/harness"}} = row] =
+               same_as_run(scope, [git])
+
+      assert row.required_by == :workspace
+    end
+
+    test "a harness the organisation shares is the organisation's choice" do
+      %{scope: scope} = sign_up_fixture()
+      git = "https://code.example/acme/shared"
+
+      {:ok, _stack} =
+        Stacks.put_stack(scope, {:organisation, scope.organisation}, harness_document(git),
+          choice: :repository
+        )
+
+      assert [%{host: "code.example", source: {:repository, "acme/shared"}} = row] =
+               same_as_run(scope, [git])
+
+      assert row.required_by == :organisation
+    end
+
+    test "a harness chosen in this workspace for one target is this workspace's choice" do
+      %{scope: scope} = sign_up_fixture()
+      git = "https://tools.example/acme/target-harness"
+
+      :ok =
+        Target.insert_new(scope.organisation.id, scope.workspace.id, [
+          %{system: "forge.example.com", path: "acme/shop"}
+        ])
+
+      target = Apiary.Runs.fetch_target(scope, "forge.example.com", "acme/shop")
+
+      {:ok, _stack} =
+        Stacks.put_stack(scope, {:target, target}, harness_document(git), choice: :repository)
+
+      rows = same_as_run(scope, [Definition.qory_harness().git, git])
+
+      assert Enum.sort(Enum.map(rows, &{&1.host, &1.source, &1.required_by})) == [
+               {"github.com", :qory, :instance},
+               {"tools.example", {:repository, "acme/target-harness"}, :workspace}
+             ]
     end
   end
 

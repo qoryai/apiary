@@ -17,8 +17,8 @@ defmodule Apiary.Policy.RequiredHosts do
   #   * the system of the target: `Apiary.Runs.RunCredentials.workspace_hosts/1`, beside
   #     `work/1`.
   #
-  # What a run gains from its own target, work item or claim (the harness sources its
-  # walk pins, the provider and API it is given, the one collection it takes) is not here.
+  # What the run's target, work item or claim add (the harness sources that the pins of its
+  # walk name, the provider and API it is given, the one collection it takes) is not here.
   #
   # `required_by` is `:instance` for the Qory harness and the registry's hosts, and for
   # the rest the level that chose it: `:organisation` for an integration added for every
@@ -77,14 +77,20 @@ defmodule Apiary.Policy.RequiredHosts do
   @doc false
   def harness(workspace) do
     rows =
-      for %{host: host, git: git} <- ComposedConfiguration.workspace_stack_hosts(workspace) do
-        if git == Definition.qory_harness().git,
-          do: %{host: host, source: :qory, required_by: :instance},
-          else: %{
-            host: host,
-            source: {:repository, Document.repository(git)},
-            required_by: :workspace
-          }
+      for %{host: host, git: git, shared: shared} <-
+            ComposedConfiguration.workspace_stack_hosts(workspace) do
+        qory? = git == Definition.qory_harness().git
+
+        %{
+          host: host,
+          source: if(qory?, do: :qory, else: {:repository, Document.repository(git)}),
+          required_by:
+            cond do
+              shared -> :organisation
+              qory? -> :instance
+              true -> :workspace
+            end
+        }
       end
 
     %{key: :harness, rows: rows}
