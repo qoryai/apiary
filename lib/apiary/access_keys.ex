@@ -51,7 +51,7 @@ defmodule Apiary.AccessKeys do
 
   require Logger
 
-  alias Apiary.{Access, Adapters, Audit, Features, Repo}
+  alias Apiary.{Access, Accounts, Adapters, Audit, Features, Repo}
   alias Apiary.Adapters.Installed
   alias Apiary.Adapters.Installed.CodeFile
   alias Apiary.Nodes.Installed, as: NodesInstalled
@@ -68,6 +68,11 @@ defmodule Apiary.AccessKeys do
   # The kinds of node that get their codes from the instance: an adapter installed with Qory
   # Apiary, and the instance's pool and gateway.
   @installed_kinds [:adapter, :pool, :gateway]
+  # The kinds of node at the instance, with no organisation and no workspace: those, and
+  # the diagnostics node, which holds the diagnostics keys (`create_diagnostics_code/2`).
+  @instance_kinds @installed_kinds ++ [:diagnostics]
+  # The diagnostics keys the instance holds at once, not revoked.
+  @diagnostics_key_limit 20
   # A code's own limit at enrolment, as `Apiary.Runs.RateLimit` counts it: requests a
   # second, and at once.
   @code_limit [rate: 1, burst: 5]
@@ -234,7 +239,7 @@ defmodule Apiary.AccessKeys do
       where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
       where: is_nil(n.deleted_at),
       where:
-        (n.kind in [:adapter, :pool, :gateway] and is_nil(k.organisation_id) and
+        (n.kind in ^@instance_kinds and is_nil(k.organisation_id) and
            is_nil(k.workspace_id) and is_nil(n.organisation_id) and is_nil(n.workspace_id)) or
           (not is_nil(o.id) and
              ((n.kind == :gateway and is_nil(n.workspace_id)) or o.id in subquery(in_use))),
@@ -401,35 +406,7 @@ defmodule Apiary.AccessKeys do
       with {:ok, place, recorder} <- ask(scope, :"access_key.create_code", node, sudo: true),
            {:ok, node} <- lock_node(scope, node.id, place),
            :ok <- not_installed(node) do
-        code = EnrolmentCode.generate(node.kind)
-        now = DateTime.utc_now()
-
-        changeset =
-          %EnrolmentCode{
-            id: Ecto.UUID.generate(),
-            organisation_id: node.organisation_id,
-            workspace_id: node.workspace_id,
-            node_id: node.id,
-            created_by_id: scope.user.id,
-            code_sha256: EnrolmentCode.hash(code),
-            expires_at: DateTime.add(now, code_ttl_minutes(), :minute)
-          }
-          |> EnrolmentCode.settings_changeset(attrs)
-          |> without_secrets(node)
-          |> EnrolmentCode.put_integrity()
-
-        with {:ok, row} <- Repo.insert(changeset),
-             {:ok, _entry} <-
-               Audit.record(Repo, recorder, :"access_key.create_code", node, %{
-                 after: %{
-                   code_id: row.id,
-                   allow_secrets: row.allow_secrets,
-                   label_hint: row.label_hint,
-                   expires_at: row.expires_at
-                 }
-               }) do
-          {:ok, {row, code}}
-        end
+        insert_code(scope, recorder, node, attrs, %{})
       end
     end)
     |> case do
@@ -437,6 +414,53 @@ defmodule Apiary.AccessKeys do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # A new code of `node`, which the caller holds locked, made by the person of `scope`,
+  # with its entry of `access_key.create_code` recorded by `recorder`, `details` in it:
+  # `{:ok, {row, code}}`, the code in clear.
+  defp insert_code(scope, recorder, node, attrs, details) do
+    code = EnrolmentCode.generate(node.kind)
+    now = DateTime.utc_now()
+
+    changeset =
+      %EnrolmentCode{
+        id: Ecto.UUID.generate(),
+        organisation_id: node.organisation_id,
+        workspace_id: node.workspace_id,
+        node_id: node.id,
+        created_by_id: scope.user.id,
+        code_sha256: EnrolmentCode.hash(code),
+        expires_at: DateTime.add(now, code_ttl_minutes(), :minute)
+      }
+      |> EnrolmentCode.settings_changeset(attrs)
+      |> without_secrets(node)
+      |> EnrolmentCode.put_integrity()
+
+    with {:ok, row} <- Repo.insert(changeset),
+         {:ok, _entry} <-
+           Audit.record(
+             Repo,
+             recorder,
+             :"access_key.create_code",
+             node,
+             entry_details(
+               %{
+                 after: %{
+                   code_id: row.id,
+                   allow_secrets: row.allow_secrets,
+                   label_hint: row.label_hint,
+                   expires_at: row.expires_at
+                 }
+               },
+               details
+             )
+           ) do
+      {:ok, {row, code}}
+    end
+  end
+
+  defp entry_details(entry, details) when details == %{}, do: entry
+  defp entry_details(entry, details), do: Map.put(entry, :details, details)
 
   # Who may change the keys and codes of `row`'s node, a node, a key or a code, and at
   # which place, with the scope that records the change: for a row of an organisation,
@@ -485,7 +509,7 @@ defmodule Apiary.AccessKeys do
 
   # An adapter's key never has stored secrets, whatever the code was asked for: the code,
   # and the key it brings, are made with the flag off.
-  defp without_secrets(changeset, %Node{kind: :adapter}),
+  defp without_secrets(changeset, %Node{kind: kind}) when kind in [:adapter, :diagnostics],
     do: Ecto.Changeset.put_change(changeset, :allow_secrets, false)
 
   defp without_secrets(changeset, %Node{}), do: changeset
@@ -545,6 +569,188 @@ defmodule Apiary.AccessKeys do
         {:error, reason} -> {:error, reason}
       end
     end)
+  end
+
+  ## Diagnostics keys
+  #
+  # A diagnostics key reads the diagnostics of any run of the instance, by a signed request
+  # (`GET /v1/runs/<run id>/diagnostics`, `ApiaryWeb.Contract.DiagnosticsController`), and
+  # nothing else: it is an access key of the instance's diagnostics node, of the kind
+  # `diagnostics`, with no organisation and no workspace, which no other route's check
+  # takes and which may nothing in `Apiary.Access`. Its scope is the instance
+  # (`diagnostics_scope/1`). An instance admin makes a code for one, on an instance with the
+  # feature `observability`; the computer that will use the key makes it and enrols it
+  # with the code (`enrol/2`), so the instance keeps its public half alone. The node is
+  # made with the first code. An instance admin revokes a key. Each change is recorded in
+  # the trail of the instance's organisation (`Apiary.Adapters.instance_scope/1`), with
+  # the diagnostics node's public id, `dg_`, in its details.
+
+  @doc """
+  authorize_diagnostics/2 says whether the person of `scope` may make and revoke the
+  diagnostics keys, and read them: `:ok` for an instance admin
+  (`Apiary.Access.instance_admin?/1`) on an instance with the feature `observability`,
+  whatever organisation the scope carries; `{:error, :not_found}` where the instance does
+  not have the feature, whoever asks; `{:error, :forbidden}` for anyone else. With
+  `sudo: true`, an instance admin who did not sign in recently
+  (`Apiary.Accounts.sudo_mode?/2`) is `{:error, :sudo}`.
+  """
+  @spec authorize_diagnostics(Scope.t() | nil, keyword) ::
+          :ok | {:error, :not_found | :forbidden | :sudo}
+  def authorize_diagnostics(scope, opts \\ []) do
+    cond do
+      not Features.on?(:observability) -> {:error, :not_found}
+      not Access.instance_admin?(scope) -> {:error, :forbidden}
+      Keyword.get(opts, :sudo, false) and not Accounts.sudo_mode?(scope.user) -> {:error, :sudo}
+      true -> :ok
+    end
+  end
+
+  @doc """
+  diagnostics_scope/1 is the scope of a diagnostics key, the runs it reads: `:instance`,
+  every run of the instance. nil for a key of any other kind.
+  """
+  @spec diagnostics_scope(AccessKey.t()) :: :instance | nil
+  def diagnostics_scope(%AccessKey{
+        organisation_id: nil,
+        workspace_id: nil,
+        node: %Node{kind: :diagnostics, organisation_id: nil, workspace_id: nil}
+      }),
+      do: :instance
+
+  def diagnostics_scope(%AccessKey{}), do: nil
+
+  @doc """
+  diagnostics_key_limit/0 is how many diagnostics keys the instance holds at once, not
+  revoked: an enrolment past it is refused (`key_limit`).
+  """
+  @spec diagnostics_key_limit() :: pos_integer
+  def diagnostics_key_limit, do: @diagnostics_key_limit
+
+  @doc """
+  diagnostics_node/1 is the instance's diagnostics node in use, to whoever may read the
+  diagnostics keys (`authorize_diagnostics/2`), or nil: none is made until the first code.
+  """
+  @spec diagnostics_node(Scope.t()) :: Node.t() | nil
+  def diagnostics_node(%Scope{} = scope) do
+    if authorize_diagnostics(scope) == :ok, do: Repo.one(diagnostics_node_query())
+  end
+
+  @doc """
+  list_diagnostics_keys/1 is the diagnostics keys not revoked, newest first, each with the
+  person who made its code, to whoever may read them (`authorize_diagnostics/2`); none to
+  anyone else.
+  """
+  @spec list_diagnostics_keys(Scope.t()) :: [AccessKey.t()]
+  def list_diagnostics_keys(%Scope{} = scope) do
+    if authorize_diagnostics(scope) == :ok do
+      Repo.all(
+        from k in AccessKey,
+          join: n in assoc(k, :node),
+          where: n.kind == :diagnostics and is_nil(n.deleted_at),
+          where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
+          where: is_nil(k.organisation_id) and is_nil(k.workspace_id),
+          where: is_nil(k.revoked_at),
+          order_by: [desc: k.inserted_at, desc: k.id],
+          preload: [:created_by, node: n]
+      )
+    else
+      []
+    end
+  end
+
+  @doc """
+  create_diagnostics_code/2 makes an enrolment code for a diagnostics key, by an instance
+  admin who signed in recently (`authorize_diagnostics/2`, `sudo: true`), with a
+  `label_hint` from `attrs`, the key's name, and no stored secrets: the diagnostics node,
+  made first when the instance has none, then the code, valid for `code_ttl_minutes/0`,
+  in one transaction that holds the node's row. Records `access_key.create_code`.
+
+  Returns `{:ok, code_row, code}`, the code in clear, `qecd_` and 26 characters, this once:
+  it is never stored. Otherwise `{:error, changeset}` or the refusal of
+  `authorize_diagnostics/2`.
+  """
+  @spec create_diagnostics_code(Scope.t(), map) ::
+          {:ok, EnrolmentCode.t(), String.t()}
+          | {:error, Ecto.Changeset.t() | :not_found | :forbidden | :sudo}
+  def create_diagnostics_code(%Scope{} = scope, attrs \\ %{}) do
+    Repo.transact(fn ->
+      with :ok <- authorize_diagnostics(scope, sudo: true),
+           {:ok, recorder} <- Adapters.instance_scope(scope),
+           {:ok, node} <- lock_diagnostics_node() do
+        insert_code(scope, recorder, node, attrs, %{node_id: node.public_id})
+      end
+    end)
+    |> case do
+      {:ok, {row, code}} -> {:ok, row, code}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  revoke_diagnostics_key/2 revokes a diagnostics key, by an instance admin
+  (`authorize_diagnostics/2`): its requests are refused from then on, and its public key
+  becomes a tombstone in the ledger. Records `access_key.revoke`. Revoking a revoked key
+  changes nothing; a key of any other kind is `{:error, :not_found}`.
+  """
+  @spec revoke_diagnostics_key(Scope.t(), AccessKey.t()) ::
+          {:ok, AccessKey.t()} | {:error, :not_found | :forbidden}
+  def revoke_diagnostics_key(%Scope{} = scope, %AccessKey{id: id}) do
+    Repo.transact(fn ->
+      with :ok <- authorize_diagnostics(scope),
+           {:ok, recorder} <- Adapters.instance_scope(scope),
+           %Node{} = node <- Repo.one(diagnostics_node_query()) || {:error, :not_found},
+           {:ok, node} <- lock_node(scope, node.id, :diagnostics),
+           %AccessKey{} = current <-
+             Repo.one(
+               from k in in_place(AccessKey, scope, :diagnostics),
+                 where: k.id == ^id and k.node_id == ^node.id,
+                 lock: "FOR UPDATE"
+             ) || {:error, :not_found} do
+        case AccessKey.status(current) do
+          :revoked -> {:ok, current}
+          :active -> retire(recorder, node, current, :"access_key.revoke", :revoked)
+        end
+      end
+    end)
+  end
+
+  defp diagnostics_node_query do
+    from n in Node,
+      where: n.kind == :diagnostics and is_nil(n.deleted_at),
+      where: is_nil(n.organisation_id) and is_nil(n.workspace_id)
+  end
+
+  # The diagnostics node, locked: made when the instance has none in use. Two first codes
+  # at once make one node: the second insert does nothing, by `nodes_diagnostics_index`,
+  # and both read the one row.
+  defp lock_diagnostics_node do
+    {_count, _rows} =
+      Repo.insert_all(
+        Node,
+        [Node.diagnostics_changeset() |> Ecto.Changeset.apply_changes() |> node_row()],
+        on_conflict: :nothing,
+        conflict_target:
+          {:unsafe_fragment, "(kind) WHERE kind = 'diagnostics' AND deleted_at IS NULL"}
+      )
+
+    case Repo.one(from n in diagnostics_node_query(), lock: "FOR UPDATE") do
+      %Node{} = node -> {:ok, node}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp node_row(%Node{} = node) do
+    now = DateTime.utc_now()
+
+    %{
+      id: Ecto.UUID.generate(),
+      kind: node.kind,
+      name: node.name,
+      public_id: node.public_id,
+      gateway_choice: node.gateway_choice,
+      inserted_at: now,
+      updated_at: now
+    }
   end
 
   ## The codes of an adapter installed with Qory Apiary
@@ -1011,6 +1217,16 @@ defmodule Apiary.AccessKeys do
   where the instance does not have it, is refused as reading its keys is.
   """
   @spec subscribe(Scope.t(), Node.t()) :: :ok | {:error, term}
+  # The instance's diagnostics node, by an instance admin on an instance with the feature
+  # run diagnostics belong to (`authorize_diagnostics/2`).
+  def subscribe(
+        %Scope{} = scope,
+        %Node{id: node_id, kind: :diagnostics, organisation_id: nil, workspace_id: nil} = node
+      ) do
+    with :ok <- authorize_diagnostics(scope),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(place_id(node), node_id))
+  end
+
   # A node of the instance, an adapter's, is read by an instance admin on an instance with
   # the feature adapters belong to (`read_place/2`), and so is its topic.
   def subscribe(
@@ -1203,12 +1419,17 @@ defmodule Apiary.AccessKeys do
   defp enrols_kind(%Node{kind: :adapter}),
     do: if(Features.on?(:factory), do: :ok, else: {:error, :unauthorized})
 
+  # A diagnostics key's code, likewise, while the instance is without the feature the run
+  # diagnostics belong to.
+  defp enrols_kind(%Node{kind: :diagnostics}),
+    do: if(Features.on?(:observability), do: :ok, else: {:error, :unauthorized})
+
   defp enrols_kind(%Node{}), do: :ok
 
   # A code without an organisation is an adapter's, or the instance's pool's or gateway's,
   # whose node has none either.
   defp same_organisation(nil),
-    do: dynamic([n], is_nil(n.organisation_id) and n.kind in ^@installed_kinds)
+    do: dynamic([n], is_nil(n.organisation_id) and n.kind in ^@instance_kinds)
 
   defp same_organisation(organisation_id), do: dynamic([n], n.organisation_id == ^organisation_id)
 
@@ -1317,7 +1538,7 @@ defmodule Apiary.AccessKeys do
       changeset =
         key
         |> AccessKey.insert_changeset(%{
-          allow_secrets: code.allow_secrets and node.kind != :adapter,
+          allow_secrets: code.allow_secrets and node.kind not in [:adapter, :diagnostics],
           label: enrolled_label(node, code.label_hint || request.name)
         })
         |> AccessKey.put_integrity()
@@ -1612,6 +1833,7 @@ defmodule Apiary.AccessKeys do
   end
 
   defp node_key_limit(%Node{installed_as: name}) when is_binary(name), do: 1
+  defp node_key_limit(%Node{kind: :diagnostics}), do: @diagnostics_key_limit
   defp node_key_limit(%Node{}), do: @key_limit
 
   # The keys `node` holds, not revoked: read under its lock by whoever holds it.
@@ -1634,6 +1856,7 @@ defmodule Apiary.AccessKeys do
   # A node at the instance, with no organisation, is an adapter, or the instance's pool or
   # gateway.
   defp instance_kind(:instance), do: dynamic([n], n.kind in ^@installed_kinds)
+  defp instance_kind(:diagnostics), do: dynamic([n], n.kind == :diagnostics)
   defp instance_kind(_place), do: dynamic(true)
 
   # The rows of the scope at the place `workspace_id` names: the scope's workspace's, or,
@@ -1641,7 +1864,7 @@ defmodule Apiary.AccessKeys do
   # or, `:instance`, the rows of no organisation and no workspace, an adapter's, which only
   # a caller that asked an instance admin first (`ask/4`, `read_place/2`) names. A workspace
   # other than the scope's, or `:nowhere`, is no place of it.
-  defp in_place(queryable, %Scope{}, :instance) do
+  defp in_place(queryable, %Scope{}, place) when place in [:instance, :diagnostics] do
     from r in queryable, where: is_nil(r.organisation_id) and is_nil(r.workspace_id)
   end
 

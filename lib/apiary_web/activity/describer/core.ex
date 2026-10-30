@@ -445,6 +445,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"access_key.create_code", %{"installed" => true}, _actor),
     do: gettext("Gave an installed adapter a new one-time code")
 
+  # The instance's diagnostics keys, whose node's public id is `dg_`
+  # (`Apiary.AccessKeys.create_diagnostics_code/2`).
+  defp said(:"access_key.create_code", %{"node_id" => "dg_" <> _}, _actor),
+    do: gettext("Made a code for a diagnostics key")
+
   defp said(:"access_key.create_code", _details, _actor),
     do: gettext("Made a command to connect a node")
 
@@ -472,7 +477,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"adapter.end_grant", _details, _actor), do: gettext("Ended a grant")
 
+  defp said(:"access_key.add", %{"node_id" => "dg_" <> _}, _actor),
+    do: gettext("Added a diagnostics key")
+
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
+
+  defp said(:"access_key.revoke", %{"node_id" => "dg_" <> _}, _actor),
+    do: gettext("Revoked a diagnostics key")
 
   defp said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor),
     do: gettext("Revoked an access key with its deleted node")

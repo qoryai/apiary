@@ -154,6 +154,12 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.AdapterRequest, kind: :pool
       end
 
+      # A run's diagnostics, signed with a diagnostics key, which no other pipeline takes.
+      pipeline :contract_diagnostics do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest, kinds: [:diagnostics]
+      end
+
       # First for the organisation's and the workspace's pages: a segment in the place of
       # a slug that can never be one answers as a path the router does not know.
       pipeline :path_scope do
@@ -225,6 +231,12 @@ defmodule ApiaryWeb.Routes do
         post "/runs/:run_id/outcome", OutcomeController, :create
         # A gateway's secrets request, with the `factory` and `secrets` features.
         post "/secrets", SecretsController, :create
+      end
+
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_diagnostics
+
+        get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end
 
       # An adapter's read of its change feed, after a cursor.
