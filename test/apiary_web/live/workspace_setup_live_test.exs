@@ -420,6 +420,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     end
   end
 
+  @tag :feature_sets
   test "a step the person does not see, and no step's id, are no page", %{conn: conn} do
     %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
     conn = log_in_user(conn, user)
@@ -456,6 +457,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert redirected_to(conn) == ~p"/#{organisation}"
     end
 
+    @tag :feature_sets
     test "an unfinished workspace's landing is its overview", %{conn: conn} do
       %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
 
