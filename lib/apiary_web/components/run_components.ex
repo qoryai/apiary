@@ -272,9 +272,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :class, :any, default: nil
 
   def end_reason(assigns) do
-    code =
-      if Run.refused?(assigns.run) and is_nil(start_words(assigns.run)),
-        do: refusal_code(assigns.run.reason)
+    code = shown_refusal_code(assigns.run)
 
     {before, rest} =
       if code,
@@ -289,6 +287,16 @@ defmodule ApiaryWeb.RunComponents do
       class="font-mono"
     >{@code}</span>{@rest}</span>
     """
+  end
+
+  @doc """
+  The refusal's code a run's end reason shows in place of words (`end_reason/1`): the code
+  of a run refused at its start (`Apiary.Runs.Run.refused?/1`) whose machine did not fail
+  to start it (`start_words/1`). Nil for any other run, and for a reason that is no code.
+  """
+  @spec shown_refusal_code(Run.t()) :: String.t() | nil
+  def shown_refusal_code(%Run{} = run) do
+    if Run.refused?(run) and is_nil(start_words(run)), do: refusal_code(run.reason)
   end
 
   @doc """

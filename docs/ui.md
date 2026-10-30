@@ -1652,7 +1652,9 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   the cause, then who fixes it; once retention deleted the run's log lines, "The step's
   output was deleted under the workspace's log retention, so the cause is no longer
   shown." in place of who fixes it. Under Machine started the line shows only who fixes
-  it, as the header shows the cause. The section's duration runs from its first row to
+  it, as the header shows the cause: for the instance's pool, "An instance admin finds
+  the cause in the machine log of the Machine started step."; for any other pool, that
+  its admins read why in the pool's log on its host. The section's duration runs from its first row to
   the session's start, or to the failed row's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the

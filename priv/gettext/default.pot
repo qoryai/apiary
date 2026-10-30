@@ -4315,6 +4315,11 @@ msgstr ""
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin finds the cause in the machine log of the Machine started step."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "An instance is what Forager, run with this node's key, reports itself as, and anyone with the key can report any instance: to cut off one machine alone, give it a separate node."
@@ -16842,7 +16847,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The test run ended before a machine started it. No run was recorded, so this step cannot show why."
+msgid "The test run ended before a machine started it, and no run was recorded, so the cause is unknown. Run the test again; if it ends the same way, tell an instance admin."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -20698,11 +20703,6 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "this instance"
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "this step's machine log"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

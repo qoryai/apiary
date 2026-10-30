@@ -44,6 +44,7 @@ defmodule ApiaryWeb.OverviewComponents do
       relative_time: 1,
       rule_panel: 1,
       short_id: 1,
+      shown_refusal_code: 1,
       shown_target_label: 3,
       state_label: 1,
       target_name: 1,
@@ -2211,14 +2212,17 @@ defmodule ApiaryWeb.OverviewComponents do
   defp failed_line(:no_run),
     do:
       gettext(
-        "The test run ended before a machine started it. No run was recorded, so this step cannot show why."
+        "The test run ended before a machine started it, and no run was recorded, so the cause is unknown. Run the test again; if it ends the same way, tell an instance admin."
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason
-  # (`ApiaryWeb.RunComponents.exit_note/1`), after the session started where it did.
+  # (`ApiaryWeb.RunComponents.exit_note/1`), after the session started where it did. A
+  # refusal whose reason the run page shows as its code alone (`shown_refusal_code/1`)
+  # has no words, so its line has no reason.
   defp ended_line(run, preparation) do
     session? = match?(%{session_started_at: %DateTime{}}, preparation)
-    ended_line(run.state, session?, exit_note(run))
+    reason = if is_nil(shown_refusal_code(run)), do: exit_note(run)
+    ended_line(run.state, session?, reason)
   end
 
   defp ended_line("failed", true, nil),

@@ -3341,7 +3341,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "The test run failed: exit 1. See the run"},
             {[state: :ended, end_cause: :run_refused, end_detail: "image_unknown"],
              %{state: "failed", reason: "image_unknown"}, "ended",
-             "The test run failed: did not start: image_unknown. See the run"},
+             "The test run failed. See the run"},
             {[state: :ended, end_cause: :lost, end_detail: nil], %{state: "lost"}, "ended",
              "The test run was lost. See the run"},
             {[state: :ended, end_cause: :released],
@@ -3349,8 +3349,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "The test run was cancelled: no longer needed. See the run"},
             {[state: :ended, end_cause: :harness_unresolved, result_outcome: :error], nil,
              "no_run",
-             "The test run ended before a machine started it. No run was recorded, so this " <>
-               "step cannot show why."}
+             "The test run ended before a machine started it, and no run was recorded, so " <>
+               "the cause is unknown. Run the test again; if it ends the same way, tell an " <>
+               "instance admin."}
           ] do
         Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
         test_run!(item, changes, run_attrs)

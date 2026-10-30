@@ -370,6 +370,12 @@ defmodule Apiary.Runs.Preparation do
     {gettext("The machine stopped before it started the run."), reads_why(who, place)}
   end
 
+  # The machine log of the instance's pool is on the run page, under Machine started, for
+  # an instance admin, who fixes its causes.
+  defp reads_why(_who, :machine_started) do
+    gettext("An instance admin finds the cause in the machine log of the Machine started step.")
+  end
+
   defp reads_why(who, place),
     do: gettext("%{who} reads why in %{place}.", who: who, place: place)
 
@@ -438,9 +444,9 @@ defmodule Apiary.Runs.Preparation do
   defp workspace_fixer(%Scope{workspace: workspace}),
     do: {:workspace_admin, gettext("An admin of %{workspace}", workspace: workspace.name)}
 
-  # Where the machine log of the instance's pool is read: this page, by an instance admin.
-  # Any other pool's admins read it on the pool's host.
-  defp log_place(%{place: :instance}), do: gettext("this step's machine log")
+  # Where the machine log of the instance's pool is read: under Machine started on the run
+  # page, by an instance admin. Any other pool's admins read it on the pool's host.
+  defp log_place(%{place: :instance}), do: :machine_started
 
   defp log_place(pool),
     do: gettext("the log of %{pool} on its host", pool: pool_name(pool))
