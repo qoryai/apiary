@@ -24,8 +24,11 @@ defmodule Apiary.Dispatches.MachineLogs do
   #      once the first commits;
   #   4. the file written (`Apiary.Dispatches.MachineLogStore.put/2`).
   #
-  # A dispatch that ended, or whose lease lapsed, takes its machine log as any other. A
-  # refusal writes nothing. A file that cannot be written, with no folder set among the
+  # A dispatch that ended, or whose lease lapsed, takes its machine log as any other. Once
+  # the log is stored, a dispatch handed over whose run never redeemed its run code ends
+  # its run at once, failed, `machine_stopped`
+  # (`Apiary.Dispatches.RunEnd.machine_stopped/1`), where the lost-run check would end it
+  # at the code's expiry, 15 minutes after the claim. A refusal writes nothing. A file that cannot be written, with no folder set among the
   # causes, rolls the record back and is `{:error, :unavailable}`, with one log line that
   # names the cause and nothing of the request, so the starter's next upload of the same
   # log can succeed. An exception is the same, its log line the exception's module alone.
@@ -60,7 +63,7 @@ defmodule Apiary.Dispatches.MachineLogs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLog, MachineLogStore}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLog, MachineLogStore, RunEnd}
 
   @default_retention_days 30
   @retention_min 1
@@ -99,12 +102,13 @@ defmodule Apiary.Dispatches.MachineLogs do
              # The record first: its key to the dispatch locks the dispatch's row
              # `FOR KEY SHARE` until the commit, before the file is written, which the
              # retention job's delete of a file with no record waits on (`prune/1`).
-             :ok <- insert(dispatch, log, truncated) do
-          store(dispatch, log)
+             :ok <- insert(dispatch, log, truncated),
+             {:ok, :stored} <- store(dispatch, log) do
+          {:ok, dispatch}
         end
       end)
       |> case do
-        {:ok, :stored} -> :ok
+        {:ok, dispatch} -> stopped(dispatch)
         {:error, _reason} = refused -> refused
       end
     else
@@ -114,6 +118,19 @@ defmodule Apiary.Dispatches.MachineLogs do
     exception ->
       Logger.error("a machine log could not be stored: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
+  end
+
+  # Once the machine log is stored, a run whose machine never redeemed its code ends at
+  # once (`Apiary.Dispatches.RunEnd.machine_stopped/1`). A failure of that end is logged
+  # by its kind alone and never changes the answer: the lost-run check ends the run at the
+  # code's expiry.
+  defp stopped(%Dispatch{} = dispatch) do
+    dispatch |> RunEnd.machine_stopped() |> Dispatches.broadcast()
+    :ok
+  rescue
+    exception ->
+      Logger.error("a run could not be ended early: #{inspect(exception.__struct__)}")
+      :ok
   end
 
   # The dispatch by its public id when the key may take `dispatch.machine_log` on it: one

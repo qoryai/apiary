@@ -1646,6 +1646,12 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,
   shown as given with spaces for underscores: "no longer needed".
+  A run a node pool's claim registered whose machine never started it reads its cause in
+  the meta line, the rail and the preview: "No machine was made: <the starter's reason>."
+  when the starter released its dispatch, "The pool did not start a machine within 10
+  minutes." when the dispatch's lease lapsed, "The machine stopped before it started the
+  run." when the machine's log came first, and, for a run lost with its run code never
+  redeemed, "The machine did not start the run within 15 minutes of the request."
 - **The rail's State and Exit.** State is the state's dot and word, with "Registered only"
   under Pending for a run that registered, or "Ping only" for a run that only pinged,
   stored before the registration replaced the ping, and the end reason's words under it. Exit, on a session's run whose exit was

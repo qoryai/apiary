@@ -171,13 +171,17 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The run of the scope's workspace whose `public_id` is `public_id`, `rn_…`, the id the
-  run's URL carries, with its access key and its node (a deleted node's too). `:error` for
+  run's URL carries, with its access key, its node (a deleted node's too) and, for a run
+  whose start failed, its dispatch (`Apiary.Runs.Run`, `dispatch_id`). `:error` for
   an id the workspace has not got and for anything that is not of that shape, the node's
   run id among them.
   """
   def fetch_run(%Scope{} = scope, public_id) do
     if Run.public_id?(public_id) do
-      {:ok, scope |> Runs.get_run_by_public_id!(public_id) |> Repo.preload([:access_key, :node])}
+      {:ok,
+       scope
+       |> Runs.get_run_by_public_id!(public_id)
+       |> Repo.preload([:access_key, :node, :dispatch])}
     else
       :error
     end
@@ -191,7 +195,7 @@ defmodule Apiary.Runs.Record do
   """
   def reload(%Scope{} = scope, %Run{id: id}) do
     case Repo.one(from r in runs(scope), where: r.id == ^id) do
-      %Run{} = run -> Repo.preload(run, [:access_key, :node])
+      %Run{} = run -> Repo.preload(run, [:access_key, :node, :dispatch])
       nil -> nil
     end
   end
