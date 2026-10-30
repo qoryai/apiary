@@ -6,8 +6,12 @@ defmodule Apiary.SecretScan do
   belongs to. Neither keeps or logs a secret.
 
   Each kind is a prefix and a body of a fixed or a least length, the shortest that the
-  issuer's format makes, and stands alone: no letter, digit, `_` or `-` right before it or
-  right after it, so a longer word that contains a prefix (`task-…`, `sk-learn`) is none.
+  issuer's format makes, with no letter, digit, `_` or `-` right after it, so a longer
+  word (`sk-learn`) is none. A prefix may follow any character: a terminal colour code
+  (`\e[32m`), an escape (`\n` written out), a URL encoding (`%3D`, `%20`) or a variable's
+  name (`MY_TOKEN_`) puts a letter or a digit right before it. The one exception is the
+  first format of an OpenAI key, `sk-` and 48 letters and digits, whose prefix is short:
+  it needs no letter, digit, `_` or `-` right before it, so `task-…` is none.
 
     * `access_key`: `qak_` and the 32-byte seed in base64url, 43 characters.
     * `run_key`: `qrk_`, the payload in base64url, `.`, and the 64-byte signature in
@@ -50,7 +54,7 @@ defmodule Apiary.SecretScan do
 
   # A byte mode regex: a text is any bytes, and offsets are byte offsets. The names sort
   # as `Regex.scan/3` returns the groups, by name.
-  @secrets ~r/(?<![A-Za-z0-9_-])(?:(?<access_key>qak_[A-Za-z0-9_-]{43})|(?<run_key>qrk_[A-Za-z0-9_-]{20,1957}\.[A-Za-z0-9_-]{86})|(?<run_code>(?i:qecr_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])|(?<enrolment_code>(?i:qec[npgid]_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])|(?<anthropic_api_key>sk-ant-[A-Za-z0-9_-]{32,})|(?<openai_api_key>sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}|sk-[A-Za-z0-9]{48})|(?<github_token>gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,})|(?<gitlab_token>glpat-[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*))(?![A-Za-z0-9_-])/
+  @secrets ~r/(?:(?<access_key>qak_[A-Za-z0-9_-]{43})|(?<run_key>qrk_[A-Za-z0-9_-]{20,1957}\.[A-Za-z0-9_-]{86})|(?<run_code>(?i:qecr_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])|(?<enrolment_code>(?i:qec[npgid]_)(?:[0-9A-Za-z]-?){25}[0-9A-Za-z])|(?<anthropic_api_key>sk-ant-[A-Za-z0-9_-]{32,})|(?<openai_api_key>sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}|(?<![A-Za-z0-9_-])sk-[A-Za-z0-9]{48})|(?<github_token>gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,})|(?<gitlab_token>glpat-[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*))(?![A-Za-z0-9_-])/
   @kinds [
     :access_key,
     :anthropic_api_key,

@@ -84,7 +84,6 @@ defmodule Apiary.SecretScanTest do
         "glpat-" <> String.duplicate("d", 19),
         "qak_" <> String.slice(@b64, 0, 42),
         "qak_" <> @b64 <> "x",
-        "xqak_" <> @b64,
         "qrk_" <> String.duplicate("e", 20) <> "." <> String.duplicate("s", 85),
         "qecn_7K3M9P2Q4R6S8T0V1W5X3Y9Z2",
         "qecn_7K3M9P2Q4R6S8T0V1W5X3Y9Z2AB",
@@ -96,6 +95,30 @@ defmodule Apiary.SecretScanTest do
       ]
 
       for text <- near_misses, do: assert(SecretScan.scan(text) == [], text)
+    end
+
+    test "finds a secret right after a letter or a digit, as a colour code or an encoding puts it" do
+      ghp = "ghp_" <> String.duplicate("c", 36)
+      ant = "sk-ant-api03-" <> String.duplicate("x", 93) <> "AA"
+
+      for {text, secret} <- [
+            {"\e[32m#{ghp}\e[0m\n", ghp},
+            {~s({"log":"done\\n#{ant}"}), ant},
+            {"https://ci.example/?token%3D#{ghp}&x=1", ghp},
+            {"Authorization: Bearer%20#{ant}", ant},
+            {"MY_TOKEN_#{ghp}", ghp},
+            {"xqak_" <> @b64, "qak_" <> @b64}
+          ] do
+        assert found(text) == [secret], text
+      end
+
+      # The first OpenAI format's short prefix still needs a separator before it.
+      assert found("task-" <> @alnum48) == []
+      assert found("key=sk-" <> @alnum48) == ["sk-" <> @alnum48]
+    end
+
+    test "finds no sk-None- key, a format OpenAI does not document" do
+      assert SecretScan.scan("sk-None-" <> String.duplicate("q", 48)) == []
     end
 
     test "returns byte offsets in text that is not UTF-8, and each secret in order" do
