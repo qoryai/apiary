@@ -73,6 +73,14 @@ defmodule Apiary.Organisations.Slug do
 
   def from_name(_name), do: nil
 
+  @doc """
+  from_name/2 is `from_name/1`, or `fallback` for a name that gives no slug. No way of
+  naming an organisation or a workspace uses it: those refuse such a name
+  (`no_letters/0`). It is kept for an edition's demo data and tests.
+  """
+  @spec from_name(String.t() | nil, String.t()) :: String.t()
+  def from_name(name, fallback), do: from_name(name) || fallback
+
   @doc "no_letters/0 is the error of a name that gives no slug (`from_name/1`), on the name."
   @spec no_letters() :: String.t()
   def no_letters,
