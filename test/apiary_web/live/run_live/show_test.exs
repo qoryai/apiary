@@ -887,7 +887,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, _lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
-      assert html =~ "on an engine inside a virtual machine"
+      assert html =~ "it ran behind runs inside a virtual machine. The run has a terminal"
       assert html =~ "Only the result, read from the runtime&#39;s output, is shown."
     end
 
@@ -1142,8 +1142,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          "Session events exist only for Claude Code. This run used make, so it has connections and no timeline.",
          "Session events exist only for Claude Code. This run used make, so it has a terminal and connections, and no timeline."},
         {walled,
-         "where the runtime's hook socket does not reach Forager. It has connections and no session timeline.",
-         "where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline."},
+         "This run's session events could not be recorded: the wall it ran behind runs inside a virtual machine. The run has connections and no session timeline.",
+         "This run's session events could not be recorded: the wall it ran behind runs inside a virtual machine. The run has a terminal and connections, and no session timeline."},
         {no_hooks,
          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its connections.",
          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."}

@@ -8,8 +8,9 @@ defmodule Apiary.Runs.PreparationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
-  alias Apiary.Dispatches.{Dispatch, MachineLog}
-  alias Apiary.Runs.{Preparation, Projector}
+  alias Apiary.Dispatches
+  alias Apiary.Dispatches.Dispatch
+  alias Apiary.Runs.{Preparation, Projector, Run}
 
   @moduletag needs: :factory
 
@@ -33,6 +34,51 @@ defmodule Apiary.Runs.PreparationTest do
     do:
       {sequence, "run.step_exited",
        %{"step" => step, "state" => state, "exit_code" => exit_code, "duration_ms" => 100}}
+
+  # A run of a fresh work item, claimed by the pool, its machine not started.
+  defp claimed!(ctx) do
+    {:ok, _queued} =
+      Repo.transact(fn ->
+        Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
+      end)
+
+    case Dispatches.claim(ctx.key, Dispatches.now()) do
+      {:ok, %{dispatch: %Dispatch{}} = claimed} ->
+        claimed
+
+      {:error, :no_gateway} ->
+        _gateway = gateway_for!(ctx.scope, ctx.pool)
+        {:ok, %{dispatch: %Dispatch{}} = claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+        claimed
+    end
+  end
+
+  # Past its lease, as the clock would have it ten minutes and more after the claim.
+  defp lapse!(%Dispatch{id: id}) do
+    now = DateTime.utc_now()
+
+    lease_until = %{
+      DateTime.truncate(DateTime.add(now, -60, :second), :second)
+      | microsecond: {0, 6}
+    }
+
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^id),
+        set: [claimed_at: DateTime.add(now, -700, :second), lease_until: lease_until]
+      )
+  end
+
+  defp put_env(key, value) do
+    before = Application.fetch_env(:apiary, key)
+    Application.put_env(:apiary, key, value)
+
+    on_exit(fn ->
+      case before do
+        {:ok, value} -> Application.put_env(:apiary, key, value)
+        :error -> Application.delete_env(:apiary, key)
+      end
+    end)
+  end
 
   defp change_dispatch!(%Dispatch{id: id}, set),
     do: {1, _rows} = Repo.update_all(from(d in Dispatch, where: d.id == ^id), set: set)
@@ -146,50 +192,49 @@ defmodule Apiary.Runs.PreparationTest do
 
   describe "each cause of a failed preparation" do
     test "a release: no machine was made, with the starter's reason", ctx do
-      fixture = handed_over_fixture(ctx.scope, ctx.key)
-      at = DateTime.add(fixture.dispatch.claimed_at, 3, :second)
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
 
-      change_dispatch!(fixture.dispatch,
-        dispatched_at: nil,
-        handed_over_at: nil,
-        ended_at: at,
-        end_cause: :released
-      )
+      :ok =
+        Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No capacity in the region."})
 
-      run = unredeemed!(fixture)
+      run = Repo.get!(Run, registered.id)
+      assert %Run{start_failure: "machine_not_made", dispatch_run_id: nil} = run
 
       assert %{machine: machine, stopped: stopped} = Preparation.read(ctx.scope, run)
+      assert machine.dispatch_id == dispatch.public_id
+      assert machine.release_reason == "No capacity in the region."
 
       assert machine.started == %{
                state: "failed",
                started_at: nil,
-               ended_at: at,
+               ended_at: run.start_failed_at,
                duration_ms: nil
              }
+
+      fix =
+        "An admin of #{ctx.scope.workspace.name} reads why in the log of build-pool on its host."
 
       assert stopped == %{
                cause: :machine_not_made,
                step: nil,
                fixer: :workspace_admin,
-               text:
-                 "No machine was made: no reason given. An admin of #{ctx.scope.workspace.name} " <>
-                   "reads why in the log of build-pool on its host."
+               text: "No machine was made: No capacity in the region. " <> fix,
+               fix: fix
              }
     end
 
     test "a lapsed lease", ctx do
-      fixture = handed_over_fixture(ctx.scope, ctx.key)
-      stale_at = fixture.dispatch.lease_until
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+      lapse!(dispatch)
 
-      change_dispatch!(fixture.dispatch,
-        dispatched_at: nil,
-        handed_over_at: nil,
-        stale_at: stale_at
-      )
+      assert Dispatches.dispatched(ctx.key, dispatch.public_id, %{external: nil}) ==
+               {:error, :lease_expired}
 
-      run = unredeemed!(fixture)
+      run = Repo.get!(Run, registered.id)
+      assert %Run{start_failure: "lease_lapsed"} = run
+      at = run.start_failed_at
 
-      assert %{machine: %{started: %{state: "failed", ended_at: ^stale_at}}, stopped: stopped} =
+      assert %{machine: %{started: %{state: "failed", ended_at: ^at}}, stopped: stopped} =
                Preparation.read(ctx.scope, run)
 
       assert stopped.cause == :lease_lapsed
@@ -224,26 +269,29 @@ defmodule Apiary.Runs.PreparationTest do
                fixer: :instance_admin,
                text:
                  "The machine did not start the run within 15 minutes of the request. " <>
-                   "An instance admin reads why in this step's machine log."
+                   "An instance admin reads why in this step's machine log.",
+               fix: "An instance admin reads why in this step's machine log."
              }
     end
 
+    @tag :tmp_dir
     test "a machine that stopped before it redeemed the code", ctx do
-      fixture = handed_over_fixture(ctx.scope, ctx.key)
-      run = unredeemed!(fixture)
-      uploaded_at = DateTime.add(fixture.dispatch.claimed_at, 90, :second)
+      put_env(:machine_logs_dir, Path.join(ctx.tmp_dir, "machine-logs"))
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+      :ok = Dispatches.dispatched(ctx.key, dispatch.public_id, %{external: nil})
 
-      Repo.insert!(%MachineLog{
-        organisation_id: run.organisation_id,
-        workspace_id: run.workspace_id,
-        dispatch_id: fixture.dispatch.id,
-        storage_key: fixture.dispatch.public_id,
-        byte_size: 0,
-        uploaded_at: uploaded_at
-      })
+      :ok =
+        Dispatches.upload_machine_log(ctx.key, dispatch.public_id, %{
+          log: "qory-machine-start: Docker started\n",
+          truncated: false
+        })
+
+      run = Repo.get!(Run, registered.id)
+      assert %Run{start_failure: "machine_stopped"} = run
 
       assert %{machine: machine, stopped: stopped} = Preparation.read(ctx.scope, run)
-      assert machine.started.ended_at == uploaded_at
+      assert machine.started.started_at == Repo.get!(Dispatch, dispatch.id).dispatched_at
+      assert machine.started.ended_at == run.start_failed_at
       assert stopped.cause == :machine_stopped
 
       assert stopped.text ==
@@ -277,7 +325,9 @@ defmodule Apiary.Runs.PreparationTest do
                fixer: :workspace_admin,
                text:
                  "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
-                   "#{ctx.scope.workspace.name} reads the cause in the step's output."
+                   "#{ctx.scope.workspace.name} reads the cause in the step's output.",
+               fix:
+                 "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
              }
     end
 

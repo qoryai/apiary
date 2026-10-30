@@ -1368,7 +1368,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span :if={!@managed?} id="policy-unmanaged">
           {pgettext(
             "plain",
-            "Until the first change here, every machine of this workspace runs under its local policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+            "Until the first change here, every machine of this workspace runs under its local policy, the policy set on the machine itself. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
