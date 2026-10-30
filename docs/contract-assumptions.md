@@ -629,7 +629,10 @@ machine log (`Apiary.Dispatches.machine_log/2`). The retention job deletes a mac
 `MACHINE_LOG_RETENTION_DAYS` days after its upload, 30 unless set, from 1 to 365, or the
 value an instance admin saved, file then row, and an hour-old file whose row is gone; the
 purge of an organisation or a workspace deletes the files of its machine logs before its
-rows. No audit entry is written for an upload.
+rows. No audit entry is written for an upload. Once the log is kept, a dispatch handed over
+whose run has not redeemed its run code ends that run at once: the run is `failed`, with
+the reason `machine_stopped`, and its run of the queue and the dispatch end `lost`, as the
+lost-run check ends them at the code's expiry (`Apiary.Dispatches.RunEnd.machine_stopped/1`).
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
