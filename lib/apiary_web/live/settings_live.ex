@@ -637,13 +637,21 @@ defmodule ApiaryWeb.SettingsLive do
       )
 
   @impl true
+  # The check of a new name reads whether another organisation has its address, so it runs
+  # only for a person who may rename: anyone else learns nothing of other organisations.
   def handle_event("validate_organisation", %{"organisation" => params}, socket) do
-    changeset =
-      socket.assigns.current_scope.organisation
-      |> Organisations.change_organisation(params)
-      |> Map.put(:action, :validate)
+    scope = socket.assigns.current_scope
 
-    {:noreply, assign(socket, :organisation_form, to_form(changeset))}
+    if may?(scope, :"organisation.rename") do
+      changeset =
+        scope.organisation
+        |> Organisations.change_organisation(params)
+        |> Map.put(:action, :validate)
+
+      {:noreply, assign(socket, :organisation_form, to_form(changeset))}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("save_organisation", %{"organisation" => params}, socket) do

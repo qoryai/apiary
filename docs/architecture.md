@@ -119,10 +119,13 @@ The web side is under `lib/apiary_web/`:
   edition's, and a new top-level path or organisation page is added there in the same
   change. A slug follows the name: renaming an organisation or a workspace changes its
   slug, and the old addresses lead nowhere, with no redirect
-  (`Apiary.Organisations.update_organisation/2`, `update_workspace/2`). The session, jobs
-  and PubSub topics name an organisation or a workspace by its id, never by its slug;
-  an adapter's set-up pass contains the organisation's slug only to suggest a name at the
-  other system (`Apiary.Adapters.SetupPass`).
+  (`Apiary.Organisations.update_organisation/2`, `update_workspace/2`). Jobs and PubSub
+  topics name an organisation or a workspace by its id, and so does the session, but for
+  one address: the page a signed-out visitor asked for, kept as its path, slugs
+  included, until they log in (`:user_return_to`, `ApiaryWeb.UserAuth`). After a rename
+  that path leads to Not Found, as any old link does. An adapter's set-up pass contains
+  the organisation's slug only to suggest a name at the other system
+  (`Apiary.Adapters.SetupPass`).
 - `content_security_policy.ex`: the `content-security-policy` the endpoint puts on every
   answer of the router and on `/docs`, with a fresh nonce per request (`@csp_nonce`):
   only the console's bundles and scripts that carry the nonce run, and no page writes

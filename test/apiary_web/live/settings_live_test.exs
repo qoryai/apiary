@@ -378,6 +378,19 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert Apiary.Repo.get!(Apiary.Organisations.Workspace, owner.scope.workspace.id).log_retention_days ==
                nil
     end
+
+    test "a crafted check of a new name does not say whether another organisation has its address",
+         %{conn: conn, owner: owner} do
+      %{organisation: other} = sign_up_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.scope.organisation}/settings")
+
+      html =
+        render_change(lv, "validate_organisation", %{"organisation" => %{"name" => other.name}})
+
+      refute html =~ "Another organisation has the address"
+      refute html =~ "stop working"
+      assert has_element?(lv, "#organisation-slug span", "/#{owner.scope.organisation.slug}")
+    end
   end
 
   describe "a person removed from the organisation while the page is open" do

@@ -1465,8 +1465,9 @@ defmodule Apiary.Organisations do
   # The slug the changeset's name gives the organisation (`Slug.from_name/2`), its address
   # `/<slug>`. A slug a page of Qory Apiary has refuses the name, and so does one another
   # organisation has, one marked for deletion included: nothing is numbered. A name
-  # refused already is not asked again, and neither is the slug the organisation has, which
-  # a name that changes only in case or punctuation keeps.
+  # refused already is not asked again, and neither is a new name whose slug is the one the
+  # organisation has. A slug numbered at creation is not the name's: `acme-2` renamed
+  # "ACME" gets `acme`, refused where another organisation has it.
   defp put_organisation_address(changeset) do
     name = Ecto.Changeset.get_field(changeset, :name)
     slug = Slug.from_name(if(is_binary(name), do: name, else: ""), "organisation")
