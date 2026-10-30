@@ -917,7 +917,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The hosts the workspace's runs reached to fetch their harness (channel `stack`) under the
-  filters, the most recently seen first, #{@harness_fetches_max} at most:
+  filters, the most recently seen first, `limit:` at most (#{@harness_fetches_max} by
+  default): `%{rows:, total:}`, `total` the hosts there are and `rows`
   `[%{host:, runs:, attempts:, allowed:, denied:, last_seen_at:, sources:}]`, one row per
   host. `sources` are the harness sources of the host in the harness records of the runs
   that fetched it, the most runs first. The filters are
@@ -925,7 +926,13 @@ defmodule Apiary.Runs do
   no destination: no count, view, facet, rail or rule option of the destinations reads
   them, and no rule is made from one.
   """
-  def harness_fetches(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
+  def harness_fetches(
+        %Scope{} = scope,
+        %Filters{} = filters,
+        now \\ DateTime.utc_now(),
+        opts \\ []
+      ) do
+    limit = Keyword.get(opts, :limit, @harness_fetches_max)
     base = connections_in(scope, filters, now, "stack")
 
     rows =
@@ -949,11 +956,14 @@ defmodule Apiary.Runs do
         end
       end)
       |> Enum.sort_by(&{DateTime.to_unix(&1.last_seen_at, :microsecond), &1.host}, :desc)
-      |> Enum.take(@harness_fetches_max)
 
-    sources = fetch_sources(base, Enum.map(rows, & &1.host))
+    shown = Enum.take(rows, limit)
+    sources = fetch_sources(base, Enum.map(shown, & &1.host))
 
-    for row <- rows, do: Map.put(row, :sources, Map.get(sources, row.host, []))
+    %{
+      rows: for(row <- shown, do: Map.put(row, :sources, Map.get(sources, row.host, []))),
+      total: length(rows)
+    }
   end
 
   # The sources of each host among the harness records of the runs that fetched it, the

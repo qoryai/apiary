@@ -19,7 +19,8 @@ defmodule ApiaryWeb.HostComponents do
 
   alias Apiary.ExternalText
 
-  attr :rows, :list, required: true, doc: "`Apiary.Runs.harness_fetches/3`"
+  attr :rows, :list, required: true, doc: "the `rows` of `Apiary.Runs.harness_fetches/3`"
+  attr :total, :integer, required: true, doc: "its `total`: more than the rows when it cut them"
 
   def harness_fetches(assigns) do
     ~H"""
@@ -94,6 +95,12 @@ defmodule ApiaryWeb.HostComponents do
           </tbody>
         </table>
       </div>
+      <p :if={@total > length(@rows)} id="harness-fetches-cut" class="q-psec-note">
+        {gettext("Showing %{shown} of %{total} hosts.",
+          shown: Format.number(length(@rows)),
+          total: Format.number(@total)
+        )}
+      </p>
     </section>
     """
   end

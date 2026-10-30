@@ -99,6 +99,43 @@ defmodule ApiaryWeb.ConnectionLive.HarnessFetchTest do
     refute has_element?(view, "#harness-fetches button")
   end
 
+  describe "when the rows are cut" do
+    defp rows(hosts),
+      do:
+        for(
+          host <- hosts,
+          do: %{
+            host: host,
+            runs: 1,
+            attempts: 1,
+            allowed: 1,
+            denied: 0,
+            last_seen_at: DateTime.utc_now(),
+            sources: [:none]
+          }
+        )
+
+    test "says how many of the hosts it shows" do
+      html =
+        render_component(&ApiaryWeb.HostComponents.harness_fetches/1,
+          rows: rows(["a.example", "b.example"]),
+          total: 1_234
+        )
+
+      assert html =~ "Showing 2 of 1,234 hosts."
+    end
+
+    test "says nothing when it shows every host" do
+      html =
+        render_component(&ApiaryWeb.HostComponents.harness_fetches/1,
+          rows: rows(["a.example"]),
+          total: 1
+        )
+
+      refute html =~ "Showing"
+    end
+  end
+
   describe "a crafted event with a harness fetch's host" do
     test "opens no rule panel, no runs and no rule", %{conn: conn, scope: scope} do
       started_run(scope, shop(), egress: [@fetch])

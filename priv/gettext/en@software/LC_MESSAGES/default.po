@@ -14899,6 +14899,11 @@ msgid_plural "Showing %{name} only, on %{list}, and %{last}."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Showing %{shown} of %{total} hosts."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format

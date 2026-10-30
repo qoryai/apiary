@@ -28,6 +28,9 @@ defmodule Apiary.Runs.HarnessFetchesTest do
     run
   end
 
+  defp fetched_hosts(scope, params),
+    do: scope |> Runs.harness_fetches(fx(params)) |> Map.fetch!(:rows) |> Enum.map(& &1.host)
+
   defp stack(host, extra \\ %{}), do: Map.merge(%{"host" => host, "channel" => "stack"}, extra)
 
   defp walk(run, changes) do
@@ -60,7 +63,7 @@ defmodule Apiary.Runs.HarnessFetchesTest do
       %{"host" => "session.example"}
     ])
 
-    rows = Runs.harness_fetches(ctx.scope, fx())
+    %{rows: rows, total: 3} = Runs.harness_fetches(ctx.scope, fx())
     by_host = Map.new(rows, &{&1.host, &1})
 
     assert Map.keys(by_host) |> Enum.sort() == ~w(code.example github.com other.example)
@@ -74,10 +77,10 @@ defmodule Apiary.Runs.HarnessFetchesTest do
   test "a hidden harness shows no source, a run with no record has none recorded", ctx do
     walk(ctx.run, %{harness_hidden: true})
     egress(ctx.run, [stack("code.example")])
-    assert [%{sources: [:hidden]}] = Runs.harness_fetches(ctx.scope, fx())
+    assert %{rows: [%{sources: [:hidden]}]} = Runs.harness_fetches(ctx.scope, fx())
 
     Repo.delete_all(from h in RunHarness, where: h.dispatch_run_id == ^ctx.run.dispatch_run_id)
-    assert [%{sources: [:unrecorded]}] = Runs.harness_fetches(ctx.scope, fx())
+    assert %{rows: [%{sources: [:unrecorded]}]} = Runs.harness_fetches(ctx.scope, fx())
   end
 
   test "the filters of the destinations narrow them; another workspace's runs are none", ctx do
@@ -86,17 +89,27 @@ defmodule Apiary.Runs.HarnessFetchesTest do
       stack("github.com")
     ])
 
-    assert ["code.example"] =
-             Runs.harness_fetches(ctx.scope, fx(%{"host" => "code.example"}))
-             |> Enum.map(& &1.host)
+    assert ["code.example"] = fetched_hosts(ctx.scope, %{"host" => "code.example"})
+    assert ["code.example"] = fetched_hosts(ctx.scope, %{"decision" => "denied"})
+    assert ["github.com"] = fetched_hosts(ctx.scope, %{"q" => "github"})
 
-    assert ["code.example"] =
-             Runs.harness_fetches(ctx.scope, fx(%{"decision" => "denied"})) |> Enum.map(& &1.host)
+    assert Runs.harness_fetches(scope_fixture(), fx()) == %{rows: [], total: 0}
+  end
 
-    assert ["github.com"] =
-             Runs.harness_fetches(ctx.scope, fx(%{"q" => "github"})) |> Enum.map(& &1.host)
+  test "cuts the rows at the limit, most recently seen first, and counts every host", ctx do
+    for n <- 1..5 do
+      event_fixture(ctx.run, 20 + n, "run.egress", egress_data(stack("h#{n}.example")),
+        time: DateTime.add(DateTime.utc_now(), n, :second)
+      )
+    end
 
-    assert Runs.harness_fetches(scope_fixture(), fx()) == []
+    {:ok, _run} = Projector.project(ctx.run)
+
+    assert %{rows: [%{host: "h5.example"}, %{host: "h4.example"}], total: 5} =
+             Runs.harness_fetches(ctx.scope, fx(), DateTime.utc_now(), limit: 2)
+
+    assert %{rows: rows, total: 5} = Runs.harness_fetches(ctx.scope, fx())
+    assert length(rows) == 5
   end
 
   test "a harness fetch is no destination: no row, count, view or facet reads it", ctx do

@@ -452,7 +452,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               else: gettext("The outcome is that of the last attempt across the runs shown.")}
           </p>
           <%!-- Harness fetches are no destination: the views, counts, facets and rule options never read them. --%>
-          <.harness_fetches rows={@harness} />
+          <.harness_fetches rows={@harness.rows} total={@harness.total} />
         </div>
       </div>
     <% end %>
@@ -501,7 +501,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        # The filters the listing was read for.
        loaded: nil,
        listing: nil,
-       harness: [],
+       harness: %{rows: [], total: 0},
        views: nil,
        rail: nil,
        rail_query: nil,
