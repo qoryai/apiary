@@ -495,13 +495,18 @@ defmodule Apiary.Adapters.CallsTest do
     assert {:error, %CallFailure{cause: :no_address}} =
              resolve(%{adapter | call_url: nil, call_instance_id: nil})
 
-    assert {:error, %CallFailure{cause: :not_allowed}} =
+    assert {:error, %CallFailure{cause: :not_allowed, refusal: :form}} =
              resolve(%{adapter | call_url: "https://elsewhere.localhost/calls/"})
 
-    assert {:error, %CallFailure{cause: :not_allowed}} =
-             resolve(adapter, resolver: fn _host -> {:ok, [{127, 0, 0, 1}]} end)
+    assert {:error,
+            %CallFailure{cause: :not_allowed, refusal: {:address, {0, 0, 0, 0}, :unspecified}}} =
+             resolve(adapter, resolver: fn _host -> {:ok, [{0, 0, 0, 0}]} end)
 
-    assert {:error, %CallFailure{cause: :not_allowed}} =
+    assert {:error,
+            %CallFailure{
+              cause: :not_allowed,
+              refusal: {:address, {169, 254, 169, 254}, :metadata}
+            }} =
              resolve(adapter, resolver: fn _host -> {:ok, [{169, 254, 169, 254}]} end)
 
     assert {:error, %CallFailure{cause: :unreachable}} =
@@ -530,6 +535,22 @@ defmodule Apiary.Adapters.CallsTest do
     refute log =~ body
     refute log =~ signature
     refute log =~ "instance-1"
+  end
+
+  test "a refused address's log line has the refusal: the form, or the address and its kind",
+       %{adapter: adapter} do
+    stub(fn conn -> flunk("sent #{conn.request_path}") end)
+
+    log =
+      capture_log(fn ->
+        resolve(%{adapter | call_url: "https://elsewhere.localhost/calls/"})
+        resolve(adapter, resolver: fn _host -> {:ok, [{169, 254, 169, 254}]} end)
+      end)
+
+    assert log =~ "path=resolve cause=not_allowed refusal=form duration_ms="
+
+    assert log =~
+             "path=resolve cause=not_allowed refusal=address ip=169.254.169.254 kind=metadata duration_ms="
   end
 
   describe "the typed calls" do
@@ -776,6 +797,33 @@ defmodule Apiary.Adapters.CallsTest do
 
       assert %DispatchRun{adapter_failure_call: "read", adapter_failure_code: "grant_unknown"} =
                reload(run)
+    end
+
+    test "a refused address is written as not_allowed, without its refusal",
+         %{adapter: adapter, run: run, failure: failure} do
+      for refusal <- [:form, :public_host, {:address, {169, 254, 169, 254}, :metadata}] do
+        failure = %{failure | cause: :not_allowed, code: nil, status: nil, refusal: refusal}
+        assert Calls.record_failure(Repo, run, failure) == :ok
+
+        assert %DispatchRun{
+                 adapter_failure_id: id,
+                 adapter_failure: :not_allowed,
+                 adapter_failure_call: "resolve",
+                 adapter_failure_code: nil
+               } = reload(run)
+
+        assert id == adapter.id
+      end
+
+      assert %{rows: [["not_allowed"]]} =
+               Repo.query!("SELECT adapter_failure FROM dispatch_runs WHERE id = $1", [
+                 Ecto.UUID.dump!(run.id)
+               ])
+
+      # The causes the run's row takes are those its check allows
+      # (`dispatch_runs_adapter_failure_check`), a refusal's reason none of them.
+      assert Ecto.Enum.dump_values(DispatchRun, :adapter_failure) ==
+               ~w(no_address not_allowed unreachable timeout refused invalid_answer too_large)
     end
 
     test "a call no run makes, or a run that is gone, writes nothing",

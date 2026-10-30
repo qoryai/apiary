@@ -464,6 +464,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   An adapter may use it to suggest a name, such as the GitHub App's name.
 - Pages show an adapter's title from its description, such as GitHub, in place of its
   short name, such as github. The short name stays in settings and identifiers.
+- Qory Apiary calls an adapter whose host resolves to a loopback address, `127.0.0.0/8`
+  or `::1`, so an adapter may run on the instance's machine. Link-local, metadata,
+  unspecified, multicast and broadcast addresses stay refused, and the host must still be
+  `<adapter name>.<host of PUBLIC_URL>`.
+- With `SSL_CERT_FILE` set to a PEM file, adapter calls trust its certificates in
+  addition to the operating system's certificate authorities, and still check the
+  certificate and the host. A file that is missing or contains no certificate stops the
+  boot.
 <!-- /feature -->
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up

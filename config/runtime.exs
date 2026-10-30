@@ -173,6 +173,16 @@ if config_env() != :test do
   config :apiary, :integration_url_sources_setting, System.get_env("INTEGRATION_URL_SOURCES")
 end
 
+# SSL_CERT_FILE is a PEM file of certificate authorities that adapter calls trust as well
+# as the operating system's, for adapters behind a reverse proxy whose certificate a
+# private certificate authority signed. Unset or blank adds none. With the `factory`
+# feature, `Apiary.Adapters.CallTrust.boot!/0` reads the file at boot and stops a boot
+# when the file cannot be read or has no certificate. Not read under test: the suite runs
+# without it, whatever the shell running it has set.
+if config_env() != :test do
+  config :apiary, :ssl_cert_file_setting, System.get_env("SSL_CERT_FILE")
+end
+
 # MACHINE_LOG_RETENTION_DAYS is how long a dispatch's machine log is kept after its upload:
 # a number of days from 1 to 365, 30 by default. Read in every environment;
 # `Apiary.Dispatches.MachineLogs.boot!/0` checks it at boot and stops a boot it refuses.

@@ -68,6 +68,9 @@ defmodule Apiary.Application do
     # With the `registry` feature: a missing or malformed QORY_REGISTRY, and a registry
     # signing key that is missing or not a P-256 key, stop the boot too.
     Apiary.Registry.boot!()
+    # With the `factory` feature: an SSL_CERT_FILE that cannot be read or has no
+    # certificate stops the boot too.
+    Apiary.Adapters.CallTrust.boot!()
     # The commit the release was built from, for GET /health.
     Apiary.Revision.boot!()
     # Then the edition's own settings, once the core's are known to be right.
