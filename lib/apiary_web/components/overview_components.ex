@@ -41,9 +41,9 @@ defmodule ApiaryWeb.OverviewComponents do
       format_seconds: 1,
       given_title: 1,
       heard_at: 1,
+      refusal_cause: 1,
       relative_time: 1,
       rule_panel: 1,
-      settings_check?: 1,
       short_id: 1,
       shown_refusal_code: 1,
       shown_target_label: 3,
@@ -2218,20 +2218,28 @@ defmodule ApiaryWeb.OverviewComponents do
 
   # How a test run's run ended, as the run page's header shows its state and reason
   # (`ApiaryWeb.RunComponents.exit_note/1`), after the session started where it did. A
-  # refusal by a check of the run's settings (`settings_check?/1`) has a line of its own;
-  # any other refusal with a code has no words, so its line has no reason.
+  # refusal whose code the run page has words for (`refusal_cause/1`) has a line of its
+  # own; any other refusal with a code has no words, so its line has no reason.
   defp ended_line(run, preparation) do
     code = shown_refusal_code(run)
 
-    if code && settings_check?(code) do
-      gettext(
-        "The test run failed: the run's settings did not pass a check on the machine (%{code}).",
-        code: code
-      )
-    else
-      session? = match?(%{session_started_at: %DateTime{}}, preparation)
-      reason = if is_nil(code), do: exit_note(run)
-      ended_line(run.state, session?, reason)
+    case code && refusal_cause(code) do
+      :settings_check ->
+        gettext(
+          "The test run failed: the run's settings did not pass a check on the machine (%{code}).",
+          code: code
+        )
+
+      :engine_unreachable ->
+        gettext(
+          "The test run failed: the machine could not connect to its container engine (%{code}).",
+          code: code
+        )
+
+      _none ->
+        session? = match?(%{session_started_at: %DateTime{}}, preparation)
+        reason = if is_nil(code), do: exit_note(run)
+        ended_line(run.state, session?, reason)
     end
   end
 

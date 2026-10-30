@@ -310,7 +310,7 @@ defmodule ApiaryWeb.RunComponentsTest do
                "did not start: model_key_missing"
 
       assert RunComponents.reason_words(%{refused | reason: "engine_unreachable"}) ==
-               "did not start: engine_unreachable"
+               "The machine could not connect to its container engine (engine_unreachable)."
 
       assert RunComponents.reason_words(%{refused | reason: "issuer_unreachable"}) ==
                "did not start: credential_check_unreachable"
@@ -429,7 +429,8 @@ defmodule ApiaryWeb.RunComponentsTest do
       for code <- refusals do
         words = RunComponents.reason_words(%{refused: code})
 
-        assert words =~ "did not start: " or words =~ "did not pass a check on the machine (",
+        assert words =~ "did not start: " or words =~ "did not pass a check on the machine (" or
+                 words =~ "could not connect to its container engine (",
                code
 
         refute words =~ "issuer", code

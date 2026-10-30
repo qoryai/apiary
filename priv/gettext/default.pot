@@ -16331,6 +16331,11 @@ msgstr ""
 msgid "The log was pruned."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The machine could not connect to its container engine (%{code})."
+msgstr ""
+
 #: lib/apiary/runs/preparation.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -16878,6 +16883,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The test run failed: %{reason}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The test run failed: the machine could not connect to its container engine (%{code})."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

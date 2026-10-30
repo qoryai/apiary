@@ -2707,6 +2707,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              )
     end
 
+    test "a run refused because its machine reached no container engine: those words, the code in mono",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.refused", %{"code" => "engine_unreachable"}}
+        ])
+
+      {:ok, lv, _html} = run_page(conn, scope, run)
+
+      for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
+        assert words_of(lv, reason) ==
+                 "The machine could not connect to its container engine (engine_unreachable)."
+
+        assert words_of(lv, "#{reason} .font-mono") == "engine_unreachable"
+      end
+    end
+
     test "the timeline's last item: Run ended for every end, its mark the state's", %{
       conn: conn,
       scope: scope

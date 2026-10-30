@@ -3345,7 +3345,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "(image_unknown). See the run"},
             {[state: :ended, end_cause: :run_refused, end_detail: "engine_unreachable"],
              %{state: "failed", reason: "engine_unreachable"}, "ended",
-             "The test run failed. See the run"},
+             "The test run failed: the machine could not connect to its container engine " <>
+               "(engine_unreachable). See the run"},
             {[state: :ended, end_cause: :run_refused, end_detail: nil],
              %{state: "failed", reason: nil}, "ended",
              "The test run failed: did not start. See the run"},
