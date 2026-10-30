@@ -203,21 +203,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   no stack, “acme/tools exports no stack. Add a qory.yaml or harness.yaml at its root
   that lists the stack under exports.” takes the place of **Stack**. Where the
   organisation has no connected repository, “Acme has no connected repository. Connect a
-  work source to pick one.” shows under **Repository**.
+  work source to pick one.” shows under **Repository**. Where an adapter of the connected
+  repositories has no call address, or one Qory Apiary does not call, its repositories
+  are not listed, and **Repository** shows, before any pick, a line for that adapter,
+  such as “Qory Apiary cannot read the repositories of the GitHub adapter: the adapter
+  has no call address. An instance admin sets the call address. The Qory harness needs
+  no call address.”
   **Continue** saves the choice. The save reads the branch, tag or commit. Where Qory
   Apiary does not read the stacks of a harness source, or does not save it, the Harness
   step, **Workflow** and the form of **A stack of another repository…** show the cause
-  and what to do, such as “Try again, or choose another source. Qory Apiary could not
-  reach GitHub to read acme/tools.” The other main causes are a file that is not valid,
-  with “Correct qory.yaml in acme/tools, or choose another source: its exports or stack
-  section is not valid.”; an address, folder or version in a form Qory Apiary does not
-  read, with “Correct the address, folder or version of acme/tools, or choose another
-  source. Qory Apiary does not read it in that form.”; and a harness whose content
-  breaks a rule, with “Correct the harness in acme/tools, or choose another source:”
-  and the rule, such as “it has no harness file and no harness is set”. Each run on a
-  branch reads the branch's newest commit when it starts and records it. A workspace
-  with no saved choice uses the Qory harness. Owners and admins choose. The test run
-  keeps its built-in harness.
+  and what to do, with no address, host or IP of the instance's set-up. A call to an
+  adapter that fails shows its cause, such as “The GitHub adapter did not answer within
+  10 seconds. Try again. If it repeats, an instance admin checks that the adapter is
+  running.” The other main causes are a version the repository does not have, with
+  “acme/tools has no branch, tag or commit named v9. Correct the version.”; a listed
+  stack with no stack file, with “acme/tools lists the stack web under exports, but
+  stacks/web has no qory-stack.yaml. Add that file.”; a file that is not valid, with
+  “Correct qory.yaml in acme/tools:” and the rule; an address, folder or version in a
+  form Qory Apiary does not read, with the rule it breaks, such as “Correct the version:
+  a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes
+  and hyphens, and no spaces.”; a harness whose content breaks a rule, with “Correct the
+  harness in acme/tools:” and the rule, such as “it has no harness file and no harness is
+  set”; and an error in Qory Apiary, with “Qory Apiary could not read acme/tools because
+  of an error in Qory Apiary. Try again. If it repeats, tell an instance admin.” Each run
+  on a branch reads the branch's newest commit when it starts and records it. A
+  workspace with no saved choice uses the Qory harness. Owners and admins choose. The
+  test run keeps its built-in harness.
 - Under the choices, **Repositories** lists the workspace's repositories from
   **Destinations**, each with a **Stack**: **Workspace's harness** until you choose
   another, a stack the workspace's harness exports, or **A stack of another

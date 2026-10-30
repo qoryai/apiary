@@ -395,8 +395,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "Try again, or choose another source. Qory Apiary could not reach " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness."
+               "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
       serve_calls([adapter], covered: covered, files: files)
@@ -404,8 +405,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "Correct stacks/triage/qory-stack.yaml in acme/harness, or choose another " <>
-                 "source: is not valid YAML."
+               "Correct stacks/triage/qory-stack.yaml in acme/harness: is not valid YAML."
     end
 
     test "a refused call, a listed stack with no stack file, or a stack section that is not valid: the cause",
@@ -415,8 +415,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "Choose another source. The call to " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness failed."
+               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
+                 "internal for acme/harness. An instance admin checks the adapter's log."
 
       files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
       serve_calls([adapter], covered: covered, files: files)
@@ -424,8 +424,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "Add a qory-stack.yaml file to acme/harness, or choose another source: " <>
-                 "acme/harness has no stack."
+               "acme/harness lists the stack triage under exports, but stacks/triage has no " <>
+                 "qory-stack.yaml. Add that file."
 
       files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: 7\n")
       serve_calls([adapter], covered: covered, files: files)
@@ -433,18 +433,21 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "Correct stacks/triage/qory-stack.yaml in acme/harness, or choose another " <>
-                 "source: its exports or stack section is not valid."
+               "Correct stacks/triage/qory-stack.yaml in acme/harness: it lists no modules: a " <>
+                 "qory-stack.yaml lists at least one module, each a mapping."
     end
 
-    test "an assigned folder with no qory-stack.yaml, or a stack name the root does not export: add the stack file",
+    test "an assigned folder with no qory-stack.yaml, or a stack name the root does not export: the cause",
          %{conn: conn, scope: scope, path: path} do
       admin = instance_admin_scope()
 
       # The second assignment's label has its stack name, which tells the two apart.
-      for {narrowing, label} <- [
-            {%{"path" => "stacks/web"}, "acme/harness"},
-            {%{"stack" => "web"}, "acme/harness · web"}
+      for {narrowing, words} <- [
+            {%{"path" => "stacks/web"},
+             "acme/harness has no qory-stack.yaml in the folder stacks/web. Add that file."},
+            {%{"stack" => "web"},
+             "acme/harness · web exports no stack named web. List it under exports in the " <>
+               "qory.yaml or harness.yaml at its root."}
           ] do
         assignment =
           Repo.insert!(%Assignment{
@@ -457,10 +460,20 @@ defmodule ApiaryWeb.WorkflowLiveTest do
         view = open(conn, path)
         change(view, %{source: "assigned:" <> assignment.id})
 
-        assert words(view, "#workflow-read-error") ==
-                 "Add a qory-stack.yaml file to #{label}, or choose another source: " <>
-                   "#{label} has no stack."
+        assert words(view, "#workflow-read-error") == words
       end
+    end
+
+    test "a stack that lists no workflow: where to add one",
+         %{conn: conn, path: path, adapter: adapter, covered: covered, linked_id: linked_id} do
+      files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, @stack)
+      serve_calls([adapter], covered: covered, files: files)
+      view = open(conn, path)
+      change(view, %{source: linked_id})
+
+      assert words(view, "#workflow-no-workflow") ==
+               "The stack of acme/harness lists no workflow: add one under workflows in its " <>
+                 "qory-stack.yaml."
     end
   end
 
@@ -641,6 +654,29 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       render_async(view, 2_000)
       view
+    end
+
+    test "an adapter with no call address: a line at Repository before any pick, with no address",
+         %{conn: conn, path: path, adapter: adapter} do
+      {1, _} =
+        Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
+          set: [call_url: nil, call_instance_id: nil]
+        )
+
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "repository"})
+      |> render_change()
+
+      assert words(view, "#harness-source-unplaced-#{adapter.adapter.public_id}-no_address") ==
+               "Qory Apiary cannot read the repositories of the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter: the adapter has no call " <>
+                 "address. An instance admin sets the call address. The Qory harness needs no " <>
+                 "call address."
+
+      refute has_element?(view, "#harness-source-none")
+      refute render(view) =~ adapter.host
     end
 
     test "without a choice: the Qory harness at Always the latest version, with Change and no Update",
@@ -881,15 +917,16 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
 
       assert words(view, "#harness-stack-error") ==
-               "Try again, or choose another source. Qory Apiary could not reach " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} to read acme/harness."
+               "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
 
       files = %{{"R_harness", "qory.yaml"} => "exports: [triage\n"}
       serve_calls([adapter], covered: covered, files: files)
       view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
 
       assert words(view, "#harness-stack-error") ==
-               "Correct qory.yaml in acme/harness, or choose another source: is not valid YAML."
+               "Correct qory.yaml in acme/harness: is not valid YAML."
 
       assert has_element?(view, "#workflow-harness-save[disabled]")
 
@@ -901,8 +938,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = conn |> open(path) |> change_harness() |> pick_repository(linked_id)
 
       assert words(view, "#harness-stack-error") ==
-               "Correct qory.yaml in acme/harness, or choose another source: its exports or " <>
-                 "stack section is not valid."
+               "Correct the exports section of qory.yaml in acme/harness: write stacks as a " <>
+                 "list of stack names, and dir, if there is one, as a folder name or as the " <>
+                 "names of a stacks folder and a modules folder."
     end
 
     test "a harness repository whose stack cannot be read shows the reason, and the choice stays",
@@ -923,8 +961,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       render_async(view, 2_000)
 
       assert words(view, "#workflow-harness-refusal") ==
-               "Add a qory-stack.yaml file to acme/harness, or choose another source: " <>
-                 "acme/harness has no stack."
+               "acme/harness lists the stack triage under exports, but stacks/triage has no " <>
+                 "qory-stack.yaml. Add that file."
 
       assert words(view, "#harness-line") == "Qory harness Always the latest version"
       assert Stacks.choice(scope.workspace) == nil
@@ -949,8 +987,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       render_async(view, 2_000)
 
       assert words(view, "#workflow-harness-refusal") ==
-               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
-                 "could not read v9 in acme/harness: its ref is no version of its source."
+               "acme/harness has no branch, tag or commit named v9. Correct the version."
 
       assert words(view, "#harness-line") == "Qory harness Always the latest version"
       assert Stacks.choice(scope.workspace) == nil
@@ -1143,8 +1180,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       render_async(view, 2_000)
 
       assert words(view, "#harness-target-#{destination.public_id} #harness-target-refusal") ==
-               "Correct the branch, tag or commit, or choose another harness source. Qory Apiary " <>
-                 "could not read v9 in acme/harness: its ref is no version of its source."
+               "acme/harness has no branch, tag or commit named v9. Correct the version."
 
       assert has_element?(view, "#harness-target-form")
       assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
