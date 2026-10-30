@@ -169,6 +169,90 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     end
   end
 
+  describe "the note above the timeline" do
+    setup :register_and_log_in_user
+
+    defp limits_text(lv) do
+      lv
+      |> element(".q-limits")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    test "a walled run that stopped at a step before its session: the step, no wall note",
+         ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "failed", "exit_code" => 128, "duration_ms" => 100}},
+          {4, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert limits_text(lv) ==
+               "The run stopped before its session started, at the step Fetch git.example.com/acme/shop."
+    end
+
+    test "a released run: the step is Machine started", ctx do
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+
+      {:ok, _queued} =
+        Apiary.Repo.transact(fn ->
+          Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
+        end)
+
+      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert limits_text(lv) ==
+               "The run stopped before its session started, at the step Machine started."
+    end
+
+    test "a walled run whose session never started has no wall note", ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "run.exited", %{"state" => "cancelled", "exit_code" => -1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      refute render(lv) =~ "virtual machine"
+    end
+
+    test "a walled run whose session started and sent no session event: the wall note",
+         ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "session.started", session_started_data()},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert limits_text(lv) ==
+               "This run's session events could not be recorded: the wall it ran behind runs " <>
+                 "inside a virtual machine. The run has a terminal and connections, and no " <>
+                 "session timeline."
+    end
+  end
+
   describe "for an instance admin" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()

@@ -518,12 +518,13 @@ defmodule ApiaryWeb.RunLive.Show do
       </div>
 
       <.limits
-        :if={@limit}
-        reason={@limit}
+        :if={shown_limit(@limit, @preparation)}
+        reason={shown_limit(@limit, @preparation)}
         runtime={shown_sent(@run.runtime)}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
         terminal={Access.can?(@current_scope, :"run.read_log", @run)}
+        step={stopped_step(@preparation)}
       />
 
       <.background_tasks background={@index.background} ended={!alive?(@run)} />
@@ -2790,6 +2791,20 @@ defmodule ApiaryWeb.RunLive.Show do
       machine_log: machine_log(scope, preparation, socket.assigns.machine_log)
     )
   end
+
+  # The note above the timeline. A run that stopped before its session started says at
+  # which step, in place of any other note; a wall's note is for a run whose session
+  # started.
+  defp shown_limit(_limit, %{stopped: %{}, session_started_at: nil}), do: :stopped
+  defp shown_limit(:vm_wall, %{session_started_at: nil}), do: nil
+  defp shown_limit(limit, _preparation), do: limit
+
+  defp stopped_step(%{stopped: %{step: nil}}), do: gettext("Machine started")
+
+  defp stopped_step(%{stopped: %{step: number}, steps: steps}),
+    do: steps |> Enum.find(&(&1.number == number)) |> Preparation.step_name()
+
+  defp stopped_step(_preparation), do: nil
 
   defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket), do: socket
   defp refresh_preparation(socket), do: assign_preparation(socket)
