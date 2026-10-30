@@ -5281,6 +5281,21 @@ msgstr ""
 msgid "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Check the SMTP relay and port, and that this server can reach them, then send the test link again. The connection to the relay failed at %{time} (%{reason})."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Check the SMTP relay and port, and that this server can reach them, then send the test link again. The connection to the relay failed at %{time}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Check the TLS setting and port, such as 587 with Always, or 465, then send the test link again. The TLS handshake with the relay failed at %{time}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. The adapter did not answer three times."
@@ -5309,6 +5324,21 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Check the sender address, and that the relay allows this server's IP address, then send the test link again. The relay refused the email at %{time} (reply code %{code})."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Check the settings, then send the test link again. The send failed at %{time}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Check the username and password, and that the relay allows this server's IP address, then send the test link again. The log-in to the relay failed at %{time}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -8422,6 +8452,11 @@ msgstr ""
 msgid "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "If the email does not arrive within 5 minutes, check your spam folder and the relay's log, then send the link again."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -9954,6 +9989,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Mail test link sent again"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Mail turned on"
 msgstr ""
 
@@ -9965,7 +10005,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
-msgid "Mail turns on when you follow the link we sent to %{email}, signed in as you."
+msgid "Mail turns on when you follow the link we sent to %{email} at %{time}, signed in as you. The link works until %{expiry}."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -11001,7 +11041,7 @@ msgstr "No repositories yet"
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
-msgid "No test link is waiting: save the settings again to send one."
+msgid "No test link is waiting for the admin who saved these settings."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -14387,17 +14427,12 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Saved the mail settings, which sent a test link"
+msgid "Saved the mail settings and started a test send"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/mail_form.ex
-#, elixir-autogen, elixir-format
-msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -14608,6 +14643,16 @@ msgstr ""
 msgid "Send me a log-in link"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Send the test link again"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Send the test link again in a few minutes. The relay returned a temporary error at %{time} (reply code %{code})."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Send your first run"
@@ -14634,6 +14679,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Sent an adapter its secrets, sealed to its access key, revision %{revision}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sent the test link again"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -14690,6 +14740,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Set Qory Apiary's public key."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Set Sender to an address the relay accepts, such as one verified with your mail provider, then send the test link again. The relay refused the sender address at %{time} (reply code %{code})."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15687,6 +15742,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Test"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Test link sent to %{email} at %{time}. It works until %{expiry}."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -17671,6 +17731,11 @@ msgstr ""
 msgid "To change a value without a field, whoever runs Qory Apiary changes the setting named beside it and starts it again."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "To get a test link at your address, save the settings."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A gateway holds two keys at most."
@@ -17769,6 +17834,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Top bar"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Tried to send the test link again; the relay did not accept it"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -18214,6 +18284,11 @@ msgid "Wait %{count} second, then reload the page to read %{source} again. Qory 
 msgid_plural "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#, elixir-autogen, elixir-format
+msgid "Wait until %{time}, then send the link again. Qory Apiary sends at most one test link a minute."
+msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format

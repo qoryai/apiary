@@ -10,6 +10,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   # the mailer's environment is the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog, only: [with_log: 1]
   import Phoenix.LiveViewTest
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures, only: [member_fixture: 1, member_fixture: 2]
@@ -18,12 +19,30 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
   @password "correct horse battery staple"
 
-  # An adapter whose relay refuses every email.
+  # An adapter whose relay refuses every email, as `Swoosh.Adapters.SMTP` returns it.
   defmodule Refusing do
     @moduledoc false
     use Swoosh.Adapter
 
-    def deliver(_email, _config), do: {:error, {:permanent_failure, "550 refused"}}
+    def deliver(_email, _config),
+      do:
+        {:error,
+         {:send,
+          {:permanent_failure, ~c"smtp.example.com", "550 5.7.1 Refused for 192.0.2.7\r\n"}}}
+  end
+
+  # An adapter that answers what the test put in the application's environment, as
+  # `Swoosh.Adapters.SMTP` answers for gen_smtp, after calling the trace function with each
+  # format there, as gen_smtp does. The page's process sends, so the answer is the node's.
+  defmodule Answering do
+    @moduledoc false
+    use Swoosh.Adapter
+
+    def deliver(_email, config) do
+      {answer, traces} = Application.fetch_env!(:apiary, :mail_test_answer)
+      for format <- traces, do: config[:trace_fun].(format, ["the relay's reply"])
+      answer
+    end
   end
 
   # An adapter that hands the test what it was asked to send, and how.
@@ -123,16 +142,47 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   # The path of the test link in the email the admin was sent.
   @subject "Turn on mail for Qory Apiary"
 
-  @no_link "No test link is waiting: save the settings again to send one."
-
   defp sent_path do
     assert_received {:email, %{subject: @subject} = email}
     [path] = Regex.run(~r{/instance/mail/confirm/[A-Za-z0-9_-]+}, email.text_body)
     path
   end
 
-  defp save(view, attrs \\ @attrs),
-    do: view |> form("#mail_form", mail: attrs) |> render_submit()
+  # Saves, a minute or more after the last test send.
+  defp save(view, attrs \\ @attrs) do
+    unthrottle!()
+    view |> form("#mail_form", mail: attrs) |> render_submit()
+  end
+
+  # The last test send, a minute and a second ago: the next one is allowed.
+  defp unthrottle!,
+    do:
+      Apiary.Repo.update_all(
+        from(s in Apiary.Mail.Settings, where: not is_nil(s.mail_test_sent_at)),
+        set: [mail_test_sent_at: DateTime.add(DateTime.utc_now(), -61, :second)]
+      )
+
+  # Puts the adapter of the saved settings' sends for the test, and back after it.
+  defp put_adapter(adapter) do
+    before = Application.get_env(:apiary, Mail)
+    Application.put_env(:apiary, Mail, smtp_adapter: adapter)
+    on_exit(fn -> Application.put_env(:apiary, Mail, before) end)
+  end
+
+  # Has the adapter answer `answer` to each send, as gen_smtp's adapter, with `traces`.
+  defp answer(answer, traces \\ []) do
+    put_adapter(Answering)
+    Application.put_env(:apiary, :mail_test_answer, {answer, traces})
+    on_exit(fn -> Application.delete_env(:apiary, :mail_test_answer) end)
+  end
+
+  # A time as the page shows it, with the seconds, and until when a link sent then works.
+  defp at(time), do: ApiaryWeb.Format.datetime(time, seconds: true, zone: true)
+
+  defp until(time),
+    do: time |> DateTime.add(60, :minute) |> ApiaryWeb.Format.datetime(zone: true)
+
+  defp sent_at, do: Mail.settings().mail_test_sent_at
 
   # The mail form in `html` is sent with POST, and its password's field has no value.
   defp assert_posts_without_password(html) do
@@ -234,8 +284,21 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       assert text(view, "#mail-status") ==
                "Off: invitations and password links are copied by hand."
 
+      sent_at = sent_at()
+
       assert text(view, "#mail-pending") ==
-               "Mail turns on when you follow the link we sent to #{scope.user.email}, signed in as you."
+               "Mail turns on when you follow the link we sent to #{scope.user.email} at #{at(sent_at)}, signed in as you. The link works until #{until(sent_at)}."
+
+      assert text(view, "#mail-arrive") ==
+               "If the email does not arrive within 5 minutes, check your spam folder and the relay's log, then send the link again."
+
+      assert has_element?(view, "#mail-resend", "Send the test link again")
+      refute has_element?(view, "#mail-result")
+
+      # The same after a reload.
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      assert text(view, "#mail-pending") =~ "at #{at(sent_at)}, signed in as you."
+      assert has_element?(view, "#mail-resend")
 
       assert_received {:email, %{subject: @subject} = email}
       assert email.to == [{"", scope.user.email}]
@@ -289,6 +352,13 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       assert text(view, "#mail-pending") ==
                "Mail turns on when the admin who saved these settings follows the link we sent them."
 
+      assert text(view, "#mail-other-admin") ==
+               "To get a test link at your address, save the settings."
+
+      refute has_element?(view, "#mail-no-link")
+      refute has_element?(view, "#mail-resend")
+      refute has_element?(view, "#mail-arrive")
+      refute has_element?(view, "#mail-result")
       assert text(view, "#mail-save") =~ "Saving sends a test link to #{other.user.email}."
     end
 
@@ -457,9 +527,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute_sealed_state(view, ciphertext)
 
       # Saved with the field empty: the saved password is kept, and sends.
-      before = Application.get_env(:apiary, Mail)
-      Application.put_env(:apiary, Mail, smtp_adapter: Capture)
-      on_exit(fn -> Application.put_env(:apiary, Mail, before) end)
+      put_adapter(Capture)
 
       save(view, %{@attrs | "smtp_password" => "", "mail_from" => "mail@example.com"})
       assert_received {:sent, %{subject: @subject}, config}
@@ -474,33 +542,168 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
              )
     end
 
-    test "a test link that could not be sent: saved, and the page says so", %{conn: conn} do
-      before = Application.get_env(:apiary, Mail)
-      Application.put_env(:apiary, Mail, smtp_adapter: Refusing)
-      on_exit(fn -> Application.put_env(:apiary, Mail, before) end)
+    test "a test link that could not be sent: saved, and the page says what to check, after a reload too",
+         %{conn: conn} do
+      put_adapter(Refusing)
 
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
-      save(view)
+      {html, _log} = with_log(fn -> save(view) end)
 
-      assert text(view, "#mail-not-sent") ==
-               "Saved, but the test link could not be sent through these settings. Check them and save again."
+      line =
+        "Check the sender address, and that the relay allows this server's IP address, then send the test link again. The relay refused the email at #{at(sent_at())} (reply code 550 5.7.1)."
 
+      assert text(view, "#mail-result") == line
+      assert has_element?(view, "#mail-resend", "Send the test link again")
+      refute html =~ "192.0.2.7"
       refute has_element?(view, "#mail-pending")
-      refute has_element?(view, "#mail-no-link")
+      refute has_element?(view, "#mail-arrive")
       assert Mail.state(Mail.settings()) == :pending
 
-      # Opened again: no link waits, and the page says what to do.
-      {:ok, view, _html} = live(conn, ~p"/instance/mail")
-      refute has_element?(view, "#mail-pending")
-      assert text(view, "#mail-no-link") == @no_link
+      {:ok, view, html} = live(conn, ~p"/instance/mail")
+      assert text(view, "#mail-result") == line
+      assert has_element?(view, "#mail-resend")
+      refute html =~ "192.0.2.7"
     end
 
-    test "once the test link no longer works, says so in place of who it waits for",
+    test "each result of a failed send has its line, starting with what to check",
+         %{conn: conn} do
+      host = ~c"smtp.example.com"
+      sender = ~c"Mail FROM rejected: ~p~n"
+
+      for {answer, traces, line} <- [
+            {{:error, {:no_more_hosts, {:permanent_failure, host, :auth_failed}}}, [],
+             "Check the username and password, and that the relay allows this server's IP address, then send the test link again. The log-in to the relay failed at %{time}."},
+            {{:error, {:send, {:permanent_failure, host, "550 5.7.1 Unverified sender\r\n"}}},
+             [sender],
+             "Set Sender to an address the relay accepts, such as one verified with your mail provider, then send the test link again. The relay refused the sender address at %{time} (reply code 550 5.7.1)."},
+            {{:error, {:send, {:permanent_failure, host, "554 5.7.1 No\r\n"}}}, [],
+             "Check the sender address, and that the relay allows this server's IP address, then send the test link again. The relay refused the email at %{time} (reply code 554 5.7.1)."},
+            {{:error, {:send, {:temporary_failure, host, "451 4.3.0 Later\r\n"}}}, [],
+             "Send the test link again in a few minutes. The relay returned a temporary error at %{time} (reply code 451 4.3.0)."},
+            {{:error, {:retries_exceeded, {:network_failure, host, {:error, :econnrefused}}}}, [],
+             "Check the SMTP relay and port, and that this server can reach them, then send the test link again. The connection to the relay failed at %{time} (econnrefused)."},
+            {{:error, {:retries_exceeded, {:temporary_failure, host, :tls_failed}}}, [],
+             "Check the TLS setting and port, such as 587 with Always, or 465, then send the test link again. The TLS handshake with the relay failed at %{time}."},
+            {{:error, {:retries_exceeded, {:unexpected_response, host, ["no"]}}}, [],
+             "Check the settings, then send the test link again. The send failed at %{time}."}
+          ] do
+        answer(answer, traces)
+        {:ok, view, _html} = live(conn, ~p"/instance/mail")
+        {_html, _log} = with_log(fn -> save(view) end)
+        line = String.replace(line, "%{time}", at(sent_at()))
+
+        assert text(view, "#mail-result") == line
+        assert has_element?(view, "#mail-resend")
+      end
+
+      # After a reload, the reason a connection failed is not known: the line without it.
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      assert text(view, "#mail-result") =~ "The send failed at"
+      answer({:error, {:retries_exceeded, {:network_failure, host, {:error, :timeout}}}})
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      {_html, _log} = with_log(fn -> save(view) end)
+      assert text(view, "#mail-result") =~ "(timeout)."
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+
+      assert text(view, "#mail-result") ==
+               "Check the SMTP relay and port, and that this server can reach them, then send the test link again. The connection to the relay failed at #{at(sent_at())}."
+    end
+
+    test "Send the test link again sends a new link, and says so; within the minute, says until when",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      first = sent_path()
+      unthrottle!()
+
+      view |> element("#mail-resend") |> render_click()
+      second = sent_path()
+      refute second == first
+      sent_at = sent_at()
+
+      assert text(view, "#mail-resent") ==
+               "Test link sent to #{scope.user.email} at #{at(sent_at)}. It works until #{until(sent_at)}."
+
+      refute has_element?(view, "#mail-pending")
+      assert has_element?(view, "#mail-arrive")
+      assert has_element?(view, "#mail-resend")
+
+      # Within the minute: nothing sent, and when to try again.
+      view |> element("#mail-resend") |> render_click()
+
+      assert text(view, "#mail-wait") ==
+               "Wait until #{at(DateTime.add(sent_at, 60, :second))}, then send the link again. Qory Apiary sends at most one test link a minute."
+
+      refute_received {:email, %{subject: @subject}}
+
+      # A save within the minute: nothing saved, the form as typed but the password.
+      view
+      |> form("#mail_form", mail: %{@attrs | "mail_from" => "mail@example.com"})
+      |> render_submit()
+
+      assert text(view, "#mail-wait") =~ "Wait until #{at(DateTime.add(sent_at, 60, :second))}"
+      assert Mail.settings().mail_from == "qory@example.com"
+
+      assert has_element?(
+               view,
+               "#mail_form input[name='mail[mail_from]'][value='mail@example.com']"
+             )
+
+      assert has_element?(view, "#mail_form input[name='mail[smtp_password]']:not([value])")
+      refute_received {:email, %{subject: @subject}}
+
+      # The second link turns mail on.
+      assert redirected_to(get(conn, second)) == ~p"/instance/mail"
+      assert Mail.state(Mail.settings()) == :on
+    end
+
+    test "Send the test link again that the relay refuses shows the result's line",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      _first = sent_path()
+      unthrottle!()
+      put_adapter(Refusing)
+
+      {_html, _log} = with_log(fn -> view |> element("#mail-resend") |> render_click() end)
+
+      assert text(view, "#mail-result") =~
+               "The relay refused the email at #{at(sent_at())} (reply code 550 5.7.1)."
+
+      refute has_element?(view, "#mail-resent")
+      refute has_element?(view, "#mail-pending")
+    end
+
+    test "for another instance admin, a failed send's line without the button",
+         %{conn: conn, scope: scope} do
+      put_adapter(Refusing)
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      {_html, _log} = with_log(fn -> save(view) end)
+
+      Mail.put_test_source(:env)
+      other = member_fixture(scope, :owner)
+      Mail.put_test_source(:none)
+      {:ok, view, _html} = live(log_in_user(build_conn(), other.user), ~p"/instance/mail")
+
+      # No link went out: none waits.
+      refute has_element?(view, "#mail-pending")
+
+      assert text(view, "#mail-no-link") ==
+               "No test link is waiting for the admin who saved these settings."
+
+      assert text(view, "#mail-result") =~ "The relay refused the email at"
+
+      assert text(view, "#mail-other-admin") ==
+               "To get a test link at your address, save the settings."
+
+      refute has_element?(view, "#mail-resend")
+    end
+
+    test "once the test link no longer works, the admin who saved has the button alone",
          %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
       save(view)
       assert has_element?(view, "#mail-pending")
-      refute has_element?(view, "#mail-no-link")
 
       Apiary.Repo.update_all(
         from(t in Apiary.Accounts.UserToken, where: t.context == "instance_mail"),
@@ -509,15 +712,34 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
       refute has_element?(view, "#mail-pending")
-      assert text(view, "#mail-no-link") == @no_link
+      refute has_element?(view, "#mail-arrive")
+      refute has_element?(view, "#mail-result")
+      assert has_element?(view, "#mail-resend")
 
-      # Another admin sees the same.
+      # Another admin sees that no link waits, and how to get one.
       Mail.put_test_source(:env)
       other = member_fixture(scope, :owner)
       Mail.put_test_source(:none)
       {:ok, view, _html} = live(log_in_user(build_conn(), other.user), ~p"/instance/mail")
       refute has_element?(view, "#mail-pending")
-      assert text(view, "#mail-no-link") == @no_link
+
+      assert text(view, "#mail-no-link") ==
+               "No test link is waiting for the admin who saved these settings."
+
+      assert text(view, "#mail-other-admin") ==
+               "To get a test link at your address, save the settings."
+
+      refute has_element?(view, "#mail-resend")
+    end
+
+    test "with mail on, there is no button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      get(conn, sent_path())
+
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      refute has_element?(view, "#mail-test")
+      refute has_element?(view, "#mail-resend")
     end
 
     test "says when the saved password cannot be read", %{conn: conn} do
