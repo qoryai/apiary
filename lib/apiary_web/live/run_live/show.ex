@@ -1287,7 +1287,7 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       default_policy:
         gettext(
-          "This prebuild ran under Qory Apiary's default policy, because this workspace has no policy version yet."
+          "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
         )
     }
   end

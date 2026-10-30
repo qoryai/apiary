@@ -17088,7 +17088,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "This prebuild ran under Qory Apiary's default policy, because this workspace has no policy version yet."
+msgid "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
 msgstr ""
 
 #: lib/apiary/policy.ex
