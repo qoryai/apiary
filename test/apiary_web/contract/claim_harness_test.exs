@@ -316,14 +316,8 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   end
 
   describe "a prebuild" do
-    # A claim takes a prebuild only on an instance with a registry, of a workspace that
-    # serves a run configuration.
+    # A claim takes a prebuild only on an instance with a registry.
     @describetag needs: [:factory, :registry]
-
-    setup ctx do
-      Apiary.DispatchedRunsFixtures.served!(ctx.scope)
-      :ok
-    end
 
     # The claim of a prebuild of `collection` for `env-1`: its documents.
     defp prebuild_documents(ctx, collection) do

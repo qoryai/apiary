@@ -256,14 +256,8 @@ defmodule Apiary.Dispatches.HandoverTest do
   end
 
   describe "the run a claim of a prebuild registers" do
-    # A claim takes a prebuild only on an instance with a registry, of a workspace that
-    # serves a run configuration.
+    # A claim takes a prebuild only on an instance with a registry.
     @describetag needs: [:factory, :registry]
-
-    setup ctx do
-      Apiary.DispatchedRunsFixtures.served!(ctx.scope)
-      :ok
-    end
 
     test "has its collection's target, its input exactly the ref it was queued for", ctx do
       {collection, queued} = prebuild!(ctx)

@@ -44,8 +44,6 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   setup do
     started = database_now()
     %{scope: scope} = sign_up()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     {:ok, made} = Agent.start(fn -> [] end)
     place = handover_place_fixture(scope)
     {gateway_key, _seed} = place.gateway_key

@@ -29,8 +29,6 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     %{access_key: key} = installed_key_fixture(pool)
 
     %{scope: a} = sign_up_fixture()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(a)
     %{scope: b} = sign_up_fixture()
     %{scope: c} = sign_up_fixture()
 

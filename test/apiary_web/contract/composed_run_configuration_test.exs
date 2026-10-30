@@ -4,9 +4,10 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   # target, beside the security_policy, under the composed document's digest; its reloads
   # and its batches carry the same image and digest, a policy change moving the digest and
   # never the image. A prebuild under a policy that names an image is given the policy
-  # without it, and no run is given an image beside a policy that names one. A prebuild of
-  # a workspace that serves no run configuration is not claimed. Every other
-  # run is answered the bytes it was before. A run of the queue is given its run variables
+  # without it, and no run is given an image beside a policy that names one; a prebuild
+  # of a workspace that serves no run configuration, the workspace's default policy
+  # (`ApiaryWeb.Contract.PrebuildPolicyTest`). Every other run is answered the bytes it
+  # was before. A run of the queue is given its run variables
   # after the document's last member, and every digest is that of the bytes sent. Not
   # async, as the other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -551,21 +552,6 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       policy = managed!(ctx)
       recorded!(ctx, {"code.example.com", "acme/shop"})
       assert_as_before(ctx, prebuild!(ctx), policy.document)
-    end
-
-    test "no prebuild of an unmanaged workspace: the claim leaves it waiting", ctx do
-      recorded!(ctx, {"code.example.com", "acme/shop"})
-      collection = collection_fixture(ctx.scope, target_path: "acme/shop")
-      [queued] = Apiary.DispatchedRunsFixtures.queue_builds!(collection)
-      assert claim(ctx) == {:ok, :none}
-
-      assert %Apiary.Dispatches.DispatchRun{state: :waiting} =
-               Repo.get!(Apiary.Dispatches.DispatchRun, queued.id)
-
-      # Once the workspace serves a run configuration, the claim takes it.
-      managed!(ctx)
-      assert {:ok, %{run: %{id: id}}} = claim(ctx)
-      assert id == queued.id
     end
   end
 

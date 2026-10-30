@@ -28,8 +28,6 @@ defmodule Apiary.Environments.RebuildTest do
   # and the `environment_ref` `env-1`, made after the pools, so nothing is queued yet.
   setup do
     %{scope: scope} = sign_up_fixture()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     _gateway = workspace_gateway!(scope)
     mac = pool_fixture(scope, name: "mac-pool")
     linux = pool_fixture(scope, name: "linux-pool")

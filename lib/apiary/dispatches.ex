@@ -119,10 +119,9 @@ defmodule Apiary.Dispatches do
   #      (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
   #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by
   #      the pool it is held for, and only on an instance with a registry
-  #      (`Apiary.Registry.configured?/0`), of a workspace that serves a run
-  #      configuration (`Apiary.Policy.managed_workspace?/1`). A run held for the pool's
-  #      build of its target is not taken (`Apiary.Environments.held/1`), nor one that
-  #      a key change or a cleared image held again after that read (`Apiary.Environments.claim_image/2`): it
+  #      (`Apiary.Registry.configured?/0`). A run held for the pool's build of its target
+  #      is not taken (`Apiary.Environments.held/1`), nor one that a key change or a
+  #      cleared image held again after that read (`Apiary.Environments.claim_image/2`): it
   #      waits, and so does a run whose harness walk is pending
   #      (`Apiary.Harnesses.WalkJob`). An explore run is given the image its target's build made for the pool,
   #      nil for the pool's default. A run whose work item has no target is taken as any
@@ -232,7 +231,6 @@ defmodule Apiary.Dispatches do
   alias Apiary.Harnesses.{RunHarness, WalkJob}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Policy.RunConfiguration
   alias Apiary.WorkItems.WorkItem
 
   # The step every run of a take in is queued for: the contract's `explore`.
@@ -1044,8 +1042,8 @@ defmodule Apiary.Dispatches do
 
   # waiting_query/1 is the query of the oldest waiting run the pool of `key` may take,
   # locked `FOR UPDATE SKIP LOCKED`. A prebuild goes only to the pool it is held for, only
-  # on an instance with a registry and of a workspace that serves a run configuration
-  # (`prebuild_taken/0`); a run held for the pool's build of its target
+  # on an instance with a registry (`prebuild_taken/0`); a run held for the pool's build
+  # of its target
   # (`Apiary.Environments.held/1`) is left waiting.
   @doc false
   @spec waiting_query(AccessKey.t()) :: Ecto.Query.t()
@@ -1103,23 +1101,11 @@ defmodule Apiary.Dispatches do
   # The condition, on a run of the queue bound `:run`, that a claim may take it: a run
   # that is not a prebuild; a prebuild only on an instance with a registry
   # (`Apiary.Registry.configured?/0`), as its documents have its destinations there
-  # (`Apiary.Dispatches.Handover`), and only of a workspace that serves a run
-  # configuration (`Apiary.Policy.managed_workspace?/1`), as the configuration's
-  # `security_policy` has the registry's path rules and keeps the machine's local policy
-  # from applying (`Apiary.Policy.ComposedConfiguration`). The registry's feature needs
-  # `security`, under which a run configuration is served. A prebuild that is not taken
-  # waits.
+  # (`Apiary.Dispatches.Handover`). A prebuild that is not taken waits.
   defp prebuild_taken do
-    if Apiary.Registry.configured?() do
-      served =
-        from c in RunConfiguration,
-          where: c.workspace_id == parent_as(:run).workspace_id,
-          select: 1
-
-      dynamic([run: r], r.step != ^@prebuild or exists(served))
-    else
-      dynamic([run: r], r.step != ^@prebuild)
-    end
+    if Apiary.Registry.configured?(),
+      do: dynamic([run: _r], true),
+      else: dynamic([run: r], r.step != ^@prebuild)
   end
 
   # The harness walk of a run bound `:run` that has not resolved: pending, or failed, which

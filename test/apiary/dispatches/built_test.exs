@@ -44,8 +44,6 @@ defmodule Apiary.Dispatches.BuiltTest do
   # `image_destination`.
   setup do
     %{scope: scope} = sign_up_fixture()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     place = handover_place_fixture(scope)
     collection = collection_fixture(scope, target_system: "code.example.com")
 

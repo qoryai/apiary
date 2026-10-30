@@ -34,8 +34,6 @@ defmodule Apiary.EnvironmentsTest do
   # build of them, and a connection whose listings the hold's tests post.
   setup do
     %{scope: scope} = sign_up_fixture()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     _gateway = workspace_gateway!(scope)
     pool = pool_fixture(scope)
     connectable = connectable_adapter_fixture()

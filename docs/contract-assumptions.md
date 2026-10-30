@@ -412,10 +412,7 @@ or, where an environment record of the organisation has an image under that name
 `environment_image`, that image by its digest (`Apiary.Registry.RunAccess`). They are the
 names the run's registry tokens grant. A claim takes a prebuild only on an instance with
 the `registry` feature on and `QORY_REGISTRY` set; on any other instance no prebuild is
-queued, no run waits for one, and an explore run starts in its pool's default image. A
-claim also takes a prebuild only of a workspace that serves a run configuration: without
-one, the prebuild's documents would have no `security_policy`, and the machine's local
-policy would apply to it. The prebuild waits until the workspace serves one. The
+queued, no run waits for one, and an explore run starts in its pool's default image. The
 registered run
 has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
 `.` and the fingerprint of the instance's key, which the machine redeems once at

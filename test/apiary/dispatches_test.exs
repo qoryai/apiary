@@ -24,8 +24,6 @@ defmodule Apiary.DispatchesTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     gateway = workspace_gateway!(scope)
     pool = pool_fixture(scope)
     %{access_key: key} = enrolled_key_fixture(scope, pool)

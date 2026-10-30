@@ -190,20 +190,6 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
-  Makes the scope's workspace serve a run configuration, where it serves none, by its
-  first change: the host `api.example` allowed (`Apiary.Policy.allow/3`). A claim takes
-  a prebuild only of such a workspace (`Apiary.Dispatches.waiting_query/1`). Returns the
-  scope.
-  """
-  def served!(%Scope{workspace: workspace} = scope) do
-    unless Apiary.Policy.managed_workspace?(workspace.id) do
-      {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
-    end
-
-    scope
-  end
-
-  @doc """
   An image by its digest, `@sha256:` and `digest`, 64 lower-case hex digits, under the
   registry's place of the organisation `organisation_id` (`Apiary.Registry.Names`), at
   `targets/` and `name`, 16 hex digits: `Apiary.Environments.image_for/3` gives it to a
@@ -258,14 +244,12 @@ defmodule Apiary.DispatchedRunsFixtures do
   @doc """
   A prebuild of a fresh collection of the scope's workspace, with a target and the
   `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued for every
-  pool of the workspace (`queue_builds!/1`), with its environment record, in a workspace
-  that serves a run configuration (`served!/1`), then claimed under `key`, which
-  registers its run, and its machine started, which hands it over (`dispatched!/1`). The
-  workspace has no other waiting run the pool may take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
+  pool of the workspace (`queue_builds!/1`), with its environment record, then claimed
+  under `key`, which registers its run, and its machine started, which hands it over
+  (`dispatched!/1`). The workspace has no other waiting run the pool may take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
   run_of_queue, run: registered_run}`, each as stored then.
   """
   def prebuild_handed_over!(%Scope{} = scope, %AccessKey{} = key, collection_attrs \\ %{}) do
-    served!(scope)
     collection = Apiary.NodesFixtures.collection_fixture(scope, collection_attrs)
     _queued = queue_builds!(collection)
 

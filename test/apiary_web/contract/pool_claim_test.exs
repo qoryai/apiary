@@ -65,8 +65,6 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
     end)
 
     %{scope: scope} = sign_up_fixture()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     pool = pool_fixture(scope)
     gateway = gateway_for!(scope, pool)
     %{access_key: key, pair: pair} = enrolled_key_fixture(scope, pool)

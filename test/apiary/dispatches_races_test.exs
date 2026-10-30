@@ -46,8 +46,6 @@ defmodule Apiary.DispatchesRacesTest do
 
   setup do
     %{scope: scope} = sign_up()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     # The workspace's default gateway, which the pools' claims resolve to, and its key's
     # public half, which outlives the organisation.
     gateway = workspace_gateway!(scope)

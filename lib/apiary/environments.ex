@@ -18,9 +18,7 @@ defmodule Apiary.Environments do
   # Rebuild there answers `{:error, :not_found}`: the rules here that ask whether a domain
   # has prebuilds (`holds?/1`) read no, and the runs start in the pool's default image.
   # What a target's page says (`section/2`) does not ask. A claim there takes no prebuild
-  # (`Apiary.Dispatches.waiting_query/1`). A claim also takes no prebuild of a workspace
-  # that serves no run configuration; the runs held for that build stay held until the
-  # workspace serves one. In a workspace whose
+  # (`Apiary.Dispatches.waiting_query/1`). In a workspace whose
   # domain has prebuilds (`holds?/1`, `Apiary.Lingo.Domain.prebuilds?/1`), a waiting run
   # that is not a prebuild, of a work item whose target a live collection of the
   # workspace with an `environment_ref` has, is held for a node pool while no record of

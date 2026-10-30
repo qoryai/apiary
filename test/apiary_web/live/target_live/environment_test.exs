@@ -195,11 +195,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#{pool_id(pool)}-running")
     end
 
-    # A claim takes a prebuild only on an instance with a registry, of a workspace that
-    # serves a run configuration.
+    # A claim takes a prebuild only on an instance with a registry.
     @tag needs: [:factory, :registry]
     test "a build running", %{conn: conn, scope: scope, path: path} do
-      Apiary.DispatchedRunsFixtures.served!(scope)
       pool = pool_fixture(scope)
       shop = collection(scope)
 
@@ -538,9 +536,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       _gateway = gateway_for!(scope, arm)
       %{access_key: key} = enrolled_key_fixture(scope, arm)
-      # A claim takes a prebuild only of a workspace that serves a run configuration.
-      {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
       {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
       set_policy_image!(scope)
       view = open(conn, path)
 

@@ -59,8 +59,6 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
   setup do
     %{scope: scope} = sign_up()
-    # A claim takes a prebuild only of a workspace that serves a run configuration.
-    Apiary.DispatchedRunsFixtures.served!(scope)
     {:ok, made} = Agent.start(fn -> %{public_keys: [], adapters: []} end)
 
     # Before the clean up of `setup_races`: the organisation, then what outlives it.
