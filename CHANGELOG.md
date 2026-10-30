@@ -99,20 +99,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   later, such as “You can change this later in Workspace settings › Workflow.” Where the
   edition allows more than one workspace, a workspace added later goes through the same
   7 steps.
-- Where the edition shows the setting “Available to every workspace in Acme”, **Model**
-  and **Harness** list first what the organisation shares, under “Shared in Acme”, each
-  marked “· every workspace”. On **Model**, **Key** lists each model provider with a key
-  that applies to every workspace, then the providers of the workspace alone and **Add a
-  key**; the first is chosen while the workspace has no model choice. On **Harness**,
-  the harness the organisation shares comes first, with its address and pin, chosen
-  while the workspace has no saved choice. Where the organisation shares the Qory
-  harness, **Harness** shows it once, as **Qory harness** marked “· every workspace”,
-  with no heading, unless the workspace's saved Qory harness is at another commit.
-  **Continue** with the shared harness chosen removes the workspace's saved choice, so
-  its runs use the shared harness. With **Qory harness** or **A harness repository**
-  chosen, **Continue** saves the workspace's choice, also where it is the same as the
-  shared harness, so a later change of the shared harness leaves the workspace's harness
-  as it is. With nothing shared, neither step shows the heading.
+- Where the edition shows the setting “Available to every workspace in Acme”, **Model**,
+  and **Harness** for a harness repository, list first what the organisation shares,
+  under “Shared in Acme”, each marked “· every workspace”. On **Model**, **Key** lists
+  each model provider with a key that applies to every workspace, then the providers of
+  the workspace alone and **Add a key**; the first is chosen while the workspace has no
+  model choice. On **Harness**, a harness repository the organisation shares comes
+  first, chosen while the workspace has no saved choice, with its version as text under
+  it, such as “triage · acme/harness · main”. Where the organisation shares the Qory
+  harness, **Harness** shows the plain **Qory harness** row, with no mark and no
+  heading, and **Version** under it while **Qory harness** is chosen. **Continue** with
+  the shared harness chosen removes the workspace's saved choice, so its runs use the
+  shared harness. **Continue** with **Qory harness** at the version of the shared Qory
+  harness does the same where the workspace has no saved choice, or its saved Qory
+  harness is at the same commit. With any other choice,
+  **Continue** saves the workspace's choice, also where it is the same as a shared
+  harness repository, so a later change of the shared harness leaves the workspace's
+  harness as it is. With nothing shared, neither step shows the heading.
 - **Work sources**, “Where does work for Main come from?”, shows a card for each account
   that the organisation's connections reach, of the adapters that bring tickets for the
   workspace's type. **Destinations**, “Which repositories may runs in Main change?”,
@@ -189,40 +192,59 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Claude subscription, **About this step** shows `claude setup-token` on a separate
   line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
-  workspace's runs. It opens with “A harness is the skills and workflows the agent runs
-  with. Runs in Main use the harness you choose here.”, which Workspace settings ›
-  Workflow shows too after **Change**. The choices are two: **Qory harness**,
-  `github.com/qoryai/harness` at the commit this release pins, `fe3b3ab`, with “A
-  repository's harness file comes first.”; or **A harness repository**, a repository
-  linked to the organisation, with **Branch or tag**, `main` unless you change it, read
-  through the organisation's connection.
-  **Continue** saves the choice. For a harness repository, the save reads it and pins
-  the commit its branch or tag points to; where the read fails, the step shows why. A
+  workspace's runs. **About this step** explains what a harness is, which harness a run
+  uses, and the versions. The choices are two: **Qory harness**, with **Version**
+  **Always the latest version**, the newest version this Qory Apiary release ships, which
+  moves on when Qory Apiary is upgraded, and **A fixed version**, disabled with “Named
+  versions come with the first release of the Qory harness.”; or **A harness
+  repository**: a **Repository** from a searchable list of the connected repositories, a
+  **Stack** it exports, and **Version**, **Always the latest on** a branch, `main` unless
+  you change it, or **A fixed version**, a tag or a commit. Where the repository exports
+  no stack, “acme/tools exports no stack. Add a qory.yaml or harness.yaml at its root
+  that lists the stack under exports.” takes the place of **Stack**. Where the
+  organisation has no connected repository, “Acme has no connected repository. Connect a
+  work source to pick one.” shows under **Repository**. Where an adapter of the connected
+  repositories has no call address, or one Qory Apiary does not call, its repositories
+  are not listed, and **Repository** shows, before any pick, a line for that adapter,
+  such as “Qory Apiary cannot read the repositories of the GitHub adapter: the adapter
+  has no call address. An instance admin sets the call address. The Qory harness needs
+  no call address.”
+  **Continue** saves the choice. The save reads the branch, tag or commit. Where Qory
+  Apiary does not read the stacks of a harness source, or does not save it, the Harness
+  step, **Workflow** and the form of **A stack of another repository…** show the cause
+  and what to do, with no address, host or IP of the instance's set-up. A call to an
+  adapter that fails shows its cause, such as “The GitHub adapter did not answer within
+  10 seconds. Try again. If it repeats, an instance admin checks that the adapter is
+  running.” The other main causes are a version the repository does not have, with
+  “acme/tools has no branch, tag or commit named v9. Correct the version.”; a listed
+  stack with no stack file, with “acme/tools lists the stack web under exports, but
+  stacks/web has no qory-stack.yaml. Add that file.”; a file that is not valid, with
+  “Correct qory.yaml in acme/tools:” and the rule; an address, folder or version in a
+  form Qory Apiary does not read, with the rule it breaks, such as “Correct the version:
+  a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes
+  and hyphens, and no spaces.”; a harness whose content breaks a rule, with “Correct the
+  harness in acme/tools:” and the rule, such as “it has no harness file and no harness is
+  set”; and an error in Qory Apiary, with “Qory Apiary could not read acme/tools because
+  of an error in Qory Apiary. Try again. If it repeats, tell an instance admin.” Each run
+  on a branch reads the branch's newest commit when it starts and records it. A
   workspace with no saved choice uses the Qory harness. Owners and admins choose. The
   test run keeps its built-in harness.
-- Under the choices, **Harness** lists the workspace's repositories from
-  **Destinations** under the heading **Repositories** and the line “A repository uses
-  the workspace's harness unless you choose another one for it.”, each with **Workspace
-  default** or the stack chosen for it, such as “acme/web-harness · stacks/web · pinned
-  at 1a2b3c4”, and **Choose another** for owners and admins. **Choose another** offers
-  **Workspace default**, which removes the repository's stack, the **Qory harness**, or
-  **A harness repository**: a **Source** among the groups of Workspace settings ›
-  Workflow, a **Stack** of it and a **Branch or tag**. For a harness repository,
-  **Save** reads the source and pins the
-  commit; a save that fails shows why. A stack of a source that an instance admin
-  assigned is saved at the assignment's branch or tag, such as “… at main, not pinned”:
-  runs read the commit it points to when they start.
-- **Source**, where you choose a harness repository on the **Harness** step, in its
-  **Choose another** for a repository, and in Workspace settings › Workflow, has a
-  search box that narrows the linked repositories as you type. When every linked
-  repository is read and none has a `qory-stack.yaml` file, the line “No connected
-  repository has a qory-stack.yaml file. Connect a work source, or add the file to a
-  repository.” takes the place of the linked repositories.
-- A run's harness is the first of: the stack chosen for its repository; the
-  workspace's harness choice, else the harness the organisation shares; the repository's
-  harness file, `harness.yaml` or `qory.yaml`; the Qory harness. Under the Qory harness
-  choice, the repository's harness file comes first. Under a harness repository, or a
-  stack chosen for the repository, a run reads no harness file of its repository.
+- Under the choices, **Repositories** lists the workspace's repositories from
+  **Destinations**, each with a **Stack**: **Workspace's harness** until you choose
+  another, a stack the workspace's harness exports, or **A stack of another
+  repository…**, which opens **Repository**, **Stack** and **Version**, and also offers the
+  harness sources an instance admin assigned and a **Public address**. A chosen stack
+  shows as “review · acme/tools · main”. A stack from the workspace's harness follows the
+  workspace's version; when the workspace's harness moves to another repository, the row
+  keeps its repository and stack at the version it followed. Owners and admins choose.
+  **Workspace's harness** or a stack of the workspace's harness saves at once; the form of
+  a stack of another repository saves with **Save**.
+- **Repository** narrows the connected repositories as you type. Qory Apiary reads only
+  the repository you pick.
+- A run's harness is the first of: the repository's root `harness.yaml`, or the
+  `harness` section of its root `qory.yaml`, where it extends or defines a stack; the
+  stack set for the repository; the workspace's harness choice, else the harness the
+  organisation shares; the Qory harness.
 - **Machines**, “Which machines run the runs in Main?”, shows the node pools that run
   the workspace's runs: the workspace's pools, or the instance's pool while it has none.
   Each shows “Ready · gateway: <gateway>”, or **Not ready** and why. The reasons are: no
@@ -259,10 +281,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   link to its page. Anyone else reads who acts, such as “Only an instance admin checks
   the instance's pool and gateway.” While the workspace has no pool, anyone who may not
   add one sees the instance's pool, read only. The step is done once a pool is ready.
+  **About this step** explains what a node pool and a node are, which pool takes the
+  workspace's runs, and what makes a pool ready.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
   agent** with **Run the test**, with no work source; owners, admins and members run it
   once a pool that serves the workspace is ready. Before that, the step shows “Runs need
-  a ready pool. See Machines.”, and **See Machines** opens that step. The test run uses a
+  a ready pool. See Machines.”, and **See Machines** opens that step. **About this step**
+  explains when the test passes, which harness the test run uses, and that the set-up of
+  the workspace is finished once the test passes. The test run uses a
   harness built into Qory Apiary: qory's `examples/hello` at a fixed commit, workflow
   `hello`, which the machine fetches from github.com without a credential. The step
   shows “The test run is queued for a machine.”, then “The test run is running.”,
@@ -309,19 +335,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Where an edition shows the setting “Available to every workspace in Acme”, off, the
   **Model** step's **Add a key** and **New model provider** have it: on, the provider is
   the organisation's, reaching every workspace, with its key a secret of the
-  organisation. The **Harness** step has it too: on, **Continue** saves the choice as
-  the harness the organisation shares, which each workspace with no saved choice uses.
-  While the organisation shares a harness, sharing a second fails, with “Choose the
-  shared harness, or turn off “Available to every workspace in Acme”. Acme shares a
-  harness already.” The core shows the setting nowhere.
+  organisation. The **Harness** step has it too, except while **Qory harness** is
+  chosen: on, with **A harness repository** chosen, **Continue** saves the harness
+  repository as the harness the organisation shares, which each workspace with no saved
+  choice uses.
+  While the organisation shares a harness repository, sharing a second fails, and the
+  step shows “Choose the shared harness, or turn off “Available to every workspace in
+  Acme”. Acme shares a harness already.” Where Acme shares the Qory harness, sharing a
+  harness repository replaces it. The core shows the setting nowhere.
 - **Workspace settings › Workflow**, for owners and admins, shows the workspace's
-  **Harness** with its pin, such as “Qory harness · pinned at fe3b3ab”, or the harness
-  the organisation shares where the workspace has no saved choice. **Change** opens the
-  two choices of the set-up's **Harness** step, with **Save** and **Cancel**; under the
-  Qory harness, a notice shows “A repository's harness.yaml or qory.yaml comes first.”
+  **Harness** on two lines, such as “Qory harness” over “Always the latest version”, or
+  the harness the organisation shares where the workspace has no saved choice.
+  **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
+  **Cancel**. Under the harness, **Repositories** shows the same rows as the Harness
+  step, with the same **Stack** field. **About this step** also has the Harness step's
+  five paragraphs.
   Under it, the page sets the workflow of the workspace's runs, from a harness
-  repository: **Source** lists the repositories linked to the organisation that have a
-  `qory-stack.yaml` file, and the harness sources an instance admin assigned to it;
+  repository: **Source** lists the repositories connected to the organisation, and the
+  harness sources an instance admin assigned to it;
   **Enter an address** takes a **Public address**. **Save** sets the workflow the runs
   use; no run reads that source's stack as its harness. When an adapter's result
   marks a repository as public, a run reads it through that adapter with no link to the
@@ -434,6 +465,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   An adapter may use it to suggest a name, such as the GitHub App's name.
 - Pages show an adapter's title from its description, such as GitHub, in place of its
   short name, such as github. The short name stays in settings and identifiers.
+- Qory Apiary calls an adapter whose host resolves to a loopback address, `127.0.0.0/8`
+  or `::1`, so an adapter may run on the instance's machine. Link-local, metadata,
+  unspecified, multicast and broadcast addresses stay refused, and the host must still be
+  `<adapter name>.<host of PUBLIC_URL>`.
+- With `SSL_CERT_FILE` set to a PEM file, adapter calls trust its certificates in
+  addition to the operating system's certificate authorities, and still check the
+  certificate and the host. A file that is missing or contains no certificate stops the
+  boot.
 <!-- /feature -->
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
@@ -458,6 +497,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `stacks`: two nullable columns, `version_kind` and `version_name`, with a check on their
+  combinations. Each saved Qory harness choice at the commit `fe3b3ab` becomes **Always
+  the latest version**. Other rows keep their pin.
 - `instance_settings`: four columns for Instance settings › Configuration,
   `audit_retention_days`, `audit_address_retention_days`, `deletion_grace_days` and
   `invitations_per_day`, all NULL, with checks on their ranges that hold in every edition:

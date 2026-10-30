@@ -1173,8 +1173,40 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
   describe "Harness" do
     @harness_git "https://code.example.com/acme/harness"
+    @team_git "https://code.example.com/example-org/team-harness"
     @pin String.duplicate("c3", 20)
     @root_stack "modules:\n  - name: core\n    source: {path: modules/core}\n"
+    @one_export %{
+      {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage]\n",
+      {"R_harness", "stacks/triage/qory-stack.yaml"} =>
+        "modules:\n  - name: core\n    source: {path: modules/core}\n"
+    }
+
+    # The paragraphs of About this step, and the texts the step no longer shows.
+    @about [
+      "A harness is the skills and workflows the agent runs with.",
+      "A repository whose harness.yaml or qory.yaml at its root sets a harness runs with " <>
+        "that file. Every other repository runs with the stack set for it under " <>
+        "Repositories, else with the harness you choose here, else with the Qory harness.",
+      "The Qory harness is the harness Qory publishes. Always the latest version uses the " <>
+        "newest version this Qory Apiary ships, and moves on when Qory Apiary is upgraded.",
+      "A harness repository exports stacks in the qory.yaml or harness.yaml at its root. " <>
+        "Qory Apiary reads that file in the repository you pick, and offers only the stacks " <>
+        "it exports.",
+      "Always the latest on a branch: each run uses the branch's newest commit when it " <>
+        "starts. A fixed version uses that tag or commit."
+    ]
+    @removed [
+      "fe3b3ab",
+      "A repository's harness file comes first.",
+      "Runs in Main use the harness you choose here.",
+      "use the harness you choose here.",
+      "A repository uses the workspace's harness unless you choose another one for it.",
+      "Choose another",
+      "Workspace default",
+      "Read through the",
+      "No connected repository has a qory-stack.yaml file"
+    ]
 
     setup %{conn: conn} do
       %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -1210,15 +1242,54 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       adapter
     end
 
-    defp serve_harness(adapter, files) do
-      Apiary.HarnessReadsFixtures.serve_calls([adapter],
-        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
-        files: files,
-        versions: %{"R_harness" => @pin}
+    # The linked repository of `linked_harness!/2` ends, so the organisation has no
+    # connected repository the list shows.
+    defp end_harness_collection! do
+      {1, _} =
+        Repo.update_all(from(c in Collection, where: c.url == @harness_git),
+          set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
+        )
+    end
+
+    defp serve_harness(adapter, files, opts \\ []) do
+      Apiary.HarnessReadsFixtures.serve_calls(
+        [adapter],
+        [
+          covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
+          files: files,
+          versions: %{"R_harness" => @pin}
+        ] ++ opts
       )
     end
 
-    test "after Model: the two choices, the Qory harness chosen; Continue saves it",
+    # The calls the stub adapters received since the last drain.
+    defp harness_calls do
+      receive do
+        {:harness_call, path, call} -> [{path, call} | harness_calls()]
+      after
+        0 -> []
+      end
+    end
+
+    defp linked_id, do: "linked:" <> Repo.get_by!(Collection, url: @harness_git).public_id
+
+    # The Harness form with a harness repository and acme/harness chosen, its exports read.
+    defp pick_repository(lv) do
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+      lv |> form("#set-up-harness-form", harness: %{source: linked_id()}) |> render_change()
+      render_async(lv, 2_000)
+      lv
+    end
+
+    defp ids(lv, selector) do
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> LazyHTML.attribute("id")
+    end
+
+    test "after Model: the two choices, the Qory harness at Always the latest version; Continue saves it",
          ctx do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       workspace = ctx.scope.workspace
@@ -1232,27 +1303,29 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                {"Test run", :to_come}
              ] = lv |> steps() |> Enum.take(-4) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
 
-      assert words(lv, "#harness-intro") ==
-               "A harness is the skills and workflows the agent runs with. " <>
-                 "Runs in #{workspace.name} use the harness you choose here."
-
+      refute has_element?(lv, "#harness-intro")
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
-
-      assert has_element?(lv, "#harness-choice-qory .q-choice-h", "Qory harness")
-
-      assert words(lv, "#harness-choice-qory .q-choice-p.font-mono") ==
-               "github.com/qoryai/harness · fe3b3ab"
-
-      assert words(lv, "#harness-choice-qory-file") == "A repository's harness file comes first."
+      assert words(lv, "#harness-choice-qory") == "Qory harness"
 
       assert ["harness-choice-qory", "harness-choice-repository"] ==
-               lv
-               |> render()
-               |> LazyHTML.from_fragment()
-               |> LazyHTML.query("#harness-choice > label")
-               |> LazyHTML.attribute("id")
+               ids(lv, "#harness-choice > label")
 
       assert words(lv, "#harness-choice-repository") == "A harness repository"
+
+      # Version: the newest, chosen; a fixed version waits for the first release.
+      assert words(lv, "#harness-qory-version legend") == "Version"
+      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+
+      assert words(lv, ~s(label[for="harness-qory-version-latest"])) ==
+               "Always the latest version"
+
+      assert has_element?(lv, "#harness-qory-version-named[disabled]")
+      refute has_element?(lv, "#harness-qory-version-named[checked]")
+      assert words(lv, ~s(label[for="harness-qory-version-named"])) == "A fixed version"
+
+      assert words(lv, "#harness-qory-version-none") ==
+               "Named versions come with the first release of the Qory harness."
+
       # A workspace with no destination lists none.
       refute has_element?(lv, "#harness-targets")
       refute has_element?(lv, "#harness-repository")
@@ -1260,23 +1333,45 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Workflow."
 
+      # About this step has the five paragraphs, and no text the step dropped shows.
+      assert words(lv, "#set-up-context-h") == "About this step"
+
+      assert for(id <- ids(lv, "#set-up-context p"), do: words(lv, "##{id}")) == @about
+
+      html = render(lv)
+      for text <- @removed, do: refute(html =~ text, text)
+
       lv |> form("#set-up-harness-form") |> render_submit()
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{workspace}")
 
-      assert %Apiary.Stacks.Stack{choice: :qory} = Apiary.Stacks.choice(workspace)
+      assert %Apiary.Stacks.Stack{choice: :qory, version_kind: :latest} =
+               Apiary.Stacks.choice(workspace)
 
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       assert {"Harness", :current} in Enum.map(steps(lv), &{elem(&1, 0), elem(&1, 1)})
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+      row = Apiary.Stacks.choice(workspace)
 
       # The saved choice, sent again, goes on with no save.
       lv |> form("#set-up-harness-form") |> render_submit()
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{workspace}")
+      assert Apiary.Stacks.choice(workspace).updated_at == row.updated_at
     end
 
     test "a choice that is no longer offered saves nothing", ctx do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_click(lv, "save_harness", %{"harness" => %{"choice" => "target_file"}})
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a fixed version of the Qory harness the release does not ship saves nothing", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      render_click(lv, "save_harness", %{
+        "harness" => %{"choice" => "qory", "qory_version" => "named", "qory_name" => "v1"}
+      })
+
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
@@ -1302,7 +1397,50 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
-    test "with the setting shown, a shared Qory harness is the one Qory harness row, chosen; Continue saves nothing",
+    # The Qory harness row and its Version, as the step draws them.
+    defp qory_row(lv) do
+      for selector <- ["#harness-choice-qory", "#harness-qory-version"],
+          do: lv |> element(selector) |> render()
+    end
+
+    test "the Qory harness row is the same with no shared harness, a shared Qory harness, a shared harness repository, and a workspace's Qory harness under a shared Qory harness",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      path = fn workspace ->
+        ~p"/#{ctx.organisation}/set-up?step=harness&workspace=#{workspace}"
+      end
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      plain = qory_row(lv)
+      refute has_element?(lv, "#set-up-harness-everywhere")
+
+      # The organisation shares the Qory harness: one workspace reuses it, and another
+      # workspace has a saved Qory harness choice.
+      {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
+      reuses = workspace_fixture(ctx.organisation, "Second")
+      saved = workspace_fixture(ctx.organisation, "Third")
+      {:ok, _row} = Apiary.Stacks.Sources.choose(%{ctx.scope | workspace: saved}, :qory)
+
+      for workspace <- [reuses, saved] do
+        {:ok, lv, _html} = live(ctx.conn, path.(workspace))
+        assert qory_row(lv) == plain
+        refute render(lv) =~ "every workspace"
+        refute has_element?(lv, "#harness-choice-shared")
+        refute has_element?(lv, "#set-up-harness-everywhere")
+      end
+
+      # The organisation shares a harness repository: the Qory harness row, once chosen.
+      share_repository!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, path.(reuses))
+      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+      assert has_element?(lv, "#set-up-harness-everywhere")
+      lv |> form("#set-up-harness-form", harness: %{choice: "qory"}) |> render_change()
+      assert qory_row(lv) == plain
+      refute has_element?(lv, "#set-up-harness-everywhere")
+    end
+
+    test "with the setting shown, a shared Qory harness is the Qory harness row with its Version and no setting; Continue saves nothing",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _row} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
@@ -1311,34 +1449,80 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, path)
 
       refute has_element?(lv, "#harness-choice-shared-group")
+      refute has_element?(lv, "#harness-choice-shared")
       refute render(lv) =~ "Shared in"
-      assert words(lv, "#harness-choice-shared .q-choice-h") == "Qory harness · every workspace"
+      refute render(lv) =~ "every workspace"
+      refute render(lv) =~ "fe3b3ab"
 
-      assert words(lv, "#harness-choice-shared .q-choice-p.font-mono") ==
-               "github.com/qoryai/harness · fe3b3ab"
-
-      assert words(lv, "#harness-choice-shared #harness-choice-qory-file") ==
-               "A repository's harness file comes first."
-
-      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
-      refute has_element?(lv, "#harness-choice-qory")
+      assert words(lv, "#harness-choice-qory") == "Qory harness"
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
       refute has_element?(lv, "#harness-choice-repository-radio[checked]")
+      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+      assert has_element?(lv, "#harness-qory-version-named[disabled]")
 
-      # One Qory harness, then a harness repository.
-      assert ["harness-choice-shared", "harness-choice-repository"] ==
-               lv
-               |> render()
-               |> LazyHTML.from_fragment()
-               |> LazyHTML.query("#harness-choice label")
-               |> LazyHTML.attribute("id")
+      assert ["harness-choice-qory", "harness-choice-repository"] ==
+               ids(lv, "#harness-choice label")
 
-      # The setting shows off while the workspace reuses the shared harness.
-      refute has_element?(lv, "#set-up-harness-everywhere[checked]")
+      # With the Qory harness chosen, the setting does not show.
+      refute has_element?(lv, "#set-up-harness-everywhere")
 
       lv |> form("#set-up-harness-form") |> render_submit()
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
       assert Apiary.Stacks.choice(second) == nil
       assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
+    end
+
+    test "with the setting shown, a shared Qory harness at a named version is the Qory harness row, with no mark and no line",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      {:ok, _shared} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:organisation, ctx.organisation},
+          "extends:\n  git: \"https://github.com/qoryai/harness\"\n  ref: \"#{@pin}\"\n  stack: \"core\"\n",
+          choice: :qory,
+          version: {:named, "v1"}
+        )
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+      assert words(lv, "#harness-choice-qory") == "Qory harness"
+      refute has_element?(lv, "#harness-choice-shared")
+      refute render(lv) =~ "every workspace"
+      assert has_element?(lv, "#harness-qory-version")
+    end
+
+    test "with the setting shown, a shared harness repository on a branch or at a tag shows its stack, repository and version under its title, with no field",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      for {version, line} <- [
+            {{:branch, "main"}, "triage · acme/harness · main"},
+            {{:tag, "v1"}, "triage · acme/harness · v1"}
+          ] do
+        {:ok, _shared} =
+          Apiary.Stacks.put_stack(
+            ctx.scope,
+            {:organisation, ctx.organisation},
+            "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{elem(version, 1)}\"\n  stack: \"triage\"\n",
+            choice: :repository,
+            version: version
+          )
+
+        {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+        assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+
+        assert words(lv, "#harness-choice-shared .q-choice-h") ==
+                 "A harness repository · every workspace"
+
+        assert words(lv, "#harness-choice-shared-line") == line
+        refute has_element?(lv, "#harness-version")
+        refute has_element?(lv, "#harness-qory-version")
+        refute has_element?(lv, "#harness-choice-shared-group input[type=text]")
+      end
     end
 
     test "with the setting shown and no shared harness: no heading, the two choices", ctx do
@@ -1350,14 +1534,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
 
       assert ["harness-choice-qory", "harness-choice-repository"] ==
-               lv
-               |> render()
-               |> LazyHTML.from_fragment()
-               |> LazyHTML.query("#harness-choice label")
-               |> LazyHTML.attribute("id")
+               ids(lv, "#harness-choice label")
     end
 
-    # The organisation's shared harness: a harness repository at the pin.
+    # The organisation's shared harness: a harness repository's root at the pin, saved
+    # with no version, as a save before versions wrote it.
     defp share_repository!(ctx) do
       {:ok, shared} =
         Apiary.Stacks.put_stack(
@@ -1381,20 +1562,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#harness-choice-shared-h") == "Shared in #{ctx.organisation.name}"
 
+      # The shared harness repository: its stack, repository and version, the commit's
+      # first 7 characters.
       assert words(lv, "#harness-choice-shared .q-choice-h") ==
                "A harness repository · every workspace"
 
+      assert words(lv, "#harness-choice-shared .q-choice-p") ==
+               "qory-stack.yaml · acme/harness · c3c3c3c"
+
       refute has_element?(lv, "#harness-choice-shared-radio[checked]")
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
-      assert has_element?(lv, "#harness-choice-qory #harness-choice-qory-file")
 
       # The shared harness comes first, then the two choices.
       assert ["harness-choice-shared", "harness-choice-qory", "harness-choice-repository"] ==
-               lv
-               |> render()
-               |> LazyHTML.from_fragment()
-               |> LazyHTML.query("#harness-choice label")
-               |> LazyHTML.attribute("id")
+               ids(lv, "#harness-choice label")
 
       lv |> form("#set-up-harness-form", harness: %{choice: "shared"}) |> render_submit()
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
@@ -1407,7 +1588,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#harness-choice-shared-radio[checked]")
     end
 
-    test "with the setting shown, a workspace whose choice is the Qory harness under a shared Qory harness sees the one row chosen; Continue removes the workspace's choice",
+    test "with the setting shown, a workspace whose choice is the Qory harness under a shared Qory harness sees the Qory harness row chosen; Continue removes the workspace's choice",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
@@ -1417,8 +1598,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       path = ~p"/#{ctx.organisation}/set-up?step=harness&workspace=#{second}"
       {:ok, lv, _html} = live(ctx.conn, path)
 
-      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
-      refute has_element?(lv, "#harness-choice-qory")
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+      refute has_element?(lv, "#harness-choice-shared")
 
       lv |> form("#set-up-harness-form") |> render_submit()
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
@@ -1427,7 +1609,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert %{choice: :qory, shared: true} = Apiary.Stacks.Sources.chosen(second)
     end
 
-    # A second workspace with the Qory harness saved at `pin`, and its set-up path.
+    # A second workspace with the Qory harness saved at `pin` with no version, as a save
+    # before versions wrote it, and its set-up path.
     defp qory_at!(ctx, pin) do
       second = workspace_fixture(ctx.organisation, "Second")
       {:ok, row} = Apiary.Stacks.Sources.choose(%{ctx.scope | workspace: second}, :qory)
@@ -1435,13 +1618,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {1, _} =
         Repo.update_all(from(s in Apiary.Stacks.Stack, where: s.id == ^row.id),
-          set: [harness: harness]
+          set: [harness: harness, version_kind: nil]
         )
 
       {second, ~p"/#{ctx.organisation}/set-up?step=harness&workspace=#{second}"}
     end
 
-    test "with the setting shown, a workspace's Qory harness at a pin other than the shared Qory harness's keeps both rows, its pin chosen; Continue keeps the choice",
+    test "with the setting shown, a workspace's Qory harness at a pin other than the shared Qory harness's is the Qory harness row, chosen; Continue saves it at the newest version",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
@@ -1450,34 +1633,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       row = Apiary.Stacks.choice(second)
       {:ok, lv, _html} = live(ctx.conn, path)
 
-      assert words(lv, "#harness-choice-shared-h") == "Shared in #{ctx.organisation.name}"
-      assert words(lv, "#harness-choice-shared .q-choice-h") == "Qory harness · every workspace"
-
-      assert words(lv, "#harness-choice-shared .q-choice-p.font-mono") ==
-               "github.com/qoryai/harness · fe3b3ab"
-
-      assert words(lv, "#harness-choice-qory .q-choice-p.font-mono") ==
-               "github.com/qoryai/harness · 0123456"
-
-      assert words(lv, "#harness-choice-qory-file") == "A repository's harness file comes first."
+      refute has_element?(lv, "#harness-choice-shared-group")
+      refute has_element?(lv, "#harness-choice-shared")
+      assert words(lv, "#harness-choice-qory") == "Qory harness"
+      refute render(lv) =~ "0123456"
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
-      refute has_element?(lv, "#harness-choice-shared-radio[checked]")
 
-      assert ["harness-choice-shared", "harness-choice-qory", "harness-choice-repository"] ==
-               lv
-               |> render()
-               |> LazyHTML.from_fragment()
-               |> LazyHTML.query("#harness-choice label")
-               |> LazyHTML.attribute("id")
+      assert ["harness-choice-qory", "harness-choice-repository"] ==
+               ids(lv, "#harness-choice label")
 
       lv |> form("#set-up-harness-form") |> render_submit()
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
 
-      assert Apiary.Stacks.choice(second).id == row.id
-      assert %{choice: :qory, pin: ^other, shared: false} = Apiary.Stacks.Sources.chosen(second)
+      assert %{id: id, version_kind: :latest} = Apiary.Stacks.choice(second)
+      assert id == row.id
+
+      assert %{choice: :qory, version: :latest, shared: false} =
+               Apiary.Stacks.Sources.chosen(second)
     end
 
-    test "with the setting on, a workspace's Qory harness at the shared Qory harness's pin is one row; Continue removes the choice with no refusal",
+    test "with the setting sent, a workspace's Qory harness at the shared Qory harness's pin is one row; Continue removes the choice with no refusal",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
@@ -1485,12 +1660,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {second, path} = qory_at!(ctx, pin)
       {:ok, lv, _html} = live(ctx.conn, path)
 
-      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
-      refute has_element?(lv, "#harness-choice-qory")
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+      refute has_element?(lv, "#harness-choice-shared")
+      refute has_element?(lv, "#set-up-harness-everywhere")
 
-      lv
-      |> form("#set-up-harness-form", harness: %{everywhere: "true"})
-      |> render_submit()
+      # A tick sent anyway changes nothing.
+      render_click(lv, "save_harness", %{
+        "harness" => %{"choice" => "qory", "qory_version" => "latest", "everywhere" => "true"}
+      })
 
       assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{second}")
       refute has_element?(lv, "#set-up-harness-refusal")
@@ -1498,18 +1675,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert %{choice: :qory, shared: true} = Apiary.Stacks.Sources.chosen(second)
     end
 
-    test "with the setting shown and a shared harness repository, a usual choice equal to it is saved as the workspace's",
+    test "with the setting shown and a shared harness repository, a usual choice of a harness repository is saved as the workspace's",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       share_repository!(ctx)
-      linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+      linked_harness!(ctx, @one_export)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_async(lv, 2_000)
 
       assert has_element?(lv, "#harness-choice-shared-radio[checked]")
 
-      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
-      lv |> form("#set-up-harness-form", harness: %{ref: @pin}) |> render_submit()
+      pick_repository(lv)
+
+      lv
+      |> form("#set-up-harness-form", harness: %{version: "fixed", fixed: @pin})
+      |> render_submit()
+
       render_async(lv, 2_000)
 
       assert_patch(
@@ -1517,8 +1698,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
       )
 
-      assert %{choice: :repository, harness: harness} = Apiary.Stacks.choice(ctx.scope.workspace)
-      assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
+      assert %{choice: :repository, harness: harness, version_kind: :commit} =
+               Apiary.Stacks.choice(ctx.scope.workspace)
+
+      assert harness ==
+               "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n  stack: \"triage\"\n"
+
       assert %{choice: :repository} = Apiary.Stacks.shared(ctx.organisation)
     end
 
@@ -1547,11 +1732,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.Stacks.shared(ctx.organisation) == nil
     end
 
-    test "with the setting on, Continue saves the harness the organisation shares", ctx do
+    test "with the setting shown, it shows for a harness repository only; on, Continue saves the harness the organisation shares",
+         ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      linked_harness!(ctx, @one_export)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
 
-      assert has_element?(lv, "#set-up-harness-everywhere")
+      # With the Qory harness chosen, the setting does not show.
+      assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+      refute has_element?(lv, "#set-up-harness-everywhere")
+
+      pick_repository(lv)
 
       assert has_element?(
                lv,
@@ -1562,27 +1754,45 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-harness-everywhere[checked]")
 
       lv
-      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> form("#set-up-harness-form", harness: %{everywhere: "true"})
       |> render_submit()
+
+      render_async(lv, 2_000)
 
       assert_patch(
         lv,
         ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
       )
 
-      assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
+      assert %{choice: :repository, version_kind: :branch} =
+               Apiary.Stacks.shared(ctx.organisation)
+
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
       assert Apiary.WorkspaceSetup.harness?(ctx.scope.workspace)
     end
 
-    test "with the setting on, a reused shared harness goes on with no save, and a saved choice of the workspace is shared",
+    test "with the setting shown, a tick sent with the Qory harness saves the workspace's choice and shares nothing",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
-      {:ok, shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
 
+      render_click(lv, "save_harness", %{
+        "harness" => %{"choice" => "qory", "qory_version" => "latest", "everywhere" => "true"}
+      })
+
+      assert %{choice: :qory, version_kind: :latest} = Apiary.Stacks.choice(ctx.scope.workspace)
+      assert Apiary.Stacks.shared(ctx.organisation) == nil
+    end
+
+    test "with the setting on, a reused shared harness goes on with no save", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      shared = share_repository!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(lv, "#harness-choice-shared-radio[checked]")
+
       lv
-      |> form("#set-up-harness-form", harness: %{choice: "shared", everywhere: "true"})
+      |> form("#set-up-harness-form", harness: %{everywhere: "true"})
       |> render_submit()
 
       assert_patch(
@@ -1592,45 +1802,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert Apiary.Stacks.shared(ctx.organisation).updated_at == shared.updated_at
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
-
-      # The workspace's saved choice, chosen again with the setting on, becomes the shared
-      # harness.
-      {:ok, _deleted} = Apiary.Stacks.delete_stack({:organisation, ctx.organisation})
-      {:ok, _row} = Apiary.Stacks.Sources.choose(ctx.scope, :qory)
-      {:ok, lv, _html} = live(ctx.conn, ctx.path)
-
-      lv
-      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
-      |> render_submit()
-
-      assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
-      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
     test "while the organisation shares a harness, sharing another is refused with the fix first",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
-
-      {:ok, shared} =
-        Apiary.Stacks.put_stack(
-          ctx.scope,
-          {:organisation, ctx.organisation},
-          "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n",
-          choice: :repository
-        )
-
+      shared = share_repository!(ctx)
+      linked_harness!(ctx, @one_export)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
       assert has_element?(lv, "#harness-choice-shared-radio[checked]")
 
       assert words(lv, "#harness-choice-shared .q-choice-h") ==
                "A harness repository · every workspace"
 
-      assert words(lv, "#harness-choice-shared .q-choice-p.font-mono") ==
-               "code.example.com/acme/harness · #{String.slice(@pin, 0, 7)}"
+      assert words(lv, "#harness-choice-shared .q-choice-p") ==
+               "qory-stack.yaml · acme/harness · c3c3c3c"
+
+      pick_repository(lv)
 
       lv
-      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> form("#set-up-harness-form", harness: %{everywhere: "true"})
       |> render_submit()
+
+      render_async(lv, 2_000)
 
       assert has_element?(lv, ~s(#set-up-harness-refusal[data-reason="shared"]))
 
@@ -1644,10 +1839,859 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       # With the setting off, the same choice is the workspace's.
       lv
-      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "false"})
+      |> form("#set-up-harness-form", harness: %{everywhere: "false"})
       |> render_submit()
 
+      render_async(lv, 2_000)
+
+      assert %{choice: :repository} = Apiary.Stacks.choice(ctx.scope.workspace)
+    end
+
+    test "while the organisation shares the Qory harness, sharing a harness repository replaces it",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
+      second = workspace_fixture(ctx.organisation, "Second")
+      linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      refute has_element?(lv, "#harness-choice-shared")
+
+      pick_repository(lv)
+
+      lv
+      |> form("#set-up-harness-form", harness: %{everywhere: "true"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert_patch(
+        lv,
+        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
+      )
+
+      assert %{id: id, choice: :repository, version_kind: :branch} =
+               Apiary.Stacks.shared(ctx.organisation)
+
+      assert id == shared.id
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+
+      for workspace <- [ctx.scope.workspace, second] do
+        assert %{choice: :repository, git: @harness_git, shared: true} =
+                 Apiary.Stacks.Sources.chosen(workspace)
+      end
+    end
+
+    test "a harness repository with one stack: Repository lists the connected repositories with no read, the stack is chosen, and Continue saves the branch",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      harness_calls()
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      # Repository is a choice with a search box and no repository chosen; listing them
+      # made no call.
+      assert words(lv, "#harness-source-label") == "Repository"
+      assert has_element?(lv, "button#harness-source.is-prompt", "Find a repository")
+      assert has_element?(lv, ~s(#harness-source-search[placeholder="Find a repository"]))
+
+      assert has_element?(
+               lv,
+               ~s|#harness-source-options input[value="#{linked_id()}"]:not([checked])|
+             )
+
+      refute has_element?(lv, "#harness-source-none")
+      assert harness_calls() == []
+      refute has_element?(lv, "#harness-stack")
+      assert has_element?(lv, "#set-up-continue[disabled]")
+
+      # Version: the latest on main, chosen; a fixed version with its placeholder.
+      assert words(lv, "#harness-version legend") == "Version"
+      assert has_element?(lv, "#harness-version-branch[checked]")
+      assert words(lv, ~s(label[for="harness-version-branch"])) == "Always the latest on"
+      assert has_element?(lv, "#harness-branch[value=main]")
+      assert words(lv, ~s(label[for="harness-version-fixed"])) == "A fixed version"
+      assert has_element?(lv, ~s(#harness-fixed[placeholder="tag or commit"]))
+
+      # A pick reads the repository's exports, and its one stack is chosen.
+      lv |> form("#set-up-harness-form", harness: %{source: linked_id()}) |> render_change()
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, "button#harness-source .q-pick-t.mono", "acme/harness")
+      assert words(lv, "#harness-stack legend") == "Stack"
+      assert has_element?(lv, ~s(#harness-stack input[value="triage"][checked]))
+
+      reads =
+        for {"read", call} <- harness_calls(),
+            do: {call["path"], call["at"]}
+
+      assert {"harness.yaml", "HEAD"} in reads
+
+      serve_harness(adapter, @one_export)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert_patch(
+        lv,
+        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
+      )
+
+      assert %{choice: :repository, harness: harness, version_kind: :branch, version_name: "main"} =
+               Apiary.Stacks.choice(ctx.scope.workspace)
+
+      assert harness ==
+               "extends:\n  git: \"#{@harness_git}\"\n  ref: \"main\"\n  stack: \"triage\"\n"
+
+      # Back on the step: the repository, its stack and its branch, chosen.
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      assert has_element?(lv, "#harness-choice-repository-radio[checked]")
+      assert has_element?(lv, ~s(#harness-source-options input[value="#{linked_id()}"][checked]))
+      assert has_element?(lv, ~s(#harness-stack input[value="triage"][checked]))
+      assert has_element?(lv, "#harness-version-branch[checked]")
+      assert has_element?(lv, "#harness-branch[value=main]")
+    end
+
+    test "a harness repository with two stacks: none is chosen until the person picks one",
+         ctx do
+      files =
+        @one_export
+        |> Map.put({"R_harness", "harness.yaml"}, "exports:\n  stacks: [triage, review]\n")
+        |> Map.put({"R_harness", "stacks/review/qory-stack.yaml"}, @root_stack)
+
+      linked_harness!(ctx, files)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert has_element?(lv, ~s|#harness-stack input[value="triage"]:not([checked])|)
+      assert has_element?(lv, ~s|#harness-stack input[value="review"]:not([checked])|)
+      assert has_element?(lv, "#set-up-continue[disabled]")
+
+      lv |> form("#set-up-harness-form", harness: %{stack: "review"}) |> render_change()
+      refute has_element?(lv, "#set-up-continue[disabled]")
+
+      lv
+      |> form("#set-up-harness-form", harness: %{version: "branch", branch: "release"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert %{harness: harness, version_kind: :branch, version_name: "release"} =
+               Apiary.Stacks.choice(ctx.scope.workspace)
+
+      assert harness =~ ~s(stack: "review")
+    end
+
+    test "a harness repository that exports no stack: the line in place of Stack, and Continue stays off",
+         ctx do
+      linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-none") ==
+               "acme/harness exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
+
+      refute has_element?(lv, "#harness-stack")
+      assert has_element?(lv, "#set-up-continue[disabled]")
+
+      lv |> form("#set-up-harness-form") |> render_submit()
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a fixed version: a full commit id saves as a commit, any other name as a tag",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      lv
+      |> form("#set-up-harness-form",
+        harness: %{version: "fixed", fixed: String.upcase(@pin)}
+      )
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert %{version_kind: :commit, version_name: @pin} =
+               Apiary.Stacks.choice(ctx.scope.workspace)
+
+      serve_harness(adapter, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      # The saved commit shows in its field.
+      assert has_element?(lv, "#harness-version-fixed[checked]")
+      assert has_element?(lv, "#harness-fixed[value=#{@pin}]")
+
+      lv
+      |> form("#set-up-harness-form", harness: %{version: "fixed", fixed: "v2"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert %{version_kind: :tag, version_name: "v2", harness: harness} =
+               Apiary.Stacks.choice(ctx.scope.workspace)
+
+      assert harness =~ ~s(ref: "v2")
+    end
+
+    test "a tag or a branch the read does not find, or that is no version: correct it", ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      # A ref under refs/ that is no branch or tag breaks the save rule of refs.
+      lv
+      |> form("#set-up-harness-form", harness: %{version: "fixed", fixed: "refs/pull/1/head"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the version: give a branch or tag name, refs/heads/<name>, " <>
+                 "refs/tags/<name> or a full commit id. People without write access can " <>
+                 "change other refs, such as a pull request's."
+
+      # A ref that is no version a read takes.
+      lv |> form("#set-up-harness-form", harness: %{fixed: "v 9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct the version: a branch, tag or commit name has 1 to 255 letters, " <>
+                 "digits, dots, underscores, slashes and hyphens, and no spaces."
+
+      # The read finds no tag v9, and no branch no-such.
+      serve_harness(adapter, @one_export,
+        refuse_at: %{"v9" => "version_not_found", "no-such" => "version_not_found"}
+      )
+
+      lv |> form("#set-up-harness-form", harness: %{fixed: "v9"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "acme/harness has no branch, tag or commit named v9. Correct the version."
+
+      lv
+      |> form("#set-up-harness-form", harness: %{version: "branch", branch: "no-such"})
+      |> render_submit()
+
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "acme/harness has no branch, tag or commit named no-such. Correct the version."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a stack the walk finds no stack file for: add it, and nothing saved", ctx do
+      files = Map.delete(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"})
+      linked_harness!(ctx, files)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "acme/harness lists the stack triage under exports, but stacks/triage has no " <>
+                 "qory-stack.yaml. Add that file."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a repository whose exports cannot be read shows the reason under Repository", ctx do
+      adapter = linked_harness!(ctx, %{})
+      Apiary.HarnessReadsFixtures.serve_calls([adapter], covered: %{}, files: %{})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Link acme/harness to #{ctx.organisation.name}, or ask an instance admin to " <>
+                 "assign it: Qory Apiary reads a harness repository that is not public only " <>
+                 "through a linked repository or an assignment."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    test "a repository its adapter cannot be reached for: try again, with the adapter's name",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      serve_harness(adapter, @one_export, down: true)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    test "a repository whose harness.yaml is not valid: correct the file", ctx do
+      linked_harness!(ctx, %{{"R_harness", "harness.yaml"} => "exports: [triage\n"})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Correct harness.yaml in acme/harness: is not valid YAML."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    # A read task that raises reports `{:exit, reason}` to the page, which shows
+    # `:exited`'s words. A stub cannot make the read task raise: each call runs in a task
+    # under `Apiary.Adapters.Calls.Supervisor`, and a raise there is an unreachable adapter.
+    test "a read whose task exits: try again" do
+      assert ApiaryWeb.HarnessComponents.read_words(:exited, %{label: "acme/harness"}, "Acme") ==
+               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. " <>
+                 "Try again. If it repeats, tell an instance admin."
+    end
+
+    # The walk's failures of a save, as `Apiary.Harnesses.Walk.pin_base/3` returns them.
+    # A failure's `source` is the chosen address for the chosen source, and for a module
+    # that the base's qory-stack.yaml lists at a local path or at the chosen address; it
+    # is the module's address for a module at another address.
+    test "a save refused for an address, for the harness's content, or on an error of the walk" do
+      source = %{label: "acme/harness", git: @harness_git, narrowing: %{}}
+      chosen = "https://code.example.com/acme/harness"
+
+      failure = fn code, shown, rule ->
+        {:walk,
+         %{
+           failure: code,
+           source: shown,
+           rule: rule,
+           adapter: nil,
+           adapter_id: nil,
+           call_failure: nil
+         }}
+      end
+
+      words = &ApiaryWeb.HarnessComponents.refusal_words(&1, source, "main", "Acme")
+      harness = "Correct the harness in acme/harness: "
+
+      # The chosen source's address or folder, before any call: the form rule it breaks.
+      for {rule, line} <- [
+            {%{"rule" => "host", "values" => %{}},
+             "Correct the address: give a public host name, not an IP address or a local name."},
+            {%{"rule" => "host_encoded", "values" => %{}},
+             "Correct the address: write the host name without a percent-encoding."}
+          ] do
+        assert words.(failure.(:invalid, chosen, rule)) == line
+      end
+
+      # The folder the chosen source is narrowed to.
+      for {rule, path, line} <- [
+            {"path", "../x", "Correct the folder: ../x leads out of acme/harness."},
+            {"path_form", "a%2f",
+             "Correct the folder: write a%2f with / and no backslash or percent sign."}
+          ] do
+        assert ApiaryWeb.HarnessComponents.refusal_words(
+                 failure.(:invalid, chosen, %{"rule" => rule, "values" => %{"path" => path}}),
+                 %{source | narrowing: %{"path" => path}},
+                 "main",
+                 "Acme"
+               ) == line
+      end
+
+      for {git, line} <- [
+            {"https://a b/c",
+             "Correct the address: an address has no space or control character."},
+            {"https://user:password@example.com/c",
+             "Correct the address: remove the user name and password from it."},
+            {"http://example.com/c",
+             "Correct the address: start it with https://. Qory Apiary reads harness sources " <>
+               "over https only."},
+            {"https://example.com/c?q",
+             "Correct the address: an address has no query (?) and no fragment (#)."},
+            {"https://example.com:99999/c",
+             "Correct the address: write it as https://, a host, an optional port and an " <>
+               "optional path."}
+          ] do
+        {message, values} = Apiary.Stacks.Document.source_error(%{"git" => git}, :base)
+
+        rule = %{
+          "message" => message,
+          "values" => Map.new(values, fn {k, v} -> {to_string(k), v} end)
+        }
+
+        assert words.(failure.(:invalid, chosen, rule)) == line
+      end
+
+      assert words.(failure.(:scp_form, chosen, nil)) ==
+               "Correct the address: write it as https://, a host and a path, not as " <>
+                 "user@host:path."
+
+      assert words.(failure.(:credential_in_address, chosen, nil)) ==
+               "Correct the address: remove the user name and password from it."
+
+      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+
+      assert reads.({:unreadable, :address}) ==
+               "Correct the address: write it as https://, a host, an optional port and an " <>
+                 "optional path."
+
+      assert reads.({:unreadable, :path, "../x/qory-stack.yaml"}) ==
+               "Correct the folder: a folder is a relative path with no empty, . or .. part, " <>
+                 "at most 1,024 characters long."
+
+      assert reads.({:unreadable, :version, "v 9"}) ==
+               "Correct the version: a branch, tag or commit name has 1 to 255 letters, digits, " <>
+                 "dots, underscores, slashes and hyphens, and no spaces."
+
+      # A module's address, folder or ref, which the harness document lists.
+      assert words.(
+               failure.(:invalid, "https://localhost/acme/x", %{
+                 "rule" => "host",
+                 "values" => %{}
+               })
+             ) ==
+               harness <> "its host is an IP address or a local name: give a public host name."
+
+      assert words.(
+               failure.(:invalid, "http://code.example.com/acme/x", %{
+                 "message" =>
+                   "write %{source} as an https address: Qory Apiary fetches harness sources " <>
+                     "over https only",
+                 "values" => %{"source" => "http://code.example.com/acme/x"}
+               })
+             ) ==
+               harness <>
+                 "write http://code.example.com/acme/x as an https address: Qory Apiary " <>
+                 "fetches harness sources over https only."
+
+      assert words.(failure.(:scp_form, "code.example.com:acme/x", nil)) ==
+               harness <> "it lists a module at an SSH address: give the module's https address."
+
+      assert words.(failure.(:credential_in_address, "https://code.example.com/acme/x", nil)) ==
+               harness <>
+                 "it lists a module address with a credential in it: remove the credential."
+
+      assert words.(
+               failure.(:invalid, "https://code.example.com/acme/x", %{
+                 "message" =>
+                   "write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                     "refs/tags/<name> or a full commit id: people without write access can " <>
+                     "change other refs, such as a pull request's",
+                 "values" => %{"ref" => "refs/pull/1/head"}
+               })
+             ) ==
+               harness <>
+                 "write the ref refs/pull/1/head as HEAD, a branch or tag name, " <>
+                 "refs/heads/<name>, refs/tags/<name> or a full commit id: people without " <>
+                 "write access can change other refs, such as a pull request's."
+
+      # A module's local path in the chosen source, which leaves it.
+      assert words.(
+               failure.(:invalid, chosen, %{
+                 "rule" => "path",
+                 "values" => %{"path" => "../../../x"}
+               })
+             ) == harness <> "the path ../../../x leads out of its source."
+
+      # A module at the chosen address with a ref no read takes: the module's ref, which
+      # the chosen version is not.
+      assert words.(failure.(:invalid, chosen, %{"rule" => "ref", "values" => %{"ref" => "v 9"}})) ==
+               harness <>
+                 "the ref v 9 is not a version: 1 to 255 letters, digits, dots, underscores, " <>
+                 "slashes and hyphens."
+
+      # A version a read found no version for, after a call.
+      assert words.(
+               failure.(:invalid, "https://code.example.com/acme/x", %{
+                 "rule" => "version",
+                 "values" => %{"ref" => "v9"}
+               })
+             ) == harness <> "its ref is no version of its source."
+
+      assert words.(failure.(:invalid, chosen, %{"rule" => "size", "values" => %{"n" => 65_536}})) ==
+               harness <> "it is larger than 65536 bytes as JSON."
+
+      n = Apiary.Harnesses.Walk.max_links()
+
+      assert words.(failure.(:too_many, nil, nil)) ==
+               "Correct the harness in acme/harness: its modules come from more than #{n} " <>
+                 "accounts, and a run can read at most #{n}."
+
+      assert words.(failure.(:no_harness, nil, nil)) ==
+               harness <> "it has no harness file and no harness is set."
+
+      assert words.(failure.(:walk_error, nil, nil)) ==
+               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. " <>
+                 "Try again. If it repeats, tell an instance admin."
+
+      # A stack the chosen source does not export, or has no stack file for; a module's.
+      assert words.(
+               failure.(:invalid, chosen, %{"rule" => "no_export", "values" => %{"name" => "web"}})
+             ) ==
+               "acme/harness exports no stack named web. List it under exports in the " <>
+                 "qory.yaml or harness.yaml at its root."
+
+      assert words.(
+               failure.(:invalid, chosen, %{
+                 "rule" => "no_stack_file",
+                 "values" => %{"path" => "stacks/web/qory-stack.yaml"}
+               })
+             ) ==
+               "acme/harness lists the stack web under exports, but stacks/web has no " <>
+                 "qory-stack.yaml. Add that file."
+
+      assert words.(
+               failure.(:invalid, chosen, %{
+                 "rule" => "no_stack_file",
+                 "values" => %{"path" => "qory-stack.yaml"}
+               })
+             ) ==
+               "acme/harness exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
+
+      assert words.(
+               failure.(:invalid, "https://code.example.com/acme/x", %{
+                 "rule" => "no_export",
+                 "values" => %{"name" => "web"}
+               })
+             ) == harness <> "it exports no stack web."
+    end
+
+    # The words of each read reason of `Apiary.Stacks.Sources` the page tests above do
+    # not reach through a stub adapter.
+    test "a read refused for a stack, a folder, a file or a version: the cause" do
+      source = %{label: "acme/harness", git: @harness_git, narrowing: %{"path" => "stacks/web"}}
+      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+
+      assert reads.({:no_stack_file, "stacks/web/qory-stack.yaml"}) ==
+               "acme/harness has no qory-stack.yaml in the folder stacks/web. Add that file."
+
+      assert reads.({:stack_path, "harness.yaml", "web", "../stacks/web/qory-stack.yaml"}) ==
+               "acme/harness lists the stack web under exports at " <>
+                 "../stacks/web/qory-stack.yaml, a path Qory Apiary does not read. Correct " <>
+                 "exports in harness.yaml: a path is relative and has no empty, . or .. part."
+
+      assert reads.({:no_version, "v9"}) ==
+               "acme/harness has no branch, tag or commit named v9. Correct the version."
+
+      # A version an instance admin assigned, which no field on the page changes.
+      assigned = Map.merge(source, %{kind: :assigned, ref: "v9"})
+
+      assert ApiaryWeb.HarnessComponents.read_words({:no_version, "v9"}, assigned, "Acme") ==
+               "acme/harness has no branch, tag or commit named v9. An instance admin corrects " <>
+                 "the version of this harness source."
+
+      # A read at HEAD of a repository with no commit.
+      assert reads.(:no_commit) ==
+               "acme/harness has no commit yet. Push a commit with a qory.yaml or harness.yaml " <>
+                 "at its root that lists the stack under exports."
+
+      # A read with no time left before it read every file, not a call with no answer.
+      late = %{adapter: "GitHub", cause: :late, code: nil, seconds: 30, refusal: nil}
+
+      assert reads.({:call, late}) ==
+               "Qory Apiary stopped reading acme/harness after 30 seconds, before it read " <>
+                 "every file. Try again."
+
+      walk = %{failure: :adapter_unavailable, call_cause: :late, call: late}
+
+      assert ApiaryWeb.HarnessComponents.refusal_words({:walk, walk}, source, "main", "Acme") ==
+               "Qory Apiary stopped reading acme/harness after 30 seconds, before it read " <>
+                 "every file. Try again."
+
+      assert reads.({:not_text, "harness.yaml"}) ==
+               "Correct harness.yaml in acme/harness: it is not UTF-8 text of at most 256 KiB " <>
+                 "without a NUL character."
+    end
+
+    # The words of each cause of a failed call (`Apiary.Stacks.Sources.call/3`), with no
+    # address, host or IP of the instance's set-up.
+    test "a call to an adapter that failed: its cause and who fixes it" do
+      source = %{label: "acme/harness", git: @harness_git, narrowing: %{}}
+
+      call = fn cause, code ->
+        {:call, %{adapter: "GitHub", cause: cause, code: code, seconds: nil}}
+      end
+
+      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+
+      assert reads.({:call, %{adapter: "GitHub", cause: :timeout, code: nil, seconds: 10}}) ==
+               "The GitHub adapter did not answer within 10 seconds. Try again. If it repeats, " <>
+                 "an instance admin checks that the adapter is running."
+
+      for {cause, code, line} <- [
+            {:no_address, nil,
+             "Qory Apiary does not call the GitHub adapter: the adapter has no call address. " <>
+               "An instance admin sets the call address. The Qory harness needs no call " <>
+               "address."},
+            {:unauthorized, nil,
+             "The GitHub adapter did not accept the call from Qory Apiary. Try again. If it " <>
+               "repeats, an instance admin checks the adapter's enrolment and that both " <>
+               "machines' clocks are right."},
+            {:refused, "unsupported_contract_version",
+             "The GitHub adapter does not implement the contract revision of the call. An " <>
+               "instance admin upgrades the adapter."},
+            {:refused, "invalid_request",
+             "The GitHub adapter did not accept the call as valid under the contract. An " <>
+               "instance admin checks that the adapter and Qory Apiary implement the same " <>
+               "contract revision."},
+            {:refused, "source_unavailable",
+             "The GitHub adapter could not read acme/harness. Try again."},
+            {:invalid_answer, nil,
+             "Qory Apiary did not accept the answer of the GitHub adapter. Try again. If it " <>
+               "repeats, an instance admin checks the version and the enrolment of the adapter."},
+            {:too_large, nil,
+             "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
+               "KiB. Tell an instance admin."}
+          ] do
+        assert reads.(call.(cause, code)) == line
+      end
+
+      for {refusal, line} <- [
+            {{:address, :link_local},
+             "Qory Apiary does not call the GitHub adapter: the adapter's call address leads " <>
+               "to a link-local address. An instance admin sets the adapter's call address. " <>
+               "The Qory harness needs no call address."},
+            {:form,
+             "Qory Apiary does not call the GitHub adapter: the adapter's call address is not " <>
+               "an https address at the adapter's host. An instance admin corrects the call " <>
+               "address. The Qory harness needs no call address."},
+            {:public_host,
+             "Qory Apiary does not call the GitHub adapter: the instance's public address " <>
+               "(PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory " <>
+               "harness needs no call address."}
+          ] do
+        not_allowed = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
+        assert reads.({:call, Map.put(not_allowed, :refusal, refusal)}) == line
+      end
+
+      for {kind, words} <- [
+            metadata: "a cloud metadata address",
+            unspecified: "the unspecified address",
+            multicast: "a multicast address",
+            broadcast: "a broadcast address",
+            reserved: "a reserved address",
+            loopback: "a loopback address written as an IPv6 address"
+          ] do
+        call = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
+
+        assert reads.({:call, Map.put(call, :refusal, {:address, kind})}) ==
+                 "Qory Apiary does not call the GitHub adapter: the adapter's call address " <>
+                   "leads to #{words}. An instance admin sets the adapter's call address. The " <>
+                   "Qory harness needs no call address."
+      end
+
+      # A save's walk at a call that failed has the same words.
+      walk =
+        {:walk,
+         %{
+           failure: :adapter_failed,
+           source: nil,
+           rule: nil,
+           adapter: "github",
+           adapter_id: nil,
+           call_failure: nil,
+           call: %{adapter: "GitHub", cause: :too_large, code: nil, seconds: nil}
+         }}
+
+      assert ApiaryWeb.HarnessComponents.refusal_words(walk, source, "main", "Acme") ==
+               "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
+                 "KiB. Tell an instance admin."
+    end
+
+    test "a save whose walk cannot reach the adapter or reads a file that is not valid: the cause, and nothing saved",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      serve_harness(adapter, @one_export, down: true)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
+
+      files =
+        Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
+
+      serve_harness(adapter, files)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct qory-stack.yaml in acme/harness: is not valid YAML."
+
+      files = Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: 7\n")
+      serve_harness(adapter, files)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Correct qory-stack.yaml in acme/harness: it lists no modules: a qory-stack.yaml " <>
+                 "lists at least one module, each a mapping."
+
+      refuse = Map.new(["HEAD", "main", @pin], &{&1, "internal"})
+      serve_harness(adapter, @one_export, refuse_at: refuse)
+      lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
+                 "internal for acme/harness. An instance admin checks the adapter's log."
+
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a repository whose call is refused, or whose exports are not valid: the cause", ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      serve_harness(adapter, @one_export, refuse_at: %{"HEAD" => "internal"})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
+                 "internal for acme/harness. An instance admin checks the adapter's log."
+
+      serve_harness(adapter, %{{"R_harness", "harness.yaml"} => "exports: 7\n"})
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_repository(lv)
+
+      assert words(lv, "#harness-stack-error") ==
+               "Correct the exports section of harness.yaml in acme/harness: write stacks as a " <>
+                 "list of stack names, and dir, if there is one, as a folder name or as the " <>
+                 "names of a stacks folder and a modules folder."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
+    end
+
+    test "with no connected repository, Repository has none to choose, a line under it shows how to get one, and Continue stays off",
+         ctx do
+      linked_harness!(ctx, %{})
+      end_harness_collection!()
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      assert has_element?(lv, "button#harness-source[disabled]")
+      refute has_element?(lv, "#harness-source-options input")
+      refute render(lv) =~ "No connected repository"
+
+      assert words(lv, "#harness-source-none") ==
+               "#{ctx.organisation.name} has no connected repository. Connect a work source " <>
+                 "to pick one."
+
+      assert has_element?(lv, "#set-up-continue[disabled]")
+
+      # The Qory harness stays a choice, and Continue saves it.
+      lv |> form("#set-up-harness-form", harness: %{choice: "qory"}) |> render_submit()
       assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
+    end
+
+    test "an adapter whose call address Qory Apiary does not call: one line at Repository before any pick, with no address",
+         ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      title = Apiary.Adapters.title(adapter.adapter)
+
+      for {call_url, instance_id, cause, line} <- [
+            {nil, nil, "no_address",
+             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter " <>
+               "has no call address. An instance admin sets the call address. The Qory " <>
+               "harness needs no call address."},
+            {"https://code-host.example.org/calls/", "instance-1", "not_placed",
+             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter's " <>
+               "call address is not an https address at the adapter's host. An instance admin " <>
+               "corrects the call address. The Qory harness needs no call address."}
+          ] do
+        {1, _} =
+          Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
+            set: [call_url: call_url, call_instance_id: instance_id]
+          )
+
+        {:ok, lv, _html} = live(ctx.conn, ctx.path)
+        render_async(lv, 2_000)
+        lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+        id = "#harness-source-unplaced-#{adapter.adapter.public_id}-#{cause}"
+        assert words(lv, id) == line
+        refute has_element?(lv, "#harness-source-none")
+        refute render(lv) =~ "code-host.example.org"
+      end
+    end
+
+    test "two adapters with no call address: a line for each, with its id", ctx do
+      adapter = linked_harness!(ctx, @one_export)
+      other = Apiary.HarnessReadsFixtures.call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(ctx.scope, other.adapter, :listed)
+
+      Apiary.HarnessReadsFixtures.harness_collection_fixture(
+        connection,
+        @team_git,
+        "example-org/team-harness"
+      )
+
+      {2, _} =
+        Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id in ^[adapter.adapter.id, other.adapter.id]),
+          set: [call_url: nil, call_instance_id: nil]
+        )
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
+
+      for node <- [adapter.adapter, other.adapter] do
+        assert words(lv, "#harness-source-unplaced-#{node.public_id}-no_address") ==
+                 "Qory Apiary cannot read the repositories of the " <>
+                   "#{Apiary.Adapters.title(node)} adapter: the adapter has no call address. " <>
+                   "An instance admin sets the call address. The Qory harness needs no call " <>
+                   "address."
+      end
+    end
+
+    test "an instance whose public address has no host: a line for each adapter, before any pick" do
+      form = Phoenix.Component.to_form(%{"choice" => "repository"}, as: :harness)
+
+      html =
+        render_component(&ApiaryWeb.HarnessComponents.choices/1,
+          form: form,
+          linked: [],
+          organisation: "Acme",
+          unplaced: [
+            %{id: "qn_a", adapter: "GitHub", cause: :no_instance_host},
+            %{id: "qn_b", adapter: "Tracker", cause: :no_instance_host}
+          ]
+        )
+
+      for {id, adapter} <- [{"qn_a", "GitHub"}, {"qn_b", "Tracker"}] do
+        assert html
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query("#harness-source-unplaced-#{id}-no_instance_host")
+               |> LazyHTML.text()
+               |> String.split()
+               |> Enum.join(" ") ==
+                 "Qory Apiary cannot read the repositories of the #{adapter} adapter: the " <>
+                   "instance's public address (PUBLIC_URL) has no host name. An instance admin " <>
+                   "sets PUBLIC_URL. The Qory harness needs no call address."
+      end
+
+      refute html =~ "harness-source-none"
     end
 
     # A destination of the workspace: a collection with a target, assigned to it, of an
@@ -1661,12 +2705,31 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     defp target_of(collection),
       do: %{system: collection.target_system, path: collection.target_path}
 
-    defp open_target(lv, collection) do
-      lv |> element("#harness-target-#{collection.public_id}-change") |> render_click()
+    # The options of a destination's Stack select, `{text, value}`, and the chosen value.
+    defp row_options(lv, collection) do
+      options =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#harness-target-#{collection.public_id}-stack option")
+
+      values = LazyHTML.attribute(options, "value")
+      texts = Enum.map(options, &(&1 |> LazyHTML.text() |> String.trim()))
+      Enum.zip(texts, values)
+    end
+
+    defp row_chosen(lv, collection),
+      do: words(lv, "#harness-target-#{collection.public_id}-stack option[selected]")
+
+    defp pick_row(lv, collection, value) do
+      lv
+      |> form("#harness-target-#{collection.public_id}-form", row: %{stack: value})
+      |> render_change()
+
       lv
     end
 
-    test "the destinations under a heading and a line, each with Workspace default; Choose another saves the Qory harness, then Workspace default removes it",
+    test "a destination's Stack: the workspace's harness, then the Qory harness's stacks; a stack saves at once, and the workspace's harness removes it",
          ctx do
       destination = destination!(ctx)
       elsewhere = collection_fixture(ctx.scope, workspace_id: nil)
@@ -1675,131 +2738,302 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#harness-targets-h") == "Repositories"
-
-      assert words(lv, "#harness-targets-line") ==
-               "A repository uses the workspace's harness unless you choose another one for it."
-
-      assert words(lv, "#harness-target-#{destination.public_id}-change") == "Choose another"
-      refute has_element?(lv, "#harness-targets button", "Change")
+      refute has_element?(lv, "#harness-targets-line")
+      refute has_element?(lv, "#harness-target-#{destination.public_id}-change")
       assert has_element?(lv, "#harness-target-#{destination.public_id}", destination.title)
       refute has_element?(lv, "#harness-target-#{elsewhere.public_id}")
 
-      line = "#harness-target-#{destination.public_id}-line"
-      assert words(lv, line) == "Workspace default"
+      assert words(lv, ~s(label[for="harness-target-#{destination.public_id}-stack"])) ==
+               "Stack"
 
-      open_target(lv, destination)
-      assert has_element?(lv, "#harness-target-choice-default-radio[checked]")
+      assert row_options(lv, destination) == [
+               {"Workspace's harness", "default"},
+               {"core · Qory harness · latest", "workspace:core"},
+               {"A stack of another repository…", "other"}
+             ]
 
-      assert words(lv, "#harness-target-choice-qory .q-choice-p") ==
-               "github.com/qoryai/harness · fe3b3ab"
+      assert row_chosen(lv, destination) == "Workspace's harness"
 
-      assert has_element?(lv, "#harness-target-choice-repository", "A harness repository")
-      refute has_element?(lv, "#harness-target-#{destination.public_id}-change")
+      pick_row(lv, destination, "workspace:core")
 
-      lv |> form("#harness-target-form", target_stack: %{choice: "qory"}) |> render_submit()
+      assert row_chosen(lv, destination) == "core · Qory harness · latest"
 
-      refute has_element?(lv, "#harness-target-form")
-      assert words(lv, line) == "Qory harness · pinned at fe3b3ab"
-
-      assert %{choice: :qory} =
+      assert %{choice: :qory, version_kind: :workspace} =
                Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
 
-      # Cancel closes the form with nothing saved.
-      open_target(lv, destination)
-      assert has_element?(lv, "#harness-target-choice-qory-radio[checked]")
-      lv |> element("#harness-target-cancel") |> render_click()
-      refute has_element?(lv, "#harness-target-form")
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      assert row_chosen(lv, destination) == "core · Qory harness · latest"
 
-      open_target(lv, destination)
-      lv |> form("#harness-target-form", target_stack: %{choice: "default"}) |> render_submit()
-
-      assert words(lv, line) == "Workspace default"
+      pick_row(lv, destination, "default")
+      assert row_chosen(lv, destination) == "Workspace's harness"
       assert Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination)) == nil
     end
 
-    test "Choose another, a stack of a linked repository: read, saved and pinned at the commit read",
+    test "under a harness repository, a destination's Stack offers the stacks it exports, read at its version",
          ctx do
-      exports = %{
-        {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage]\n",
-        {"R_harness", "stacks/triage/qory-stack.yaml"} => @root_stack
-      }
+      files =
+        @one_export
+        |> Map.put({"R_harness", "harness.yaml"}, "exports:\n  stacks: [triage, review]\n")
+        |> Map.put({"R_harness", "stacks/review/qory-stack.yaml"}, @root_stack)
 
-      linked_harness!(ctx, exports)
+      linked_harness!(ctx, files)
+      [harness] = Apiary.Stacks.Sources.repositories(ctx.scope)
+
+      {:ok, _row} =
+        Apiary.Stacks.Sources.choose(ctx.scope, {:repository, harness, "triage", {:tag, "v1"}})
+
+      destination = destination!(ctx)
+      harness_calls()
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+
+      assert {"harness.yaml", "v1"} in for(
+               {"read", call} <- harness_calls(),
+               do: {call["path"], call["at"]}
+             )
+
+      assert row_options(lv, destination) == [
+               {"Workspace's harness", "default"},
+               {"triage · acme/harness · v1", "workspace:triage"},
+               {"review · acme/harness · v1", "workspace:review"},
+               {"A stack of another repository…", "other"}
+             ]
+
+      pick_row(lv, destination, "workspace:review")
+      render_async(lv, 2_000)
+
+      assert row_chosen(lv, destination) == "review · acme/harness · v1"
+
+      assert %{choice: :repository, version_kind: :workspace, harness: harness} =
+               Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
+
+      assert harness =~ ~s(stack: "review")
+    end
+
+    test "A stack of another repository…: a connected repository's exported stack at a version, saved",
+         ctx do
+      linked_harness!(ctx, @one_export)
       destination = destination!(ctx)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_async(lv, 2_000)
-      open_target(lv, destination)
 
-      linked_id = "linked:" <> Repo.get_by!(Collection, url: @harness_git).public_id
+      pick_row(lv, destination, "other")
+      assert row_chosen(lv, destination) == "A stack of another repository…"
+      assert words(lv, "#target_stack_source-label") == "Repository"
+      assert has_element?(lv, "#target_stack_source-search")
+      assert has_element?(lv, ~s(#target_stack_source-g0 ~ label input[value="#{linked_id()}"]))
 
-      lv
-      |> form("#harness-target-form", target_stack: %{choice: "repository"})
-      |> render_change()
+      assert has_element?(
+               lv,
+               ~s(#target_stack_source-g2 ~ label[data-keep="true"] input[value="address"])
+             )
 
-      lv |> form("#harness-target-form", target_stack: %{source: linked_id}) |> render_change()
+      assert has_element?(lv, "#harness-target-save[disabled]")
 
+      lv |> form("#harness-target-form", target_stack: %{source: linked_id()}) |> render_change()
       render_async(lv, 2_000)
 
-      assert has_element?(lv, ~s(#target_stack_stack option[value="0"]), "triage")
-      assert has_element?(lv, "#target_stack_ref[value=main]")
+      assert has_element?(lv, ~s(#target_stack_stack input[value="triage"][checked]))
+      assert has_element?(lv, "#target_stack-version-branch[checked]")
 
       lv
-      |> form("#harness-target-form", target_stack: %{stack: "0", ref: "main"})
+      |> form("#harness-target-form", target_stack: %{version: "fixed", fixed: "v2"})
       |> render_submit()
 
       render_async(lv, 2_000)
 
       refute has_element?(lv, "#harness-target-form")
+      assert row_chosen(lv, destination) == "triage · acme/harness · v2"
 
-      assert words(lv, "#harness-target-#{destination.public_id}-line") ==
-               "acme/harness · triage · pinned at c3c3c3c"
-
-      assert %{choice: :repository, harness: harness} =
+      assert %{choice: :repository, version_kind: :tag, version_name: "v2", harness: harness} =
                Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
 
       assert harness ==
-               "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n  stack: \"triage\"\n"
+               "extends:\n  git: \"#{@harness_git}\"\n  ref: \"v2\"\n  stack: \"triage\"\n"
+
+      # Cancel closes the form with nothing saved.
+      pick_row(lv, destination, "other")
+      lv |> element("#harness-target-cancel") |> render_click()
+      refute has_element?(lv, "#harness-target-form")
+      assert row_chosen(lv, destination) == "triage · acme/harness · v2"
     end
 
-    test "a stack saved at a branch, as an assigned source's is, shows its ref as not pinned",
-         ctx do
+    # A destination's form with acme/harness chosen, its stub serving `files` with `opts`.
+    defp row_read(ctx, files, opts \\ []) do
+      adapter = linked_harness!(ctx, files)
+      serve_harness(adapter, files, opts)
       destination = destination!(ctx)
-      target = target_of(destination)
-
-      :ok =
-        Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [target])
-
-      row =
-        Repo.get_by!(Apiary.Runs.Target, workspace_id: ctx.scope.workspace.id, path: target.path)
-
-      for {narrowing, line} <- [
-            {"  stack: \"triage\"\n", "acme/harness · triage · at main, not pinned"},
-            {"", "acme/harness · at main, not pinned"}
-          ] do
-        {:ok, _stack} =
-          Apiary.Stacks.put_stack(
-            ctx.scope,
-            {:target, row},
-            "extends:\n  git: \"#{@harness_git}\"\n  ref: \"main\"\n" <> narrowing,
-            choice: :repository
-          )
-
-        {:ok, lv, _html} = live(ctx.conn, ctx.path)
-        assert words(lv, "#harness-target-#{destination.public_id}-line") == line
-      end
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+      lv |> form("#harness-target-form", target_stack: %{source: linked_id()}) |> render_change()
+      render_async(lv, 2_000)
+      {lv, adapter}
     end
 
-    test "Choose another, a stack at a branch or tag that cannot be read: the refusal, and nothing saved",
+    test "A stack of another repository…: a connected repository that exports no stack", ctx do
+      {lv, _adapter} = row_read(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
+
+      assert words(lv, "#target_stack_stack-none") ==
+               "acme/harness exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
+
+      assert has_element?(lv, "#harness-target-save[disabled]")
+    end
+
+    test "A stack of another repository…: a connected repository its adapter cannot be reached for",
+         ctx do
+      {lv, adapter} = row_read(ctx, @one_export, down: true)
+
+      assert words(lv, "#target_stack_stack-error") ==
+               "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
+                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
+                 "is running."
+
+      assert has_element?(lv, "#harness-target-save[disabled]")
+    end
+
+    test "A stack of another repository…: a connected repository with both root harness files",
+         ctx do
+      files = Map.put(@one_export, {"R_harness", "qory.yaml"}, "exports:\n  stacks: [triage]\n")
+      {lv, _adapter} = row_read(ctx, files)
+
+      assert words(lv, "#target_stack_stack-error") ==
+               "Correct harness.yaml in acme/harness: it has both harness.yaml and qory.yaml: " <>
+                 "keep one."
+
+      assert has_element?(lv, "#harness-target-save[disabled]")
+    end
+
+    test "A stack of another repository…: a public address with no stack", ctx do
+      linked_harness!(ctx, %{})
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+
+      lv |> form("#harness-target-form", target_stack: %{source: "address"}) |> render_change()
+
+      lv
+      |> form("#harness-target-form", target_stack: %{address: @harness_git})
+      |> render_change()
+
+      render_async(lv, 2_000)
+
+      assert words(lv, "#harness-target-read-error") ==
+               "#{@harness_git} exports no stack. Add a qory.yaml or harness.yaml at its root " <>
+                 "that lists the stack under exports."
+    end
+
+    test "A stack of another repository…: an assigned source's stack, at the assignment's ref",
+         ctx do
+      adapter = linked_harness!(ctx, %{})
+      instance = Apiary.HarnessReadsFixtures.call_adapter_fixture()
+      admin = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(admin, instance.adapter, :listed)
+
+      Apiary.HarnessReadsFixtures.live_grant_fixture(
+        admin.organisation.id,
+        instance.adapter,
+        connection,
+        "G_i"
+      )
+
+      Apiary.HarnessReadsFixtures.serve_calls([adapter, instance],
+        covered: %{
+          adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}},
+          instance.adapter.id => %{@team_git => {"G_i", "R_team"}}
+        },
+        files: %{{"R_team", "qory-stack.yaml"} => @root_stack},
+        versions: %{"R_team" => @pin}
+      )
+
+      assignment =
+        Repo.insert!(%Apiary.Harnesses.Assignment{
+          organisation_id: ctx.organisation.id,
+          every_organisation: false,
+          source: %{"git" => @team_git, "ref" => "v1"},
+          created_by_id: admin.user.id
+        })
+
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+
+      lv
+      |> form("#harness-target-form", target_stack: %{source: "assigned:" <> assignment.id})
+      |> render_change()
+
+      render_async(lv, 2_000)
+
+      assert has_element?(lv, ~s(#target_stack_stack option[value="0"]), "qory-stack.yaml")
+      refute has_element?(lv, "#target_stack_ref")
+
+      lv |> form("#harness-target-form", target_stack: %{stack: "0"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert row_chosen(lv, destination) == "qory-stack.yaml · example-org/team-harness · v1"
+
+      assert %{harness: harness, version_kind: nil} =
+               Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
+
+      assert harness == "extends:\n  git: \"#{@team_git}\"\n  ref: \"v1\"\n"
+    end
+
+    test "A stack of another repository…: an assigned source whose ref is gone: an instance admin corrects it",
+         ctx do
+      linked_harness!(ctx, %{})
+      instance = Apiary.HarnessReadsFixtures.call_adapter_fixture()
+      admin = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(admin, instance.adapter, :listed)
+
+      Apiary.HarnessReadsFixtures.live_grant_fixture(
+        admin.organisation.id,
+        instance.adapter,
+        connection,
+        "G_i"
+      )
+
+      Apiary.HarnessReadsFixtures.serve_calls([instance],
+        covered: %{instance.adapter.id => %{@team_git => {"G_i", "R_team"}}},
+        files: %{{"R_team", "qory-stack.yaml"} => @root_stack},
+        refuse_at: %{"v9" => "version_not_found"}
+      )
+
+      assignment =
+        Repo.insert!(%Apiary.Harnesses.Assignment{
+          organisation_id: ctx.organisation.id,
+          every_organisation: false,
+          source: %{"git" => @team_git, "ref" => "v9"},
+          created_by_id: admin.user.id
+        })
+
+      destination = destination!(ctx)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      render_async(lv, 2_000)
+      pick_row(lv, destination, "other")
+
+      lv
+      |> form("#harness-target-form", target_stack: %{source: "assigned:" <> assignment.id})
+      |> render_change()
+
+      render_async(lv, 2_000)
+
+      assert words(lv, "#harness-target-read-error") ==
+               "example-org/team-harness has no branch, tag or commit named v9. An instance " <>
+                 "admin corrects the version of this harness source."
+
+      refute has_element?(lv, "#target_stack_ref")
+    end
+
+    test "A stack of another repository…: a public address at a branch or tag that cannot be read is refused, and nothing saved",
          ctx do
       linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
       destination = destination!(ctx)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_async(lv, 2_000)
-      open_target(lv, destination)
-
-      lv
-      |> form("#harness-target-form", target_stack: %{choice: "repository"})
-      |> render_change()
+      pick_row(lv, destination, "other")
 
       lv |> form("#harness-target-form", target_stack: %{source: "address"}) |> render_change()
 
@@ -1809,6 +3043,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       render_async(lv, 2_000)
       assert has_element?(lv, ~s(#target_stack_stack option[value="0"]), "qory-stack.yaml")
+      assert words(lv, ~s(label[for="target_stack_ref"])) == "Branch or tag"
 
       lv
       |> form("#harness-target-form", target_stack: %{ref: "refs/pull/1/head"})
@@ -1817,112 +3052,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#harness-target-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
-                 "could not read refs/pull/1/head in #{@harness_git}: write the ref " <>
-                 "refs/pull/1/head as HEAD, a branch or tag name, refs/heads/<name>, " <>
-                 "refs/tags/<name> or a full commit id: people without write access can " <>
+               "Correct the version: give a branch or tag name, refs/heads/<name>, " <>
+                 "refs/tags/<name> or a full commit id. People without write access can " <>
                  "change other refs, such as a pull request's."
 
       assert has_element?(lv, "#harness-target-form")
-      assert words(lv, "#harness-target-#{destination.public_id}-line") == "Workspace default"
       assert Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination)) == nil
+
+      # The address at a branch it reads: saved, pinned at the commit read.
+      lv |> form("#harness-target-form", target_stack: %{ref: "main"}) |> render_submit()
+      render_async(lv, 2_000)
+
+      assert row_chosen(lv, destination) == "qory-stack.yaml · acme/harness · c3c3c3c"
     end
 
-    test "a harness repository: read at its branch and pinned, or the read's refusal said",
-         ctx do
-      # acme/harness exports a stack, so the listing shows it, and has none at its root.
-      exports = %{
-        {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage]\n",
-        {"R_harness", "stacks/triage/qory-stack.yaml"} => @root_stack
-      }
-
-      adapter = linked_harness!(ctx, exports)
-      {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      render_async(lv, 2_000)
-
-      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
-
-      # Source is a choice with a search box, the first linked repository chosen.
-      linked_id = "linked:" <> Repo.get_by!(Collection, url: @harness_git).public_id
-      assert words(lv, "#harness-source-label") == "Source"
-      assert has_element?(lv, "button#harness-source .q-pick-t.mono", "acme/harness")
-      assert has_element?(lv, ~s(#harness-source-options input[value="#{linked_id}"][checked]))
-      assert has_element?(lv, "#harness-source-search")
-      refute has_element?(lv, "#harness-source-none")
-      assert has_element?(lv, "#harness-ref[value=main]")
-
-      assert words(lv, "#harness-ref-hint") ==
-               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
-                 "#{ctx.organisation.name}."
-
-      # The root has no stack: the walk's reason, and nothing saved.
-      lv |> form("#set-up-harness-form") |> render_submit()
-      render_async(lv, 2_000)
-
-      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
-
-      assert words(lv, "#set-up-harness-refusal") ==
-               "Reload the page to read acme/harness again, or choose another source. Qory " <>
-                 "Apiary could not read its stack: the call to its integration failed, or a " <>
-                 "file in it is not valid."
-
-      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
-
-      serve_harness(adapter, Map.put(exports, {"R_harness", "qory-stack.yaml"}, @root_stack))
-      lv |> form("#set-up-harness-form") |> render_submit()
-      render_async(lv, 2_000)
-
-      assert_patch(
-        lv,
-        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
-      )
-
-      assert %{choice: :repository, harness: harness} = Apiary.Stacks.choice(ctx.scope.workspace)
-      assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
-    end
-
-    test "with no linked repository that has a stack, a line takes the place of Source, and Continue stays off",
-         ctx do
-      linked_harness!(ctx, %{})
-      {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      render_async(lv, 2_000)
-
-      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
-
-      assert words(lv, "#harness-source-none") ==
-               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
-                 "or add the file to a repository."
-
-      refute has_element?(lv, "#harness-source")
-      assert has_element?(lv, "#set-up-continue[disabled]")
-
-      # The Qory harness stays a choice, and Continue saves it.
-      lv |> form("#set-up-harness-form", harness: %{choice: "qory"}) |> render_submit()
-      assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
-    end
-
-    test "with no linked repository that has a stack, a destination's Source shows the line, and an address still reads",
+    test "with no connected repository, a destination's Repository shows the group empty, and an address still reads",
          ctx do
       adapter = linked_harness!(ctx, %{})
+      end_harness_collection!()
       destination = destination!(ctx)
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       render_async(lv, 2_000)
-      open_target(lv, destination)
-
-      lv
-      |> form("#harness-target-form", target_stack: %{choice: "repository"})
-      |> render_change()
+      pick_row(lv, destination, "other")
 
       assert has_element?(lv, "#target_stack_source-g0", "Linked repositories")
-      assert has_element?(lv, ~s(#target_stack_source-0[value=""][disabled]))
+      refute render(lv) =~ "No connected repository"
 
-      assert words(lv, ~s(label[for="target_stack_source-0"])) ==
-               "No connected repository has a qory-stack.yaml file. Connect a work source, " <>
-                 "or add the file to a repository."
-
-      refute has_element?(lv, "#target_stack_source-search")
-
-      # Enter an address stays a choice, and its stack is read.
       serve_harness(adapter, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
       lv |> form("#harness-target-form", target_stack: %{source: "address"}) |> render_change()
 
@@ -1934,149 +3089,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, ~s(#target_stack_stack option[value="0"]), "qory-stack.yaml")
     end
 
-    test "a destination's Source lists the linked repositories with a search box that keeps Enter an address",
-         ctx do
-      linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
-      destination = destination!(ctx)
-      {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      render_async(lv, 2_000)
-      open_target(lv, destination)
-
-      lv
-      |> form("#harness-target-form", target_stack: %{choice: "repository"})
-      |> render_change()
-
-      linked_id = "linked:" <> Repo.get_by!(Collection, url: @harness_git).public_id
-      assert has_element?(lv, "#target_stack_source-search")
-      assert has_element?(lv, ~s(#target_stack_source-g0 ~ label input[value="#{linked_id}"]))
-
-      assert has_element?(
-               lv,
-               ~s(#target_stack_source-g2 ~ label[data-keep="true"] input[value="address"])
-             )
-
-      lv |> form("#harness-target-form", target_stack: %{source: linked_id}) |> render_change()
-      render_async(lv, 2_000)
-
-      lv
-      |> form("#harness-target-form", target_stack: %{stack: "0", ref: "main"})
-      |> render_submit()
-
-      render_async(lv, 2_000)
-
-      assert words(lv, "#harness-target-#{destination.public_id}-line") ==
-               "acme/harness · pinned at c3c3c3c"
-    end
-
-    test "a harness repository at a branch or tag that cannot be read: correct it", ctx do
-      adapter = linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => @root_stack})
-      {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      render_async(lv, 2_000)
-
-      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
-
-      # A ref under refs/ that is no branch or tag breaks the save rule of refs.
-      lv
-      |> form("#set-up-harness-form", harness: %{ref: "refs/pull/1/head"})
-      |> render_submit()
-
-      render_async(lv, 2_000)
-
-      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
-
-      assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
-                 "could not read refs/pull/1/head in acme/harness: write the ref " <>
-                 "refs/pull/1/head as HEAD, a branch or tag name, refs/heads/<name>, " <>
-                 "refs/tags/<name> or a full commit id: people without write access can " <>
-                 "change other refs, such as a pull request's."
-
-      # A ref that is no version a read takes.
-      lv |> form("#set-up-harness-form", harness: %{ref: "v 9"}) |> render_submit()
-      render_async(lv, 2_000)
-
-      assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
-                 "could not read v 9 in acme/harness: the ref v 9 is not a version: 1 to 255 " <>
-                 "letters, digits, dots, underscores, slashes and hyphens."
-
-      # The read finds no version v9.
-      Apiary.HarnessReadsFixtures.serve_calls([adapter],
-        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
-        files: %{{"R_harness", "qory-stack.yaml"} => @root_stack},
-        versions: %{"R_harness" => @pin},
-        refuse_at: %{"v9" => "version_not_found"}
-      )
-
-      lv |> form("#set-up-harness-form", harness: %{ref: "v9"}) |> render_submit()
-      render_async(lv, 2_000)
-
-      assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
-                 "could not read v9 in acme/harness: its ref is no version of its source."
-
-      # The read returns c-R_harness for v9, which is no commit.
-      Apiary.HarnessReadsFixtures.serve_calls([adapter],
-        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
-        files: %{{"R_harness", "qory-stack.yaml"} => @root_stack}
-      )
-
-      lv |> form("#set-up-harness-form", harness: %{ref: "v9"}) |> render_submit()
-      render_async(lv, 2_000)
-
-      assert words(lv, "#set-up-harness-refusal") ==
-               "Correct the branch or tag, or choose another harness source. Qory Apiary " <>
-                 "could not read v9 in acme/harness: its ref is no version of its source."
-
-      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
-    end
-
-    test "a module of the harness repository at a ref the read does not find: the read's line",
-         ctx do
-      stack = "modules:\n  - source: {git: \"#{@harness_git}\", ref: no-such-tag}\n"
-      adapter = linked_harness!(ctx, %{{"R_harness", "qory-stack.yaml"} => stack})
-
-      Apiary.HarnessReadsFixtures.serve_calls([adapter],
-        covered: %{adapter.adapter.id => %{@harness_git => {"G_acme", "R_harness"}}},
-        files: %{{"R_harness", "qory-stack.yaml"} => stack},
-        versions: %{"R_harness" => @pin},
-        refuse_at: %{"no-such-tag" => "version_not_found"}
-      )
-
-      {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      render_async(lv, 2_000)
-      lv |> form("#set-up-harness-form", harness: %{choice: "repository"}) |> render_change()
-
-      # main reads: the person's ref is not the one to correct.
-      lv |> form("#set-up-harness-form", harness: %{ref: "main"}) |> render_submit()
-      render_async(lv, 2_000)
-
-      assert has_element?(lv, "#set-up-harness-refusal[data-reason=invalid]")
-
-      assert words(lv, "#set-up-harness-refusal") ==
-               "Reload the page to read acme/harness again, or choose another source. Qory " <>
-                 "Apiary could not read its stack: the call to its integration failed, or a " <>
-                 "file in it is not valid."
-
-      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
-    end
-
-    test "a member sees the choices disabled, the destinations with no Choose another, and who may; a save sent changes nothing",
+    test "a member sees the choices and each destination's Stack disabled, and who may; a save sent changes nothing",
          ctx do
       destination = destination!(ctx)
       member = joined(ctx.organisation, :member)
       {:ok, lv, _html} = build_conn() |> log_in_user(member) |> live(ctx.path)
 
       assert has_element?(lv, "#harness-choice-qory-radio[disabled]")
+      assert has_element?(lv, "#harness-qory-version-latest[disabled]")
       assert words(lv, "#set-up-who-may") == "Only owners and admins change this."
       refute has_element?(lv, "#set-up-continue")
       assert has_element?(lv, "#set-up-skip")
 
-      # The destinations show with no Choose another, and a change sent opens nothing.
-      assert words(lv, "#harness-target-#{destination.public_id}-line") == "Workspace default"
-      refute has_element?(lv, "#harness-target-#{destination.public_id}-change")
-      render_click(lv, "change_target", %{"id" => destination.public_id})
-      refute has_element?(lv, "#harness-target-form")
+      assert has_element?(lv, "#harness-target-#{destination.public_id}-stack[disabled]")
+      assert row_chosen(lv, destination) == "Workspace's harness"
+
+      render_change(lv, "choose_target_stack", %{
+        "row" => %{"id" => destination.public_id, "stack" => "workspace:core"}
+      })
+
+      assert Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination)) == nil
 
       render_click(lv, "save_harness", %{"harness" => %{"choice" => "qory"}})
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
@@ -2121,6 +3153,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       refute has_element?(lv, "#set-up-test-form")
       refute has_element?(lv, "#set-up-test-run")
+    end
+
+    test "About this step shows what the test run adds, its harness, and what a pass finishes",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, test_path(scope))
+      workspace = scope.workspace.name
+
+      assert words(lv, "#set-up-context-h") == "About this step"
+
+      assert ids(lv, "#set-up-context p") ==
+               ["set-up-what", "set-up-test-harness", "set-up-test-after"]
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "The test run adds a test work item to #{workspace} and queues its run. " <>
+                 "The test passes once a machine takes the run and the run completes."
+
+      # The software domain's words: a repository, not a target.
+      assert words(lv, "#set-up-context #set-up-test-harness") ==
+               "The run uses a harness built into Qory Apiary, qory's hello example at a " <>
+                 "fixed version, in place of the harness of #{workspace}. The test work item " <>
+                 "has no ticket and no repository. The run changes no repository, and Qory " <>
+                 "Apiary sends nothing to a work source or destination."
+
+      assert words(lv, "#set-up-context #set-up-test-after") ==
+               "Once a test run passes, the set-up of #{workspace} is finished, and a link to " <>
+                 "#{workspace} opens the workspace in place of the set-up."
     end
 
     test "Run the test takes a test work item in; it passes live", %{conn: conn, scope: scope} do
@@ -3088,6 +4146,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-workspace")
     assert read_only?(lv)
     assert words(lv, "#set-up-continue") == "Continue"
+  end
+
+  test "About this step shows what a pool and a node are, which pool takes which runs, and why",
+       ctx do
+    lv = open(ctx)
+    workspace = ctx.scope.workspace.name
+
+    assert words(lv, "#set-up-context-h") == "About this step"
+
+    assert lv
+           |> render()
+           |> LazyHTML.from_fragment()
+           |> LazyHTML.query("#set-up-context p")
+           |> LazyHTML.attribute("id") ==
+             ["set-up-what", "set-up-machines-pools", "set-up-machines-why"]
+
+    assert words(lv, "#set-up-context #set-up-what") ==
+             "A node pool takes runs from the queue and starts them on the machines that " <>
+               "joined the pool. A node is one permanent machine, and takes no runs from the " <>
+               "queue."
+
+    assert words(lv, "#set-up-context #set-up-machines-pools") ==
+             "The instance's pool, where the instance has one, runs beside this Qory Apiary " <>
+               "and takes the runs of every workspace that has no pool. A pool for " <>
+               "#{workspace} takes the runs of #{workspace} alone."
+
+    assert words(lv, "#set-up-context #set-up-machines-why") ==
+             "The runs of work items need a ready pool: one with an active key, and a " <>
+               "gateway with an active key. Qory Apiary returns a run's secrets, such as its " <>
+               "model key, only to a gateway, encrypted to the gateway's access key."
   end
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",

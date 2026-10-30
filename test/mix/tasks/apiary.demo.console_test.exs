@@ -306,7 +306,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
              %{exploring: 7, closed: 2, undone: 1}
 
     # The stack of Main's runs: one row, at the workspace, for the workflow hello; and no
-    # harness choice, so a run reads its repository's harness file first.
+    # harness choice. A run reads its repository's harness file first, under any choice.
     assert [%Stacks.Stack{} = stack] = Repo.all(where(Stacks.Stack, [s], not is_nil(s.workflow)))
     assert {stack.workspace_id, stack.target_id, stack.workflow} == {main.id, nil, "hello"}
     assert Stacks.choice(main) == nil

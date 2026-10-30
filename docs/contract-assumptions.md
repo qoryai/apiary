@@ -435,21 +435,23 @@ run's places: its workspace, and its target when it has one
 workflow, so its documents have none of the four members. A run with a workflow waits
 until a job has walked its harness (`Apiary.Harnesses.Walk`); a claim takes no run whose
 walk has not resolved, and a walk that fails ends the run before it starts, with the end
-cause `harness_unresolved` and the failure's code. The walk takes the first of four
-(`Apiary.Stacks.chosen_for/4`). First, a stack chosen for the run's target: its stored
-document applies, with its `ref`, and is the documents' `harness`; the target's harness
-file is not read, and the run has no `target_version`. Second, the workspace's harness
-choice, else the harness its organisation shares with every workspace: under a harness
-repository, its document applies as for a target's stack; under the Qory harness, the
-target's harness file comes first, then the choice's document. Third, with no choice,
-the target's harness file. Last, the Qory harness: the harness of the workspace type's
-definition (`Apiary.Lingo.Domain.Definition`) at its pinned commit. The walk reads the
-target's harness file at the target's head, in a workspace whose domain has harness
-files and for a target that a live collection of the workspace has; the version that
-read returned is the run's `target_version`, whichever harness then applies. A file
-whose harness section has `extends` applies, and the documents have no `harness`: the
-machine composes the file at `target_version`. A stored document or the Qory harness is
-the documents' `harness`, as `{"harness": <section>}`. The owner of a stored
+cause `harness_unresolved` and the failure's code. The walk takes the first of four.
+First, the target's harness file, under every harness choice. Second, a stack chosen for
+the run's target (`Apiary.Stacks.chosen_for/4`): its stored document applies and is the
+documents' `harness`. Third, the workspace's harness choice, else the harness its
+organisation shares with every workspace: its document applies the same way. Last, the
+Qory harness: the harness of the workspace type's definition
+(`Apiary.Lingo.Domain.Definition`) at the newest version the release ships. A stored
+document's base is read at the `ref` of its row's version (`Apiary.Stacks.version_ref/3`):
+the Qory harness at "latest" at the commit of the newest version the release ships, a
+harness repository at the branch, tag or commit saved; the documents' `harness` has that
+`ref`. The walk reads the target's harness file at the target's head, in a workspace
+whose domain has harness files and for a target that a live collection of the workspace
+has; the version that read returned is the run's `target_version`, whichever harness
+then applies. A file whose harness section has `extends`, or lists modules without it,
+applies, and the documents have no `harness`: the machine composes the file at
+`target_version`. A file with neither is passed over. A stored document or the Qory
+harness is the documents' `harness`, as `{"harness": <section>}`. The owner of a stored
 document is the organisation of the person who saved it, when that person saved it as a
 member acting in that organisation; for an instance admin who saved it with no such
 membership, it is the instance's organisation; it is unknown once the owner organisation

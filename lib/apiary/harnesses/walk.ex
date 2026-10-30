@@ -10,21 +10,18 @@ defmodule Apiary.Harnesses.Walk do
   #
   # ## Which harness applies
   #
-  # The walk takes the first of these (`Apiary.Stacks.chosen_for/4`):
+  # The walk takes the first of these:
   #
-  #   1. a stack chosen for the run's target, the Qory harness or a stack of a harness
-  #      repository: its document, as the choice's document below. The target's harness
-  #      file is not read, and the run has no `target_version`;
-  #   2. the workspace's choice, else the harness the organisation shares with every
-  #      workspace. A harness repository: its document, as for a target's stack. The Qory
-  #      harness: the target's harness file, where it applies, else the choice's
-  #      document;
-  #   3. with no choice, the target's harness file, where it applies;
+  #   1. the target's harness file, where it applies (below), under every choice;
+  #   2. a stack chosen for the run's target (`Apiary.Stacks.chosen_for/4`): its
+  #      document, as the choice's document below;
+  #   3. the workspace's choice, else the harness the organisation shares with every
+  #      workspace: its document, the same way;
   #   4. else the Qory harness, the base of the workspace's type's definition
-  #      (`Apiary.Lingo.Domain.definition/1`) at its pinned commit, as a document that
-  #      only extends it, origin `:setting`, with no stacks row (`stack_id` nil) and no
-  #      owner. It is hidden only where the run's organisation is operated
-  #      (`c:Apiary.Edition.operated?/1`).
+  #      (`Apiary.Lingo.Domain.definition/1`) at the newest version the release ships, as
+  #      a document that only extends it, origin `:setting`, with no stacks row
+  #      (`stack_id` nil) and no owner. It is hidden only where the run's organisation is
+  #      operated (`c:Apiary.Edition.operated?/1`).
   #
   # Where the target's harness file is read and does not apply, the run keeps the
   # `target_version` that read returned.
@@ -54,7 +51,10 @@ defmodule Apiary.Harnesses.Walk do
   #
   # The document of the choice's row, origin `:setting`, with the row's id and owner. It
   # is read once and checked again by the save rules (`Apiary.Stacks.Document.check/1`),
-  # else `invalid`. The walk reads no document of a row with a workflow: Workspace
+  # else `invalid`. A row with a version has its base's `ref` replaced by the `ref` of
+  # that version (`Apiary.Stacks.version_ref/3`), which the run's document then has; a
+  # named version the release does not ship fails `invalid`. The `ref` is checked as any
+  # source's below. The walk reads no document of a row with a workflow: Workspace
   # settings › Workflow sets the runs' workflow there (`Apiary.Stacks.workflow/2`) and
   # the access level it records (`Apiary.Stacks.recorded_access/3`).
   #
@@ -218,14 +218,18 @@ defmodule Apiary.Harnesses.Walk do
   @typedoc """
   A walk that failed: the code, the source as shown (nil for none or hidden), the rule an
   `invalid` source breaks, the adapter's name and id for a call, and the call's failure.
+  An `adapter_unavailable` failure has no call failure, so a run records none, and has
+  `call_cause`: `:timeout` or `:unreachable`, the call's cause, or `:late` for a walk out
+  of time.
   """
   @type failure :: %{
-          failure: atom,
-          source: String.t() | nil,
-          rule: map | nil,
-          adapter: String.t() | nil,
-          adapter_id: Ecto.UUID.t() | nil,
-          call_failure: CallFailure.t() | nil
+          required(:failure) => atom,
+          required(:source) => String.t() | nil,
+          required(:rule) => map | nil,
+          required(:adapter) => String.t() | nil,
+          required(:adapter_id) => Ecto.UUID.t() | nil,
+          required(:call_failure) => CallFailure.t() | nil,
+          optional(:call_cause) => :timeout | :unreachable | :late
         }
 
   @doc false
@@ -293,12 +297,14 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
+  # The target's harness file first, under every choice; else the choice, read after it.
   defp walk(input) do
-    case Stacks.chosen_for(input.organisation, input.workspace, input.target, input.workflow) do
-      {:chosen, %Resolution{} = resolution} -> document(input, resolution, nil)
-      {:qory, %Resolution{} = resolution} -> by_target(input, &document(input, resolution, &1))
-      :none -> by_target(input, &qory(input, &1))
-    end
+    by_target(input, fn version ->
+      case Stacks.chosen_for(input.organisation, input.workspace, input.target, input.workflow) do
+        {:chosen, %Resolution{} = resolution} -> document(input, resolution, version)
+        :none -> qory(input, version)
+      end
+    end)
   end
 
   # The target's harness file, else `otherwise` with the version the read of the target
@@ -345,7 +351,7 @@ defmodule Apiary.Harnesses.Walk do
     # the first took.
     section =
       case Document.check(resolution.harness) do
-        {:ok, section} -> section
+        {:ok, section} -> at_version(section, resolution.ref)
         {:error, {message, values}} -> fail(:invalid, nil, message(message, values))
       end
 
@@ -363,6 +369,17 @@ defmodule Apiary.Harnesses.Walk do
       owner_organisation_id: resolution.owner
     })
   end
+
+  # `section` with its base's `ref` replaced by the row's version's `ref`; as it is for
+  # none, or for a section whose base has no `git`.
+  defp at_version(section, nil), do: section
+
+  defp at_version(_section, {:missing, name}), do: fail(:invalid, nil, rule("version", ref: name))
+
+  defp at_version(%{"extends" => %{"git" => _git} = base} = section, ref) when is_binary(ref),
+    do: %{section | "extends" => %{base | "ref" => ref}}
+
+  defp at_version(section, _ref), do: section
 
   # The Qory harness of the workspace's type, for a run with no choice, after the
   # target's harness file read at `version`, nil for none.
@@ -997,7 +1014,7 @@ defmodule Apiary.Harnesses.Walk do
         fail(:invalid, state.label, rule("calls", n: @max_calls))
 
       left <= 0 ->
-        retry(adapter)
+        retry(adapter, :late)
 
       true ->
         put(:calls, state.calls - 1)
@@ -1008,7 +1025,7 @@ defmodule Apiary.Harnesses.Walk do
 
   defp call_failed(%CallFailure{cause: cause} = failure, _location, _at)
        when cause in [:timeout, :unreachable],
-       do: retry(%{id: failure.adapter_id, name: failure.adapter_name})
+       do: retry(%{id: failure.adapter_id, name: failure.adapter_name}, cause)
 
   defp call_failed(%CallFailure{cause: :refused, code: code}, %{} = location, _at)
        when code in ["grant_unknown", "resource_not_covered", "resource_not_public"],
@@ -1035,7 +1052,7 @@ defmodule Apiary.Harnesses.Walk do
     )
   end
 
-  defp retry(%{id: id, name: name}) do
+  defp retry(%{id: id, name: name}, cause) do
     throw(
       {__MODULE__, :retry,
        %{
@@ -1044,7 +1061,8 @@ defmodule Apiary.Harnesses.Walk do
          rule: nil,
          adapter: name,
          adapter_id: id,
-         call_failure: nil
+         call_failure: nil,
+         call_cause: cause
        }}
     )
   end
@@ -1129,18 +1147,32 @@ defmodule Apiary.Harnesses.Walk do
       else: {message, values}
   end
 
-  # A file that the reader refuses: its name, and the save check's words for why.
+  # A file that the reader refuses: its name, and the save check's words for why, with a
+  # hidden harness's values left out (`hidden/2`).
   defp yaml(file, reason) do
     {message, values} = Document.unreadable(reason)
     {message, values} = hidden(message, values)
+    yaml_rule(file, message, values)
+  end
 
-    %{
+  @doc false
+  # yaml_rule/2 is the walk's `yaml` rule for `file`, which the reader refuses for
+  # `reason`: the file's name, and the save check's words for why
+  # (`Apiary.Stacks.Document.unreadable/1`). `Apiary.Stacks.Sources` reports a file it
+  # cannot read with it.
+  @spec yaml_rule(String.t(), Reader.reason()) :: map
+  def yaml_rule(file, reason) do
+    {message, values} = Document.unreadable(reason)
+    yaml_rule(file, message, values)
+  end
+
+  defp yaml_rule(file, message, values),
+    do: %{
       "rule" => "yaml",
       "values" => %{"file" => file},
       "message" => message,
       "message_values" => Map.new(values, fn {k, v} -> {to_string(k), to_string(v)} end)
     }
-  end
 
   defp get(key), do: Map.fetch!(Process.get(__MODULE__), key)
   defp put(key, value), do: Process.put(__MODULE__, Map.put(Process.get(__MODULE__), key, value))

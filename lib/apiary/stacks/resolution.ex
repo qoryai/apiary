@@ -51,7 +51,10 @@ defmodule Apiary.Stacks.Resolution do
 
   @typedoc """
   A resolution: the `harness` document, the id of its row (`stack_id`), the `workflow`,
-  the `level` and the `owner`, and `harness_hidden`.
+  the `level` and the `owner`, and `harness_hidden`. `ref` is the version a run reads the
+  document's base at, which `Apiary.Stacks.chosen_for/4` sets from the row's version
+  (`Apiary.Stacks.version_ref/3`); nil for the document's `ref` as written, which
+  `resolve/1` gives.
   """
   @type t :: %__MODULE__{
           harness: String.t(),
@@ -59,11 +62,12 @@ defmodule Apiary.Stacks.Resolution do
           workflow: String.t(),
           level: level,
           owner: owner,
-          harness_hidden: boolean
+          harness_hidden: boolean,
+          ref: String.t() | {:missing, String.t()} | nil
         }
 
   @enforce_keys [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
-  defstruct [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
+  defstruct [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden, ref: nil]
 
   @doc false
   # resolve/1 is what `input` comes to: `{:ok, resolution}`, or `:none` where no level
