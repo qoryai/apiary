@@ -122,14 +122,22 @@ defmodule ApiaryWeb.ConnectSession do
   end
 
   # What the session keeps, read as it should be: a list of `[connection_id, nonce]`, or
-  # `[connection_id, nonce, back]` with `back` a word `back?/1` takes.
+  # `[connection_id, nonce, back]` with `back` a word `back?/1` takes. A `back` it no
+  # longer takes, such as one with a workspace's slug kept before the workspace was named
+  # by its public id, is dropped and the nonce kept, so the return is still taken and
+  # leads to the integration's page.
   defp entries(conn) do
     case get_session(conn, @key) do
       list when is_list(list) ->
-        Enum.filter(list, fn
-          [id, nonce] -> is_binary(id) and is_binary(nonce)
-          [id, nonce, back] -> is_binary(id) and is_binary(nonce) and back?(back)
-          _other -> false
+        Enum.flat_map(list, fn
+          [id, nonce] = entry when is_binary(id) and is_binary(nonce) ->
+            [entry]
+
+          [id, nonce, back] = entry when is_binary(id) and is_binary(nonce) ->
+            if back?(back), do: [entry], else: [[id, nonce]]
+
+          _other ->
+            []
         end)
 
       _other ->

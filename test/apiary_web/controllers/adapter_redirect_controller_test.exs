@@ -351,6 +351,27 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
 
       assert redirected_to(conn) == page(scope, adapter)
     end
+
+    test "a pass kept with a workspace's slug, before the public id, is still taken", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: {connection_id, session_nonce}
+    } do
+      token = return_token(pair.secret, connection.public_id, nonce)
+      back = "set-up:sources:workspace=#{scope.workspace.slug}"
+
+      conn =
+        conn
+        |> put_session("connect_passes", [[connection_id, session_nonce, back]])
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(conn) == page(scope, adapter)
+      assert Phoenix.Flash.get(conn.assigns.flash, :info)
+    end
   end
 
   describe "the session's nonces" do
@@ -380,10 +401,12 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       conn = ConnectSession.put(conn, {"ac_0000000000000004", "n5"}, "/elsewhere")
       assert ConnectSession.back(conn, "ac_0000000000000004") == nil
 
+      # A back value it no longer takes is dropped, and the nonce beside it kept.
       conn =
         put_session(conn, "connect_passes", [["ac_0000000000000006", "n6", "https://e.example"]])
 
-      assert ConnectSession.fetch(conn, "ac_0000000000000006") == nil
+      assert ConnectSession.fetch(conn, "ac_0000000000000006") == "n6"
+      assert ConnectSession.back(conn, "ac_0000000000000006") == nil
 
       # What the session holds that is not its shape is read as nothing.
       conn = put_session(conn, "connect_passes", %{"ac_0000000000000003" => "n3"})
