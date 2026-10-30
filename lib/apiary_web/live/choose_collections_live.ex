@@ -134,7 +134,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       domain: domain,
       install:
         IntegrationComponents.paths(scope, card.adapter).install <>
-          "?" <> URI.encode_query(back: "set-up:#{list}:workspace=#{workspace.slug}"),
+          "?" <> URI.encode_query(back: "set-up:#{list}:workspace=#{workspace.public_id}"),
       ready: IntegrationComponents.ready?(card.adapter),
       who_may: IntegrationComponents.who_assigns(scope, [card.adapter])
     )

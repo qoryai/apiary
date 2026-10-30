@@ -143,7 +143,7 @@ defmodule ApiaryWeb.SetupLiveTest do
       assert Setup.set_up?()
     end
 
-    test "with mail from the environment and no adapter, signs in at the workspace set-up",
+    test "with mail from the environment and no adapter, signs in at the organisation's overview",
          %{conn: conn, code: code} do
       Apiary.Mail.put_test_source(:env)
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")

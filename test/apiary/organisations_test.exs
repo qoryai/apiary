@@ -594,6 +594,32 @@ defmodule Apiary.OrganisationsTest do
       assert %Workspace{slug: "main"} = workspace_fixture(organisation, "Main")
     end
 
+    test "a name another workspace has at another address is refused, with its address" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      org = organisation.slug
+      data = workspace_fixture(organisation, "Data")
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^data.id), set: [slug: "lake"])
+
+      message = "Choose another name. Data already has the address /#{org}/lake."
+
+      assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => "Data"})
+      assert %{name: [^message]} = errors_on(changeset)
+
+      mark_workspace(Repo.reload!(data))
+      scope = mark_only_workspace(scope)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "software"})
+
+      assert %{
+               name: [
+                 "Choose another name. A workspace marked for deletion has the address /#{org}/lake."
+               ]
+             } == errors_on(changeset)
+    end
+
     test "a name that does not change keeps the slug" do
       %{scope: scope, workspace: main} = sign_up_fixture()
 
@@ -661,6 +687,30 @@ defmodule Apiary.OrganisationsTest do
 
       assert {:ok, %Workspace{name: "Software factory 4", slug: "software-factory-4"}} =
                Organisations.create_workspace_of_kind(scope, domain, :any)
+    end
+
+    defmodule LongKind do
+      # A type whose name alone fills a slug: a number is kept in the slug all the same.
+      def type_name, do: "Customer care for every channel and every region"
+      def name, do: "software"
+    end
+
+    test "a type name as long as a slug keeps the number in the slug" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:ok, first} = Organisations.create_workspace_of_kind(scope, LongKind, :any)
+      assert first.name == LongKind.type_name()
+      assert first.slug == "customer-care-for-every-channel-and-ever"
+      mark_workspace(first)
+
+      assert {:ok, second} = Organisations.create_workspace_of_kind(scope, LongKind, :any)
+      assert second.name == "Customer care for every channel and ev 2"
+      assert second.slug == "customer-care-for-every-channel-and-ev-2"
+      mark_workspace(second)
+
+      assert {:ok, %{slug: "customer-care-for-every-channel-and-ev-3"}} =
+               Organisations.create_workspace_of_kind(scope, LongKind, :any)
     end
 
     test "with :first, the organisation's first workspace, once" do

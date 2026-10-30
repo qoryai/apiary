@@ -39,7 +39,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
         path = ~p"/#{scope.organisation}/settings/integrations/#{connection.adapter}"
 
         case params do
-          %{"return" => token} -> complete(conn, connection, token, path, scope.organisation)
+          %{"return" => token} -> complete(conn, connection, token, path, scope)
           _none -> redirect(conn, to: path)
         end
 
@@ -48,7 +48,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
     end
   end
 
-  defp complete(conn, connection, token, path, organisation) do
+  defp complete(conn, connection, token, path, scope) do
     session_nonce = ConnectSession.fetch(conn, connection.public_id)
 
     case Connections.complete_return(
@@ -61,7 +61,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
         to =
           case ConnectSession.back(conn, connection.public_id) do
             nil -> path
-            back -> back_path(organisation, back)
+            back -> back_path(scope, back) || path
           end
 
         conn
@@ -143,14 +143,20 @@ defmodule ApiaryWeb.AdapterRedirectController do
   end
 
   # The path of the workspace set-up's step that `back` is set to
-  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's slug, the step's page in the
-  # workspace; with the type picked, New workspace, before the workspace exists; with
-  # neither, the organisation's overview, which leads to its workspaces.
-  defp back_path(organisation, back) do
+  # (`ApiaryWeb.ConnectSession.back?/1`): with the workspace's public id, the step's page in
+  # the workspace, at its address as it is now; nil for a workspace of the organisation no
+  # longer in use. Without a workspace, the organisation's overview, which leads to its
+  # workspaces.
+  defp back_path(scope, back) do
     case String.split(back, ":") do
-      [_page, step, "workspace=" <> slug] -> ~p"/#{organisation}/#{slug}/set-up/#{step}"
-      [_page, step, type] -> ~p"/#{organisation}/workspaces/new?#{[step: step, type: type]}"
-      _other -> ~p"/#{organisation}"
+      [_page, step, "workspace=" <> id] ->
+        case Enum.find(Apiary.Organisations.list_workspaces(scope), &(&1.public_id == id)) do
+          nil -> nil
+          workspace -> ~p"/#{scope.organisation}/#{workspace}/set-up/#{step}"
+        end
+
+      _other ->
+        ~p"/#{scope.organisation}"
     end
   end
 end

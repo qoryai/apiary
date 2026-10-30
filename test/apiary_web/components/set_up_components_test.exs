@@ -191,9 +191,9 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert Enum.all?(steps, &(&1.progress == :organisation))
       assert Enum.map(steps, & &1.group) == List.duplicate(nil, 8)
 
-      # The default flow is at New workspace, which shows the type cards first.
-      assert Enum.find(steps, &(&1.id == :sources)).path ==
-               "/#{scope.organisation.slug}/workspaces/new?step=sources"
+      # Before the workspace exists, the flow's steps lead to the organisation's overview,
+      # whose kind cards create it.
+      assert Enum.find(steps, &(&1.id == :sources)).path == "/#{scope.organisation.slug}"
 
       refute Enum.any?(steps, &Map.has_key?(&1, :heading))
 
@@ -205,8 +205,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       steps = SetUpComponents.steps_for(scope, :name, flow: flow)
 
-      assert Enum.find(steps, &(&1.id == :model)).path ==
-               "/#{scope.organisation.slug}/workspaces/new?step=model&type=software"
+      assert Enum.find(steps, &(&1.id == :model)).path == "/#{scope.organisation.slug}"
 
       assert SetUpComponents.flow_title(flow) == "Set up a new Software factory"
     end
@@ -355,11 +354,15 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert connect == [{:adapter, adapter.public_id}, :mail]
       assert Enum.all?(steps, &(&1.group in [nil, :connect]))
 
-      # The cards page stays at `/:org/workspaces/new`, and its flow's steps lead there.
+      # Before the workspace exists, a step leads to the organisation's overview; once it
+      # exists, to the step's page in the workspace.
       flow = SetUpComponents.flow(admin.organisation, Apiary.Lingo.Domain.Software, nil, :new)
+      assert SetUpComponents.flow_path(flow, :name) == "/#{admin.organisation.slug}"
+
+      flow = %{flow | workspace: admin.workspace}
 
       assert SetUpComponents.flow_path(flow, :name) ==
-               "/#{admin.organisation.slug}/workspaces/new?step=name"
+               "/#{admin.organisation.slug}/#{admin.workspace.slug}/set-up/name"
     end
   end
 

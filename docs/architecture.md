@@ -214,10 +214,9 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   the oldest organisation in use), named by the sign-up form's organisation name, with
   the person as its owner, the instance's first admin, and nothing else; the edition is
   told so (`:first_sign_up`). By the set-up link it has no workspace (`workspace:
-  false`): on New workspace, `/:org/workspaces/new`, where the organisation's overview
-  sends its owner, the owner picks the type on a card, then creates the workspace at the
-  step Name, whose field reads **Main**
-  (`Apiary.Organisations.create_first_workspace/2`). By the
+  false`): on the organisation's overview, `/:org`, its owner picks the type on a kind
+  card, whose Choose creates the workspace, named after the type, and opens its step Name
+  (`Apiary.Organisations.create_workspace_of_kind/3`). By the
   release command it has **Main**. It is the set-up's or the
   release command's alone (`first_only: true`, `actor: :instance`; The set-up link,
   below); any other sign-up before it is `{:error, :not_set_up}`. Whether a sign-up is

@@ -761,9 +761,9 @@ defmodule ApiaryWeb.UserAuth do
   (`Apiary.Organisations.load_home_scope/2`), with the `factory` feature at its overview
   while its set-up is not finished, which lists the set-up's steps, else at the first
   page it shows them (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's path,
-  `/:org`, while the organisation has no workspace in use
-  (`Apiary.Organisations.has_workspace?/1`), and for a member who reaches no workspace
-  yet, which says so; and without a membership
+  `/:org`, while the organisation has no workspace in use, where its overview has the
+  kind cards, and for a
+  member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
   """

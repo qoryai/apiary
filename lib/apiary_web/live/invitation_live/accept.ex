@@ -176,8 +176,9 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   # The workspace the invitation brings the user into: the workspace's page, which the
   # path names, loaded afresh so the session remembers it for `/`; its overview shows the
   # set-up while it is not finished. An invitation without a workspace brings them into
-  # the organisation's overview, as `ApiaryWeb.UserAuth.signed_in_path/1` sends a person
-  # of an organisation they reach no workspace of yet.
+  # the organisation's overview, which has the kind cards
+  # while it has no workspace in use, as `ApiaryWeb.UserAuth.signed_in_path/1` sends a
+  # person of an organisation they reach no workspace of yet.
   defp workspace_path(%{organisation: organisation, workspace: nil}),
     do: ~p"/#{organisation}"
 

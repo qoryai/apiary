@@ -712,7 +712,7 @@ defmodule Apiary.SetupTest do
              "Main is this instance's only workspace."
 
     assert Apiary.Edition.Core.first_workspace_waiting_line(organisation) ==
-             "An owner sets up this organisation's first workspace."
+             "An owner of #{organisation.name} creates the first workspace."
   end
 
   describe "the connections" do

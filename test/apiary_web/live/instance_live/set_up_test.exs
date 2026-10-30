@@ -677,6 +677,17 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
   # The steps of the flow of a new workspace, the first `current`: every step with the
   # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
+  # Choose on the organisation's overview: the new workspace's Name step.
+  defp choose_kind(conn, organisation) do
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+    assert has_element?(lv, "#set-up-card-software")
+
+    lv
+    |> element("#set-up-card-software-choose")
+    |> render_click()
+    |> follow_redirect(conn)
+  end
+
   defp workspace_steps(current) do
     if Apiary.Features.on?(:factory) do
       [{"Name", current}, {"Work sources", :to_come}, {"Destinations", :to_come}] ++
@@ -698,15 +709,19 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
     assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}"
     refute Setup.connections_reviewed?()
 
-    # The workspace set-up opens at the type cards, then lists no step under Connect Qory
-    # Apiary.
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
-    assert has_element?(lv, "#set-up-card-software")
+    # The organisation's overview has the kind cards; Choose opens the Name step, a page
+    # of the workspace with no indicator and no step of Connect Qory Apiary. With the
+    # `factory` feature, the sidebar's group Set up lists the workspace's steps.
+    {:ok, lv, _html} = choose_kind(conn, organisation)
+    refute has_element?(lv, "#set-up-steps")
 
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?type=software")
-    # Your account is of the instance's progress, so the flow's first step is step 1.
-    assert steps(lv) == workspace_steps(:current)
-    assert count(lv) == "Step 1 of #{length(steps(lv))}"
+    if Apiary.Features.on?(:factory) do
+      assert set_up_group(lv) == workspace_steps(:current)
+      assert set_up_heading(lv) == "Set up · 1 of #{length(workspace_steps(:current))}"
+    else
+      assert set_up_group(lv) == []
+    end
+
     refute has_element?(lv, "#set-up-group-connect")
     refute has_element?(lv, "#set-up-steps-mail")
   end
@@ -731,7 +746,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-skip-button") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/workspaces/new?step=name"
+      assert to == ~p"/#{organisation}"
       assert Setup.connections_reviewed?()
     end
 
@@ -755,29 +770,18 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       # Skip on Mail leads to Name, the first step of the organisation's progress.
       lv |> element("#set-up-skip-button") |> render_click()
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/workspaces/new?step=name"
+      assert to == ~p"/#{organisation}"
 
-      # With no workspace yet, the set-up opens at the type cards; the flow follows.
-      {:ok, lv, _html} = live(conn, to)
-      assert has_element?(lv, "#set-up-card-software")
+      # With no workspace yet, the organisation's overview has the kind cards; Choose opens
+      # the flow, whose steps the sidebar's group Set up counts from 1, apart from the
+      # instance's.
+      {:ok, lv, _html} = choose_kind(conn, organisation)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?step=name&type=software")
-
-      assert steps(lv) == workspace_steps(:current)
+      assert set_up_group(lv) == workspace_steps(:current)
       steps = length(workspace_steps(:current))
-      assert count(lv) == "Step 1 of #{steps}"
-      assert has_element?(lv, ~s{#set-up-steps progress[value="1"][max="#{steps}"]})
-
-      assert lv
-             |> element("#set-up-step-bar")
-             |> render()
-             |> LazyHTML.from_fragment()
-             |> LazyHTML.text()
-             |> String.split()
-             |> Enum.join(" ") == "Step 1 of #{steps}: Name"
-
-      # No group heading in the organisation's progress.
-      refute has_element?(lv, ".q-su-grp-h")
+      assert set_up_heading(lv) == "Set up · 1 of #{steps}"
+      refute has_element?(lv, "#set-up-steps")
+      refute has_element?(lv, "#nav-set-up-mail")
 
       # Back stays in the organisation's progress: Name is its first step.
       refute has_element?(lv, "#set-up-back")
@@ -791,7 +795,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-continue") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/workspaces/new?step=name"
+      assert to == ~p"/#{organisation}"
       assert Setup.connections_reviewed?()
     end
 

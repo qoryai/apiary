@@ -358,7 +358,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       refute render(lv) =~ "Choose a password to sign in with."
     end
 
-    test "creates the organisation with no workspace, and lands its owner on its set-up", %{
+    test "creates the organisation with no workspace, and lands its owner on its overview", %{
       conn: conn
     } do
       Apiary.Mail.put_test_source(:none)

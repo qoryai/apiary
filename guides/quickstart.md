@@ -90,11 +90,10 @@ the same list. Two pages follow:
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. The workspace set-up, at `http://localhost:4100/acme/workspaces/new`, where
-   `http://localhost:4100/acme` sends you. Its first page, **What
-   will this workspace do?**, shows the card **Software factory**, whose words this
-   guide uses: select **Choose**. At the step **Name**, keep the name `Main` and select
-   **Create workspace**.
+2. The workspace set-up starts on the organisation's overview,
+   `http://localhost:4100/acme`. It shows the card **Software factory**, whose words this
+   guide uses: select **Choose**. Qory Apiary creates the workspace and opens its step
+   **Name**. Type the name `Main` and select **Save and next**.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
@@ -106,8 +105,8 @@ With the `factory` feature, **Connect Qory Apiary** has one step for each adapte
 select **Skip**, or **Continue** where the step is set up already, or set the adapter up
 as [Set up a new instance](install.md#set-up-a-new-instance) shows.
 
-**Create workspace** then opens **Work sources**, the next step of Main's set-up, in place
-of the overview, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
+**Save and next** on **Name** then opens **Work sources**, the next step of Main's
+set-up, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
 to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
 sidebar, but Main's overview has no box for them, and their node does not count for the
 step **Machines**, which counts node pools only.
@@ -283,7 +282,7 @@ version.
 <!-- feature: factory -->
 ## 8. Set up Main and run the test
 
-With the `factory` feature, the workspace set-up goes on after **Create workspace**, at
+With the `factory` feature, the workspace set-up goes on after **Name**, at
 `http://localhost:4100/acme/main/set-up/<step>`, a page of Main. Until a test run passes,
 the group **Set up** at the top of Main's sidebar lists the steps, and Main's overview,
 `http://localhost:4100/acme/main`, lists them too, with **Continue** to the next step.

@@ -1184,9 +1184,10 @@ hides its parts on phones in that block.
 
 The set-up is the pages a person goes through before the console: the set-up link
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
-(`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: New workspace,
-`/<org>/workspaces/new?step=name&type=<type>`, before the workspace exists, then each
-step a page of the workspace, `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
+(`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: the kind cards, on
+the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces/new`,
+whose Choose creates the workspace, then each step a page of the workspace,
+`/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
 sidebar, but for the steps of a workspace that exists, which show the workspace's
 sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's

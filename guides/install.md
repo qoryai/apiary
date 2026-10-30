@@ -797,17 +797,14 @@ px, shows what the step does. Two pages come after the set-up link's page:
    there is nothing to configure. Until an instance admin finishes or skips the page's
    last step, each sign-in of an instance admin opens this page first. Where the page has
    no step, the set-up link's page leads to the workspace set-up.
-2. **The workspace set-up**, at `/<organisation>/workspaces/new`, where
-   `/<organisation>` sends you, creates the organisation's
-   workspace. Its first page, **What will this workspace do?**, shows one card for each
-   type of workspace: **Software factory**, where agents change code in your
-   repositories. Select **Choose** on the card. At the step **Name**, the field **Name**
-   reads `Main`, the name of an organisation's first workspace: keep it or type another.
-   The type can't be changed after. **Create workspace** creates Main and opens its
-   overview: `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in
-   of a member of the organisation opens this page, and only an owner creates the
-   workspace. If another owner creates Main while the page is open, the page opens the
-   organisation's overview, which lists Main, without a reload.
+2. **The workspace set-up** starts on the organisation's overview, `/<organisation>`.
+   While the organisation has no workspace, the overview shows one card for each type of
+   workspace: **Software factory**, where agents change code in your repositories.
+   Select **Choose** on the card: Qory Apiary creates the workspace, named after its
+   type, and opens its step **Name**. Type a name, such as `Main`, and select **Save and
+   next**. The type can't be changed after. Until a workspace exists, a sign-in of a
+   member of the organisation opens the overview, and only an owner creates the
+   workspace.
 
 <!-- feature: factory -->
 With the `factory` feature, both pages have more steps:
@@ -826,8 +823,7 @@ With the `factory` feature, both pages have more steps:
   `/<organisation>/main/set-up/<step>`: **Name**, **Work sources**, **Destinations**,
   **Model**, **Harness**, **Machines** and **Test run**. The group **Set up** at the top
   of the workspace's sidebar lists them, with a check mark on each step done, and they
-  open in any order. **Create workspace** opens **Work sources**. If another owner
-  creates Main while the page is open, the page opens the organisation's overview.
+  open in any order. **Save and next** on a step opens the next one.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, open **Connect another source**, or **Connect another
@@ -1008,8 +1004,8 @@ To try Qory Apiary with data in it, load the demo into a new instance: synthetic
 people and nodes, all under `example.com` and other example names. Never load it into an
 instance people work in.
 
-1. Set up the instance with the organisation name **Acme**, and create its workspace Main
-   at `/acme` ([Set up a new instance](#set-up-a-new-instance)).
+1. Set up the instance with the organisation name **Acme**, then create a workspace at
+   `/acme` and name it Main ([Set up a new instance](#set-up-a-new-instance)).
 2. Run on the release:
 
    ```sh

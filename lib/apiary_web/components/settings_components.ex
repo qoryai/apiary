@@ -489,7 +489,8 @@ defmodule ApiaryWeb.SettingsComponents do
     ~H"""
     <p :if={!@new} id={@id} class="text-[13px]/[20px] text-muted">
       <.rich text={rich_gettext("Address: %{address}", address: {:m, @old})} />
-      <br />{gettext("It follows the name.")}
+      <br />
+      {gettext("It follows the name.")}
     </p>
     <.notice :if={@new} kind={:warning}>
       <span id={@id}>
