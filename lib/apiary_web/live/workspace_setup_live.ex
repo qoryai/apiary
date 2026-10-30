@@ -142,22 +142,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
-  #     whom `node.create` allows on it chooses: Shared, the instance's pool, chosen
-  #     first, or A pool for the workspace, with the line that the shared pool then stops
-  #     serving its runs, and Add pool, which makes a pool of the workspace
+  #     whom `node.create` allows on it chooses: Qory Pool, the instance's pool, chosen
+  #     first, or A pool for the workspace, with the line that the Qory Pool then stops
+  #     taking its runs, and Add pool, which makes a pool of the workspace
   #     (`Apiary.Nodes.create_node/2`) named `Apiary.WorkspaceSetup.pool_name/1`. Where
   #     another node of the workspace has that name, no pool is made, and the line under
   #     Add pool says to rename that node. Anyone else sees the instance's pool, read
   #     only, shown chosen. Once the workspace has one pool, a person whom `node.delete`
   #     allows on it sees the same choice, the workspace's pool chosen, and the pool's
-  #     line under it. Shared opens on its row the confirmation of the removal, with the
+  #     line under it. Qory Pool opens on its row the confirmation of the removal, with the
   #     line that the pool's machines stop taking runs where a machine enrolled on it
   #     (`Apiary.AccessKeys.active_key?/1`), Remove pool, which deletes the pool
   #     (`Apiary.Nodes.delete_node/2`), and Cancel. Then the instance's pool serves the
-  #     workspace again, shown chosen. Where the instance has no pool, Shared shows not
-  #     ready for no pool, cannot be chosen, and the step offers no removal. Otherwise, once the workspace has a pool, its pools
-  #     show with no choice, and a pool that is the only one shows chosen. With 2 pools or
-  #     more, the step offers no removal. On each line of a pool whose
+  #     workspace again, shown chosen. Where the instance has no pool, Qory Pool shows not
+  #     ready for no pool, cannot be chosen, and the step offers no removal. Otherwise,
+  #     once the workspace has a pool, its pools show with no choice, and a pool that is
+  #     the only one shows chosen. With 2 pools or more, the step offers no removal. On
+  #     each line of a pool whose
   #     `access_key.create_code` allows the person, while the pool has fewer than 2
   #     active keys, Get the command, or Get a new command while a code of it is
   #     outstanding, makes a code (`Apiary.AccessKeys.create_enrolment_code/3`), and the
@@ -603,7 +604,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # pool. `shared_line` is the line of the instance's pool, for a person who keeps the
   # choice once the
   # workspace has its one pool (`keeps_choice?/2`); `pool_removable` is the pool that
-  # Shared offers to remove (`removable_pool/2`); the confirmation of its removal stays open
+  # Qory Pool offers to remove (`removable_pool/2`); the confirmation of its removal stays open
   # on a read again of the step (`pool_removing`), and an entry to the step starts with it
   # closed. The page listens to each pool of the workspace once (`pool_listened`), and reads
   # the step again as the first outstanding code expires (`pool_timer`).
@@ -1401,8 +1402,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       when choice in ["shared", "workspace"],
       do: {:noreply, assign(socket, pool_choice: choice, pool_taken: nil)}
 
-  # Once the workspace has its pool, for a person who may remove it: Shared opens the
-  # confirmation of the removal on the Shared row, and the workspace's pool closes it.
+  # Once the workspace has its pool, for a person who may remove it: Qory Pool opens the
+  # confirmation of the removal on the Qory Pool row, and the workspace's pool closes it.
   def handle_event(
         "choose_pool",
         %{"pool" => %{"choice" => choice}},
@@ -2743,14 +2744,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`Apiary.AccessKeys.active_key?/1`), the first rule of its state.
   defp enrolled?(%{state: state}), do: state != {:not_ready, :no_active_key}
 
-  # Whether the step keeps the choice of Shared or the workspace's pool once the workspace
+  # Whether the step keeps the choice of Qory Pool or the workspace's pool once the workspace
   # has a pool: for its only pool, and a person whom `node.delete` allows on it. Where the
   # workspace has 2 pools or more, the step keeps no choice, since any of them stops the
   # instance's pool serving the workspace.
   defp keeps_choice?(scope, [pool]), do: Access.can?(scope, :"node.delete", pool)
   defp keeps_choice?(_scope, _pools), do: false
 
-  # The pool of the workspace that the step offers to remove, to choose Shared again: the
+  # The pool of the workspace that the step offers to remove, to choose Qory Pool again: the
   # workspace's only pool, where the step keeps the choice and the instance has a pool
   # (`shared_line`); else nil.
   defp removable_pool([pool], %{pool: %{}}), do: pool

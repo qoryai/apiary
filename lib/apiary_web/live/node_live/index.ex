@@ -45,9 +45,9 @@ defmodule ApiaryWeb.NodeLive.Index do
   # feature `factory`, which the documentation does not show, the list has the instance's
   # gateway, and the instance's pool while the workspace has no node pool in use, named
   # Qory Gateway and Qory Pool (`ApiaryWeb.NodeComponents.shown_name/1`), each with a
-  # sentence that the instance provides it. The pool's row has this workspace's running instances alone, and
-  # no limit. Only an instance admin sees their names as links, to Instance settings ›
-  # Nodes.
+  # sentence that the instance provides it. The pool's row has this workspace's running
+  # instances alone, and no limit. Only an instance admin sees their names as links, to
+  # Instance settings › Nodes.
 
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}

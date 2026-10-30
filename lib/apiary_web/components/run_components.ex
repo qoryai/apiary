@@ -2274,7 +2274,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   place_of/1 is where a run ran, as the pages show it in place of a host: `{:pool, name}`,
-  the name of the node pool whose dispatch handed the run over; `{:host, host}`, the host
+  the name of the node pool whose dispatch handed the run over, "Qory Pool" for the
+  instance's pool (`ApiaryWeb.NodeComponents.shown_name/1`); `{:host, host}`, the host
   the run's `run.started` reported, for every other run; nil for a run with neither. A
   pool's run whose node was not read is nil, so that the host, one of the pool's
   machines, is not shown in the pool's name's place. `Apiary.Runs.Place` is the same in a

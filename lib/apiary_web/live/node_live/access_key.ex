@@ -2546,7 +2546,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dd id={"#{@dom}-secret"}>
           {cond do
             installed_key?(@key, @node) and @node.kind != :adapter ->
-              gettext("Stays on %{name}; it is never shown", name: @node.name)
+              gettext("Stays on %{name}; it is never shown", name: NodeComponents.in_text(@node))
 
             installed_key?(@key, @node) ->
               gettext("Kept by the adapter; never shown")
