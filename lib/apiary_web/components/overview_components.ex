@@ -2165,6 +2165,11 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :dispatch_run, :any, default: nil
   attr :run, :any, default: nil
   attr :preparation, :map, default: nil
+
+  attr :choice, :any,
+    default: nil,
+    doc: "the model choice a new test run takes, as `{level, choice}`"
+
   attr :path, :string, default: nil
 
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
@@ -2195,7 +2200,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # A test run with no run record: why, by its run of the queue's end cause, where the
   # set-up has a fix for that cause.
   def test_failed(%{cause: :no_run, dispatch_run: %{end_cause: cause}} = assigns) do
-    assigns = assign(assigns, :words, no_run_words(cause))
+    assigns = assign(assigns, :words, no_run_words(cause, assigns.choice))
 
     ~H"""
     {gettext("The test run ended before a machine started it.")}
@@ -2208,21 +2213,48 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   # What fixes a test run that ended at its claim, and why it ended
-  # (`Apiary.Dispatches.Handover`, `Apiary.Dispatches.RunSettings`). The other causes of
-  # the claim have no fix on the set-up's steps.
-  defp no_run_words(:inputs_invalid),
+  # (`Apiary.Dispatches.Handover`, `Apiary.Dispatches.RunSettings`). A cause of the model
+  # choice has words only while the choice in effect is the Model step's, the workspace's
+  # (level 5) and not locked; model_gone only where that choice names a model, whose
+  # effort is then the part no longer offered. The other causes of the claim have no fix
+  # on the set-up's steps.
+  defp no_run_words(:inputs_invalid, _choice),
     do:
       gettext(
         "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
       )
 
-  defp no_run_words(:runtime_unserved),
+  defp no_run_words(cause, {5, %{locked: false, model_id: model}})
+       when cause in [:runtime_unserved, :key_gone, :provider_gone] or
+              (cause == :model_gone and is_binary(model)),
+       do: model_step_words(cause)
+
+  defp no_run_words(_cause, _choice),
+    do: gettext("No run was recorded, so this step cannot show why.")
+
+  defp model_step_words(:runtime_unserved),
     do:
       gettext(
         "Choose the model again on the Model step, then press Run the test. The chosen runtime is no longer in Qory Apiary's catalogue, or the chosen model provider no longer serves it."
       )
 
-  defp no_run_words(_cause), do: gettext("No run was recorded, so this step cannot show why.")
+  defp model_step_words(:key_gone),
+    do:
+      gettext(
+        "The model key chosen for this workspace is no longer one of its model provider's keys. Choose another model or provider on the Model step, then press Run the test."
+      )
+
+  defp model_step_words(:model_gone),
+    do:
+      gettext(
+        "The effort chosen for this model is no longer offered. Choose another model on the Model step, then press Run the test."
+      )
+
+  defp model_step_words(:provider_gone),
+    do:
+      gettext(
+        "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
+      )
 
   defp failed_line(:no_machine),
     do:

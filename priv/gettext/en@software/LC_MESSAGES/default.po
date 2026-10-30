@@ -16006,6 +16006,11 @@ msgstr ""
 msgid "The change was not made: the run configuration it renders is over 1 MiB, more than the gateway reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
@@ -16111,6 +16116,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file Forager takes with %{flag}, and the egress section of its Forager file."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The effort chosen for this model is no longer offered. Choose another model on the Model step, then press Run the test."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -16416,6 +16426,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "The mode is observe or enforce."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The model key chosen for this workspace is no longer one of its model provider's keys. Choose another model or provider on the Model step, then press Run the test."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex

@@ -211,6 +211,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   alias Apiary.Adapters.Collections
   alias Apiary.Adapters.Connections, as: AdapterConnections
+  alias Apiary.Dispatches.RunSettings
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
   alias Apiary.Runs.{Preparation, Run}
@@ -682,6 +683,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       test: test,
       test_state: test && test.state,
       test_preparation: test_preparation(scope, workspace, test),
+      test_choice: test_choice(test),
       machines: Edition.machines_ready(workspace),
       may: Access.can?(scope, :"work_item.take_in", workspace),
       who_may:
@@ -700,6 +702,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     do: Preparation.read(%{scope | workspace: workspace}, run)
 
   defp test_preparation(_scope, _workspace, _test), do: nil
+
+  # The model choice a new test run takes, for a test run that ended at its claim on a
+  # cause of its model choice, so the line names the Model step only where its choice is
+  # the one in effect.
+  defp test_choice(%{state: {:failed, :no_run}, dispatch_run: %{end_cause: cause} = queued})
+       when cause in [:runtime_unserved, :key_gone, :model_gone, :provider_gone],
+       do: RunSettings.choice_in_effect(queued)
+
+  defp test_choice(_test), do: nil
 
   # Whether the step `id` of `flow` is done, by its rule: the indicator marks the current
   # step as current, done or not.
@@ -2340,6 +2351,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             dispatch_run={@test.dispatch_run}
             run={@test.run}
             preparation={@test_preparation}
+            choice={@test_choice}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
           />
         </span>
