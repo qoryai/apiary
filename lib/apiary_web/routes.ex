@@ -600,11 +600,9 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # A new workspace: the type cards, then Name, `?step=name&type=<name>`,
-              # which creates it; its other steps are pages of the workspace
-              # (`/:org/:workspace/set-up/<step>`). The organisation's first workspace, for
-              # a person who may create it, else the line on who creates it; another
-              # workspace, for an owner.
+              # New workspace: the kind cards for a further workspace, for an owner.
+              # Choose creates it; its steps are pages of the workspace
+              # (`/:org/:workspace/set-up/<step>`).
               live "/workspaces/new", WorkspaceSetupLive, :new
               # The organisation's audit trail, a page of its sidebar beside the overview,
               # for the readers `audit.read` allows. It was a section of the settings,

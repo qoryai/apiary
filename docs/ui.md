@@ -464,6 +464,8 @@ on to the new paths with their query, moved permanently (`ApiaryWeb.MovedControl
 connection as a thing keeps its word: a row is a destination and the connections made to
 it. The Policy page's hosts and paths are its Network access section, which links to the
 page ("See what the runs reached"); the page's rule links lead to the rule there.
+Network access also lists the harness fetches in a separate locked table
+(`ApiaryWeb.HostComponents`), outside its counts, views, facets and rule options.
 
 A target is filtered by the id Qory Apiary gives it, never by its system or its path:
 `?target=tg_…`, several ids joined by commas for the runs of any of them, and
@@ -1193,10 +1195,15 @@ sidebar, but for the steps of a workspace that exists, which show the workspace'
 sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
 mark and the theme menu.
 
-- **The type cards** come first in the workspace set-up, under "What will this workspace
-  do?": one card per type of workspace, "Software factory" the one, each with what you do
-  there, what you connect, and **Choose**, which opens the flow. They show no indicator:
-  the count starts after a card is picked.
+- **The kind cards** (`SetUpComponents.kind_cards/1`) come before the workspace set-up:
+  on the organisation's overview (`/<org>`) while it has no workspace, under "Choose what
+  your first workspace does", and on `/<org>/workspaces/new`, under "What will this
+  workspace do?". There is one card per type of workspace, "Software factory" the one,
+  each with what you do there, what you connect, and **Choose**. **Choose** creates the
+  workspace, named after the type ("Software factory", then "Software factory 2"), and
+  opens its step Name. A person who may not create the first workspace sees "An owner of
+  Acme creates the first workspace." in place of the cards. The cards show no indicator:
+  the count starts at the step Name, in the sidebar's group Set up.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
   settings page's column **About this step** (`.q-context`): the muted colour, no box.
@@ -1210,8 +1217,7 @@ mark and the theme menu.
 - **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
   result of `c:Apiary.Edition.set_up_steps/2`. Above it: the flow's title, "Set
-  up Main · Software factory" ("Set up a new Software factory" before the workspace
-  exists), "Step 4 of 7" and a progress bar, never a count of the steps left. The
+  up Payments · Software factory", "Step 4 of 7" and a progress bar, never a count of the steps left. The
   instance's steps stand under Connect Qory Apiary. The workspace's steps stand in one
   list with no heading: Name, Work sources, Destinations, Model, Harness, Machines and
   Test run, after Your account for a person who is not an instance admin ("Step 5 of
@@ -1234,9 +1240,11 @@ mark and the theme menu.
   step ("Back to Mail"). A step with no page before it, such as the one after Your
   account, has no Back. It is the one Back at a form's foot in the console: a step has
   no Cancel, since there is nowhere to go back to but the step before. A step opened
-  again shows what was saved there and can be changed. The step Name, opened again,
-  shows the workspace's name and its type, read only, with **Continue**: the type can't
-  change.
+  again shows what was saved there and can be changed. The step Name has the workspace's
+  name in a field, with its address under it as text, which follows the name; once the
+  name typed gives another address, a warning says which address stops working. **Save
+  and next** renames the workspace. A person who may not rename it sees the name, read
+  only, with **Continue**. The type can't change.
 - **The chooser** (`IntegrationComponents.chooser/1`), with the `factory` feature, is a
   separate page of the workspace's set-up, the step current in the group Set up:
   `/<org>/<workspace>/set-up/<sources|destinations>/choose?grant=<id>`, opened

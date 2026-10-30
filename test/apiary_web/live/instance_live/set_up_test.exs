@@ -446,6 +446,15 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
   alias Apiary.{Mail, Setup}
 
+  # An adapter whose relay refuses every email, as `Swoosh.Adapters.SMTP` returns it.
+  defmodule Refusing do
+    @moduledoc false
+    use Swoosh.Adapter
+
+    def deliver(_email, _config),
+      do: {:error, {:send, {:permanent_failure, ~c"smtp.example.com", "550 5.7.1 Refused\r\n"}}}
+  end
+
   setup do
     Apiary.EditionKit.hide_instance_organisation()
     :ok
@@ -546,9 +555,13 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
     {to, flash} = assert_redirect(lv)
     assert to == after_mail(scope)
+    sent_at = Mail.settings().mail_test_sent_at
 
     assert flash["info"] ==
-             "Mail turns on when you follow the link we sent to #{user.email}, signed in as you."
+             "Mail turns on when you follow the link we sent to #{user.email} at " <>
+               "#{ApiaryWeb.Format.datetime(sent_at, seconds: true, zone: true)}, signed in as you. " <>
+               "The link works until " <>
+               "#{sent_at |> DateTime.add(60, :minute) |> ApiaryWeb.Format.datetime(zone: true)}."
 
     assert Setup.connections_reviewed?()
 
@@ -568,6 +581,67 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
     lv |> element("#set-up-continue") |> render_click()
     assert {^to, _flash} = assert_redirect(lv)
   end
+
+  # The relay refuses the test link: the step is not done, and says what to check.
+  @tag :feature_sets
+  test "a test link the relay refused keeps the step open with its line, Skip, and Send the test link again, which leads on once sent",
+       %{conn: conn, scope: scope} do
+    before = Application.get_env(:apiary, Mail)
+    Application.put_env(:apiary, Mail, smtp_adapter: Refusing)
+    on_exit(fn -> Application.put_env(:apiary, Mail, before) end)
+    lv = mail_step(conn)
+
+    {_html, _log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        lv
+        |> form("#mail_form",
+          mail: %{
+            "smtp_relay" => "smtp.example.com",
+            "smtp_port" => "587",
+            "smtp_tls" => "always",
+            "smtp_username" => "qory",
+            "smtp_password" => "correct horse battery staple",
+            "mail_from" => ""
+          }
+        )
+        |> render_submit()
+      end)
+
+    assert words(lv, "#mail-result") =~
+             "Check the sender address, and that the relay allows this server's IP address, then send the test link again."
+
+    assert has_element?(lv, "#mail-save button[type=submit]", "Save and send a test")
+    assert has_element?(lv, "#mail-save #mail-resend", "Send the test link again")
+    assert has_element?(lv, "#mail-save #set-up-skip-button", "Skip")
+    refute has_element?(lv, "#set-up-continue")
+    assert {"Mail", :current} in steps(lv)
+    refute Setup.connections_reviewed?()
+
+    # Opened again: the same, and Mail is not done.
+    lv = mail_step(conn)
+    assert has_element?(lv, "#mail-result")
+    refute has_element?(lv, "#set-up-continue")
+    refute {:mail, :done} in mail_shape(scope)
+
+    # Sent again, and accepted: the step is done, and leads on.
+    Application.put_env(:apiary, Mail, before)
+
+    Apiary.Repo.update_all(Apiary.Mail.Settings,
+      set: [mail_test_sent_at: DateTime.add(DateTime.utc_now(), -61, :second)]
+    )
+
+    lv |> element("#mail-resend") |> render_click()
+    assert_received {:email, %{subject: "Turn on mail for Qory Apiary"}}
+    {to, flash} = assert_redirect(lv)
+    assert to == after_mail(scope)
+    assert flash["info"] =~ "Mail turns on when you follow the link we sent to"
+    assert Setup.connections_reviewed?()
+    assert {:mail, :done} in mail_shape(scope)
+  end
+
+  # Each step's id and state, from Your account.
+  defp mail_shape(scope),
+    do: Enum.map(ApiaryWeb.SetUpComponents.steps_for(scope, :account), &{&1.id, &1.state})
 
   test "posts its form, and the password's field has no value", %{conn: conn} do
     path = mail_step_path(conn)

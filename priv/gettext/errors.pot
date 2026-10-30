@@ -50,12 +50,17 @@ msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another name. %{name} already has the address %{address}."
+msgid "Choose another name. A workspace marked for deletion still has the address %{address}."
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another name. A workspace marked for deletion has the address %{address}."
+msgid "Choose another name. Another workspace already has the address %{address}."
+msgstr ""
+
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. Another workspace is already named %{name}."
 msgstr ""
 
 #: lib/apiary/model_choices.ex

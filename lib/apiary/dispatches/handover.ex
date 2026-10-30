@@ -102,6 +102,11 @@ defmodule Apiary.Dispatches.Handover do
   # the run (`Apiary.Runs.RunCredentials.insert!/2`). The dispatch stays claimed, and so
   # does the run of the queue.
   #
+  # A prebuild's documents have its destinations in the registry: `image_destination`,
+  # and `environment_destination` or `environment_image`
+  # (`Apiary.Registry.RunAccess.destinations/1`). Its target is made in its workspace
+  # where the workspace has no row of it.
+  #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
   # provider's row id, its keys' secret's row id, the chosen key's value id, the
@@ -178,6 +183,7 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Registry.RunAccess
 
   alias Apiary.Runs.{
     About,
@@ -309,6 +315,14 @@ defmodule Apiary.Dispatches.Handover do
 
       :unavailable ->
         Logger.error("a claim could not be made: the run's documents do not fit their limit")
+        {:error, :unavailable}
+
+      :no_destination ->
+        Logger.error(
+          "a claim could not be made: the prebuild has no destination in the registry, " <>
+            "as the instance's registry name could not be made"
+        )
+
         {:error, :unavailable}
 
       :unstable ->
@@ -689,13 +703,16 @@ defmodule Apiary.Dispatches.Handover do
 
   defp with_work(not_formed), do: not_formed
 
-  # What the run is formed from, or the cause its run of the queue ends for.
+  # What the run is formed from, or the cause its run of the queue ends for. A prebuild
+  # has its destinations in the registry (`destinations/3`).
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        formed(dispatch_run, workspace, target, nil, nil, nil, fn _domain ->
+        dispatch_run
+        |> formed(workspace, target, nil, nil, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
+        |> destinations(dispatch_run, target)
 
       :ended ->
         {:end, :collection_ended}
@@ -819,6 +836,62 @@ defmodule Apiary.Dispatches.Handover do
       {:variables, {:error, _rule}} -> {:end, :variables_invalid}
       {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
+    end
+  end
+
+  # A prebuild's destinations in the registry, the documents' `image_destination`, then
+  # `environment_destination` or `environment_image`: the names its tokens grant, read
+  # for its collection's target row (`Apiary.Registry.RunAccess.destinations/1`). The
+  # target image's name is made from the target's public id, so the target is made in the
+  # workspace first where the workspace has no row of it, as an assign makes it
+  # (`Apiary.Runs.Target.insert_new/3`). A claim takes a prebuild only on an instance with
+  # a registry (`Apiary.Dispatches.waiting_query/1`); the instance's registry name is
+  # made here where it is not yet (`Apiary.InstanceConfig.registry_instance/0`). Where it
+  # cannot be, on a schema whose migration of it has not run, `:no_destination`, and the
+  # claim is refused, rolled back. The registered run keeps the documents
+  # (`runs.run_documents`), and the run's report of what it built is checked against them
+  # (`Apiary.Dispatches.Built`).
+  defp destinations({:ok, formed}, %DispatchRun{} = dispatch_run, target) do
+    run = %Run{
+      organisation_id: dispatch_run.organisation_id,
+      workspace_id: dispatch_run.workspace_id,
+      dispatch_run_id: dispatch_run.id,
+      target_id: target_row_id(dispatch_run, target)
+    }
+
+    case RunAccess.destinations(run) do
+      %{image_destination: image, environment: environment} ->
+        environment =
+          case environment do
+            {:destination, place} -> {"environment_destination", place}
+            {:image, existing} -> {"environment_image", existing}
+          end
+
+        {:ok,
+         put_in(formed, [:answer, :destinations], [{"image_destination", image}, environment])}
+
+      nil ->
+        :no_destination
+    end
+  end
+
+  defp destinations(not_formed, _dispatch_run, _target), do: not_formed
+
+  # The id of the row of `target` in the prebuild's workspace, made where there is none.
+  defp target_row_id(%DispatchRun{} = dispatch_run, %{system: system, path: path} = target) do
+    query =
+      from t in Target,
+        where: t.workspace_id == ^dispatch_run.workspace_id,
+        where: t.system == ^system and t.path == ^path,
+        select: t.id
+
+    case Repo.one(query) do
+      nil ->
+        :ok = Target.insert_new(dispatch_run.organisation_id, dispatch_run.workspace_id, [target])
+        Repo.one!(query)
+
+      id ->
+        id
     end
   end
 

@@ -770,7 +770,7 @@ defmodule Apiary.Organisations do
   form does while it is typed in. `domain`, where the form gives one, is the domain of the
   organisation's first workspace, one of `Apiary.Lingo.Domain.names/0`; without one, the
   workspace is of the default domain (`build_organisation/2`). `domain: :required` asks
-  for one, as the set-up page does: none is the error "Choose a type.". An edition whose
+  for one: none is the error "Choose a type.". No page of the core passes it. An edition whose
   sign-up page asks more checks it on
   this changeset, and is given it when the organisation is created
   (`c:Apiary.Edition.organisation_created/2`, `sign_up_user/3`).
@@ -929,10 +929,11 @@ defmodule Apiary.Organisations do
   account can sign in. `actor: :instance` needs none, and keeps one given, mail or not.
   `password: :required` asks for one whatever the mail, as the set-up page does.
   `domain: :required` asks a sign-up that creates an organisation for the domain of its
-  first workspace, as the set-up page does (`change_sign_up/2`).
+  first workspace (`change_sign_up/2`).
   `workspace: false` creates the organisation with no workspace and asks for no domain:
-  its first workspace comes later (`create_first_workspace/2`), as the sign-up page and
-  the set-up page ask. The answer's `workspace` is then nil.
+  its owner creates the first workspace later, on the kind cards of the organisation's
+  overview (`create_workspace_of_kind/3`). The set-up link, the release command's claim
+  and the sign-up page ask for this. The answer's `workspace` is then nil.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -1269,7 +1270,7 @@ defmodule Apiary.Organisations do
     (`Apiary.Lingo.Domain.default/0`) for nil or none; `{:error, changeset}`, the
     workspace's, with its error on `domain`, for a name no domain has; nil with
     `workspace: false`, for an organisation whose first workspace comes later
-    (`create_first_workspace/2`);
+    (`create_workspace_of_kind/3`, `create_first_workspace/2`);
   - `:membership`, its first owner, the person of the caller's change `owner:` names,
     `:user` unless it names another; nil with `owner: nil`, for an organisation whose
     first owner joins later;
@@ -1612,7 +1613,8 @@ defmodule Apiary.Organisations do
 
   @doc """
   has_workspace?/1 is true when the organisation has a workspace in use: false for one
-  created with none, until `create_first_workspace/2` creates it.
+  created with none, until its first workspace is created (`create_workspace_of_kind/3`,
+  `create_first_workspace/2`).
   """
   @spec has_workspace?(%Organisation{} | Scope.t()) :: boolean
   def has_workspace?(%Scope{organisation: %Organisation{} = organisation}),
@@ -1623,8 +1625,8 @@ defmodule Apiary.Organisations do
 
   @doc """
   workspaces_topic/1 is the `Apiary.PubSub` topic of the organisation `organisation_id`'s
-  workspaces. Once `create_workspace/2` or `create_first_workspace/2` has created one, the
-  topic gets `{:workspace_created, %{organisation_id: id, workspace_id: id}}`.
+  workspaces. Once `create_workspace/2`, `create_first_workspace/2` or
+  `create_workspace_of_kind/3` has created one, the topic gets `{:workspace_created, %{organisation_id: id, workspace_id: id}}`.
   """
   @spec workspaces_topic(Ecto.UUID.t()) :: String.t()
   def workspaces_topic(organisation_id), do: "organisation_workspaces:" <> organisation_id
@@ -1785,10 +1787,14 @@ defmodule Apiary.Organisations do
           address: "/#{organisation_slug}/#{holder.slug}"
         )
 
-      holder ->
+      match?(%{slug: ^slug}, holder) ->
         Ecto.Changeset.add_error(changeset, :name, Workspace.taken_address(),
-          name: holder.name,
-          address: "/#{organisation_slug}/#{holder.slug}"
+          address: "/#{organisation_slug}/#{slug}"
+        )
+
+      holder ->
+        Ecto.Changeset.add_error(changeset, :name, Workspace.taken_name_elsewhere(),
+          name: holder.name
         )
 
       true ->
@@ -2724,7 +2730,7 @@ defmodule Apiary.Organisations do
   (`accept_invitation/2`). The invitation page then opens the organisation's overview,
   `/:org`, which has the kind cards while it has no workspace. The rule is checked again once the
   organisation's row is locked, so a first workspace created at the same moment
-  (`create_first_workspace/2`) is seen. Once the organisation has a workspace in use, a
+  (`create_workspace_of_kind/3`, `create_first_workspace/2`) is seen. Once the organisation has a workspace in use, a
   scope without one is `{:error, :not_found}`: it has no workspace to send it from.
 
   **With mail** (`Apiary.Mail.configured?/0`) the link is emailed, `{:ok, invitation}`, and

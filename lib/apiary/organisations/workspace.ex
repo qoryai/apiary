@@ -140,14 +140,25 @@ defmodule Apiary.Organisations.Workspace do
   @doc "The error of a name whose address another workspace of the organisation has."
   def taken_address,
     do:
-      dgettext_noop("errors", "Choose another name. %{name} already has the address %{address}.")
+      dgettext_noop(
+        "errors",
+        "Choose another name. Another workspace already has the address %{address}."
+      )
+
+  @doc """
+  The error of a name another workspace of the organisation has at another address, made
+  before the address followed the name.
+  """
+  def taken_name_elsewhere,
+    do:
+      dgettext_noop("errors", "Choose another name. Another workspace is already named %{name}.")
 
   @doc "The error of a name whose address a workspace marked for deletion has."
   def marked_address,
     do:
       dgettext_noop(
         "errors",
-        "Choose another name. A workspace marked for deletion has the address %{address}."
+        "Choose another name. A workspace marked for deletion still has the address %{address}."
       )
 
   @doc "The error of a name whose address is a page of Qory Apiary."

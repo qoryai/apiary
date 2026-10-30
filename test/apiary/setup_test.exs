@@ -409,6 +409,17 @@ defmodule Apiary.SetupTest do
       assert {^code, nil} = stored()
     end
 
+    test "claim/3 makes the instance's organisation and its admin, no workspace" do
+      assert {:ok, %User{} = user, _sent} =
+               Setup.claim("claim@example.com", "Acme", %{worker: "a test"})
+
+      organisation = Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+      assert organisation.name == "Acme"
+      assert Access.instance_admin?(Scope.for_user(user))
+      refute Organisations.has_workspace?(organisation)
+      assert Repo.all(from w in Workspace, where: w.organisation_id == ^organisation.id) == []
+    end
+
     test "the release command's claim marks the code used" do
       code = Setup.code!()
 

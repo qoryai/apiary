@@ -126,7 +126,12 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     Repo.get_by!(Apiary.Runs.Run, run_code_sha256: hash).run_documents
   end
 
-  defp documents(claim), do: claim |> stored() |> Jason.decode!()
+  # The documents the claim stored, each checked against the run contract's schema.
+  defp documents(claim) do
+    documents = claim |> stored() |> Jason.decode!()
+    valid!(documents)
+    documents
+  end
 
   # A work item's explore run, queued, its harness walk resolved with `walk`.
   defp explore!(ctx, walk, attrs \\ %{}) do
@@ -311,19 +316,102 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   end
 
   describe "a prebuild" do
-    test "of a workspace with a stack row with a workflow has no harness members", ctx do
-      workflow!(ctx)
-      collection = collection_fixture(ctx.scope)
+    # A claim takes a prebuild only on an instance with a registry.
+    @describetag needs: [:factory, :registry]
 
+    # The claim of a prebuild of `collection` for `env-1`: its documents.
+    defp prebuild_documents(ctx, collection) do
       {:ok, _run} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       claim = claim(ctx)
       assert members(claim) == @claim ++ @code
-      documents = documents(claim)
+      documents(claim)
+    end
+
+    test "of a workspace with a stack row with a workflow has no harness members", ctx do
+      workflow!(ctx)
+      documents = prebuild_documents(ctx, collection_fixture(ctx.scope))
       assert Map.take(documents, @harness) == %{}
       assert documents["access"] == "read"
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
+    end
+
+    test "has its destinations in the registry under the organisation's place, valid", ctx do
+      collection = collection_fixture(ctx.scope)
+      documents = prebuild_documents(ctx, collection)
+
+      target =
+        Repo.get_by!(Apiary.Runs.Target,
+          workspace_id: ctx.scope.workspace.id,
+          system: collection.target_system,
+          path: collection.target_path
+        )
+
+      place =
+        Enum.join(
+          [
+            Apiary.Registry.service(),
+            Apiary.InstanceConfig.registry_instance(),
+            Apiary.Registry.Names.organisation(ctx.scope.organisation.id)
+          ],
+          "/"
+        )
+
+      assert documents["image_destination"] ==
+               "#{place}/targets/#{Apiary.Registry.Names.target(target.public_id)}"
+
+      assert documents["environment_destination"] =~ ~r"\A#{place}/environments/[0-9a-f]{16}\z"
+      refute Map.has_key?(documents, "environment_image")
+    end
+
+    test "is sent the organisation's environment image for its key, where a record has one",
+         ctx do
+      first = prebuild_documents(ctx, collection_fixture(ctx.scope))
+      image = first["environment_destination"] <> "@sha256:" <> String.duplicate("5", 64)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Apiary.Environments.Record, where: r.pool_id == ^ctx.pool.id),
+          set: [
+            image: image,
+            size: 1_048_576,
+            commit: String.duplicate("4e1c9b0a", 5),
+            built_at: DateTime.utc_now(),
+            reported_ref: "env-1",
+            built_ref: "env-1"
+          ]
+        )
+
+      # Another target of the workspace, built from the same environment on the same pool:
+      # the same environment image's name.
+      second = prebuild_documents(ctx, collection_fixture(ctx.scope))
+      assert second["environment_image"] == image
+      refute Map.has_key?(second, "environment_destination")
+      refute second["image_destination"] == first["image_destination"]
+    end
+
+    test "makes its target where its workspace has none, for the target image's name", ctx do
+      collection = collection_fixture(ctx.scope)
+
+      Repo.delete_all(
+        from t in Apiary.Runs.Target,
+          where: t.workspace_id == ^ctx.scope.workspace.id,
+          where: t.system == ^collection.target_system and t.path == ^collection.target_path
+      )
+
+      documents = prebuild_documents(ctx, collection)
+
+      target =
+        Repo.get_by!(Apiary.Runs.Target,
+          workspace_id: ctx.scope.workspace.id,
+          system: collection.target_system,
+          path: collection.target_path
+        )
+
+      assert String.ends_with?(
+               documents["image_destination"],
+               "/targets/#{Apiary.Registry.Names.target(target.public_id)}"
+             )
     end
   end
 end

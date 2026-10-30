@@ -458,7 +458,8 @@ defmodule Apiary.Setup do
   @doc """
   claim/3 sets up an instance from a shell, for `Apiary.Release.grant_instance_admin/2`:
   the instance's first sign-up with `email` and `organisation_name`, by the instance, from
-  `origin`, which marks any stored code used, and the preset with one (`preset!/0`), then
+  `origin`, which creates the organisation with no workspace, as the set-up link does
+  (`set_up/3`), and marks any stored code used, and the preset with one (`preset!/0`), then
   the account's log-in link, sent as the sign-up page sends it. `{:ok, user, :sent}`, or `{:ok, user, :not_sent}` when the mail
   did not go out; `{:error, :instance_claimed}` once the instance has its organisation, a
   set-up that came first included; or `{:error, changeset}`, the sign-up form's, for an
@@ -473,6 +474,7 @@ defmodule Apiary.Setup do
   def claim(email, organisation_name, origin) do
     case Organisations.sign_up_user(%{email: email, organisation_name: organisation_name}, nil,
            first_only: true,
+           workspace: false,
            actor: :instance,
            origin: origin
          ) do
