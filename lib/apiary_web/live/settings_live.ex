@@ -306,13 +306,12 @@ defmodule ApiaryWeb.SettingsLive do
           disabled={!may?(@current_scope, :"workspace.rename")}
           required
         />
-        <p id="workspace-slug" class="text-[13px]/[20px] text-muted">
-          <.rich text={
-            rich_gettext("Its pages are under %{path}. Renaming the workspace keeps it.",
-              path: {:m, ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
-            )
-          } />
-        </p>
+        <SettingsComponents.workspace_address
+          id="workspace-slug"
+          organisation={@current_scope.organisation}
+          workspace={@current_scope.workspace}
+          form={@workspace_form}
+        />
         <SettingsComponents.save :if={may?(@current_scope, :"workspace.rename")}>
           <.button
             type="submit"
@@ -683,14 +682,12 @@ defmodule ApiaryWeb.SettingsLive do
     scope = socket.assigns.current_scope
 
     case Organisations.update_workspace(scope, params) do
+      # The address follows the name: the page opens again at the workspace's new one.
       {:ok, workspace} ->
         {:noreply,
          socket
-         |> assign(:current_scope, %{scope | workspace: workspace})
-         # The browser title names the workspace.
-         |> assign_section()
-         |> assign_forms()
-         |> put_flash(:info, gettext("Workspace renamed to %{name}.", name: workspace.name))}
+         |> put_flash(:info, gettext("Workspace renamed to %{name}.", name: workspace.name))
+         |> push_navigate(to: ~p"/#{scope.organisation}/#{workspace}/settings")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :workspace_form, to_form(changeset))}

@@ -10,7 +10,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    test "renames the organisation on its page and the workspace on its own; the slugs stay",
+    test "renames the organisation and the workspace; the workspace's address follows its name",
          %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
@@ -48,16 +48,33 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#nav-settings[aria-current='true']")
       assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
+      assert render(lv) =~ "It follows the name."
       assert html =~ scope.workspace.name
 
-      html = lv |> form("#workspace-form", workspace: %{name: "Platform"}) |> render_submit()
+      # Once the name changes, the line says what breaks.
+      lv |> form("#workspace-form", workspace: %{name: "Platform"}) |> render_change()
+
+      assert has_element?(
+               lv,
+               "#workspace-slug",
+               "The address changes to /#{scope.organisation.slug}/platform. " <>
+                 "Links to #{workspace_path(scope)} stop working."
+             )
+
+      {:ok, lv, html} =
+        lv
+        |> form("#workspace-form", workspace: %{name: "Platform"})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/platform/settings")
+
       assert html =~ "Workspace renamed to Platform"
+      assert has_element?(lv, "#workspace-slug span", "/#{scope.organisation.slug}/platform")
 
       reloaded = Organisations.load_scope(Scope.for_user(user))
       assert reloaded.organisation.name == "Acme"
       assert reloaded.workspace.name == "Platform"
       assert reloaded.organisation.slug == scope.organisation.slug
-      assert reloaded.workspace.slug == scope.workspace.slug
+      assert reloaded.workspace.slug == "platform"
     end
 
     test "refuses an empty name", %{conn: conn, user: user, scope: scope} do
