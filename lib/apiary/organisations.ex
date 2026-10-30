@@ -1459,6 +1459,19 @@ defmodule Apiary.Organisations do
         {:ok, renamed}
       end
     end)
+    |> case do
+      # Read again outside the transaction, which the refused update ended.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error,
+         refused_again(changeset, fn refused ->
+           workspace
+           |> change_workspace(%{"name" => Ecto.Changeset.get_field(refused, :name)})
+           |> Map.put(:action, :update)
+         end)}
+
+      result ->
+        result
+    end
   end
 
   # The entry of an edit, when it changed one of `fields`; an edit that changed nothing
@@ -1544,7 +1557,9 @@ defmodule Apiary.Organisations do
   end
 
   # The first of `base`, `base 2`, `base 3`, … whose name and slug no workspace of the
-  # organisation has, and whose slug no page has.
+  # organisation has, and whose slug no page has. A slug is cut to its longest
+  # (`Slug.max_length/0`), so a numbered name is cut first where it must be, to keep its
+  # number in its slug.
   defp free_name(%Organisation{id: organisation_id}, base) do
     held =
       Repo.all(
@@ -1557,11 +1572,19 @@ defmodule Apiary.Organisations do
     slugs = MapSet.new(held, &elem(&1, 1)) |> MapSet.union(MapSet.new(ReservedSlugs.workspace()))
 
     Stream.iterate(1, &(&1 + 1))
-    |> Stream.map(fn
-      1 -> base
-      n -> "#{base} #{n}"
-    end)
+    |> Stream.map(&numbered(base, &1))
     |> Enum.find(&(&1 not in names and Slug.from_name(&1, "workspace") not in slugs))
+  end
+
+  defp numbered(base, 1), do: base
+
+  defp numbered(base, n) do
+    suffix = " #{n}"
+
+    Enum.find_value(String.length(base)..1//-1, base <> suffix, fn length ->
+      name = String.trim_trailing(String.slice(base, 0, length)) <> suffix
+      if String.ends_with?(Slug.from_name(name, "workspace"), "-#{n}"), do: name
+    end)
   end
 
   @doc """
@@ -1616,17 +1639,33 @@ defmodule Apiary.Organisations do
 
   # `which` is `:first` for the organisation's first workspace, refused once it has one.
   # The topic of its workspaces is told once the transaction has committed.
-  defp insert_workspace(%Scope{} = scope, attrs, which) do
-    with {:ok, workspace} <- insert_workspace_row(scope, attrs, which) do
-      _sent =
-        Phoenix.PubSub.broadcast(
-          Apiary.PubSub,
-          workspaces_topic(workspace.organisation_id),
-          {:workspace_created,
-           %{organisation_id: workspace.organisation_id, workspace_id: workspace.id}}
-        )
+  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which) do
+    case insert_workspace_row(scope, attrs, which) do
+      {:ok, workspace} ->
+        _sent =
+          Phoenix.PubSub.broadcast(
+            Apiary.PubSub,
+            workspaces_topic(workspace.organisation_id),
+            {:workspace_created,
+             %{organisation_id: workspace.organisation_id, workspace_id: workspace.id}}
+          )
 
-      {:ok, workspace}
+        {:ok, workspace}
+
+      # Read again outside the transaction, which the refused insert ended.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error,
+         refused_again(changeset, fn refused ->
+           organisation
+           |> new_workspace_changeset(%{
+             "name" => Ecto.Changeset.get_field(refused, :name),
+             "domain" => Ecto.Changeset.get_field(refused, :domain)
+           })
+           |> Map.put(:action, :insert)
+         end)}
+
+      other ->
+        other
     end
   end
 
@@ -1687,8 +1726,9 @@ defmodule Apiary.Organisations do
   # and the slug the name gives it (`put_address/2`); a slug the form sends is dropped.
   # The form's params go to the changeset as the form sent them, so a field the person
   # has not used yet, the domain included, shows no error before the form is sent. A name
-  # another workspace of the organisation has is refused here as well as by the unique
-  # index, so the form shows it beside any other error, a missing domain included.
+  # or an address another workspace of the organisation has is refused here as well as
+  # by the unique indexes, so the form shows it beside any other error, a missing domain
+  # included.
   defp new_workspace_changeset(%Organisation{id: organisation_id}, attrs) do
     params =
       attrs
@@ -1699,18 +1739,13 @@ defmodule Apiary.Organisations do
     %Workspace{organisation_id: organisation_id, domain: nil}
     |> Workspace.create_changeset(params)
     |> put_address(organisation_id)
-    |> unless_name_refused(
-      &Ecto.Changeset.unsafe_validate_unique(&1, [:organisation_id, :name], Repo,
-        error_key: :name,
-        message: Workspace.taken_name()
-      )
-    )
   end
 
   # The slug the changeset's name gives the workspace (`Slug.from_name/2`), its address
-  # `/:org/<slug>`. A slug a page of the organisation has, or another workspace of the
-  # organisation, one marked for deletion included, refuses the name: nothing is
-  # numbered. A name refused already is not asked again.
+  # `/:org/<slug>`. A slug a page of the organisation has refuses the name, and so does a
+  # slug or the name itself that another workspace of the organisation has, one marked
+  # for deletion included: nothing is numbered. A name refused already is not asked
+  # again.
   defp put_address(changeset, organisation_id) do
     name = Ecto.Changeset.get_field(changeset, :name)
     slug = Slug.from_name(if(is_binary(name), do: name, else: ""), "workspace")
@@ -1724,31 +1759,55 @@ defmodule Apiary.Organisations do
     do: if(Keyword.has_key?(changeset.errors, :name), do: changeset, else: check.(changeset))
 
   defp refuse_taken_address(changeset, organisation_id, slug) do
-    address = "/#{organisation_slug_of(organisation_id)}/#{slug}"
+    name = Ecto.Changeset.get_field(changeset, :name)
+    organisation_slug = organisation_slug_of(organisation_id)
 
+    # The workspace with the slug comes first; one with the name alone, made before the
+    # address followed the name, has another slug.
     holder =
       Repo.one(
         from w in Workspace,
-          where: w.organisation_id == ^organisation_id and w.slug == ^slug,
+          where: w.organisation_id == ^organisation_id and (w.slug == ^slug or w.name == ^name),
           where: ^not_this_workspace(changeset.data.id),
-          select: %{name: w.name, marked: not is_nil(w.deletion_marked_at)}
+          order_by: [desc: w.slug == ^slug],
+          limit: 1,
+          select: %{name: w.name, slug: w.slug, marked: not is_nil(w.deletion_marked_at)}
       )
 
     cond do
       slug in ReservedSlugs.workspace() ->
-        Ecto.Changeset.add_error(changeset, :name, Workspace.page_address(), address: address)
+        Ecto.Changeset.add_error(changeset, :name, Workspace.page_address(),
+          address: "/#{organisation_slug}/#{slug}"
+        )
 
       match?(%{marked: true}, holder) ->
-        Ecto.Changeset.add_error(changeset, :name, Workspace.marked_address(), address: address)
+        Ecto.Changeset.add_error(changeset, :name, Workspace.marked_address(),
+          address: "/#{organisation_slug}/#{holder.slug}"
+        )
 
       holder ->
         Ecto.Changeset.add_error(changeset, :name, Workspace.taken_address(),
           name: holder.name,
-          address: address
+          address: "/#{organisation_slug}/#{holder.slug}"
         )
 
       true ->
         changeset
+    end
+  end
+
+  # A name or a slug a unique index refused, taken by another workspace since the
+  # changeset read the table: `rebuild` reads it again, now that the other workspace is
+  # there, so the refusal has the fix first. Any other refusal stays as it is.
+  defp refused_again(%Ecto.Changeset{errors: errors} = changeset, rebuild) do
+    raced? = Enum.any?(errors, fn {_field, {_message, opts}} -> opts[:constraint] == :unique end)
+
+    with true <- raced?,
+         %Ecto.Changeset{errors: [_ | _] = again} = rebuilt <- rebuild.(changeset),
+         true <- Keyword.has_key?(again, :name) do
+      rebuilt
+    else
+      _other -> changeset
     end
   end
 
