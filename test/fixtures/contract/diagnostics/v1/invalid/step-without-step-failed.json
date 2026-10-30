@@ -58,5 +58,7 @@
       "truncated": false,
       "text": "make: the request to create the machine timed out after 600 seconds\n"
     }
-  ]
+  ],
+  "leaked_secrets": [],
+  "leaked_secrets_omitted": 0
 }

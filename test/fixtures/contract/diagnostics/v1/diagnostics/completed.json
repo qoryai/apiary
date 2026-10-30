@@ -111,13 +111,40 @@
       "time": "2026-10-30T10:15:42Z",
       "data": {
         "state": "succeeded",
-        "exit_code": 0
+        "exit_code": 0,
+        "note": "Used acme-example-secret-0002 for the example API."
       }
     }
   ],
   "events_omitted": 0,
   "log": {
-    "text": "Reading the work item.\nDone.\n",
+    "text": "Reading the work item.\nCalling the example API with acme-example-secret-0003.\nDone.\n",
     "truncated": false
-  }
+  },
+  "leaked_secrets": [
+    {
+      "kind": "access_key",
+      "place": "step",
+      "step": 1,
+      "time": "2026-10-30T10:01:02Z",
+      "id": "ak_0123456789abcdef",
+      "message": "This key is compromised: it was printed into the output of step 1. Replace it."
+    },
+    {
+      "kind": "acme_api_key",
+      "place": "event",
+      "sequence": 3,
+      "time": "2026-10-30T10:15:42Z",
+      "message": "This key is compromised: it was printed into an event of the run. Replace it.",
+      "value": "acme-example-secret-0002"
+    },
+    {
+      "kind": "acme_api_key",
+      "place": "log",
+      "time": "2026-10-30T10:15:40Z",
+      "message": "This key is compromised: it was printed into the run's log. Replace it.",
+      "value": "acme-example-secret-0003"
+    }
+  ],
+  "leaked_secrets_omitted": 0
 }

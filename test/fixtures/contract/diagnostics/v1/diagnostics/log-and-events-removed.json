@@ -88,5 +88,7 @@
         }
       }
     ]
-  }
+  },
+  "leaked_secrets": [],
+  "leaked_secrets_omitted": 0
 }

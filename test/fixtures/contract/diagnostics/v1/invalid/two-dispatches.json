@@ -127,5 +127,7 @@
   "log": {
     "text": "Reading the work item.\nDone.\n",
     "truncated": false
-  }
+  },
+  "leaked_secrets": [],
+  "leaked_secrets_omitted": 0
 }
