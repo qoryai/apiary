@@ -232,14 +232,42 @@ defmodule Apiary.InstanceConfig do
 
   @doc false
   # registry_instance/0 is the instance's registry name: the node's copy, else the row's,
-  # made now where the row has none; nil on a schema whose migration of the name has not
-  # run yet.
+  # made now where the row has none, and kept as the node's copy from then on where the
+  # node keeps one (`Apiary.Registry.InstanceName.keeps?/0`), so the row is written once
+  # per node; nil on a schema whose migration of the name has not run yet.
   @spec registry_instance() :: String.t() | nil
   def registry_instance do
     case Application.fetch_env(:apiary, :registry_instance) do
       {:ok, name} when is_binary(name) -> name
-      _none -> record_registry_instance()
+      _none -> record_registry_instance() |> kept_registry_instance()
     end
+  end
+
+  defp kept_registry_instance(name) when is_binary(name) do
+    if Apiary.Registry.InstanceName.keeps?(),
+      do: Application.put_env(:apiary, :registry_instance, name)
+
+    name
+  end
+
+  defp kept_registry_instance(nil), do: nil
+
+  @doc false
+  # read_registry_instance/0 is the instance's registry name as it is: the node's copy,
+  # else the row's, nil where none is made yet and on a schema without it. A read, with
+  # no write: what a claim, a page and a check of an image's place ask.
+  @spec read_registry_instance() :: String.t() | nil
+  def read_registry_instance do
+    case Application.fetch_env(:apiary, :registry_instance) do
+      {:ok, name} when is_binary(name) -> name
+      _none -> Repo.one(from s in "instance_settings", select: s.registry_instance)
+    end
+  rescue
+    error in Postgrex.Error ->
+      case error.postgres do
+        %{code: code} when code in [:undefined_column, :undefined_table] -> nil
+        _other -> reraise error, __STACKTRACE__
+      end
   end
 
   @doc false

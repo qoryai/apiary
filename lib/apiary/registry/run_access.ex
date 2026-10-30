@@ -31,8 +31,17 @@ defmodule Apiary.Registry.RunAccess do
   #
   # **The environment image exists** when an environment record of the run's
   # organisation (`Apiary.Environments.Record`) has an `image` under the name in the
-  # registry, `<QORY_REGISTRY>/<name>@…`. No build reports an environment image yet, so
-  # until one does, no record has one, and a build may push its environment image.
+  # registry, `<QORY_REGISTRY>/<name>@…`. A record keeps only an image at the target
+  # image's place its prebuild was sent (`Apiary.Dispatches.Built`), so only a record
+  # written before that check can have one; without one, a build may push its
+  # environment image.
+  #
+  # **A build's destinations** (`destinations/1`), which the claim writes into a
+  # prebuild's documents (`Apiary.Dispatches.Handover`): `image_destination`,
+  # `<QORY_REGISTRY>/<target image name>`; and `environment_destination`,
+  # `<QORY_REGISTRY>/<environment image name>`, while the build may push there, else
+  # `environment_image`, the image the record has under that name. These are the names
+  # its tokens grant, read at the claim; the tokens read them again at each request.
   #
   # **What the run configuration gains** (`member/1`):
   #
@@ -102,12 +111,29 @@ defmodule Apiary.Registry.RunAccess do
 
       %{
         entry: entry(run),
-        hosts: [instance_host(), Registry.host()],
+        hosts: hosts(),
         instance_host: instance_host(),
         registry_host: Registry.host(),
         paths: paths(run, names)
       }
     end
+  end
+
+  @doc false
+  # hosts/0 is the hosts `member/1` gains for a run with registry access: the instance's
+  # and the registry's.
+  @spec hosts() :: [String.t()]
+  def hosts, do: [instance_host(), Registry.host()]
+
+  @doc false
+  # workspace_hosts/0 is `hosts/0` as the pages list it, with what each host is: `[]`
+  # unless the feature `registry` is on. Only a run through a gateway gains them
+  # (`applies?/1`).
+  @spec workspace_hosts() :: [%{host: String.t(), kind: :instance | :registry}]
+  def workspace_hosts do
+    if Features.on?(:registry),
+      do: [%{host: instance_host(), kind: :instance}, %{host: Registry.host(), kind: :registry}],
+      else: []
   end
 
   @doc false
@@ -137,6 +163,37 @@ defmodule Apiary.Registry.RunAccess do
   end
 
   @doc false
+  # destinations/1 is where the build `run` pushes (the moduledoc): `image_destination`,
+  # and `{:destination, place}` or `{:image, image}` for its environment image. Nil for a
+  # run that is no build, or that has no environment image name. The caller checks that
+  # the instance has a registry (`Apiary.Registry.configured?/0`). `run` may be a run not
+  # yet inserted: its organisation, workspace, registration labels and run of the queue
+  # are read.
+  @spec destinations(map) ::
+          %{
+            image_destination: String.t(),
+            environment: {:destination, String.t()} | {:image, String.t()}
+          }
+          | nil
+  def destinations(run) do
+    case names(run) do
+      %{build?: true, target: target, environment: environment, existing: existing}
+      when is_binary(environment) ->
+        %{
+          image_destination: "#{Registry.service()}/#{target}",
+          environment:
+            if(existing,
+              do: {:image, existing},
+              else: {:destination, "#{Registry.service()}/#{environment}"}
+            )
+        }
+
+      _no_build ->
+        nil
+    end
+  end
+
+  @doc false
   # token_path/0 is the path of the token route. Under enforce, with the feature alone,
   # it is the one path of the instance's host a run reaches; under observe, a run
   # reaches every path of that host.
@@ -159,12 +216,14 @@ defmodule Apiary.Registry.RunAccess do
 
     if build? do
       environment = environment_name(run, target_id)
+      existing = if is_binary(environment), do: existing_environment(run, environment)
 
       %{
         target: target,
         build?: true,
         environment: environment,
-        push_environment?: is_binary(environment) and not environment_exists?(run, environment)
+        existing: existing,
+        push_environment?: is_binary(environment) and is_nil(existing)
       }
     else
       %{target: target, build?: false}
@@ -289,12 +348,20 @@ defmodule Apiary.Registry.RunAccess do
   # environment_exists?/2 is whether an environment record of `run`'s organisation has
   # an image under `name` in the registry.
   @spec environment_exists?(map, String.t()) :: boolean
-  def environment_exists?(run, name) do
+  def environment_exists?(run, name), do: is_binary(existing_environment(run, name))
+
+  # The image an environment record of `run`'s organisation has under `name` in the
+  # registry, the one built last, nil for none. The prefix has no `%` or `_`: a registry
+  # address and a name of the layout have neither.
+  defp existing_environment(run, name) do
     prefix = "#{Registry.service()}/#{name}@"
 
-    Repo.exists?(
+    Repo.one(
       from e in Record,
-        where: e.organisation_id == ^run.organisation_id and like(e.image, ^"#{prefix}%")
+        where: e.organisation_id == ^run.organisation_id and like(e.image, ^"#{prefix}%"),
+        order_by: [desc: e.built_at, desc: e.id],
+        limit: 1,
+        select: e.image
     )
   end
 

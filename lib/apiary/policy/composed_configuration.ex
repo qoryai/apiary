@@ -49,7 +49,11 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   # With the `factory` feature, a run that must build
   # on its pool's default image is a prebuild: a run of a workspace's queue for the step
-  # `prebuild` (`prebuild?/1`). No other run is one.
+  # `prebuild` (`prebuild?/1`). No other run is one. A prebuild of a workspace that
+  # serves no run configuration is composed from the workspace's default policy, not
+  # from no policy (`serve_default/6`, `Apiary.Policy.default_document/1`): its document
+  # always has a `security_policy`, so the registry's members below apply to it as to a
+  # prebuild of a managed workspace.
   #
   # Also with the `factory` feature: the members of a run (`members/1`), which every
   # document of a run of the queue is composed with, after the image is decided:
@@ -423,6 +427,37 @@ defmodule Apiary.Policy.ComposedConfiguration do
     end
   end
 
+  @doc """
+  What a prebuild of a workspace that serves no run configuration receives: the
+  workspace's default policy, `document` (`Apiary.Policy.default_document/1`), composed
+  as `serve/7` composes a run configuration in force for a prebuild, and kept as a
+  document composed from none (`run_configuration_id` nil), the default policy's bytes
+  too where nothing is composed. `{:ok, row}`, or `{:error, reason}` as `serve/7`.
+  """
+  @spec serve_default(
+          Ecto.UUID.t(),
+          Ecto.UUID.t(),
+          binary,
+          image | (-> image),
+          boolean,
+          map | nil
+        ) :: {:ok, t} | {:error, compose_error}
+  def serve_default(organisation_id, workspace_id, document, image, fixed?, members)
+      when is_binary(document) do
+    case serve(
+           organisation_id,
+           workspace_id,
+           %RunConfiguration{document: document},
+           image,
+           true,
+           fixed?,
+           members
+         ) do
+      :as_is -> {:ok, kept(organisation_id, workspace_id, nil, nil, document)}
+      other -> other
+    end
+  end
+
   defp kept(organisation_id, workspace_id, configuration, image, bytes) do
     digest = Render.digest(bytes)
 
@@ -565,7 +600,40 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   def stack_hosts(nil), do: []
 
-  defp source_host(git) do
+  @doc false
+  # workspace_stack_hosts/1 is the hosts of the harness sources the workspace chooses, as
+  # `stack_hosts/1` writes them for a run: the workspace's harness
+  # (`Apiary.Stacks.Sources.chosen/1`) and the harness chosen for each of its targets
+  # (`Apiary.Stacks.Sources.targets_chosen/1`), each `%{host:, git:, shared:}`, once.
+  # `shared` is true for the harness the organisation shares with its workspaces, false for
+  # a choice made in this workspace, for the workspace or for one of its targets. A run
+  # adds the sources that the pins of its walk name besides. `[]` without the `factory`
+  # feature, as a run of no queue has no stack hosts.
+  @spec workspace_stack_hosts(Apiary.Organisations.Workspace.t()) :: [
+          %{host: String.t(), git: String.t(), shared: boolean}
+        ]
+  def workspace_stack_hosts(%Apiary.Organisations.Workspace{} = workspace) do
+    if Apiary.Features.on?(:factory) do
+      %{git: git, shared: shared} = Apiary.Stacks.Sources.chosen(workspace)
+
+      targets =
+        for {_target, %{git: git}} <- Apiary.Stacks.Sources.targets_chosen(workspace),
+            do: {git, false}
+
+      for {git, shared} <- Enum.uniq_by([{git, shared} | targets], &elem(&1, 0)),
+          is_binary(git),
+          host <- stack_hosts([%{"git" => git}]),
+          do: %{host: host, git: git, shared: shared}
+    else
+      []
+    end
+  end
+
+  @doc false
+  # source_host/1 is the lower-case host of the harness source address `git`, nil for an
+  # address with none.
+  @spec source_host(String.t()) :: String.t() | nil
+  def source_host(git) do
     case URI.parse(git) do
       %URI{host: host} when is_binary(host) -> String.downcase(host)
       _none -> nil
@@ -797,9 +865,9 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   @doc """
   A composed document of the workspace with that digest, or nil: every row with one digest
-  holds the same bytes, and whether they were composed from a run configuration or from
-  none is the same for each, since a document composed from one always holds its
-  `security_policy`.
+  holds the same bytes. The oldest is read where two have that digest, as a document
+  composed from a run configuration and one composed from the workspace's default policy
+  (`serve_default/6`) can.
   """
   @spec fetch(Ecto.UUID.t(), String.t()) :: t | nil
   def fetch(workspace_id, digest) when is_binary(workspace_id) and is_binary(digest) do
@@ -829,12 +897,32 @@ defmodule Apiary.Policy.ComposedConfiguration do
   def from_no_policy?(_workspace_id, nil), do: false
 
   @doc """
+  Whether the document with that digest was composed from the workspace's default policy
+  (`serve_default/6`): composed from no run configuration, with a `security_policy`. Only
+  a prebuild of a workspace that serves no run configuration is given one.
+  """
+  @spec default_policy?(Ecto.UUID.t(), String.t() | nil) :: boolean
+  def default_policy?(workspace_id, digest) when is_binary(workspace_id) and is_binary(digest) do
+    Repo.exists?(
+      from c in __MODULE__,
+        where:
+          c.workspace_id == ^workspace_id and c.digest == ^digest and
+            is_nil(c.run_configuration_id),
+        where: fragment("jsonb_exists(?::jsonb, ?)", c.document, @security_policy)
+    )
+  end
+
+  def default_policy?(_workspace_id, nil), do: false
+
+  @doc """
   Each of `digests` that is a composed document's of the workspace, and never a stored
   run configuration's, with the digest of the run configuration it was composed from, or
   of the document of no policy (`Apiary.Policy.Render.no_policy_document/0`) for one
   composed from none: one read. A digest that a run configuration of the workspace was
   stored under stays that configuration's, whatever was composed to the same bytes, and
-  is not in the map, nor is a digest that is no composed document's.
+  is not in the map, nor is a digest that is no composed document's, nor one composed
+  from the workspace's default policy (`serve_default/6`), which has a `security_policy`
+  and is no version: it stays as it is.
 
   The same bytes can be composed from two run configurations, since leaving the policy's
   `image` out can make two of them alike. Such a digest names the one that is in force
@@ -872,12 +960,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
               desc_nulls_last: r.rendered_at
             ],
             distinct: c.digest,
-            select: {c.digest, c.run_configuration_id, r.digest}
+            select:
+              {c.digest, c.run_configuration_id, r.digest,
+               fragment("jsonb_exists(?::jsonb, ?)", c.document, @security_policy)}
         )
-        |> Map.new(fn
-          {digest, nil, _none} -> {digest, no_policy}
-          {digest, _id, policy_digest} -> {digest, policy_digest}
+        |> Enum.flat_map(fn
+          {_digest, nil, _none, true} -> []
+          {digest, nil, _none, false} -> [{digest, no_policy}]
+          {digest, _id, policy_digest, _policy?} -> [{digest, policy_digest}]
         end)
+        |> Map.new()
     end
   end
 

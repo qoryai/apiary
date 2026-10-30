@@ -53,8 +53,9 @@ defmodule ApiaryWeb.SetUpComponents do
      becomes one. First the adapters `QORY_INSTALLED_ADAPTERS` lists, in its order:
      before the installer makes one, its step is `{:installing, name}`, labelled with the
      name, never done, with its page at `/instance/set-up?step=<name>`; then the other
-     adapters, by name. An adapter is done once it is configured; Mail once settings are
-     saved and their test link sent. Where the server's environment sets mail
+     adapters, by name. An adapter is done once it is configured; Mail once mail is on,
+     or the relay accepted the last test link of the settings saved
+     (`Apiary.Mail.sent_or_on?/1`). Where the server's environment sets mail
      (`Apiary.Mail.source/0` is `:env`), there is no Mail step: nothing is left to
      configure. With no adapter either, the list has no step under Connect.
   4. The flow's steps (the list of Apiary.WorkspaceSetup), of the organisation's progress
@@ -183,8 +184,8 @@ defmodule ApiaryWeb.SetUpComponents do
         :instance
       )
 
-  # Mail is done once settings are saved and their test link sent, followed or not.
-  defp mail_done?, do: Mail.shown().state in [:pending, :on]
+  # Mail is done once it is on, or the relay accepted the last test link, followed or not.
+  defp mail_done?, do: Mail.sent_or_on?(Mail.settings())
 
   # Signed in: the flow of the person's organisation, for the workspace the page sets up.
   # Before the organisation's first workspace exists, only for a person who may create

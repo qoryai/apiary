@@ -140,6 +140,18 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     view
   end
 
+  # The tooltip of the policy digest that is no version here.
+  defp unrendered_title(view) do
+    [title] =
+      view
+      |> element("#policy-unrendered")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.attribute("title")
+
+    title
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -278,7 +290,74 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#policy-unrendered") ==
                "0f0f0f0f0f0f Not a version made in this workspace"
 
+      assert unrendered_title(view) ==
+               "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
+
       refute has_element?(view, "#run-facts a.q-ver")
+    end
+
+    test "a prebuild given the default policy of a workspace that serves none shows its digest, never the document of no policy's",
+         %{conn: conn, scope: scope} do
+      {:ok, document} = Policy.default_document(scope.workspace.id)
+
+      {:ok, composed} =
+        Apiary.Policy.ComposedConfiguration.serve_default(
+          scope.organisation.id,
+          scope.workspace.id,
+          document,
+          nil,
+          false,
+          nil
+        )
+
+      run = policy_run(scope, applied: composed.digest, mode: "observe")
+      run = report(run, composed.digest)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
+      "sha256=" <> hex = composed.digest
+      no_policy = Apiary.Policy.Render.digest(Apiary.Policy.Render.no_policy_document())
+      "sha256=" <> no_policy_hex = no_policy
+
+      assert text(view, "#policy-unrendered") ==
+               String.slice(hex, 0, 12) <> " Not a version made in this workspace"
+
+      assert unrendered_title(view) ==
+               "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
+
+      refute render(view) =~ String.slice(no_policy_hex, 0, 12)
+      refute text(view, "#run-facts") =~ "no policy"
+    end
+
+    test "a prebuild given the default policy keeps its tooltip after the workspace makes version 1",
+         %{conn: conn, scope: scope} do
+      {:ok, document} = Policy.default_document(scope.workspace.id)
+
+      {:ok, composed} =
+        Apiary.Policy.ComposedConfiguration.serve_default(
+          scope.organisation.id,
+          scope.workspace.id,
+          document,
+          nil,
+          false,
+          nil
+        )
+
+      run = policy_run(scope, applied: composed.digest, mode: "observe")
+      run = report(run, composed.digest)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
+      "sha256=" <> hex = composed.digest
+
+      assert text(view, "#policy-unrendered") ==
+               String.slice(hex, 0, 12) <> " Not a version made in this workspace"
+
+      assert unrendered_title(view) ==
+               "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
     end
 
     test "an alive run that reported another digest is behind, until it reports the one in force",
