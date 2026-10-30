@@ -94,8 +94,7 @@ defmodule Apiary.Runs.LeakedSecretsTest do
 
     events_fixture(ctx.run, [
       {1, "run.log", step_log_data(1, "first #{head}")},
-      {2, "run.log", log_data("outside every step\n")},
-      {3, "run.log", step_log_data(1, tail <> " end\n")}
+      {2, "run.log", step_log_data(1, tail <> " end\n")}
     ])
 
     project!(ctx.run)
@@ -118,6 +117,31 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert id == ctx.key.key_id
     assert {[%{value: value}], 0} = read(other)
     assert value == ctx.secret
+  end
+
+  test "reads no secret across a gap in the sequences, in one pass or in two", ctx do
+    {head, tail} = String.split_at(ctx.secret, 10)
+
+    # Two pieces with another event's output between them, in one pass.
+    events_fixture(ctx.run, [
+      {1, "run.log", step_log_data(1, "first #{head}")},
+      {2, "run.log", log_data("outside every step\n")},
+      {3, "run.log", step_log_data(1, tail <> " end\n")}
+    ])
+
+    project!(ctx.run)
+    assert rows(ctx.run) == []
+
+    # The second piece projected while the chunk before it has not arrived, then that
+    # chunk late.
+    other = run_fixture(ctx.scope, %{public_id: Run.new_public_id()})
+    events_fixture(other, [{1, "run.log", log_data("key " <> head)}])
+    project!(other)
+    events_fixture(other, [{3, "run.log", log_data(tail <> "\n")}])
+    project!(other)
+    events_fixture(other, [{2, "run.log", log_data("late\n")}])
+    project!(other)
+    assert rows(other) == []
   end
 
   test "keeps the whole of a secret that two chunks of one pass split", ctx do

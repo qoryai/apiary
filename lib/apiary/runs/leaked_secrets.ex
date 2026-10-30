@@ -126,14 +126,26 @@ defmodule Apiary.Runs.LeakedSecrets do
   # The secrets in the run's output: each step's chunks, and those of no step, in sequence
   # order, each scanned after the end of the text before it that a secret may start in.
   # A secret is found once its last byte is stored, and kept where its first byte is.
+  # The end is carried only from the chunk whose sequence is the one before, of the same
+  # step: a chunk that arrives late, or one with a gap before it, starts a new text, so no
+  # two pieces that were not printed together are read as one secret. A secret split
+  # across a gap is not found.
   defp output_rows(run, chunks, times) do
     chunks
     |> Enum.group_by(& &1.step)
     |> Enum.flat_map(fn {step, chunks} ->
       [first | _] = chunks = Enum.sort_by(chunks, & &1.sequence)
 
+      {tail, parts} = before(run, step, first)
+
       {rows, _carry} =
-        Enum.flat_map_reduce(chunks, before(run, step, first), fn chunk, {tail, parts} ->
+        Enum.flat_map_reduce(chunks, {tail, parts, first.sequence - 1}, fn chunk, carried ->
+          {tail, parts} =
+            case carried do
+              {tail, parts, previous} when previous == chunk.sequence - 1 -> {tail, parts}
+              _gap -> {"", []}
+            end
+
           base = byte_size(tail)
           text = tail <> chunk.bytes
           parts = parts ++ [{chunk.sequence, base}]
@@ -154,16 +166,18 @@ defmodule Apiary.Runs.LeakedSecrets do
               }
             end
 
-          {rows, carry(text, parts)}
+          {tail, parts} = carry(text, parts)
+          {rows, {tail, parts, chunk.sequence}}
         end)
 
       rows
     end)
   end
 
-  # The end of the step's output stored before `first` that a secret in `first` may start
-  # in, with the chunks it is in: read only when `first` starts with a character a secret
-  # is made of.
+  # The end of the step's output stored right before `first` that a secret in `first` may
+  # start in, with the chunks it is in: the chunks of the same step whose sequences run
+  # without a gap up to the one before `first`'s. Read only when `first` starts with a
+  # character a secret is made of.
   defp before(run, step, %{sequence: sequence, bytes: <<byte, _::binary>>})
        when byte in ?A..?Z or byte in ?a..?z or byte in ?0..?9 or byte in ~c"_.-" do
     chunks =
@@ -180,6 +194,9 @@ defmodule Apiary.Runs.LeakedSecrets do
 
     {text, parts} =
       chunks
+      |> Enum.with_index(1)
+      |> Enum.take_while(fn {{previous, _bytes}, back} -> previous == sequence - back end)
+      |> Enum.map(&elem(&1, 0))
       |> Enum.reverse()
       |> Enum.reduce({"", []}, fn {sequence, bytes}, {text, parts} ->
         {text <> bytes, parts ++ [{sequence, byte_size(text)}]}
