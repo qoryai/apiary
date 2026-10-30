@@ -420,6 +420,21 @@ defmodule Apiary.SetupTest do
       assert Repo.all(from w in Workspace, where: w.organisation_id == ^organisation.id) == []
     end
 
+    test "the release command's claim refuses a name whose address is a page, and says so" do
+      code = Setup.code!()
+
+      assert {{:error, :invalid}, output} =
+               ExUnit.CaptureIO.with_io(fn ->
+                 Apiary.Release.grant_instance_admin("claim@example.com", "Settings")
+               end)
+
+      assert output ==
+               "Not created: organisation_name Choose another name. /settings is a page of Qory Apiary.\n"
+
+      assert {^code, nil} = stored()
+      refute Setup.set_up?()
+    end
+
     test "the release command's claim marks the code used" do
       code = Setup.code!()
 

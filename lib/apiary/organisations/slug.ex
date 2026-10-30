@@ -5,10 +5,14 @@ defmodule Apiary.Organisations.Slug do
 
   A slug is 1 to 40 characters of lowercase `a`–`z`, `0`–`9` and hyphens, and starts
   and ends with a letter or a digit. An organisation's is made from the name when it is
-  created (`from_name/2`), made unique with a number (`pick/3`), and kept when the name
-  changes. A workspace's is made from the name at creation and on each rename, and a
-  name whose slug is taken is refused (`Apiary.Organisations.change_workspace/2`). A
-  slug is never one of the names the router reserves (`ApiaryWeb.ReservedSlugs`).
+  created (`from_name/2`) and again on each rename. A sign-up and a rename refuse a name
+  whose slug is taken (`Apiary.Organisations.sign_up_user/3`,
+  `Apiary.Organisations.change_organisation/2`); an edition's way of creating one that
+  does not pass `taken: :refuse` to `Apiary.Organisations.build_organisation/2` numbers
+  it (`pick/3`). A workspace's is made from the name at
+  creation and on each rename, and a name whose slug is taken is refused
+  (`Apiary.Organisations.change_workspace/2`). A slug is never one of the names the
+  router reserves (`ApiaryWeb.ReservedSlugs`).
 
   The migration that gave the existing rows their slugs made them the same way, with a
   copy of these rules as they were then.

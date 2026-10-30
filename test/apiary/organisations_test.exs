@@ -572,6 +572,121 @@ defmodule Apiary.OrganisationsTest do
     end
   end
 
+  describe "an organisation's address follows its name" do
+    # A name no other test of the suite takes, so its slug is free.
+    defp fresh_name(prefix), do: "#{prefix} #{System.unique_integer([:positive])}"
+
+    test "a rename changes the slug, and the trail has the old and the new" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      name = fresh_name("Payments")
+      slug = Organisations.Slug.from_name(name, "organisation")
+
+      assert {:ok, %Organisation{slug: ^slug} = renamed} =
+               Organisations.update_organisation(scope, %{"name" => name, "slug" => "kept"})
+
+      assert renamed.id == organisation.id
+      assert renamed.name == name
+
+      assert %Entry{before: before, after: after_} =
+               Repo.one!(
+                 from e in Entry,
+                   where:
+                     e.organisation_id == ^organisation.id and e.action == "organisation.rename"
+               )
+
+      assert before == %{"name" => organisation.name, "slug" => organisation.slug}
+      assert after_ == %{"name" => name, "slug" => slug}
+
+      # The old address leads nowhere, and another organisation may take it.
+      assert :error = Organisations.resolve_scope(scope, organisation.slug)
+
+      assert %{organisation: %{slug: old}} =
+               sign_up_fixture(%{organisation_name: organisation.name})
+
+      assert old == organisation.slug
+    end
+
+    test "a name that does not change keeps the slug" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+
+      {1, _rows} =
+        Repo.update_all(from(o in Organisation, where: o.id == ^organisation.id),
+          set: [slug: "old-#{System.unique_integer([:positive])}"]
+        )
+
+      organisation = Repo.reload!(organisation)
+      scope = %{scope | organisation: organisation}
+
+      assert {:ok, %Organisation{slug: kept}} =
+               Organisations.update_organisation(scope, %{"name" => organisation.name})
+
+      assert kept == organisation.slug
+
+      refute Organisations.change_organisation(organisation, %{"name" => organisation.name}).changes[
+               :slug
+             ]
+
+      # A name that changes only in case gives the slug the organisation has: no warning,
+      # no refusal.
+      %{organisation: other} = sign_up_fixture()
+      upper = String.upcase(other.name)
+
+      refute Organisations.change_organisation(other, %{"name" => upper}).changes[:slug]
+      assert Organisations.change_organisation(other, %{"name" => upper}).valid?
+    end
+
+    test "a rename to an address that is taken is refused, with the fix first" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      %{organisation: taken} = sign_up_fixture()
+      %{organisation: marked} = sign_up_fixture()
+      now = DateTime.utc_now()
+
+      {1, _rows} =
+        Repo.update_all(from(o in Organisation, where: o.id == ^marked.id),
+          set: [
+            deletion_marked_at: now,
+            purge_after: DateTime.add(now, 30, :day),
+            purge_trigger: "grace_period"
+          ]
+        )
+
+      for {name, message} <- [
+            {String.upcase(taken.name),
+             "Choose another name. Another organisation has the address /#{taken.slug}."},
+            # Marked for deletion, it is not said to be.
+            {marked.name <> "!",
+             "Choose another name. Another organisation has the address /#{marked.slug}."},
+            {"Settings", "Choose another name. /settings is a page of Qory Apiary."},
+            {"Users", "Choose another name. /users is a page of Qory Apiary."}
+          ] do
+        assert {:error, changeset} = Organisations.update_organisation(scope, %{"name" => name})
+        assert %{name: [^message]} = errors_on(changeset)
+
+        assert %{name: [^message]} =
+                 errors_on(Organisations.change_organisation(organisation, %{"name" => name}))
+      end
+
+      assert Repo.reload!(organisation).slug == organisation.slug
+      assert Repo.reload!(organisation).name == organisation.name
+    end
+
+    test "an address taken after the check is refused on the name by the unique index" do
+      %{organisation: organisation} = sign_up_fixture()
+      %{organisation: other} = sign_up_fixture()
+      name = fresh_name("Late")
+      changeset = Organisations.change_organisation(organisation, %{"name" => name})
+      assert changeset.valid?
+
+      {1, _rows} =
+        Repo.update_all(from(o in Organisation, where: o.id == ^other.id),
+          set: [slug: Ecto.Changeset.get_change(changeset, :slug)]
+        )
+
+      assert {:error, refused} = Repo.update(changeset)
+      assert %{name: ["is already the slug of another organisation"]} = errors_on(refused)
+    end
+  end
+
   describe "a workspace's address follows its name" do
     test "a rename changes the slug, and the trail has the old and the new" do
       %{scope: scope, organisation: organisation, workspace: main} = sign_up_fixture()

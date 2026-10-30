@@ -263,7 +263,9 @@ replaces the navigation it is in.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Organisation
   settings): General
-  (name, slug, owners, and its danger zone), People (`/settings/people`: members,
+  (name, slug, owners, and its danger zone; the slug is text under the name, follows the
+  name, and once the name typed changes it, a warning says which addresses stop
+  working; saving opens the page at the new address), People (`/settings/people`: members,
   found by their email with Find a person, `?q=`; invitations, suspensions; Invite
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
   page, below), its one field the email address, and a sent invitation goes back to

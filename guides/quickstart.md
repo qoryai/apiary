@@ -90,10 +90,12 @@ the same list. Two pages follow:
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. The workspace set-up starts on the organisation's overview,
-   `http://localhost:4100/acme`. It shows the card **Software factory**, whose words this
-   guide uses: select **Choose**. Qory Apiary creates the workspace and opens its step
-   **Name**. Type the name `Main` and select **Save and next**.
+2. The overview of your organisation, at `http://localhost:4100/acme`. Under **Choose
+   what your first workspace does**, it shows the card **Software factory**, whose words
+   this guide uses: select **Choose**. It creates the workspace *Software factory*, at
+   `http://localhost:4100/acme/software-factory`, and opens its step **Name**. Type the
+   name `Main`, which this guide uses, and select **Save and next**. The workspace's
+   address follows its name, so it moves to `http://localhost:4100/acme/main`.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
@@ -118,7 +120,7 @@ Until it is used nobody can sign up, and anyone who reads the log can use it, so
 as soon as the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
 
 Setting it up created an organisation with the name you gave and your membership as its
-owner, and **Create workspace** created one workspace in it named *Main*. Both can be
+owner, and **Choose** created one workspace in it, which you named *Main*. Both can be
 renamed in their **Settings**, at the foot of the sidebar: the workspace's on any page of
 the workspace, the organisation's on its overview, which its name in the top bar opens. As
 the person who set the instance up you are also its **instance admin**: your organisation
@@ -131,8 +133,10 @@ asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
 from the names given at set-up: an organisation named `Acme` gives `/acme/main`, and the runs
-are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
-a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
+are at `/acme/main/runs`. A slug follows the name: renaming the organisation or the
+workspace changes its slug, and links to the old address stop working. A link to a page
+names its workspace, so a colleague in the organisation opens the same page, and anyone
+else gets *Not Found*.
 
 The people of the organisation are under **Organisation settings › People**, `/<organisation>/settings/people`, each
 at one of three levels, and every one of them reaches the workspace; the workspace's **Workspace
