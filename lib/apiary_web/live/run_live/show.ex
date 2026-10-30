@@ -217,6 +217,9 @@ defmodule ApiaryWeb.RunLive.Show do
             <div class="q-run-actions">
               <.run_menu
                 run={@run}
+                diagnostics={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/diagnostics"
+                }
                 log={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
                     ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/log"
@@ -385,6 +388,10 @@ defmodule ApiaryWeb.RunLive.Show do
     required: true,
     doc: "the log's path, or false for a reader who may not read it"
 
+  attr :diagnostics, :string,
+    required: true,
+    doc: "the path of the run's diagnostics document, as the reader may read it"
+
   defp run_menu(assigns) do
     ~H"""
     <div
@@ -421,6 +428,25 @@ defmodule ApiaryWeb.RunLive.Show do
             data-menu-close
           >
             <.icon name="hero-link" class="size-4" /> {gettext("Copy run id")}
+            <span class="sr-only" aria-live="polite"></span>
+          </button>
+        </li>
+        <%!-- The run's diagnostics document, read when the reader clicks and copied as
+             it is (`ApiaryWeb.RunDiagnosticsController`): the run, as the reader may read
+             it, for a chat or an issue. --%>
+        <li role="none">
+          <button
+            id="run-menu-diagnostics"
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            phx-hook="CopyToClipboard"
+            data-copy-url={@diagnostics}
+            data-copied-words={gettext("Copied")}
+            data-failed-words={gettext("Not copied. Try again.")}
+            data-menu-close
+          >
+            <.icon name="hero-clipboard-document-list" class="size-4" /> {gettext("Copy diagnostics")}
             <span class="sr-only" aria-live="polite"></span>
           </button>
         </li>

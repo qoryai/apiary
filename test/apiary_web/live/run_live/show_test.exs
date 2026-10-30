@@ -275,6 +275,25 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, ~s(#run-menu-raw[href="#{log}"][target="_blank"]), "Raw log")
       assert has_element?(lv, ~s(#run-menu-download[href="#{log}?download=1"][download]))
+
+      # Copy diagnostics, beside Copy run id: the hook reads the run's document and copies it.
+      diagnostics = "#{workspace_path(scope)}/runs/#{run.public_id}/diagnostics"
+
+      assert has_element?(
+               lv,
+               ~s(#run-menu-diagnostics[phx-hook="CopyToClipboard"][data-copy-url="#{diagnostics}"]),
+               "Copy diagnostics"
+             )
+
+      ids =
+        lv
+        |> element("#run-menu ul")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("li > [id]")
+        |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+
+      assert ["run-menu-copy", "run-menu-diagnostics" | _] = ids
     end
 
     test "Details is beside every tab, Terminal too", %{conn: conn, scope: scope} do
