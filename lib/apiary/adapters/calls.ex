@@ -546,9 +546,10 @@ defmodule Apiary.Adapters.Calls do
   # `read-public`, on the run of the queue `run` through `repo`, inside the caller's
   # transaction where there is one: the adapter, the cause, the call's path, `read` for
   # `read-public`, which reads harness files too, and the refusal's code for `:refused`.
-  # A `:not_allowed` failure is written as `not_allowed`, without its `refusal`, which
-  # no column of the run keeps. The run's page shows them (`ApiaryWeb.WorkItemComponents`). How the run ends is the
-  # caller's. `:ok`, or `{:error, :not_found}` for a run that is gone.
+  # The run's page shows these columns (`ApiaryWeb.WorkItemComponents`). A `:not_allowed`
+  # failure is written as `not_allowed`, without its `refusal`, which no column of the
+  # run keeps. How the run ends is the caller's. `:ok`, or `{:error, :not_found}` for a
+  # run that is gone.
   @spec record_failure(module, DispatchRun.t(), CallFailure.t()) :: :ok | {:error, :not_found}
   def record_failure(repo, run, %CallFailure{path: "read-public"} = failure),
     do: record_failure(repo, run, %{failure | path: "read"})
