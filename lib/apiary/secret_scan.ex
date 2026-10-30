@@ -120,15 +120,48 @@ defmodule Apiary.SecretScan do
 
   @doc """
   carry/1 is the end of `text` that a secret cut off by the end may start in: its last
-  run of the characters a secret is made of, at most #{@carry_bytes} bytes; an empty text
-  when the run is longer, as no secret of a bounded kind starts that far back.
+  run of the characters a secret is made of, at most #{@carry_bytes} bytes, with the
+  context before the run that a secret may follow, whole or cut by the end: a terminal
+  colour code (`\e[32m`, `\e[`), or the `\\` of an escape written out or the `%` of a URL
+  encoding. An empty text when the run is longer, as no secret of a bounded kind starts
+  that far back.
   """
   @spec carry(binary) :: binary
   def carry(text) when is_binary(text) do
     size = byte_size(text)
     length = token_end(text, size - 1, 0)
-    if length <= @carry_bytes, do: binary_part(text, size - length, length), else: ""
+
+    if length <= @carry_bytes do
+      start = context_start(text, size - length)
+      binary_part(text, start, size - start)
+    else
+      ""
+    end
   end
+
+  # Where the context that ends right before byte `at` starts: the `\e[` of a colour
+  # code, with the digits and `;` between it and `at` (`;` ends the run of a secret's
+  # characters); the `\e` of a code that the end cut; a `\`; or a `%`. Else `at`.
+  defp context_start(text, at) do
+    digits = code_digits(text, at - 1, 0)
+
+    cond do
+      at - digits >= 2 and binary_part(text, at - digits - 2, 2) == "\e[" -> at - digits - 2
+      at >= 1 and :binary.at(text, at - 1) in [?\e, ?\\, ?%] -> at - 1
+      true -> at
+    end
+  end
+
+  # The number of a colour code's digits and `;` that end `text` at byte `at`, read
+  # backwards, no more than 16.
+  defp code_digits(text, at, count) when at >= 0 and count < 16 do
+    case :binary.at(text, at) do
+      byte when byte in ?0..?9 or byte == ?; -> code_digits(text, at - 1, count + 1)
+      _other -> count
+    end
+  end
+
+  defp code_digits(_text, _at, count), do: count
 
   # The length of the run of a secret's characters that ends `text` at byte `at`, read
   # backwards, and no further than one byte past the most kept.

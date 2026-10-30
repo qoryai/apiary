@@ -1,6 +1,7 @@
 defmodule Apiary.SecretScanTest do
   # The secrets `Apiary.SecretScan` finds: each kind at its least length and the near
-  # misses beside it, offsets in bytes, the end of a text carried to the next part, and
+  # misses beside it, offsets in bytes, the end of a text carried to the next part with
+  # the context before it, and
   # what a Qory Apiary credential belongs to, in its organisation alone.
   use Apiary.DataCase, async: true
 
@@ -151,6 +152,40 @@ defmodule Apiary.SecretScanTest do
       assert SecretScan.carry("ends with a space ") == ""
       assert SecretScan.carry("x" <> String.duplicate("a", 4096)) == ""
       assert SecretScan.carry(" " <> String.duplicate("a", 4096)) == String.duplicate("a", 4096)
+    end
+
+    test "keeps the context a secret may follow whole, or as far as the end cut it" do
+      for {text, end_} <- [
+            {"done \e[32m", "\e[32m"},
+            {"done \e[1;32m", "\e[1;32m"},
+            {"done \e[1;32mghp_cc", "\e[1;32mghp_cc"},
+            {"done \e[1;", "\e[1;"},
+            {"done \e[", "\e["},
+            {"done \e", "\e"},
+            {~S(done\n), ~S(\n)},
+            {"token%3D", "%3D"},
+            {"token%", "%"},
+            {"done [32m", "32m"},
+            {"done 1;32m", "32m"}
+          ] do
+        assert SecretScan.carry(text) == end_, inspect(text)
+      end
+    end
+
+    test "with what follows, finds a secret after a context, wherever the end cuts" do
+      ghp = "ghp_" <> String.duplicate("c", 36)
+
+      for context <- ["done \e[32m", "done \e[1;32m", ~S(log":"done\n), "q=token%3D"] do
+        text = context <> ghp <> " end"
+
+        # Each cut before the secret's end; a secret that ends the head is found in it.
+        for cut <- 0..(byte_size(context) + byte_size(ghp) - 1) do
+          {head, rest} =
+            {binary_part(text, 0, cut), binary_part(text, cut, byte_size(text) - cut)}
+
+          assert found(SecretScan.carry(head) <> rest) == [ghp], inspect({head, rest})
+        end
+      end
     end
   end
 

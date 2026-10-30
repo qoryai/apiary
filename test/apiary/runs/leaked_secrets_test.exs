@@ -186,6 +186,21 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert rows(ctx.run) == []
   end
 
+  test "finds a secret that starts a chunk after a colour code that ends the one before",
+       ctx do
+    events_fixture(ctx.run, [
+      {1, "run.log", log_data("token: \e[32m")},
+      {2, "run.log", log_data(@github <> "\e[0m\n")}
+    ])
+
+    project!(ctx.run)
+
+    assert [%{kind: "github_token", source_sequence: 2, offset: 0, length: 40}] =
+             rows(ctx.run)
+
+    assert {[%{value: @github}], 0} = read(ctx.run)
+  end
+
   test "keeps the whole of a secret that two chunks of one pass split", ctx do
     key = "sk-ant-api03-" <> String.duplicate("x", 93) <> "AA"
     assert byte_size(key) == 108
