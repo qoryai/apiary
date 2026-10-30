@@ -313,6 +313,14 @@ defmodule Apiary.Dispatches.Handover do
         Logger.error("a claim could not be made: the run's documents do not fit their limit")
         {:error, :unavailable}
 
+      :no_destination ->
+        Logger.error(
+          "a claim could not be made: the prebuild has no destination in the registry, " <>
+            "as the instance's registry name could not be made"
+        )
+
+        {:error, :unavailable}
+
       :unstable ->
         Logger.error(
           "a claim could not be made: the run's model choices changed while the claim read them"
@@ -780,9 +788,12 @@ defmodule Apiary.Dispatches.Handover do
   # target image's name is made from the target's public id, so the target is made in the
   # workspace first where the workspace has no row of it, as an assign makes it
   # (`Apiary.Runs.Target.insert_new/3`). A claim takes a prebuild only on an instance with
-  # a registry (`Apiary.Dispatches.waiting_query/1`), where both names can be made. The
-  # registered run keeps the documents (`runs.run_documents`), and the run's report of
-  # what it built is checked against them (`Apiary.Dispatches.Built`).
+  # a registry (`Apiary.Dispatches.waiting_query/1`); the instance's registry name is
+  # made here where it is not yet (`Apiary.InstanceConfig.registry_instance/0`). Where it
+  # cannot be, on a schema whose migration of it has not run, `:no_destination`, and the
+  # claim is refused, rolled back. The registered run keeps the documents
+  # (`runs.run_documents`), and the run's report of what it built is checked against them
+  # (`Apiary.Dispatches.Built`).
   defp destinations({:ok, formed}, %DispatchRun{} = dispatch_run, target) do
     run = %Run{
       organisation_id: dispatch_run.organisation_id,
@@ -791,15 +802,20 @@ defmodule Apiary.Dispatches.Handover do
       target_id: target_row_id(dispatch_run, target)
     }
 
-    %{image_destination: image, environment: environment} = RunAccess.destinations(run)
+    case RunAccess.destinations(run) do
+      %{image_destination: image, environment: environment} ->
+        environment =
+          case environment do
+            {:destination, place} -> {"environment_destination", place}
+            {:image, existing} -> {"environment_image", existing}
+          end
 
-    environment =
-      case environment do
-        {:destination, place} -> {"environment_destination", place}
-        {:image, existing} -> {"environment_image", existing}
-      end
+        {:ok,
+         put_in(formed, [:answer, :destinations], [{"image_destination", image}, environment])}
 
-    {:ok, put_in(formed, [:answer, :destinations], [{"image_destination", image}, environment])}
+      nil ->
+        :no_destination
+    end
   end
 
   defp destinations(not_formed, _dispatch_run, _target), do: not_formed
