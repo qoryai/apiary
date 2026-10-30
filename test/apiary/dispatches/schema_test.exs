@@ -50,6 +50,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # runs: down first, up last.
   @walk_version 20_261_025_150_000
   @walk Apiary.Repo.Migrations.KeepEachRunSHarnessWalk
+  # The later migration that keeps a run whose start failed, whose column has a key to
+  # the dispatches: down first, up last. Its down drops the column's index too.
+  @start_failed_version 20_261_030_090_000
+  @start_failed Apiary.Repo.Migrations.KeepARunThatFailedToStart
 
   setup_all do
     for {version, migration, name} <- [
@@ -58,7 +62,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@prebuilds_version, @prebuilds, "queue_prebuilds"},
           {@machine_log_version, @machine_log, "keep_a_dispatch_s_machine_log"},
           {@hold_version, @hold, "hold_runs_for_their_environment_build"},
-          {@walk_version, @walk, "keep_each_run_s_harness_walk"}
+          {@walk_version, @walk, "keep_each_run_s_harness_walk"},
+          {@start_failed_version, @start_failed, "keep_a_run_that_failed_to_start"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -979,6 +984,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @start_failed_version, @start_failed, @options)
     assert :ok = Ecto.Migrator.down(Repo, @walk_version, @walk, @options)
     assert :ok = Ecto.Migrator.down(Repo, @hold_version, @hold, @options)
     assert :ok = Ecto.Migrator.down(Repo, @machine_log_version, @machine_log, @options)
@@ -993,6 +999,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @prebuilds_version, @prebuilds, @options)
     assert :ok = Ecto.Migrator.up(Repo, @machine_log_version, @machine_log, @options)
     assert :ok = Ecto.Migrator.up(Repo, @walk_version, @walk, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @start_failed_version, @start_failed, @options)
 
     # `DispatchRun` writes `image_requeue`, of the migration left down, on every insert.
     Repo.query!(
