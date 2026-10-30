@@ -592,7 +592,10 @@ defmodule ApiaryWeb.FactoryShellTest do
          %{scope: scope} do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
-      assert [:adapters, :nodes, :mail, :configuration] = Enum.take(keys, -4)
+
+      # Diagnostics keys, of the observability feature, come between Nodes and Mail.
+      assert [:adapters, :nodes | rest] = Enum.drop_while(keys, &(&1 != :adapters))
+      assert rest in [[:mail, :configuration], [:diagnostics_keys, :mail, :configuration]]
 
       assert %{label: "Nodes", path: "/instance/nodes", place: :instance} =
                Enum.find(Layouts.instance_sections(admin), &(&1.key == :nodes))
