@@ -50,17 +50,18 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutRegistryTest do
 
     view = open(conn, path)
 
+    # In the words of the workspace's domain, software: a target is a repository.
     assert has_element?(
              view,
              "#target-environment-no-registry",
-             "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
+             "Ask an instance admin to set up a registry to build this repository's environment image. Until then, runs start in the pool's default image."
            )
 
     refute has_element?(view, "#target-environment-pools")
     refute has_element?(view, "#target-environment-pool-#{pool.id}-held")
     refute has_element?(view, "#target-environment-pool-#{pool.id}-waiting")
     refute has_element?(view, "#target-environment-rebuild")
-    refute render(view) =~ "Runs wait until this target's environment image is built."
+    refute render(view) =~ "Runs wait until this repository's environment image is built."
     refute render(view) =~ "A build is waiting."
   end
 
