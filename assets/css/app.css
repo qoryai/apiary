@@ -1752,6 +1752,38 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* The way up to the organisation, the first line of a workspace's sidebar. */
+  .q-nav-up {
+    margin-bottom: 10px;
+  }
+  /* A step of the group Set up: an empty ring, filled with a tick once it is done, a
+     ring around a dot on the page's step. */
+  .q-nav-mark {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    border-radius: 9999px;
+    border: 1.5px solid var(--q-border-strong);
+    background: var(--color-base-100);
+    color: var(--q-faint);
+  }
+  .q-nav-step.is-done .q-nav-mark {
+    border-color: transparent;
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+  .q-nav-step[aria-current]:not(.is-done) .q-nav-mark {
+    border: 2px solid var(--color-primary);
+  }
+  .q-nav-step[aria-current]:not(.is-done) .q-nav-mark::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+  }
   .q-nav-count {
     display: inline-flex;
     flex: none;
@@ -10353,6 +10385,17 @@
     color: var(--q-faint);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* An unfinished set-up, "Set-up: 3 of 7 steps", on a line of its own under the name,
+     at every width. */
+  .q-wr-nm:has(> .q-wr-su) {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .q-wr-nm .q-wr-su {
+    display: block;
+    order: 3;
+    flex-basis: 100%;
   }
   .q-wr-al {
     display: inline-flex;

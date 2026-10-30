@@ -2876,7 +2876,9 @@ msgid_plural "+%{number} more"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/set_up_components.ex
+#: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid ", done"
 msgstr ""
@@ -5832,6 +5834,11 @@ msgstr ""
 msgid "Continue"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Continue: %{step}"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -7611,6 +7618,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Fingerprint"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Finish setting up %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -14758,6 +14770,11 @@ msgstr ""
 msgid "Set up your workspace"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Set up · %{done} of %{total}"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Set your password"
@@ -14772,6 +14789,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Set-up steps"
 msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Set-up: %{done} of %{total} step"
+msgid_plural "Set-up: %{done} of %{total} steps"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/user_live/password.ex
