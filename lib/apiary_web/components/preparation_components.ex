@@ -11,7 +11,7 @@ defmodule ApiaryWeb.PreparationComponents do
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
   (`Apiary.ExternalText`). The machine log is shown to an instance admin alone; the
-  caller reads it (`Apiary.Dispatches.machine_log/2`) and hands it over.
+  caller reads it for an instance admin and hands it over.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
