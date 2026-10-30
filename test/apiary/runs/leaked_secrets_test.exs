@@ -184,6 +184,20 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     events_fixture(ctx.run, [{2, "run.log", log_data("late\n")}])
     project!(ctx.run)
     assert rows(ctx.run) == []
+
+    # The event between the pieces projected while an earlier event of the run had not
+    # arrived: it counts as missing for the pass of the second piece.
+    other = run_fixture(ctx.scope, %{public_id: Run.new_public_id()})
+
+    events_fixture(other, [
+      {2, "run.log", log_data("key " <> head)},
+      {3, "run.heartbeat", @heartbeat}
+    ])
+
+    project!(other)
+    events_fixture(other, [{4, "run.log", log_data(tail <> "\n")}])
+    project!(other)
+    assert rows(other) == []
   end
 
   test "finds a secret that starts a chunk after a colour code that ends the one before",
@@ -199,6 +213,19 @@ defmodule Apiary.Runs.LeakedSecretsTest do
              rows(ctx.run)
 
     assert {[%{value: @github}], 0} = read(ctx.run)
+  end
+
+  test "finds a secret after a colour code that the end of a pass cut", ctx do
+    for {head, rest} <- [{"token \e", "[32m"}, {"token \e[1", ";32m"}] do
+      run = run_fixture(ctx.scope, %{public_id: Run.new_public_id()})
+      events_fixture(run, [{1, "run.log", log_data(head)}])
+      project!(run)
+      events_fixture(run, [{2, "run.log", log_data(rest <> @github <> "\n")}])
+      project!(run)
+
+      assert [%{kind: "github_token", source_sequence: 2, offset: 4, length: 40}] = rows(run),
+             inspect(head)
+    end
   end
 
   test "keeps the whole of a secret that two chunks of one pass split", ctx do

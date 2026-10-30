@@ -9,12 +9,13 @@ defmodule Apiary.Runs.LeakedSecrets do
 
     * the run's output, each log chunk as the projection stores it
       (`Apiary.Runs.Projector`). A chunk is scanned after the end of the step's chunk
-      before it that a secret may start in (`Apiary.SecretScan.carry/1`), so a secret that
-      two chunks split is found, when every event between the two chunks is stored, as
-      a heartbeat or another step's output between them is. That end comes from the same
-      pass of the projection, or from the chunks stored before it. A chunk with an event
-      still missing before it starts a new text, so no two pieces that were not printed
-      together are read as one secret; a secret split across a missing event is not
+      before it that a secret may start in (`Apiary.SecretScan.carry/1`). That end comes
+      from the same pass of the projection, or from the chunks stored before it. A secret
+      that two chunks split is found when each event between them, such as a heartbeat or
+      another step's output, is in the pass that projects the second chunk, or was
+      projected when no earlier event of the run was missing (at or below
+      `runs.projected_sequence`). Otherwise the second chunk starts a new text, so no two
+      pieces that were not printed together are read as one secret, and the secret is not
       found;
     * the data of each event other than `dev.qory.run.log`, whose output is in the log
       chunks, as `event_text/1` writes it, in the same pass;
@@ -130,9 +131,10 @@ defmodule Apiary.Runs.LeakedSecrets do
   # The secrets in the run's output: each step's chunks, and those of no step, in sequence
   # order, each scanned after the end of the text before it that a secret may start in.
   # A secret is found once its last byte is stored, and kept where its first byte is.
-  # The end is carried from the step's chunk before, across the events between them when
-  # each one is stored (`between?/3`): a chunk with an event still missing before it starts
-  # a new text, so no two pieces that were not printed together are read as one secret.
+  # The end is carried from the step's chunk before when each event between them is in
+  # this pass or at or below the run's projected sequence, below which none is missing
+  # (`between?/3`). Otherwise the chunk starts a new text: an event that has not arrived,
+  # or one projected in an earlier pass while an earlier event was missing, breaks it.
   defp output_rows(run, chunks, events, times) do
     stored = stored(run, events)
 
@@ -183,9 +185,10 @@ defmodule Apiary.Runs.LeakedSecrets do
   # The end of the step's output stored before `first` that a secret in `first` may start
   # in, with the chunks it is in and the last one's sequence: the step's chunks back from
   # `first` as long as every event between two of them is stored. Read only when `first`
-  # starts with a character a secret is made of.
+  # starts with a character a secret is made of, or with the `[` or `;` of a colour code
+  # that the end of the chunk before cut.
   defp before(run, step, %{sequence: sequence, bytes: <<byte, _::binary>>}, stored)
-       when byte in ?A..?Z or byte in ?a..?z or byte in ?0..?9 or byte in ~c"_.-" do
+       when byte in ?A..?Z or byte in ?a..?z or byte in ?0..?9 or byte in ~c"_.-[;" do
     chunks =
       Repo.all(
         from(l in LogChunk,
