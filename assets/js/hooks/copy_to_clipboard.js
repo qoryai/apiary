@@ -60,7 +60,9 @@ export const CopyToClipboard = {
 // of the line for why it failed.
 async function copyAnswer(url) {
   let failure = null
-  const body = fetch(url, {credentials: "same-origin", headers: {accept: "application/json"}})
+  // No accept header: the route is in the browser pipeline, which takes HTML and `*/*`,
+  // what fetch sends, and refuses `application/json` (406).
+  const body = fetch(url, {credentials: "same-origin"})
     .catch((err) => {
       failure = "failedNetwork"
       throw err

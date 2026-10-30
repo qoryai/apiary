@@ -60,6 +60,17 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
     refute Map.has_key?(document, "machine_logs")
   end
 
+  test "answers the request the run page's Copy diagnostics sends", %{conn: conn, path: path} do
+    # fetch sends `accept: */*` unless told otherwise, and the hook sends no accept header:
+    # the browser pipeline refuses `application/json`.
+    hook = File.read!(Path.expand("../../../assets/js/hooks/copy_to_clipboard.js", __DIR__))
+    refute hook =~ ~r/headers:\s*\{[^}]*accept/i
+
+    conn = conn |> put_req_header("accept", "*/*") |> get(path)
+    assert conn.status == 200
+    assert document(conn)["version"] == 1
+  end
+
   test "is not found for a reader from whom the run's Terminal is hidden", %{
     conn: conn,
     path: path
