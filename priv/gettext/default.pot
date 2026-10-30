@@ -9168,11 +9168,6 @@ msgstr ""
 msgid "Its owner and name, such as acme/shop-integration."
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "Its pages are under %{path}. Renaming the organisation keeps it."
-msgstr ""
-
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -16108,6 +16103,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #, elixir-autogen, elixir-format
 msgid "The address that runs go through when their node or node pool in a workspace of %{organisation} is set to this gateway."
+msgstr ""
+
+#: lib/apiary_web/components/settings_components.ex
+#, elixir-autogen, elixir-format
+msgid "The addresses of %{organisation} change to start with %{new}. Links to %{old} stop working."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

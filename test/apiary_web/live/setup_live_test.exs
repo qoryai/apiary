@@ -208,6 +208,27 @@ defmodule ApiaryWeb.SetupLiveTest do
       refute Setup.set_up?()
     end
 
+    test "refuses a name whose address is a page of Qory Apiary, on the name",
+         %{conn: conn, code: code} do
+      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
+      email = unique_user_email()
+
+      lv
+      |> form("#setup_form", user: params(%{"email" => email, "organisation_name" => "Users"}))
+      |> render_submit()
+
+      assert has_element?(lv, "#setup_form [name='user[organisation_name]'][aria-invalid]")
+
+      assert has_element?(
+               lv,
+               "#setup_form",
+               "Choose another name. /users is a page of Qory Apiary."
+             )
+
+      refute Apiary.Accounts.get_user_by_email(email)
+      refute Setup.set_up?()
+    end
+
     test "a wrong code is a path that does not exist", %{conn: conn, code: code} do
       for wrong <- ["nope", String.duplicate("A", 43), code <> "A"] do
         assert_error_sent(:not_found, fn -> get(conn, ~p"/setup/#{wrong}") end)

@@ -412,6 +412,28 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
 
       refute Apiary.Organisations.has_workspace?(organisation)
     end
+
+    test "refuses a name whose address is taken, on the name, and creates nothing", %{
+      conn: conn
+    } do
+      Apiary.Mail.put_test_source(:env)
+      %{organisation: taken} = sign_up_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      email = unique_user_email()
+
+      for {name, message} <- [
+            {String.upcase(taken.name),
+             "Choose another name. Another organisation has the address /#{taken.slug}."},
+            {"Settings", "Choose another name. /settings is a page of Qory Apiary."}
+          ] do
+        lv
+        |> form("#registration_form", user: %{"email" => email, "organisation_name" => name})
+        |> render_submit()
+
+        assert has_element?(lv, "#registration_form", message)
+        refute Apiary.Accounts.get_user_by_email(email)
+      end
+    end
   end
 
   describe "registration navigation" do
