@@ -920,7 +920,7 @@ defmodule Apiary.Runs do
   filters, the most recently seen first, #{@harness_fetches_max} at most:
   `[%{host:, runs:, attempts:, allowed:, denied:, last_seen_at:, sources:}]`, one row per
   host. `sources` are the harness sources of the host in the harness records of the runs
-  that fetched it, the most runs first (`Apiary.Harnesses.FetchSource`). The filters are
+  that fetched it, the most runs first. The filters are
   the destinations' (`decision`, `target`, `host`, `q`, `tools`, the range). These rows are
   no destination: no count, view, facet, rail or rule option of the destinations reads
   them, and no rule is made from one.

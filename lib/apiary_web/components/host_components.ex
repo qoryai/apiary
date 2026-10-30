@@ -8,9 +8,8 @@ defmodule ApiaryWeb.HostComponents do
   only a lock whose hint says why. The rows are no destination of the page: the page's
   views, counts, facets and rule options never read them.
 
-  **Allowed for every run** (`allowed_hosts/1`), on the Policy page: the hosts Qory
-  Apiary allows for every run (`Apiary.Policy.RequiredHosts`), by group, each with its
-  source and who requires it. A host that is an IP address shows as "Address hidden" to
+  **Allowed for every run** (`allowed_hosts/1`), on the Policy page: the hosts allowed
+  for every run of the workspace, by group, each with its source and who requires it. A host that is an IP address shows as "Address hidden" to
   anyone but an instance admin.
 
   What Forager reported (a harness fetch's host) is untrusted: it is interpolated, never
@@ -99,7 +98,7 @@ defmodule ApiaryWeb.HostComponents do
     """
   end
 
-  attr :groups, :list, required: true, doc: "`Apiary.Policy.RequiredHosts.of/1`'s groups"
+  attr :groups, :list, required: true, doc: "the groups of the workspace's required hosts"
   attr :target_required?, :boolean, required: true
   attr :admin?, :boolean, required: true, doc: "whether the reader is an instance admin"
 
@@ -237,7 +236,7 @@ defmodule ApiaryWeb.HostComponents do
 
   defp ip?(host), do: match?({:ok, _}, :inet.parse_address(String.to_charlist(host)))
 
-  @doc "source_words/1 is the words of a host's source, as `Apiary.Harnesses.FetchSource` and `Apiary.Policy.RequiredHosts` give it."
+  @doc "source_words/1 is the words of a host's source."
   def source_words(:qory), do: gettext("The Qory harness")
 
   def source_words({:repository, name}),
