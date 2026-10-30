@@ -129,20 +129,15 @@ defmodule Apiary.Organisations.Organisation do
     )
   end
 
-  @doc "The error of a name whose address another organisation has."
+  @doc """
+  The error of a name whose address another organisation has, one marked for deletion
+  included: the error does not tell an organisation that another is marked.
+  """
   def taken_address,
     do:
       dgettext_noop(
         "errors",
         "Choose another name. Another organisation has the address %{address}."
-      )
-
-  @doc "The error of a name whose address an organisation marked for deletion has."
-  def marked_address,
-    do:
-      dgettext_noop(
-        "errors",
-        "Choose another name. An organisation marked for deletion still has the address %{address}."
       )
 
   @doc "The error of a name whose address is a page of Qory Apiary."

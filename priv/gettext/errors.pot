@@ -56,11 +56,6 @@ msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another name. An organisation marked for deletion still has the address %{address}."
-msgstr ""
-
-#: lib/apiary/organisations/organisation.ex
-#, elixir-autogen, elixir-format
 msgid "Choose another name. Another organisation has the address %{address}."
 msgstr ""
 

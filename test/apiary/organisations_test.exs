@@ -653,8 +653,9 @@ defmodule Apiary.OrganisationsTest do
       for {name, message} <- [
             {String.upcase(taken.name),
              "Choose another name. Another organisation has the address /#{taken.slug}."},
+            # Marked for deletion, it is not said to be.
             {marked.name <> "!",
-             "Choose another name. An organisation marked for deletion still has the address /#{marked.slug}."},
+             "Choose another name. Another organisation has the address /#{marked.slug}."},
             {"Settings", "Choose another name. /settings is a page of Qory Apiary."},
             {"Users", "Choose another name. /users is a page of Qory Apiary."}
           ] do

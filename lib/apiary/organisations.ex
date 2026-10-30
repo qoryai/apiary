@@ -1480,12 +1480,13 @@ defmodule Apiary.Organisations do
   end
 
   defp refuse_taken_organisation_address(changeset, slug) do
-    holder =
-      Repo.one(
+    # One marked for deletion has the same error as one in use: whether another
+    # organisation is marked is not this organisation's to know.
+    taken? =
+      Repo.exists?(
         from o in Organisation,
           where: o.slug == ^slug,
-          where: ^not_this_organisation(changeset.data.id),
-          select: %{marked: not is_nil(o.deletion_marked_at)}
+          where: ^not_this_organisation(changeset.data.id)
       )
 
     cond do
@@ -1494,12 +1495,7 @@ defmodule Apiary.Organisations do
           address: "/#{slug}"
         )
 
-      match?(%{marked: true}, holder) ->
-        Ecto.Changeset.add_error(changeset, :name, Organisation.marked_address(),
-          address: "/#{slug}"
-        )
-
-      holder ->
+      taken? ->
         Ecto.Changeset.add_error(changeset, :name, Organisation.taken_address(),
           address: "/#{slug}"
         )

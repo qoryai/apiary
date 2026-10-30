@@ -90,10 +90,12 @@ the same list. Two pages follow:
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. The workspace set-up, at `http://localhost:4100/acme/set-up`. Its first page, **What
-   will this workspace do?**, shows the card **Software factory**, whose words this
-   guide uses: select **Choose**. At the step **Name**, keep the name `Main` and select
-   **Create workspace**.
+2. The overview of your organisation, at `http://localhost:4100/acme`. Under **Choose
+   what your first workspace does**, it shows the card **Software factory**, whose words
+   this guide uses: select **Choose**. It creates the workspace *Software factory*, at
+   `http://localhost:4100/acme/software-factory`, and opens its step **Name**. Type the
+   name `Main`, which this guide uses, and select **Save and next**. The workspace's
+   address follows its name, so it moves to `http://localhost:4100/acme/main`.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
@@ -105,7 +107,7 @@ With the `factory` feature, **Connect Qory Apiary** has one step for each adapte
 select **Skip**, or **Continue** where the step is set up already, or set the adapter up
 as [Set up a new instance](install.md#set-up-a-new-instance) shows.
 
-**Create workspace** then opens **Work sources**, the next step of Main's set-up, in place
+**Save and next** then opens **Work sources**, the next step of Main's set-up, in place
 of the overview, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
 to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
 sidebar, but Main's overview has no box for them, and their node does not count for the
@@ -118,7 +120,7 @@ Until it is used nobody can sign up, and anyone who reads the log can use it, so
 as soon as the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
 
 Setting it up created an organisation with the name you gave and your membership as its
-owner, and **Create workspace** created one workspace in it named *Main*. Both can be
+owner, and **Choose** created one workspace in it, which you named *Main*. Both can be
 renamed in their **Settings**, at the foot of the sidebar: the workspace's on any page of
 the workspace, the organisation's on its overview, which its name in the top bar opens. As
 the person who set the instance up you are also its **instance admin**: your organisation
@@ -284,7 +286,7 @@ version.
 <!-- feature: factory -->
 ## 8. Set up Main and run the test
 
-With the `factory` feature, the workspace set-up goes on after **Create workspace**, at
+With the `factory` feature, the workspace set-up goes on after the step **Name**, at
 `http://localhost:4100/acme/set-up?step=<step>&workspace=main`. Until a test run passes,
 opening Main, `http://localhost:4100/acme/main`, opens its next step in place of the
 overview. The list of steps shows a check mark on each step once it is done:
