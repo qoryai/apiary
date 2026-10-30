@@ -202,6 +202,37 @@ defmodule Apiary.Runs.RunCredentials do
 
   def work(_run), do: nil
 
+  @doc false
+  # workspace_hosts/1 is the hosts a run of `workspace` can gain with its work entry: the
+  # hosts of the apply items (`Apiary.Integrations.ApplyTemplates.hosts/1`) of each adapter
+  # whose collection is assigned to the workspace, is live and is on a connected
+  # connection, and whose latest start said its collections have targets and declared apply
+  # items (`form_work/3` takes such a collection). `[%{host:, adapter:}]`, the adapter as
+  # `Apiary.Adapters.title/1` writes it, in the order of the collections' age. A run gains
+  # only the hosts of the one collection it takes. `[]` without the `factory` feature.
+  @spec workspace_hosts(Apiary.Organisations.Workspace.t()) :: [
+          %{host: String.t(), adapter: String.t()}
+        ]
+  def workspace_hosts(%Apiary.Organisations.Workspace{} = workspace) do
+    if Apiary.Features.on?(:factory) do
+      from([c, n, a] in with_adapter(),
+        where: c.organisation_id == ^workspace.organisation_id,
+        where: c.workspace_id == ^workspace.id,
+        where: is_nil(c.ended_at) and n.state == :connected,
+        where: a.targets == true and not is_nil(a.source_apply),
+        order_by: [asc: c.inserted_at, asc: c.id]
+      )
+      |> Repo.all()
+      |> Enum.flat_map(fn {_collection, _connection, adapter} ->
+        for host <- ApplyTemplates.hosts(adapter.source_apply),
+            do: %{host: host, adapter: Apiary.Adapters.title(adapter)}
+      end)
+      |> Enum.uniq()
+    else
+      []
+    end
+  end
+
   defp work_entry(%{name: name, apply: apply, placeholders: placeholders}) do
     Jason.OrderedObject.new(
       [

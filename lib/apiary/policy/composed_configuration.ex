@@ -565,7 +565,40 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   def stack_hosts(nil), do: []
 
-  defp source_host(git) do
+  @doc false
+  # workspace_stack_hosts/1 is the hosts of the harness sources the workspace chooses, as
+  # `stack_hosts/1` writes them for a run: the workspace's harness
+  # (`Apiary.Stacks.Sources.chosen/1`) and the harness chosen for each of its targets
+  # (`Apiary.Stacks.Sources.targets_chosen/1`), each `%{host:, git:, shared:}`, once.
+  # `shared` is true for the harness the organisation shares with its workspaces, false for
+  # a choice made in this workspace, for the workspace or for one of its targets. A run
+  # adds the sources that the pins of its walk name besides. `[]` without the `factory`
+  # feature, as a run of no queue has no stack hosts.
+  @spec workspace_stack_hosts(Apiary.Organisations.Workspace.t()) :: [
+          %{host: String.t(), git: String.t(), shared: boolean}
+        ]
+  def workspace_stack_hosts(%Apiary.Organisations.Workspace{} = workspace) do
+    if Apiary.Features.on?(:factory) do
+      %{git: git, shared: shared} = Apiary.Stacks.Sources.chosen(workspace)
+
+      targets =
+        for {_target, %{git: git}} <- Apiary.Stacks.Sources.targets_chosen(workspace),
+            do: {git, false}
+
+      for {git, shared} <- Enum.uniq_by([{git, shared} | targets], &elem(&1, 0)),
+          is_binary(git),
+          host <- stack_hosts([%{"git" => git}]),
+          do: %{host: host, git: git, shared: shared}
+    else
+      []
+    end
+  end
+
+  @doc false
+  # source_host/1 is the lower-case host of the harness source address `git`, nil for an
+  # address with none.
+  @spec source_host(String.t()) :: String.t() | nil
+  def source_host(git) do
     case URI.parse(git) do
       %URI{host: host} when is_binary(host) -> String.downcase(host)
       _none -> nil

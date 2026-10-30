@@ -108,6 +108,7 @@ msgstr ""
 msgid "%{added} added, %{removed} removed; denies %{deny_added} more and %{deny_removed} fewer."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{allowed} allowed, %{denied} denied"
@@ -3087,6 +3088,11 @@ msgstr ""
 msgid "A harness source exports stacks in the qory.yaml or harness.yaml at its root. Qory Apiary reads that file in the target you pick, and offers only the stacks it exports."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "A hidden harness"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A host whose requests the proxy reads, because the run holds a secret, a tool or path rules for it. Every other host is a blind tunnel."
@@ -3259,6 +3265,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "A run"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "A run also reaches the host of the model provider it uses."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "A run also reaches the hosts of its target's system, of the harness sources its target adds, and of the model provider it uses."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -3899,6 +3915,11 @@ msgstr ""
 msgid "Adding"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Address hidden"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Address of its description.json"
@@ -4170,10 +4191,16 @@ msgstr ""
 msgid "Allowed %{host}"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Allowed / denied"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed for every run"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4647,6 +4674,7 @@ msgstr ""
 msgid "At most 64 characters, and not the name of another adapter here."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
@@ -8157,9 +8185,20 @@ msgstr ""
 msgid "Harness"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Harness fetch"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Harness fetches of this workspace"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Harness sources"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -8224,6 +8263,7 @@ msgstr ""
 msgid "History · Policy"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
@@ -8244,11 +8284,33 @@ msgstr ""
 msgid "Host allowed, no path rule matches."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Host rules do not apply to a harness fetch."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Host rules do not remove this host."
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Hosts"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Hosts allowed for every run"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Hosts that runs reached to fetch their harness, before the first session started. Host rules do not apply to these fetches."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -8603,6 +8665,7 @@ msgid "Integration changed"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
@@ -9387,6 +9450,7 @@ msgstr ""
 msgid "Last runs"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
@@ -10037,6 +10101,7 @@ msgstr ""
 msgid "Model provider key"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/provider_live/show.ex
@@ -11145,6 +11210,11 @@ msgstr ""
 #: lib/apiary_web/controllers/error_html.ex
 #, elixir-autogen, elixir-format
 msgid "Not Found"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not a harness source"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -12737,6 +12807,11 @@ msgstr ""
 msgid "Qory Apiary"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary allows these hosts for every run. Host rules do not remove them."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary cannot read the targets of the %{adapter} adapter: the adapter has no call address. An instance admin sets the call address. The Qory harness needs no call address."
@@ -13260,6 +13335,11 @@ msgstr ""
 msgid "Registered only"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Registry and Qory Apiary"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -13614,6 +13694,11 @@ msgstr ""
 msgid "Repository"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Required by"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Required by %{name}"
@@ -13747,6 +13832,7 @@ msgstr ""
 msgid "Rule"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Rule actions"
@@ -14065,6 +14151,7 @@ msgstr ""
 msgid "Running since"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -14930,6 +15017,11 @@ msgid_plural "Showing %{name} only, on %{list}, and %{last}."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Showing %{shown} of %{total} hosts."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -15104,6 +15196,7 @@ msgstr ""
 msgid "Sort: %{order}"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
@@ -15111,6 +15204,11 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Source"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "Source not recorded"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -15367,6 +15465,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "System"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "System of the target"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
@@ -15859,9 +15962,19 @@ msgstr ""
 msgid "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The Qory harness"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "The Qory harness is the harness Qory publishes. Always the latest version uses the newest version this Qory Apiary ships, and moves on when Qory Apiary is upgraded."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -16140,6 +16253,21 @@ msgstr ""
 msgid "The gateway's name, its kind and its URL."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness could not be read"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness is not read yet"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness source %{source}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The host answered %{status}."
@@ -16160,6 +16288,11 @@ msgstr ""
 msgid "The hosts this workspace's runs may reach, and those they may not."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image registry"
+msgstr ""
+
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "The install took too long and expired. Install it again from Integrations."
@@ -16168,6 +16301,11 @@ msgstr ""
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "The installation couldn't be completed just now. Press Install to try again."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The instance"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -16188,6 +16326,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The integration %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
@@ -16393,6 +16536,11 @@ msgstr ""
 msgid "The mode is observe or enforce."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The model provider %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The name of this organisation, where its pages are, and who owns it."
@@ -16434,6 +16582,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The only owner cannot be removed or demoted until another member is an owner."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's choice"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
@@ -17060,6 +17213,11 @@ msgstr ""
 msgid "This %{item} is no longer in %{workspace}'s Backlog, so it was not taken in."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "This Qory Apiary"
+msgstr ""
+
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "This Qory Apiary is already set up."
@@ -17453,6 +17611,11 @@ msgstr ""
 msgid "This workspace served no run configuration with that digest."
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "This workspace's choice"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace's default gateway."
@@ -17511,6 +17674,11 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "To move the adapter to a new key, get a new command and run it, then revoke the old key once the new one is in use. An adapter holds two keys at most."
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
+#, elixir-autogen, elixir-format
+msgid "To read and change the target"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

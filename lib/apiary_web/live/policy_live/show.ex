@@ -32,6 +32,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
+  import ApiaryWeb.HostComponents, only: [allowed_hosts: 1]
 
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
@@ -144,11 +145,21 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {:ok, %{activity: unwrap(Policy.rule_activity(scope, nil, Common.use_since()))}}
       end)
       |> assign_async(:fact, fn -> {:ok, %{fact: fact(scope, mode)}} end)
+      |> assign_async(:required_hosts, fn -> {:ok, %{required_hosts: required_hosts(scope)}} end)
     else
       socket
       |> assign(:activity, Phoenix.LiveView.AsyncResult.loading())
       |> assign(:fact, Phoenix.LiveView.AsyncResult.loading())
+      |> assign(:required_hosts, Phoenix.LiveView.AsyncResult.loading())
     end
+  end
+
+  # The hosts Qory Apiary allows for every run, for the list under the rules
+  # (`ApiaryWeb.HostComponents.allowed_hosts/1`).
+  defp required_hosts(scope) do
+    scope.workspace
+    |> Apiary.Policy.RequiredHosts.of()
+    |> Map.put(:admin?, Apiary.Access.instance_admin?(scope))
   end
 
   defp unwrap({:ok, value}), do: value
@@ -1482,6 +1493,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
             )}
       </p>
     </section>
+
+    <.allowed_hosts
+      :if={@required_hosts.ok?}
+      groups={@required_hosts.result.groups}
+      target_required?={@required_hosts.result.target_required?}
+      admin?={@required_hosts.result.admin?}
+    />
     """
   end
 
