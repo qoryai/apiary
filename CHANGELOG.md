@@ -573,6 +573,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   (engine_unreachable).” Any other code keeps “did not start: <code>”. For a machine of
   the Qory Pool, the cause line of **Prepare machine** ends with “An instance admin finds
   the cause in the machine log of the Machine started step.”
+- With a private image registry set (`QORY_REGISTRY` and the `registry` feature), Qory
+  Apiary sends each prebuild the image address of its target, under the instance and the
+  organisation, and a run starts only in an image at its organisation's address. A run
+  whose stored image is elsewhere starts in the pool's default image. Without a registry,
+  no prebuild runs, and a target's page shows “Ask an instance admin to set up a registry
+  to build this target's environment image. Until then, runs start in the pool's default
+  image.” A prebuild in a workspace with no policy version runs under Qory Apiary's
+  default policy, in observe mode with the hosts the integrations require, and its run
+  page shows why on **Not a version made in this workspace**.
 
 ### Fixed
 
