@@ -26,8 +26,10 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # this order: the run's `step`, the workspace's `domain`, the run's `access` and
   # `target` (none for a run without a target), its `target_version`, its `work_item`
   # (none for a prebuild), its `run_settings` (none for none, a `Jason.OrderedObject`),
-  # its `workflow`, `harness_hidden` and `harness` (`harness/1`) and its `inputs`. The
-  # claim measures them (`Apiary.Dispatches.Handover`).
+  # its `workflow`, `harness_hidden` and `harness` (`harness/1`), a prebuild's
+  # destinations, `image_destination` and then `environment_destination` or
+  # `environment_image` (`:destinations`, `{name, value}` members, none for any other
+  # run), and its `inputs`. The claim measures them (`Apiary.Dispatches.Handover`).
   @doc false
   @spec documents(%{
           required(:step) => String.t(),
@@ -37,17 +39,20 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:run_settings) => Jason.OrderedObject.t() | nil,
           required(:harness) => harness | nil,
           required(:inputs) => Jason.OrderedObject.t(),
+          optional(:destinations) => [{String.t(), String.t()}],
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
   def documents(%{step: step} = run) do
     work_item = if run.work_item, do: [{"work_item", work_item(run.work_item)}], else: []
     run_settings = if run.run_settings, do: [{"run_settings", run.run_settings}], else: []
+    destinations = Map.get(run, :destinations, [])
 
     Jason.OrderedObject.new(
       [{"step", step}, {"domain", run.domain}] ++
         reach(run.harness, run.target) ++
         target_version(run.harness) ++
-        work_item ++ run_settings ++ harness(run.harness) ++ [{"inputs", run.inputs}]
+        work_item ++
+        run_settings ++ harness(run.harness) ++ destinations ++ [{"inputs", run.inputs}]
     )
   end
 

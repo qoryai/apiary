@@ -51,7 +51,7 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Step, Target}
+  alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, Step, Target}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -186,6 +186,13 @@ defmodule Apiary.Runs.Projector do
     Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
 
     blank = Map.take(%Run{}, @rebuilt_fields)
+    # The secrets found in the log are found again, and those beyond the cap counted again
+    # (`Apiary.Runs.LeakedSecrets`), unless the retention deleted the log's events.
+    blank =
+      if is_nil(current.log_pruned_at),
+        do: Map.put(blank, :leaked_secrets_omitted, 0),
+        else: blank
+
     # The starter's outcome is not folded: it decides the state the run starts again from,
     # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`), and so does an end
     # Qory recorded without one (`Apiary.Runs.Fold.settle/1`).
@@ -335,6 +342,7 @@ defmodule Apiary.Runs.Projector do
         |> Repo.update!(log: false)
 
       insert_log_chunks(run, fold.log_chunks)
+      LeakedSecrets.record_run(run, fold.log_chunks, events)
       upsert_connections(run, fold.connections)
       upsert_steps(run, fold.steps)
       if Enum.any?(events, &(&1.type in @ending)), do: end_open_steps(run)

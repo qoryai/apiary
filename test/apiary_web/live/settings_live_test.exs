@@ -10,7 +10,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    test "renames the organisation on its page and the workspace on its own; the slugs stay",
+    test "renames the organisation and the workspace; each address follows its name",
          %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
@@ -31,9 +31,36 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute page =~ ~r/\b(apiary|apiaries|hive|hives)\b/i
       assert html =~ scope.organisation.name
 
-      html = lv |> form("#organisation-form", organisation: %{name: "Acme"}) |> render_submit()
-      assert html =~ "Organisation renamed to Acme"
-      assert has_element?(lv, "#organisation-slug span", "/#{scope.organisation.slug}")
+      assert render(lv) =~ "It follows the name."
+
+      # Once the name changes, the line says what breaks.
+      name = "Acme #{System.unique_integer([:positive])}"
+      slug = Apiary.Organisations.Slug.from_name(name)
+      old = scope.organisation
+
+      lv |> form("#organisation-form", organisation: %{name: name}) |> render_change()
+
+      assert has_element?(
+               lv,
+               "#organisation-slug",
+               "The addresses of #{old.name} change to start with /#{slug}. " <>
+                 "Links to /#{old.slug} stop working."
+             )
+
+      {:ok, lv, html} =
+        lv
+        |> form("#organisation-form", organisation: %{name: name})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/#{slug}/settings")
+
+      assert html =~ "Organisation renamed to #{name}"
+      assert has_element?(lv, "#organisation-slug span", "/#{slug}")
+      refute has_element?(lv, "#organisation-slug", "stop working")
+
+      # The old address leads nowhere.
+      assert conn |> get(~p"/#{old}/settings") |> response(404) == "Not Found"
+
+      scope = Organisations.load_scope(Scope.for_user(user))
 
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
 
@@ -48,14 +75,50 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#nav-settings[aria-current='true']")
       assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
+      assert render(lv) =~ "It follows the name."
       assert html =~ scope.workspace.name
 
-      html = lv |> form("#workspace-form", workspace: %{name: "Platform"}) |> render_submit()
+      # Once the name changes, the line says what breaks.
+      lv |> form("#workspace-form", workspace: %{name: "Platform"}) |> render_change()
+
+      assert has_element?(
+               lv,
+               "#workspace-slug",
+               "The address changes to /#{scope.organisation.slug}/platform. " <>
+                 "Links to #{workspace_path(scope)} stop working."
+             )
+
+      {:ok, lv, html} =
+        lv
+        |> form("#workspace-form", workspace: %{name: "Platform"})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/platform/settings")
+
       assert html =~ "Workspace renamed to Platform"
+      assert has_element?(lv, "#workspace-slug span", "/#{scope.organisation.slug}/platform")
 
       reloaded = Organisations.load_scope(Scope.for_user(user))
-      assert reloaded.organisation.name == "Acme"
+      assert reloaded.organisation.name == name
       assert reloaded.workspace.name == "Platform"
+      assert reloaded.organisation.slug == slug
+      assert reloaded.workspace.slug == "platform"
+    end
+
+    test "refuses a name with no letter or digit from A to Z or 0 to 9, on the name",
+         %{conn: conn, user: user, scope: scope} do
+      message =
+        "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+          "The address is made from those characters."
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      lv |> form("#organisation-form", organisation: %{name: "株式会社"}) |> render_submit()
+      assert has_element?(lv, "#organisation-form", message)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
+      lv |> form("#workspace-form", workspace: %{name: "Ωμέγα"}) |> render_submit()
+      assert has_element?(lv, "#workspace-form", message)
+
+      reloaded = Organisations.load_scope(Scope.for_user(user))
       assert reloaded.organisation.slug == scope.organisation.slug
       assert reloaded.workspace.slug == scope.workspace.slug
     end
@@ -333,6 +396,19 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       assert Apiary.Repo.get!(Apiary.Organisations.Workspace, owner.scope.workspace.id).log_retention_days ==
                nil
+    end
+
+    test "a crafted check of a new name does not say whether another organisation has its address",
+         %{conn: conn, owner: owner} do
+      %{organisation: other} = sign_up_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.scope.organisation}/settings")
+
+      html =
+        render_change(lv, "validate_organisation", %{"organisation" => %{"name" => other.name}})
+
+      refute html =~ "Another organisation has the address"
+      refute html =~ "stop working"
+      assert has_element?(lv, "#organisation-slug span", "/#{owner.scope.organisation.slug}")
     end
   end
 

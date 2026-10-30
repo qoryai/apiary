@@ -2,8 +2,7 @@ defmodule ApiaryWeb.WorkspaceComponents do
   @moduledoc """
   What a form that creates a workspace shares: its Type field (`type_field/1`), the
   workspace's domain (`Apiary.Lingo.Domain`), which is chosen when the workspace is
-  created and fixed after. The workspace set-up page, `/:org/set-up`, has it, and so may
-  an edition's form for a new workspace.
+  created and fixed after. An edition's form for a new workspace may have it.
   """
   use ApiaryWeb, :html
 

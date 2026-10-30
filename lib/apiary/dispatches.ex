@@ -118,9 +118,10 @@ defmodule Apiary.Dispatches do
   #      that is not deleted, enrolled or not, in a workspace and an organisation in use
   #      (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
   #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by
-  #      the pool it is held for. A run held for the pool's build of its target is not
-  #      taken (`Apiary.Environments.held/1`), nor one that a key change or a cleared
-  #      image held again after that read (`Apiary.Environments.claim_image/2`): it
+  #      the pool it is held for, and only on an instance with a registry
+  #      (`Apiary.Registry.configured?/0`). A run held for the pool's build of its target
+  #      is not taken (`Apiary.Environments.held/1`), nor one that a key change or a
+  #      cleared image held again after that read (`Apiary.Environments.claim_image/2`): it
   #      waits, and so does a run whose harness walk is pending
   #      (`Apiary.Harnesses.WalkJob`). An explore run is given the image its target's build made for the pool,
   #      nil for the pool's default. A run whose work item has no target is taken as any
@@ -1040,9 +1041,10 @@ defmodule Apiary.Dispatches do
   end
 
   # waiting_query/1 is the query of the oldest waiting run the pool of `key` may take,
-  # locked `FOR UPDATE SKIP LOCKED`. A prebuild goes only to the pool it is held for; a
-  # run held for the pool's build of its target (`Apiary.Environments.held/1`) is left
-  # waiting.
+  # locked `FOR UPDATE SKIP LOCKED`. A prebuild goes only to the pool it is held for, only
+  # on an instance with a registry (`prebuild_taken/0`); a run held for the pool's build
+  # of its target
+  # (`Apiary.Environments.held/1`) is left waiting.
   @doc false
   @spec waiting_query(AccessKey.t()) :: Ecto.Query.t()
   def waiting_query(%AccessKey{
@@ -1057,6 +1059,7 @@ defmodule Apiary.Dispatches do
         where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
         where: fragment("? = 'waiting'", r.state),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
+        where: ^prebuild_taken(),
         where: not exists(walk_unresolved()),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
@@ -1087,11 +1090,22 @@ defmodule Apiary.Dispatches do
       as: :run,
       where: fragment("? = 'waiting'", r.state),
       where: ^takes,
+      where: ^prebuild_taken(),
       where: ^in_use_place(),
       where: not exists(walk_unresolved()),
       order_by: [asc: r.queued_at, asc: r.id],
       limit: 1,
       lock: "FOR UPDATE SKIP LOCKED"
+  end
+
+  # The condition, on a run of the queue bound `:run`, that a claim may take it: a run
+  # that is not a prebuild; a prebuild only on an instance with a registry
+  # (`Apiary.Registry.configured?/0`), as its documents have its destinations there
+  # (`Apiary.Dispatches.Handover`). A prebuild that is not taken waits.
+  defp prebuild_taken do
+    if Apiary.Registry.configured?(),
+      do: dynamic([run: _r], true),
+      else: dynamic([run: r], r.step != ^@prebuild)
   end
 
   # The harness walk of a run bound `:run` that has not resolved: pending, or failed, which

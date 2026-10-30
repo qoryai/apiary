@@ -62,6 +62,7 @@ defmodule Apiary.Deletion.Tables do
   # in another workspace go with them (`ON DELETE CASCADE`), their dispatches with those,
   # and the runs registered for them keep no link to them.
   @tables [
+    {"leaked_secrets", :workspace},
     {"log_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},

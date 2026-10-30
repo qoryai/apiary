@@ -1,10 +1,12 @@
 defmodule ApiaryWeb.IntegrationHostsPagesTest do
   @moduledoc """
-  The pages show no integration's host until their words for those hosts are reviewed
-  (`Apiary.Policy.effective/2`): the policy page's rule list, the rule form's reading,
-  Network access and a run's connections tab show a workspace with an integration host
-  as they showed it before the integration was added. Only the version that the change
-  rendered differs, which the sections compared here do not show.
+  The pages' rule lists show no integration's host (`Apiary.Policy.effective/2`): the
+  policy page's rule list, the rule form's reading, Network access and a run's
+  connections tab show a workspace with an integration host as they showed it before the
+  integration was added. Only the version that the change rendered differs, which the
+  sections compared here do not show. The Policy page's "Allowed for every run" list is
+  where those hosts appear, apart from the rules
+  (`ApiaryWeb.PolicyLive.RequiredHostsTest`).
   """
   use ApiaryWeb.ConnCase, async: true
 

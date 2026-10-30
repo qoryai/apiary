@@ -33,6 +33,11 @@ msgstr ""
 msgid "Change the model choices that use the key %{value} first: %{places}."
 msgstr ""
 
+#: lib/apiary/organisations/slug.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a name with at least one letter or digit from A to Z or 0 to 9. The address is made from those characters."
+msgstr ""
+
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a type."
@@ -41,6 +46,32 @@ msgstr ""
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another default key for %{provider} first: %{value} is its default key."
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. %{address} is a page of Qory Apiary."
+msgstr ""
+
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. A workspace marked for deletion still has the address %{address}."
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. Another organisation has the address %{address}."
+msgstr ""
+
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. Another workspace already has the address %{address}."
+msgstr ""
+
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. Another workspace is already named %{name}."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -248,11 +279,6 @@ msgstr ""
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "cannot sign up here without an invitation: ask an owner or an admin of your organisation to invite you"
-msgstr ""
-
-#: lib/apiary/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "could not be signed up just now; please try again"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex

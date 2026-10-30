@@ -213,7 +213,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/model-providers/x1"},
                  {:get, workspace_path(scope, "/settings/model")},
                  # The chooser of set-up's Work sources and Destinations.
-                 {:get, "#{org}/set-up/choose"}
+                 {:get, workspace_path(scope, "/set-up/x1/choose")}
                ] ++
                  for(
                    rest <-
@@ -592,7 +592,10 @@ defmodule ApiaryWeb.FactoryShellTest do
          %{scope: scope} do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
-      assert [:adapters, :nodes, :mail, :configuration] = Enum.take(keys, -4)
+
+      # Diagnostics keys, of the observability feature, come between Nodes and Mail.
+      assert [:adapters, :nodes | rest] = Enum.drop_while(keys, &(&1 != :adapters))
+      assert rest in [[:mail, :configuration], [:diagnostics_keys, :mail, :configuration]]
 
       assert %{label: "Nodes", path: "/instance/nodes", place: :instance} =
                Enum.find(Layouts.instance_sections(admin), &(&1.key == :nodes))

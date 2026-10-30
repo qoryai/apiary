@@ -53,8 +53,9 @@ defmodule ApiaryWeb.SetUpComponents do
      becomes one. First the adapters `QORY_INSTALLED_ADAPTERS` lists, in its order:
      before the installer makes one, its step is `{:installing, name}`, labelled with the
      name, never done, with its page at `/instance/set-up?step=<name>`; then the other
-     adapters, by name. An adapter is done once it is configured; Mail once settings are
-     saved and their test link sent. Where the server's environment sets mail
+     adapters, by name. An adapter is done once it is configured; Mail once mail is on,
+     or the relay accepted the last test link of the settings saved
+     (`Apiary.Mail.sent_or_on?/1`). Where the server's environment sets mail
      (`Apiary.Mail.source/0` is `:env`), there is no Mail step: nothing is left to
      configure. With no adapter either, the list has no step under Connect.
   4. The flow's steps (the list of Apiary.WorkspaceSetup), of the organisation's progress
@@ -63,7 +64,8 @@ defmodule ApiaryWeb.SetUpComponents do
      the `secrets` feature too; without `factory`, Name alone. `flow:` is the flow the
      page sets up (`flow/5`). Without it, the flow of the workspace the scope has once
      the organisation has a workspace, and before, of a new workspace of the default
-     type at `/:org/set-up`, for a person who may create it (`workspace.create`); none
+     type, whose steps lead to the organisation's overview, for a person who may create
+     it (`workspace.create`); none
      for anyone else. Signed out, every step, none done and none with a page, where the
      organisation is still to be made; Name alone where it is the invitation's and has
      no workspace.
@@ -183,8 +185,8 @@ defmodule ApiaryWeb.SetUpComponents do
         :instance
       )
 
-  # Mail is done once settings are saved and their test link sent, followed or not.
-  defp mail_done?, do: Mail.shown().state in [:pending, :on]
+  # Mail is done once it is on, or the relay accepted the last test link, followed or not.
+  defp mail_done?, do: Mail.sent_or_on?(Mail.settings())
 
   # Signed in: the flow of the person's organisation, for the workspace the page sets up.
   # Before the organisation's first workspace exists, only for a person who may create
@@ -229,8 +231,8 @@ defmodule ApiaryWeb.SetUpComponents do
 
   # The flow a page shows without naming one: the workspace the scope has, of its
   # organisation, once the organisation has a workspace; before, a new workspace of the
-  # default type for a person who may create it, at `/:org/set-up`, which shows the type
-  # cards first; else none.
+  # default type for a person who may create it, whose step paths lead to the
+  # organisation's overview and its kind cards; else none.
   defp default_flow(%Scope{organisation: organisation} = scope) do
     cond do
       Organisations.has_workspace?(organisation) ->
@@ -249,9 +251,12 @@ defmodule ApiaryWeb.SetUpComponents do
 
   @typedoc """
   The flow a page sets up (`flow/5`): the organisation, the type of the workspace
-  (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and the page that runs
-  it: `:set_up`, `/:org/set-up`, or `:new`, `/:org/workspaces/new`. `type` is whether
-  the step's paths name the type, as once a card is picked.
+  (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and what the page sets
+  up: `:set_up`, the steps of a workspace, in the workspace
+  (`/:org/:workspace/set-up/<step>`), or `:new`. Before the workspace exists, the steps'
+  paths lead to the organisation's overview, whose kind cards create it. `type` is
+  whether the flow names the type; no page of the core sets it, since a card's
+  **Choose** creates the workspace.
   """
   @type flow :: %{
           organisation: %Organisation{},
@@ -264,7 +269,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
   or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
-  in `opts`, the step's paths name the type, as once a card is picked.
+  in `opts`, the step's paths name the type.
   """
   @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
   def flow(organisation, domain, workspace, page, opts \\ []),
@@ -277,23 +282,15 @@ defmodule ApiaryWeb.SetUpComponents do
     }
 
   @doc """
-  flow_path/2 is the path of the step `id` of `flow`: `?step=<id>`, with the workspace's
-  slug once it exists (`&workspace=<slug>`), and before, the type's name where the flow
-  names it (`&type=<name>`).
+  flow_path/2 is the path of the step `id` of `flow`: once the workspace exists, its page
+  in the workspace, `/:org/:workspace/set-up/<id>`; before, the organisation's overview,
+  `/:org`, whose kind cards create it.
   """
   @spec flow_path(flow, atom) :: String.t()
-  def flow_path(%{organisation: organisation} = flow, id) do
-    query = [step: id] ++ flow_query(flow)
+  def flow_path(%{organisation: organisation, workspace: %Workspace{} = workspace}, id),
+    do: ~p"/#{organisation}/#{workspace}/set-up/#{id}"
 
-    case flow.page do
-      :new -> ~p"/#{organisation}/workspaces/new?#{query}"
-      :set_up -> ~p"/#{organisation}/set-up?#{query}"
-    end
-  end
-
-  defp flow_query(%{workspace: %Workspace{slug: slug}}), do: [workspace: slug]
-  defp flow_query(%{type: true, domain: domain}), do: [type: domain.name()]
-  defp flow_query(_flow), do: []
+  def flow_path(%{organisation: organisation}, _id), do: ~p"/#{organisation}"
 
   # The flow's steps the scope's person sees, nil signed out: every step with the
   # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
@@ -381,18 +378,30 @@ defmodule ApiaryWeb.SetUpComponents do
     end
   end
 
-  @doc """
-  set_up_path/1 is where a link to the scope's workspace leads while its set-up is not
-  finished: the first step of the flow that is not done, on `/:org/set-up`
-  (`flow_path/2`). The set-up is finished once the test run passed, the Test run step's
-  rule in Apiary.WorkspaceSetup. Nil once it is, where the reader sees no Test run step
-  (without the `factory` feature), and for a scope without a workspace.
-
-  While the set-up is finished it reads one rule, the Test run step's; before, the rules
-  of the steps up to the one it returns.
+  @typedoc """
+  The set-up of a workspace while it is not finished (`workspace_set_up/1`): the flow's steps the
+  reader sees, in order, each with its name, its page and whether it is done by its rule;
+  how many are done, of how many; and the next step, the first that is not done.
   """
-  @spec set_up_path(Scope.t() | nil) :: String.t() | nil
-  def set_up_path(
+  @type workspace_set_up :: %{
+          steps: [%{id: atom, label: String.t(), path: String.t(), done: boolean}],
+          done: non_neg_integer,
+          total: pos_integer,
+          next: %{id: atom, label: String.t(), path: String.t(), done: boolean}
+        }
+
+  @doc """
+  workspace_set_up/1 is the set-up of the scope's workspace while it is not finished
+  (`t:workspace_set_up/0`): the workspace sidebar's group Set up, the Overview's list and the
+  organisation overview's line read it. The set-up is finished once the test run passed,
+  the Test run step's rule in Apiary.WorkspaceSetup. Nil once it is, where the reader sees
+  no Test run step (without the `factory` feature), and for a scope without a workspace.
+
+  While the set-up is finished it reads one rule, the Test run step's; before, the rule of
+  every step.
+  """
+  @spec workspace_set_up(Scope.t() | nil) :: workspace_set_up | nil
+  def workspace_set_up(
         %Scope{organisation: %Organisation{} = organisation, workspace: %Workspace{} = workspace} =
           scope
       ) do
@@ -400,19 +409,41 @@ defmodule ApiaryWeb.SetUpComponents do
 
     if :test in ids and not WorkspaceSetup.test?(workspace) do
       domain = Domain.for_workspace(workspace)
+      flow = flow(organisation, domain, workspace, :set_up)
 
-      next =
-        Enum.find(
-          ids,
-          :test,
-          &(&1 != :test and not WorkspaceSetup.done?(&1, organisation, {domain, workspace}))
-        )
+      steps =
+        for id <- ids do
+          %{
+            id: id,
+            label: step_label(id),
+            path: flow_path(flow, id),
+            done: id != :test and WorkspaceSetup.done?(id, organisation, {domain, workspace})
+          }
+        end
 
-      flow_path(flow(organisation, domain, workspace, :set_up), next)
+      %{
+        steps: steps,
+        done: Enum.count(steps, & &1.done),
+        total: length(steps),
+        next: Enum.find(steps, List.last(steps), &(not &1.done))
+      }
     end
   end
 
-  def set_up_path(_scope), do: nil
+  def workspace_set_up(_scope), do: nil
+
+  @doc """
+  set_up_path/1 is the page of the next step of the scope's workspace's set-up while it is
+  not finished: the first step of the flow that is not done (`workspace_set_up/1`). Nil once it is
+  finished, where the reader sees no Test run step, and for a scope without a workspace.
+  """
+  @spec set_up_path(Scope.t() | nil) :: String.t() | nil
+  def set_up_path(scope) do
+    case workspace_set_up(scope) do
+      nil -> nil
+      %{next: next} -> next.path
+    end
+  end
 
   ## The frame
 
@@ -614,7 +645,7 @@ defmodule ApiaryWeb.SetUpComponents do
   defp step_id(_step), do: nil
 
   defp patch?(path, page) when is_binary(path) and is_binary(page),
-    do: URI.parse(path).path == page
+    do: same_page?(path, page)
 
   defp patch?(_path, _page), do: false
 
@@ -651,6 +682,16 @@ defmodule ApiaryWeb.SetUpComponents do
     """
   end
 
+  @doc false
+  # same_page?/2 is whether `path` opens in the LiveView of `page`, so a link to it is a
+  # patch: the same path, or, for a workspace's set-up, `/:org/:workspace/set-up`, a step
+  # under it.
+  @spec same_page?(String.t(), String.t()) :: boolean
+  def same_page?(path, page) do
+    at = URI.parse(path).path
+    at == page or (String.ends_with?(page, "/set-up") and String.starts_with?(at, page <> "/"))
+  end
+
   ## Parts of a step
 
   slot :inner_block, required: true, doc: "the title"
@@ -669,6 +710,124 @@ defmodule ApiaryWeb.SetUpComponents do
     </div>
     """
   end
+
+  ## The kind cards
+
+  @doc """
+  kind_cards/1 is the choice of what a new workspace does: one card per domain of
+  `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
+  type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
+  connect, and Choose, which sends the event `choose_kind` with the domain's name as
+  `type`. The empty organisation overview (`ApiaryWeb.OrganisationLive`) and New
+  workspace (`/:org/workspaces/new`) show it, and each takes the event with
+  `choose_kind/3`. With `limit`, that line shows in place of the cards.
+  """
+  attr :id, :string, default: "set-up-cards"
+  attr :title, :string, required: true
+  attr :heading, :string, default: "h1", values: ~w(h1 h2)
+  attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
+
+  def kind_cards(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :cards,
+        for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
+      )
+
+    ~H"""
+    <div class="grid gap-4">
+      <.dynamic_tag
+        tag_name={@heading}
+        id={"#{@id}-title"}
+        class="text-2xl/8 font-semibold tracking-[-0.025em]"
+      >
+        {@title}
+      </.dynamic_tag>
+      <.notice :if={@limit} kind={:error}>
+        <span id="set-up-limit">{@limit}</span>
+      </.notice>
+      <ul :if={!@limit} id={@id} class="grid gap-3">
+        <li
+          :for={{domain, card} <- @cards}
+          id={"set-up-card-#{domain.name()}"}
+          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+        >
+          <h2 class="font-semibold">{domain.type_name()}</h2>
+          <p class="text-[13.5px]/5">{card.what}</p>
+          <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
+          <div class="flex justify-end">
+            <.button
+              id={"set-up-card-#{domain.name()}-choose"}
+              variant="primary"
+              size="md"
+              phx-click="choose_kind"
+              phx-value-type={domain.name()}
+              phx-disable-with={gettext("Creating")}
+            >
+              {gettext("Choose")}
+            </.button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # The words of a domain's card, nil for a domain without one, which shows no card. A
+  # person reads a card's line where they pick a type, in any locale, so the line is in the
+  # `workspace type` context and keeps the type's words.
+  defp kind_card_words(Domain.Software) do
+    %{
+      what: pgettext("workspace type", "Agents change code in your repositories."),
+      connect: gettext("You connect: where work comes from, where changes go, a model.")
+    }
+  end
+
+  defp kind_card_words(_domain), do: nil
+
+  @doc """
+  choose_kind/3 takes Choose of a kind card (`kind_cards/1`) on `socket`'s page: it creates
+  a workspace of that type in the scope's organisation, named after the type
+  (`Apiary.Organisations.create_workspace_of_kind/3`, with `which`, `:first` on the empty
+  organisation overview), and opens its first set-up step, Name. A type with no card
+  changes nothing. Where someone else created the organisation's first workspace a moment
+  before, or the person may no longer create one, the organisation's overview opens
+  again; where the organisation may have no more, the page says so.
+  """
+  @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
+          Phoenix.LiveView.Socket.t()
+  def choose_kind(socket, type, which) do
+    scope = socket.assigns.current_scope
+    organisation = scope.organisation
+
+    case Enum.find(Domain.choices(), &(&1.name() == type and kind_card_words(&1) != nil)) do
+      nil ->
+        socket
+
+      domain ->
+        case Organisations.create_workspace_of_kind(scope, domain, which) do
+          {:ok, workspace} ->
+            Phoenix.LiveView.push_navigate(socket,
+              to: flow_path(flow(organisation, domain, workspace, :set_up), :name)
+            )
+
+          {:error, :limit} ->
+            Phoenix.LiveView.put_flash(socket, :error, limit_line(organisation))
+
+          {:error, reason} when reason in [:exists, :forbidden, :not_found] ->
+            Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+          {:error, _changeset} ->
+            Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+        end
+    end
+  end
+
+  @doc "limit_line/1 is the line of an organisation that may have no more workspaces."
+  @spec limit_line(%Organisation{}) :: String.t()
+  def limit_line(%Organisation{name: name}),
+    do: gettext("%{organisation} may have no more workspaces.", organisation: name)
 
   attr :id, :string, required: true
   attr :title, :string, required: true, doc: "where the steps happen, such as \"On GitHub\""

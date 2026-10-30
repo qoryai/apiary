@@ -117,7 +117,15 @@ The web side is under `lib/apiary_web/`:
   carries the workspace the user opened last while they reach it, else the first they
   reach, or none. The names a slug can never be are in `reserved_slugs.ex`, with the
   edition's, and a new top-level path or organisation page is added there in the same
-  change.
+  change. A slug follows the name: renaming an organisation or a workspace changes its
+  slug, and the old addresses lead nowhere, with no redirect
+  (`Apiary.Organisations.update_organisation/2`, `update_workspace/2`). Jobs and PubSub
+  topics name an organisation or a workspace by its id, and so does the session, but for
+  one address: the page a signed-out visitor asked for, kept as its path, slugs
+  included, until they log in (`:user_return_to`, `ApiaryWeb.UserAuth`). After a rename
+  that path leads to Not Found, as any old link does. An adapter's set-up pass contains
+  the organisation's slug only to suggest a name at the other system
+  (`Apiary.Adapters.SetupPass`).
 - `content_security_policy.ex`: the `content-security-policy` the endpoint puts on every
   answer of the router and on `/docs`, with a fresh nonce per request (`@csp_nonce`):
   only the console's bundles and scripts that carry the nonce run, and no page writes
@@ -213,11 +221,10 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   organisation (`c:Apiary.Edition.instance_organisation_id/0`; in the core's edition,
   the oldest organisation in use), named by the sign-up form's organisation name, with
   the person as its owner, the instance's first admin, and nothing else; the edition is
-  told so (`:first_sign_up`). By the set-up link it has no workspace (`workspace:
-  false`): on the workspace set-up page, `/:org/set-up`, its owner picks the type on a
-  card, then creates the workspace at the step Name, whose field reads **Main**
-  (`Apiary.Organisations.create_first_workspace/2`). By the
-  release command it has **Main**. It is the set-up's or the
+  told so (`:first_sign_up`). By the set-up link and by the release command it has no
+  workspace (`workspace: false`): on the organisation's overview, `/:org`, its owner
+  chooses a kind on a card, which creates the workspace, named after the kind
+  (`Apiary.Organisations.create_workspace_of_kind/3`). It is the set-up's or the
   release command's alone (`first_only: true`, `actor: :instance`; The set-up link,
   below); any other sign-up before it is `{:error, :not_set_up}`. Whether a sign-up is
   the first is read inside its transaction: when no organisation is the instance's yet,
@@ -232,10 +239,11 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   `:closed`) is what the page offers, and the sign-up asks again before it creates
   anything. A sign-up with an invitation creates no organisation. An organisation the
   sign-up page creates has no workspace either (`workspace: false`): its owner lands on
-  the workspace set-up page and creates its first workspace there, as after the set-up
+  the organisation's overview and creates its first workspace there, as after the set-up
   link.
 - **One way to create an organisation.** `Apiary.Organisations.build_organisation/2` is
-  the one way, for a sign-up and for each of an edition's ways: the slug, the workspace
+  the one way, for a sign-up and for each of an edition's ways: the slug, made from the
+  name (a sign-up refuses a name whose slug is taken, `taken: :refuse`), the workspace
   Main unless `workspace: false`, the owner membership, the edition's steps and the entry
   that begins its trail.
 - **The instance admins** are the owners of the instance's organisation

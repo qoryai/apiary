@@ -50,7 +50,11 @@ defmodule Apiary.Races do
   @doc "Checks the test's connection out outside the sandbox, and deletes on exit what it made: for `setup`."
   def setup_races(_context) do
     :ok = Sandbox.checkout(Repo, sandbox: false)
-    {:ok, created} = Agent.start(fn -> %{organisations: [], users: []} end)
+    settings? = Repo.exists?(from s in "instance_settings", select: 1)
+
+    {:ok, created} =
+      Agent.start(fn -> %{organisations: [], users: [], settings?: settings?} end)
+
     Process.put(__MODULE__, created)
     on_exit(fn -> clean_up(created) end)
     :ok
@@ -103,8 +107,10 @@ defmodule Apiary.Races do
   """
   @spec created(map) :: map
   def created(%{organisation: organisation, user: user} = fixture) do
-    Agent.update(Process.get(__MODULE__), fn %{organisations: organisations, users: users} ->
-      %{organisations: [organisation.id | organisations], users: [user.id | users]}
+    Agent.update(Process.get(__MODULE__), fn made ->
+      made
+      |> Map.update!(:organisations, &[organisation.id | &1])
+      |> Map.update!(:users, &[user.id | &1])
     end)
 
     fixture
@@ -114,8 +120,15 @@ defmodule Apiary.Races do
   # of the accounts (`Apiary.EditionKit.forget_accounts/1`), then the accounts.
   defp clean_up(created) do
     :ok = Sandbox.checkout(Repo, sandbox: false)
-    %{organisations: organisations, users: users} = Agent.get(created, & &1)
+
+    %{organisations: organisations, users: users, settings?: settings?} =
+      Agent.get(created, & &1)
+
     Agent.stop(created)
+
+    # The instance's row a claim made for the registry's name of the instance
+    # (`Apiary.InstanceConfig.registry_instance/0`), where the test began without one.
+    unless settings?, do: Repo.query!("DELETE FROM instance_settings")
 
     Repo.delete_all(from o in Organisation, where: o.id in ^organisations)
     Repo.delete_all(from p in PurgedOrganisation, where: p.id in ^organisations)

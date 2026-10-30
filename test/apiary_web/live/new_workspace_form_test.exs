@@ -9,7 +9,6 @@ defmodule ApiaryWeb.NewWorkspaceFormTest.FormLive do
     ~H"""
     <.form for={@form} id="new-workspace" phx-change="validate" phx-submit="save">
       <.input field={@form[:name]} type="text" label="Name" />
-      <.input field={@form[:slug]} type="text" label="Slug" />
       <.input
         field={@form[:domain]}
         type="radio"
@@ -52,7 +51,7 @@ defmodule ApiaryWeb.NewWorkspaceFormTest do
   @moduledoc """
   A form that creates a workspace through `Apiary.Organisations.change_new_workspace/2`
   and `create_workspace/2`, as an edition's New workspace page does: its type is a radio
-  group with no choice made, its name and its slug text fields. The core has no such page,
+  group with no choice made, and its name a text field. The core has no such page,
   so the test draws one.
   """
   use ApiaryWeb.ConnCase, async: true
@@ -106,12 +105,12 @@ defmodule ApiaryWeb.NewWorkspaceFormTest do
     refute has_element?(lv, "#created")
   end
 
-  test "a form sent with no type and a taken name and slug shows all three errors",
+  test "a form sent with no type and a taken name shows both errors",
        %{scope: scope, main: main} do
     {:ok, lv, _html} = open(scope)
 
     lv
-    |> form("#new-workspace", workspace: %{name: main.name, slug: main.slug})
+    |> form("#new-workspace", workspace: %{name: main.name})
     |> render_submit()
 
     assert has_element?(lv, "#workspace_domain-error", "Choose a type.")
@@ -119,14 +118,26 @@ defmodule ApiaryWeb.NewWorkspaceFormTest do
     assert has_element?(
              lv,
              "#workspace_name-error",
-             "is already the name of a workspace in this organisation"
+             "Choose another name. A workspace marked for deletion still has the address /#{scope.organisation.slug}/main."
            )
+  end
+
+  test "a name with no letter or digit from A to Z or 0 to 9 is refused, on the name",
+       %{scope: scope} do
+    {:ok, lv, _html} = open(scope)
+
+    lv
+    |> form("#new-workspace", workspace: %{name: "株式会社", domain: "example"})
+    |> render_submit()
 
     assert has_element?(
              lv,
-             "#workspace_slug-error",
-             "is already the slug of a workspace in this organisation"
+             "#workspace_name-error",
+             "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+               "The address is made from those characters."
            )
+
+    refute has_element?(lv, "#created")
   end
 
   test "a type chosen and a free name create the workspace", %{scope: scope} do

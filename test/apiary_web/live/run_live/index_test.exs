@@ -672,6 +672,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#runs-preview h2", "refused")
       refute has_element?(view, "#runs-preview dt", "Duration")
 
+      assert text(view, "#runs-preview .q-st-code") ==
+               "The run's settings did not pass a check on the machine (image_unknown)."
+
       render_hook(view, "select", %{"id" => silent.public_id})
       render_async(view)
       assert has_element?(view, "#runs-preview h2", "silent")

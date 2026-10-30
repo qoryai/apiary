@@ -96,7 +96,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpInstallingTest do
     # Passed by ?step=mail: skipped.
     assert {key, :skipped} in shape(SetUpComponents.steps_for(admin, :mail))
 
-    # On the workspace set-up, `/<org>/set-up`: to come, never skipped.
+    # On the workspace set-up, `/<org>/<workspace>/set-up/<step>`: to come, never skipped.
     assert [{:account, :done}, {^key, :to_come}, {:mail, _} | _] =
              shape(SetUpComponents.steps_for(admin, :source))
 

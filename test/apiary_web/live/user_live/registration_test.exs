@@ -358,7 +358,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       refute render(lv) =~ "Choose a password to sign in with."
     end
 
-    test "creates the organisation with no workspace, and lands its owner on its set-up", %{
+    test "creates the organisation with no workspace, and lands its owner on its overview", %{
       conn: conn
     } do
       Apiary.Mail.put_test_source(:none)
@@ -387,7 +387,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
         Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
 
       refute Apiary.Organisations.has_workspace?(organisation)
-      assert redirected_to(conn) == ~p"/#{organisation}/set-up"
+      assert redirected_to(conn) == ~p"/#{organisation}"
     end
 
     test "with mail, creates the organisation with no workspace too", %{conn: conn} do
@@ -411,6 +411,31 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
         Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
 
       refute Apiary.Organisations.has_workspace?(organisation)
+    end
+
+    test "refuses a name whose address is taken, on the name, and creates nothing", %{
+      conn: conn
+    } do
+      Apiary.Mail.put_test_source(:env)
+      %{organisation: taken} = sign_up_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      email = unique_user_email()
+
+      for {name, message} <- [
+            {String.upcase(taken.name),
+             "Choose another name. Another organisation has the address /#{taken.slug}."},
+            {"Settings", "Choose another name. /settings is a page of Qory Apiary."},
+            {"株式会社",
+             "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+               "The address is made from those characters."}
+          ] do
+        lv
+        |> form("#registration_form", user: %{"email" => email, "organisation_name" => name})
+        |> render_submit()
+
+        assert has_element?(lv, "#registration_form", message)
+        refute Apiary.Accounts.get_user_by_email(email)
+      end
     end
   end
 

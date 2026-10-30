@@ -265,6 +265,25 @@ defmodule ApiaryWeb.RunComponentsTest do
                nil
     end
 
+    test "a release reason with a secret in it reads filtered, in the words and the end reason" do
+      secret = "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+
+      released = %Apiary.Runs.Run{
+        state: "failed",
+        start_failed_at: ~U[2026-10-30 12:00:00Z],
+        reason: "machine_not_made",
+        start_failure: "machine_not_made",
+        dispatch: %Apiary.Dispatches.Dispatch{release_reason: "Key #{secret} refused"}
+      }
+
+      assert RunComponents.reason_words(released) ==
+               "No machine was made: Key [FILTERED] refused."
+
+      html = render_component(&RunComponents.end_reason/1, run: released)
+      assert html =~ "No machine was made: Key [FILTERED] refused."
+      refute html =~ "qak_"
+    end
+
     test "a reason stored under its earlier name reads as the new one" do
       for {earlier, now} <- [
             {"issuer_unreachable", "credential_check_unreachable"},
@@ -302,7 +321,19 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "a run stored as refused, failed with no exit and the code as its reason, did not start" do
       refused = %Apiary.Runs.Run{state: "failed", exited_at: nil, reason: "image_unknown"}
-      assert RunComponents.reason_words(refused) == "did not start: image_unknown"
+
+      assert RunComponents.reason_words(refused) ==
+               "The run's settings did not pass a check on the machine (image_unknown)."
+
+      assert RunComponents.reason_words(%{refused | reason: "model_key_missing"}) ==
+               "did not start: model_key_missing"
+
+      assert RunComponents.reason_words(%{refused | reason: "engine_unreachable"}) ==
+               "The machine could not check an earlier run's container (engine_unreachable)."
+
+      for code <- ~w(image_missing mount_shared_with_run mount_through_link) do
+        assert RunComponents.reason_words(%{refused | reason: code}) == "did not start: #{code}"
+      end
 
       assert RunComponents.reason_words(%{refused | reason: "issuer_unreachable"}) ==
                "did not start: credential_check_unreachable"
@@ -314,9 +345,9 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(exited) == "no longer needed"
     end
 
-    test "a run refused at its start did not start, its code as given" do
+    test "a run refused at its start: a check of its settings, or it did not start, its code as given" do
       assert RunComponents.reason_words(%{refused: "image_unknown"}) ==
-               "did not start: image_unknown"
+               "The run's settings did not pass a check on the machine (image_unknown)."
 
       assert RunComponents.reason_words(%{refused: "example_server_code"}) ==
                "did not start: example_server_code"
@@ -420,7 +451,12 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       for code <- refusals do
         words = RunComponents.reason_words(%{refused: code})
-        assert words =~ "did not start: " and not (words =~ "issuer"), code
+
+        assert words =~ "did not start: " or words =~ "did not pass a check on the machine (" or
+                 words =~ "could not check an earlier run's container (",
+               code
+
+        refute words =~ "issuer", code
       end
 
       for reason <- reasons -- ["run_closed", "batch_refused"] do

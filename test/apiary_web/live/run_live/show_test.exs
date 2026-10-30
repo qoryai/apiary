@@ -275,6 +275,50 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, ~s(#run-menu-raw[href="#{log}"][target="_blank"]), "Raw log")
       assert has_element?(lv, ~s(#run-menu-download[href="#{log}?download=1"][download]))
+
+      # Copy diagnostics, beside Copy run id: the hook reads the run's document and copies it.
+      diagnostics = "#{workspace_path(scope)}/runs/#{run.public_id}/diagnostics"
+
+      assert has_element?(
+               lv,
+               ~s(#run-menu-diagnostics[phx-hook="CopyToClipboard"][data-copy-url="#{diagnostics}"]),
+               "Copy diagnostics"
+             )
+
+      # The line a failed copy writes is outside the menu, empty until a copy fails.
+      assert lv |> element("#run-menu-status[role=status]") |> render() =~
+               ~r{\A<p[^>]*></p>\z}
+
+      refute has_element?(lv, "#run-menu-diagnostics [aria-live]")
+      assert has_element?(lv, ~s(#run-menu-diagnostics[data-status="#run-menu-status"]))
+
+      # A line for each way the copy can fail, which the hook writes there instead.
+      for {cause, line} <- [
+            {"network",
+             "Check your connection, then copy again. The diagnostics did not arrive."},
+            {"gone",
+             "Reload the page, then copy again. This run, or your access to its log, is gone."},
+            {"signed-out", "Sign in again, then copy again. Your session ended."},
+            {"server",
+             "Copy again in a minute. Qory Apiary could not build the diagnostics. " <>
+               "If it fails again, tell your instance admin."},
+            {"clipboard",
+             "Allow this page to use the clipboard, then copy again. " <>
+               "The browser did not allow the copy."}
+          ] do
+        assert has_element?(lv, ~s(#run-menu-diagnostics[data-failed-#{cause}="#{line}"])),
+               cause
+      end
+
+      ids =
+        lv
+        |> element("#run-menu ul")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("li > [id]")
+        |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+
+      assert ["run-menu-copy", "run-menu-diagnostics" | _] = ids
     end
 
     test "Details is beside every tab, Terminal too", %{conn: conn, scope: scope} do
@@ -868,7 +912,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, _lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
-      assert html =~ "on an engine inside a virtual machine"
+      assert html =~ "it ran behind runs inside a virtual machine. The run has a terminal"
       assert html =~ "Only the result, read from the runtime&#39;s output, is shown."
     end
 
@@ -994,6 +1038,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-menu-copy[data-copy="#{run.public_id}"]))
       refute has_element?(lv, "#run-menu-raw")
       refute has_element?(lv, "#run-menu-download")
+      # Copy diagnostics copies the log, so it is not offered either.
+      refute has_element?(lv, "#run-menu-diagnostics")
+      refute html =~ "/runs/#{run.public_id}/diagnostics"
       refute html =~ "/runs/#{run.public_id}/log"
       refute html =~ "/runs/#{run.public_id}/terminal"
 
@@ -1123,8 +1170,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          "Session events exist only for Claude Code. This run used make, so it has connections and no timeline.",
          "Session events exist only for Claude Code. This run used make, so it has a terminal and connections, and no timeline."},
         {walled,
-         "where the runtime's hook socket does not reach Forager. It has connections and no session timeline.",
-         "where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline."},
+         "This run's session events could not be recorded: the wall it ran behind runs inside a virtual machine. The run has connections and no session timeline.",
+         "This run's session events could not be recorded: the wall it ran behind runs inside a virtual machine. The run has a terminal and connections, and no session timeline."},
         {no_hooks,
          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its connections.",
          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."}
@@ -2681,7 +2728,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#rail-reason")
     end
 
-    test "a run refused at its start: Failed, it did not start and its code, after the state and under it",
+    test "a run refused at its start: Failed, the check of its settings and its code, after the state and under it",
          %{conn: conn, scope: scope} do
       run =
         projected(scope, [
@@ -2697,10 +2744,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(
                lv,
                "#run-meta #run-state + #run-reason",
-               "did not start: image_unknown"
+               "The run's settings did not pass a check on the machine (image_unknown)."
              )
 
-      assert has_element?(lv, "#run-facts #rail-reason", "did not start: image_unknown")
+      assert has_element?(
+               lv,
+               "#run-facts #rail-reason",
+               "The run's settings did not pass a check on the machine (image_unknown)."
+             )
+    end
+
+    test "a run refused because its machine could not check an earlier run's container: those words, the code in mono",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.refused", %{"code" => "engine_unreachable"}}
+        ])
+
+      {:ok, lv, _html} = run_page(conn, scope, run)
+
+      for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
+        assert words_of(lv, reason) ==
+                 "The machine could not check an earlier run's container (engine_unreachable)."
+
+        assert words_of(lv, "#{reason} .font-mono") == "engine_unreachable"
+      end
     end
 
     test "the timeline's last item: Run ended for every end, its mark the state's", %{
@@ -3090,8 +3159,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         {:ok, lv, _html} = run_page(conn, scope, run)
 
         assert words_of(lv, "#run-meta #run-state") == "Failed"
-        assert words_of(lv, "#run-meta #run-reason") == "did not start: image_unknown"
-        assert words_of(lv, "#run-facts #rail-reason") == "did not start: image_unknown"
+
+        assert words_of(lv, "#run-meta #run-reason") ==
+                 "The run's settings did not pass a check on the machine (image_unknown)."
+
+        assert words_of(lv, "#run-facts #rail-reason") ==
+                 "The run's settings did not pass a check on the machine (image_unknown)."
+
         # the code in mono, as the timeline's item has it; the words around it are not
         for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
           assert words_of(lv, "#{reason} .font-mono") == "image_unknown"

@@ -68,6 +68,8 @@ checkout's origin remote ([The Forager file's `server` section](forager-file.md)
 A repository with no rules and no mode override is served the workspace baseline, and so is a run
 that names no repository.
 
+**Allowed for every run**, under the rules, lists the hosts Qory Apiary allows for every run, each locked; no host rule removes one.
+
 Every list of rules is read the same way, however long it grows: views **All**,
 **Allowed**, **Denied** and **Locked** with their counts; a field that finds a host and
 holds the chosen filters as words (`seen:no`, `paths:held`, `by:dana`; on a repository's

@@ -1495,23 +1495,8 @@ defmodule ApiaryWeb.HarnessComponents do
   def exports_source(%{git: git, pin: pin}),
     do: %{git: git, ref: pin || "HEAD", narrowing: %{}, label: repository(git)}
 
-  # A harness's address without its scheme, as a credential-free address shows.
-  defp address(git), do: git |> Document.shown() |> String.replace_prefix("https://", "")
-
-  # The repository path of a harness's address, such as `acme/web-harness` for
-  # `https://code.example.com/acme/web-harness.git`; else the address as shown.
-  defp repository(git) when is_binary(git) do
-    with %URI{host: host, path: "/" <> _ = path} when is_binary(host) and host != "" <-
-           URI.parse(git),
-         trimmed when trimmed != "" <-
-           path |> String.trim("/") |> String.replace_suffix(".git", "") do
-      trimmed
-    else
-      _other -> address(git)
-    end
-  end
-
-  defp repository(_git), do: ""
+  # The repository path of a harness's address (`Apiary.Stacks.Document.repository/1`).
+  defp repository(git), do: Document.repository(git)
 
   # Whether `ref` is a full commit id, 40 or 64 lower-case hex digits, as a pin is.
   defp commit?(ref) when is_binary(ref),

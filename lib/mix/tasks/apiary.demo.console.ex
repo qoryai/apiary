@@ -441,7 +441,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   defp scope_of_second(owner, %Scope{workspace: workspace}), do: scope!(owner, workspace.slug)
 
   # The instance's set-up, as its set-up link makes it, and Main, a software workspace, as
-  # the workspace set-up page makes it; then a log-in link followed, which confirms the
+  # an owner creates it; then a log-in link followed, which confirms the
   # address, and a password set, as Settings would.
   defp sign_up!() do
     {:ok, %{user: user}} =

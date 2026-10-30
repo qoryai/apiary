@@ -539,10 +539,12 @@ defmodule Apiary.NodeAccessKeysTest do
 
       assert length(Enum.uniq(prefixes)) == 3
 
-      # Every kind's prefix is the contract's pattern's, and no two kinds share one.
+      # Every kind's prefix is the contract's pattern's but a diagnostics key's, which
+      # is outside that pattern, and no two kinds share one.
       all = EnrolmentCode.prefixes() |> Map.values()
       assert length(Enum.uniq(all)) == map_size(EnrolmentCode.prefixes())
-      for prefix <- all, do: assert(prefix =~ ~r/\Aqec[npgi]_\z/)
+      for prefix <- all -- ["qecd_"], do: assert(prefix =~ ~r/\Aqec[npgi]_\z/)
+      assert EnrolmentCode.prefix(:diagnostics) == "qecd_"
     end
 
     test "a label hint is a name Forager would send", ctx do

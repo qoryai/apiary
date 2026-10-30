@@ -409,6 +409,48 @@ defmodule Apiary.SetupTest do
       assert {^code, nil} = stored()
     end
 
+    test "claim/3 makes the instance's organisation and its admin, no workspace" do
+      assert {:ok, %User{} = user, _sent} =
+               Setup.claim("claim@example.com", "Acme", %{worker: "a test"})
+
+      organisation = Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+      assert organisation.name == "Acme"
+      assert Access.instance_admin?(Scope.for_user(user))
+      refute Organisations.has_workspace?(organisation)
+      assert Repo.all(from w in Workspace, where: w.organisation_id == ^organisation.id) == []
+    end
+
+    test "the release command's claim refuses a name whose address is a page, and says so" do
+      code = Setup.code!()
+
+      assert {{:error, :invalid}, output} =
+               ExUnit.CaptureIO.with_io(fn ->
+                 Apiary.Release.grant_instance_admin("claim@example.com", "Settings")
+               end)
+
+      assert output ==
+               "Not created: organisation_name Choose another name. /settings is a page of Qory Apiary.\n"
+
+      assert {^code, nil} = stored()
+      refute Setup.set_up?()
+    end
+
+    test "the release command's claim refuses a name with no letter or digit from A to Z or 0 to 9" do
+      code = Setup.code!()
+
+      assert {{:error, :invalid}, output} =
+               ExUnit.CaptureIO.with_io(fn ->
+                 Apiary.Release.grant_instance_admin("claim@example.com", "株式会社")
+               end)
+
+      assert output ==
+               "Not created: organisation_name Choose a name with at least one letter or digit " <>
+                 "from A to Z or 0 to 9. The address is made from those characters.\n"
+
+      assert {^code, nil} = stored()
+      refute Setup.set_up?()
+    end
+
     test "the release command's claim marks the code used" do
       code = Setup.code!()
 
@@ -712,7 +754,7 @@ defmodule Apiary.SetupTest do
              "Main is this instance's only workspace."
 
     assert Apiary.Edition.Core.first_workspace_waiting_line(organisation) ==
-             "An owner sets up this organisation's first workspace."
+             "An owner of #{organisation.name} creates the first workspace."
   end
 
   describe "the connections" do

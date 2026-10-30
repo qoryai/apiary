@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "time": "2026-10-30T11:30:00Z",
+  "instance": {
+    "edition": "Qory Apiary",
+    "version": "0.0.0-example"
+  },
+  "run": {
+    "id": "rn_1123456789abcdef",
+    "state": "lost",
+    "reason": "lease_lapsed",
+    "created_at": "2026-10-30T11:00:00Z",
+    "organisation": {
+      "slug": "acme"
+    },
+    "workspace": {
+      "id": "ws_0123456789abcdef"
+    },
+    "step": "explore",
+    "workflow": "hello",
+    "work_item": "wi_example-2",
+    "variables": []
+  },
+  "queue": {
+    "state": "ended",
+    "end_cause": "lost"
+  },
+  "dispatches": [
+    {
+      "id": "dp_1123456789abcdef",
+      "pool": "np_0123456789abcdef",
+      "claimed_at": "2026-10-30T11:00:05Z",
+      "lease_until": "2026-10-30T11:10:05Z",
+      "stale_at": "2026-10-30T11:10:05Z",
+      "ended_at": "2026-10-30T11:10:30Z",
+      "end_cause": "run_ended"
+    }
+  ],
+  "preparation": {
+    "steps": [],
+    "stopped": {
+      "cause": "machine_lost",
+      "fixer": "instance_admin",
+      "text": "The machine was not reported before the lease of the dispatch ran out."
+    }
+  },
+  "events": [],
+  "events_omitted": 0,
+  "log": {
+    "text": "",
+    "truncated": false
+  },
+  "machine_logs": [
+    {
+      "dispatch": "dp_1123456789abcdef",
+      "uploaded_at": "2026-10-30T11:12:00Z",
+      "truncated": false,
+      "text": "make: the request to create the machine timed out after 600 seconds\n"
+    }
+  ],
+  "leaked_secrets": [],
+  "leaked_secrets_omitted": 0
+}

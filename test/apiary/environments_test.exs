@@ -12,7 +12,7 @@ defmodule Apiary.EnvironmentsTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
-  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
+  import Apiary.DispatchedRunsFixtures, only: [registry_image: 2, workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -25,7 +25,8 @@ defmodule Apiary.EnvironmentsTest do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Policy.{Render, RunConfiguration}
 
-  @moduletag needs: :factory
+  # A build pushes to the registry, and a run is given only an image there.
+  @moduletag needs: [:factory, :registry]
 
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
 
@@ -285,8 +286,10 @@ defmodule Apiary.EnvironmentsTest do
       :ok
     end
 
-    defp shop_image(n),
-      do: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate(n, 64)
+    # An image under the registry's place of the organisation `organisation_id`, the only
+    # place a run of it is given an image from.
+    defp shop_image(organisation_id, n),
+      do: registry_image(organisation_id, String.duplicate(n, 64))
 
     # A waiting run of the queue of a fresh work item in Explore, whose target is SHOP's
     # unless `target` says otherwise.
@@ -309,7 +312,7 @@ defmodule Apiary.EnvironmentsTest do
            Environments.record_build(
              run,
              %{
-               image: shop_image(n),
+               image: shop_image(run.organisation_id, n),
                size: 1_048_576,
                commit: "4b7d0a3f",
                environment_ref: run.environment_ref
@@ -353,7 +356,7 @@ defmodule Apiary.EnvironmentsTest do
       land!(build, "1")
       assert %{run: taken, registered: registered} = claim(ctx, ctx.pool)
       assert taken.id == run.id
-      assert registered.configured_image == shop_image("1")
+      assert registered.configured_image == shop_image(ctx.scope.organisation.id, "1")
     end
 
     test "a key change while it waits: the next claim queues the new ref's build, and ends the old ref's that waits, superseded",
@@ -371,7 +374,7 @@ defmodule Apiary.EnvironmentsTest do
 
       land!(build, "2")
       assert %{run: taken, registered: %{configured_image: image}} = claim(ctx, ctx.pool)
-      assert {taken.id, image} == {run.id, shop_image("2")}
+      assert {taken.id, image} == {run.id, shop_image(ctx.scope.organisation.id, "2")}
     end
 
     test "an image of a ref its collection no longer has serves no run", ctx do
@@ -380,7 +383,9 @@ defmodule Apiary.EnvironmentsTest do
       assert %{run: %DispatchRun{id: id}} = claim(ctx, ctx.pool)
       assert id == first.id
       land!(first, "1")
-      assert Environments.image_for(ctx.pool, @shop_target) == shop_image("1")
+
+      assert Environments.image_for(ctx.pool, @shop_target) ==
+               shop_image(ctx.scope.organisation.id, "1")
 
       list(ctx, 2, %{environment_ref: "env-2"})
       assert Environments.image_for(ctx.pool, @shop_target) == nil
@@ -397,7 +402,7 @@ defmodule Apiary.EnvironmentsTest do
       assert %{run: %DispatchRun{environment_ref: "env-2"} = second} = claim(ctx, ctx.pool)
       land!(second, "2")
       assert %{run: taken, registered: %{configured_image: image}} = claim(ctx, ctx.pool)
-      assert {taken.id, image} == {run.id, shop_image("2")}
+      assert {taken.id, image} == {run.id, shop_image(ctx.scope.organisation.id, "2")}
     end
 
     test "is held for each pool apart: a pool with the image takes it, one without builds",
@@ -456,7 +461,7 @@ defmodule Apiary.EnvironmentsTest do
       })
     end
 
-    @tag needs: [:factory, :security]
+    @tag needs: [:factory, :security, :registry]
     test "a run whose target's run configuration names an image waits for no build and queues none",
          ctx do
       shop = list(ctx, 1, %{environment_ref: "env-1"})
@@ -670,7 +675,8 @@ defmodule Apiary.EnvironmentsTest do
   describe "a run's image" do
     @shop %{system: "code.example.com", path: "acme/shop"}
 
-    defp image(n), do: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate(n, 64)
+    # An image under the registry's place of the scope's organisation.
+    defp image(ctx, n), do: registry_image(ctx.scope.organisation.id, String.duplicate(n, 64))
 
     defp built!(ctx, collection, n, minutes, attrs \\ %{}) do
       at = DateTime.add(~U[2026-10-15 12:00:00.000000Z], minutes, :minute)
@@ -684,7 +690,7 @@ defmodule Apiary.EnvironmentsTest do
               built_target_system: collection.target_system,
               built_target_path: collection.target_path
             },
-            Map.merge(built(at), Map.put(attrs, :image, image(n)))
+            Map.merge(built(at), Map.put(attrs, :image, image(ctx, n)))
           )
         )
       )
@@ -698,11 +704,11 @@ defmodule Apiary.EnvironmentsTest do
       assert Environments.image_for(ctx.pool, @shop) == nil
 
       built!(ctx, shop(ctx), "1", 1)
-      assert Environments.image_for(ctx.pool, @shop) == image("1")
+      assert Environments.image_for(ctx.pool, @shop) == image(ctx, "1")
 
       newest = shop(ctx)
       built!(ctx, newest, "2", 2)
-      assert Environments.image_for(ctx.pool, @shop) == image("2")
+      assert Environments.image_for(ctx.pool, @shop) == image(ctx, "2")
 
       # Newer, but not counted: a collection without an environment_ref, a record built
       # from another ref than its collection's, a collection ended or assigned to another
@@ -725,8 +731,8 @@ defmodule Apiary.EnvironmentsTest do
       )
 
       built!(ctx, shop(ctx, target_path: "acme/docs"), "7", 7)
-      assert Environments.image_for(ctx.pool, @shop) == image("2")
-      assert Environments.image_for(ctx.pool, %{@shop | path: "acme/docs"}) == image("7")
+      assert Environments.image_for(ctx.pool, @shop) == image(ctx, "2")
+      assert Environments.image_for(ctx.pool, %{@shop | path: "acme/docs"}) == image(ctx, "7")
 
       # A collection whose environment_ref changed: its record's image serves no run, and
       # the next newest that its collection's ref built does.
@@ -734,7 +740,7 @@ defmodule Apiary.EnvironmentsTest do
         set: [environment_ref: "env-2"]
       )
 
-      assert Environments.image_for(ctx.pool, @shop) == image("1")
+      assert Environments.image_for(ctx.pool, @shop) == image(ctx, "1")
 
       # Another pool has no build of the target.
       other = pool_fixture(ctx.scope)
@@ -745,7 +751,7 @@ defmodule Apiary.EnvironmentsTest do
          ctx do
       shop = shop(ctx)
       built!(ctx, shop, "1", 1)
-      assert Environments.image_for(ctx.pool, @shop) == image("1")
+      assert Environments.image_for(ctx.pool, @shop) == image(ctx, "1")
 
       # The collection's target moved, and no prebuild for the new one has landed: the
       # image built for the old target is no run's of either.
@@ -762,7 +768,42 @@ defmodule Apiary.EnvironmentsTest do
       built!(ctx, older, "2", 2)
       newer = shop(ctx)
       built!(ctx, newer, "3", 3, %{built_target_path: "acme/docs"})
-      assert Environments.image_for(ctx.pool, @shop) == image("2")
+      assert Environments.image_for(ctx.pool, @shop) == image(ctx, "2")
+    end
+
+    test "is no image outside the organisation's place in the registry, one stored before that check",
+         ctx do
+      built!(ctx, shop(ctx), "1", 1)
+      own = image(ctx, "1")
+      instance = Apiary.InstanceConfig.registry_instance()
+
+      work_item =
+        work_item_fixture(ctx.scope, %{target_system: @shop.system, target_path: @shop.path})
+
+      for {foreign, minutes} <-
+            Enum.with_index(
+              [
+                "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("2", 64),
+                String.replace(own, Apiary.Registry.service(), "registry.other.example"),
+                String.replace(own, instance, String.duplicate("0", 16)),
+                registry_image(Ecto.UUID.generate(), String.duplicate("3", 64))
+              ],
+              2
+            ) do
+        newer = shop(ctx)
+        built!(ctx, newer, "9", minutes)
+
+        Repo.update_all(from(r in Record, where: r.source_collection_id == ^newer.id),
+          set: [image: foreign]
+        )
+
+        # The newest build is foreign: no run is given it, and none is held for a build.
+        assert Environments.image_for(ctx.pool, @shop) == nil
+        assert Environments.claim_image(ctx.pool, work_item) == {:ok, nil}
+
+        Repo.delete_all(from r in Record, where: r.source_collection_id == ^newer.id)
+        assert Environments.image_for(ctx.pool, @shop) == own
+      end
     end
   end
 end

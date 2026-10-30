@@ -106,7 +106,7 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
       refute inspect(payload(pass(set_up))) =~ "set-up"
     end
 
-    test "a workspace's slug is kept only for a workspace of the organisation in use", %{
+    test "a workspace's public id is kept only for a workspace of the organisation in use", %{
       conn: conn,
       scope: scope,
       adapter: adapter
@@ -115,8 +115,12 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
       billing = workspace_fixture(theirs, "Billing")
       main = scope.workspace
 
-      for {slug, kept?} <- [{main.slug, true}, {"missing", false}, {billing.slug, false}] do
-        back = "set-up:sources:workspace=" <> slug
+      for {id, kept?} <- [
+            {main.public_id, true},
+            {"ws_0000000000000000", false},
+            {billing.public_id, false}
+          ] do
+        back = "set-up:sources:workspace=" <> id
 
         conn =
           post(

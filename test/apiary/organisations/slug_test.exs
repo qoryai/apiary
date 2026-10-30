@@ -1,6 +1,7 @@
 defmodule Apiary.Organisations.SlugTest do
   use Apiary.DataCase, async: true
 
+  import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Organisations.{Organisation, Slug, Workspace}
@@ -10,17 +11,18 @@ defmodule Apiary.Organisations.SlugTest do
 
   describe "from_name/2" do
     test "keeps lowercase letters and digits, and makes every other run one hyphen" do
-      assert Slug.from_name("Platform Team", "workspace") == "platform-team"
-      assert Slug.from_name("  --Build & Release 2--  ", "workspace") == "build-release-2"
-      assert Slug.from_name("first.last+tag", "organisation") == "first-last-tag"
-      assert Slug.from_name("Zürich Øst", "workspace") == "zurich-st"
+      assert Slug.from_name("Platform Team") == "platform-team"
+      assert Slug.from_name("  --Build & Release 2--  ") == "build-release-2"
+      assert Slug.from_name("first.last+tag") == "first-last-tag"
+      assert Slug.from_name("Zürich Øst") == "zurich-st"
     end
 
-    test "falls back when nothing is left, and cuts a long name to 40 without a hyphen at the end" do
-      assert Slug.from_name("日本", "organisation") == "organisation"
-      assert Slug.from_name("", "workspace") == "workspace"
+    test "gives nil when nothing is left, and cuts a long name to 40 without a hyphen at the end" do
+      for name <- ["日本", "株式会社", "Ωμέγα", "—", "", nil], do: assert(Slug.from_name(name) == nil)
+      # Latin accents are dropped to their letters.
+      assert Slug.from_name("Crème Brûlée Ångström") == "creme-brulee-angstrom"
 
-      long = Slug.from_name(String.duplicate("abcd ", 20), "workspace")
+      long = Slug.from_name(String.duplicate("abcd ", 20))
       assert String.length(long) <= 40
       refute String.ends_with?(long, "-")
     end
@@ -38,42 +40,13 @@ defmodule Apiary.Organisations.SlugTest do
   end
 
   describe "a new organisation and workspace" do
-    test "get their slugs from their names at sign-up, numbered when taken" do
-      first = sign_up_fixture(%{organisation_name: "Dana Ops"})
-      second = sign_up_fixture(%{organisation_name: "Dana.Ops"})
-
-      assert first.organisation.slug == "dana-ops"
-      assert second.organisation.slug == "dana-ops-2"
-      # a workspace's slug is unique within its organisation only
-      assert first.workspace.slug == "main"
-      assert second.workspace.slug == "main"
-    end
-
-    test "never get a name the router reserves" do
-      %{organisation: organisation} = sign_up_fixture(%{organisation_name: "Docs"})
-      assert organisation.slug == "docs-2"
-
-      %{organisation: organisation} = sign_up_fixture(%{organisation_name: "Users"})
-      assert organisation.slug == "users-2"
-    end
-
-    test "never get a name kept back" do
-      for {name, slug} <- [
-            {"Admin", "admin-2"},
-            {"API", "api-2"},
-            {"New", "new-2"},
-            {"Settings", "settings-2"},
-            {"Integrations", "integrations-2"}
-          ] do
-        %{organisation: organisation} = sign_up_fixture(%{organisation_name: name})
-        assert organisation.slug == slug
-      end
-    end
-  end
-
-  describe "a slug taken between the pick and the insert" do
-    setup do
-      %{taken: organisation_fixture().slug}
+    # A later sign-up of `name`, the form's answer.
+    defp sign_up(name, opts \\ []) do
+      Apiary.Organisations.sign_up_user(
+        %{email: unique_user_email(), organisation_name: name},
+        nil,
+        Keyword.put(opts, :open, true)
+      )
     end
 
     defp counts do
@@ -86,29 +59,93 @@ defmodule Apiary.Organisations.SlugTest do
           do: Repo.aggregate(schema, :count)
     end
 
-    test "is picked again, and the sign-up goes on", %{taken: taken} do
-      picks = :counters.new(1, [])
+    test "get their slugs from their names at sign-up; a taken one refuses the name" do
+      first = sign_up_fixture(%{organisation_name: "Dana Ops"})
+      assert first.organisation.slug == "dana-ops"
+      # a workspace's slug is unique within its organisation only
+      assert first.workspace.slug == "main"
 
-      # The first pick is the one another sign-up took meanwhile; the next asks again.
-      pick = fn name ->
-        :counters.add(picks, 1, 1)
-        if :counters.get(picks, 1) == 1, do: taken, else: Slug.from_name(name, "x")
-      end
+      before = counts()
+      assert {:error, changeset} = sign_up("Dana.Ops")
 
-      attrs = %{email: "fresh@example.com", organisation_name: "Fresh"}
+      assert %{
+               organisation_name: [
+                 "Choose another name. Another organisation has the address /dana-ops."
+               ]
+             } = errors_on(changeset)
 
-      assert {:ok, %{organisation: organisation, workspace: workspace, membership: membership}} =
-               Apiary.Organisations.sign_up_user(attrs, nil, pick_slug: pick, open: true)
+      assert counts() == before
 
-      assert Repo.get!(Organisation, organisation.id).slug == "fresh"
-      assert workspace.organisation_id == organisation.id
-      assert membership.organisation_id == organisation.id
-      assert :counters.get(picks, 1) == 2
+      # Marked for deletion, it still has the address, and is not said to be marked.
+      now = DateTime.utc_now()
+
+      Repo.update_all(
+        Ecto.Query.from(o in Organisation, where: o.id == ^first.organisation.id),
+        set: [
+          deletion_marked_at: now,
+          purge_after: DateTime.add(now, 30, :day),
+          purge_trigger: "grace_period"
+        ]
+      )
+
+      assert {:error, changeset} = sign_up("DANA OPS")
+
+      assert %{
+               organisation_name: [
+                 "Choose another name. Another organisation has the address /dana-ops."
+               ]
+             } = errors_on(changeset)
+
+      assert %{organisation: %{slug: "dana-ops-team"}} =
+               sign_up_fixture(%{organisation_name: "Dana Ops Team"})
     end
 
-    test "every time: the sign-up is refused on the email, and leaves nothing", %{taken: taken} do
+    test "never get a name the router reserves or keeps back: the name is refused" do
+      for {name, slug} <- [
+            {"Docs", "docs"},
+            {"Users", "users"},
+            {"Admin", "admin"},
+            {"API", "api"},
+            {"New", "new"},
+            {"Settings", "settings"},
+            {"Integrations", "integrations"}
+          ] do
+        assert {:error, changeset} = sign_up(name)
+        message = "Choose another name. /#{slug} is a page of Qory Apiary."
+        assert %{organisation_name: [^message]} = errors_on(changeset)
+      end
+    end
+
+    test "a name with no letter or digit from A to Z or 0 to 9 is refused; accents are dropped" do
       before = counts()
 
+      for name <- ["株式会社", "Ωμέγα"] do
+        assert {:error, changeset} = sign_up(name)
+
+        assert %{
+                 organisation_name: [
+                   "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+                     "The address is made from those characters."
+                 ]
+               } = errors_on(changeset)
+      end
+
+      assert counts() == before
+
+      assert {:ok, %{organisation: %Organisation{slug: "creme-brulee"}}} = sign_up("Crème Brûlée")
+    end
+  end
+
+  describe "a slug taken between the check and the insert" do
+    setup do
+      %{taken: organisation_fixture().slug}
+    end
+
+    test "refuses the name, with the address, and leaves nothing", %{taken: taken} do
+      before = counts()
+
+      # The check reads "fresh" as free; the insert meets the slug another sign-up took
+      # meanwhile.
       assert {:error, %Ecto.Changeset{} = changeset} =
                Apiary.Organisations.sign_up_user(
                  %{email: "fresh@example.com", organisation_name: "Fresh"},
@@ -117,7 +154,12 @@ defmodule Apiary.Organisations.SlugTest do
                  open: true
                )
 
-      assert "could not be signed up just now; please try again" in errors_on(changeset).email
+      assert %{
+               organisation_name: [
+                 "Choose another name. Another organisation has the address /" <> ^taken <> "."
+               ]
+             } = errors_on(changeset)
+
       assert counts() == before
       refute Repo.get_by(Apiary.Accounts.User, email: "fresh@example.com")
     end

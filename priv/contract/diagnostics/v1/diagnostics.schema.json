@@ -1,0 +1,819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/diagnostics/v1/diagnostics.schema.json",
+  "title": "Run diagnostics",
+  "description": "The document Qory Apiary returns about one run. It is the body of the 200 response to GET /v1/runs/<run id>/diagnostics, application/json, a request signed with a diagnostics key, and it is the text that Copy diagnostics on the run page copies. Qory Apiary builds both for the rights of the reader: machine_logs is present only for an instance admin and for a request signed with a diagnostics key. The document is at most 8 MiB as UTF-8, 8388608 bytes. The fields of the run that Qory Apiary redacts never appear as fields: the run key, the run code hash, the registry credential hash and the provider fields. variables contains the names of the run's variables and no values. Every text member contains the text as Qory Apiary stored it, unfiltered, so a secret that the run printed appears in it as printed. The document can contain any secret that the run printed. Whoever holds it holds the value of each entry in leaked_secrets that has one. Every text member contains no U+0000. Version 1 changes only by adding members, so a reader ignores a member this schema does not define. This schema accepts such a member at every level, and no object in it sets additionalProperties to false. That differs from the other contracts, whose schemas refuse a member they do not define, because a reader of this document shows it or passes it on: a reader built before a member was added reads a document that has the member. The run diagnostics are a document, not a request, and nothing in them is signed.",
+  "type": "object",
+  "required": [
+    "version",
+    "time",
+    "instance",
+    "run",
+    "dispatches",
+    "preparation",
+    "leaked_secrets",
+    "leaked_secrets_omitted"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format: 1. Version 1 changes only by adding members.",
+      "const": 1
+    },
+    "time": {
+      "description": "When Qory Apiary built the document, RFC 3339 in UTC with whole seconds.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "instance": {
+      "description": "The Qory Apiary instance that built the document.",
+      "type": "object",
+      "required": [
+        "edition",
+        "version"
+      ],
+      "properties": {
+        "edition": {
+          "description": "The product name, such as Qory Apiary, 1 to 100 characters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        },
+        "version": {
+          "description": "The version of Qory Apiary that built the document, 1 to 100 characters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        }
+      }
+    },
+    "run": {
+      "description": "The run.",
+      "type": "object",
+      "required": [
+        "id",
+        "state",
+        "created_at",
+        "organisation",
+        "workspace"
+      ],
+      "properties": {
+        "id": {
+          "description": "The run's public id, rn_ and 16 lower-case Crockford base32 characters, as the run page shows it.",
+          "type": "string",
+          "pattern": "^rn_[0-9a-hjkmnp-tv-z]{16}$"
+        },
+        "state": {
+          "description": "The run's state.",
+          "$ref": "#/$defs/run_state"
+        },
+        "reason": {
+          "description": "Why the run is in its state; absent when the run has no reason.",
+          "$ref": "#/$defs/code"
+        },
+        "exit_state": {
+          "description": "The state that the run's dev.qory.run.exited event means, one of the values of state; absent when Qory Apiary has recorded no exit.",
+          "$ref": "#/$defs/run_state"
+        },
+        "exit_reason": {
+          "description": "The reason in the run's dev.qory.run.exited event; absent when Qory Apiary has recorded no exit, or the exit has no reason.",
+          "$ref": "#/$defs/code"
+        },
+        "exit_code": {
+          "description": "The exit code of the run's session; absent when the session has not exited, or exited with no exit code.",
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "created_at": {
+          "description": "When Qory Apiary created the run.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "started_at": {
+          "description": "When the run started; absent when it has not started.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "exited_at": {
+          "description": "When the run exited; absent when it has not exited.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "organisation": {
+          "description": "The organisation of the run.",
+          "type": "object",
+          "required": [
+            "slug"
+          ],
+          "properties": {
+            "slug": {
+              "description": "The short name of the organisation in the addresses of Qory Apiary, 1 to 40 lower-case letters, digits and hyphens, with no hyphen at either end.",
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+            }
+          }
+        },
+        "workspace": {
+          "description": "The workspace of the run.",
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "description": "The workspace's public id, ws_ and 16 lower-case Crockford base32 characters.",
+              "type": "string",
+              "pattern": "^ws_[0-9a-hjkmnp-tv-z]{16}$"
+            }
+          }
+        },
+        "step": {
+          "description": "The step the run is for, such as explore or prebuild: a lower-case letter, then lower-case letters and underscores, 1 to 40 characters in all; absent when the run has no step.",
+          "type": "string",
+          "pattern": "^[a-z][a-z_]{0,39}$"
+        },
+        "workflow": {
+          "description": "The workflow of the harness that the run starts, such as hello: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 64 characters in all; absent when the run starts no workflow.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "work_item": {
+          "description": "The public id of the work item the run is for; absent when the run is for no work item.",
+          "type": "string",
+          "pattern": "^wi_[A-Za-z0-9_-]{1,64}$"
+        },
+        "target": {
+          "description": "Where the run's change would go: the system and the path of a place on it; absent when the run has no target.",
+          "type": "object",
+          "required": [
+            "system",
+            "path"
+          ],
+          "properties": {
+            "system": {
+              "description": "The system of the target, 1 to 256 characters with no control character, U+0000 to U+001F or U+007F.",
+              "type": "string",
+              "pattern": "^[^\\x00-\\x1f\\x7f]{1,256}$"
+            },
+            "path": {
+              "description": "The path of the place on the system, 1 to 256 characters with no control character, U+0000 to U+001F or U+007F.",
+              "type": "string",
+              "pattern": "^[^\\x00-\\x1f\\x7f]{1,256}$"
+            }
+          }
+        },
+        "gateway": {
+          "description": "The gateway the run went through, ng_ and 16 lower-case Crockford base32 characters; absent when the run went through no gateway.",
+          "type": "string",
+          "pattern": "^ng_[0-9a-hjkmnp-tv-z]{16}$"
+        },
+        "variables": {
+          "description": "The names of the run's variables, each at most once, with no values. A name is a letter or an underscore, then letters, digits and underscores, 1 to 128 characters in all.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          }
+        }
+      }
+    },
+    "queue": {
+      "description": "The run's entry in the queue of its workspace; absent when the run has no entry in a queue.",
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "description": "The state of the entry: waiting, claimed, handed_over or ended.",
+          "type": "string",
+          "enum": [
+            "waiting",
+            "claimed",
+            "handed_over",
+            "ended"
+          ]
+        },
+        "end_cause": {
+          "description": "Why the entry ended; absent when it has not ended.",
+          "$ref": "#/$defs/code"
+        }
+      }
+    },
+    "dispatches": {
+      "description": "The run's dispatch: the claim at which Qory Apiary registered the run, https://qory.dev/contracts/provisioner/v1/claim.schema.json. Each claim registers a new run, so the array has at most one entry, and is empty for a run that Qory Apiary registered without a claim.",
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "$ref": "#/$defs/dispatch"
+      }
+    },
+    "preparation": {
+      "description": "The run's preparation: its steps from the start of the machine to the start of the session.",
+      "type": "object",
+      "required": [
+        "steps"
+      ],
+      "properties": {
+        "steps": {
+          "description": "The steps of the preparation, in step order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "session_started_at": {
+          "description": "The time of the run's first dev.qory.session.started event; absent when no session started, or when that event was removed.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "stopped": {
+          "$ref": "#/$defs/stopped"
+        }
+      }
+    },
+    "events": {
+      "description": "The run's last events, at most 5000, in the order of their sequence. Present exactly when events_omitted is present, and absent when the retention of Qory Apiary removed the run's events.",
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "events_omitted": {
+      "description": "The number of the run's earlier events that are left out of events; 0 when events contains every event of the run. Present exactly when events is present.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "log": {
+      "description": "The run's terminal output that belongs to no step. The output of a step appears only in output of that step in preparation, so no output appears twice. Absent when the retention of Qory Apiary removed the run's log.",
+      "type": "object",
+      "required": [
+        "text",
+        "truncated"
+      ],
+      "properties": {
+        "text": {
+          "description": "The run's terminal output that belongs to no step, or its last part when Qory Apiary cut it, at most 1 MiB as UTF-8, with each byte that is not part of valid UTF-8 replaced with U+FFFD. This schema checks the bound in characters, at most 1048576.",
+          "type": "string",
+          "maxLength": 1048576,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        },
+        "truncated": {
+          "description": "true when Qory Apiary cut the output, and text is its last part; false when text is the whole output.",
+          "type": "boolean"
+        }
+      }
+    },
+    "machine_logs": {
+      "description": "The machine logs that starters uploaded for the run's dispatches, https://qory.dev/contracts/provisioner/v1/machine-log.schema.json: one entry for each dispatch that has a machine log. Present only for an instance admin and for a request signed with a diagnostics key.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/machine_log"
+      }
+    },
+    "leaked_secrets": {
+      "description": "Each entry is a secret, such as an access key, that the run printed into its output, events, machine log or release reason, so the secret is compromised: revoke or rotate it. Qory Apiary found each secret when it stored that text, not when it built this document, so a secret in text that the document leaves out, such as an earlier part of a long log, is still listed. At most 1000 entries; empty when Qory Apiary found none. Entries with place machine_log are present only when the document has machine_logs, for an instance admin and for a request signed with a diagnostics key; for any other reader they are left out, and leaked_secrets_omitted does not count them.",
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/$defs/leaked_secret"
+      }
+    },
+    "leaked_secrets_omitted": {
+      "description": "The number of secrets that Qory Apiary found beyond the 1000 in leaked_secrets; 0 when leaked_secrets lists every secret that Qory Apiary found. It does not count the entries with place machine_log that are left out for a reader without machine_logs.",
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "dependentRequired": {
+    "events": [
+      "events_omitted"
+    ],
+    "events_omitted": [
+      "events"
+    ]
+  },
+  "if": {
+    "not": {
+      "required": [
+        "machine_logs"
+      ]
+    }
+  },
+  "then": {
+    "properties": {
+      "leaked_secrets": {
+        "items": {
+          "not": {
+            "required": [
+              "place"
+            ],
+            "properties": {
+              "place": {
+                "const": "machine_log"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "code": {
+      "description": "A code: a lower-case letter, then lower-case letters, digits and underscores, 1 to 64 characters in all.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "run_state": {
+      "description": "A run's state: pending, running, completed, failed, cancelled or lost.",
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "lost"
+      ]
+    },
+    "dispatch": {
+      "description": "One dispatch: a claim of the run by a node pool's starter, a request for one machine.",
+      "type": "object",
+      "required": [
+        "id",
+        "pool",
+        "claimed_at"
+      ],
+      "properties": {
+        "id": {
+          "description": "The dispatch's public id, dp_ and 16 lower-case Crockford base32 characters.",
+          "$ref": "https://qory.dev/contracts/provisioner/v1/definitions.schema.json#/$defs/dispatch_id"
+        },
+        "pool": {
+          "description": "The node pool whose starter claimed the dispatch, np_ and 16 lower-case Crockford base32 characters.",
+          "$ref": "https://qory.dev/contracts/provisioner/v1/definitions.schema.json#/$defs/pool_id"
+        },
+        "claimed_at": {
+          "description": "When the starter claimed the dispatch.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "lease_until": {
+          "description": "The end of the dispatch's lease, as the claim answer has it; absent when Qory Apiary has none.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "dispatched_at": {
+          "description": "When the starter reported that it created the machine; absent when it has not reported it.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "handed_over_at": {
+          "description": "When the dispatch was handed over, at its first report that the machine was created or at the first redemption of the run code, whichever came first; absent when it was not handed over.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "stale_at": {
+          "description": "When the dispatch's lease lapsed before a handover; absent when it did not lapse.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "ended_at": {
+          "description": "When the dispatch ended; absent when it has not ended.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "end_cause": {
+          "description": "Why the dispatch ended; absent when it has not ended.",
+          "$ref": "#/$defs/code"
+        },
+        "release_reason": {
+          "description": "The reason in the starter's release of the dispatch, https://qory.dev/contracts/provisioner/v1/release.schema.json, display text, 1 to 200 characters; absent when the starter did not release the dispatch.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        }
+      }
+    },
+    "step": {
+      "description": "One step of the preparation.",
+      "type": "object",
+      "required": [
+        "number",
+        "state",
+        "output"
+      ],
+      "properties": {
+        "number": {
+          "description": "The step's position in the preparation, from 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "description": "The step's name, as the run page shows it, 1 or more characters; absent when Qory Apiary has recorded only the step's exit.",
+          "type": "string",
+          "minLength": 1,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        },
+        "kind": {
+          "description": "What the step does, such as fetch, compose, image, setup, join or wall; absent when the step has no kind.",
+          "$ref": "#/$defs/code"
+        },
+        "state": {
+          "description": "The step's state: running, succeeded, failed or cancelled.",
+          "type": "string",
+          "enum": [
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "exit_code": {
+          "description": "The step's exit code; absent when the step has not exited, or exited with no exit code.",
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "started_at": {
+          "description": "When the step started; absent when Qory Apiary has recorded only the step's exit.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "exited_at": {
+          "description": "When the step exited; absent when it has not exited.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "duration_ms": {
+          "description": "How long the step ran, in milliseconds; absent when it has not exited.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "description": "The step's output.",
+          "type": "object",
+          "required": [
+            "text",
+            "truncated"
+          ],
+          "properties": {
+            "text": {
+              "description": "The step's output, or its last part when Qory Apiary cut it, at most 64 KiB as UTF-8. This schema checks the bound in characters, at most 65536.",
+              "type": "string",
+              "maxLength": 65536,
+              "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+            },
+            "truncated": {
+              "description": "true when Qory Apiary cut the output, and text is its last part; false when text is the whole output.",
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "stopped": {
+      "description": "Why the preparation failed, and who can fix the cause; present only when the preparation failed. step is present exactly when cause is step_failed.",
+      "type": "object",
+      "required": [
+        "cause",
+        "fixer",
+        "text"
+      ],
+      "properties": {
+        "cause": {
+          "description": "Why the preparation failed. machine_not_made: the starter released the dispatch with a reason. lease_lapsed: the dispatch's lease ran out before the starter reported a machine. code_not_redeemed: the machine did not redeem the run code within 15 minutes of the claim. machine_stopped: a machine log arrived before the run code was redeemed. step_failed: a step's state is failed.",
+          "type": "string",
+          "enum": [
+            "machine_not_made",
+            "lease_lapsed",
+            "code_not_redeemed",
+            "machine_stopped",
+            "step_failed"
+          ]
+        },
+        "step": {
+          "description": "The number of the step that failed, as number in steps; present exactly when cause is step_failed.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "fixer": {
+          "description": "The role of the person who can fix the cause. instance_admin: the cause lies in the instance's pool. operator_admin: the cause lies in a pool of an operator that manages the run's organisation. workspace_admin: the cause lies in a pool of the run's workspace, or in the target, harness or setup of the workspace, which the steps fetch, compose and setup use. A failure of the steps image, join or wall takes the role of the owner of the pool.",
+          "type": "string",
+          "enum": [
+            "instance_admin",
+            "operator_admin",
+            "workspace_admin"
+          ]
+        },
+        "text": {
+          "description": "The cause line exactly as the run page shows it: display text, whose wording this contract does not fix.",
+          "type": "string",
+          "minLength": 1,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        }
+      },
+      "if": {
+        "required": [
+          "cause"
+        ],
+        "properties": {
+          "cause": {
+            "const": "step_failed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "step"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "step"
+          ]
+        }
+      }
+    },
+    "event": {
+      "description": "One event of the run.",
+      "type": "object",
+      "required": [
+        "sequence",
+        "type",
+        "time",
+        "data"
+      ],
+      "properties": {
+        "sequence": {
+          "description": "The event's position in the run's events, from 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "description": "The event's type, which starts with dev.qory., such as dev.qory.run.exited.",
+          "type": "string",
+          "pattern": "^dev\\.qory\\.[^\\x00]*$"
+        },
+        "time": {
+          "description": "When the event happened, RFC 3339 in UTC, possibly with a fraction of a second.",
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,9})?Z$"
+        },
+        "data": {
+          "description": "The event's data.",
+          "type": "object"
+        }
+      }
+    },
+    "machine_log": {
+      "description": "The machine log of one dispatch.",
+      "type": "object",
+      "required": [
+        "dispatch",
+        "uploaded_at",
+        "truncated",
+        "text"
+      ],
+      "properties": {
+        "dispatch": {
+          "description": "The id of the dispatch, as id in dispatches.",
+          "$ref": "https://qory.dev/contracts/provisioner/v1/definitions.schema.json#/$defs/dispatch_id"
+        },
+        "uploaded_at": {
+          "description": "When Qory Apiary accepted the upload.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "truncated": {
+          "description": "true when the starter cut the log, and text is its last part; false when text is the whole log.",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "The log text that the starter uploaded, at most 768 KiB as UTF-8. This schema checks the bound in characters, at most 786432.",
+          "type": "string",
+          "maxLength": 786432,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        }
+      }
+    },
+    "leaked_secret": {
+      "description": "One secret that Qory Apiary found printed in the run's text. step is present exactly when place is step, sequence exactly when place is event, and dispatch exactly when place is machine_log or release_reason. id is present only for the kinds access_key, run_key, enrolment_code and run_code.",
+      "type": "object",
+      "required": [
+        "kind",
+        "place",
+        "time",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "description": "What the secret is, a code. access_key: a Qory Apiary access key, qak_. run_key: a run key, qrk_. enrolment_code: an enrolment code, a qec prefix other than qecr_. run_code: a run code, qecr_. Any other value is a code that Qory Apiary sets for another secret pattern that it recognises, such as an API key of a model provider or an access token of a code host.",
+          "$ref": "#/$defs/code"
+        },
+        "place": {
+          "description": "Where the secret appeared. step: the output of a step of the preparation. event: the data of an event. log: the run's terminal output that belongs to no step. machine_log: the machine log of the run's dispatch. release_reason: the release reason of the run's dispatch.",
+          "type": "string",
+          "enum": [
+            "step",
+            "event",
+            "log",
+            "machine_log",
+            "release_reason"
+          ]
+        },
+        "step": {
+          "description": "The number of the step whose output contained the secret, as number in steps; present exactly when place is step.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "sequence": {
+          "description": "The sequence of the event whose data contained the secret, as sequence in events; present exactly when place is event. The event may be one of the earlier events that events leaves out.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "dispatch": {
+          "description": "The id of the dispatch whose machine log or release reason contained the secret, as id in dispatches; present exactly when place is machine_log or release_reason.",
+          "$ref": "https://qory.dev/contracts/provisioner/v1/definitions.schema.json#/$defs/dispatch_id"
+        },
+        "time": {
+          "description": "The time of the output, event or release in which the secret appeared; for machine_log, when Qory Apiary accepted the upload of the machine log.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "id": {
+          "description": "The id of what the secret belongs to, when Qory Apiary matched the secret to it: for access_key, the access key's id, ak_; for run_key and run_code, the run's id, rn_; for enrolment_code, the id of the node that the code was made for, nd_, np_, ng_, na_ or dg_. The id shows which key to revoke. Each id is its prefix and 16 lower-case Crockford base32 characters. Present only for those four kinds, and absent when Qory Apiary did not match the secret.",
+          "type": "string",
+          "pattern": "^(ak|rn|nd|np|ng|na|dg)_[0-9a-hjkmnp-tv-z]{16}$"
+        },
+        "value": {
+          "description": "The secret as the run printed it, read from the stored text when Qory Apiary built the document, for every kind; absent once the retention of Qory Apiary removed that text.",
+          "type": "string",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        },
+        "message": {
+          "description": "A plain statement for the reader that Qory Apiary writes, such as \"This key is compromised: it was printed into the run's log. Replace it.\" It is display text on one line, with no line feed or carriage return, whose wording this contract does not fix, like stopped.text.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\x00\\n\\r]*$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "place"
+            ],
+            "properties": {
+              "place": {
+                "const": "step"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "step"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "step"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "place"
+            ],
+            "properties": {
+              "place": {
+                "const": "event"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "sequence"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "sequence"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "place"
+            ],
+            "properties": {
+              "place": {
+                "enum": [
+                  "machine_log",
+                  "release_reason"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dispatch"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "dispatch"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "not": {
+                  "enum": [
+                    "access_key",
+                    "run_key",
+                    "enrolment_code",
+                    "run_code"
+                  ]
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "access_key"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "pattern": "^ak_"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "run_key",
+                  "run_code"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "pattern": "^rn_"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "enrolment_code"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "pattern": "^(nd|np|ng|na|dg)_"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

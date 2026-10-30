@@ -2,8 +2,8 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   # The chooser of the set-up's steps Work sources and Destinations, and of Workspace
   # settings › Work sources and › Destinations, with the `factory` feature:
   #
-  #   * `/:org/set-up/choose?step=<sources|destinations>&grant=<ag_…>&workspace=<slug>`
-  #     (`:set_up`), in the set-up's frame with the progress indicator, the step current;
+  #   * `/:org/:workspace/set-up/<sources|destinations>/choose?grant=<ag_…>` (`:set_up`),
+  #     a page of the workspace's set-up, the step current in the sidebar's group Set up;
   #   * `/:org/:workspace/settings/choose?step=<sources|destinations>&grant=<ag_…>`
   #     (`:settings`), in the workspace's settings, the step's section current.
   #
@@ -70,8 +70,6 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
      assign(socket,
        card: nil,
        list: nil,
-       steps: nil,
-       title: nil,
        sections: nil,
        section: nil,
        crumb: nil,
@@ -136,7 +134,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       domain: domain,
       install:
         IntegrationComponents.paths(scope, card.adapter).install <>
-          "?" <> URI.encode_query(back: "set-up:#{list}:workspace=#{workspace.slug}"),
+          "?" <> URI.encode_query(back: "set-up:#{list}:workspace=#{workspace.public_id}"),
       ready: IntegrationComponents.ready?(card.adapter),
       who_may: IntegrationComponents.who_assigns(scope, [card.adapter])
     )
@@ -144,14 +142,12 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
     |> saved(card)
   end
 
-  # The page's frame, where Back and Save lead, and the browser title: the set-up's, with
-  # its progress indicator; or the workspace's settings, the step's section current.
+  # Where Back and Save lead, the browser title, and the frame's parts: the set-up's step;
+  # or the workspace's settings, the step's section current.
   defp frame(:set_up, scope, domain, workspace, list, card) do
     flow = SetUpComponents.flow(scope.organisation, domain, workspace, :set_up)
 
     [
-      steps: SetUpComponents.steps_for(scope, list, flow: flow),
-      title: SetUpComponents.flow_title(flow),
       back: SetUpComponents.flow_path(flow, list),
       page_title: heading(card)
     ]
@@ -283,8 +279,8 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
 
     case socket.assigns.live_action do
       :set_up ->
-        params = [step: list, grant: card.grant.public_id, workspace: scope.workspace.slug]
-        ~p"/#{scope.organisation}/set-up/choose?#{params ++ rest}"
+        params = [grant: card.grant.public_id]
+        ~p"/#{scope.organisation}/#{scope.workspace}/set-up/#{list}/choose?#{params ++ rest}"
 
       :settings ->
         params = [step: list, grant: card.grant.public_id]
@@ -413,8 +409,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      steps={@steps}
-      title={@title}
+      list={@list}
       sections={@sections}
       section={@section}
       crumb={@crumb}
@@ -449,8 +444,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   attr :current_scope, :any, required: true
   attr :memberships, :list, required: true
   attr :counts, :any, required: true
-  attr :steps, :list, doc: "the set-up's steps, for `:set_up`"
-  attr :title, :string, doc: "the set-up's title, for `:set_up`"
+  attr :list, :atom, doc: "the step, current in the sidebar's group Set up, for `:set_up`"
   attr :sections, :list, doc: "the workspace's settings' sections, for `:settings`"
   attr :section, :atom, doc: "the step's section, for `:settings`"
 
@@ -459,8 +453,9 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
 
   slot :inner_block, required: true
 
-  # The chooser's frame: the set-up's, with no sidebar; or the workspace's settings, with
-  # the step's section current and the chooser's heading in the breadcrumb.
+  # The chooser's frame: the set-up's, in the workspace's sidebar with the step current in
+  # its group Set up; or the workspace's settings, with the step's section current and the
+  # chooser's heading in the breadcrumb.
   defp page(%{action: :set_up} = assigns) do
     ~H"""
     <Layouts.app
@@ -468,10 +463,11 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@counts}
-      place={:organisation}
-      sidebar={false}
+      place={:workspace}
+      set_up_step={@list}
     >
-      <SetUpComponents.frame steps={@steps} title={@title}>
+      <:crumb>{SetUpComponents.step_label(@list)}</:crumb>
+      <SetUpComponents.frame>
         {render_slot(@inner_block)}
       </SetUpComponents.frame>
     </Layouts.app>

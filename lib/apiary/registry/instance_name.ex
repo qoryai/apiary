@@ -5,8 +5,9 @@ defmodule Apiary.Registry.InstanceName do
   # name is made where the instance's row has none, and kept for the life of the node
   # (`Apiary.InstanceConfig.registry_instance/0`). It starts once and leaves nothing in
   # the supervision tree. On a schema whose migration of the name has not run yet, as
-  # with `MIGRATE_ON_BOOT=false`, it keeps nothing, and the name is read when first
-  # needed. Off in test, where each test reads the name inside its sandbox.
+  # with `MIGRATE_ON_BOOT=false`, it keeps nothing, and the name is made and kept when
+  # first needed once the migration has run. Off in test, where each test reads the name
+  # inside its sandbox.
 
   @doc false
   @spec child_spec(term) :: Supervisor.child_spec()
@@ -34,7 +35,13 @@ defmodule Apiary.Registry.InstanceName do
   # children/0 is this worker where the feature is on and the worker enabled.
   @spec children() :: [module]
   def children do
-    enabled = Keyword.get(Application.get_env(:apiary, __MODULE__, []), :enabled, true)
-    if enabled and Apiary.Features.on?(:registry), do: [__MODULE__], else: []
+    if keeps?() and Apiary.Features.on?(:registry), do: [__MODULE__], else: []
   end
+
+  @doc false
+  # keeps?/0 is whether the node keeps the instance's registry name once it is made: where
+  # this worker is enabled. In test it is not, and each test reads the name inside its
+  # sandbox (`Apiary.InstanceConfig.registry_instance/0`).
+  @spec keeps?() :: boolean
+  def keeps?, do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :enabled, true)
 end

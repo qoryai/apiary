@@ -334,8 +334,8 @@ defmodule Apiary.AuditTest do
       assert {:ok, %{entries: [second, first, created], more?: false, page: 1}} =
                Audit.list_entries(scope)
 
-      assert second.after == %{"name" => "Second"}
-      assert first.after == %{"name" => "First"}
+      assert second.after == %{"name" => "Second", "slug" => "second"}
+      assert first.after == %{"name" => "First", "slug" => "first"}
       assert created.action == "organisation.create"
       assert Enum.all?([second, first, created], &(&1.organisation_id == scope.organisation.id))
 

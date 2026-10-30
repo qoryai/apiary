@@ -143,7 +143,7 @@ defmodule ApiaryWeb.SetupLiveTest do
       assert Setup.set_up?()
     end
 
-    test "with mail from the environment and no adapter, signs in at the workspace set-up",
+    test "with mail from the environment and no adapter, signs in at the organisation's overview",
          %{conn: conn, code: code} do
       Apiary.Mail.put_test_source(:env)
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
@@ -156,14 +156,14 @@ defmodule ApiaryWeb.SetupLiveTest do
       [membership] =
         email |> Apiary.Accounts.get_user_by_email() |> Apiary.Organisations.list_memberships()
 
-      assert redirected_to(conn) == ~p"/#{membership.organisation}/set-up"
+      assert redirected_to(conn) == ~p"/#{membership.organisation}"
 
       # The instance's connections, opened anyway, send on the same way, and mark nothing.
       conn = conn |> recycle() |> get(~p"/instance/set-up")
       assert redirected_to(conn) == ~p"/"
 
       assert conn |> recycle() |> get(~p"/") |> redirected_to() ==
-               ~p"/#{membership.organisation}/set-up"
+               ~p"/#{membership.organisation}"
 
       refute Setup.connections_reviewed?()
     end
@@ -206,6 +206,28 @@ defmodule ApiaryWeb.SetupLiveTest do
       assert has_element?(lv, "#user_password_confirmation-error")
       refute Apiary.Accounts.get_user_by_email(email)
       refute Setup.set_up?()
+    end
+
+    test "refuses a name whose address is a page of Qory Apiary, on the name",
+         %{conn: conn, code: code} do
+      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
+      email = unique_user_email()
+
+      for {name, message} <- [
+            {"Users", "Choose another name. /users is a page of Qory Apiary."},
+            {"株式会社",
+             "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
+               "The address is made from those characters."}
+          ] do
+        lv
+        |> form("#setup_form", user: params(%{"email" => email, "organisation_name" => name}))
+        |> render_submit()
+
+        assert has_element?(lv, "#setup_form [name='user[organisation_name]'][aria-invalid]")
+        assert has_element?(lv, "#setup_form", message)
+        refute Apiary.Accounts.get_user_by_email(email)
+        refute Setup.set_up?()
+      end
     end
 
     test "a wrong code is a path that does not exist", %{conn: conn, code: code} do

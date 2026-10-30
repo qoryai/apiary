@@ -124,6 +124,10 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
       {:"instance.mail_save", :admin, "/instance/mail", "save",
        %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
+      {:"instance.mail_resend", :owner, "/instance/mail", "resend", %{},
+       answer: :not_found_at_mount},
+      {:"instance.mail_resend", :admin, "/instance/mail", "resend", %{},
+       answer: :not_found_at_mount},
       # So is the product's name.
       {:"instance.rename", :owner, "/instance/general", "save",
        %{"instance" => %{"product_name" => "Acme Agents"}}, answer: :not_found_at_mount},

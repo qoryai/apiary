@@ -48,7 +48,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # of theirs is assigned to the workspace; those assigned have no items; the Backlog is
   # off for every one of them with items; or one is linked and no ticket has arrived yet.
   # The first, no work source, has Connect a work source to the workspace set-up
-  # (`/<org>/set-up`).
+  # (`/<org>/<workspace>/set-up/sources`).
   #
   # **The ticket.** A row's title puts the ticket's id in the address (`ticket`, `tk_…`),
   # and the ticket opens over the list (`ApiaryWeb.BacklogComponents.ticket/1`, frame
@@ -107,7 +107,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
         workspace={@current_scope.workspace.name}
         integrations_path={~p"/#{@current_scope.organisation}/settings/integrations"}
         integration_path={&~p"/#{@current_scope.organisation}/settings/integrations/#{&1}"}
-        set_up_path={set_up_path(@current_scope)}
+        set_up_path={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/set-up/sources"}
       />
 
       <div :if={@page && !empty_backlog?(@page, @params)} id="backlog" class="q-bl">
@@ -817,10 +817,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
       true -> :waiting
     end
   end
-
-  # The workspace set-up, where a work source is connected. Written out, not verified:
-  # the router has no route for it yet.
-  defp set_up_path(scope), do: "/#{Phoenix.Param.to_param(scope.organisation)}/set-up"
 
   # An open ticket with no work item has the Take in block.
   defp take_in?(ticket), do: ticket.state == :open and is_nil(ticket.work_item)

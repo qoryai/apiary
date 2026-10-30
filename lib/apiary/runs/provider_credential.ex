@@ -60,6 +60,71 @@ defmodule Apiary.Runs.ProviderCredential do
   def for_run(_run), do: {:ok, nil}
 
   @doc false
+  # workspace_hosts/1 is the hosts of the model providers the model choices that reach
+  # `workspace` use, at the organisation's default, the workspace and its targets, for any
+  # workflow: for each provider, the hosts `for_run/1` gives a run of each of its APIs
+  # (`hosts/3`). `[%{host:, connection:}]` with the provider's `id`, `public_id` and
+  # `name`, each host once per provider. A provider that cannot be read, as `for_run/1`
+  # reads it, adds none. A run gains the hosts of the one provider and API it is given.
+  # `[]` unless `applies?/0`.
+  @spec workspace_hosts(Apiary.Organisations.Workspace.t()) :: [
+          %{host: String.t(), connection: map}
+        ]
+  def workspace_hosts(%Apiary.Organisations.Workspace{} = workspace) do
+    {chain, owner} = Apiary.ModelChoices.chain_owner(workspace.organisation_id)
+
+    if applies?() and is_binary(owner) do
+      ids =
+        Repo.all(
+          from m in Apiary.ModelChoices.ModelChoice,
+            where: m.organisation_id == ^owner and m.chain == ^chain,
+            where: is_nil(m.workspace_id) or m.workspace_id == ^workspace.id,
+            where: not is_nil(m.connection_id),
+            distinct: true,
+            select: m.connection_id
+        )
+
+      from(c in Connection,
+        where: c.id in ^ids and not is_nil(c.provider_kind) and c.chain == ^chain,
+        order_by: [asc: c.id]
+      )
+      |> Repo.all()
+      |> Enum.flat_map(&provider_hosts/1)
+    else
+      []
+    end
+  end
+
+  defp provider_hosts(%Connection{} = provider) do
+    with true <- Connections.intact?(provider),
+         {:ok, %Provider{apis: apis} = description} <- Connections.provider(provider) do
+      settings = Connection.settings_map(provider)
+
+      apis
+      |> Enum.flat_map(fn api ->
+        address =
+          case api["endpoint"] do
+            %{"setting" => name} -> settings[name]
+            address -> address
+          end
+
+        if is_binary(address) and Endpoint.check(address) == :ok,
+          do: hosts(provider, description, Map.put(api, "endpoint", address)),
+          else: []
+      end)
+      |> Enum.uniq()
+      |> Enum.map(
+        &%{
+          host: &1,
+          connection: %{id: provider.id, public_id: provider.public_id, name: provider.name}
+        }
+      )
+    else
+      _not_read -> []
+    end
+  end
+
+  @doc false
   # applies?/0 is whether a run with a model provider is given its credential: both
   # features `factory` and `secrets` on.
   @spec applies?() :: boolean

@@ -183,7 +183,14 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   end
 
   describe "a prebuild for the instance's pool" do
-    @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("4c", 32)
+    # An image under the registry's place of the organisation of `scope`, the only place a
+    # claim gives an image from.
+    defp image(scope),
+      do:
+        Apiary.DispatchedRunsFixtures.registry_image(
+          scope.organisation.id,
+          String.duplicate("4c", 32)
+        )
 
     # A waiting run of a work item of `scope` with a target, and a collection of that
     # target with an `environment_ref`: the run is held for the pool's build.
@@ -223,15 +230,21 @@ defmodule Apiary.Dispatches.InstancePoolTest do
           {:ok,
            Apiary.Environments.record_build(
              Repo.get!(DispatchRun, prebuild.id),
-             %{image: @image, size: 1_048_576, commit: "4b7d0a3f", environment_ref: "env-1"},
+             %{
+               image: image(ctx.a),
+               size: 1_048_576,
+               commit: "4b7d0a3f",
+               environment_ref: "env-1"
+             },
              target,
              DateTime.utc_now()
            )}
         end)
 
-      assert Apiary.Environments.image_for(ctx.pool, ctx.a.workspace.id, target) == @image
+      image = image(ctx.a)
+      assert Apiary.Environments.image_for(ctx.pool, ctx.a.workspace.id, target) == image
 
-      assert {:ok, %{run: %{id: id}, registered: %Run{configured_image: @image}}} =
+      assert {:ok, %{run: %{id: id}, registered: %Run{configured_image: ^image}}} =
                claim(ctx.key)
 
       assert id == held.id

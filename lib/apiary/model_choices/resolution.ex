@@ -102,7 +102,7 @@ defmodule Apiary.ModelChoices.Resolution do
   def resolve(%{} = input) do
     order = order(input)
 
-    case Enum.find(order, &chose_provider?/1) do
+    case in_effect(input) do
       nil ->
         :none
 
@@ -112,6 +112,13 @@ defmodule Apiary.ModelChoices.Resolution do
         end
     end
   end
+
+  @doc false
+  # in_effect/1 is the choice of `input` that a resolution takes its provider, key, model
+  # and effort from, as `{level, choice}`: the first in the order that chose a provider,
+  # or nil for none. It reads only `input.choices` and the run's places.
+  @spec in_effect(map) :: {ModelChoice.level(), ModelChoice.t()} | nil
+  def in_effect(%{} = input), do: Enum.find(order(input), &chose_provider?/1)
 
   # The choices in the order of the moduledoc, each `{level, choice}`.
   defp order(input) do

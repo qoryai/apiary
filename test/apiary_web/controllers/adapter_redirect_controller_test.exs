@@ -256,7 +256,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
   end
 
   describe "with a return, from an install started at the workspace set-up" do
-    test "leads to its Work sources step, with the same return link", %{
+    test "with no workspace named, leads to the organisation's overview", %{
       conn: conn,
       scope: scope,
       pair: pair,
@@ -272,13 +272,13 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> ConnectSession.put(session, "set-up")
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
-      assert redirected_to(conn) == "/#{scope.organisation.slug}/set-up?step=sources"
+      assert redirected_to(conn) == "/#{scope.organisation.slug}"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "is connected."
       assert get_session(conn, "connect_passes") == nil
       assert %Connection{state: :connected} = reload(connection)
     end
 
-    test "leads to the page and the step the install started at, with the type picked", %{
+    test "with the type picked and no workspace, leads to the organisation's overview", %{
       conn: conn,
       scope: scope,
       pair: pair,
@@ -294,8 +294,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> ConnectSession.put(session, "new-workspace:destinations:software")
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
-      assert redirected_to(returned) ==
-               "/#{organisation}/workspaces/new?step=destinations&type=software"
+      assert redirected_to(returned) == "/#{organisation}"
 
       for back <- ["set-up:destinations", "set-up:sources:software"],
           do: assert(ConnectSession.back?(back))
@@ -306,7 +305,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       refute ConnectSession.back?("other:sources")
     end
 
-    test "leads to the step of the workspace the install started at", %{
+    test "leads to the step of the workspace the install started at, renamed since", %{
       conn: conn,
       scope: scope,
       pair: pair,
@@ -315,17 +314,22 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       session: session
     } do
       token = return_token(pair.secret, connection.public_id, nonce)
-      back = "set-up:destinations:workspace=#{scope.workspace.slug}"
+      back = "set-up:destinations:workspace=#{scope.workspace.public_id}"
       assert ConnectSession.back?(back)
       refute ConnectSession.back?("set-up:sources:workspace=../x")
+      refute ConnectSession.back?("set-up:sources:workspace=main")
 
-      conn =
+      # Renamed between Install and the return: the return finds it by its public id.
+      {:ok, renamed} = Apiary.Organisations.update_workspace(scope, %{"name" => "Payments"})
+      assert renamed.slug == "payments"
+
+      returned =
         conn
         |> ConnectSession.put(session, back)
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
-      assert redirected_to(conn) ==
-               "/#{scope.organisation.slug}/set-up?step=destinations&workspace=#{scope.workspace.slug}"
+      assert redirected_to(returned) ==
+               "/#{scope.organisation.slug}/payments/set-up/destinations"
     end
 
     test "a back value the session may not keep leads to the integration's page", %{
@@ -345,6 +349,27 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
       assert redirected_to(conn) == page(scope, adapter)
+    end
+
+    test "a pass kept with a workspace's slug, before the public id, is still taken", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: {connection_id, session_nonce}
+    } do
+      token = return_token(pair.secret, connection.public_id, nonce)
+      back = "set-up:sources:workspace=#{scope.workspace.slug}"
+
+      conn =
+        conn
+        |> put_session("connect_passes", [[connection_id, session_nonce, back]])
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(conn) == page(scope, adapter)
+      assert Phoenix.Flash.get(conn.assigns.flash, :info)
     end
   end
 
@@ -375,10 +400,12 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       conn = ConnectSession.put(conn, {"ac_0000000000000004", "n5"}, "/elsewhere")
       assert ConnectSession.back(conn, "ac_0000000000000004") == nil
 
+      # A back value it no longer takes is dropped, and the nonce beside it kept.
       conn =
         put_session(conn, "connect_passes", [["ac_0000000000000006", "n6", "https://e.example"]])
 
-      assert ConnectSession.fetch(conn, "ac_0000000000000006") == nil
+      assert ConnectSession.fetch(conn, "ac_0000000000000006") == "n6"
+      assert ConnectSession.back(conn, "ac_0000000000000006") == nil
 
       # What the session holds that is not its shape is read as nothing.
       conn = put_session(conn, "connect_passes", %{"ac_0000000000000003" => "n3"})

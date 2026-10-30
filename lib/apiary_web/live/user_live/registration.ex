@@ -6,7 +6,8 @@ defmodule ApiaryWeb.UserLive.Registration do
   `Apiary.Organisations.sign_up_offer/1` answers on mount: before the instance is set
   up, nothing, and the page says to use its set-up link
   (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation with no
-  workspace, whose owner lands on the workspace set-up (`/:org/set-up`) once signed in;
+  workspace, whose owner lands on the organisation's overview (`/:org`), with its kind
+  cards, once signed in;
   and nothing where none is open, where the page says sign-up is by invitation.
   `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
 
@@ -258,8 +259,8 @@ defmodule ApiaryWeb.UserLive.Registration do
         do: Map.drop(user_params, ~w(password password_confirmation)),
         else: user_params
 
-    # An organisation it creates has no workspace: its owner lands on the workspace set-up
-    # (`ApiaryWeb.WorkspaceSetupLive`) and makes the first one there.
+    # An organisation it creates has no workspace: its owner lands on the organisation's
+    # overview (`ApiaryWeb.OrganisationLive`) and makes the first one from its kind cards.
     case Organisations.sign_up_user(user_params, socket.assigns.invitation_token,
            origin: socket.assigns.origin,
            workspace: false
