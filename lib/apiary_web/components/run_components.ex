@@ -202,8 +202,9 @@ defmodule ApiaryWeb.RunComponents do
   def reason_words(run), do: given_words(run)
 
   # Why a run a node pool's claim registered never started (`Apiary.Runs.Run.start_failure`),
-  # as its cause line. A release reads with the starter's reason, shown as a text an
-  # external system sent (`Apiary.ExternalText.line/1`) and its one closing full stop
+  # as its cause line. A release reads with the starter's reason, through the secret
+  # filter (`Apiary.SecretLogFilter.filter_text/1`), shown as a text an external system
+  # sent (`Apiary.ExternalText.line/1`) and its one closing full stop
   # left out for the sentence's, from the run's dispatch when it is loaded and still has it; without it, the run reads as refused, "did not
   # start: machine_not_made". A run lost through a gateway that never attached it, whose
   # run code was never redeemed, did not start within the code's 15 minutes
@@ -214,6 +215,7 @@ defmodule ApiaryWeb.RunComponents do
          gettext("No machine was made: %{reason}.",
            reason:
              dispatch.release_reason
+             |> Apiary.SecretLogFilter.filter_text()
              |> Apiary.ExternalText.line()
              |> String.replace_suffix(".", "")
          )

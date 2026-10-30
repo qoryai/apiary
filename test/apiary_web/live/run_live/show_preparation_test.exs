@@ -179,6 +179,38 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute lv |> element("#prepare-machine") |> render() =~ "No machine was made"
     end
 
+    test "a release reason's run key is filtered on the page, and kept in the diagnostics",
+         ctx do
+      run_key = "qrk_eyJ2ZXJzaW9uIjoxfQ.c2lnbmF0dXJlLWJ5dGVz"
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+
+      {:ok, _queued} =
+        Apiary.Repo.transact(fn ->
+          Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
+        end)
+
+      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      :ok = Dispatches.release(key, dispatch.public_id, %{reason: "Key #{run_key} refused."})
+      run = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
+
+      # The Prepare machine section's cause and the header both have it filtered.
+      assert %{stopped: %{text: text}} = Apiary.Runs.Preparation.read(ctx.scope, run)
+      assert text =~ "No machine was made: Key [FILTERED] refused."
+      html = ctx.conn |> open(ctx.scope, run) |> render()
+      assert html =~ "[FILTERED]"
+      refute html =~ "qrk_" or html =~ "c2lnbmF0"
+
+      # The diagnostics document keeps the text as stored.
+      document = Apiary.Runs.Diagnostics.document(run, :instance)
+      assert [%{"release_reason" => "Key " <> _ = reason}] = document["dispatches"]
+      assert reason =~ run_key
+
+      assert document["preparation"]["stopped"]["text"] =~
+               "No machine was made: Key #{run_key} refused"
+    end
+
     test "a pending run with no event shows the section in place of the wait", ctx do
       %{run: run} = claimed_run(ctx.scope)
 

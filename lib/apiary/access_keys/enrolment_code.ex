@@ -2,7 +2,13 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   # The prefix of each kind's code, the one place the prefixes are written: the codes made,
   # the check at enrolment that a code is its node's kind's, the log filter and the tests
   # read them from here. The moduledoc names a node's, a node pool's and a gateway's alone.
-  @prefixes %{node: "qecn_", pool: "qecp_", gateway: "qecg_", adapter: "qeci_"}
+  @prefixes %{
+    node: "qecn_",
+    pool: "qecp_",
+    gateway: "qecg_",
+    adapter: "qeci_",
+    diagnostics: "qecd_"
+  }
   # The prefix of a run code (`Apiary.Runs.RunCode`), which enrols no key and belongs to no
   # node: a claim answers with it, and enrolment redeems it for the run's run key.
   @run_prefix "qecr_"

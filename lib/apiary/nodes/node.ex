@@ -43,7 +43,7 @@ defmodule Apiary.Nodes.Node do
   @typedoc """
   A node's kind: one permanent machine, a pool of short-lived instances, or a gateway.
   """
-  @type kind :: :node | :pool | :gateway | feature_kind()
+  @type kind :: :node | :pool | :gateway | feature_kind() | :diagnostics
 
   # The kind a feature the documentation does not differ by adds (`docs: false`): an
   # adapter. A private type, so the served docs show its name alone.
@@ -57,9 +57,11 @@ defmodule Apiary.Nodes.Node do
 
   @kinds [:node, :pool]
   @all_kinds [:node, :pool, :gateway]
-  # The kinds the schema reads and writes: those of `all_kinds/0`, and an adapter, which is
-  # the instance's and is made through `Apiary.Adapters` alone (`adapter_changeset/2`).
-  @schema_kinds @all_kinds ++ [:adapter]
+  # The kinds the schema reads and writes: those of `all_kinds/0`, an adapter, which is
+  # the instance's and is made through `Apiary.Adapters` alone (`adapter_changeset/2`), and
+  # the instance's diagnostics node, which holds the diagnostics keys and is made through
+  # `Apiary.AccessKeys` alone (`diagnostics_changeset/0`).
+  @schema_kinds @all_kinds ++ [:adapter, :diagnostics]
   @choices [:direct, :default, :named]
   @max_limit 10_000
   @max_url 2048
@@ -73,7 +75,7 @@ defmodule Apiary.Nodes.Node do
   # An adapter's intervals, in seconds: a minute to a day (`nodes_sync_check`).
   @min_interval 60
   @max_interval 86_400
-  @prefixes %{node: "nd", pool: "np", gateway: "ng", adapter: "na"}
+  @prefixes %{node: "nd", pool: "np", gateway: "ng", adapter: "na", diagnostics: "dg"}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -255,6 +257,21 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:gateway_choice, name: :nodes_gateway_choice_check)
     |> check_constraint(:gateway_id, name: :nodes_gateway_is_a_gateway)
     |> foreign_key_constraint(:gateway_id, name: :nodes_gateway_id_fkey)
+  end
+
+  @doc false
+  # The changeset that makes the instance's diagnostics node, which holds the diagnostics
+  # keys (`Apiary.AccessKeys`): of the kind `diagnostics`, named
+  # `diagnostics`, with no organisation, no workspace, no instance limit and no gateway,
+  # its public id `dg_`. The database holds it to one in use (`nodes_diagnostics_index`).
+  @spec diagnostics_changeset() :: Ecto.Changeset.t()
+  def diagnostics_changeset do
+    %__MODULE__{kind: :diagnostics, name: "diagnostics", gateway_choice: :direct}
+    |> change()
+    |> check_constraint(:kind, name: :nodes_kind_check)
+    |> check_constraint(:workspace_id, name: :nodes_place_check)
+    |> unique_constraint(:kind, name: :nodes_diagnostics_index)
+    |> put_public_id()
   end
 
   # An adapter is no node a run runs on, nor a gateway: it is the instance's, with no
@@ -598,7 +615,7 @@ defmodule Apiary.Nodes.Node do
   # gateway is gone is still renamed.
   defp put_choice(changeset, attrs) do
     case get_field(changeset, :kind) do
-      kind when kind in [:gateway, :adapter] ->
+      kind when kind in [:gateway, :adapter, :diagnostics] ->
         changeset
         |> put_change(:gateway_choice, :direct)
         |> put_change(:gateway_id, nil)

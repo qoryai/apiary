@@ -218,8 +218,21 @@ defmodule ApiaryWeb.RunLive.Show do
               </p>
             </div>
             <div class="q-run-actions">
+              <%!-- Why Copy diagnostics failed, outside the menu that closes on the click,
+                   kept until the next click (the CopyToClipboard hook writes it). --%>
+              <p
+                id="run-menu-status"
+                role="status"
+                class="max-w-[48ch] text-right text-xs text-base-content/80"
+                phx-update="ignore"
+              >
+              </p>
               <.run_menu
                 run={@run}
+                diagnostics={
+                  Access.can?(@current_scope, :"run.read_log", @run) &&
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/diagnostics"
+                }
                 log={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
                     ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/log"
@@ -392,6 +405,10 @@ defmodule ApiaryWeb.RunLive.Show do
     required: true,
     doc: "the log's path, or false for a reader who may not read it"
 
+  attr :diagnostics, :any,
+    required: true,
+    doc: "the path of the run's diagnostics document, as the reader may read it"
+
   defp run_menu(assigns) do
     ~H"""
     <div
@@ -429,6 +446,43 @@ defmodule ApiaryWeb.RunLive.Show do
           >
             <.icon name="hero-link" class="size-4" /> {gettext("Copy run id")}
             <span class="sr-only" aria-live="polite"></span>
+          </button>
+        </li>
+        <%!-- The run's diagnostics document, read when the reader clicks and copied as
+             it is (`ApiaryWeb.RunDiagnosticsController`): the run, with its log, for a chat
+             or an issue. Only for a reader of the run's log, which the document has. --%>
+        <li :if={@diagnostics} role="none">
+          <button
+            id="run-menu-diagnostics"
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            phx-hook="CopyToClipboard"
+            data-copy-url={@diagnostics}
+            data-status="#run-menu-status"
+            data-copied-words={gettext("Copied")}
+            data-failed-network={
+              gettext("Check your connection, then copy again. The diagnostics did not arrive.")
+            }
+            data-failed-gone={
+              gettext(
+                "Reload the page, then copy again. This run, or your access to its log, is gone."
+              )
+            }
+            data-failed-signed-out={gettext("Sign in again, then copy again. Your session ended.")}
+            data-failed-server={
+              gettext(
+                "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
+              )
+            }
+            data-failed-clipboard={
+              gettext(
+                "Allow this page to use the clipboard, then copy again. The browser did not allow the copy."
+              )
+            }
+            data-menu-close
+          >
+            <.icon name="hero-clipboard-document-list" class="size-4" /> {gettext("Copy diagnostics")}
           </button>
         </li>
         <li :if={@log} role="none">

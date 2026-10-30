@@ -154,6 +154,12 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.AdapterRequest, kind: :pool
       end
 
+      # A run's diagnostics, signed with a diagnostics key, which no other pipeline takes.
+      pipeline :contract_diagnostics do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest, kinds: [:diagnostics]
+      end
+
       # First for the organisation's and the workspace's pages: a segment in the place of
       # a slug that can never be one answers as a path the router does not know.
       pipeline :path_scope do
@@ -225,6 +231,12 @@ defmodule ApiaryWeb.Routes do
         post "/runs/:run_id/outcome", OutcomeController, :create
         # A gateway's secrets request, with the `factory` and `secrets` features.
         post "/secrets", SecretsController, :create
+      end
+
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_diagnostics
+
+        get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end
 
       # An adapter's read of its change feed, after a cursor.
@@ -517,6 +529,16 @@ defmodule ApiaryWeb.Routes do
             live "/instance/nodes/:node_id/keys", InstanceLive.Node, :access_key
             live "/instance/nodes/:node_id/keys/:key_id/revoke", InstanceLive.Node, :revoke
             live "/instance/nodes/:node_id/settings", InstanceLive.Node, :settings
+
+            # Instance settings › Diagnostics keys, with the `observability` feature, for
+            # the instance's admins: the keys that read any run's diagnostics, the command
+            # that makes one (`…/new-code`), and a key's revocation, confirmed in place.
+            live "/instance/diagnostics-keys", InstanceLive.DiagnosticsKeys, :index
+            live "/instance/diagnostics-keys/new-code", InstanceLive.DiagnosticsKeys, :new_code
+
+            live "/instance/diagnostics-keys/:key_id/revoke",
+                 InstanceLive.DiagnosticsKeys,
+                 :revoke
 
             unquote(@block)
           end
@@ -866,6 +888,9 @@ defmodule ApiaryWeb.Routes do
 
           # The raw bytes of a run's log, for the terminal of the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
+
+          # A run's diagnostics document, for Copy diagnostics on the run page. Not a page.
+          get "/:org/:workspace/runs/:run_id/diagnostics", RunDiagnosticsController, :show
 
           # A target's policy had a page of its own, by the target row's id; it is the
           # Policy tab of the target's page now, where these send on to.

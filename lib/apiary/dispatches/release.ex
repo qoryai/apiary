@@ -80,7 +80,7 @@ defmodule Apiary.Dispatches.Release do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Slots}
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{LeakedSecrets, Run}
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
@@ -168,6 +168,8 @@ defmodule Apiary.Dispatches.Release do
       Repo.update_all(from(d in Dispatch, where: d.id == ^id),
         set: [ended_at: now, end_cause: :released, release_reason: locked.reason, updated_at: now]
       )
+
+    :ok = LeakedSecrets.record_dispatch(dispatch, :release_reason, locked.reason, now)
 
     failed = Handover.fail_start([{run.id, id}], "machine_not_made", now)
 

@@ -265,6 +265,25 @@ defmodule ApiaryWeb.RunComponentsTest do
                nil
     end
 
+    test "a release reason with a secret in it reads filtered, in the words and the end reason" do
+      secret = "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+
+      released = %Apiary.Runs.Run{
+        state: "failed",
+        start_failed_at: ~U[2026-10-30 12:00:00Z],
+        reason: "machine_not_made",
+        start_failure: "machine_not_made",
+        dispatch: %Apiary.Dispatches.Dispatch{release_reason: "Key #{secret} refused"}
+      }
+
+      assert RunComponents.reason_words(released) ==
+               "No machine was made: Key [FILTERED] refused."
+
+      html = render_component(&RunComponents.end_reason/1, run: released)
+      assert html =~ "No machine was made: Key [FILTERED] refused."
+      refute html =~ "qak_"
+    end
+
     test "a reason stored under its earlier name reads as the new one" do
       for {earlier, now} <- [
             {"issuer_unreachable", "credential_check_unreachable"},

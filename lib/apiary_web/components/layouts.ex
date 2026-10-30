@@ -422,6 +422,19 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
+    # The keys that read any run's diagnostics, with the `observability` feature, which the
+    # instance has or not, as the adapters. After Nodes, before Mail.
+    diagnostics_keys =
+      admin? && Apiary.Features.on?(:observability) &&
+        %Entry{
+          section: :instance,
+          key: :diagnostics_keys,
+          label: gettext("Diagnostics keys"),
+          icon: "hero-key",
+          path: ~p"/instance/diagnostics-keys",
+          place: :instance
+        }
+
     configuration =
       admin? &&
         %Entry{
@@ -435,7 +448,8 @@ defmodule ApiaryWeb.Layouts do
 
     for %Entry{} = entry <-
           [general] ++
-            ApiaryWeb.Edition.instance_sections(scope) ++ [adapters, nodes, mail, configuration],
+            ApiaryWeb.Edition.instance_sections(scope) ++
+            [adapters, nodes, diagnostics_keys, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

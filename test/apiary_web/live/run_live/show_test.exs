@@ -275,6 +275,50 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, ~s(#run-menu-raw[href="#{log}"][target="_blank"]), "Raw log")
       assert has_element?(lv, ~s(#run-menu-download[href="#{log}?download=1"][download]))
+
+      # Copy diagnostics, beside Copy run id: the hook reads the run's document and copies it.
+      diagnostics = "#{workspace_path(scope)}/runs/#{run.public_id}/diagnostics"
+
+      assert has_element?(
+               lv,
+               ~s(#run-menu-diagnostics[phx-hook="CopyToClipboard"][data-copy-url="#{diagnostics}"]),
+               "Copy diagnostics"
+             )
+
+      # The line a failed copy writes is outside the menu, empty until a copy fails.
+      assert lv |> element("#run-menu-status[role=status]") |> render() =~
+               ~r{\A<p[^>]*></p>\z}
+
+      refute has_element?(lv, "#run-menu-diagnostics [aria-live]")
+      assert has_element?(lv, ~s(#run-menu-diagnostics[data-status="#run-menu-status"]))
+
+      # A line for each way the copy can fail, which the hook writes there instead.
+      for {cause, line} <- [
+            {"network",
+             "Check your connection, then copy again. The diagnostics did not arrive."},
+            {"gone",
+             "Reload the page, then copy again. This run, or your access to its log, is gone."},
+            {"signed-out", "Sign in again, then copy again. Your session ended."},
+            {"server",
+             "Copy again in a minute. Qory Apiary could not build the diagnostics. " <>
+               "If it fails again, tell your instance admin."},
+            {"clipboard",
+             "Allow this page to use the clipboard, then copy again. " <>
+               "The browser did not allow the copy."}
+          ] do
+        assert has_element?(lv, ~s(#run-menu-diagnostics[data-failed-#{cause}="#{line}"])),
+               cause
+      end
+
+      ids =
+        lv
+        |> element("#run-menu ul")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("li > [id]")
+        |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+
+      assert ["run-menu-copy", "run-menu-diagnostics" | _] = ids
     end
 
     test "Details is beside every tab, Terminal too", %{conn: conn, scope: scope} do
@@ -994,6 +1038,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-menu-copy[data-copy="#{run.public_id}"]))
       refute has_element?(lv, "#run-menu-raw")
       refute has_element?(lv, "#run-menu-download")
+      # Copy diagnostics copies the log, so it is not offered either.
+      refute has_element?(lv, "#run-menu-diagnostics")
+      refute html =~ "/runs/#{run.public_id}/diagnostics"
       refute html =~ "/runs/#{run.public_id}/log"
       refute html =~ "/runs/#{run.public_id}/terminal"
 

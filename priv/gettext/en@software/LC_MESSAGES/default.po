@@ -785,7 +785,13 @@ msgstr ""
 msgid "%{kind} runs"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "%{label} is active."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -3670,6 +3676,7 @@ msgid "Add a host rule"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -3857,6 +3864,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Added"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added a diagnostics key"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4173,6 +4185,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Allow or deny"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Allow this page to use the clipboard, then copy again. The browser did not allow the copy."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -5353,6 +5370,11 @@ msgstr ""
 msgid "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
 msgstr "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Check your connection, then copy again. The diagnostics did not arrive."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check your email"
@@ -5626,6 +5648,7 @@ msgid "Collapse sidebar"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5937,6 +5960,11 @@ msgstr ""
 msgid "Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory Apiary never received it, and it can't be shown again."
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Copy block"
@@ -5944,9 +5972,15 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Copy command"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Copy diagnostics"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -6778,6 +6812,12 @@ msgstr ""
 msgid "Dev: sent mail is in the %{mailbox}."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "Diagnostics keys"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Dial failed"
@@ -6856,6 +6896,7 @@ msgid "Domains"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -7912,6 +7953,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/actor.ex
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/people.ex
 #, elixir-autogen, elixir-format
 msgid "Former member"
@@ -8116,6 +8158,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -8835,6 +8878,11 @@ msgctxt "plain"
 msgid "It applies to the chosen workspaces below, and to no other."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "It arrived at %{time}."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -8951,6 +8999,7 @@ msgid "It is removed from this organisation. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -9089,6 +9138,7 @@ msgctxt "plain"
 msgid "It was shown once, when the key was generated, and belongs in %{variable} in the secret store of the system that runs qory. If it is lost, generate a new key and revoke this one."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It works once, until %{time}, %{minutes} minutes from when you got it. This is the only time it is shown."
@@ -9371,6 +9421,7 @@ msgid "Keyboard shortcuts of the timeline"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -9512,6 +9563,7 @@ msgstr ""
 msgid "Last seen"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Last used"
@@ -9941,6 +9993,7 @@ msgstr ""
 msgid "Machines use their local policy until the first change here."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Made"
@@ -9949,6 +10002,11 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "Made a change"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Made a code for a diagnostics key"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -9979,6 +10037,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Made an owner a member, by a command run on Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "Made by"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -10028,6 +10091,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Main session"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "Make a diagnostics key"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -10348,6 +10416,7 @@ msgstr ""
 msgid "Network access, narrowed to %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Never"
@@ -11639,6 +11708,7 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/choose_collections_live.ex
 #: lib/apiary_web/live/harness_targets.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -11801,6 +11871,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "On since %{day}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "On the computer that reads run diagnostics, run:"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -13410,6 +13485,11 @@ msgstr ""
 msgid "Released on"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page, then copy again. This run, or your access to its log, is gone."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Reloaded."
@@ -13827,6 +13907,7 @@ msgid "Revoke %{label}"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -13841,6 +13922,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoked"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked a diagnostics key"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -13863,12 +13949,14 @@ msgstr ""
 msgid "Revoked."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoke…"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -15181,6 +15269,11 @@ msgstr ""
 msgid "Shown to you once, for the machine's or the CI's secret store"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in again, then copy again. Your session ended."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Sign-up is by invitation"
@@ -16229,6 +16322,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The command is cancelled. It no longer works."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "The command makes the key on the computer that runs it and sends Qory Apiary only the public half. The secret never leaves that computer."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -17432,6 +17530,16 @@ msgstr ""
 msgid "This instance doesn't accept integrations from this source."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "This instance has at most %{count} diagnostics keys. Revoke one to add another."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "This instance has no diagnostics key."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/node.ex
 #, elixir-autogen, elixir-format
 msgid "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
@@ -17614,6 +17722,26 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "This run's session events could not be recorded: the %{wall} it ran behind runs inside a virtual machine. The run has connections and no session timeline."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into an event of the run. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into the machine log. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into the reason the machine was released. Replace it."
+msgstr ""
+
+#: lib/apiary/runs/leaked_secrets.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is compromised: it was printed into the run's log. Replace it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18351,6 +18479,11 @@ msgstr ""
 msgid "Waiting for the command to run. This page shows when the adapter is connected."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for the command to run. This page shows when the key arrives."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for the run to start"
@@ -18674,6 +18807,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "With Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgid "With a diagnostics key, a computer reads the diagnostics of any run on this instance, and nothing else."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -19019,6 +19157,7 @@ msgid "Yes, remove"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -19322,6 +19461,12 @@ msgstr ""
 msgid "You get one command to run on %{name}. It carries a one-time code, not a key, which works once within 15 minutes."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "You get one command to run on the computer that reads run diagnostics. It contains a one-time code, not a key. The code works once, within %{minutes} minutes. The computer makes the key and sends Qory Apiary only its public half."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
@@ -19351,6 +19496,7 @@ msgstr ""
 #: lib/apiary_web/controllers/instance_mail_controller.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/settings.ex
@@ -20426,6 +20572,7 @@ msgstr ""
 msgid "not declared yet"
 msgstr ""
 
+#: lib/apiary_web/controllers/run_diagnostics_controller.ex
 #: lib/apiary_web/controllers/run_log_controller.ex
 #, elixir-autogen, elixir-format
 msgid "not found"

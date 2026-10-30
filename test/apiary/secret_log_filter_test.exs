@@ -34,6 +34,16 @@ defmodule Apiary.SecretLogFilterTest do
     end
   end
 
+  test "filter_text/1's doc names its callers, and not the diagnostics, which keep the text" do
+    {:docs_v1, _, :elixir, _, _, _, docs} = Code.fetch_docs(Apiary.SecretLogFilter)
+
+    [doc] =
+      for {{:function, :filter_text, 1}, _, _, %{"en" => doc}, _} <- docs, do: doc
+
+    assert doc =~ "ApiaryWeb.RunComponents" and doc =~ "Apiary.Runs.Preparation"
+    refute doc =~ "such as a run's diagnostics"
+  end
+
   test "is installed at boot, once" do
     %{filters: filters} = :logger.get_primary_config()
     assert Keyword.has_key?(filters, :apiary_access_key_secrets)
@@ -270,6 +280,56 @@ defmodule Apiary.SecretLogFilterTest do
       for text <- ["qecho is no code", "the qec module", "QEC-1 is a part number"] do
         event = event({:string, text})
         assert SecretLogFilter.filter(event, nil) == event
+      end
+    end
+  end
+
+  describe "a run key" do
+    # A run key's form: `qrk_`, the payload in base64url, `.`, the signature in base64url.
+    defp run_key do
+      payload = Base.url_encode64(~s({"version":1,"run_id":"0b5c"}), padding: false)
+      signature = Base.url_encode64(:crypto.strong_rand_bytes(64), padding: false)
+      "qrk_" <> payload <> "." <> signature
+    end
+
+    test "is replaced whole, its payload, its full stop and its signature, in any case" do
+      key = run_key()
+
+      for written <- [key, String.upcase(key)] do
+        assert filtered_text("got #{written}. Done") == "got [FILTERED]. Done"
+      end
+    end
+
+    test "is replaced in a report's terms and in the metadata" do
+      key = run_key()
+
+      %{msg: {:report, report}, meta: meta} =
+        SecretLogFilter.filter(
+          %{level: :info, msg: {:report, %{body: [key]}}, meta: %{key: key}},
+          nil
+        )
+
+      assert report == %{body: ["[FILTERED]"]}
+      assert meta == %{key: "[FILTERED]"}
+    end
+  end
+
+  describe "filter_text/1" do
+    test "replaces a secret, a run key and every code's prefix, and keeps the rest" do
+      codes =
+        for prefix <- Map.values(EnrolmentCode.prefixes()) ++ [EnrolmentCode.run_prefix()],
+            do: prefix <> @code_body
+
+      for secret <- [@secret, run_key(), "qecd_" <> @code_body | codes] do
+        assert SecretLogFilter.filter_text("line 1\nkey #{secret} here\n") ==
+                 "line 1\nkey [FILTERED] here\n",
+               secret
+      end
+    end
+
+    test "returns text without a secret as it is" do
+      for text <- ["", "qecho is no code", "plain \e[1mbold\e[0m text", <<0xFF, 0x00>>] do
+        assert SecretLogFilter.filter_text(text) == text
       end
     end
   end

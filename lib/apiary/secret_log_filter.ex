@@ -2,9 +2,10 @@ defmodule Apiary.SecretLogFilter do
   @moduledoc """
   SecretLogFilter keeps an access key's secret, and an enrolment code, out of what a log
   handler writes: a primary filter of Erlang's `:logger`, installed at boot (`install/0`),
-  which replaces each run of `qak_` or of an enrolment code's prefix (in any case) and the
-  base64url characters after it with `[FILTERED]`, in a log event's message and in its
-  metadata, before any handler sees the event.
+  which replaces each run of `qak_`, of `qrk_` or of an enrolment code's prefix (in any
+  case) and the base64url characters after it with `[FILTERED]`, in a log event's message
+  and in its metadata, before any handler sees the event. `filter_text/1` replaces them in
+  any text the same way.
 
   Qory Apiary never has a key's secret: a key made in a browser sends its public half alone
   (`ApiaryWeb.NodeLive.AccessKey`). But an event can still carry what a client sent: the
@@ -14,6 +15,9 @@ defmodule Apiary.SecretLogFilter do
   so this filter takes the value: the
   Forager contract's secret format, `qak_` and the 32-byte seed in base64url, the same rule
   the page refuses by.
+
+  A run key (`Apiary.Runs.RunKey`), `qrk_`, its payload, `.` and its signature, is a
+  credential of one run, and is taken whole, the `.` and the signature with it.
 
   An enrolment code (the prefix of its node's kind,
   `#{Apiary.AccessKeys.EnrolmentCode.prefix(:node)}` for a node,
@@ -181,19 +185,21 @@ defmodule Apiary.SecretLogFilter do
 
   @id :apiary_access_key_secrets
 
-  # The prefixes taken: a secret's, `qak_`, and an enrolment code's, every kind's
-  # (`EnrolmentCode.prefixes/0`, an adapter's among them) and, more broadly, `qec`, a
-  # letter or none, and `_`. A code's `_` may be URL-encoded, `%5F`.
+  # The prefixes taken: a secret's, `qak_`, a run key's, `qrk_`, and an enrolment code's,
+  # every kind's (`EnrolmentCode.prefixes/0`, an adapter's among them) and, more broadly,
+  # `qec`, a letter or none, and `_`. A code's `_` may be URL-encoded, `%5F`. A run key is
+  # its payload, `.` and its signature (`Apiary.Runs.RunKey`): the `.` and the base64url
+  # characters after it are taken with it.
   @code_stems EnrolmentCode.prefixes()
               |> Map.values()
               |> Enum.map(&String.trim_trailing(&1, "_"))
-  @prefix_source "(?i)(?:qak_|(?:qec[a-z]?|" <>
+  @prefix_source "(?i)(?:qrk_[A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)?|(?:qak_|(?:qec[a-z]?|" <>
                    Enum.map_join(@code_stems, "|", &Regex.escape/1) <>
-                   ")(?:_|%5F))[A-Za-z0-9_-]*"
+                   ")(?:_|%5F))[A-Za-z0-9_-]*)"
 
   # Each prefix's letters in any case, without what may follow: what `:binary.match/2`
   # looks for before the regex is run, which then says whether a prefix is there.
-  @prefix_marks ["qak", "qec" | @code_stems]
+  @prefix_marks ["qak", "qrk", "qec" | @code_stems]
                 |> Enum.flat_map(fn stem ->
                   stem
                   |> String.graphemes()
@@ -276,6 +282,19 @@ defmodule Apiary.SecretLogFilter do
   end
 
   def redact_path(path), do: path
+
+  @doc """
+  filter_text/1 is `text` with each secret in it replaced, as the filter replaces it in a
+  log event's message: `qak_`, `qrk_` and an enrolment code's prefix, in any case, with
+  the characters after them, by `[FILTERED]`, and a link's token in a path or a query by
+  its name. Any other text is returned as it is. For text Qory Apiary shows that is not a
+  log line: the pool's release reason on the run page, in its header
+  (`ApiaryWeb.RunComponents`) and in its Prepare machine section
+  (`Apiary.Runs.Preparation`). A run's diagnostics keep every text as stored.
+  """
+  @spec filter_text(String.t()) :: String.t()
+  def filter_text(text) when is_binary(text),
+    do: if(secret?(text), do: replace(text), else: text)
 
   # The route of `token_routes/0` the segments are, or nil: a proper list of binaries
   # alone matches one.
