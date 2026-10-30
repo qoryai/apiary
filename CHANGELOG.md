@@ -476,6 +476,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
   pass of the GitHub adapter lasts.
+- A run whose machine never started it stays as a failed run, with its page and id. The
+  cause is one of: the pool made no machine, the claim lapsed before the handover, or the
+  machine stopped before it started the run. The run page, its preview and the runs list
+  show the cause, the pool's name and the pool's reason. A run whose machine stops before
+  it starts the run ends failed at once, not 15 minutes later.
+
+### Fixed
+
+- The built-in harness uses qory's hello example at a commit that allows extending it.
+  With the earlier commit, composing the built-in harness failed, so every test run
+  failed.
 
 ### Security
 
@@ -548,6 +559,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   index on `adapter_grants` (`id`, `organisation_id`), built inside the migration too.
   `adapter_grants` comes with this release, so on an upgrade from 0.1.0 it is empty when
   this migration runs. It changes no row.
+- `runs`: three nullable columns, `start_failure`, `start_failed_at` and `dispatch_id`,
+  with checks on them. The check `runs_run_settings_check` is replaced to accept run
+  settings on a run whose start failed; adding it scans `runs` under a lock that blocks
+  writes. `dispatches`: a nullable column, `release_reason`, 1 to 200 characters. An
+  index on `runs.dispatch_id`, built concurrently. The migrations change no row.
 
 ## [0.1.0] - 2026-10-13
 
