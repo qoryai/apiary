@@ -61,6 +61,10 @@ defmodule Apiary.Repo.Migrations.KeepTheSecretsARunPrinted do
              name: :leaked_secrets_dispatch_index
            )
 
+    # The purge of an organisation or a workspace deletes the rows by these, in batches.
+    create index(:leaked_secrets, [:organisation_id])
+    create index(:leaked_secrets, [:workspace_id])
+
     alter table(:runs) do
       add :leaked_secrets_omitted, :integer, null: false, default: 0
     end

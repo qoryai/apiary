@@ -192,6 +192,15 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert log.value == nil and event.value == nil
   end
 
+  test "the table is indexed by organisation and by workspace, for the purge" do
+    %{rows: rows} =
+      Repo.query!("SELECT indexdef FROM pg_indexes WHERE tablename = 'leaked_secrets'")
+
+    definitions = List.flatten(rows)
+    assert Enum.any?(definitions, &(&1 =~ ~r/\(organisation_id\)\z/))
+    assert Enum.any?(definitions, &(&1 =~ ~r/\(workspace_id\)\z/))
+  end
+
   test "event_text/1 is each key and string, keys sorted, one per line" do
     assert LeakedSecrets.event_text(%{"b" => ["x", 1, %{"d" => "y", "c" => nil}], "a" => "z"}) ==
              "a\nz\nb\nx\nc\nd\ny"
