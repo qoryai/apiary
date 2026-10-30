@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ConnectionLive.HarnessFetchTest do
-  # The harness fetches on the workspace's Network access: a table of their own below the
-  # destinations, locked, outside the page's counts, views and rule options. The rows of
-  # the destinations are session rows only; no event of the page reaches a harness fetch.
+  # The harness fetches on the workspace's Network access: a separate locked table below
+  # the destinations, outside the page's counts, views and rule options. The rows of the
+  # destinations are session rows only; no event of the page reaches a harness fetch.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest

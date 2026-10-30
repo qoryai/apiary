@@ -43,7 +43,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   Under the destinations, **Harness fetch** lists the hosts runs reached to fetch their
   harness (`Apiary.Runs.harness_fetches/3`, `ApiaryWeb.HostComponents.harness_fetches/1`),
-  with the source of each: a table of its own, locked, with no Allow, no Deny and no
+  with the source of each: a separate locked table, with no Allow, no Deny and no
   expander. They follow the filters but are no destination: the views, counts, rail,
   facets, suggestions, rows' events and rule options never read them, and no rule is
   made from one.
