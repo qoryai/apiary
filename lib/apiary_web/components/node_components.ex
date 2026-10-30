@@ -321,7 +321,7 @@ defmodule ApiaryWeb.NodeComponents do
       <.rich text={
         rich_gettext(
           "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file.",
-          gateway: shown_name(@gateway),
+          gateway: in_text(@gateway),
           flag: {:m, "--via-ca-file"}
         )
       } />
@@ -420,7 +420,16 @@ defmodule ApiaryWeb.NodeComponents do
           }
         />
         <.rich
-          :if={@gateway.organisation_id != @node.organisation_id}
+          :if={instance_node?(@gateway)}
+          text={
+            rich_gettext("Runs of %{name} go through the Qory Gateway, at %{url}.",
+              name: @node.name,
+              url: {:m, @gateway.url}
+            )
+          }
+        />
+        <.rich
+          :if={@gateway.organisation_id != @node.organisation_id and !instance_node?(@gateway)}
           text={
             rich_gettext(
               "Runs of %{name} go through the gateway %{gateway} of %{organisation}, at %{url}.",
@@ -437,7 +446,7 @@ defmodule ApiaryWeb.NodeComponents do
         />
         <span :if={!@connected} id={"#{@id}-unconnected"}>
           {gettext("%{gateway} has no active access key, so it isn't connected.",
-            gateway: shown_name(@gateway)
+            gateway: in_text(@gateway, :start)
           )}
         </span>
       </.notice>
@@ -549,7 +558,7 @@ defmodule ApiaryWeb.NodeComponents do
     do:
       gettext(
         "On Default gateway, runs go through %{name}, the default for %{organisation}. On Direct, they go through no gateway.",
-        name: shown_name(default),
+        name: in_text(default),
         organisation: organisation_name(default)
       )
 
@@ -785,12 +794,14 @@ defmodule ApiaryWeb.NodeComponents do
   @doc """
   gateway_name/2 is `gateway`'s name as a node of the organisation `organisation_id`
   names it: its name alone, "edge-1 of Acme" for a gateway of another organisation,
-  whose organisation must be loaded, or "Qory Gateway of this instance" for the instance's
-  gateway.
+  whose organisation must be loaded, or "Qory Gateway" for the instance's gateway.
   """
   @spec gateway_name(Ecto.UUID.t(), Node.t()) :: String.t()
   def gateway_name(organisation_id, %Node{organisation_id: organisation_id, name: name}),
     do: name
+
+  def gateway_name(_organisation_id, %Node{organisation_id: nil, workspace_id: nil} = gateway),
+    do: shown_name(gateway)
 
   def gateway_name(_organisation_id, %Node{} = gateway),
     do:
@@ -955,6 +966,40 @@ defmodule ApiaryWeb.NodeComponents do
     do: gettext("Qory Gateway")
 
   def shown_name(%{name: name}), do: name
+
+  @doc """
+  in_text/2 is the words for `node` in a sentence, after its first word (`:inside`) or as
+  its first words (`:start`): "the Qory Pool" or "The Qory Pool", and "the Qory Gateway"
+  or "The Qory Gateway", for the instance's pool and gateway; the node's `name` for any
+  other node.
+  """
+  @spec in_text(map, :inside | :start) :: String.t()
+  def in_text(node, at \\ :inside)
+
+  def in_text(%{kind: :pool, organisation_id: nil, workspace_id: nil}, :inside),
+    do: gettext("the Qory Pool")
+
+  def in_text(%{kind: :pool, organisation_id: nil, workspace_id: nil}, :start),
+    do: gettext("The Qory Pool")
+
+  def in_text(%{kind: :gateway, organisation_id: nil, workspace_id: nil}, :inside),
+    do: gettext("the Qory Gateway")
+
+  def in_text(%{kind: :gateway, organisation_id: nil, workspace_id: nil}, :start),
+    do: gettext("The Qory Gateway")
+
+  def in_text(node, _at), do: shown_name(node)
+
+  @doc """
+  instance_node?/1 says whether `node` is the instance's pool or gateway: a pool or a
+  gateway with no organisation and no workspace.
+  """
+  @spec instance_node?(map) :: boolean
+  def instance_node?(%{kind: kind, organisation_id: nil, workspace_id: nil})
+      when kind in [:pool, :gateway],
+      do: true
+
+  def instance_node?(_node), do: false
 
   @doc "kind_label/1 is a node's kind in a word or two: Node, Node pool, Gateway."
   @spec kind_label(Node.kind()) :: String.t()

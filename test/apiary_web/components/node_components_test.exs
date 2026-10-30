@@ -250,8 +250,8 @@ defmodule ApiaryWeb.NodeComponentsTest do
     end
   end
 
-  describe "shown_name/1" do
-    test "names the instance's pool and gateway Qory Pool and Qory Gateway, and any other node by its name" do
+  describe "shown_name/1, in_text/2 and instance_node?/1" do
+    test "names the instance's pool and gateway Qory Pool and Qory Gateway, in a sentence with the, and any other node by its name" do
       organisation_id = Ecto.UUID.generate()
       workspace_id = Ecto.UUID.generate()
 
@@ -270,6 +270,32 @@ defmodule ApiaryWeb.NodeComponentsTest do
                name: "edge-01",
                organisation_id: organisation_id
              }) == "edge-01"
+
+      assert NodeComponents.in_text(%Node{kind: :pool, name: "pool"}) == "the Qory Pool"
+      assert NodeComponents.in_text(%Node{kind: :pool, name: "pool"}, :start) == "The Qory Pool"
+      assert NodeComponents.in_text(%Node{kind: :gateway, name: "gateway"}) == "the Qory Gateway"
+
+      assert NodeComponents.in_text(%Node{kind: :gateway, name: "gateway"}, :start) ==
+               "The Qory Gateway"
+
+      assert NodeComponents.in_text(%Node{
+               kind: :gateway,
+               name: "edge-01",
+               organisation_id: organisation_id
+             }) == "edge-01"
+
+      assert NodeComponents.instance_node?(%Node{kind: :gateway, name: "gateway"})
+      refute NodeComponents.instance_node?(%Node{kind: :adapter, name: "tickets"})
+
+      refute NodeComponents.instance_node?(%Node{
+               kind: :pool,
+               name: "edge-pool",
+               organisation_id: organisation_id,
+               workspace_id: workspace_id
+             })
+
+      assert NodeComponents.gateway_name(organisation_id, %Node{kind: :gateway, name: "gateway"}) ==
+               "Qory Gateway"
 
       assert ApiaryWeb.RunComponents.place_of(
                %{dispatch_run_id: Ecto.UUID.generate()},

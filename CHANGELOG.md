@@ -279,9 +279,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   instance's pool. For a pool of the workspace, owners and admins have its name as a
   link to its page. Anyone else reads who acts, such as “Only an instance admin checks
   the Qory Pool and the Qory Gateway.” While the workspace has no pool, anyone who may not
-  add one sees the instance's pool, read only. The step is done once a pool is ready.
-  **About this step** explains what a node pool and a node are, which pool takes the
-  workspace's runs, and what makes a pool ready.
+  add one sees the Qory Pool, read only. The step is done once a pool is ready. **About
+  this step** explains what a pool does, which pool takes the workspace's runs, what
+  makes a pool ready, and that every run gets an isolated environment.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
   agent** with **Run the test**, with no work source; owners, admins and members run it
   once a pool that serves the workspace is ready. Before that, the step shows “Runs need

@@ -2834,7 +2834,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply, socket |> assign(pool_issued: issued) |> reload()}
 
       {:error, :forbidden} ->
-        why = gettext("Only owners and admins connect a node.")
+        why = gettext("Only owners and admins add a pool and join a machine to it.")
 
         {:noreply,
          socket

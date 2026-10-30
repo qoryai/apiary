@@ -163,7 +163,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
          |> assign(node: updated, form: limit_form(Installed.change_instance_limit(updated)))
          |> put_flash(
            :info,
-           gettext("%{name} is saved.", name: NodeComponents.shown_name(updated))
+           gettext("%{name} is saved.", name: NodeComponents.in_text(updated, :start))
          )}
 
       {:error, %Ecto.Changeset{} = changeset} ->

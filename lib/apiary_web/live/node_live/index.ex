@@ -177,7 +177,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       Enum.sort_by(
         Nodes.list_nodes(scope, narrowing) ++
           organisation_gateways(scope, narrowing) ++ listed_instance,
-        &{&1.name, &1.id}
+        &{NodeComponents.shown_name(&1), &1.id}
       )
 
     activity = scope |> Nodes.activity(nodes, now) |> with_keys_used(listed_instance, now)
@@ -229,12 +229,14 @@ defmodule ApiaryWeb.NodeLive.Index do
   end
 
   # Whether an instance's node is under the search and the kind, as
-  # `Apiary.Nodes.list_nodes/2` narrows the workspace's.
+  # `Apiary.Nodes.list_nodes/2` narrows the workspace's; the search also matches the name
+  # the list shows, Qory Pool or Qory Gateway (`ApiaryWeb.NodeComponents.shown_name/1`).
   defp narrowed_in?(node, narrowing) do
     q = narrowing[:q] && String.downcase(String.trim(narrowing[:q]))
 
     (is_nil(narrowing[:kind]) or node.kind == narrowing[:kind]) and
       (is_nil(q) or String.contains?(String.downcase(node.name), q) or
+         String.contains?(String.downcase(NodeComponents.shown_name(node)), q) or
          String.contains?(String.downcase(node.public_id), q))
   end
 
@@ -263,16 +265,16 @@ defmodule ApiaryWeb.NodeLive.Index do
     Enum.sort_by(nodes, fn node ->
       case activity[node.id] do
         %{running: [_ | _]} ->
-          {0, 0, node.name}
+          {0, 0, NodeComponents.shown_name(node)}
 
         %{} = activity ->
           case NodeComponents.seen_at(activity) do
-            nil -> {2, 0, node.name}
-            at -> {1, -DateTime.to_unix(at, :microsecond), node.name}
+            nil -> {2, 0, NodeComponents.shown_name(node)}
+            at -> {1, -DateTime.to_unix(at, :microsecond), NodeComponents.shown_name(node)}
           end
 
         nil ->
-          {2, 0, node.name}
+          {2, 0, NodeComponents.shown_name(node)}
       end
     end)
   end

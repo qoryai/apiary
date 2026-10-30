@@ -4695,6 +4695,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
   end
 
+  test "a person whom access_key.create_code no longer allows gets no command, and reads who acts",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx)
+
+    {1, _} =
+      Repo.update_all(
+        from(m in Membership,
+          where: m.user_id == ^ctx.user.id and m.organisation_id == ^ctx.organisation.id
+        ),
+        set: [level: :member]
+      )
+
+    lv |> element("#set-up-pool-#{pool.public_id}-code") |> render_click()
+    refute has_element?(lv, "#set-up-pool-#{pool.public_id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
+
+    assert words(lv, "#flash-error") ==
+             "Only owners and admins add a pool and join a machine to it."
+  end
+
   test "who acts is the edition's line where it has one", ctx do
     :ok = Apiary.Edition.put_test_stub(Worded)
     member = member(ctx.organisation)

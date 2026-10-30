@@ -11741,6 +11741,7 @@ msgid "Only owners and admins add a node's keys."
 msgstr ""
 
 #: lib/apiary/edition/core.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins add a pool and join a machine to it."
 msgstr ""
@@ -11816,7 +11817,6 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins connect a node."
 msgstr ""
@@ -14034,6 +14034,11 @@ msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
+msgid "Runs of %{name} go through the Qory Gateway, at %{url}."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
 msgid "Runs of %{name} go through the gateway %{gateway} of %{organisation}, at %{url}."
 msgstr ""
 
@@ -15725,6 +15730,16 @@ msgstr ""
 msgid "The Forager file's lines for this key. Nothing here is secret."
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "The Qory Gateway"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "The Qory Pool"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/nodes.ex
 #, elixir-autogen, elixir-format
 msgid "The Qory Pool and the Qory Gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The Qory Pool takes the runs of every workspace that has no pool. The Qory Gateway serves every organisation."
@@ -15860,6 +15875,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "The change was not made: the run configuration it renders is over 1 MiB, more than the gateway reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -20250,6 +20270,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "terminal"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "the Qory Gateway"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "the Qory Pool"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

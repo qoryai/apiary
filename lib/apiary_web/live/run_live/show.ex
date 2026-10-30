@@ -1700,9 +1700,10 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # A pool's run starts on its pool: the Run started item shows the pool's name in place
-  # of the host its `run.started` reported (`place_of/1`).
+  # of the host its `run.started` reported (`place_of/1`), "the Qory Pool" for the
+  # instance's pool (`ApiaryWeb.NodeComponents.in_text/2`).
   defp with_pool(items, %Run{dispatch_run_id: id} = run) when is_binary(id) do
-    pool = with {:pool, name} <- place_of(run), do: name
+    pool = with {:pool, _name} <- place_of(run), do: ApiaryWeb.NodeComponents.in_text(run.node)
 
     Enum.map(items, fn
       %{kind: :run_started} = item -> Map.put(item, :host, pool)
