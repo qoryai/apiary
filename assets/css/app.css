@@ -10386,7 +10386,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* An unfinished set-up, "Set-up: 3 of 7 steps", on a line of its own under the name,
+  /* An unfinished set-up, "Set-up: 3 of 7 steps", on a separate line under the name,
      at every width. */
   .q-wr-nm:has(> .q-wr-su) {
     flex-wrap: wrap;

@@ -823,7 +823,8 @@ With the `factory` feature, both pages have more steps:
   `/<organisation>/main/set-up/<step>`: **Name**, **Work sources**, **Destinations**,
   **Model**, **Harness**, **Machines** and **Test run**. The group **Set up** at the top
   of the workspace's sidebar lists them, with a check mark on each step done, and they
-  open in any order. **Save and next** on a step opens the next one.
+  open in any order. **Save and next** on **Name**, and **Continue** on the other steps,
+  open the next step.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, open **Connect another source**, or **Connect another
