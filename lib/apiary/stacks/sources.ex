@@ -103,7 +103,7 @@ defmodule Apiary.Stacks.Sources do
 
   alias Apiary.{Access, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{CallFailure, Calls, CallWire, Collection, Connection, Grant}
+  alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
   alias Apiary.Harnesses.{Assignment, Reader, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Lingo.Domain.Definition
@@ -144,34 +144,73 @@ defmodule Apiary.Stacks.Sources do
   @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
 
   @typedoc """
+  A call to an adapter that failed, as a page shows it: the adapter's shown name
+  (`Apiary.Adapters.title/1`) and the cause, with no address, host or IP of the
+  instance's set-up, which a person who is not an instance admin sees:
+
+    * `:timeout`: no answer within `seconds`, the time the call had, or no time left of
+      the read's `seconds`;
+    * `:unreachable`: no connection was made, the host resolved to no address, or a
+      proxy answered 502, 503 or 504 (`Apiary.Adapters.CallFailure`'s `:unreachable`);
+    * `:no_address` and `:not_allowed`: as `Apiary.Adapters.CallFailure` has them;
+    * `:unauthorized`: an unsigned 401;
+    * `:refused`: any other refusal, with its code in `code`;
+    * `:invalid_answer` and `:too_large`: as `Apiary.Adapters.CallFailure` has them.
+  """
+  @type call :: %{
+          adapter: String.t(),
+          cause:
+            :timeout
+            | :unreachable
+            | :no_address
+            | :not_allowed
+            | :unauthorized
+            | :refused
+            | :invalid_answer
+            | :too_large,
+          code: String.t() | nil,
+          seconds: pos_integer | nil
+        }
+
+  @typedoc """
   Why a source's stacks were not read:
 
-    * `:not_covered`;
+    * `:not_covered`: no adapter links the source to the organisation and none reads it
+      in public, or an adapter refused a read `grant_unknown`, `resource_not_covered` or
+      `resource_not_public`, as for a run's walk;
     * `:no_stack`: a root with no stack in a harness file's `exports` and no
       `qory-stack.yaml`;
-    * `:no_stack_file`: no `qory-stack.yaml` for a stack a root harness file lists, in the
-      folder a source is narrowed to, or for the stack name a source is narrowed to;
-    * `{:unreachable, adapter}`: a call that got no answer (`Apiary.Adapters.CallFailure`'s
-      `:unreachable` or `:timeout`), or no time left for it, with the adapter's shown name
-      (`Apiary.Adapters.title/1`);
-    * `{:call_failed, adapter}`: a call that failed with any other cause, such as a
-      refusal or an answer that is not valid;
-    * `{:invalid_section, file}`: a file whose `exports` or stack section is not valid;
+    * `{:no_stack_file, file}`: no `file`, the `qory-stack.yaml` of a stack a root
+      harness file lists, or of the folder a source is narrowed to;
+    * `{:no_export, name}`: a source narrowed to the stack `name`, which its root harness
+      file does not export;
+    * `{:stack_path, file, name, path}`: the root harness file `file` lists the stack
+      `name` at `path`, a path a read does not take;
+    * `{:call, call}`: a call to an adapter that failed (`t:call/0`);
+    * `{:no_version, ref}`: an adapter refused a read at `ref`, `version_not_found`;
+    * `{:not_text, path}`: an adapter refused the read of `path`, `document_not_text`;
+    * `{:invalid_section, file, section}`: a file whose `exports` (`:exports`) or stack
+      section (`:stack`) is not valid;
     * `{:invalid, file, rule}`: any other file the reader refuses, with the walk's rule for
       it (`Apiary.Harnesses.Walk.yaml_rule/2`), or both root harness files, with the
       walk's `both_files` rule, given for `harness.yaml`;
-    * `:unreadable`: an address, a path or a version a read does not take;
+    * `{:unreadable, :address}`, `{:unreadable, :path, path}` and `{:unreadable,
+      :version, ref}`: an address, a path or a version a read does not take;
     * `{:limited, seconds}`.
   """
   @type reason ::
           :not_covered
           | :no_stack
-          | :no_stack_file
-          | {:unreachable, String.t()}
-          | {:call_failed, String.t()}
-          | {:invalid_section, String.t()}
+          | {:no_stack_file, String.t()}
+          | {:no_export, String.t()}
+          | {:stack_path, String.t(), String.t(), String.t()}
+          | {:call, call}
+          | {:no_version, String.t()}
+          | {:not_text, String.t()}
+          | {:invalid_section, String.t(), :exports | :stack}
           | {:invalid, String.t(), map}
-          | :unreadable
+          | {:unreadable, :address}
+          | {:unreadable, :path | :version, String.t()}
           | {:limited, pos_integer}
 
   ## The sources
@@ -219,8 +258,18 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # The organisation's live collections of a connected connection, whose adapter has a
-  # call address, with an address a document's source may have, by title.
-  defp collections(%Organisation{id: organisation_id}) do
+  # call address Qory Apiary calls, checked without a lookup
+  # (`Apiary.Adapters.CallAddress.placed?/1`), with an address a document's source may
+  # have, by title.
+  defp collections(%Organisation{} = organisation),
+    do:
+      organisation
+      |> connected()
+      |> Enum.filter(fn {_c, adapter} -> CallAddress.placed?(adapter) end)
+
+  # The organisation's live collections of a connected connection and their adapters,
+  # with an address a document's source may have, by title.
+  defp connected(%Organisation{id: organisation_id}) do
     Repo.all(
       from c in Collection,
         join: n in Connection,
@@ -229,11 +278,45 @@ defmodule Apiary.Stacks.Sources do
         on: a.id == c.adapter_id,
         where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
         where: n.state == :connected,
-        where: is_nil(a.deleted_at) and not is_nil(a.call_url),
+        where: a.kind == :adapter and is_nil(a.deleted_at),
         order_by: [asc: c.title, asc: c.id],
         select: {c, a}
     )
     |> Enum.filter(fn {collection, _adapter} -> address_error(collection.url) == nil end)
+  end
+
+  @typedoc """
+  An adapter of connected repositories whose call address Qory Apiary does not call: its
+  shown name, and why: `:no_address` for none, `:no_instance_host` where the instance's
+  public address (`PUBLIC_URL`) has no host name, `:not_placed` for an address that is
+  not an https address at the adapter's host (`Apiary.Adapters.CallAddress.host_for/1`).
+  It has no address or host, which a person who is not an instance admin sees.
+  """
+  @type unplaced :: %{
+          adapter: String.t(),
+          cause: :no_address | :no_instance_host | :not_placed
+        }
+
+  @doc false
+  # unplaced/1 is each adapter of the organisation's connected repositories whose call
+  # address Qory Apiary does not call, checked without a lookup
+  # (`Apiary.Adapters.CallAddress.placed?/1`), by its shown name (`t:unplaced/0`). The
+  # repositories of such an adapter are not in `repositories/1`. It makes no call.
+  @spec unplaced(Scope.t()) :: [unplaced]
+  def unplaced(%Scope{organisation: %Organisation{} = organisation}) do
+    organisation
+    |> connected()
+    |> Enum.map(fn {_collection, adapter} -> adapter end)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.reject(&CallAddress.placed?/1)
+    |> Enum.map(&%{adapter: Apiary.Adapters.title(&1), cause: unplaced_cause(&1)})
+    |> Enum.sort_by(&String.downcase(&1.adapter))
+  end
+
+  defp unplaced_cause(%Node{call_url: nil}), do: :no_address
+
+  defp unplaced_cause(%Node{}) do
+    if CallAddress.instance_host() in [nil, ""], do: :no_instance_host, else: :not_placed
   end
 
   @doc false
@@ -398,8 +481,8 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # A file the reader refuses for `reason`.
-  defp refused_file(file, reason) when reason in [:invalid_exports, :invalid_stack],
-    do: {:invalid_section, file}
+  defp refused_file(file, :invalid_exports), do: {:invalid_section, file, :exports}
+  defp refused_file(file, :invalid_stack), do: {:invalid_section, file, :stack}
 
   defp refused_file(file, reason), do: {:invalid, file, Walk.yaml_rule(file, reason)}
 
@@ -455,7 +538,7 @@ defmodule Apiary.Stacks.Sources do
         %{"stack" => name} ->
           with {:ok, version, stacks} <- stacks_at(location, source.ref, deadline) do
             case Enum.filter(stacks, &(&1.name == name)) do
-              [] -> {:error, :no_stack_file}
+              [] -> {:error, {:no_export, name}}
               exported -> {:ok, location, version, exported}
             end
           end
@@ -483,7 +566,7 @@ defmodule Apiary.Stacks.Sources do
   defp locate(%Organisation{id: organisation_id}, %{"git" => git} = harness_source, deadline) do
     if CallWire.address?(git),
       do: locate_at(adapters(), organisation_id, git, harness_source, deadline),
-      else: {:error, :unreadable}
+      else: {:error, {:unreadable, :address}}
   end
 
   defp adapters do
@@ -496,37 +579,85 @@ defmodule Apiary.Stacks.Sources do
 
   # An adapter whose resolve fails is passed over. A link at a later adapter comes before
   # a public result at an earlier one, as in a run's walk. With neither, the source is
-  # not read for the first adapter whose resolve failed (`call_failure/2`), since that
+  # not read for the first adapter whose resolve failed (`call_failure/4`), since that
   # adapter may have covered it.
   defp locate_at(adapters, organisation_id, git, harness_source, deadline) do
     adapters
     |> Enum.reduce_while(%{public: nil, failed: nil}, fn adapter, found ->
-      with opts when is_list(opts) <- call_opts(deadline) || {:error, :late},
+      opts = call_opts(deadline)
+
+      with opts when is_list(opts) <- opts || {:error, :late},
            {:ok, [%{} = result]} <- Calls.resolve(adapter, [git], opts) do
         case linked(adapter, result, organisation_id, harness_source) do
           %{} = link -> {:halt, {:ok, link}}
           nil -> {:cont, %{found | public: found.public || public(adapter, result)}}
         end
       else
-        {:error, failure} -> {:cont, %{found | failed: found.failed || {adapter, failure}}}
-        _other -> {:cont, found}
+        {:error, failure} ->
+          {:cont, %{found | failed: found.failed || {adapter, failure, opts}}}
+
+        _other ->
+          {:cont, found}
       end
     end)
     |> case do
       {:ok, link} -> {:ok, link}
       %{public: %{} = public} -> {:ok, public}
-      %{failed: {adapter, failure}} -> {:error, call_failure(adapter, failure)}
+      %{failed: {adapter, failure, opts}} -> {:error, call_failure(adapter, failure, opts, %{})}
       _none -> {:error, :not_covered}
     end
   end
 
-  # A call to `adapter` that failed: `{:unreachable, adapter}` for no answer or no time
-  # left (`:late`), `{:call_failed, adapter}` for any other cause, by its shown name.
-  defp call_failure(adapter, %CallFailure{cause: cause}) when cause in [:unreachable, :timeout],
-    do: {:unreachable, Apiary.Adapters.title(adapter)}
+  # A call to `adapter` that failed, with the options it had, nil for none (`:late`), as
+  # a read's reason: an adapter's refusal that a run's walk takes as a source not covered,
+  # a version not found or a document that is not text, as those (`t:reason/0`, the
+  # read's `at` and `path` in `read`); any other failure as `{:call, call}` (`call/3`).
+  defp call_failure(_adapter, %CallFailure{cause: :refused, code: code}, _opts, _read)
+       when code in ["grant_unknown", "resource_not_covered", "resource_not_public"],
+       do: :not_covered
 
-  defp call_failure(adapter, :late), do: {:unreachable, Apiary.Adapters.title(adapter)}
-  defp call_failure(adapter, _failure), do: {:call_failed, Apiary.Adapters.title(adapter)}
+  defp call_failure(_adapter, %CallFailure{cause: :refused, code: "version_not_found"}, _opts, %{
+         at: at
+       }),
+       do: {:no_version, at}
+
+  defp call_failure(_adapter, %CallFailure{cause: :refused, code: "document_not_text"}, _opts, %{
+         path: path
+       }),
+       do: {:not_text, path}
+
+  defp call_failure(adapter, failure, opts, _read),
+    do: {:call, call(adapter, failure, seconds(opts))}
+
+  # The whole seconds a call had, at least 1; the read's for none.
+  defp seconds(opts) when is_list(opts),
+    do: max(div(Keyword.fetch!(opts, :total) + 999, 1000), 1)
+
+  defp seconds(nil), do: div(@read_time, 1000)
+
+  @doc false
+  # call/3 is the call to `adapter`, a node, that failed with `failure`, a
+  # `Apiary.Adapters.CallFailure`, its cause `:timeout` or `:unreachable` alone, or
+  # `:late` for no time left, as a page shows it (`t:call/0`), with the seconds the call
+  # had.
+  @spec call(Node.t(), CallFailure.t() | :timeout | :unreachable | :late, pos_integer) :: call
+  def call(%Node{} = adapter, failure, seconds) do
+    {cause, code} =
+      case failure do
+        :late -> {:timeout, nil}
+        cause when cause in [:timeout, :unreachable] -> {cause, nil}
+        %CallFailure{cause: :refused, code: "unauthorized", status: 401} -> {:unauthorized, nil}
+        %CallFailure{cause: :refused, code: code} -> {:refused, code}
+        %CallFailure{cause: cause} -> {cause, nil}
+      end
+
+    %{
+      adapter: Apiary.Adapters.title(adapter),
+      cause: cause,
+      code: code,
+      seconds: if(cause == :timeout, do: seconds)
+    }
+  end
 
   # The link of a covered result under a live grant the rule allows; nil for none.
   defp linked(
@@ -592,8 +723,13 @@ defmodule Apiary.Stacks.Sources do
               CallWire.document_path?(file),
               do: %{name: name, file: file}
 
-        # Stacks listed whose files are at no path a read takes have no stack file.
-        if stacks == [], do: {:error, :no_stack_file}, else: {:ok, version, stacks}
+        # Stacks listed whose files are at no path a read takes: the first of them.
+        if stacks == [] do
+          name = hd(names)
+          {:error, {:stack_path, file, name, Reader.stack_file(exports, name)}}
+        else
+          {:ok, version, stacks}
+        end
 
       {:ok, _no_stacks} ->
         root_stack(location, version, deadline)
@@ -618,7 +754,7 @@ defmodule Apiary.Stacks.Sources do
   defp workflows(location, file, at, deadline) do
     case read_file(location, file, at, deadline) do
       {:ok, nil, _version} ->
-        {:error, :no_stack_file}
+        {:error, {:no_stack_file, file}}
 
       {:ok, content, _version} ->
         case Reader.stack(content) do
@@ -633,8 +769,8 @@ defmodule Apiary.Stacks.Sources do
 
   # The document at `path` at `location`, read at `at` before `deadline`, with no grant
   # for a public source's location (`read-public`): `{:ok, content | nil, resolved_at}`;
-  # `{:error, :unreadable}` for a path or a version a read does not take; or the call's
-  # failure (`call_failure/2`).
+  # `{:error, {:unreadable, :path | :version, value}}` for a path or a version a read does
+  # not take; or the call's failure (`call_failure/4`).
   defp read_file(location, path, at, deadline) do
     request = %{
       grant_ref: location.grant_ref,
@@ -643,16 +779,27 @@ defmodule Apiary.Stacks.Sources do
       at: at
     }
 
-    with true <- CallWire.document_path?(path) and CallWire.version_ref?(at),
-         opts when is_list(opts) <- call_opts(deadline) do
-      case Calls.read_at(location.adapter, request, opts) do
-        {:ok, %{found: true, content: content, resolved_at: version}} -> {:ok, content, version}
-        {:ok, %{found: false, resolved_at: version}} -> {:ok, nil, version}
-        {:error, failure} -> {:error, call_failure(location.adapter, failure)}
-      end
-    else
-      false -> {:error, :unreadable}
-      nil -> {:error, call_failure(location.adapter, :late)}
+    cond do
+      not CallWire.document_path?(path) ->
+        {:error, {:unreadable, :path, path}}
+
+      not CallWire.version_ref?(at) ->
+        {:error, {:unreadable, :version, at}}
+
+      opts = call_opts(deadline) ->
+        case Calls.read_at(location.adapter, request, opts) do
+          {:ok, %{found: true, content: content, resolved_at: version}} ->
+            {:ok, content, version}
+
+          {:ok, %{found: false, resolved_at: version}} ->
+            {:ok, nil, version}
+
+          {:error, failure} ->
+            {:error, call_failure(location.adapter, failure, opts, %{at: at, path: path})}
+        end
+
+      true ->
+        {:error, call_failure(location.adapter, :late, nil, %{})}
     end
   end
 
@@ -1109,9 +1256,33 @@ defmodule Apiary.Stacks.Sources do
     with :ok <- spend(scope, :read, @reads_a_minute) do
       case Walk.pin_base(scope.organisation, base, time_limit: @read_time) do
         {:ok, pin} -> {:ok, pin}
-        {_failed_or_retry, failure} -> {:error, {:walk, failure}}
+        {_failed_or_retry, failure} -> {:error, {:walk, with_call(failure)}}
       end
     end
+  end
+
+  # A walk's failure at a call to an adapter, with `call`, the call as a page shows it
+  # (`call/3`): a walk's call has at most `@call_time`, and a walk out of time had the
+  # read's time. A failure at no call is as the walk gave it.
+  defp with_call(%{failure: :adapter_failed, call_failure: %CallFailure{} = failure} = walk),
+    do: Map.put(walk, :call, call(walk_adapter(walk), failure, div(@call_time, 1000)))
+
+  defp with_call(%{failure: :adapter_unavailable} = walk) do
+    {failure, seconds} =
+      case walk[:call_cause] do
+        :late -> {:late, div(@read_time, 1000)}
+        :unreachable -> {:unreachable, div(@call_time, 1000)}
+        _timeout -> {:timeout, div(@call_time, 1000)}
+      end
+
+    Map.put(walk, :call, call(walk_adapter(walk), failure, seconds))
+  end
+
+  defp with_call(walk), do: walk
+
+  # The adapter of a walk's failure, else a node with its name and no call address.
+  defp walk_adapter(%{adapter_id: id, adapter: name}) do
+    (is_binary(id) && Repo.get(Node, id)) || %Node{kind: :adapter, name: name}
   end
 
   @typedoc """

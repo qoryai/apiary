@@ -218,14 +218,18 @@ defmodule Apiary.Harnesses.Walk do
   @typedoc """
   A walk that failed: the code, the source as shown (nil for none or hidden), the rule an
   `invalid` source breaks, the adapter's name and id for a call, and the call's failure.
+  An `adapter_unavailable` failure has no call failure, so a run records none, and has
+  `call_cause`: `:timeout` or `:unreachable`, the call's cause, or `:late` for a walk out
+  of time.
   """
   @type failure :: %{
-          failure: atom,
-          source: String.t() | nil,
-          rule: map | nil,
-          adapter: String.t() | nil,
-          adapter_id: Ecto.UUID.t() | nil,
-          call_failure: CallFailure.t() | nil
+          required(:failure) => atom,
+          required(:source) => String.t() | nil,
+          required(:rule) => map | nil,
+          required(:adapter) => String.t() | nil,
+          required(:adapter_id) => Ecto.UUID.t() | nil,
+          required(:call_failure) => CallFailure.t() | nil,
+          optional(:call_cause) => :timeout | :unreachable | :late
         }
 
   @doc false
@@ -1010,7 +1014,7 @@ defmodule Apiary.Harnesses.Walk do
         fail(:invalid, state.label, rule("calls", n: @max_calls))
 
       left <= 0 ->
-        retry(adapter)
+        retry(adapter, :late)
 
       true ->
         put(:calls, state.calls - 1)
@@ -1021,7 +1025,7 @@ defmodule Apiary.Harnesses.Walk do
 
   defp call_failed(%CallFailure{cause: cause} = failure, _location, _at)
        when cause in [:timeout, :unreachable],
-       do: retry(%{id: failure.adapter_id, name: failure.adapter_name})
+       do: retry(%{id: failure.adapter_id, name: failure.adapter_name}, cause)
 
   defp call_failed(%CallFailure{cause: :refused, code: code}, %{} = location, _at)
        when code in ["grant_unknown", "resource_not_covered", "resource_not_public"],
@@ -1048,7 +1052,7 @@ defmodule Apiary.Harnesses.Walk do
     )
   end
 
-  defp retry(%{id: id, name: name}) do
+  defp retry(%{id: id, name: name}, cause) do
     throw(
       {__MODULE__, :retry,
        %{
@@ -1057,7 +1061,8 @@ defmodule Apiary.Harnesses.Walk do
          rule: nil,
          adapter: name,
          adapter_id: id,
-         call_failure: nil
+         call_failure: nil,
+         call_cause: cause
        }}
     )
   end

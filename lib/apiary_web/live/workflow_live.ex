@@ -66,6 +66,7 @@ defmodule ApiaryWeb.WorkflowLive do
         page_title: SettingsComponents.page_title(scope, :workspace, [gettext("Workflow")]),
         sections: SettingsComponents.sections(scope, :workspace),
         linked: nil,
+        unplaced: [],
         harness_exports: nil,
         unread: 0,
         assigned: Sources.assigned(scope),
@@ -95,7 +96,9 @@ defmodule ApiaryWeb.WorkflowLive do
         do:
           socket
           |> cancel_async(:linked)
-          |> start_async(:linked, fn -> Sources.repositories(scope) end)
+          |> start_async(:linked, fn ->
+            {Sources.repositories(scope), Sources.unplaced(scope)}
+          end)
           |> preselect_assigned(),
         else: socket
 
@@ -453,10 +456,10 @@ defmodule ApiaryWeb.WorkflowLive do
   end
 
   @impl true
-  def handle_async(:linked, {:ok, linked}, socket) when is_list(linked) do
+  def handle_async(:linked, {:ok, {linked, unplaced}}, socket) when is_list(linked) do
     {:noreply,
      socket
-     |> assign(linked: linked, unread: 0)
+     |> assign(linked: linked, unplaced: unplaced, unread: 0)
      |> preselect_linked()
      |> assign_form()
      |> harness_listed()}
@@ -671,6 +674,7 @@ defmodule ApiaryWeb.WorkflowLive do
             <HarnessComponents.choices
               form={@harness_form}
               linked={@linked}
+              unplaced={@unplaced}
               exports={@exports}
               organisation={@organisation}
               disabled={@harness_saving}
@@ -760,7 +764,7 @@ defmodule ApiaryWeb.WorkflowLive do
             <span id="workflow-no-workflow">
               <.rich text={
                 rich_gettext(
-                  "The stack of %{source} lists no workflow: add one under %{key} in its %{file}, or choose another source.",
+                  "The stack of %{source} lists no workflow: add one under %{key} in its %{file}.",
                   source: @source.label,
                   key: {:code, "workflows"},
                   file: {:code, "qory-stack.yaml"}

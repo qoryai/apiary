@@ -246,6 +246,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        test_notice: nil,
        test_form: test_form(gettext("Hi! Where are you running?")),
        linked: nil,
+       unplaced: [],
        listing: false,
        harness_exports: nil,
        workspace_stacks: nil,
@@ -800,15 +801,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # The linked repositories, read once per page, outside the page's process, for a person
-  # who may save.
+  # The linked repositories, and the adapters of connected repositories whose call address
+  # Qory Apiary does not call, read once per page, outside the page's process, for a
+  # person who may save.
   defp list_linked(%{assigns: %{listing: false, may: true}} = socket) do
     if connected?(socket) do
       scope = socket.assigns.current_scope
 
       socket
       |> assign(:listing, true)
-      |> start_async(:harness_linked, fn -> Sources.repositories(scope) end)
+      |> start_async(:harness_linked, fn ->
+        {Sources.repositories(scope), Sources.unplaced(scope)}
+      end)
     else
       socket
     end
@@ -1682,8 +1686,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   @impl true
-  def handle_async(:harness_linked, {:ok, linked}, socket) when is_list(linked),
-    do: {:noreply, harness_listed(socket, linked)}
+  def handle_async(:harness_linked, {:ok, {linked, unplaced}}, socket) when is_list(linked),
+    do: {:noreply, socket |> assign(:unplaced, unplaced) |> harness_listed(linked)}
 
   def handle_async(:harness_linked, _exit, socket),
     do: {:noreply, harness_listed(socket, [])}
@@ -2400,6 +2404,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <HarnessComponents.choices
             form={@form}
             linked={@linked}
+            unplaced={@unplaced}
             exports={@exports}
             organisation={@flow.organisation.name}
             disabled={!@may or @saving}

@@ -1803,14 +1803,28 @@ defmodule Apiary.Harnesses.WalkTest do
       assert values == %{"n" => 65_536}
     end
 
-    test "an adapter that answers no one is a retry, with its name", ctx do
+    test "an adapter that answers no one is a retry, with its name and the call's cause", ctx do
       setting(ctx.scope, @setting)
       serve([ctx.run], down: true)
 
-      assert {:retry, %{failure: :adapter_unavailable, adapter: name}} =
+      assert {:retry,
+              %{
+                failure: :adapter_unavailable,
+                adapter: name,
+                call_failure: nil,
+                call_cause: :unreachable
+              }} =
                Walk.run(ctx.input, call_opts: [attempt: 100, total: 500, retry_wait: {1, 2}])
 
       assert name == ctx.run.adapter.name
+    end
+
+    test "a walk out of time is a retry, its call's cause late", ctx do
+      setting(ctx.scope, @setting)
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:retry, %{failure: :adapter_unavailable, call_cause: :late}} =
+               Walk.run(ctx.input, time_limit: 0)
     end
   end
 

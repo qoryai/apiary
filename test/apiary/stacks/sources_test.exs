@@ -143,16 +143,18 @@ defmodule Apiary.Stacks.SourcesTest do
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
       [app, _harness] = Sources.repositories(ctx.scope)
 
-      assert Sources.exports(ctx.scope, app) == {:error, {:invalid_section, "qory.yaml"}}
+      assert Sources.exports(ctx.scope, app) ==
+               {:error, {:invalid_section, "qory.yaml", :exports}}
     end
 
-    test "a call with no answer is unreachable, and one refused has failed, with the adapter's shown name",
-         ctx do
+    test "a failed call has the adapter's shown name and its cause, with no address", ctx do
       [_app, harness] = Sources.repositories(ctx.scope)
       title = Apiary.Adapters.title(ctx.adapter.adapter)
 
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files, down: true)
-      assert Sources.exports(ctx.scope, harness) == {:error, {:unreachable, title}}
+
+      assert Sources.exports(ctx.scope, harness) ==
+               {:error, {:call, %{adapter: title, cause: :unreachable, code: nil, seconds: nil}}}
 
       serve_calls([ctx.adapter],
         covered: ctx.covered,
@@ -160,8 +162,75 @@ defmodule Apiary.Stacks.SourcesTest do
         refuse_at: %{"HEAD" => "internal"}
       )
 
-      assert Sources.exports(ctx.scope, harness) == {:error, {:call_failed, title}}
-      assert Sources.read(ctx.scope, harness) == {:error, {:call_failed, title}}
+      refused = {:call, %{adapter: title, cause: :refused, code: "internal", seconds: nil}}
+      assert Sources.exports(ctx.scope, harness) == {:error, refused}
+      assert Sources.read(ctx.scope, harness) == {:error, refused}
+    end
+
+    test "a refusal a run's walk takes as a version not found, a file that is not text or a source not covered is that",
+         ctx do
+      [_app, harness] = Sources.repositories(ctx.scope)
+
+      for {code, reason} <- [
+            {"version_not_found", {:no_version, "HEAD"}},
+            {"document_not_text", {:not_text, "harness.yaml"}},
+            {"resource_not_covered", :not_covered},
+            {"grant_unknown", :not_covered}
+          ] do
+        serve_calls([ctx.adapter],
+          covered: ctx.covered,
+          files: @files,
+          refuse_at: %{"HEAD" => code}
+        )
+
+        assert Sources.exports(ctx.scope, harness) == {:error, reason}
+      end
+    end
+
+    test "a call out of time has the seconds it had" do
+      adapter = %Node{kind: :adapter, name: "code-host", title: "Code host"}
+
+      assert Sources.call(adapter, :late, 30) ==
+               %{adapter: "Code host", cause: :timeout, code: nil, seconds: 30}
+
+      failure = %Apiary.Adapters.CallFailure{
+        adapter_id: Ecto.UUID.generate(),
+        adapter_public_id: "qn_1",
+        adapter_name: "code-host",
+        path: "read",
+        cause: :refused,
+        code: "unauthorized",
+        status: 401
+      }
+
+      assert %{cause: :unauthorized, code: nil} = Sources.call(adapter, failure, 10)
+    end
+
+    test "an adapter whose call address Qory Apiary does not call lists no repository, and is unplaced",
+         ctx do
+      assert Sources.unplaced(ctx.scope) == []
+
+      other = call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(ctx.scope, other.adapter, :listed)
+      harness_collection_fixture(connection, @team, "example-org/team-harness")
+      title = Apiary.Adapters.title(other.adapter)
+
+      for {call_url, instance_id, cause} <- [
+            {nil, nil, :no_address},
+            {"https://code-host.example.org/calls/", "instance-1", :not_placed}
+          ] do
+        {1, _} =
+          Repo.update_all(from(n in Node, where: n.id == ^other.adapter.id),
+            set: [call_url: call_url, call_instance_id: instance_id]
+          )
+
+        assert Enum.map(Sources.repositories(ctx.scope), & &1.label) == [
+                 "acme/app",
+                 "acme/harness"
+               ]
+
+        assert Sources.unplaced(ctx.scope) == [%{adapter: title, cause: cause}]
+      end
     end
 
     test "one another organisation's grant covers is not covered; reads count toward the limit",
@@ -382,8 +451,8 @@ defmodule Apiary.Stacks.SourcesTest do
 
       title = Apiary.Adapters.title(ctx.adapter.adapter)
 
-      for _n <- 1..10,
-          do: assert(Sources.read(ctx.scope, source) == {:error, {:unreachable, title}})
+      unreachable = {:call, %{adapter: title, cause: :unreachable, code: nil, seconds: nil}}
+      for _n <- 1..10, do: assert(Sources.read(ctx.scope, source) == {:error, unreachable})
 
       assert calls() != []
 
@@ -418,7 +487,7 @@ defmodule Apiary.Stacks.SourcesTest do
       files = Map.put(@files, {"R_harness", file}, "modules: 7\n")
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
       {:ok, harness} = Sources.address(@harness)
-      assert Sources.read(ctx.scope, harness) == {:error, {:invalid_section, file}}
+      assert Sources.read(ctx.scope, harness) == {:error, {:invalid_section, file, :stack}}
 
       files = Map.put(@files, {"R_harness", file}, "modules: [core\n")
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
@@ -427,19 +496,42 @@ defmodule Apiary.Stacks.SourcesTest do
                {:error, {:invalid, file, Walk.yaml_rule(file, :invalid_yaml)}}
     end
 
-    test "a listed stack with no stack file, a folder with none, and a stack name not exported have no stack file",
+    test "a listed stack and a folder with no stack file have that file missing; a stack name not exported is not exported",
          ctx do
       files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
       {:ok, harness} = Sources.address(@harness)
-      assert Sources.read(ctx.scope, harness) == {:error, :no_stack_file}
+
+      assert Sources.read(ctx.scope, harness) ==
+               {:error, {:no_stack_file, "stacks/triage/qory-stack.yaml"}}
 
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
       folder = %{harness | narrowing: %{"path" => "stacks/web"}}
-      assert Sources.read(ctx.scope, folder) == {:error, :no_stack_file}
+
+      assert Sources.read(ctx.scope, folder) ==
+               {:error, {:no_stack_file, "stacks/web/qory-stack.yaml"}}
 
       unexported = %{harness | narrowing: %{"stack" => "web"}}
-      assert Sources.read(ctx.scope, unexported) == {:error, :no_stack_file}
+      assert Sources.read(ctx.scope, unexported) == {:error, {:no_export, "web"}}
+    end
+
+    test "stacks listed at no path a read takes, a folder and a version a read does not take",
+         ctx do
+      files = %{{"R_harness", "harness.yaml"} => "exports:\n  dir: ../out\n  stacks: [triage]\n"}
+      serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+      {:ok, harness} = Sources.address(@harness)
+
+      assert Sources.read(ctx.scope, harness) ==
+               {:error,
+                {:stack_path, "harness.yaml", "triage", "../out/stacks/triage/qory-stack.yaml"}}
+
+      folder = %{harness | narrowing: %{"path" => "../out"}}
+
+      assert Sources.read(ctx.scope, folder) ==
+               {:error, {:unreadable, :path, "../out/qory-stack.yaml"}}
+
+      assert Sources.read(ctx.scope, %{harness | ref: "a b"}) ==
+               {:error, {:unreadable, :version, "a b"}}
     end
   end
 

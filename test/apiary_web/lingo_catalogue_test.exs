@@ -8,13 +8,15 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # The sentences a software workspace says in its words, with no engine word in them: the
   # Explore texts, which read the code and propose how to build it, the policy file's
   # place, outside the checkout, and the harness choice's repository and its branch, tag or
-  # commit.
+  # commit, the version's name among them.
   @software_sentences [
+    "%{source} has no version named %{ref}. Correct the version.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
     "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
-    "Correct the harness version, or choose another harness source. Qory Apiary could not read %{ref} in %{source}: %{rule}.",
+    "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
     "Proposed what to do",
