@@ -355,8 +355,10 @@ defmodule ApiaryWeb.UserAuth do
   mode beside Policy, the targets the person pinned in the
   workspace (`pins`, `Apiary.Targets.list_pins/2`), the sections of the Instance level the
   person may open (`instance`, `ApiaryWeb.Layouts.instance_sections/1`), for the Qory
-  Apiary menu's Instance settings and the Instance's second column, and the edition's
-  beside its entries (`c:ApiaryWeb.Edition.nav_counts/1`).
+  Apiary menu's Instance settings and the Instance's second column, the workspace's
+  set-up while it is not finished, for the sidebar's group Set up (`set_up`,
+  `ApiaryWeb.SetUpComponents.workspace_set_up/1`), and the edition's beside its entries
+  (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
 
@@ -375,7 +377,8 @@ defmodule ApiaryWeb.UserAuth do
       members: scope |> Organisations.list_members() |> length(),
       alive: Apiary.Runs.count_alive(scope),
       pins: pins(scope),
-      instance: ApiaryWeb.Layouts.instance_sections(scope)
+      instance: ApiaryWeb.Layouts.instance_sections(scope),
+      set_up: ApiaryWeb.SetUpComponents.workspace_set_up(scope)
     }
     |> Map.merge(policy_mode(scope))
     |> Map.merge(waiting_on(scope))
@@ -755,11 +758,11 @@ defmodule ApiaryWeb.UserAuth do
   finishes or skips their last step (`Apiary.Setup.connections_reviewed?/0`); else the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
-  (`Apiary.Organisations.load_home_scope/2`), with the `factory` feature at the set-up's
-  next step while its set-up is not finished, else at the first page it shows them
-  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's workspace set-up,
-  `/:org/set-up`, while the organisation has no workspace in use
-  (`Apiary.Organisations.has_workspace?/1`); the organisation's path, `/:org`, for a
+  (`Apiary.Organisations.load_home_scope/2`), with the `factory` feature at its overview
+  while its set-up is not finished, which lists the set-up's steps, else at the first
+  page it shows them (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's path,
+  `/:org`, while the organisation has no workspace in use, where its overview has the
+  kind cards, and for a
   member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
@@ -781,9 +784,7 @@ defmodule ApiaryWeb.UserAuth do
           ApiaryWeb.Layouts.workspace_landing(scope)
 
         %Scope{organisation: %{} = organisation} ->
-          if Organisations.has_workspace?(organisation),
-            do: ~p"/#{organisation}",
-            else: ~p"/#{organisation}/set-up"
+          ~p"/#{organisation}"
 
         _no_membership ->
           ~p"/users/organisations"

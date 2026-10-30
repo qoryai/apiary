@@ -24,7 +24,7 @@ defmodule Apiary.PublicId.InsertTest do
   defp workspace_changeset(organisation, name) do
     %Workspace{organisation_id: organisation.id}
     |> Workspace.create_changeset(%{name: name, domain: "software"})
-    |> Workspace.put_slug(Slug.from_name(name, "workspace"))
+    |> Workspace.put_slug(Slug.from_name(name))
   end
 
   # A workspace whose public id is `ws_` and `@taken`.

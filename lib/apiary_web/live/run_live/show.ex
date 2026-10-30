@@ -305,6 +305,7 @@ defmodule ApiaryWeb.RunLive.Show do
           quiet={@quiet_for != nil}
           tips={@tips}
           version={@reported_version}
+          default_policy={@default_policy}
           in_force={@in_force}
           digests={@digests}
           security={@security}
@@ -798,6 +799,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :quiet, :boolean, required: true
   attr :tips, :map, required: true
   attr :version, :any, default: nil
+  attr :default_policy, :boolean, default: false
   attr :in_force, :any, default: nil
   attr :digests, :map, required: true
   attr :security, :boolean, required: true
@@ -933,6 +935,7 @@ defmodule ApiaryWeb.RunLive.Show do
               tips={@tips}
               version={@version}
               reported={@digests.reported || @digests.applied}
+              default_policy={@default_policy}
               in_force={@in_force}
               last_seq={@run.projected_sequence}
             />
@@ -1191,6 +1194,11 @@ defmodule ApiaryWeb.RunLive.Show do
     doc: "the version the reported digest names here, when one does"
 
   attr :reported, :string, default: nil, doc: "the run configuration digest the run reported"
+
+  attr :default_policy, :boolean,
+    default: false,
+    doc: "whether the reported digest is of the default policy a prebuild was given"
+
   attr :in_force, :any, default: nil, doc: "the version in force, only while the run is behind"
   attr :last_seq, :integer, default: nil
 
@@ -1228,7 +1236,11 @@ defmodule ApiaryWeb.RunLive.Show do
           {short_digest(@version.digest)}
         </small>
       <% @reported -> %>
-        <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
+        <span
+          id="policy-unrendered"
+          tabindex="0"
+          title={if @default_policy, do: @tips.default_policy, else: @tips.unrendered}
+        >
           <small class="ml-1 font-mono">{short_digest(shown_sent(@reported))}</small>
           <small class="block">{gettext("Not a version made in this workspace")}</small>
         </span>
@@ -1284,7 +1296,11 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       unrendered:
         gettext(
-          "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
+          "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
+        ),
+      default_policy:
+        gettext(
+          "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
         )
     }
   end
@@ -1326,6 +1342,7 @@ defmodule ApiaryWeb.RunLive.Show do
        target: nil,
        digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
        reported_version: nil,
+       default_policy: false,
        in_force: nil,
        versions: %{},
        effective: nil,
@@ -2366,6 +2383,9 @@ defmodule ApiaryWeb.RunLive.Show do
     assign(socket,
       digests: digests,
       reported_version: reported,
+      default_policy:
+        is_nil(reported) and
+          Policy.default_policy_digest?(scope, digests.reported || digests.applied),
       in_force: in_force,
       versions: known
     )

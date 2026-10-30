@@ -12,6 +12,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- An organisation with no workspace shows the kind cards on its overview,
+  `/<organisation>`, under “Choose what your first workspace does”, and
+  `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
+  **Choose** on a card creates the workspace at once, named after its kind, such as
+  “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its
+  step **Name**. A workspace's address follows its name: a rename, on **Name** or in
+  Workspace settings, changes it, and links to the old address stop working, with no
+  redirect. A name whose address another workspace or a page of Qory Apiary has is
+  refused, never numbered: “Choose another name. Another workspace already has the
+  address /acme/payments.”
 - An instance admin can rename the product in Instance settings › General: the browser
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
@@ -47,9 +57,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - While an organisation has no workspace, its owners and admins invite people from
   **People** into the organisation. The invitation page and the sign-up show the
   organisation's name, and **People** lists the invitation with **None** as its workspace.
-  Accepting it opens **Set up your workspace** while the organisation has no workspace,
-  else the organisation's overview. Once the organisation has a workspace, an invitation
-  needs a workspace again.
+  Accepting it opens the organisation's overview. Once the organisation has a workspace,
+  an invitation needs a workspace again.
 - Each page of the set-up with more than one step shows a list of the steps of its part,
   with the part's count. The instance set-up, which an instance admin goes through once,
   has **Your account** and the steps under **Connect Qory Apiary**. The workspace set-up
@@ -59,30 +68,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **All steps**. A step done or skipped is a link to it where it has a page, once you
   are signed in; **Your account** is not. **Back** at the foot of a form opens the step
   before in the same part, and each step has an address, such as
-  `/instance/set-up?step=mail` and `/<organisation>/set-up?step=name&type=software`. A
+  `/instance/set-up?step=mail` and `/<organisation>/set-up?step=name&workspace=main`. A
   person who waits for another to create the first workspace sees no list.
-- The workspace set-up at `/<organisation>/set-up` moves on without a reload when
-  another person creates the organisation's first workspace while the page shows the
-  type cards, the line for a person who waits, or the step **Name**.
+- The organisation's overview moves on without a reload when another person creates the
+  organisation's first workspace while it shows the kind cards or the line for a person
+  who waits.
 - An edition can change the set-up's steps and their notes, and, for a person who waits
-  for the first workspace, the page's title, **Set up your workspace** in the core, and
-  a line under **About this step**, through the callbacks `set_up_steps/2`,
-  `set_up_title/2` and `set_up_context/2` of `Apiary.Edition`. The core keeps its steps
-  and the title, and adds no line.
-- **What will this workspace do?** shows a card for each workspace type, with what you do
-  in that kind of workspace, what you connect, and **Choose**. This release has one type,
-  **Software factory**: “Agents change code in your repositories. You connect: where work
-  comes from, where changes go, a model.” The cards show on `/<organisation>/set-up` while
-  the organisation has no workspace, and on `/<organisation>/workspaces/new`, where an
-  owner adds a workspace where the edition allows another. Where the organisation has as
-  many workspaces as the edition allows, that page shows “Acme may have no more
-  workspaces.” in place of the cards. Only owners see the cards: anyone else reads who
-  sets up the first workspace, and `/<organisation>/workspaces/new` is not found for
-  them. **Choose** opens the set-up of a workspace of that type, “Set up a new Software
-  factory”. Its step **Name** has the field **Name**, filled in with Main for the
-  organisation's first workspace and empty for any other, and **Create workspace**,
-  which creates the workspace and opens the next step, or the workspace where there is
-  none. Each workspace stores the type it was made from.
+  for the first workspace, the line on the organisation's overview, “An owner of Acme
+  creates the first workspace.” in the core, through the callbacks `set_up_steps/2` and
+  `first_workspace_waiting_line/1` of `Apiary.Edition`. The core keeps its steps.
+- The kind cards show a card for each workspace type, with what you do in that kind of
+  workspace, what you connect, and **Choose**. This release has one type, **Software
+  factory**: “Agents change code in your repositories. You connect: where work comes
+  from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
+  adds a workspace where the edition allows another. Where the organisation has as many
+  workspaces as the edition allows, that page shows “Acme may have no more workspaces.”
+  in place of the cards. Only owners see the cards: anyone else reads who creates the
+  first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
+  workspace stores the type it was made from.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
   Adapters** lists, before **Mail** where the page has that step. Where an adapter's
@@ -90,10 +93,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   set-up's **Work sources** and **Destinations** list them in the column **About this
   step**, under **In the new tab** or **On** and the adapter's name. Qory Apiary stores
   those steps at each start of the adapter.
-- After a type's card, the workspace set-up has 7 steps: **Name**, **Work sources**,
+- After a kind's card, the workspace set-up has 7 steps: **Name**, **Work sources**,
   **Destinations**, **Model**, **Harness**, **Machines** and **Test run**, counted
-  “Step 4 of 7”, or “Step 5 of 8” after **Your account**. **Name** creates the workspace,
-  and each later step sets up that workspace: before it exists, the page opens **Name**.
+  “Step 4 of 7”, or “Step 5 of 8” after **Your account**. **Choose** on the card creates
+  the workspace, **Name** renames it, and each later step sets up that workspace.
   Without a step in its address, the page opens the first step that is not done. **Work
   sources**, **Destinations**, **Model** and **Harness** each show where you change them
   later, such as “You can change this later in Workspace settings › Workflow.” Where the
@@ -375,6 +378,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- An organisation's address follows its name, as a workspace's does. A rename in
+  Organisation settings › General changes it, the page opens at the new address, and
+  links to the old one stop working, with no redirect. A sign-up, the set-up link's page
+  and the release command's claim make the address from the name too. A name whose
+  address another organisation or a page of Qory Apiary has is refused there, never
+  numbered: “Choose another name. Another organisation has the address /acme.” The audit
+  log records the old and the new name and address of a rename.
 - Where the documentation is not built, `/docs` shows `mix docs` on a separate line, in
   code font, with an icon button **Copy command** that copies the command alone.
 - An enrolment code starts with the prefix of its node's kind: `qecn_` for a node, `qecp_`
@@ -385,9 +395,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
-- The organisation slug `integrations` is reserved as well: a slug made from a name skips
-  it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
-  the slug `integrations-2`.
+- The organisation slug `integrations` is reserved as well: a sign-up or a rename to the
+  name Integrations is refused with “Choose another name. /integrations is a page of Qory
+  Apiary.”
 - An account's email address, at sign-up and when it is changed, and an invitation's
   address refuse a control or format character (a right-to-left override, a zero-width
   space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160
@@ -442,14 +452,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   contents to 65532 before the upgrade, or the release cannot read the keys.
 - The set-up link creates the instance's organisation and its owner's account with no
   workspace. After **Connect Qory Apiary**, the owner creates the first workspace on the
-  workspace set-up, at `/<organisation>/set-up`, which starts with **What will this
-  workspace do?**. Until the organisation has a workspace, each sign-in of a member of
-  the organisation opens that page.
+  kind cards of the organisation's overview, `/<organisation>`. Until the organisation
+  has a workspace, each sign-in of a member of the organisation opens that page.
   On a new instance, `Apiary.Release.grant_instance_admin/2`, the release command an
-  instance admin runs, still creates Main, of the type Software factory. Where an edition
-  offers a sign-up without an invitation, that sign-up creates no workspace either.
-  Create Main before you load the demo: `Apiary.Release.demo()` writes nothing while Acme
-  has no workspace Main.
+  instance admin runs, creates no workspace either. Where an edition offers a sign-up
+  without an invitation, that sign-up creates no workspace either. Before you load the
+  demo, create a workspace and name it Main: `Apiary.Release.demo()` writes nothing while
+  Acme has no workspace Main.
 - Where a step of the set-up needs context, its page has a column **About this step**
   beside the form, or under it below 1024 px, that shows what the step does.
 <!-- feature: factory -->
@@ -504,6 +513,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The log filter replaces an invitation link's token before it looks for `qak_` and an
   enrolment code's prefix. Before, a token that contained one of them could leave up to
   39 of its 43 characters in the log line.
+- A prebuild's image is accepted only at the place Qory Apiary sent the prebuild, so one
+  organisation's build cannot make another organisation's runs start in its image.
 
 ### Migrations
 

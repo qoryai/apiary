@@ -81,19 +81,22 @@ Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
 same password again, and the **Organisation name**, usually your company's, `Acme` say.
 Then select **Set up**. It creates your account and the organisation, with no workspace
-yet, and signs you in. Each page of the set-up lists its steps, with the current one
-marked: first the instance's steps, then the organisation's in a separate list, each
-counted from step 1. **Back**, at the foot of a step's form, opens the step before it in
-the same list. Two pages follow:
+yet, and signs you in. **Connect Qory Apiary** lists its steps, with the current one
+marked, counted from step 1. With the `factory` feature, the group **Set up** at the top
+of the workspace's sidebar lists the workspace's steps, with a check mark on each one
+done. **Back**, at the foot of a step's form, opens the step before it. Two pages
+follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. The workspace set-up, at `http://localhost:4100/acme/set-up`. Its first page, **What
-   will this workspace do?**, shows the card **Software factory**, whose words this
-   guide uses: select **Choose**. At the step **Name**, keep the name `Main` and select
-   **Create workspace**.
+2. The overview of your organisation, at `http://localhost:4100/acme`. Under **Choose
+   what your first workspace does**, it shows the card **Software factory**, whose words
+   this guide uses: select **Choose**. It creates the workspace *Software factory*, at
+   `http://localhost:4100/acme/software-factory`, and opens its step **Name**. Type the
+   name `Main`, which this guide uses, and select **Save and next**. The workspace's
+   address follows its name, so it moves to `http://localhost:4100/acme/main`.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
@@ -105,8 +108,8 @@ With the `factory` feature, **Connect Qory Apiary** has one step for each adapte
 select **Skip**, or **Continue** where the step is set up already, or set the adapter up
 as [Set up a new instance](install.md#set-up-a-new-instance) shows.
 
-**Create workspace** then opens **Work sources**, the next step of Main's set-up, in place
-of the overview, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
+**Save and next** on **Name** then opens **Work sources**, the next step of Main's
+set-up, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
 to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
 sidebar, but Main's overview has no box for them, and their node does not count for the
 step **Machines**, which counts node pools only.
@@ -118,7 +121,7 @@ Until it is used nobody can sign up, and anyone who reads the log can use it, so
 as soon as the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
 
 Setting it up created an organisation with the name you gave and your membership as its
-owner, and **Create workspace** created one workspace in it named *Main*. Both can be
+owner, and **Choose** created one workspace in it, which you named *Main*. Both can be
 renamed in their **Settings**, at the foot of the sidebar: the workspace's on any page of
 the workspace, the organisation's on its overview, which its name in the top bar opens. As
 the person who set the instance up you are also its **instance admin**: your organisation
@@ -131,8 +134,10 @@ asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
 from the names given at set-up: an organisation named `Acme` gives `/acme/main`, and the runs
-are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
-a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
+are at `/acme/main/runs`. A slug follows the name: renaming the organisation or the
+workspace changes its slug, and links to the old address stop working. A link to a page
+names its workspace, so a colleague in the organisation opens the same page, and anyone
+else gets *Not Found*.
 
 The people of the organisation are under **Organisation settings › People**, `/<organisation>/settings/people`, each
 at one of three levels, and every one of them reaches the workspace; the workspace's **Workspace
@@ -282,10 +287,11 @@ version.
 <!-- feature: factory -->
 ## 8. Set up Main and run the test
 
-With the `factory` feature, the workspace set-up goes on after **Create workspace**, at
-`http://localhost:4100/acme/set-up?step=<step>&workspace=main`. Until a test run passes,
-opening Main, `http://localhost:4100/acme/main`, opens its next step in place of the
-overview. The list of steps shows a check mark on each step once it is done:
+With the `factory` feature, the workspace set-up goes on after **Name**, at
+`http://localhost:4100/acme/main/set-up/<step>`, a page of Main. Until a test run passes,
+the group **Set up** at the top of Main's sidebar lists the steps, and Main's overview,
+`http://localhost:4100/acme/main`, lists them too, with **Continue** to the next step.
+Each list shows a check mark on each step once it is done:
 
 | Step | Done when |
 |---|---|

@@ -16,8 +16,8 @@ defmodule Apiary.Organisations.Workspace do
   @derive {Phoenix.Param, key: :slug}
   schema "workspaces" do
     field :name, :string
-    # Set once, at creation, by `put_slug/2`: made from the name, or as the form that
-    # creates the workspace gives it; never changed after.
+    # Made from the name (`put_address/2`), at creation and on each rename, so a rename
+    # changes the workspace's address.
     field :slug, :string
     # The workspace's id in the server contract, `ws_` and 16 characters
     # (`Apiary.PublicId`): discovery lists it as the workspace an access key may name. Set
@@ -119,6 +119,51 @@ defmodule Apiary.Organisations.Workspace do
       message: dgettext_noop("errors", "is not a valid slug")
     )
   end
+
+  @doc """
+  put_address/2 gives a workspace the slug its name makes
+  (`Apiary.Organisations.Slug.from_name/1`, always of a slug's characters), at creation
+  or on a rename. Whether a page or another workspace has it is asked by the caller
+  (`Apiary.Organisations.change_workspace/2`); the unique index answers for one taken
+  since, on the name.
+  """
+  def put_address(changeset, slug) do
+    changeset
+    |> put_change(:slug, slug)
+    |> unique_constraint([:organisation_id, :slug], error_key: :name, message: taken_slug())
+    |> check_constraint(:slug,
+      name: :workspaces_slug_format,
+      message: dgettext_noop("errors", "is not a valid slug")
+    )
+  end
+
+  @doc "The error of a name whose address another workspace of the organisation has."
+  def taken_address,
+    do:
+      dgettext_noop(
+        "errors",
+        "Choose another name. Another workspace already has the address %{address}."
+      )
+
+  @doc """
+  The error of a name another workspace of the organisation has at another address, made
+  before the address followed the name.
+  """
+  def taken_name_elsewhere,
+    do:
+      dgettext_noop("errors", "Choose another name. Another workspace is already named %{name}.")
+
+  @doc "The error of a name whose address a workspace marked for deletion has."
+  def marked_address,
+    do:
+      dgettext_noop(
+        "errors",
+        "Choose another name. A workspace marked for deletion still has the address %{address}."
+      )
+
+  @doc "The error of a name whose address is a page of Qory Apiary."
+  def page_address,
+    do: dgettext_noop("errors", "Choose another name. %{address} is a page of Qory Apiary.")
 
   @doc "The error of a form that creates a workspace with no domain chosen: its type."
   def no_type, do: dgettext_noop("errors", "Choose a type.")

@@ -113,6 +113,11 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     Action.new(
+      :"instance.mail_resend",
+      "send the test link of the saved mail settings again: the instance admin who saved them, after a recent sign-in, while mail waits for that link, which no role takes (Apiary.Mail.resend_test_link/2)",
+      asked_of: :organisation
+    ),
+    Action.new(
       :"instance.mail_on",
       "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in, which no role takes (Apiary.Mail.turn_on/2)",
       asked_of: :organisation
@@ -142,7 +147,7 @@ defmodule Apiary.Access do
     # The workspace.
     Action.new(
       :"workspace.create",
-      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; in the core, the first one, on the workspace set-up page",
+      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; in the core, the first one, from the kind cards of the organisation's overview",
       roles: @owners,
       asked_of: :organisation
     ),
@@ -820,8 +825,9 @@ defmodule Apiary.Access do
   organisation they act at their level as anyone there. Beyond it, while the instance sends
   no mail, an instance admin makes a one-time link that sets an account's password
   (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
-  either: the context function asks `instance_admin?/1`. So do saving the mail settings
-  and turning them on (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
+  either: the context function asks `instance_admin?/1`. So do saving the mail settings,
+  sending their test link again and turning them on (`instance.mail_save`,
+  `Apiary.Mail.save_settings/3`; `instance.mail_resend`, `Apiary.Mail.resend_test_link/2`;
   `instance.mail_on`, `Apiary.Mail.turn_on/2`) and changing the instance's settings
   (`instance.configure`, `Apiary.InstanceConfig.save/3`), which also ask for a recent
   sign-in, and setting the product's name (`instance.rename`,

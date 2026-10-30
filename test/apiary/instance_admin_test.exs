@@ -68,7 +68,9 @@ defmodule Apiary.InstanceAdminTest do
       user = Apiary.Accounts.get_user_by_email("claim@example.com")
       assert %Membership{level: :owner} = membership(user)
       assert Access.instance_admin?(Scope.for_user(user))
-      assert [%{name: "Main"}] = Organisations.list_workspaces(Scope.for_instance(organisation))
+      # No workspace: the owner chooses the first one on the overview's kind cards.
+      assert Organisations.list_workspaces(Scope.for_instance(organisation)) == []
+      refute Organisations.has_workspace?(organisation)
 
       assert_received {:email, %Swoosh.Email{to: [{"", "claim@example.com"}]} = email}
       assert email.text_body =~ ~r{/users/log-in/[A-Za-z0-9_-]+}

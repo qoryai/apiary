@@ -25,9 +25,9 @@ defmodule Apiary.OrganisationsFixtures do
   accepts that invitation instead of creating an organisation. Without one it is a later
   sign-up, which the fixture makes whether or not the edition opens one (`open: true`,
   `Apiary.Organisations.sign_up_user/3`); or, on an instance a test shows as not set up,
-  its set-up (`Apiary.Setup.set_up/3`), then its first workspace, Main, as the workspace
-  set-up page makes it (`Apiary.Organisations.create_first_workspace/2`), of the domain
-  `domain` names, the default without one.
+  its set-up (`Apiary.Setup.set_up/3`), then its first workspace, Main
+  (`Apiary.Organisations.create_first_workspace/2`), of the domain `domain` names, the
+  default without one.
   """
   def sign_up_fixture(attrs \\ %{}) do
     {token, attrs} = Map.pop(attrs, :invitation_token)
@@ -181,7 +181,7 @@ defmodule Apiary.OrganisationsFixtures do
 
     %Workspace{organisation_id: organisation.id}
     |> Workspace.create_changeset(%{name: name, domain: "software"})
-    |> Workspace.put_slug(Slug.from_name(name, "workspace"))
+    |> Workspace.put_slug(Slug.from_name(name))
     |> Repo.insert!()
   end
 

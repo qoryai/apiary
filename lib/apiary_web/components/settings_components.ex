@@ -462,6 +462,95 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   @doc """
+  workspace_address/1 is the line under a workspace's name field, on Workspace settings and
+  on the set-up's Name step: the workspace's address, which follows its name, and, once
+  the name typed gives another address that is free, the address it changes to and the
+  old one whose links stop working. `form` is the rename's form
+  (`Apiary.Organisations.change_workspace/2`).
+  """
+  attr :id, :string, required: true
+  attr :organisation, :any, required: true
+  attr :workspace, :any, required: true, doc: "the workspace as it is saved"
+  attr :form, :any, required: true
+
+  def workspace_address(assigns) do
+    changeset = assigns.form.source
+
+    new =
+      if is_nil(changeset.errors[:name]),
+        do: Ecto.Changeset.get_change(changeset, :slug)
+
+    assigns =
+      assign(assigns,
+        old: ~p"/#{assigns.organisation}/#{assigns.workspace}",
+        new: new && ~p"/#{assigns.organisation}/#{new}"
+      )
+
+    ~H"""
+    <p :if={!@new} id={@id} class="text-[13px]/[20px] text-muted">
+      <.rich text={rich_gettext("Address: %{address}", address: {:m, @old})} />
+      <br />
+      {gettext("It follows the name.")}
+    </p>
+    <.notice :if={@new} kind={:warning}>
+      <span id={@id}>
+        <.rich text={
+          rich_gettext("The address changes to %{new}. Links to %{old} stop working.",
+            new: {:m, @new},
+            old: {:m, @old}
+          )
+        } />
+      </span>
+    </.notice>
+    """
+  end
+
+  @doc """
+  organisation_address/1 is the line under the organisation's name field, on Organisation
+  settings: its address, which follows its name, and, once the name typed gives another
+  address that is free, the address its pages change to start with and the old one whose
+  links stop working. `form` is the rename's form
+  (`Apiary.Organisations.change_organisation/2`).
+  """
+  attr :id, :string, required: true
+  attr :organisation, :any, required: true, doc: "the organisation as it is saved"
+  attr :form, :any, required: true
+
+  def organisation_address(assigns) do
+    changeset = assigns.form.source
+
+    new =
+      if is_nil(changeset.errors[:name]),
+        do: Ecto.Changeset.get_change(changeset, :slug)
+
+    assigns =
+      assign(assigns,
+        old: ~p"/#{assigns.organisation}",
+        new: new && ~p"/#{new}"
+      )
+
+    ~H"""
+    <p :if={!@new} id={@id} class="text-[13px]/[20px] text-muted">
+      <.rich text={rich_gettext("Address: %{address}", address: {:m, @old})} />
+      <br />
+      {gettext("It follows the name.")}
+    </p>
+    <.notice :if={@new} kind={:warning}>
+      <span id={@id}>
+        <.rich text={
+          rich_gettext(
+            "The addresses of %{organisation} change to start with %{new}. Links to %{old} stop working.",
+            organisation: @organisation.name,
+            new: {:m, @new},
+            old: {:m, @old}
+          )
+        } />
+      </span>
+    </.notice>
+    """
+  end
+
+  @doc """
   theme_picker/1 is Preferences' choice of the theme: Auto, Light and Dark as three radios,
   each drawn as a small picture of the theme (the theme's tokens, set by `data-theme`
   on the picture) with its name. The theme is the account menu's, a reading preference of

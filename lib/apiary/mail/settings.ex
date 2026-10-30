@@ -10,6 +10,11 @@ defmodule Apiary.Mail.Settings do
   `mail_verified_at` when that admin followed the test link the save sent: mail is on from
   then. A save sets it back to `nil`.
 
+  `mail_test_sent_at`, `mail_test_result` and `mail_test_reply_code` are the last test
+  link sent, by a save or sent again (`Apiary.Mail.resend_test_link/2`): when, its result
+  (`t:Apiary.Mail.test_result/0`), `nil` while the send runs, and the relay's reply code,
+  such as `550 5.7.1`, where the result has one. The relay's reply text is never kept.
+
   The schema maps only the mail's columns of the row; the row's other columns are the
   instance's other settings (`Apiary.KeyCheck`).
   """
@@ -32,6 +37,12 @@ defmodule Apiary.Mail.Settings do
     field :mail_saved_at, :utc_datetime_usec
     field :mail_saved_by_id, :binary_id
     field :mail_verified_at, :utc_datetime_usec
+    field :mail_test_sent_at, :utc_datetime_usec
+
+    field :mail_test_result, Ecto.Enum,
+      values: [:sent, :connect, :tls, :login, :sender, :rejected, :temporary, :other]
+
+    field :mail_test_reply_code, :string
     field :updated_at, :utc_datetime_usec
   end
 

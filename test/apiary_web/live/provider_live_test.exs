@@ -218,7 +218,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
       assert has_element?(
                lv,
-               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}/set-up"]},
+               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}"]},
                "Set up a workspace"
              )
 
@@ -241,7 +241,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
       assert has_element?(
                lv,
-               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}/set-up"]},
+               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}"]},
                "Set up a workspace"
              )
 

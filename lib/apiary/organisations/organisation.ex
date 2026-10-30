@@ -20,7 +20,9 @@ defmodule Apiary.Organisations.Organisation do
   @derive {Phoenix.Param, key: :slug}
   schema "organisations" do
     field :name, :string
-    # Set once, at creation, by `put_slug/2`; never cast from a form.
+    # Made from the name: at creation by `put_slug/2`, where a taken one refuses the name
+    # (`taken: :refuse`, a sign-up's) or is numbered, and on each rename by
+    # `put_address/2`; never cast from a form.
     field :slug, :string
     # The edition's (see the moduledoc); never cast from a form.
     field :edition, :map, virtual: true, default: %{}
@@ -112,6 +114,40 @@ defmodule Apiary.Organisations.Organisation do
   def displayable_name(name) when is_binary(name), do: String.replace(name, invisible(), "")
 
   @doc """
+  put_address/2 gives a renamed organisation the slug its new name makes
+  (`Apiary.Organisations.Slug.from_name/1`, always of a slug's characters). Whether a page
+  or another organisation has it is asked by the caller
+  (`Apiary.Organisations.change_organisation/2`); the unique index answers for one taken
+  since, on the name.
+  """
+  def put_address(changeset, slug) do
+    changeset
+    |> put_change(:slug, slug)
+    |> unique_constraint(:slug, error_key: :name, message: taken_slug())
+    |> check_constraint(:slug,
+      name: :organisations_slug_format,
+      message: dgettext_noop("errors", "is not a valid slug")
+    )
+  end
+
+  @doc """
+  The error of a name whose address another organisation has, one marked for deletion
+  included: the error does not tell an organisation that another is marked.
+  """
+  def taken_address,
+    do:
+      dgettext_noop(
+        "errors",
+        "Choose another name. Another organisation has the address %{address}."
+      )
+
+  @doc "The error of a name whose address is a page of Qory Apiary."
+  def page_address,
+    do: dgettext_noop("errors", "Choose another name. %{address} is a page of Qory Apiary.")
+
+  defp taken_slug, do: dgettext_noop("errors", "is already the slug of another organisation")
+
+  @doc """
   put_slug/2 gives a new organisation its slug, checked against the rules and the names
   the router reserves; the unique index answers for a slug another organisation holds.
   """
@@ -119,9 +155,7 @@ defmodule Apiary.Organisations.Organisation do
     changeset
     |> put_change(:slug, slug)
     |> Slug.validate(ApiaryWeb.ReservedSlugs.organisation())
-    |> unique_constraint(:slug,
-      message: dgettext_noop("errors", "is already the slug of another organisation")
-    )
+    |> unique_constraint(:slug, message: taken_slug())
     |> check_constraint(:slug,
       name: :organisations_slug_format,
       message: dgettext_noop("errors", "is not a valid slug")

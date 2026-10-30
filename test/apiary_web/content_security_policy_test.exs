@@ -414,8 +414,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   end
 
   # The query of `path`: a chooser's opens the owner's grant in Work sources.
-  defp query("/:org/set-up/choose", p),
-    do: "?" <> URI.encode_query(step: "sources", grant: p.grant_id, workspace: p.workspace)
+  defp query("/:org/:workspace/set-up/:step/choose", p),
+    do: "?" <> URI.encode_query(grant: p.grant_id)
 
   defp query("/:org/:workspace/settings/choose", p),
     do: "?" <> URI.encode_query(step: "sources", grant: p.grant_id)
@@ -456,6 +456,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("release_id", _path, p), do: p.release_id
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
+  # Each step of a workspace's set-up; the chooser opens the owner's grant in Work sources.
+  defp value_of("step", "/:org/:workspace/set-up/:step/choose", _p), do: "sources"
+
+  # Name, the step every workspace has, whatever the features.
+  defp value_of("step", "/:org/:workspace/set-up/:step", _p), do: "name"
+
   defp value_of("path", "/docs/*path", _p), do: "no-such-page.html"
   defp value_of("page", "/dev/dashboard" <> _, _p), do: "home"
   defp value_of("node", "/dev/dashboard" <> _, _p), do: Atom.to_string(node())

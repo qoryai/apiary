@@ -11,14 +11,26 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   and the sender. Saving sends a test link to the admin who saved, and mail is off until
   they follow it (`ApiaryWeb.InstanceMailController`), signed in as themselves.
 
+  While mail waits for that link, the form shows the last test send's result, right after
+  the send and after a reload (`Apiary.Mail.Settings`): to the admin who saved, where the
+  relay accepted the email, when it went out and until when the link works; where it did
+  not, what to check, and the time and the reply code. That admin has **Send the test
+  link again** (`Apiary.Mail.resend_test_link/2`); another instance admin sees who the
+  link is for, or that no link waits, the failed send's result, and that a save sends them
+  one. A save or a
+  send within the minute after the last test send sends nothing and shows when to try
+  again.
+
   The password is never shown: its field is always empty, and the form keeps neither the
   password given nor the one saved; a saved one is said to be there, and is kept while the
   field stays empty and nothing it is bound to changes (`Apiary.Mail.save_settings/3`).
 
   `step` is the mail step's form: its button is "Save and send a test", with the step's
-  `back` before it and its `actions` at the end of the row, and it says neither that mail
-  is off nor what a save sends, which the step's context says. Once a save has sent the
-  test link, it tells the page that holds it, `{ApiaryWeb.InstanceLive.MailForm, :sent}`.
+  `back` before it and its `actions` at the end of the row, and it shows neither that mail
+  is off nor what a save sends, which are in the step's context column; **Send the test
+  link again** is beside its button. After each test send, by a save or sent again, it
+  sends the page's process `{ApiaryWeb.InstanceLive.MailForm, :tested, test_send}`
+  (`t:Apiary.Mail.test_send/0`).
 
   A save after the sign-in has grown old leads to the log-in page, as the settings page's
   mount does (`ApiaryWeb.UserAuth`'s sudo mode); a person who is no longer an instance
@@ -156,43 +168,96 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
             <.button type="submit" variant="primary" size="md" loading_text={gettext("Sending")}>
               {gettext("Save and send a test")}
             </.button>
+            <.resend :if={@state == :pending and @saver} myself={@myself} />
             <span class="grow"></span>
             {render_slot(@actions)}
           </div>
         </.form>
 
-        <div :if={@sent == :not_sent} id="mail-not-sent">
-          <.notice kind={:error}>
-            {gettext(
-              "Saved, but the test link could not be sent through these settings. Check them and save again."
-            )}
+        <div :if={@notice || @state == :pending} id="mail-test" class="grid gap-3">
+          <.notice :if={match?({:wait, _at}, @notice)} kind={:error}>
+            <span id="mail-wait">
+              {gettext(
+                "Wait until %{time}, then send the link again. Qory Apiary sends at most one test link a minute.",
+                time: at(elem(@notice, 1))
+              )}
+            </span>
           </.notice>
-        </div>
-        <p
-          :if={@state == :pending and @sent != :not_sent and @link_waiting}
-          id="mail-pending"
-          class="q-foot-note"
-        >
-          {if @mail_saved_by_id == @current_scope.user.id,
-            do:
-              gettext(
-                "Mail turns on when you follow the link we sent to %{email}, signed in as you.",
-                email: @current_scope.user.email
-              ),
-            else:
-              gettext(
+          <.notice :if={match?({:resent, _sent_at}, @notice)} kind={:success}>
+            <span id="mail-resent">
+              {gettext("Test link sent to %{email} at %{time}. It works until %{expiry}.",
+                email: @current_scope.user.email,
+                time: at(elem(@notice, 1)),
+                expiry: expiry(elem(@notice, 1))
+              )}
+            </span>
+          </.notice>
+          <%= if @state == :pending and @saver do %>
+            <p
+              :if={@last.result == :sent and @link_waiting and not match?({:resent, _}, @notice)}
+              id="mail-pending"
+              class="q-foot-note"
+            >
+              {gettext(
+                "Mail turns on when you follow the link we sent to %{email} at %{time}, signed in as you. The link works until %{expiry}.",
+                email: @current_scope.user.email,
+                time: at(@last.sent_at),
+                expiry: expiry(@last.sent_at)
+              )}
+            </p>
+            <p
+              :if={@last.result == :sent and @link_waiting}
+              id="mail-arrive"
+              class="q-foot-note"
+            >
+              {gettext(
+                "If the email does not arrive within 5 minutes, check your spam folder and the relay's log, then send the link again."
+              )}
+            </p>
+            <.notice :if={failed?(@last)} kind={:error}>
+              <span id="mail-result">{result_line(@last, @reason)}</span>
+            </.notice>
+            <div :if={!@step}>
+              <.resend myself={@myself} />
+            </div>
+          <% end %>
+          <%= if @state == :pending and not @saver do %>
+            <p :if={@link_waiting} id="mail-pending" class="q-foot-note">
+              {gettext(
                 "Mail turns on when the admin who saved these settings follows the link we sent them."
               )}
-        </p>
-        <p
-          :if={@state == :pending and @sent != :not_sent and not @link_waiting}
-          id="mail-no-link"
-          class="q-foot-note"
-        >
-          {gettext("No test link is waiting: save the settings again to send one.")}
-        </p>
+            </p>
+            <p :if={not @link_waiting} id="mail-no-link" class="q-foot-note">
+              {gettext("No test link is waiting for the admin who saved these settings.")}
+            </p>
+            <p :if={failed?(@last)} id="mail-result" class="q-foot-note">
+              {result_line(@last, @reason)}
+            </p>
+            <p id="mail-other-admin" class="q-foot-note">
+              {gettext("To get a test link at your address, save the settings.")}
+            </p>
+          <% end %>
+        </div>
       </SettingsComponents.part>
     </div>
+    """
+  end
+
+  attr :myself, :any, required: true
+
+  # Send the test link again: for the admin who saved, while mail waits for the link.
+  defp resend(assigns) do
+    ~H"""
+    <.button
+      id="mail-resend"
+      type="button"
+      size="md"
+      phx-click="resend"
+      phx-target={@myself}
+      loading_text={gettext("Sending")}
+    >
+      {gettext("Send the test link again")}
+    </.button>
     """
   end
 
@@ -220,7 +285,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
 
     if Map.has_key?(socket.assigns, :source),
       do: {:ok, socket},
-      else: {:ok, socket |> assign(:sent, nil) |> load()}
+      else: {:ok, socket |> assign(notice: nil, reason: nil) |> load()}
   end
 
   # An event the form never sends is refused in silence, before any clause reads it
@@ -235,9 +300,12 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   # `mail`, each name and each value text, as a browser encodes a form, `_unused_` ones
   # among them. So the clause below, `Apiary.Mail.save_settings/3` and the form shown
   # again are given text only: a value of another type, or bytes that are not text, never
-  # reach a cast, a query or a render that could fail on them and print them.
+  # reach a cast, a query or a render that could fail on them and print them. `resend`,
+  # Send the test link again, whose parameters nothing reads.
   defp sent?("save", %{"mail" => %{} = fields}),
     do: Enum.all?(fields, fn {name, value} -> text?(name) and text?(value) end)
+
+  defp sent?("resend", _params), do: true
 
   defp sent?(_event, _params), do: false
 
@@ -247,33 +315,157 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
     url_fun = &url(~p"/instance/mail/confirm/#{&1}")
 
     case Mail.save_settings(socket.assigns.current_scope, params, url_fun) do
-      {:ok, _settings, sent} ->
-        if sent == :sent and socket.assigns.step, do: send(self(), {__MODULE__, :sent})
-        {:noreply, socket |> assign(sent: sent) |> load()}
+      {:ok, _settings, test_send} ->
+        {:noreply, socket |> tested(test_send, nil) |> load()}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, sent: nil, form: to_form(changeset, as: "mail", action: :save))}
+        {:noreply,
+         assign(socket, notice: nil, form: to_form(changeset, as: "mail", action: :save))}
+
+      # Nothing saved: the form keeps what was typed, but the password.
+      {:error, {:throttled, at}} ->
+        {:noreply, socket |> load() |> assign(notice: {:wait, at}, form: typed_form(params))}
 
       {:error, :env} ->
-        {:noreply, socket |> assign(sent: nil) |> load()}
+        {:noreply, socket |> assign(notice: nil) |> load()}
 
-      # The sign-in has grown old since the page opened: as the settings page's mount does.
-      {:error, :sudo} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, gettext("You must re-authenticate to access this page."))
-         |> redirect(to: ~p"/users/log-in")}
-
-      # No longer an instance admin: the page itself is not found now.
-      {:error, :forbidden} ->
-        {:noreply, push_navigate(socket, to: socket.assigns.path)}
+      {:error, reason} ->
+        {:noreply, refused(socket, reason)}
     end
   end
 
+  defp handle("resend", _params, socket) do
+    url_fun = &url(~p"/instance/mail/confirm/#{&1}")
+
+    case Mail.resend_test_link(socket.assigns.current_scope, url_fun) do
+      {:ok, %{result: :sent} = test_send} ->
+        {:noreply, socket |> tested(test_send, {:resent, test_send.sent_at}) |> load()}
+
+      {:ok, test_send} ->
+        {:noreply, socket |> tested(test_send, nil) |> load()}
+
+      {:error, {:throttled, at}} ->
+        {:noreply, socket |> load() |> assign(notice: {:wait, at})}
+
+      {:error, reason} when reason in [:sudo, :forbidden] ->
+        {:noreply, refused(socket, reason)}
+
+      # Mail no longer waits for the link, the settings were saved by another admin since,
+      # or the environment sets mail now: the form as it is now.
+      {:error, _changed} ->
+        {:noreply, socket |> assign(notice: nil) |> load()}
+    end
+  end
+
+  # After a test send: the reason a connection failed, kept for this page alone; and, on
+  # the mail step, the test send sent to the page's process.
+  defp tested(socket, test_send, notice) do
+    if socket.assigns.step, do: send(self(), {__MODULE__, :tested, test_send})
+    assign(socket, notice: notice, reason: {test_send.sent_at, test_send.reason})
+  end
+
+  defp refused(socket, reason) do
+    case reason do
+      # The sign-in has grown old since the page opened: as the settings page's mount does.
+      :sudo ->
+        socket
+        |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+        |> redirect(to: ~p"/users/log-in")
+
+      # No longer an instance admin: the page itself is not found now.
+      :forbidden ->
+        push_navigate(socket, to: socket.assigns.path)
+    end
+  end
+
+  # The form with what was typed, `params`, and without the password, for a save that
+  # saved nothing and found no error.
+  defp typed_form(params) do
+    (Mail.shown().settings || %Settings{})
+    |> Settings.changeset(params)
+    |> Settings.without_password()
+    |> to_form(as: "mail")
+  end
+
+  # Whether the last test send failed: it has a result other than `:sent`.
+  defp failed?(%{result: result}), do: result not in [nil, :sent]
+
+  # The line of a failed test send: what to check, then the send's time and its reply code
+  # or, right after a failed connection, why it failed.
+  defp result_line(%{result: result, sent_at: sent_at, reply_code: code}, reason) do
+    time = at(sent_at)
+
+    case result do
+      :login ->
+        gettext(
+          "Check the username and password, and that the relay allows this server's IP address, then send the test link again. The log-in to the relay failed at %{time}.",
+          time: time
+        )
+
+      :sender ->
+        gettext(
+          "Set Sender to an address the relay accepts, such as one verified with your mail provider, then send the test link again. The relay refused the sender address at %{time} (reply code %{code}).",
+          time: time,
+          code: code
+        )
+
+      :rejected ->
+        gettext(
+          "Check the sender address, and that the relay allows this server's IP address, then send the test link again. The relay refused the email at %{time} (reply code %{code}).",
+          time: time,
+          code: code
+        )
+
+      :temporary ->
+        gettext(
+          "Send the test link again in a few minutes. The relay returned a temporary error at %{time} (reply code %{code}).",
+          time: time,
+          code: code
+        )
+
+      :connect ->
+        case reason do
+          {^sent_at, posix} when is_atom(posix) and not is_nil(posix) ->
+            gettext(
+              "Check the SMTP relay and port, and that this server can reach them, then send the test link again. The connection to the relay failed at %{time} (%{reason}).",
+              time: time,
+              reason: Atom.to_string(posix)
+            )
+
+          _not_known ->
+            gettext(
+              "Check the SMTP relay and port, and that this server can reach them, then send the test link again. The connection to the relay failed at %{time}.",
+              time: time
+            )
+        end
+
+      :tls ->
+        gettext(
+          "Check the TLS setting and port, such as 587 with Always, or 465, then send the test link again. The TLS handshake with the relay failed at %{time}.",
+          time: time
+        )
+
+      :other ->
+        gettext("Check the settings, then send the test link again. The send failed at %{time}.",
+          time: time
+        )
+    end
+  end
+
+  # A time the form shows: with the seconds, to match the relay's log, and the time zone.
+  defp at(time), do: Format.datetime(time, seconds: true, zone: true)
+
+  # Until when the test link sent at `sent_at` works.
+  defp expiry(sent_at),
+    do:
+      sent_at
+      |> DateTime.add(Mail.test_link_minutes(), :minute)
+      |> Format.datetime(zone: true)
+
   # What the form shows, read now: where mail comes from, and the saved settings, their
-  # state, whether a test link waits, and the form. None of it holds a password, given or
-  # saved (`Apiary.Mail.shown/0`): of the settings, the form keeps when mail turned on and
-  # who saved them, and the form.
+  # state, whether a test link waits, the last test send, and the form. None of it contains
+  # a password, given or saved (`Apiary.Mail.shown/0`): of the settings, the form keeps when
+  # mail turned on, whether its reader saved them, the last test send, and the form.
   defp load(socket) do
     %{settings: settings, state: state, password_saved: password_saved} = Mail.shown()
 
@@ -282,13 +474,25 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
       env: env_shown(),
       default_sender: Apiary.Mailer.default_address(),
       mail_verified_at: settings && settings.mail_verified_at,
-      mail_saved_by_id: settings && settings.mail_saved_by_id,
+      saver:
+        settings != nil and settings.mail_saved_by_id == socket.assigns.current_scope.user.id,
+      last: last_test_send(settings),
       state: state,
       link_waiting: Mail.test_link_waiting?(settings),
       password_saved: password_saved,
       form: settings_form(settings)
     )
   end
+
+  # The last test send of `settings`, empty where there is none.
+  defp last_test_send(%Settings{} = settings),
+    do: %{
+      sent_at: settings.mail_test_sent_at,
+      result: settings.mail_test_result,
+      reply_code: settings.mail_test_reply_code
+    }
+
+  defp last_test_send(nil), do: %{sent_at: nil, result: nil, reply_code: nil}
 
   # The environment's settings the form shows: never the password.
   defp env_shown, do: Keyword.take(Mail.env(), [:relay, :port, :ssl, :tls, :username])

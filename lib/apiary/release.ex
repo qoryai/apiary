@@ -178,8 +178,9 @@ defmodule Apiary.Release do
 
   On an instance that is not set up yet it sets the instance up instead, from a shell, in
   place of its set-up link (`Apiary.Setup`): it is the instance's first sign-up, with
-  `email` and `organisation_name`, which creates the instance's organisation, its
-  workspace Main and the account as its owner, and marks the set-up code used, so the
+  `email` and `organisation_name`, which creates the instance's organisation and the
+  account as its owner, with no workspace: the owner chooses the first one on the kind
+  cards of the organisation's overview, `/:org`. It marks the set-up code used, so the
   link works no more. With `QORY_SETUP_CODE_SHA256` set, it marks the preset used as
   well, and the preset code sets the instance up no more, a purge of the instance's
   organisation later included. With mail (`Apiary.Mail.configured?/0`) it sends the account its
@@ -236,7 +237,7 @@ defmodule Apiary.Release do
         grant_existing(email)
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        IO.puts("Not created: #{changeset_errors(changeset)}.")
+        IO.puts("Not created: #{changeset_errors(changeset)}" |> full_stop())
         {:error, :invalid}
     end
   end
@@ -265,6 +266,10 @@ defmodule Apiary.Release do
   # the terminal's scrollback. Each message is filled in by
   # `Apiary.Setup.error_messages/1`, which never turns an option such as a list of
   # fields into text.
+  # A message that ends a sentence already, such as "Choose another name. … of Qory
+  # Apiary.", takes no second full stop.
+  defp full_stop(text), do: if(String.ends_with?(text, "."), do: text, else: text <> ".")
+
   defp changeset_errors(changeset) do
     changeset
     |> Apiary.Setup.error_messages()
@@ -509,7 +514,7 @@ defmodule Apiary.Release do
 
   defp demo_refusal(:no_main),
     do:
-      "Create the workspace Main at /acme/set-up, then run this command again. " <>
+      "Create a workspace named Main in Acme, then run this command again. " <>
         "The organisation acme has no workspace main."
 
   defp demo_refusal(:filled),
