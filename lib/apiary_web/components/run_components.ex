@@ -177,9 +177,11 @@ defmodule ApiaryWeb.RunComponents do
   underscores: `no_longer_needed` reads "no longer needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
-  `dev.qory.run.refused`, an earlier name read as the new one: "did not start: image_unknown".
-  A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
-  the refusal's code as its reason, reads the same.
+  `dev.qory.run.refused`, an earlier name read as the new one. A code of a check of the
+  run's settings on the machine (`settings_check?/1`) reads "The run's settings did not pass
+  a check on the machine (image_unknown)."; any other code "did not start: <code>", and
+  no code "did not start". A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`),
+  failed with no exit and the refusal's code as its reason, reads the same.
 
   A run a node pool's claim registered whose machine never started it reads its cause
   (`start_words/1`): "No machine was made: <the starter's reason>.", "The pool did not
@@ -235,8 +237,31 @@ defmodule ApiaryWeb.RunComponents do
   defp refusal_words(code) do
     case refusal_code(code) do
       nil -> gettext("did not start")
-      code -> gettext("did not start: %{code}", code: code)
+      code -> refusal_sentence(code, code)
     end
+  end
+
+  # The words of a refusal with `code`, `shown` in the place of the code.
+  defp refusal_sentence(code, shown) do
+    if settings_check?(code),
+      do:
+        gettext("The run's settings did not pass a check on the machine (%{code}).",
+          code: shown
+        ),
+      else: gettext("did not start: %{code}", code: shown)
+  end
+
+  @doc """
+  Whether a refusal's code is a check of the run's settings on the machine: any code but
+  `model_key_missing`, which has a fix of its own, `engine_unreachable`, the machine's
+  container engine not answering, the causes of a machine that never started the run
+  (`Apiary.Runs.Run.start_failures/0`), and Forager's reasons read under their new names
+  (`stopped`, `credential_check_unreachable`, `credential_check_invalid`).
+  """
+  @spec settings_check?(String.t()) :: boolean
+  def settings_check?(code) do
+    code not in (["model_key_missing", "engine_unreachable"] ++
+                   Run.start_failures() ++ Map.values(@earlier_reasons))
   end
 
   # An outcome its starter sent with no state, stored as cancelled with the reason `stopped`
@@ -265,7 +290,8 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   A run's end reason as the run page's header and rail show it, `reason_words/1` in a span,
   with the refusal's code of a run that did not start in mono, as the timeline's item has
-  it: "did not start: `image_unknown`". Nothing when there is no reason.
+  it: "The run's settings did not pass a check on the machine (`image_unknown`)." Nothing
+  when there is no reason.
   """
   attr :run, :map, required: true
   attr :id, :string, default: nil
@@ -276,7 +302,7 @@ defmodule ApiaryWeb.RunComponents do
 
     {before, rest} =
       if code,
-        do: split_at_hole(gettext("did not start: %{code}", code: hole())),
+        do: split_at_hole(refusal_sentence(code, hole())),
         else: {reason_words(assigns.run), ""}
 
     assigns = assign(assigns, before: before, code: code, rest: rest)

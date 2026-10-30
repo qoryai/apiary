@@ -16753,6 +16753,11 @@ msgstr ""
 msgid "The run's result did not pass Qory's check."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's settings did not pass a check on the machine (%{code})."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The runs could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
@@ -16873,6 +16878,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The test run failed: %{reason}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The test run failed: the run's settings did not pass a check on the machine (%{code})."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

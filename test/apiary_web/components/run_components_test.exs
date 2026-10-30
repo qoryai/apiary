@@ -302,7 +302,15 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "a run stored as refused, failed with no exit and the code as its reason, did not start" do
       refused = %Apiary.Runs.Run{state: "failed", exited_at: nil, reason: "image_unknown"}
-      assert RunComponents.reason_words(refused) == "did not start: image_unknown"
+
+      assert RunComponents.reason_words(refused) ==
+               "The run's settings did not pass a check on the machine (image_unknown)."
+
+      assert RunComponents.reason_words(%{refused | reason: "model_key_missing"}) ==
+               "did not start: model_key_missing"
+
+      assert RunComponents.reason_words(%{refused | reason: "engine_unreachable"}) ==
+               "did not start: engine_unreachable"
 
       assert RunComponents.reason_words(%{refused | reason: "issuer_unreachable"}) ==
                "did not start: credential_check_unreachable"
@@ -314,12 +322,12 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(exited) == "no longer needed"
     end
 
-    test "a run refused at its start did not start, its code as given" do
+    test "a run refused at its start: a check of its settings, or it did not start, its code as given" do
       assert RunComponents.reason_words(%{refused: "image_unknown"}) ==
-               "did not start: image_unknown"
+               "The run's settings did not pass a check on the machine (image_unknown)."
 
       assert RunComponents.reason_words(%{refused: "example_server_code"}) ==
-               "did not start: example_server_code"
+               "The run's settings did not pass a check on the machine (example_server_code)."
 
       assert RunComponents.reason_words(%{refused: "issuer_unreachable"}) ==
                "did not start: credential_check_unreachable"
@@ -420,7 +428,11 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       for code <- refusals do
         words = RunComponents.reason_words(%{refused: code})
-        assert words =~ "did not start: " and not (words =~ "issuer"), code
+
+        assert words =~ "did not start: " or words =~ "did not pass a check on the machine (",
+               code
+
+        refute words =~ "issuer", code
       end
 
       for reason <- reasons -- ["run_closed", "batch_refused"] do

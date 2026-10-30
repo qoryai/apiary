@@ -1665,8 +1665,11 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
-  "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
-  meta line and the rail as in the timeline's item. A run whose starter sent its outcome
+  its refusal: for a code of a check of the run's settings on the machine, "The run's
+  settings did not pass a check on the machine (image_unknown).", with the code in mono in
+  the meta line and the rail; for `model_key_missing`, `engine_unreachable` and the
+  causes of a machine that never started the run, "did not start" and the code in mono
+  ("did not start: model_key_missing"); with no code, "did not start". A run whose starter sent its outcome
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,
