@@ -28,7 +28,7 @@ defmodule Apiary.Runs.Diagnostics do
   instance (`Apiary.AccessKeys.diagnostics_scope/1`). Either reads the log and the steps'
   output. `machine_logs` is there for an instance admin (`Apiary.Access.instance_admin?/1`)
   and for a diagnostics key. The events are read as the run page reads them, through the
-  edition (`c:Apiary.Edition.client_reads/4`, `:run_events`), under the person's scope or
+  edition (its `client_reads` callback, `:run_events`), under the person's scope or
   the instance's; the `dev.qory.run.log` events are left out, as their output is in `log`
   and in the steps' output already. `log` and `events` are also left out once the
   retention removed them (`runs.log_pruned_at`, `runs.events_pruned_at`).

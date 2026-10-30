@@ -14,8 +14,8 @@ defmodule Apiary.Runs.LeakedSecrets do
       or from the chunks stored before it;
     * the data of each event other than `dev.qory.run.log`, whose output is in the log
       chunks, as `event_text/1` writes it, in the same pass;
-    * a dispatch's machine log, when Qory Apiary stores it (`Apiary.Dispatches.MachineLogs`);
-    * a dispatch's release reason, when the release is stored (`Apiary.Dispatches.Release`).
+    * a dispatch's machine log, when Qory Apiary stores it;
+    * a dispatch's release reason, when the release is stored.
 
   **What is kept** (`Apiary.Runs.LeakedSecret`): where each secret is, never the secret. At
   most #{1_000} rows for a run's output and events, and as many for each of a dispatch's
@@ -53,7 +53,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   stores for `run`, and in `events`, the events it folds, and keeps where they are. Called
   in the pass's transaction, under the run's projection lock.
   """
-  @spec record_run(Run.t(), [map], [Event.t()]) :: :ok
+  @spec record_run(Run.t(), [map], [struct]) :: :ok
   def record_run(%Run{} = run, chunks, events) do
     times = Map.new(events, &{&1.sequence, &1.time})
     rows = output_rows(run, chunks, times) ++ event_rows(events)
@@ -66,7 +66,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   are. Called in the transaction that stores the text.
   """
   @spec record_dispatch(
-          Dispatch.t(),
+          struct,
           :machine_log | :release_reason,
           String.t() | nil,
           DateTime.t()
@@ -348,12 +348,12 @@ defmodule Apiary.Runs.LeakedSecrets do
     * `machine_log`, the machine log's text when the reader reads it; without it, the
       secrets of the machine log are left out and not counted.
     * `events`, the query of the run's events the reader reads
-      (`Apiary.Edition.client_reads/4`): a secret in an event outside it has no value.
+      (the edition's `client_reads`): a secret in an event outside it has no value.
 
   Each secret has its value while its text is kept: a log chunk the retention deleted,
   an event outside `events`, has none.
   """
-  @spec read(Run.t(), Dispatch.t() | nil, keyword) :: {[entry], non_neg_integer}
+  @spec read(Run.t(), struct | nil, keyword) :: {[entry], non_neg_integer}
   def read(%Run{} = run, dispatch, opts) do
     machine_log = Keyword.get(opts, :machine_log)
     places = if(machine_log, do: ["machine_log", "release_reason"], else: ["release_reason"])
