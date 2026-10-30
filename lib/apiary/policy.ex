@@ -414,8 +414,9 @@ defmodule Apiary.Policy do
   with `integrations: true` has them.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
-  # The pages read the policy here, and show no integration's host until the pages'
-  # words for those hosts are reviewed: this clause leaves them out until then.
+  # The pages read the policy here, so its rule lists show no integration's host. The
+  # Policy page lists those hosts apart, as "Allowed for every run"
+  # (`Apiary.Policy.RequiredHosts`).
   def effective(%Scope{} = scope, holder), do: effective(scope, holder, integrations: false)
 
   @doc """

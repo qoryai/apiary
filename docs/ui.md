@@ -464,6 +464,7 @@ on to the new paths with their query, moved permanently (`ApiaryWeb.MovedControl
 connection as a thing keeps its word: a row is a destination and the connections made to
 it. The Policy page's hosts and paths are its Network access section, which links to the
 page ("See what the runs reached"); the page's rule links lead to the rule there.
+Network access also lists the harness fetches in a locked table of their own (`ApiaryWeb.HostComponents`), outside its counts, views, facets and rule options.
 
 A target is filtered by the id Qory Apiary gives it, never by its system or its path:
 `?target=tg_…`, several ids joined by commas for the runs of any of them, and
