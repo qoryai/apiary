@@ -352,8 +352,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   ```
 
   Under a Qory Pool that is not ready, an instance admin has **Check the Qory Pool and
-  Qory Gateway**; anyone else sees no Qory Pool on this step, and is offered only a pool
-  for the workspace. For a pool of the workspace, owners and admins have its name as a
+  Qory Gateway**; anyone else sees no Qory Pool on this step; whoever may add a pool is
+  offered only a pool for the workspace. For a pool of the workspace, owners and admins have its name as a
   link to its page. Anyone else reads who acts: “Only owners and admins add a pool and
   join a machine to it.” While the workspace has no pool, anyone who may not add one sees
   a ready Qory Pool, read only. The step is done once a pool is ready. **About
@@ -491,11 +491,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and destination lists, and a target's Environment card keep their old lines for an
   instance admin. An integration that cannot be installed yet shows only to an instance
   admin, unless the organisation already has a connection to it. In a flash or a form
-  error, which hold no link, the support address follows “Contact support”. The errors of
-  the registry token endpoint say “contact support” in place of the instance's log.
+  error, which hold no link, the support address follows “Contact support”. The 503 error
+  of the registry token endpoint says “contact support” in place of the instance's log.
 - `Apiary.Edition` has no callback `first_workspace_line/1`, and the callback
   `machines_who_may/2` takes the scope and the workspace, with no `:instance` pool:
-  organisation people no longer see a Qory Pool that is not ready. The fixer of a stopped
+  organisation people no longer see a Qory Pool that is not ready on the Machines step.
+  The fixer of a stopped
   preparation (`Apiary.Runs.Preparation`) is `:support` in place of `:instance_admin`; the
   diagnostics document keeps the value `instance_admin`.
 - The guides Install and configure and Hosting checklist are only for signed-in instance

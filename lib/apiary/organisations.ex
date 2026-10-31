@@ -42,6 +42,7 @@ defmodule Apiary.Organisations do
   alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
   alias Apiary.Lingo.Domain
+  alias Apiary.SupportAddress
 
   alias ApiaryWeb.ReservedSlugs
 
@@ -3486,7 +3487,7 @@ defmodule Apiary.Organisations do
             "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
           ),
           organisation: name,
-          contact_support: ApiaryWeb.Support.plain(mid_sentence: true),
+          contact_support: SupportAddress.plain(mid_sentence: true),
           limit: limit,
           validation: :invitations_per_day
         )
@@ -3500,7 +3501,7 @@ defmodule Apiary.Organisations do
             "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
           ),
           organisation: name,
-          contact_support: ApiaryWeb.Support.plain(mid_sentence: true),
+          contact_support: SupportAddress.plain(mid_sentence: true),
           limit: attempts_limit,
           validation: :invitation_attempts_per_day
         )

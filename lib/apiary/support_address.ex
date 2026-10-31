@@ -76,6 +76,40 @@ defmodule Apiary.SupportAddress do
   def get, do: env() || stored()
 
   @doc """
+  words/1 is "Contact support", or "contact support" inside a sentence, where
+  `mid_sentence` is true.
+  """
+  @spec words(boolean) :: String.t()
+  def words(mid_sentence \\ false)
+  def words(false), do: gettext("Contact support")
+  def words(true), do: gettext("contact support")
+
+  @doc """
+  plain/1 is `words/1` in plain text, for a sentence that can hold no link: a flash, a data
+  attribute, a changeset error. Where an address is set, the address follows the words.
+  `mid_sentence:` is as in `words/1`; `address:` gives the address in place of `get/0`, nil
+  for the plain words.
+
+      iex> Apiary.SupportAddress.plain(address: "support@example.com")
+      "Contact support at support@example.com"
+
+      iex> Apiary.SupportAddress.plain(address: nil, mid_sentence: true)
+      "contact support"
+  """
+  @spec plain(keyword) :: String.t()
+  def plain(opts \\ []) when is_list(opts) do
+    words = words(Keyword.get(opts, :mid_sentence, false))
+
+    case Keyword.get_lazy(opts, :address, &get/0) do
+      nil ->
+        words
+
+      address ->
+        gettext("%{contact_support} at %{address}", contact_support: words, address: address)
+    end
+  end
+
+  @doc """
   href/0 is where a link to support leads: the https address as it is, or `mailto:` and
   the email address; nil where there is no address.
   """

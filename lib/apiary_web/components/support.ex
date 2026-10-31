@@ -5,7 +5,7 @@ defmodule ApiaryWeb.Support do
   address, and plain text where none is. The core's pages and an edition's use it, so the
   words and where they lead are the same everywhere.
 
-  Three forms, by where the words go:
+  Four forms, by where the words go:
 
   - `contact/1`, a function component, where the words stand alone in a template:
 
@@ -30,6 +30,10 @@ defmodule ApiaryWeb.Support do
   - `text/1`, plain text, for an email's text part and other places without HTML:
     "Contact support at support@example.com.", or "Contact support." where no address is
     set.
+
+  - `plain/1`, the words in plain text for a sentence that can hold no link, such as a
+    flash: "Contact support at support@example.com", or "Contact support" where no address
+    is set (`Apiary.SupportAddress.plain/1`).
 
   The words are "Contact support" at the start of a sentence and "contact support" inside
   one (`mid_sentence`). Each form reads the address when it is called
@@ -65,7 +69,7 @@ defmodule ApiaryWeb.Support do
     assigns
     |> assign(
       href: SupportAddress.href(address(assigns.address)),
-      words: words(assigns.mid_sentence)
+      words: SupportAddress.words(assigns.mid_sentence)
     )
     |> link_or_text()
   end
@@ -100,7 +104,7 @@ defmodule ApiaryWeb.Support do
   """
   @spec rich(keyword) :: {:href, String.t(), String.t()} | String.t()
   def rich(opts \\ []) when is_list(opts) do
-    words = words(Keyword.get(opts, :mid_sentence, false))
+    words = SupportAddress.words(Keyword.get(opts, :mid_sentence, false))
 
     case SupportAddress.href(address(Keyword.get(opts, :address, :stored))) do
       nil -> words
@@ -140,15 +144,9 @@ defmodule ApiaryWeb.Support do
   """
   @spec plain(keyword) :: String.t()
   def plain(opts \\ []) when is_list(opts) do
-    words = words(Keyword.get(opts, :mid_sentence, false))
-
-    case address(Keyword.get(opts, :address, :stored)) do
-      nil ->
-        words
-
-      address ->
-        gettext("%{contact_support} at %{address}", contact_support: words, address: address)
-    end
+    opts
+    |> Keyword.put(:address, address(Keyword.get(opts, :address, :stored)))
+    |> SupportAddress.plain()
   end
 
   @doc """
@@ -178,7 +176,4 @@ defmodule ApiaryWeb.Support do
 
   defp address(:stored), do: SupportAddress.get()
   defp address(address) when is_binary(address) or is_nil(address), do: address
-
-  defp words(false), do: gettext("Contact support")
-  defp words(true), do: gettext("contact support")
 end

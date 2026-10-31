@@ -142,7 +142,7 @@ msgstr ""
 msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
 msgstr ""
 
-#: lib/apiary_web/components/support.ex
+#: lib/apiary/support_address.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support} at %{address}"
 msgstr ""
@@ -6286,7 +6286,7 @@ msgstr ""
 msgid "Connections inline"
 msgstr ""
 
-#: lib/apiary_web/components/support.ex
+#: lib/apiary/support_address.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support"
 msgstr ""
@@ -21140,7 +21140,7 @@ msgctxt "source collection, when its adapter names none"
 msgid "collections"
 msgstr "collections"
 
-#: lib/apiary_web/components/support.ex
+#: lib/apiary/support_address.ex
 #, elixir-autogen, elixir-format
 msgid "contact support"
 msgstr ""

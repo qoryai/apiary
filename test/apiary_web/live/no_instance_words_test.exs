@@ -10,9 +10,14 @@ defmodule ApiaryWeb.NoInstanceWordsTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{KeyDerivation, Secrets}
+  alias Apiary.{KeyDerivation, Secrets, SupportAddress}
 
   @moduletag needs: :factory
+
+  # `Apiary.SupportAddress.parse/1` refuses `<`, `>` and `"` in an address, and accepts
+  # these two characters that HTML escapes.
+  @address "https://help.example.com/a'b?x=1&y=2"
+  @escaped "https://help.example.com/a&#39;b?x=1&amp;y=2"
 
   setup %{conn: conn} do
     Application.put_env(:apiary, :support_address, nil)
@@ -72,11 +77,45 @@ defmodule ApiaryWeb.NoInstanceWordsTest do
       refute html =~ "nstance"
     end
 
+    test "an address with characters HTML escapes stays escaped in the flash", ctx do
+      assert SupportAddress.parse(@address) == {:ok, @address}
+      Application.put_env(:apiary, :support_address, @address)
+
+      html = change_unreadable_value(ctx.owner_conn, ctx.scope)
+
+      assert html =~ "Contact support at #{@escaped}."
+      refute html =~ @address
+    end
+
     test "with a support address, the flash has the address after the words", ctx do
       Application.put_env(:apiary, :support_address, "support@example.com")
 
       assert change_unreadable_value(ctx.owner_conn, ctx.scope) =~
                "Contact support at support@example.com."
+    end
+  end
+
+  describe "an invitation over the day's limit" do
+    setup do
+      before = Application.fetch_env!(:apiary, :invitations_per_day)
+      Application.put_env(:apiary, :invitations_per_day, 0)
+      on_exit(fn -> Application.put_env(:apiary, :invitations_per_day, before) end)
+    end
+
+    test "an address with characters HTML escapes stays escaped in the form error", ctx do
+      assert SupportAddress.parse(@address) == {:ok, @address}
+      Application.put_env(:apiary, :support_address, @address)
+
+      {:ok, lv, _html} =
+        live(ctx.owner_conn, ~p"/#{ctx.scope.organisation}/settings/people/invite")
+
+      html =
+        lv
+        |> form("#invitation-form", invitation: %{email: "bee@example.com"})
+        |> render_submit()
+
+      assert html =~ "Try again later, or contact support at #{@escaped}."
+      refute html =~ @address
     end
   end
 
