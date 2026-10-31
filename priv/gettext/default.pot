@@ -5743,7 +5743,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Closed a work item, from an escalation"
+msgid "Closed a work item to resolve an escalation"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -6466,7 +6466,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Declined a work item, from an escalation"
+msgid "Declined a work item to resolve an escalation"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex

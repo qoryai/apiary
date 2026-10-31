@@ -3,6 +3,8 @@ defmodule Apiary.Stages.StopCauseTest do
   # for a run that ended before it started, the cause, then who fixes it and where.
   use Apiary.DataCase, async: true
 
+  import Ecto.Query, only: [from: 2]
+
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Dispatches.DispatchRun
@@ -123,5 +125,49 @@ defmodule Apiary.Stages.StopCauseTest do
     assert text(:collection_ended, work_item) ==
              "The run ended before it started. Qory Apiary has no description for its end cause (collection_ended).\n" <>
                "The instance admin finds the details in the run's log."
+  end
+
+  describe "a harness walk that failed" do
+    @describetag needs: :factory
+
+    # The run of a work item queued, its walk failed with `failure` at `source`.
+    defp walk_failed(scope, failure, source) do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+          set: [state: :failed, origin: nil, failure: failure, failed_source: source]
+        )
+
+      {%{run | state: :ended, end_cause: :harness_unresolved}, work_item}
+    end
+
+    test "on the workspace's choice, the fix is on the set-up step Harness" do
+      %{scope: scope} = sign_up_fixture()
+      ws = scope.workspace.name
+      {run, work_item} = walk_failed(scope, "no_harness", nil)
+
+      assert StopCause.text(run, work_item) ==
+               "Qory Apiary could not read the harness of #{ws} (the target has no harness file, and the workspace sets no harness).\n" <>
+                 "Owners and admins of #{ws} choose a harness on the set-up step Harness."
+
+      assert StopCause.set_up_step(run) == :harness
+
+      {run, _work_item} = walk_failed(scope, "invalid", "https://code.example.com/team/stacks")
+      assert StopCause.set_up_step(run) == nil
+      assert StopCause.set_up_step(%DispatchRun{end_cause: :key_gone}) == nil
+    end
+
+    test "with no integration that reaches it, in the Workflow page's words" do
+      %{scope: scope} = sign_up_fixture()
+      org = scope.organisation.name
+      {run, work_item} = walk_failed(scope, "not_covered", "https://code.example.com/team/stacks")
+
+      assert StopCause.text(run, work_item) ==
+               "No integration of #{org} reaches https://code.example.com/team/stacks. Qory Apiary reads a harness only through an integration.\n" <>
+                 "Owners and admins of #{org} connect one in Organisation settings › Integrations."
+    end
   end
 end

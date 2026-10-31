@@ -301,6 +301,7 @@ defmodule ApiaryWeb.WorkflowLive do
         {:noreply,
          socket
          |> assign(current: Sources.current(scope.workspace), save_error: nil)
+         |> record_declared()
          |> put_flash(
            :info,
            gettext("Saved. Runs of %{workspace} now follow the workflow %{workflow}.",
@@ -494,7 +495,10 @@ defmodule ApiaryWeb.WorkflowLive do
       if match?(%{id: ^id, git: ^git}, socket.assigns.source) do
         case result do
           {:ok, stacks} ->
-            socket |> assign(stacks: stacks, reading: false) |> preselect_workflow()
+            socket
+            |> assign(stacks: stacks, reading: false)
+            |> record_declared()
+            |> preselect_workflow()
 
           {:error, reason} ->
             assign(socket, read_error: reason, reading: false)
@@ -589,6 +593,29 @@ defmodule ApiaryWeb.WorkflowLive do
         socket
     end
   end
+
+  # The workflows of the stack read under the saved document's base, kept as the
+  # workspace's snapshot (`Apiary.Processes.record_declared/2`), once read and again once
+  # saved. A source only tried in Source changes no snapshot.
+  defp record_declared(
+         %{assigns: %{current: %{base: %{} = base}, stacks: [_ | _] = stacks}} = socket
+       ) do
+    case Enum.find(stacks, &(&1.base == base)) do
+      nil ->
+        socket
+
+      stack ->
+        :ok =
+          Apiary.Processes.record_declared(
+            socket.assigns.current_scope.workspace,
+            stack.workflows
+          )
+
+        socket
+    end
+  end
+
+  defp record_declared(socket), do: socket
 
   # The current workflow, where the chosen source's stacks have it under the current base.
   defp preselect_workflow(%{assigns: %{current: %{workflow: workflow, base: base}}} = socket) do

@@ -8,7 +8,7 @@ defmodule Apiary.Features do
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | stored secrets and variables, and the organisation's integrations; opt-in | `security` |
   | `factory` | the work items of a workspace and what they are taken in from; opt-in | `observability`, `security` and `secrets` |
-  | `workflow_model` | the process of each workspace: its stages in order, kept as versions, and trial versions that chosen work items are assigned to; opt-in | `observability`, `security`, `secrets` and `factory` |
+  | `workflow_model` | changes to the process of each workspace, its stages in order: new versions, and trial versions that chosen work items are assigned to; opt-in | `observability`, `security`, `secrets` and `factory` |
 
   An edition adds more features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, whether it is opt-in, and its parts.

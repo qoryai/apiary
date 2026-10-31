@@ -10,7 +10,7 @@ defmodule Apiary.StagesTest do
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub, StagesDeclaredStub, WorkItems}
+  alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Stages.{Escalation, GateDecision}
@@ -139,7 +139,7 @@ defmodule Apiary.StagesTest do
     end
 
     test "starts a workflow the snapshot lists", %{scope: scope} do
-      StagesDeclaredStub.record_declared(scope.workspace, ["capture-demo"])
+      :ok = Processes.record_declared(scope.workspace, ["capture-demo"])
       save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
 
       assert [%DispatchRun{workflow: "capture-demo"}] = scope |> take_in!() |> runs()
@@ -148,7 +148,8 @@ defmodule Apiary.StagesTest do
     test "waits for a workflow the snapshot does not list, until a check finds it", %{
       scope: scope
     } do
-      {:ok, %{read_at: read_at}} = StagesDeclaredStub.record_declared(scope.workspace, ["review"])
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      %{read_at: read_at} = Processes.declared_snapshot(scope.workspace)
       save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
       work_item = take_in!(scope)
 
@@ -176,8 +177,7 @@ defmodule Apiary.StagesTest do
       assert {:ok, %WorkItem{stage_state: :running}} =
                Stages.check_workflows(scope, work_item, read.(["review", "capture-demo"]))
 
-      assert %{names: ["review", "capture-demo"]} =
-               StagesDeclaredStub.declared_snapshot(scope.workspace)
+      assert %{names: ["capture-demo", "review"]} = Processes.declared_snapshot(scope.workspace)
 
       assert [%DispatchRun{workflow: "capture-demo"}] = runs(work_item)
 

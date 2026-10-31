@@ -71,9 +71,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   defp workflow!(ctx, harness \\ @document) do
     {:ok, _stack} =
       Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "hello"}, harness)
-
-    # With the workflow model, Explore's process runs the workflow the page saved.
-    :ok = Apiary.StagesFixtures.explore_runs!(ctx.scope, "hello")
   end
 
   # A request's time, one second earlier for each request the test sends, so no two
@@ -229,8 +226,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
       {:ok, _stack} =
         Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "hello"}, @document)
-
-      :ok = Apiary.StagesFixtures.explore_runs!(ctx.scope, "hello")
 
       explore!(ctx, origin: :setting, document: section(), harness_hidden: true)
       documents = documents(claim(ctx))
