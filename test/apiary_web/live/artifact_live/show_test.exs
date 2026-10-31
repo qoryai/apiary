@@ -289,6 +289,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
       render_hook(view, "show-document", %{})
       assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
+
+      # The file shown is not read again: with its stored copy gone, it stays as it was.
+      {:ok, path} = Artifacts.open_file(Enum.find(version.files, &(&1.filename == "b.md")))
+      File.rm!(path)
+      render_hook(view, "show-document", %{"file" => "b.md"})
+      assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
     end
 
     test "stops reading the history once the reader loses the work item", ctx do
