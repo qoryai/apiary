@@ -52,6 +52,17 @@ defmodule Apiary.Artifacts.Format do
   # The keywords whose value is data, not a schema: their members are left as they are.
   @data_keywords ~w(const enum default examples)
 
+  @markdown "text/markdown; charset=utf-8"
+  @json "application/json"
+
+  # The content types `check/3` returns, by base view; a file view takes any.
+  @content_types %{
+    document: [@markdown],
+    image: ~w(image/png image/jpeg image/gif image/webp image/svg+xml),
+    video: ~w(video/mp4 video/webm),
+    structured: [@json]
+  }
+
   @typedoc "Why a file is refused."
   @type refusal :: :format | :extension | :schema | :unreadable
 
@@ -65,7 +76,7 @@ defmodule Apiary.Artifacts.Format do
     if String.downcase(Path.extname(filename)) == ".md" do
       with {:ok, bytes} <- read(path) do
         if String.valid?(bytes) and not String.contains?(bytes, <<0>>),
-          do: {:ok, "text/markdown; charset=utf-8"},
+          do: {:ok, @markdown},
           else: {:error, :format}
       end
     else
@@ -95,8 +106,25 @@ defmodule Apiary.Artifacts.Format do
     with {:ok, bytes} <- read(path),
          {:ok, document} <- decode(bytes),
          :ok <- structured(type, document) do
-      {:ok, "application/json"}
+      {:ok, @json}
     end
+  end
+
+  # stored?/2 is whether the content types of a version's files, as `check/3` returned
+  # them at the push, are a version `base_view` takes: one file or more, each of a content
+  # type of the base view, and, for a structured view, exactly one. The files of a version
+  # never change after its push, so the Exists check of a stage's output reads these
+  # (`Apiary.Artifacts.exists?/3`) and reads no file again.
+  @doc false
+  @spec stored?(Type.base_view(), [String.t()]) :: boolean
+  def stored?(_base_view, []), do: false
+  def stored?(:file, _content_types), do: true
+  def stored?(:structured, [content_type]), do: content_type == @json
+  def stored?(:structured, _content_types), do: false
+
+  def stored?(base_view, content_types) when is_list(content_types) do
+    taken = Map.fetch!(@content_types, base_view)
+    Enum.all?(content_types, &(&1 in taken))
   end
 
   defp image(<<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, _rest::binary>>), do: "image/png"

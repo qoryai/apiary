@@ -71,8 +71,9 @@ defmodule Apiary.Artifacts do
   #
   # `exists?(work_item, stage_id, type)` is the Exists check of a stage's output: whether
   # the work item has a version of `type`, of any name, made in `stage_id`, whose files
-  # pass its type's format check as they are stored now; false for a type the workspace
-  # does not have.
+  # are what the type's base view takes, by the content types the format check kept at
+  # the push (`Apiary.Artifacts.Format.stored?/2`); no file is read again. False for a
+  # type the workspace does not have.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -686,10 +687,10 @@ defmodule Apiary.Artifacts do
     workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
 
     case type(workspace, type_name) do
-      %Type{} = type ->
+      %Type{base_view: base_view} ->
         work_item
         |> made_in(stage_id, type_name)
-        |> Enum.any?(&passes?(type, &1))
+        |> Enum.any?(&Format.stored?(base_view, &1))
 
       nil ->
         false
@@ -698,32 +699,20 @@ defmodule Apiary.Artifacts do
 
   def exists?(%WorkItem{}, _stage_id, _type_name), do: false
 
-  # The versions of `type`, of any name, made in `stage_id`, newest first, with their files.
+  # The content types of the files of each version of `type`, of any name, made in
+  # `stage_id`: a list per version. A version has one file or more.
   defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type) do
     Repo.all(
       from v in Version,
         join: a in assoc(v, :artifact),
+        join: f in assoc(v, :files),
         where:
           a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
             v.stage_id == ^stage_id,
-        order_by: [desc: v.inserted_at, desc: v.number],
-        preload: [files: ^files_query()]
+        group_by: v.id,
+        select: fragment("array_agg(?)", f.content_type)
     )
   end
-
-  defp passes?(type, %Version{files: [_one | _more] = files}) do
-    Enum.all?(files, fn file ->
-      case open_file(file) do
-        {:ok, path} when is_binary(path) ->
-          match?({:ok, _type}, Format.check(type, file.filename, path))
-
-        _other ->
-          false
-      end
-    end)
-  end
-
-  defp passes?(_type, _version), do: false
 
   defp versions_query, do: from(v in Version, order_by: [desc: v.number])
   defp files_query, do: from(f in ArtifactFile, order_by: f.filename)

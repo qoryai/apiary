@@ -193,4 +193,19 @@ defmodule Apiary.Artifacts.FormatTest do
       end
     end
   end
+
+  describe "stored?/2" do
+    test "takes a version whose kept content types are its base view's" do
+      assert Format.stored?(:document, ["text/markdown; charset=utf-8"])
+      assert Format.stored?(:image, ["image/png", "image/svg+xml"])
+      assert Format.stored?(:video, ["video/webm"])
+      assert Format.stored?(:file, ["application/octet-stream"])
+      assert Format.stored?(:structured, ["application/json"])
+
+      refute Format.stored?(:image, [])
+      refute Format.stored?(:image, ["image/png", "application/json"])
+      refute Format.stored?(:document, ["application/octet-stream"])
+      refute Format.stored?(:structured, ["application/json", "application/json"])
+    end
+  end
 end

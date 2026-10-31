@@ -757,7 +757,7 @@ defmodule Apiary.ArtifactsTest do
       refute Artifacts.exists?(work_item, "st_build", "demo-findings")
     end
 
-    test "is false once the stored copy no longer passes the format check",
+    test "reads the content types kept at the push, and no stored file",
          %{run: run, root: root} = context do
       {:ok, version} =
         Artifacts.push({:run, run}, context.work_item, "demo-video", [file("d.mp4", @mp4)],
@@ -765,8 +765,14 @@ defmodule Apiary.ArtifactsTest do
         )
 
       {:ok, path} = Store.Volume.path(hd(version.files).store_key)
-      File.write!(path, "not a video")
       assert String.starts_with?(path, root)
+      File.rm!(path)
+      assert Artifacts.exists?(context.work_item, "st_build", "demo-video")
+
+      Repo.update_all(from(f in ArtifactFile, where: f.version_id == ^version.id),
+        set: [content_type: "image/png"]
+      )
+
       refute Artifacts.exists?(context.work_item, "st_build", "demo-video")
     end
   end
