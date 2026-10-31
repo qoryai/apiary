@@ -876,6 +876,19 @@ defmodule ApiaryWeb.SetUpComponents do
   def limit_line(%Organisation{} = organisation),
     do: Apiary.Edition.workspace_limit_line(organisation)
 
+  @doc """
+  at_limit?/1 is whether the scope's organisation has as many workspaces in use as the
+  edition allows (`c:Apiary.Edition.limits/0`): then nobody creates another, whatever
+  their level.
+  """
+  @spec at_limit?(Scope.t()) :: boolean
+  def at_limit?(%Scope{} = scope) do
+    case Apiary.Edition.limits().workspaces do
+      :unlimited -> false
+      limit -> length(Organisations.list_workspaces(scope)) >= limit
+    end
+  end
+
   attr :id, :string, required: true
   attr :title, :string, required: true, doc: "where the steps happen, such as \"On GitHub\""
 

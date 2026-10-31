@@ -2237,7 +2237,7 @@ msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{organisation} has no workspace in use."
+msgid "%{organisation} has no workspace yet."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -11194,7 +11194,7 @@ msgstr ""
 
 #: lib/apiary_web/dead_end.ex
 #, elixir-autogen, elixir-format
-msgid "No workspace has this address in %{organisation}. Its name may have changed."
+msgid "No workspace has this address in %{organisation}. The workspace's name may have changed."
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex

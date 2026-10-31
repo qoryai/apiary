@@ -41,7 +41,7 @@ defmodule ApiaryWeb.DeadEndTest do
       assert texts(page, "h1") == ["Workspace not found"]
 
       assert texts(page, "#dead-end-line") == [
-               "No workspace has this address in #{organisation.name}. Its name may have changed."
+               "No workspace has this address in #{organisation.name}. The workspace's name may have changed."
              ]
 
       assert hrefs(page, "#dead-end-workspaces a") ==
@@ -89,7 +89,33 @@ defmodule ApiaryWeb.DeadEndTest do
   end
 
   describe "New workspace for a person workspace.create does not allow" do
-    test "is a 404 in the layout with who creates workspaces, and no cards", %{conn: conn} do
+    test "at the limit shows everyone the limit's line, not who creates", %{conn: conn} do
+      %{organisation: organisation} = sign_up_fixture()
+      # The core's edition allows one workspace an organisation, and it has it.
+      assert Apiary.Edition.Core.limits().workspaces == 1
+
+      line =
+        "Qory Apiary Community allows one workspace per organisation, and #{organisation.name} has it."
+
+      for level <- [:admin, :member] do
+        conn = log_in_user(conn, joined(organisation, level))
+
+        {404, _headers, body} =
+          assert_error_sent(404, fn -> get(conn, ~p"/#{organisation}/workspaces/new") end)
+
+        page = document(body)
+        assert texts(page, "h1") == ["New workspace"], "#{level}"
+        assert texts(page, "[role=note] #set-up-limit") == [line], "#{level}"
+        refute body =~ "Only owners", "#{level}"
+        assert LazyHTML.query(page, "#dead-end-line") |> Enum.count() == 0
+        assert LazyHTML.query(page, "#set-up-cards") |> Enum.count() == 0
+        assert LazyHTML.query(page, "#sidebar") |> Enum.count() == 1
+      end
+    end
+
+    test "below the limit is a 404 in the layout with who creates workspaces, and no cards",
+         %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
       %{organisation: organisation} = sign_up_fixture()
       admin = joined(organisation, :admin)
       conn = log_in_user(conn, admin)
@@ -104,6 +130,7 @@ defmodule ApiaryWeb.DeadEndTest do
                "Only owners of #{organisation.name} create workspaces."
              ]
 
+      assert LazyHTML.query(page, "#set-up-limit") |> Enum.count() == 0
       assert LazyHTML.query(page, "#set-up-cards") |> Enum.count() == 0
       assert LazyHTML.query(page, "#sidebar") |> Enum.count() == 1
     end

@@ -5,11 +5,14 @@ defmodule ApiaryWeb.DeadEnd do
 
     * `:workspace`, a workspace address that matches no workspace they reach in the
       organisation (`ApiaryWeb.UserAuth.fetch_path_scope/2`): "No workspace has this
-      address in One Co. Its name may have changed.", then the organisation's workspaces
+      address in One Co. The workspace's name may have changed.", then the organisation's workspaces
       they reach, as links.
     * `:new_workspace`, New workspace (`/:org/workspaces/new`) for a person whom
       `workspace.create` does not allow (`ApiaryWeb.NotFound`'s `page`, rendered by
-      `ApiaryWeb.ErrorHTML`): its heading and who creates workspaces, with no kind cards.
+      `ApiaryWeb.ErrorHTML`): its heading, with no kind cards, and one line. Where the
+      organisation has as many workspaces as the edition allows, nobody creates another,
+      so the line is the limit's, in the information notice the owner sees there too
+      (`ApiaryWeb.SetUpComponents.limit_line/1`); else who creates workspaces.
 
   The list contains only the workspaces the person reaches, the ones the switcher lists
   (`Apiary.Organisations.list_places/1`); a workspace they do not reach gets the same page
@@ -92,7 +95,8 @@ defmodule ApiaryWeb.DeadEnd do
   defp body(%{page: :workspace} = assigns) do
     ~H"""
     <p id="dead-end-line" class="text-sm/5 text-muted">
-      {gettext("No workspace has this address in %{organisation}. Its name may have changed.",
+      {gettext(
+        "No workspace has this address in %{organisation}. The workspace's name may have changed.",
         organisation: @current_scope.organisation.name
       )}
     </p>
@@ -115,8 +119,21 @@ defmodule ApiaryWeb.DeadEnd do
   end
 
   defp body(%{page: :new_workspace} = assigns) do
+    assigns =
+      assign(assigns,
+        limit:
+          if(ApiaryWeb.SetUpComponents.at_limit?(assigns.current_scope),
+            do: ApiaryWeb.SetUpComponents.limit_line(assigns.current_scope.organisation)
+          )
+      )
+
     ~H"""
-    <p id="dead-end-line" class="text-sm/5 text-muted">{who_creates(@current_scope)}</p>
+    <.notice :if={@limit} kind={:info}>
+      <span id="set-up-limit">{@limit}</span>
+    </.notice>
+    <p :if={!@limit} id="dead-end-line" class="text-sm/5 text-muted">
+      {who_creates(@current_scope)}
+    </p>
     """
   end
 

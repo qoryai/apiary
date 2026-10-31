@@ -203,9 +203,12 @@ page and an Instance page, the one the person came from (Two levels, below).
 - **Dead ends.** A path under an organisation the person reaches that leads nowhere for
   them is a `404` inside the shell, with the organisation's sidebar
   (`ApiaryWeb.DeadEnd`): a workspace address that matches no workspace they reach,
-  "Workspace not found", "No workspace has this address in Acme. Its name may have
-  changed.", and the workspaces of Acme they reach, as links; New workspace for a person
-  who may not create one, "New workspace" and who creates workspaces, with no kind cards.
+  "Workspace not found", "No workspace has this address in Acme. The workspace's name may
+  have changed.", and the workspaces of Acme they reach, as links; New workspace for a
+  person who may not create one, "New workspace" with no kind cards and one line: where
+  the organisation has as many workspaces as the edition allows, the limit's line in an
+  information notice, as the owner sees it there, since nobody creates another; else who
+  creates workspaces.
   A workspace they do not reach gets the same page as an address that matches none. An
   organisation they do not reach is the plain `404`, "Not Found".
 
@@ -297,7 +300,7 @@ replaces the navigation it is in.
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
   `:workspaces_heading` slot; with no workspace in use, one line, "Acme has no workspace
-  in use.", and a link to the overview, which shows the kind cards to whoever may create
+  yet.", and a link to the overview, which shows the kind cards to whoever may create
   the first workspace and who creates it to anyone else), and the
   edition's sections
   (`ApiaryWeb.Edition.settings_tabs/1`). The audit log is not a section of them: it is a

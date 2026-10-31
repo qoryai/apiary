@@ -656,7 +656,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
     ~H"""
     <p :if={@workspaces == []} id="workspaces-empty" class="text-[13.5px]/5 text-muted">
-      {gettext("%{organisation} has no workspace in use.",
+      {gettext("%{organisation} has no workspace yet.",
         organisation: @scope.organisation.name
       )}
       <.link navigate={~p"/#{@scope.organisation}"} class="q-link">

@@ -753,7 +753,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{org}/settings/workspaces")
 
-      assert has_element?(lv, "#workspaces-empty", "Empty Co has no workspace in use.")
+      assert has_element?(lv, "#workspaces-empty", "Empty Co has no workspace yet.")
       assert has_element?(lv, ~s(#workspaces-empty a[href="/#{org.slug}"]), "Go to the overview")
       refute has_element?(lv, "#workspaces")
       refute has_element?(lv, "#workspaces-note")

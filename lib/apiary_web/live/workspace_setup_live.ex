@@ -272,7 +272,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # of an organisation that has as many workspaces as the edition allows.
   defp assign_cards(socket) do
     scope = socket.assigns.current_scope
-    at_limit = at_limit?(scope)
+    at_limit = SetUpComponents.at_limit?(scope)
 
     assign(socket,
       view: :cards,
@@ -287,14 +287,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         ),
       limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
-  end
-
-  # Whether the organisation has as many workspaces in use as the edition allows.
-  defp at_limit?(scope) do
-    case Edition.limits().workspaces do
-      :unlimited -> false
-      limit -> length(Organisations.list_workspaces(scope)) >= limit
-    end
   end
 
   ## The flow
