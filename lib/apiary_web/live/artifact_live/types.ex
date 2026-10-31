@@ -112,7 +112,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
                   cancel={types_path(@current_scope, :index)}
                 >
                   {gettext(
-                    "Workflows can no longer store artifacts of this type. This cannot be undone."
+                    "Runs and people can no longer store artifacts of this type. You cannot undo this."
                   )}
                   <:action>
                     <.button

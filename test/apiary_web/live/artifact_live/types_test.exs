@@ -170,6 +170,13 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     end
 
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "/#{unused.public_id}/delete"))
+
+    assert has_element?(
+             view,
+             "#artifact-type-#{unused.public_id}-confirm",
+             "Runs and people can no longer store artifacts of this type. You cannot undo this."
+           )
+
     view |> element("#artifact-type-delete") |> render_click()
     assert render(view) =~ "demo-findings deleted."
     assert Artifacts.type(ctx.scope.workspace, "demo-findings") == nil
