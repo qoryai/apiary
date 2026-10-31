@@ -1,0 +1,588 @@
+defmodule ApiaryWeb.WorkItemLive.StageComponents do
+  # The stage parts of the work item page and the board under the workflow model
+  # (`ApiaryWeb.WorkItemLive.Workflow`): the stage track, the stage card in the rail (its
+  # state: running, waiting for inputs, for answers or for a workflow, escalated, at the
+  # gate, done), the runs, the approval marks, and the board's columns.
+  #
+  # Every component takes the plain maps `ApiaryWeb.WorkItemLive.Workflow.page/2` and
+  # `board/1` give. Stage names, workflow names, artifact types and gaps come from the
+  # workspace's process, its harness and its runs: a component only interpolates them,
+  # so HEEx escapes them.
+  #
+  # The events the stage card sends, each with `number`, the work item's number:
+  #
+  #   * `"stage_approve"` - Approve, with `note`;
+  #   * `"stage_ask_changes"`, `"stage_request_changes"` - Request changes opens its form,
+  #     which sends `note` and `version`, the artifact version it is about or `""`;
+  #   * `"stage_resolve"` - an escalation action: `how` (`accept`, `another_round`,
+  #     `move_back`, `close` or `decline`), `note`, and `stage` for `move_back`;
+  #   * `"stage_move"` - Move back while the stage waits for inputs: `stage` and `note`.
+  #
+  # The module reference leaves out this module of the `factory` feature.
+  @moduledoc false
+
+  use ApiaryWeb, :html
+
+  @note_units 2 * 2_000
+
+  ## The stage track
+
+  @doc """
+  The stages of the work item's process version, in order: those before the current
+  stage done, the current one the current step (`aria-current="step"`), amber while it
+  waits for a person.
+  """
+  attr :id, :string, default: "work-item-head-stages"
+  attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+
+  def process_track(assigns) do
+    assigns = assign(assigns, :wait, waits?(assigns.page.state))
+
+    ~H"""
+    <div id={@id} class="q-wi-track">
+      <ol aria-label={gettext("Stages")}>
+        <li
+          :for={{stage, i} <- Enum.with_index(@page.stages, 1)}
+          id={"#{@id}-#{stage.id}"}
+          class={[
+            "q-wi-stage",
+            "q-wi-stage-#{track_class(stage.at)}",
+            stage.at == :now && @wait && "q-wi-stage-wait"
+          ]}
+          aria-current={stage.at == :now && "step"}
+        >
+          <span class="q-wi-stage-n" aria-hidden="true">
+            <%= if stage.at == :done do %>
+              <.icon name="hero-check-micro" class="size-3" />
+            <% else %>
+              {i}
+            <% end %>
+          </span>
+          {stage.name}
+        </li>
+      </ol>
+    </div>
+    """
+  end
+
+  defp track_class(:done), do: "done"
+  defp track_class(:now), do: "now"
+  defp track_class(:todo), do: "todo"
+
+  defp waits?(state),
+    do: state in [:waiting_inputs, :waiting_answers, :waiting_workflow, :escalated, :at_gate]
+
+  ## The stage card
+
+  @doc """
+  The current stage in the rail: its name, its state and round, then what the state
+  needs. Waiting for inputs lists each missing required input with Add, and Move back;
+  waiting for answers links to the questions on Explore's tab; waiting for a workflow
+  names the workflow the harness no longer declares; escalated shows the escalation
+  card; at the gate shows the gate card.
+  """
+  attr :id, :string, default: "work-item-stage"
+  attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+  attr :number, :integer, required: true, doc: "the work item's number"
+  attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
+  attr :answers_path, :string, default: nil, doc: "Explore's tab, where the questions are"
+  attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
+
+  def stage_card(assigns) do
+    ~H"""
+    <section
+      id={@id}
+      class={["q-wi-step", waits?(@page.state) && @page.can_decide && "q-wi-step-ask"]}
+      aria-labelledby={"#{@id}-h"}
+    >
+      <div class="q-wi-step-h">
+        <h2 id={"#{@id}-h"}>{@page.stage.name}</h2>
+        <span id={"#{@id}-state"}><.state_badge state={@page.state} /></span>
+      </div>
+      <p :if={@page.rounds} id={"#{@id}-round"} class="q-wi-bee-line">
+        {gettext("Round %{round} of %{rounds}",
+          round: Format.number(@page.round || 1),
+          rounds: Format.number(@page.rounds)
+        )}
+      </p>
+      <p :if={@page.version} id={"#{@id}-version"} class="text-xs opacity-70">
+        {gettext("Process version %{number}", number: Format.number(@page.version))}
+      </p>
+      <.stage_body
+        id={@id}
+        page={@page}
+        number={@number}
+        add_path={@add_path}
+        answers_path={@answers_path}
+        asking={@asking}
+      />
+    </section>
+    """
+  end
+
+  attr :state, :atom, required: true
+
+  defp state_badge(%{state: :running} = assigns),
+    do: ~H|<.badge color="success" class="q-wi-badge">{gettext("Running")}</.badge>|
+
+  defp state_badge(%{state: :waiting_inputs} = assigns),
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for inputs")}</.badge>|
+
+  defp state_badge(%{state: :waiting_answers} = assigns),
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for answers")}</.badge>|
+
+  defp state_badge(%{state: :waiting_workflow} = assigns),
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for a workflow")}</.badge>|
+
+  defp state_badge(%{state: :escalated} = assigns),
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for a person")}</.badge>|
+
+  defp state_badge(%{state: :at_gate} = assigns),
+    do: ~H|<.badge color="info" class="q-wi-badge">{gettext("At the gate")}</.badge>|
+
+  defp state_badge(%{state: :done} = assigns),
+    do: ~H|<.badge class="q-wi-badge">{gettext("Done")}</.badge>|
+
+  attr :id, :string, required: true
+  attr :page, :map, required: true
+  attr :number, :integer, required: true
+  attr :add_path, :any, required: true
+  attr :answers_path, :string, default: nil
+  attr :asking, :atom, default: nil
+
+  defp stage_body(%{page: %{state: :running}} = assigns) do
+    ~H"""
+    <p id={"#{@id}-line"}>{gettext("%{stage} is running.", stage: @page.stage.name)}</p>
+    """
+  end
+
+  defp stage_body(%{page: %{state: :waiting_inputs}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :missing,
+        Enum.filter(assigns.page.inputs, &(&1.required and is_nil(&1.version)))
+      )
+
+    ~H"""
+    <p id={"#{@id}-line"}>
+      {gettext("%{stage} needs %{inputs}",
+        stage: @page.stage.name,
+        inputs: @missing |> Enum.map(&type_words(&1.type)) |> words_list()
+      )}
+    </p>
+    <ul id={"#{@id}-inputs"} class="flex flex-col gap-1">
+      <li :for={input <- @missing} id={"#{@id}-input-#{input.type}"} class="flex items-center gap-2">
+        <span class="q-grow">{type_words(input.type)}</span>
+        <.button
+          :if={@page.can_add}
+          id={"#{@id}-add-#{input.type}"}
+          navigate={@add_path.(input.type)}
+          aria-label={gettext("Add %{type}", type: type_words(input.type))}
+        >
+          <.icon name="hero-plus-micro" class="size-3.5" />{gettext("Add")}
+        </.button>
+      </li>
+    </ul>
+    <.move_back
+      :if={@page.can_decide and @page.earlier != []}
+      id={"#{@id}-move"}
+      event="stage_move"
+      page={@page}
+      number={@number}
+    />
+    """
+  end
+
+  defp stage_body(%{page: %{state: :waiting_answers}} = assigns) do
+    ~H"""
+    <p id={"#{@id}-line"}>
+      {gettext("%{stage} waits for answers to the agent's questions.", stage: @page.stage.name)}
+    </p>
+    <.link :if={@answers_path} id={"#{@id}-answers"} patch={@answers_path} class="q-link">
+      {gettext("Answer the questions")}
+    </.link>
+    """
+  end
+
+  defp stage_body(%{page: %{state: :waiting_workflow}} = assigns) do
+    ~H"""
+    <p :for={workflow <- @page.missing_workflows} id={"#{@id}-workflow-#{workflow}"}>
+      {gettext(
+        "%{stage} uses %{workflow}, which the harness no longer declares. Add it to the harness, or choose another workflow for %{stage}.",
+        stage: @page.stage.name,
+        workflow: workflow
+      )}
+    </p>
+    """
+  end
+
+  defp stage_body(%{page: %{state: :escalated}} = assigns) do
+    ~H"""
+    <.escalation_card id={"#{@id}-escalation"} page={@page} number={@number} />
+    """
+  end
+
+  defp stage_body(%{page: %{state: :at_gate}} = assigns) do
+    ~H"""
+    <.gate_card id={"#{@id}-gate"} page={@page} number={@number} asking={@asking} />
+    """
+  end
+
+  defp stage_body(%{page: %{state: :done}} = assigns) do
+    ~H"""
+    <p id={"#{@id}-line"}>{gettext("Every stage is done.")}</p>
+    """
+  end
+
+  ## The gate card
+
+  attr :id, :string, required: true
+  attr :page, :map, required: true
+  attr :number, :integer, required: true
+  attr :asking, :atom, default: nil
+
+  defp gate_card(assigns) do
+    assigns =
+      assign(assigns,
+        marks: Map.new(assigns.page.index, &{&1.type, &1}),
+        versions: Enum.filter(assigns.page.outputs, & &1.version_id)
+      )
+
+    ~H"""
+    <div id={@id} class="flex flex-col gap-2">
+      <h3 class="text-sm font-semibold">{gettext("Outputs")}</h3>
+      <p :if={@page.outputs == []} id={"#{@id}-none"}>{gettext("This stage has no outputs.")}</p>
+      <ul :if={@page.outputs != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
+        <li :for={output <- @page.outputs} id={"#{@id}-output-#{output.type}"}>
+          <span>{version_words(output.type, output.version)}</span>
+          · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
+          <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
+        </li>
+      </ul>
+      <p id={"#{@id}-approvers"} class="text-xs opacity-70">
+        <%= case @page.approvers do %>
+          <% :members -> %>
+            {gettext("One approval covers each version. Any member approves.")}
+          <% {:listed, _ids} -> %>
+            {gettext("One approval covers each version. The members this stage lists approve.")}
+        <% end %>
+      </p>
+      <%= if @page.can_decide do %>
+        <%= if @asking == :changes do %>
+          <form id={"#{@id}-changes"} phx-submit="stage_request_changes" class="flex flex-col gap-2">
+            <input type="hidden" name="number" value={@number} />
+            <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
+            <select id={"#{@id}-changes-version"} name="version">
+              <option value="">{gettext("The whole stage")}</option>
+              <option :for={output <- @versions} value={output.version_id}>
+                {version_words(output.type, output.version)}
+              </option>
+            </select>
+            <.note id={"#{@id}-changes-note"} required />
+            <div class="q-wi-acts">
+              <.button id={"#{@id}-changes-go"} type="submit" variant="primary">
+                {gettext("Request changes")}
+              </.button>
+              <.button id={"#{@id}-changes-cancel"} type="button" phx-click="cancel_question">
+                {gettext("Cancel")}
+              </.button>
+            </div>
+          </form>
+        <% else %>
+          <form :if={@page.approvable} id={"#{@id}-approve"} phx-submit="stage_approve">
+            <input type="hidden" name="number" value={@number} />
+            <input type="hidden" name="note" value="" />
+            <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
+              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve %{stage}",
+                stage: @page.stage.name
+              )}
+            </.button>
+          </form>
+          <div class="q-wi-acts">
+            <.button
+              id={"#{@id}-ask-changes"}
+              type="button"
+              phx-click="stage_ask_changes"
+              phx-value-number={@number}
+            >
+              {gettext("Request changes")}
+            </.button>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp check_words(%{version: nil, required: false}), do: gettext("Optional, none")
+  defp check_words(%{check: :passed}), do: gettext("Passed")
+  defp check_words(%{check: :not_checked}), do: gettext("Not checked in this version")
+  defp check_words(%{check: :missing}), do: gettext("Missing")
+
+  ## The escalation card
+
+  attr :id, :string, required: true
+  attr :page, :map, required: true
+  attr :number, :integer, required: true
+
+  defp escalation_card(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :escalation,
+        assigns.page.escalation || %{cause: :escalate, gaps: [], run_id: nil}
+      )
+
+    ~H"""
+    <div id={@id} class="flex flex-col gap-2">
+      <h3 id={"#{@id}-h"} class="text-sm font-semibold">
+        {gettext("%{stage} waits for you", stage: @page.stage.name)}
+      </h3>
+      <p id={"#{@id}-cause"}>{cause_words(@escalation.cause, @page)}</p>
+      <ul :if={@escalation.gaps != []} id={"#{@id}-gaps"} class="list-disc ps-5">
+        <li :for={gap <- @escalation.gaps}>{gap}</li>
+      </ul>
+      <p :if={@escalation.run_id} id={"#{@id}-run"} class="text-xs opacity-70">
+        {gettext("From run %{run}", run: @escalation.run_id)}
+      </p>
+      <form
+        :if={@page.can_decide}
+        id={"#{@id}-form"}
+        phx-submit="stage_resolve"
+        class="flex flex-col gap-2"
+      >
+        <input type="hidden" name="number" value={@number} />
+        <.note id={"#{@id}-note"} />
+        <p class="text-xs opacity-70">
+          {gettext("A note you add goes to the next run as work item data.")}
+        </p>
+        <div class="q-wi-acts flex-wrap">
+          <.button id={"#{@id}-accept"} type="submit" name="how" value="accept" variant="primary">
+            {gettext("Accept as it is")}
+          </.button>
+          <.button id={"#{@id}-another"} type="submit" name="how" value="another_round">
+            {gettext("Run another round")}
+          </.button>
+        </div>
+        <div :if={@page.earlier != []} class="q-wi-acts flex-wrap">
+          <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
+          <select id={"#{@id}-stage"} name="stage">
+            <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>
+          </select>
+          <.button id={"#{@id}-move"} type="submit" name="how" value="move_back">
+            {gettext("Move back")}
+          </.button>
+        </div>
+        <div class="q-wi-acts flex-wrap">
+          <.button id={"#{@id}-close"} type="submit" name="how" value="close">
+            {gettext("Close")}
+          </.button>
+          <.button id={"#{@id}-decline"} type="submit" name="how" value="decline">
+            {gettext("Decline")}
+          </.button>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  defp cause_words(:round_limit, page) do
+    rounds = Format.number(page.rounds || page.round || 1)
+
+    gettext("%{ran} of %{rounds} rounds ran, with these gaps:",
+      ran: Format.number(page.round || page.rounds || 1),
+      rounds: rounds
+    )
+  end
+
+  defp cause_words(:escalate, _page), do: gettext("The agent escalated, with these gaps:")
+  defp cause_words(:check_failed, _page), do: gettext("These output checks failed:")
+  defp cause_words(:run_stopped, _page), do: gettext("The run stopped before its verdict:")
+
+  ## Move back
+
+  attr :id, :string, required: true
+  attr :event, :string, required: true
+  attr :page, :map, required: true
+  attr :number, :integer, required: true
+
+  defp move_back(assigns) do
+    ~H"""
+    <form id={@id} phx-submit={@event} class="flex flex-col gap-2">
+      <input type="hidden" name="number" value={@number} />
+      <label for={"#{@id}-stage"}>{gettext("Move back to")}</label>
+      <select id={"#{@id}-stage"} name="stage">
+        <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>
+      </select>
+      <.note id={"#{@id}-note"} />
+      <div class="q-wi-acts">
+        <.button id={"#{@id}-go"} type="submit">{gettext("Move back")}</.button>
+      </div>
+    </form>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :required, :boolean, default: false
+
+  defp note(assigns) do
+    assigns = assign(assigns, :units, @note_units)
+
+    ~H"""
+    <label for={@id}>{gettext("Note")}</label>
+    <textarea id={@id} name="note" rows="2" maxlength={@units} required={@required}></textarea>
+    """
+  end
+
+  ## The runs
+
+  @doc """
+  The runs of the work item, newest first: each with its workflow, its round and its
+  verdict, or none yet.
+  """
+  attr :id, :string, default: "work-item-runs"
+  attr :runs, :list, required: true
+
+  def stage_runs(assigns) do
+    ~H"""
+    <section id={@id} class="q-xp-sec" aria-labelledby={"#{@id}-h"}>
+      <h3 id={"#{@id}-h"}>{gettext("Runs")}</h3>
+      <p :if={@runs == []} id={"#{@id}-none"}>{gettext("No run yet.")}</p>
+      <ol :if={@runs != []} class="flex flex-col gap-1">
+        <li :for={{run, i} <- Enum.with_index(@runs)} id={"#{@id}-#{i}"}>
+          {run_words(run)}
+        </li>
+      </ol>
+    </section>
+    """
+  end
+
+  defp run_words(run) do
+    gettext("Run %{run} · %{workflow} · round %{round} · %{verdict}",
+      run: run.id || "",
+      workflow: run.workflow || "",
+      round: Format.number(run.round || 1),
+      verdict: verdict_words(run)
+    )
+  end
+
+  defp verdict_words(%{verdict: :passed}), do: gettext("passed")
+  defp verdict_words(%{verdict: :changes_requested}), do: gettext("changes requested")
+  defp verdict_words(%{verdict: :escalate}), do: gettext("escalated")
+
+  defp verdict_words(%{state: state}) when state in [:pending, :running, "pending", "running"],
+    do: gettext("running")
+
+  defp verdict_words(%{state: state}) when state in [:stopped, "stopped"], do: gettext("stopped")
+  defp verdict_words(_run), do: gettext("no verdict, goes on")
+
+  ## Approval marks
+
+  @doc """
+  The approval marks of the work item's artifacts: "Approved v2; v3 is newer" for an
+  output with a newer version than the one approved, and "Changed after approval" for
+  an earlier stage's artifact edited after its gate.
+  """
+  attr :id, :string, default: "work-item-marks"
+  attr :index, :list, required: true
+
+  def approval_marks(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :marked,
+        Enum.filter(assigns.index, &(&1.newer || &1.changed_after_approval))
+      )
+
+    ~H"""
+    <ul :if={@marked != []} id={@id} class="flex flex-col gap-1">
+      <li :for={mark <- @marked} id={"#{@id}-#{mark.type}-#{mark.name}"}>
+        {type_words(mark.type)} ·
+        <.approval_mark id={"#{@id}-#{mark.type}-#{mark.name}-m"} mark={mark} />
+      </li>
+    </ul>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :mark, :map, default: nil
+
+  defp approval_mark(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @mark && @mark.approved && @mark.newer -> %>
+        <span id={@id} class="text-warning">
+          {gettext("Approved v%{approved}; v%{newer} is newer",
+            approved: Format.number(@mark.approved),
+            newer: Format.number(@mark.newer)
+          )}
+        </span>
+      <% @mark && @mark.changed_after_approval -> %>
+        <span id={@id} class="text-warning">{gettext("Changed after approval")}</span>
+      <% true -> %>
+    <% end %>
+    """
+  end
+
+  ## The board
+
+  @doc """
+  The board under the workflow model: a column for each stage of the workspace's
+  current process version, then one for each stage that version removed while work
+  items remain in it, marked with the version that has it. Each column lists its work
+  items, each a link to its page.
+  """
+  attr :id, :string, default: "work-items-board"
+  attr :columns, :list, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.board/1`"
+  attr :path, :any, required: true, doc: "a function of a work item's number: its page"
+
+  def board_columns(assigns) do
+    ~H"""
+    <nav id={@id} class="q-wl-flow" aria-label={gettext("Stages")}>
+      <section
+        :for={{column, i} <- Enum.with_index(@columns)}
+        id={"#{@id}-#{i}"}
+        class="q-wl-st"
+        aria-labelledby={"#{@id}-#{i}-h"}
+      >
+        <h2 id={"#{@id}-#{i}-h"} class="q-wl-st-name">{column.name}</h2>
+        <span class="q-wl-st-n">{Format.number(length(column.items))}</span>
+        <span :if={column.version} id={"#{@id}-#{i}-removed"} class="q-wl-st-what">
+          {gettext("From version %{number}; the current version removed this stage.",
+            number: Format.number(column.version)
+          )}
+        </span>
+        <ul :if={column.items != []} class="flex flex-col gap-1">
+          <li :for={item <- column.items} id={"#{@id}-item-#{item.id}"}>
+            <.link navigate={@path.(item.number)} class="q-link">
+              #{item.number} <.external_text :if={item.title} text={item.title} />
+            </.link>
+          </li>
+        </ul>
+      </section>
+    </nav>
+    """
+  end
+
+  ## Words
+
+  @doc false
+  # type_words/1 is an artifact type in a sentence: its name with spaces for hyphens,
+  # "acceptance criteria" for `acceptance-criteria`.
+  def type_words(type) when is_binary(type), do: String.replace(type, "-", " ")
+  def type_words(type), do: to_string(type)
+
+  defp version_words(type, nil), do: type_words(type)
+
+  defp version_words(type, number),
+    do: gettext("%{type} v%{number}", type: type_words(type), number: Format.number(number))
+
+  defp words_list([]), do: ""
+  defp words_list([one]), do: one
+
+  defp words_list(many) do
+    {init, [last]} = Enum.split(many, -1)
+    gettext("%{list} and %{last}", list: Enum.join(init, ", "), last: last)
+  end
+end

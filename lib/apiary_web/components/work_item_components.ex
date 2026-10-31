@@ -337,7 +337,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   with the integration's mark as a link out ("Open %{ref} on %{integration}", with the
   ticket's full form; none for a test work item), and who owns it; More,
   with Copy link and Close work item…, on a work item that has not ended; then the stages
-  (`stage_track/1`).
+  (`stage_track/1`, or `track` where the page gives it).
 
   Copy link copies `link`, the work item's address, in the browser (the `CopyToClipboard`
   hook). Close work item… sends `"ask_close"`, and is there only with `can_close`.
@@ -355,6 +355,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :can_act, :boolean,
     default: false,
     doc: "whether the reader may answer, confirm or decline"
+
+  slot :track,
+    doc:
+      "the stages in place of `stage_track/1`: the process version's, under the feature `workflow_model`"
 
   def work_item_header(assigns) do
     work_item = assigns.work_item
@@ -420,7 +424,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         </.menu_item>
       </.row_menu>
     </div>
-    <.stage_track id={"#{@id}-stages"} work_item={@work_item} />
+    <.stage_track :if={@track == []} id={"#{@id}-stages"} work_item={@work_item} />
+    {render_slot(@track)}
     """
   end
 
