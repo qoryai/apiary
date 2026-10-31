@@ -251,6 +251,13 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :path, :any, required: true
   attr :script, :string, default: nil
 
+  # Before the page has read the files, the view is an empty block of another id: the
+  # document's block is left alone by later patches (`phx-update="ignore"`, so the
+  # Mermaid hook keeps its drawings), and a browser would keep the empty block's children
+  # were its id the same.
+  def view(%{type: %Type{base_view: :document}, content: :pending} = assigns),
+    do: ~H|<div id={"#{@id}-pending"} class="min-h-6"></div>|
+
   def view(%{type: %Type{base_view: :document}} = assigns) do
     ~H"""
     <div
@@ -355,8 +362,6 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :text, :any, required: true
   attr :file, ArtifactFile, required: true
   attr :path, :any, required: true
-
-  defp document(%{text: :pending} = assigns), do: ~H|<div class="min-h-6"></div>|
 
   defp document(%{text: {:markdown, rendered}} = assigns) do
     assigns = assign(assigns, :rendered, rendered)

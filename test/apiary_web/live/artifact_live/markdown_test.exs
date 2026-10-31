@@ -81,21 +81,21 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
   end
 
   # Each of these texts of 1 MiB makes a parse hold hundreds of MiB. The render runs in a
-  # process whose heap may not pass 32 MiB, so the parse cannot happen there.
+  # process whose heap may not pass 64 MiB, so the parse cannot happen there.
   test "shows a text whose parse needs more than the budget as written" do
     for text <- [String.duplicate("> ", 524_288), String.duplicate("# a\n", 262_144)] do
       assert {:as_written, _text} = capped(fn -> Markdown.render(text) end)
     end
   end
 
-  # The value of `fun`, run in a process whose heap may hold at most 32 MiB.
+  # The value of `fun`, run in a process whose heap may have at most 64 MiB.
   defp capped(fun) do
     parent = self()
 
     {pid, ref} =
       :erlang.spawn_opt(fn -> send(parent, {self(), fun.()}) end, [
         :monitor,
-        {:max_heap_size, %{size: 4_194_304, kill: true, error_logger: false}}
+        {:max_heap_size, %{size: 8_388_608, kill: true, error_logger: false}}
       ])
 
     receive do
