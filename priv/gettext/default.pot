@@ -7657,7 +7657,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Explore is running again, with %{name}'s answers."
+msgid "Explore is running again, with the answers of %{name}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -13615,7 +13615,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the %{item} and %{name}'s answers, and writes a proposal."
+msgid "Qory reads the %{item} and the answers of %{name}, and writes a proposal."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -19411,7 +19411,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "When the run starts, Qory reads the %{item} and %{name}'s answers, and writes a proposal."
+msgid "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

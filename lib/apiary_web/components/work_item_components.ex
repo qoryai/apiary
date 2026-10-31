@@ -779,7 +779,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             {:name, name} ->
               gettext(
-                "When the run starts, Qory reads the %{item} and %{name}'s answers, and writes a proposal.",
+                "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
                 name: name,
                 item: assigns.item
               )
@@ -851,7 +851,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             {:name, name} ->
               gettext(
-                "Qory reads the %{item} and %{name}'s answers, and writes a proposal.",
+                "Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
                 name: name,
                 item: assigns.item
               )
@@ -2218,7 +2218,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp running_heading(:you), do: gettext("Explore is running again, with your answers.")
 
   defp running_heading({:name, name}),
-    do: gettext("Explore is running again, with %{name}'s answers.", name: name)
+    do: gettext("Explore is running again, with the answers of %{name}.", name: name)
 
   defp running_heading(:several),
     do: gettext("Explore is running again, with the answers of this take in.")

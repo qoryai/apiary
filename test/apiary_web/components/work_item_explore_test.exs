@@ -343,11 +343,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {[@dana],
              "When the run starts, Qory reads the ticket, the code and your answers, and writes a proposal for how to build it."},
             {[@priya],
-             "When the run starts, Qory reads the ticket, the code and Priya's answers, and writes a proposal for how to build it."},
+             "When the run starts, Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."},
             {[@dana, @priya],
              "When the run starts, Qory reads the ticket, the code and the answers of this take in, and writes a proposal for how to build it."},
             {[@priya, %{@priya | name: "Priya"}],
-             "When the run starts, Qory reads the ticket, the code and Priya's answers, and writes a proposal for how to build it."},
+             "When the run starts, Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."},
             {[],
              "When the run starts, Qory reads the ticket and the code, and writes a proposal for how to build it."}
           ] do
@@ -676,7 +676,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
               {[@dana],
                "When the run starts, Qory reads the ticket and your answers, and writes a proposal."},
               {[@priya],
-               "When the run starts, Qory reads the ticket and Priya's answers, and writes a proposal."},
+               "When the run starts, Qory reads the ticket and the answers of Priya, and writes a proposal."},
               {[@dana, @priya],
                "When the run starts, Qory reads the ticket and the answers of this take in, and writes a proposal."}
             ] do

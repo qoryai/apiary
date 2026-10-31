@@ -366,7 +366,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket, the code and Priya's answers, and writes a proposal for how to build it."
+               "Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."
 
       assert count(html, "#work-item-step-run a") == 0
       assert text(html, "#work-item-step-run .q-wi-run-id") == "rn_01a9e3c7"
