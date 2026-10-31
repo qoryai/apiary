@@ -145,7 +145,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
           {"change.json", ~s({"url":"https://example.com/pr/7","title":"<b>Gift cards</b>"})}
         ])
 
-      {:ok, view, html} = live(ctx.conn, page(ctx, change))
+      {:ok, view, _dead} = live(ctx.conn, page(ctx, change))
+      html = render(view)
 
       assert has_element?(view, ~s(table a[href="https://example.com/pr/7"]))
       assert html =~ "&lt;b&gt;Gift cards&lt;/b&gt;"
