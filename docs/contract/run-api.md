@@ -170,9 +170,9 @@ Returns `200` with the file's bytes, and these headers:
 - `Content-Security-Policy`: the policy of every answer of Qory Apiary with the
   directive `sandbox` added, so a browser that opens the file runs no script of it and
   treats it as a page of no origin;
-- `Content-Type`: the file's content type, or `application/octet-stream` for a type
-  with `html`, `xml`, `svg`, `javascript` or `ecmascript` in it, and for a type that is
-  not a plain `type/subtype`.
+- `Content-Type`: the file's stored content type, with its `; charset=utf-8` where it
+  has one, or `application/octet-stream` for a type with `html`, `xml`, `svg`,
+  `javascript` or `ecmascript` in it, and for a type that is not a plain `type/subtype`.
 
 `<filename>` is compared byte for byte with the names of the version's files, and is
 never used as a path. A version of another work item, an unknown version id, a malformed
@@ -194,16 +194,19 @@ version cannot be pushed through the run API, whatever the type's size limit:
 }
 ```
 
-- `type`: the artifact type, 1 to 64 characters of `A-Z a-z 0-9 . _ -`, starting with a
-  letter or a digit.
+- `type`: the artifact type, 1 to 64 bytes of lowercase letters and digits, in groups
+  joined by single hyphens, such as `demo-video`.
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
   have different names, such as screenshots of two screens.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
-  line break.
+  line break, no format character but U+200C and U+200D, and no line or paragraph
+  separator.
 - `files`: 1 to 100 files. A `filename` is 1 to 255 bytes of UTF-8, not `.` or `..`,
-  with no `/`, no `\` and no control character, and unique in the version. A
-  `content_type` is `type/subtype`. `content_base64` is the content in standard base64
-  with padding.
+  with no `/`, no `\`, no control or format character and no line or paragraph separator,
+  and unique in the version. A `content_type` is `type/subtype`. Qory Apiary does not
+  store it: the stored content type comes from the file's bytes, which the index and
+  the file request return. `content_base64` is the content in standard base64 with
+  padding.
 
 The version is stored for the run's work item, by the run, in the run's stage. Returns
 `201`:
@@ -278,9 +281,9 @@ The messages:
   types, then run the round again."
 - `type_not_writable`: "Add the artifact type explainer to the writes list of the
   workflow capture-demo, or push a type that the workflow writes."
-- `too_many_files`: "Push at most 2 files in one version of screenshot." ("1 file" for a
+- `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a
   limit of 1)
-- `too_large`: "Shrink the files of one version of demo-video to at most 16777216 bytes
+- `too_large`: "Shrink the files of one version of demo-video to at most 209715200 bytes
   together."
 - `invalid_artifact`, by the check that failed:
   - "Fix checkout.png to match the format of screenshot: an image is a PNG, JPEG, GIF,
@@ -289,8 +292,11 @@ The messages:
     WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
   - "Fix notes.txt to match the format of explainer: the filename of a document ends in
     .md."
-  - "Fix verdict.json to match the format of verdict: the file does not match the JSON
-    Schema of verdict."
+  - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
+    the enum values: "passed", "changes-requested" or "escalate"." For a file that a
+    structured type's JSON Schema refuses, the part after the colon is "at <path>,
+    <error>.", with the JSON pointer of the first failing value and the text of the
+    schema check.
   - "Push checkout.png again: Qory Apiary could not read it after it was received."
   - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
     video."
