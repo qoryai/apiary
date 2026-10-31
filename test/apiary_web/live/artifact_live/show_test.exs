@@ -400,7 +400,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert {:error, _reason} = render_upload(input, "a.png")
 
-      assert render(view) =~
+      assert view |> form("#artifact-form", artifact: %{type: "mockup"}) |> render_change() =~
                "Remove or shrink files: the files of a version of mockup come to at most"
     end
   end
