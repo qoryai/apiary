@@ -181,7 +181,7 @@ defmodule ApiaryWeb.SettingsComponents do
           %Entry{
             section: :main,
             key: :stages,
-            label: gettext("Stages"),
+            label: stages_label(),
             icon: "hero-arrow-path-rounded-square",
             path: ~p"/#{organisation}/#{workspace}/settings/stages"
           }
@@ -963,4 +963,11 @@ defmodule ApiaryWeb.SettingsComponents do
     </.form>
     """
   end
+
+  @doc """
+  stages_label/0 is the name of Workspace settings › Stages, as its sidebar entry shows it,
+  for a text that leads a person there.
+  """
+  @spec stages_label() :: String.t()
+  def stages_label, do: gettext("Stages")
 end

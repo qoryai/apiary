@@ -510,6 +510,14 @@ defmodule Apiary.Access do
       roles: @admins,
       audited: {:not, "no function takes it yet"}
     ),
+    # A workspace type's default process, which new workspaces copy, in Instance settings
+    # › Workspace types (`Apiary.Processes.TypeTemplates`).
+    Action.new(
+      :"workspace_type.edit",
+      "save a version of a workspace type's default process, which new workspaces copy: an instance admin, which no role takes (Apiary.Processes.TypeTemplates.save/4)",
+      feature: :workflow_model,
+      asked_of: :organisation
+    ),
     # An adapter's key at the server contract, asked of the adapter itself.
     Action.new(
       :"adapter.declare",

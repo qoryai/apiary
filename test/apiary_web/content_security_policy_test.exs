@@ -447,6 +447,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("key_id", "/instance/adapters/" <> _, p), do: p.adapter_key_id
   defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
+  defp value_of("type", "/instance/workspace-types/" <> _, p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
   defp value_of("number", _path, p), do: p.work_item_number
@@ -571,6 +572,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       gateway_key_id: gateway_key.key_id,
       gateway_code_id: gateway_code.id,
       instance: "i_1",
+      # Instance settings › Workspace types: the software type's stages.
+      workspace_type: "qory.software",
       key_id: key.key_id,
       code_id: code.id,
       run_id: run.public_id,
