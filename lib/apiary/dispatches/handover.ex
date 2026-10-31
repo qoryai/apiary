@@ -731,7 +731,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    harness = harness(dispatch_run, target)
+    harness = dispatch_run |> harness(target) |> lowered_access(dispatch_run)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
@@ -802,6 +802,17 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
+  # Hand-over: with the workflow model, a run the stage runner queued with the access
+  # level `read` (`Apiary.Stages.limits/1`) reads its target, whatever its walk resolved.
+  defp lowered_access(%{access: :write} = harness, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{access: :read} -> %{harness | access: :read}
+      _none -> harness
+    end
+  end
+
+  defp lowered_access(harness, _dispatch_run), do: harness
+
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
   defp formed(dispatch_run, workspace, target, work_item, settings, harness, inputs) do
@@ -833,10 +844,28 @@ defmodule Apiary.Dispatches.Handover do
          }
        }}
     else
-      {:variables, {:error, _rule}} -> {:end, :variables_invalid}
+      {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
     end
+  end
+
+  # A run whose run variables break a rule ends `variables_invalid`, with one line in the
+  # instance's log: the run, its work item, the variable, the rule and the target path,
+  # which is a value of QORY_RUN_REPOSITORIES and of no secret. A text of why the run
+  # stopped points the instance admin to that line (`Apiary.Stages.StopCause`).
+  defp variables_ended(dispatch_run, work_item, target, rule) do
+    variable =
+      if rule == :system_invalid, do: "QORY_RUN_SYSTEM", else: "QORY_RUN_REPOSITORIES"
+
+    Logger.warning(
+      "a claim ended a run before it started, because a run variable breaks its rule " <>
+        "end_cause=variables_invalid run_id=#{dispatch_run.run_id} " <>
+        "work_item=#{work_item && work_item.public_id} variable=#{variable} rule=#{rule} " <>
+        "target_path=#{target && target.path}"
+    )
+
+    {:end, :variables_invalid}
   end
 
   # A prebuild's destinations in the registry, the documents' `image_destination`, then

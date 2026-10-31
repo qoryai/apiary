@@ -3,7 +3,8 @@ defmodule Apiary.Harnesses.WalkJob do
   # instance, in the queue `harness`. `queue/2` writes the run's row of `run_harnesses`
   # (`Apiary.Harnesses.RunHarness`) in the transaction that queues the run
   # (`Apiary.Dispatches`), and the job where the run has a workflow
-  # (`Apiary.Stacks.workflow_for/2`). A run with no workflow gets a row resolved with
+  # (`Apiary.Stacks.workflow_for/2`), or, with the workflow model, the workflow of its
+  # stage entry (`Apiary.Stages.run_workflow/1`). A run with no workflow gets a row resolved with
   # origin `:none` and no job: nothing is read for it. A test work item's run gets a row
   # resolved with the built-in harness (`Apiary.Harnesses.Builtin`), origin `:builtin`,
   # and no job: the workspace's levels are not read for it, and no adapter is called.
@@ -40,6 +41,8 @@ defmodule Apiary.Harnesses.WalkJob do
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
+  require Logger
+
   @doc false
   # queue/2 writes the row of `run`, a run of the queue just inserted, and its job where
   # it has a workflow, inside the caller's transaction. `target` is the work item's
@@ -53,7 +56,10 @@ defmodule Apiary.Harnesses.WalkJob do
   def queue(%DispatchRun{} = run, target) do
     workspace = Repo.get!(Workspace, run.workspace_id)
 
-    case Stacks.workflow_for(workspace, target) do
+    # Hand-over: with the workflow model, a run of a stage walks the harness for the
+    # workflow its stage entry names (`Apiary.Stages.run_workflow/1`); explore-a-ticket,
+    # for now, walks the Workflow page's saved workflow, as today's Explore run.
+    case Apiary.Stages.run_workflow(run) || Stacks.workflow_for(workspace, target) do
       nil ->
         Repo.insert(%RunHarness{dispatch_run_id: run.id, state: :resolved, origin: :none})
 
@@ -96,7 +102,7 @@ defmodule Apiary.Harnesses.WalkJob do
           call_failure: nil
         }
 
-        fail(id, failure, job.attempt)
+        fail(id, Map.put(failure, :error, inspect(exception.__struct__)), job.attempt)
       end
 
       reraise exception, __STACKTRACE__
@@ -214,12 +220,18 @@ defmodule Apiary.Harnesses.WalkJob do
     now = DateTime.utc_now()
 
     Repo.transact(fn ->
+      # Hand-over: with the workflow model, the stage runner acts on the run's end
+      # (`Apiary.Stages.run_ended/1`) and writes its work item, locked first, before the run.
+      stages? = Apiary.Stages.on?()
+      if stages?, do: Apiary.Stages.hold_work_item(id)
       run = Repo.one(from r in DispatchRun, where: r.id == ^id, lock: "FOR UPDATE")
 
       case {run, pending_row(id)} do
         {%DispatchRun{} = run, %RunHarness{} = row} ->
           {:ok, _row} = row |> Ecto.Changeset.change(failed(failure, attempt)) |> Repo.update()
-          {:ok, end_run(run, failure, now)}
+          told = end_run(run, failure, now)
+          staged = if stages?, do: Apiary.Stages.run_ended(id), else: []
+          {:ok, told ++ Enum.reject(staged, &(&1 in told))}
 
         _gone ->
           {:ok, []}
@@ -231,6 +243,15 @@ defmodule Apiary.Harnesses.WalkJob do
   end
 
   defp end_run(%DispatchRun{state: :waiting} = run, failure, now) do
+    # One line in the instance's log, to which a text of why the run stopped points the
+    # instance admin for a failure it has no description of (`Apiary.Stages.StopCause`).
+    Logger.warning(
+      "a harness walk failed, so its run ended before it started " <>
+        "end_cause=harness_unresolved failure=#{failure.failure} run_id=#{run.run_id} " <>
+        "work_item=#{work_item_public_id(run)} adapter=#{failure[:adapter]}" <>
+        if(failure[:error], do: " error=#{failure[:error]}", else: "")
+    )
+
     {:ok, _run} =
       run
       |> Ecto.Changeset.change(
@@ -266,4 +287,9 @@ defmodule Apiary.Harnesses.WalkJob do
         lock: "FOR UPDATE"
     )
   end
+
+  defp work_item_public_id(%DispatchRun{work_item_id: nil}), do: nil
+
+  defp work_item_public_id(%DispatchRun{work_item_id: id}),
+    do: Repo.one(from w in WorkItem, where: w.id == ^id, select: w.public_id)
 end

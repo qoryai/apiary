@@ -3548,6 +3548,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Accepted an escalated stage of a work item as it is"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Accepted an invitation"
 msgstr ""
 
@@ -4630,6 +4635,11 @@ msgstr ""
 msgid "Approach"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Approved a stage of a work item"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4753,6 +4763,11 @@ msgstr ""
 msgid "Asked for a build of its environment"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Asked for changes in a stage of a work item"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
@@ -4818,6 +4833,11 @@ msgid "Assigned %{number} %{collection} to %{workspace}."
 msgid_plural "Assigned %{number} %{collections} to %{workspace}."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned a work item to version %{number} of the process"
+msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
@@ -5775,6 +5795,11 @@ msgstr ""
 msgid "Closed a work item"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Closed a work item to resolve an escalation"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed by %{name}"
@@ -6507,6 +6532,11 @@ msgstr ""
 msgid "Declined a work item"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Declined a work item to resolve an escalation"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -7152,6 +7182,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Drop trial"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Dropped the trial version %{number} of the process"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -10356,6 +10391,11 @@ msgstr ""
 msgid "Made by"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Made version %{number} the current process"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/instance_live/mail.ex
@@ -10645,6 +10685,16 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Moved %{name} from place %{from} to place %{to}."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Moved a work item back to an earlier stage to resolve an escalation"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Moved a work item to another stage"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -13262,6 +13312,11 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Process changed"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -15057,6 +15112,16 @@ msgstr ""
 msgid "Saved the mail settings and started a test send"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved version %{number} of the process"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved version %{number} of the process as a trial"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
@@ -16001,6 +16066,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Started a test run"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Started another round of an escalated stage of a work item"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -19677,6 +19747,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Work item questions answered"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item stage decided"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
