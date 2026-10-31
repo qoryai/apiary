@@ -97,9 +97,9 @@ defmodule Apiary.Stages do
   # `{:ok, run}`, nil when the stage waits.
   @doc false
   @spec take_in(Ecto.UUID.t(), pos_integer) :: {:ok, DispatchRun.t() | nil}
-  def take_in(id, _take_in) when is_binary(id) do
+  def take_in(id, take_in) when is_binary(id) and is_integer(take_in) do
     in_transaction!()
-    work_item = lock!(id)
+    work_item = %{lock!(id) | take_in: take_in}
     version = Processes.current(Repo.get!(Workspace, work_item.workspace_id))
     [first | _rest] = version.document["stages"]
     :ok = close_open(work_item, :close, nil, nil)
@@ -115,9 +115,9 @@ defmodule Apiary.Stages do
   @doc false
   @spec next_run(Ecto.UUID.t(), pos_integer) ::
           {:ok, DispatchRun.t()} | {:error, :not_waiting} | :not_placed
-  def next_run(id, _take_in) when is_binary(id) do
+  def next_run(id, take_in) when is_binary(id) and is_integer(take_in) do
     in_transaction!()
-    work_item = lock!(id)
+    work_item = %{lock!(id) | take_in: take_in}
 
     with {:ok, version, stage} <- placed(work_item) do
       event =
@@ -1225,10 +1225,18 @@ defmodule Apiary.Stages do
   end
 
   defp told(%WorkItem{workspace_id: workspace_id, public_id: public_id}),
-    do: [{:stage_changed, workspace_id, public_id}]
+    do: [{:work_item, workspace_id, public_id}]
 
-  # A hand-over inside a caller's transaction whose caller tells nothing of the stage.
-  defp tell_now(work_item), do: Dispatches.broadcast(told(work_item))
+  # A hand-over inside a caller's transaction: the caller tells the work item changed once
+  # it commits (`{:work_items_changed, ids}`), and this tells its stage changed, before the
+  # commit, which a reader of the stage may see before the change.
+  defp tell_now(%WorkItem{workspace_id: workspace_id, public_id: public_id}) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      Apiary.WorkItems.topic(workspace_id),
+      {:stage_changed, public_id}
+    )
+  end
 
   defp transact(fun) do
     case Repo.transact(fun) do

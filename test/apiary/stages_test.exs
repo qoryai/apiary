@@ -288,7 +288,7 @@ defmodule Apiary.StagesTest do
       run |> Ecto.Changeset.change(state: :ended, end_cause: :lost) |> Repo.update!()
 
       {:ok, told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
-      assert told == [{:stage_changed, work_item.workspace_id, work_item.public_id}]
+      assert told == [{:work_item, work_item.workspace_id, work_item.public_id}]
 
       assert %Escalation{
                cause: :run_stopped,

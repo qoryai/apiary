@@ -59,11 +59,8 @@ defmodule Apiary.Dispatches.Settle do
   # The runs of the queue one sweep settles at most; the rest wait for the next.
   @batch 100
 
-  @typedoc """
-  A work item to tell once the transaction commits, and whether its stage changed
-  (`Apiary.Stages`).
-  """
-  @type told :: {:work_item | :stage_changed, Ecto.UUID.t(), String.t()}
+  @typedoc "A work item to tell once the transaction commits."
+  @type told :: {:work_item, Ecto.UUID.t(), String.t()}
 
   # settle_locked/3 stores what `dispatch_run`, ended `run_ended` and locked by the caller
   # in its transaction, gave, from `run`, its registered run or nil, at `now` (the
@@ -107,7 +104,8 @@ defmodule Apiary.Dispatches.Settle do
         case RunEnd.lock(dispatch_run_id) do
           %DispatchRun{state: :ended, end_cause: :run_ended} = dispatch_run ->
             told = settle_locked(dispatch_run, registered(dispatch_run.id), now)
-            {:ok, if(stages?, do: told ++ Apiary.Stages.run_ended(dispatch_run.id), else: told)}
+            staged = if stages?, do: Apiary.Stages.run_ended(dispatch_run.id), else: []
+            {:ok, told ++ Enum.reject(staged, &(&1 in told))}
 
           _other ->
             {:ok, []}

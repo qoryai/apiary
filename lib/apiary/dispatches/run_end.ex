@@ -307,7 +307,8 @@ defmodule Apiary.Dispatches.RunEnd do
       built = build_ended(held, dispatch_run, cause, run, now)
       settled = settled(dispatch_run, run, cause, now)
       requeued = image_missing(held, dispatch_run, run, cause, now)
-      changed ++ built ++ settled ++ requeued ++ staged(dispatch_run)
+      told = changed ++ built ++ settled ++ requeued
+      told ++ Enum.reject(staged(dispatch_run), &(&1 in told))
     end
   end
 
