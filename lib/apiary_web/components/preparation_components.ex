@@ -6,7 +6,9 @@ defmodule ApiaryWeb.PreparationComponents do
   claimed, then the run's steps, then Session started. Each row has its state, its start
   time and its duration, and opens on a click to its output; a failed row is open, with
   the cause line under its output. Under Machine started the line is its second sentence
-  alone, who fixes the cause: the run's header shows the first as the run's reason.
+  alone, who fixes the cause: the run's header shows the first as the run's reason. While
+  the run is alive, a running row has a clock that ticks in the browser, and the heading
+  has the time so far.
 
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
@@ -51,19 +53,33 @@ defmodule ApiaryWeb.PreparationComponents do
   truncated}` for an instance admin, `:none` while no log has arrived, `{:deleted, days}`
   once a log that arrived can have been deleted (`days` is the machine logs' retention),
   `:unreadable` for one whose file cannot be read, and `:hidden` for anyone else.
+  `alive` is whether the run is alive: nothing ticks once it has ended.
   """
   attr :id, :string, default: "prepare-machine"
   attr :preparation, :map, required: true
   attr :machine_log, :any, default: :hidden
+  attr :alive, :boolean, required: true
 
   def prepare_machine(assigns) do
-    assigns = assign(assigns, :total_ms, total_ms(assigns.preparation))
+    assigns =
+      assign(assigns,
+        total_ms: total_ms(assigns.preparation),
+        going_from: going_from(assigns.preparation, assigns.alive)
+      )
 
     ~H"""
     <section id={@id} class="q-prep" aria-labelledby={"#{@id}-h"}>
       <div class="q-prep-hd">
         <h2 id={"#{@id}-h"}>{gettext("Prepare machine")}</h2>
         <.duration :if={@total_ms} id={"#{@id}-total"} ms={@total_ms} class="q-prep-total" />
+        <.duration
+          :if={@going_from}
+          id={"#{@id}-total"}
+          elapsed_seconds={0}
+          elapsed_at={@going_from}
+          so_far
+          class="q-prep-total"
+        />
       </div>
       <ol class="q-prep-steps">
         <li :if={@preparation.machine}>
@@ -94,6 +110,8 @@ defmodule ApiaryWeb.PreparationComponents do
             state={@preparation.machine.started.state}
             name={gettext("Machine started")}
             at={@preparation.machine.started.started_at}
+            since={@preparation.machine.started.started_at || @preparation.machine.requested_at}
+            alive={@alive}
             duration_ms={@preparation.machine.started.duration_ms}
           >
             <.machine_log id={"#{@id}-machine-log"} log={@machine_log} />
@@ -110,6 +128,8 @@ defmodule ApiaryWeb.PreparationComponents do
             state={step.state}
             name={Preparation.step_name(step)}
             at={step.started_at}
+            since={step.started_at}
+            alive={@alive}
             duration_ms={step.duration_ms}
             sent
           >
@@ -144,11 +164,15 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :state, :string, required: true
   attr :name, :string, required: true
   attr :at, :any, required: true
+  attr :since, :any, default: nil, doc: "when the row's clock starts"
+  attr :alive, :boolean, default: false, doc: "whether the run is alive"
   attr :duration_ms, :integer, default: nil
   attr :sent, :boolean, default: false, doc: "whether the name came from the run"
   slot :inner_block, required: true
 
   defp row(assigns) do
+    assigns = assign(assigns, :ticking, assigns.state == "running" and assigns.alive)
+
     ~H"""
     <details
       id={@id}
@@ -159,13 +183,20 @@ defmodule ApiaryWeb.PreparationComponents do
     >
       <summary class="q-hd q-prep-row">
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <.state_mark state={@state} />
+        <.state_mark state={@state} pulse={@ticking} />
         <span :if={@sent} class="q-k q-prep-name"><.external_text text={@name} /></span>
         <span :if={!@sent} class="q-k q-prep-name">{@name}</span>
         <span class="q-t">
+          <span :if={@state == "running"} class="q-running">{gettext("Running")}</span>
           <.clock :if={@at} at={@at} />
           <.duration :if={@duration_ms} ms={@duration_ms} class="q-d" />
-          <span :if={@state == "running"} class="q-running">{gettext("Running")}</span>
+          <.duration
+            :if={@ticking and @since != nil}
+            id={"#{@id}-clock"}
+            elapsed_seconds={0}
+            elapsed_at={@since}
+            class="q-d"
+          />
         </span>
       </summary>
       <div class={["q-xb", @state == "failed" && "q-xb-bad"]}>
@@ -176,6 +207,7 @@ defmodule ApiaryWeb.PreparationComponents do
   end
 
   attr :state, :string, required: true
+  attr :pulse, :boolean, default: false
 
   defp state_mark(assigns) do
     ~H"""
@@ -190,7 +222,10 @@ defmodule ApiaryWeb.PreparationComponents do
         <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
         <span class="sr-only">{gettext("Cancelled")}</span>
       <% _running -> %>
-        <.icon name="hero-ellipsis-horizontal-circle-micro" class="q-running size-4 self-center" />
+        <.icon
+          name="hero-ellipsis-horizontal-circle-micro"
+          class={["q-running size-4 self-center", @pulse && "q-prep-pulse"]}
+        />
     <% end %>
     """
   end
@@ -293,15 +328,28 @@ defmodule ApiaryWeb.PreparationComponents do
     """
   end
 
+  # When the preparation of a live run began, while it goes on: a row is running, or the
+  # machine started and no step has yet. Between two steps, and for a runtime with no
+  # session event once its last step ended, nothing shows that it goes on, so no clock
+  # counts past it.
+  defp going_from(preparation, alive) do
+    if alive and is_nil(total_ms(preparation)) and going_on?(preparation),
+      do: first_at(preparation)
+  end
+
+  defp going_on?(%{machine: machine, steps: steps}) do
+    Enum.any?(steps, &(&1.state == "running")) or
+      (machine != nil and (machine.started.state == "running" or steps == []))
+  end
+
+  defp first_at(%{machine: %{requested_at: at}}), do: at
+  defp first_at(%{steps: [%{started_at: at} | _]}), do: at
+  defp first_at(_preparation), do: nil
+
   # From the first row's time to the session's start, or to the end of the failed row;
   # nil while the preparation goes on.
   defp total_ms(preparation) do
-    from =
-      case preparation do
-        %{machine: %{requested_at: at}} -> at
-        %{steps: [%{started_at: at} | _]} -> at
-        _none -> nil
-      end
+    from = first_at(preparation)
 
     to =
       cond do

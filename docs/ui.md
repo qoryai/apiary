@@ -1696,7 +1696,11 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   redemption of the run's code) for a run a node pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
-  duration, and opens on a click: a step to its output, the last 64 KiB as plain text,
+  duration; while the run is alive, a running row has the word Running, a mark that pulses
+  (still under `prefers-reduced-motion`), and in place of its duration a clock that ticks in
+  the browser (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for
+  Machine started before the starter's `dispatched`, from the claim. A step left running
+  on a run that ended has no clock. Each row opens on a click: a step to its output, the last 64 KiB as plain text,
   for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
   sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
@@ -1712,7 +1716,11 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   it, as the header shows the cause: for the instance's pool, "An instance admin finds
   the cause in the machine log of the Machine started step."; for any other pool, that
   its admins read why in the pool's log on its host. The section's duration runs from its first row to
-  the session's start, or to the failed row's end.
+  the session's start, or to the failed row's end. While the preparation of a live run goes
+  on, a row running or the machine started with no step yet, the heading has the time so
+  far, ticking from its first row. The page reads the preparation again at each flush, and at
+  each quiet tick (5 s) while Machine started is running: `dispatched` and the redemption
+  of the run's code reach no run's topic.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

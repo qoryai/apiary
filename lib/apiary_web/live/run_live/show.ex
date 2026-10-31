@@ -367,7 +367,11 @@ defmodule ApiaryWeb.RunLive.Show do
               </div>
             <% @run.state == "pending" and @index.items == [] and @tab == :timeline and
                  PreparationComponents.shown?(@preparation) -> %>
-              <.prepare_machine preparation={@preparation} machine_log={@machine_log} />
+              <.prepare_machine
+                preparation={@preparation}
+                machine_log={@machine_log}
+                alive={alive?(@run)}
+              />
             <% @run.state == "pending" and @index.items == [] -> %>
               <.limits reason={:not_started} variant="empty" registered={!!@run.registered_at} />
             <% @run.events_pruned_at && @index.items == [] && @tab == :timeline -> %>
@@ -589,6 +593,7 @@ defmodule ApiaryWeb.RunLive.Show do
         :if={@earlier == 0 and PreparationComponents.shown?(@preparation)}
         preparation={@preparation}
         machine_log={@machine_log}
+        alive={alive?(@run)}
       />
 
       <.timeline
@@ -2636,7 +2641,7 @@ defmodule ApiaryWeb.RunLive.Show do
               ),
             else: socket
 
-        socket = assign(socket, quiet_for: now)
+        socket = socket |> assign(quiet_for: now) |> read_machine_start()
 
         {:noreply,
          if(socket.assigns.tab == :timeline and socket.assigns.window_loaded,
@@ -2877,6 +2882,22 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket), do: socket
   defp refresh_preparation(socket), do: assign_preparation(socket)
+
+  # The starter's `dispatched` and the redemption of the run's code write the dispatch and
+  # the run's row and tell no run's topic, so a page opened on a machine that is starting
+  # reads them at each quiet tick. A step's start reaches it as an event, through `flush/1`.
+  defp read_machine_start(
+         %{assigns: %{preparation_settled: false, preparation: %{machine: %{started: started}}}} =
+           socket
+       )
+       when started.state == "running" do
+    case Record.reload(socket.assigns.current_scope, socket.assigns.run) do
+      %Run{} = run -> socket |> follow_run(run) |> assign_preparation()
+      nil -> socket
+    end
+  end
+
+  defp read_machine_start(socket), do: socket
 
   defp machine_log(_scope, _preparation, {:ok, _text, _truncated} = read), do: read
   defp machine_log(_scope, %{machine: nil}, _read), do: :hidden

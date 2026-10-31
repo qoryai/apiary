@@ -6824,6 +6824,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .q-prep-pulse {
+    animation: q-prep-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes q-prep-pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
   .q-prep-ok {
     color: var(--q-success-soft-content);
   }
@@ -7390,7 +7398,8 @@
       border-right-color: transparent;
       animation: none;
     }
-    .q-ti {
+    .q-ti,
+    .q-prep-pulse {
       animation: none;
     }
   }
