@@ -1,12 +1,9 @@
 defmodule ApiaryWeb.WorkItemLive.Board do
   # The rows of the board under the workflow model (`ApiaryWeb.WorkItemLive.Workflow`):
   # each live work item of the scope's workspace with its process version and its stage
-  # (the columns `process_version_id`, `stage_id` and `stage_state` of `work_items`),
+  # (`Apiary.WorkItems.WorkItem`: `process_version_id`, `stage_id` and `stage_state`),
   # most recently updated first, at most `@max` of them. The page that calls it has
   # checked `work_item.read` on the workspace (`ApiaryWeb.Access`); it reads nothing else.
-  #
-  # The columns come with the workflow model's process versions, so the board calls this
-  # only where the feature `workflow_model` is on.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -33,9 +30,9 @@ defmodule ApiaryWeb.WorkItemLive.Board do
           number: w.number,
           title: w.title,
           test: w.test,
-          process_version_id: field(w, :process_version_id),
-          stage_id: field(w, :stage_id),
-          stage_state: field(w, :stage_state)
+          process_version_id: w.process_version_id,
+          stage_id: w.stage_id,
+          stage_state: w.stage_state
         }
     )
   end

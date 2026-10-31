@@ -88,6 +88,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :answers_path, :string, default: nil, doc: "Explore's tab, where the questions are"
   attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
 
+  attr :error, :atom,
+    default: nil,
+    values: [nil, :note],
+    doc: "a field of Request changes the server refused: `:note`, left blank"
+
   def stage_card(assigns) do
     ~H"""
     <section
@@ -115,6 +120,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         add_path={@add_path}
         answers_path={@answers_path}
         asking={@asking}
+        error={@error}
       />
     </section>
     """
@@ -149,6 +155,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :add_path, :any, required: true
   attr :answers_path, :string, default: nil
   attr :asking, :atom, default: nil
+  attr :error, :atom, default: nil
 
   defp stage_body(%{page: %{state: :running}} = assigns) do
     ~H"""
@@ -225,7 +232,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp stage_body(%{page: %{state: :at_gate}} = assigns) do
     ~H"""
-    <.gate_card id={"#{@id}-gate"} page={@page} number={@number} asking={@asking} />
+    <.gate_card id={"#{@id}-gate"} page={@page} number={@number} asking={@asking} error={@error} />
     """
   end
 
@@ -241,6 +248,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :asking, :atom, default: nil
+  attr :error, :atom, default: nil
 
   defp gate_card(assigns) do
     assigns =
@@ -270,7 +278,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       </p>
       <%= if @page.can_decide do %>
         <%= if @asking == :changes do %>
-          <form id={"#{@id}-changes"} phx-submit="stage_request_changes" class="flex flex-col gap-2">
+          <form
+            novalidate
+            id={"#{@id}-changes"}
+            phx-submit="stage_request_changes"
+            class="flex flex-col gap-2"
+          >
             <input type="hidden" name="number" value={@number} />
             <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
             <select id={"#{@id}-changes-version"} name="version">
@@ -279,7 +292,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
                 {version_words(output.type, output.version)}
               </option>
             </select>
-            <.note id={"#{@id}-changes-note"} required />
+            <.note
+              id={"#{@id}-changes-note"}
+              error={@error == :note && gettext("Write what needs to change.")}
+            />
             <div class="q-wi-acts">
               <.button id={"#{@id}-changes-go"} type="submit" variant="primary">
                 {gettext("Request changes")}
@@ -290,7 +306,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             </div>
           </form>
         <% else %>
-          <form :if={@page.approvable} id={"#{@id}-approve"} phx-submit="stage_approve">
+          <form :if={@page.approvable} novalidate id={"#{@id}-approve"} phx-submit="stage_approve">
             <input type="hidden" name="number" value={@number} />
             <input type="hidden" name="note" value="" />
             <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
@@ -348,6 +364,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       </p>
       <form
         :if={@page.can_decide}
+        novalidate
         id={"#{@id}-form"}
         phx-submit="stage_resolve"
         class="flex flex-col gap-2"
@@ -409,7 +426,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp move_back(assigns) do
     ~H"""
-    <form id={@id} phx-submit={@event} class="flex flex-col gap-2">
+    <form novalidate id={@id} phx-submit={@event} class="flex flex-col gap-2">
       <input type="hidden" name="number" value={@number} />
       <label for={"#{@id}-stage"}>{gettext("Move back to")}</label>
       <select id={"#{@id}-stage"} name="stage">
@@ -424,14 +441,24 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   attr :id, :string, required: true
-  attr :required, :boolean, default: false
+  attr :error, :any, default: nil, doc: "what is wrong with the note, or nil"
 
   defp note(assigns) do
     assigns = assign(assigns, :units, @note_units)
 
     ~H"""
     <label for={@id}>{gettext("Note")}</label>
-    <textarea id={@id} name="note" rows="2" maxlength={@units} required={@required}></textarea>
+    <textarea
+      id={@id}
+      name="note"
+      rows="2"
+      maxlength={@units}
+      aria-describedby={@error && "#{@id}-error"}
+      aria-invalid={@error && "true"}
+    ></textarea>
+    <p :if={@error} id={"#{@id}-error"} class="q-xp-err">
+      <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@error}
+    </p>
     """
   end
 

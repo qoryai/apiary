@@ -4,17 +4,17 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `Apiary.Processes` and `Apiary.Artifacts`, and the plain maps the stage parts draw
   # (`ApiaryWeb.WorkItemLive.StageComponents`).
   #
-  # **The modules it calls.** Each one is read from the application's environment
-  # (`config :apiary, ApiaryWeb.WorkItemLive.Workflow, stages: …`), with the shared
-  # contract's module as the default: `features` (`Apiary.Features`), `access`
-  # (`Apiary.Access`), `stages` (`Apiary.Stages`), `processes` (`Apiary.Processes`),
-  # `artifacts` (`Apiary.Artifacts`), `artifact_components`
-  # (`ApiaryWeb.ArtifactComponents`) and `board` (`ApiaryWeb.WorkItemLive.Board`). The
-  # calls go through a variable, so the pages compile before those modules exist; the
-  # tests put fakes there (`ApiaryWeb.WorkflowFake`).
+  # **The modules not on `next` yet.** Transition: the stage runner (`stages`,
+  # `Apiary.Stages`), the artifacts (`artifacts`, `Apiary.Artifacts`) and their list
+  # (`artifact_components`, `ApiaryWeb.ArtifactComponents`) are read from the
+  # application's environment (`config :apiary, ApiaryWeb.WorkItemLive.Workflow,
+  # stages: …`), with the shared contract's module as the default. The calls go through
+  # a variable, so the pages compile before those modules land; the tests put fakes
+  # there (`ApiaryWeb.WorkflowFake`). Each one becomes a plain call once its piece lands.
   #
-  # **The feature.** `on?/1` is false while the instance has no feature `workflow_model`,
-  # so every page draws as before it.
+  # **The feature.** `on?/1` is whether the reader is shown `workflow_model`. Transition:
+  # it is also false while the stage runner is not loaded, so every page draws as before
+  # the feature until the runner lands.
   #
   # **Who decides.** A gate's Approve and Request changes, every escalation action and a
   # move back take `gate.approve`, and only the stage's listed approvers where the stage
@@ -24,16 +24,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
+  alias Apiary.{Access, Features, Processes}
   alias Apiary.Accounts.Scope
+  alias ApiaryWeb.WorkItemLive.Board
 
   @defaults [
-    features: Apiary.Features,
-    access: Apiary.Access,
     stages: Apiary.Stages,
-    processes: Apiary.Processes,
     artifacts: Apiary.Artifacts,
-    artifact_components: ApiaryWeb.ArtifactComponents,
-    board: ApiaryWeb.WorkItemLive.Board
+    artifact_components: ApiaryWeb.ArtifactComponents
   ]
 
   @states ~w(running waiting_inputs waiting_answers waiting_workflow escalated at_gate done)a
@@ -61,12 +59,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   @doc false
   # on?/1 is whether the reader of `scope` is shown the workflow model: the instance has
-  # the feature `workflow_model`, and the scope does not hide it.
+  # the feature `workflow_model`, and the scope does not hide it; and, until the stage
+  # runner lands, it is loaded.
   @spec on?(Scope.t()) :: boolean
-  def on?(scope) do
-    features = module(:features)
-    :workflow_model in features.all() and features.visible?(scope, :workflow_model)
-  end
+  def on?(scope),
+    do: Features.visible?(scope, :workflow_model) and Code.ensure_loaded?(module(:stages))
 
   ## The work item page
 
@@ -79,7 +76,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   def page(scope, row) do
     stages = module(:stages)
     status = stages.status(row)
-    version = module(:processes).version_for(row)
+    version = Processes.version_for(row)
     document = get(version, :document) || %{}
     all = Enum.map(get(document, :stages) || [], &stage_map/1)
     current_id = id_of(get(status, :stage))
@@ -110,8 +107,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       index: Enum.map(stages.artifact_index(row) || [], &indexed/1),
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: missing_workflows(scope, stage, state),
-      can_decide: approver?(scope, stage) and module(:access).can?(scope, :"gate.approve", row),
-      can_add: module(:access).can?(scope, :"artifact.write", row)
+      can_decide: approver?(scope, stage) and Access.can?(scope, :"gate.approve", row),
+      can_add: Access.can?(scope, :"artifact.write", row)
     }
   end
 
@@ -220,7 +217,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # The workflows of the stage that the composed harness no longer declares, while the
   # stage waits for one.
   defp missing_workflows(scope, stage, :waiting_workflow) do
-    declared = module(:processes).declared_workflows(scope.workspace) || []
+    declared = Processes.declared_workflows(scope.workspace)
 
     stage.sequence
     |> Enum.flat_map(fn entry ->
@@ -265,7 +262,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   def decide(scope, row, page, action) do
     stages = module(:stages)
 
-    with :ok <- module(:access).authorize(scope, :"gate.approve", row),
+    with :ok <- Access.authorize(scope, :"gate.approve", row),
          true <- approver?(scope, page.stage) || {:error, :forbidden},
          {:ok, action} <- checked(action, page) do
       case action do
@@ -307,11 +304,17 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # item on another version sits in the stage with the same id.
   @spec board(Scope.t()) :: [map]
   def board(scope) do
-    processes = module(:processes)
-    current = processes.current(scope.workspace)
-    versions = processes.list_versions(scope.workspace) || []
-    rows = module(:board).rows(scope)
+    current = Processes.current(scope.workspace)
+    versions = Processes.list_versions(scope.workspace)
     stages = Enum.map(get(get(current, :document) || %{}, :stages) || [], &stage_map/1)
+    first = List.first(stages)
+
+    # A work item the process has not placed yet sits in the first stage, where every
+    # work item starts.
+    rows =
+      for row <- Board.rows(scope),
+          do: if(is_nil(row.stage_id) and first, do: %{row | stage_id: first.id}, else: row)
+
     ids = MapSet.new(stages, & &1.id)
     by_stage = Enum.group_by(rows, & &1.stage_id)
 

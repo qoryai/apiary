@@ -143,6 +143,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             add_path={&add_path(@current_scope, @number, &1)}
             answers_path={tab_path(@current_scope, @number, :explore)}
             asking={@stage_asking}
+            error={@stage_error}
           />
           <.step_card
             :if={!@flow}
@@ -296,7 +297,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            edit_submits: 0,
            flow: nil,
            artifacts: [],
-           stage_asking: nil
+           stage_asking: nil,
+           stage_error: nil
          )}
     end
   end
@@ -336,7 +338,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   @impl true
   def handle_event("cancel_question", _params, socket),
-    do: {:noreply, assign(socket, asking: nil, deleting_comment: nil, stage_asking: nil)}
+    do:
+      {:noreply,
+       assign(socket, asking: nil, deleting_comment: nil, stage_asking: nil, stage_error: nil)}
 
   def handle_event(event, params, socket) when event in @comment_events,
     do: Comments.handle_event(event, params, socket)
@@ -446,14 +450,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # The workflow model's actions, each asked again on the server
   # (`ApiaryWeb.WorkItemLive.Workflow.decide/4`) with the page as the reader saw it.
   defp stage_act("stage_ask_changes", _params, socket),
-    do: {:noreply, assign(socket, :stage_asking, :changes)}
+    do: {:noreply, assign(socket, stage_asking: :changes, stage_error: nil)}
 
   defp stage_act("stage_approve", params, socket),
     do: decided(socket, {:approve, note(params)})
 
   defp stage_act("stage_request_changes", params, socket) do
     case note(params) do
-      nil -> {:noreply, socket}
+      nil -> {:noreply, assign(socket, stage_asking: :changes, stage_error: :note)}
       note -> decided(socket, {:request_changes, note, text(params["version"])})
     end
   end
@@ -483,8 +487,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     %{row: row, flow: flow} = socket.assigns
 
     case Workflow.decide(scope(socket), row, flow, action) do
-      {:ok, _result} -> {:noreply, socket |> assign(:stage_asking, nil) |> load()}
-      _refused -> {:noreply, socket |> assign(:stage_asking, nil) |> refresh()}
+      {:ok, _result} ->
+        {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> load()}
+
+      _refused ->
+        {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> refresh()}
     end
   end
 

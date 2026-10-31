@@ -1,90 +1,106 @@
 defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # The work item page and the board under the workflow model
   # (`ApiaryWeb.WorkItemLive.Workflow`), with `ApiaryWeb.WorkflowFake` in place of
-  # `Apiary.Stages`, `Apiary.Processes` and `Apiary.Artifacts` until they land: without
-  # the feature, the page and the list as before it; the stage track; each stage state
-  # (running, waiting for inputs, for answers or for a workflow, escalated with each
-  # cause, at the gate, done); the runs with their rounds and verdicts; the approval
-  # marks; the artifact list; each action, for the owner, an admin and a member, hidden
-  # from a person the stage does not list and refused on the server; the page read again
-  # on `{:stage_changed, id}`; and the board's columns, a removed stage's included.
-  use ApiaryWeb.ConnCase, async: true
+  # `Apiary.Stages` and `Apiary.Artifacts` until they land: without the feature, the
+  # page and the list as before it; the stage track; each stage state (running, waiting
+  # for inputs, for answers or for a workflow, escalated with each cause, at the gate,
+  # done); the runs with their rounds and verdicts; the approval marks; the artifact
+  # list; each action, for the owner, an admin and a member, hidden from a person the
+  # stage does not list and refused on the server; the page read again on
+  # `{:stage_changed, id}`; and the board's columns, a removed stage's included.
+  #
+  # The fake changes the whole node (`ApiaryWeb.WorkflowFake.install/0`), so the module
+  # is not async.
+  use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
+  alias Apiary.{Processes, Repo}
+  alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.WorkflowFake
 
-  @moduletag needs: :factory
+  @moduletag needs: [:factory, :workflow_model]
 
   setup_all do
-    WorkflowFake.install()
+    previous = WorkflowFake.install()
+    on_exit(fn -> WorkflowFake.uninstall(previous) end)
     :ok
   end
 
   setup :register_and_log_in_user
 
-  @stages [
-    {"st_explore", "Explore"},
-    {"st_shape", "Shape"},
-    {"st_build", "Build"},
-    {"st_verify", "Verify"},
-    {"st_release", "Release"}
-  ]
+  # The stage ids of the software type's default process (`Apiary.Processes`), and one
+  # more for a stage a later version removes.
+  @explore "st_r79kph11eg"
+  @shape "st_p9w5cvh311"
+  @build "st_6ns22c4pav"
+  @verify "st_m1mqbeywdg"
+  @release "st_k9kpv17xmy"
+  @review "st_rev0000000"
 
-  defp document(stages, gate) do
-    %{
-      "schema" => "qory.process/v1",
-      "machine" => "default",
-      "stages" =>
-        for {id, name} <- stages do
+  # The default process, with Build's sequence of § 4 and the gate's approvers.
+  defp document(approvers \\ "members") do
+    default = Processes.default_document("software")
+
+    stages =
+      for stage <- default["stages"] do
+        if stage["id"] == @build do
           %{
-            "id" => id,
-            "name" => name,
-            "inputs" => [],
-            "sequence" =>
-              if(id == "st_build",
-                do: [
-                  %{"workflow" => "implement"},
-                  %{
-                    "loop" => %{
-                      "rounds" => 3,
-                      "body" => [
-                        %{"workflow" => "capture-demo"},
-                        %{"workflow" => "fix-demo-findings"}
-                      ]
-                    }
+            stage
+            | "sequence" => [
+                %{"workflow" => "implement"},
+                %{
+                  "loop" => %{
+                    "rounds" => 3,
+                    "body" => [
+                      %{"workflow" => "capture-demo"},
+                      %{"workflow" => "fix-demo-findings"}
+                    ]
                   }
-                ],
-                else: []
-              ),
-            "outputs" => [],
-            "gate" => %{"kind" => "person", "approvers" => gate}
+                }
+              ],
+              "gate" => %{"kind" => "person", "approvers" => approvers}
           }
+        else
+          stage
         end
-    }
+      end
+
+    %{default | "stages" => stages}
   end
 
-  defp version(number, stages \\ @stages, gate \\ "members"),
-    do: %{id: "pv_#{number}", number: number, status: "current", document: document(stages, gate)}
+  # A saved version of the scope's workspace with `document`, current; the current one
+  # where it has that document already.
+  defp save!(scope, document) do
+    case Processes.save(scope, scope.workspace, document) do
+      {:ok, version} -> version
+      {:error, [%{error: :unchanged} | _]} -> Processes.current(scope.workspace)
+    end
+  end
 
-  # The feature on for the scope's workspace, and a work item at Build in `state`.
+  defp place!(work_item, version, stage_id) do
+    {1, _} =
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [process_version_id: version.id, stage_id: stage_id]
+      )
+
+    Repo.get!(WorkItem, work_item.id)
+  end
+
+  # A work item at Build in `state`, on a version with Build's sequence.
   defp at_build(scope, state, attrs \\ []) do
-    v1 = Keyword.get(attrs, :version, version(1))
-
-    WorkflowFake.put_workspace(scope.workspace,
-      current: v1,
-      versions: [v1],
-      declared: ["implement"]
-    )
-
-    work_item = work_item_fixture(scope)
+    version = save!(scope, document(Keyword.get(attrs, :approvers, "members")))
+    status = Map.new(Keyword.get(attrs, :status, []))
+    stage_id = get_in(status, [:stage, "id"]) || @build
+    work_item = scope |> work_item_fixture() |> place!(version, stage_id)
 
     status =
       Map.merge(
         %{
-          stage: %{"id" => "st_build", "name" => "Build"},
+          stage: %{"id" => @build, "name" => "Build"},
           round: 2,
           rounds: 3,
           state: state,
@@ -95,12 +111,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           gate: %{approvable?: false, approvals: []},
           runs: []
         },
-        Map.new(Keyword.get(attrs, :status, []))
+        status
       )
 
     WorkflowFake.put_work_item(work_item,
       status: status,
-      version: v1,
       inputs: Keyword.get(attrs, :inputs, []),
       index: Keyword.get(attrs, :index, []),
       artifacts: Keyword.get(attrs, :artifacts, [])
@@ -120,6 +135,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "without the feature" do
+    @describetag with_features: Apiary.Features.all() -- [:workflow_model]
+
     test "the page has the step card and the stages as before it", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -170,16 +187,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = at_build(scope, :running, status: [runs: runs])
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-head-stages-st_explore.q-wi-stage-done")
-      assert has_element?(view, "#work-item-head-stages-st_shape.q-wi-stage-done")
-      assert has_element?(view, ~s|#work-item-head-stages-st_build[aria-current="step"]|)
-      assert has_element?(view, "#work-item-head-stages-st_release.q-wi-stage-todo")
+      assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")
+      assert has_element?(view, "#work-item-head-stages-#{@shape}.q-wi-stage-done")
+      assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+      assert has_element?(view, "#work-item-head-stages-#{@release}.q-wi-stage-todo")
       refute has_element?(view, "#work-item-head-stages-explore")
       refute has_element?(view, "#work-item-step")
 
       assert has_element?(view, "#work-item-stage-state", "Running")
       assert has_element?(view, "#work-item-stage-round", "Round 2 of 3")
-      assert has_element?(view, "#work-item-stage-version", "Process version 1")
+      assert has_element?(view, "#work-item-stage-version", "Process version 2")
       assert has_element?(view, "#work-item-stage-line", "Build is running.")
 
       assert html =~ "Run rn_17 · capture-demo · round 2 · passed"
@@ -202,11 +219,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "done: every stage done", %{conn: conn, scope: scope} do
       work_item =
-        at_build(scope, :done, status: [stage: %{"id" => "st_release", "name" => "Release"}])
+        at_build(scope, :done, status: [stage: %{"id" => @release, "name" => "Release"}])
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-head-stages-st_release.q-wi-stage-done")
+      assert has_element?(view, "#work-item-head-stages-#{@release}.q-wi-stage-done")
       assert has_element?(view, "#work-item-stage-line", "Every stage is done.")
     end
   end
@@ -233,10 +250,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              )
 
       view
-      |> form("#work-item-stage-move", %{"stage" => "st_shape", "note" => "Write the criteria"})
+      |> form("#work-item-stage-move", %{"stage" => @shape, "note" => "Write the criteria"})
       |> render_submit()
 
-      assert WorkflowFake.calls(work_item) == [{:move, "st_shape", "Write the criteria"}]
+      assert WorkflowFake.calls(work_item) == [{:move, @shape, "Write the criteria"}]
     end
 
     test "a move to a stage that is not earlier is refused", %{conn: conn, scope: scope} do
@@ -249,7 +266,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       render_hook(view, "stage_move", %{
         "number" => "#{work_item.number}",
-        "stage" => "st_release",
+        "stage" => @release,
         "note" => ""
       })
 
@@ -259,7 +276,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "for answers: a link to the questions", %{conn: conn, scope: scope} do
       work_item =
         at_build(scope, :waiting_answers,
-          status: [stage: %{"id" => "st_explore", "name" => "Explore"}, round: 1]
+          status: [stage: %{"id" => @explore, "name" => "Explore"}, round: 1]
         )
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -291,7 +308,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              )
 
       assert has_element?(view, "#work-item-stage-workflow-fix-demo-findings")
-      refute has_element?(view, "#work-item-stage-workflow-implement")
+      assert has_element?(view, "#work-item-stage-workflow-implement")
+      refute has_element?(view, "#work-item-stage-workflow-explore-a-ticket")
     end
   end
 
@@ -412,6 +430,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       })
 
       render_hook(view, "stage_request_changes", %{"number" => n, "version" => "", "note" => " "})
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-changes-note-error",
+               "Write what needs to change."
+             )
+
       assert WorkflowFake.calls(work_item) == []
 
       render_hook(view, "stage_request_changes", %{
@@ -443,7 +468,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       work_item =
         at_build(scope, :at_gate,
-          version: version(1, @stages, %{"members" => [listed.user.id]}),
+          approvers: %{"members" => [listed.user.id]},
           status: [gate: %{approvable?: true, approvals: []}]
         )
 
@@ -555,7 +580,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         end
 
         view
-        |> form("#work-item-stage-escalation-form", %{"note" => "", "stage" => "st_shape"})
+        |> form("#work-item-stage-escalation-form", %{"note" => "", "stage" => @shape})
         |> render_submit(%{"how" => "move_back"})
 
         assert WorkflowFake.calls(work_item) == [
@@ -563,7 +588,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                  {:resolve_escalation, :another_round, "Go on"},
                  {:resolve_escalation, :close, "Go on"},
                  {:resolve_escalation, :decline, "Go on"},
-                 {:resolve_escalation, {:move_back, "st_shape"}, nil}
+                 {:resolve_escalation, {:move_back, @shape}, nil}
                ]
       end
     end
@@ -579,7 +604,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       render_hook(view, "stage_resolve", %{
         "number" => n,
         "how" => "move_back",
-        "stage" => "st_verify"
+        "stage" => @verify
       })
 
       render_hook(view, "stage_resolve", %{"number" => n, "how" => "delete"})
@@ -593,12 +618,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-state", "Running")
 
-      v1 = version(1)
-
       WorkflowFake.put_work_item(work_item,
-        version: v1,
         status: %{
-          stage: %{"id" => "st_build", "name" => "Build"},
+          stage: %{"id" => @build, "name" => "Build"},
           round: 2,
           rounds: 3,
           state: :at_gate,
@@ -617,52 +639,47 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
-      v1 = version(1, @stages ++ [{"st_review", "Review"}])
-      v2 = version(2)
+      default = Processes.default_document("software")
+      review = %{hd(tl(default["stages"])) | "id" => @review, "name" => "Review"}
+      with_review = %{default | "stages" => default["stages"] ++ [review]}
+      v2 = save!(scope, with_review)
+      v3 = save!(scope, default)
 
-      WorkflowFake.put_workspace(scope.workspace,
-        current: v2,
-        versions: [v1, v2],
-        rows: [
-          %{
-            id: "wi_a",
-            number: 7,
-            title: "Add gift cards to checkout",
-            test: false,
-            process_version_id: "pv_1",
-            stage_id: "st_build",
-            stage_state: "running"
-          },
-          %{
-            id: "wi_b",
-            number: 8,
-            title: "Fix the basket total",
-            test: false,
-            process_version_id: "pv_1",
-            stage_id: "st_review",
-            stage_state: "at_gate"
-          }
-        ]
-      )
+      gift =
+        scope |> work_item_fixture(%{title: "Add gift cards to checkout"}) |> place!(v3, @build)
 
-      work_item_fixture(scope)
+      basket = scope |> work_item_fixture(%{title: "Fix the basket total"}) |> place!(v2, @review)
+      unplaced = work_item_fixture(scope, %{title: "Show the delivery date"})
+
       {:ok, view, _html} = live(conn, list(scope))
 
       refute has_element?(view, "#work-items-stages")
       assert has_element?(view, "#work-items-board-0-h", "Explore")
+
+      assert has_element?(
+               view,
+               "#work-items-board-0 #work-items-board-item-#{unplaced.public_id}"
+             )
+
       assert has_element?(view, "#work-items-board-4-h", "Release")
-      assert has_element?(view, "#work-items-board-2 #work-items-board-item-wi_a", "#7")
+
+      assert has_element?(
+               view,
+               "#work-items-board-2 #work-items-board-item-#{gift.public_id}",
+               "##{gift.number}"
+             )
+
       assert has_element?(view, "#work-items-board-5-h", "Review")
 
       assert has_element?(
                view,
                "#work-items-board-5-removed",
-               "From version 1; the current version removed this stage."
+               "From version 2; the current version removed this stage."
              )
 
       assert has_element?(
                view,
-               ~s|#work-items-board-item-wi_b a[href="#{page(scope, 8)}"]|
+               ~s|#work-items-board-5 #work-items-board-item-#{basket.public_id} a[href="#{page(scope, basket.number)}"]|
              )
 
       {:ok, view, _html} = live(conn, list(scope) <> "?q=gift")
