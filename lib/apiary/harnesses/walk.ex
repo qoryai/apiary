@@ -1032,9 +1032,6 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
-  defp public_read(location, parts, at),
-    do: PublicGit.read(location.resource_ref, at, Enum.join(location.prefix ++ parts, "/"))
-
   defp read(location, parts, at) do
     path = Enum.join(location.prefix ++ parts, "/")
 
@@ -1051,6 +1048,9 @@ defmodule Apiary.Harnesses.Walk do
       {:error, %CallFailure{} = failure} -> call_failed(failure, location, at)
     end
   end
+
+  defp public_read(location, parts, at),
+    do: PublicGit.read(location.resource_ref, at, Enum.join(location.prefix ++ parts, "/"))
 
   ## Calls and time
 
