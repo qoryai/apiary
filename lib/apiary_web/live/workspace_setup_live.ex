@@ -39,17 +39,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     workspace, of how many, or All, and Choose, which opens the chooser
   #     (`ApiaryWeb.ChooseCollectionsLive`). An adapter connected with no grant yet shows
   #     Connected, and one whose connection is pending Connecting…. For a person whom
-  #     `adapter.connect` allows, while an adapter is not connected, Connect a source, or
-  #     Connect a destination, "Connect another …" once the step has a card or a Connected
-  #     line, opens the step's Connect page, `/:org/:workspace/set-up/<step>/connect`
-  #     (`:connect`): the instance's configured adapters that serve the type
-  #     (`Apiary.Adapters.list_configured/1`) and that the organisation has not connected,
-  #     each Connecting… while its connection is pending, with Connect, the Install of
-  #     Organisation settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`),
-  #     whose return leads back to the step (`ApiaryWeb.ConnectSession.back?/1`). In its
-  #     context column, for each adapter whose Connect can be pressed and whose guide has
-  #     steps for connecting it (`Apiary.Adapters.guide/2`), those steps. Its breadcrumb is
-  #     the step, a link to it, then the page, and its Back leads to the step. Skip while
+  #     `adapter.connect` allows, the list of adapters to connect: the instance's
+  #     configured adapters that serve the type (`Apiary.Adapters.list_configured/1`) and
+  #     that the organisation has not connected, each Connecting… while its connection is
+  #     pending, with Connect, the Install of Organisation settings › Integrations
+  #     (`ApiaryWeb.IntegrationComponents.install_form/1`), whose return leads back to the
+  #     step (`ApiaryWeb.ConnectSession.back?/1`). The step shows the list while it has no
+  #     card and no Connected line; after that, "Connect another source", or "Connect
+  #     another destination", opens the step's Connect page,
+  #     `/:org/:workspace/set-up/<step>/connect` (`:connect`), with the list, or "Every
+  #     system is connected." In the context column beside a list, what Connect does, and
+  #     for each adapter whose Connect can be pressed and whose guide has steps for
+  #     connecting it (`Apiary.Adapters.guide/2`), those steps. The Connect page's
+  #     breadcrumb is the step, a link to it, then the page, and its Back leads to the step. Skip while
   #     the step is not done, else Continue. A person whom `adapter.connect` does not allow
   #     sees no Connect, and who may connect (`ApiaryWeb.Access.who_may/3`); a person whom
   #     `collection.assign` does not allow sees who may. The page listens to the
@@ -421,12 +423,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       may: Access.can?(scope, :"collection.assign", scope.organisation),
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
-      who_connects:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"adapter.connect",
-          gettext("Only owners and admins change the integrations of the organisation.")
-        ),
+      who_connects: IntegrationComponents.who_connects(scope, step),
       sending: nil,
       done: step_done?(flow, step)
     )
@@ -1787,7 +1784,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # Connect of Work sources or Destinations, a page of the step: the configured adapters
   # the organisation has not connected, each with its state and Connect, whose install
-  # returns to the step; Back leads to the step.
+  # returns to the step, or "Every system is connected."; Back leads to the step.
   defp flow_step(%{sub: :connect} = assigns) do
     assigns =
       assign(assigns,
@@ -1804,18 +1801,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {connect_label(@step, has_connection?(assigns))}
       </SetUpComponents.heading>
 
-      <ul :if={@unconnected != []} id="set-up-adapters" class="grid gap-3">
-        <.adapter_row
-          :for={adapter <- @unconnected}
-          adapter={adapter}
-          connecting={MapSet.member?(@connecting, adapter.id)}
-          may_connect={@may_connect}
-          current_scope={@current_scope}
-          back={@back}
-          ready={adapter.id in @ready}
-          sending={@sending == adapter.public_id}
-        />
-      </ul>
+      <.adapter_list
+        :if={@unconnected != []}
+        unconnected={@unconnected}
+        connecting={@connecting}
+        may_connect={@may_connect}
+        current_scope={@current_scope}
+        back={@back}
+        ready={@ready}
+        sending={@sending}
+      />
+
+      <p :if={@adapters != [] and @unconnected == []} id="set-up-all-connected">
+        {gettext("Every system is connected.")}
+      </p>
 
       <.no_adapter :if={@adapters == []} step={@step} />
 
@@ -1831,33 +1830,29 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <SetUpComponents.back steps={@steps} page={@page_path} up={@up} />
       </div>
 
-      <:context :if={
-        guides(@unconnected, @ready) != [] or Enum.any?(@unconnected, &(&1.id in @ready))
-      }>
-        <p :for={adapter <- @unconnected} :if={adapter.id in @ready}>
-          {gettext(
-            "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps.",
-            adapter: Adapters.title(adapter)
-          )}
-        </p>
-        <SetUpComponents.outside
-          :for={{adapter, guide} <- guides(@unconnected, @ready)}
-          id={"set-up-help-#{adapter.public_id}"}
-          title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
-          guide={guide}
-        />
+      <:context :if={Enum.any?(@unconnected, &(&1.id in @ready))}>
+        <.connect_help unconnected={@unconnected} ready={@ready} />
       </:context>
     </SetUpComponents.frame>
     """
   end
 
   # The step Work sources or Destinations: the grants' cards, the adapters connected with
-  # no grant yet, and those whose connection is pending; Connect, which opens the step's
-  # Connect page, for a person `adapter.connect` allows while an adapter is not connected.
+  # no grant yet, and those whose connection is pending. For a person `adapter.connect`
+  # allows: with nothing connected, the adapters to connect; after that, Connect another
+  # to the step's Connect page while an adapter is not connected.
   defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
+    connected = has_connection?(assigns)
+
     assigns =
       assign(assigns,
-        pending: for(a <- assigns.unconnected, MapSet.member?(assigns.connecting, a.id), do: a),
+        connected: connected,
+        back: "set-up:#{step}:workspace=#{assigns.flow.workspace.public_id}",
+        pending:
+          if(connected,
+            do: for(a <- assigns.unconnected, MapSet.member?(assigns.connecting, a.id), do: a),
+            else: []
+          ),
         connect_path: SetUpComponents.flow_path(assigns.flow, step) <> "/connect"
       )
 
@@ -1900,14 +1895,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         />
       </ul>
 
+      <.adapter_list
+        :if={!@connected and @may_connect and @unconnected != []}
+        unconnected={@unconnected}
+        connecting={@connecting}
+        may_connect={@may_connect}
+        current_scope={@current_scope}
+        back={@back}
+        ready={@ready}
+        sending={@sending}
+      />
+
       <.button
-        :if={@may_connect and @unconnected != []}
+        :if={@connected and @may_connect and @unconnected != []}
         id="set-up-connect"
         size="sm"
         class="w-fit"
         patch={@connect_path}
       >
-        {connect_label(@step, has_connection?(assigns))}
+        {connect_label(@step, true)}
       </.button>
 
       <p
@@ -1939,10 +1945,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context :if={@step == :sources}>
-        <p id="set-up-what">
-          {pgettext("plain", "Bring tickets in from a system this instance has set up.")}
+      <:context>
+        <p :if={@step == :sources} id="set-up-what">
+          {pgettext(
+            "plain",
+            "Bring tickets in from a system such as an issue tracker. Owners and admins of %{organisation} connect it once for the organisation.",
+            organisation: @flow.organisation.name
+          )}
         </p>
+        <p :if={@step == :destinations} id="set-up-what">
+          {gettext(
+            "Runs change targets in a system such as a ticket tracker or a document store. Owners and admins of %{organisation} connect it once for the organisation.",
+            organisation: @flow.organisation.name
+          )}
+        </p>
+        <.connect_help
+          :if={!@connected and @may_connect and Enum.any?(@unconnected, &(&1.id in @ready))}
+          unconnected={@unconnected}
+          ready={@ready}
+        />
       </:context>
     </SetUpComponents.frame>
     """
@@ -2834,6 +2855,51 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide has
   # steps for connecting it, with them.
+  attr :unconnected, :list, required: true
+  attr :connecting, :any, required: true
+  attr :may_connect, :boolean, required: true
+  attr :current_scope, :any, required: true
+  attr :back, :string, required: true
+  attr :ready, :any, required: true
+  attr :sending, :any, required: true
+
+  # The adapters the organisation has not connected, each with its state and Connect.
+  defp adapter_list(assigns) do
+    ~H"""
+    <ul id="set-up-adapters" class="grid gap-3">
+      <.adapter_row
+        :for={adapter <- @unconnected}
+        adapter={adapter}
+        connecting={MapSet.member?(@connecting, adapter.id)}
+        may_connect={@may_connect}
+        current_scope={@current_scope}
+        back={@back}
+        ready={adapter.id in @ready}
+        sending={@sending == adapter.public_id}
+      />
+    </ul>
+    """
+  end
+
+  attr :unconnected, :list, required: true
+  attr :ready, :any, required: true
+
+  # What Connect does, once, then the guide of each adapter whose Connect can be pressed
+  # and whose guide has steps for connecting it (`Apiary.Adapters.guide/2`).
+  defp connect_help(assigns) do
+    ~H"""
+    <p id="set-up-connect-help">
+      {gettext("Connect opens the system in this tab. After its steps, it sends you back here.")}
+    </p>
+    <SetUpComponents.outside
+      :for={{adapter, guide} <- guides(@unconnected, @ready)}
+      id={"set-up-help-#{adapter.public_id}"}
+      title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
+      guide={guide}
+    />
+    """
+  end
+
   attr :adapter, :any, required: true
   attr :connecting, :boolean, required: true
   attr :may_connect, :boolean, required: true
