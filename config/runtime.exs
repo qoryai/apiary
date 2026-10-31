@@ -136,6 +136,15 @@ if config_env() != :test do
   config :apiary, :invitations_per_day_setting, System.get_env("INVITATIONS_PER_DAY")
 end
 
+# SUPPORT_ADDRESS is where "Contact support" leads on the pages and in the emails people
+# in an organisation read: an https address or an email address. `Apiary.SupportAddress.boot!/0`
+# checks it at boot and stops a boot it refuses. Set and not blank, it wins over the
+# address an instance admin saves in Instance settings › General; unset or blank, that
+# address applies, else "Contact support" shows as plain text. Not read under test.
+if config_env() != :test do
+  config :apiary, :support_address_setting, System.get_env("SUPPORT_ADDRESS")
+end
+
 # APIARY_ACCEPT_SIGNING_FINGERPRINT makes a new signing key the instance's on purpose: the
 # fingerprint the boot's key check names as the key's when APIARY_SIGNING_SECRET is not the
 # one the machines pinned. `Apiary.KeyCheck` records it at boot when it equals the current

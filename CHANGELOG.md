@@ -470,6 +470,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it. After an add, the page opens the **Overview** of what was added. A workspace's
   purge takes the workspace from every list.
 <!-- /feature -->
+- **Instance settings › General** has a **Support address** under Support: an https
+  address or an email address where “Contact support” leads for people in an
+  organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
+  and Configuration then show it read only. With none, “Contact support” is plain text.
 
 ### Changed
 
@@ -710,6 +714,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   by a scan that blocks no write, and a unique index `nodes_diagnostics_index` for kind
   `diagnostics`, built inside the migration, so writes to `nodes` wait until the build
   ends. They change no row.
+- `instance_settings`: a nullable column `support_address`, with a check on its length.
+  It changes no row.
 
 ## [0.1.0] - 2026-10-13
 

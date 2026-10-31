@@ -730,6 +730,28 @@ Leave it unset for 20 a day, or set it, for example:
 INVITATIONS_PER_DAY=50
 ```
 
+### Support address
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `SUPPORT_ADDRESS` | none | Where “Contact support” leads for people in an organisation: an https address, such as `https://help.example.com`, or an email address, such as `support@example.com`. Not set, or empty, is the address saved in **Instance settings › General**, else none. |
+
+An instance admin sets the address in **Instance settings › General**, under Support, and
+it applies at once. Every “Contact support” on the pages and in the emails people in an
+organisation read then links to it: an email address opens their mail program. With no
+address, “Contact support” shows as plain text, with no link and no address beside it. With
+`SUPPORT_ADDRESS` set, the variable wins, and General and **Instance settings ›
+Configuration** show it read only. Each change on General is an entry in the activity of
+the instance's organisation.
+
+A value of `SUPPORT_ADDRESS` it does not accept stops the boot:
+
+```text
+Set SUPPORT_ADDRESS to an https address or an email address, or leave it unset: it is neither an https address nor an email address. For example:
+SUPPORT_ADDRESS=https://help.example.com
+SUPPORT_ADDRESS=support@example.com
+```
+
 ### Deletion
 
 | Variable | Required or default | Meaning and accepted values |

@@ -123,6 +123,11 @@ msgstr ""
 msgid "Enter an email address, such as dana@example.com."
 msgstr ""
 
+#: lib/apiary/support_address.ex
+#, elixir-autogen, elixir-format
+msgid "Enter an https address, such as https://help.example.com, or an email address, such as support@example.com."
+msgstr ""
+
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Enter another host. Runs may not reach %{host}: it is in %{range}."

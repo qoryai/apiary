@@ -59,6 +59,9 @@ defmodule Apiary.Application do
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
+    # A SUPPORT_ADDRESS that is neither an https address nor an email address stops the
+    # boot too.
+    Apiary.SupportAddress.boot!()
     # A malformed QORY_SETUP_CODE_SHA256 stops the boot too.
     Apiary.Setup.preset!()
     Apiary.Dispatches.MachineLogs.boot!()
@@ -131,6 +134,7 @@ defmodule Apiary.Application do
       mail_cache() ++
       instance_config_cache() ++
       product_name_cache() ++
+      support_address_cache() ++
       [
         # The job queue, after the migrator so its tables exist when it
         # starts. `Apiary.Job` is what every job runs inside.
@@ -228,6 +232,13 @@ defmodule Apiary.Application do
   # where `Apiary.ProductName` reads it from each test's sandbox.
   defp product_name_cache do
     if Apiary.ProductName.Cache.enabled?(), do: [Apiary.ProductName.Cache], else: []
+  end
+
+  # The node's copy of the support address an instance admin saved, after the migrator so
+  # its column exists, and before anything that shows a page or sends an email. Off in
+  # test, where `Apiary.SupportAddress` reads it from each test's sandbox.
+  defp support_address_cache do
+    if Apiary.SupportAddress.Cache.enabled?(), do: [Apiary.SupportAddress.Cache], else: []
   end
 
   # The lost-run check, after the migrator so it never reads a schema it does not know.

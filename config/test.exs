@@ -55,6 +55,10 @@ config :apiary, Apiary.ProductName.Cache, enabled: false
 # (`Apiary.InstanceConfig`): each test reads them inside the test's database sandbox.
 config :apiary, Apiary.InstanceConfig.Cache, enabled: false
 
+# Nor of the support address an instance admin saves (`Apiary.SupportAddress`): each test
+# reads it inside the test's database sandbox.
+config :apiary, Apiary.SupportAddress.Cache, enabled: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

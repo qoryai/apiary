@@ -4456,6 +4456,11 @@ msgstr ""
 msgid "An allow rule on this target still holds here."
 msgstr "An allow rule on this repository still holds here."
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "An email address"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -5363,6 +5368,11 @@ msgstr ""
 msgid "Changed how long runs are kept"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Changed in %{page}"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the default machine type from %{from} to %{to}."
@@ -6110,6 +6120,21 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Connections inline"
+msgstr ""
+
+#: lib/apiary_web/components/support.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support"
+msgstr ""
+
+#: lib/apiary_web/components/support.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support at %{address}."
+msgstr ""
+
+#: lib/apiary_web/components/support.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -8373,6 +8398,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -9049,6 +9075,7 @@ msgid "Instance settings"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Instance settings › %{page}"
 msgstr ""
@@ -11699,7 +11726,9 @@ msgstr ""
 msgid "Nodes use this gateway: %{nodes}. Runs are going through it: %{runs}. Delete it once the nodes point elsewhere and the runs end."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/member_live/index.ex
@@ -15057,6 +15086,11 @@ msgstr ""
 msgid "Saved the mail settings and started a test send"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved the support address"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
@@ -16154,6 +16188,28 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Superseded"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Support"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Support address"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Support address saved"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Support address saved."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -17370,7 +17426,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/general.ex
 #, elixir-autogen, elixir-format
-msgid "The name this instance shows on its pages and in its email."
+msgid "The name this instance shows on its pages and in its email, and where “Contact support” leads."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -19527,6 +19583,21 @@ msgstr ""
 msgid "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Where “Contact support” leads on the pages and in the emails people in an organisation read."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Where “Contact support” leads on the pages and in the emails people in an organisation read. With none, “Contact support” shows as plain text."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Where “Contact support” leads on the pages and in the emails people in an organisation read: an https address or an email address. Empty: “Contact support” shows as plain text, without a link."
+msgstr ""
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Which harness do runs in %{workspace} use?"
@@ -20785,6 +20856,11 @@ msgstr "collection"
 msgctxt "source collection, when its adapter names none"
 msgid "collections"
 msgstr "collections"
+
+#: lib/apiary_web/components/support.ex
+#, elixir-autogen, elixir-format
+msgid "contact support"
+msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
