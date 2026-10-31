@@ -63,7 +63,7 @@ defmodule Apiary.Stages do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
-  alias Apiary.Stages.{Artifacts, Check, Declared, Escalation, GateDecision, Runner}
+  alias Apiary.Stages.{Artifacts, Check, Declared, Escalation, GateDecision, Runner, StopCause}
   alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
 
   # Transition (D1): the workflow whose runs return today's explore v1 result.
@@ -178,10 +178,12 @@ defmodule Apiary.Stages do
   # item's stage, the stage is running, and what the run gave is known. The work items to
   # tell once the transaction commits (`Apiary.Dispatches.broadcast/1`).
   @doc false
-  @spec run_ended(DispatchRun.t() | Ecto.UUID.t()) :: [Apiary.Dispatches.Settle.told()]
-  def run_ended(%DispatchRun{id: id}), do: run_ended(id)
+  @spec run_ended(DispatchRun.t() | Ecto.UUID.t(), StopCause.context()) ::
+          [Apiary.Dispatches.Settle.told()]
+  def run_ended(run, context \\ %{})
+  def run_ended(%DispatchRun{id: id}, context), do: run_ended(id, context)
 
-  def run_ended(id) when is_binary(id) do
+  def run_ended(id, context) when is_binary(id) do
     in_transaction!()
 
     with %DispatchRun{state: :ended, step: "explore", work_item_id: work_item_id} = run
@@ -189,7 +191,7 @@ defmodule Apiary.Stages do
          %WorkItem{} = work_item <- lock!(work_item_id),
          true <- current_run?(work_item, run),
          {:ok, version, stage} <- placed(work_item),
-         {:ok, result} <- run_result(work_item, run) do
+         {:ok, result} <- run_result(work_item, run, context) do
       {work_item, _run} = apply_event(work_item, version, stage, {:run, result}, run.id)
       told(work_item)
     else
@@ -202,15 +204,15 @@ defmodule Apiary.Stages do
   # locks its work item, then the run (`run_ended/1`). A failure is logged, and the run's
   # work item stays as it was. The work items to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
-  @spec claim_ended([Ecto.UUID.t()]) :: [Apiary.Dispatches.Settle.told()]
-  def claim_ended(dispatch_run_ids) when is_list(dispatch_run_ids),
-    do: Enum.flat_map(dispatch_run_ids, &claim_ended_one/1)
+  @spec claim_ended([Ecto.UUID.t()], StopCause.context()) :: [Apiary.Dispatches.Settle.told()]
+  def claim_ended(dispatch_run_ids, context \\ %{}) when is_list(dispatch_run_ids),
+    do: Enum.flat_map(dispatch_run_ids, &claim_ended_one(&1, context))
 
-  defp claim_ended_one(id) do
+  defp claim_ended_one(id, context) do
     {:ok, told} =
       Repo.transact(fn ->
         :ok = hold_work_item(id)
-        {:ok, run_ended(id)}
+        {:ok, run_ended(id, context)}
       end)
 
     told
@@ -981,26 +983,28 @@ defmodule Apiary.Stages do
 
   # What the run gave, as the runner reads it; `:unsettled` while a run ended by its exit
   # has nothing stored yet.
-  defp run_result(_work_item, %DispatchRun{end_cause: :run_ended, result_outcome: nil}),
+  defp run_result(_work_item, %DispatchRun{end_cause: :run_ended, result_outcome: nil}, _ctx),
     do: :unsettled
 
-  defp run_result(_work_item, %DispatchRun{end_cause: cause})
+  defp run_result(_work_item, %DispatchRun{end_cause: cause}, _context)
        when cause in [:closed, :undone, :released, :superseded],
        do: :ignored
 
-  defp run_result(work_item, %DispatchRun{workflow: workflow, step: "explore"} = run)
+  defp run_result(work_item, %DispatchRun{workflow: workflow, step: "explore"} = run, context)
        when workflow in [nil, @explore_workflow],
-       do: {:ok, explore_result(work_item, run)}
+       do: {:ok, explore_result(work_item, run, context)}
 
-  defp run_result(work_item, %DispatchRun{end_cause: :run_ended} = run),
+  defp run_result(work_item, %DispatchRun{end_cause: :run_ended} = run, _context),
     do: {:ok, reported_result(work_item, run)}
 
-  defp run_result(_work_item, run), do: {:ok, {:stopped, stop_cause(run)}}
+  defp run_result(work_item, run, context),
+    do: {:ok, {:stopped, stop_cause(run, work_item, context)}}
 
   # D1: today's explore v1 result as artifacts.
   defp explore_result(
          work_item,
-         %DispatchRun{end_cause: :run_ended, result_outcome: :proposal} = run
+         %DispatchRun{end_cause: :run_ended, result_outcome: :proposal} = run,
+         _context
        )
        when is_map(run.result) do
     with {:ok, _proposal} <-
@@ -1019,7 +1023,8 @@ defmodule Apiary.Stages do
 
   defp explore_result(
          work_item,
-         %DispatchRun{end_cause: :run_ended, result_outcome: :questions} = run
+         %DispatchRun{end_cause: :run_ended, result_outcome: :questions} = run,
+         _context
        )
        when is_map(run.result) do
     document = Map.take(run.result, ["questions", "understanding", "knowledge"])
@@ -1032,7 +1037,8 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp explore_result(_work_item, run), do: {:stopped, stop_cause(run)}
+  defp explore_result(work_item, run, context),
+    do: {:stopped, stop_cause(run, work_item, context)}
 
   # A workflow that reports with artifacts: its questions, else its newest verdict; a run
   # whose registered run failed or was lost stopped.
@@ -1058,7 +1064,7 @@ defmodule Apiary.Stages do
         {:verdict, verdict(document["verdict"]), document["gaps"]}
 
       match?(%Run{exit_state: state} when state in ["failed", "lost", "cancelled"], registered) ->
-        {:stopped, stop_cause(run)}
+        {:stopped, stop_cause(run, work_item)}
 
       true ->
         {:verdict, nil, nil}
@@ -1072,48 +1078,10 @@ defmodule Apiary.Stages do
 
   # Why a run ended before it started, by its end cause (`Apiary.Dispatches.DispatchRun`),
   # the end of the sentence `stop_cause/1` shows.
-  @unstarted %{
-    build_failed: "the build of the environment for the work item's target failed.",
-    harness_unresolved: "the harness for the run could not be resolved.",
-    variables_invalid: "one of its variables breaks a variable rule in the workspace's settings.",
-    ticket_gone: "the work item's ticket is no longer in Qory Apiary.",
-    inputs_invalid:
-      "a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit.",
-    provider_gone:
-      "the model provider of its model choice is gone, or no longer applies to the workspace.",
-    runtime_unserved: "the chosen model provider no longer serves the chosen runtime.",
-    key_gone: "the chosen model provider no longer has the chosen key.",
-    model_gone:
-      "the model provider has no model for the run, or no longer offers the chosen effort.",
-    secrets_not_allowed: "its gateway is not allowed to receive the run's secrets.",
-    target_access_gone:
-      "the integration that brings in the work item's target no longer reaches it."
-  }
-
-  # stop_cause/1 is the cause shown for a run that stopped.
+  # stop_cause/3 is why `run` stopped, as an escalation shows it (`StopCause.text/3`).
   @doc false
-  @spec stop_cause(DispatchRun.t()) :: String.t()
-  def stop_cause(%DispatchRun{end_cause: :run_ended, result_outcome: :refused}),
-    do: "The run's result does not match the explore result schema."
-
-  def stop_cause(%DispatchRun{end_cause: :run_ended, result_outcome: :error}),
-    do: "The run ended with an error."
-
-  def stop_cause(%DispatchRun{end_cause: :run_ended}), do: "The run ended without a result."
-
-  def stop_cause(%DispatchRun{end_cause: :lost}),
-    do: "The run stopped reporting and was marked lost."
-
-  def stop_cause(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}),
-    do: "The gateway did not start the run, because it had no model key for the run."
-
-  def stop_cause(%DispatchRun{end_cause: :run_refused}), do: "The gateway did not start the run."
-
-  def stop_cause(%DispatchRun{end_cause: cause}) when is_map_key(@unstarted, cause),
-    do: "The run did not start, because " <> Map.fetch!(@unstarted, cause)
-
-  def stop_cause(%DispatchRun{end_cause: cause}),
-    do: "The run ended before it started (end cause #{cause})."
+  @spec stop_cause(DispatchRun.t(), WorkItem.t(), StopCause.context()) :: String.t()
+  def stop_cause(run, work_item, context \\ %{}), do: StopCause.text(run, work_item, context)
 
   # proposal_document/1 is the `proposal` artifact of an explore v1 result.
   @doc false
@@ -1348,9 +1316,17 @@ defmodule Apiary.Stages do
       gaps: escalation.gaps,
       round: escalation.round,
       run: run && %{id: run.id, attempt: run.attempt, workflow: run.workflow},
+      build_run: build_run(run, escalation),
       inserted_at: escalation.inserted_at
     }
   end
+
+  # For a run that stopped because its environment's build failed, the public id of the
+  # run whose page has the build's log (`StopCause.build_run/1`); nil otherwise.
+  defp build_run(%DispatchRun{end_cause: :build_failed}, %Escalation{work_item_id: id}),
+    do: StopCause.build_run(Repo.get!(WorkItem, id))
+
+  defp build_run(_run, _escalation), do: nil
 
   ## Outputs, inputs and approvals
 

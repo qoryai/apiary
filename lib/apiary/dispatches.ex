@@ -825,18 +825,20 @@ defmodule Apiary.Dispatches do
 
           case take(key, pool, through, now) do
             {:error, :unavailable} = error -> error
-            {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended}}
+            {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended, through}}
           end
         end
       end)
 
     case result do
-      {:ok, {taken, freed}} ->
+      {:ok, {taken, freed, through}} ->
         # Hand-over: with the workflow model, the stage runner acts on the end of each run
         # the claim ended, once the claim commits, in a transaction of its own that locks
-        # the work item before the run (`Apiary.Stages.claim_ended/1`).
+        # the work item before the run, with the claim's gateway and its keys, which its
+        # text of why a run stopped reads (`Apiary.Stages.claim_ended/2`).
         {staged, freed} = Enum.split_with(freed, &match?({:stage_run, _id}, &1))
-        broadcast(freed ++ Apiary.Stages.claim_ended(Enum.map(staged, &elem(&1, 1))))
+        ids = Enum.map(staged, &elem(&1, 1))
+        broadcast(freed ++ Apiary.Stages.claim_ended(ids, Map.take(through, [:gateway, :keys])))
         Handover.broadcast_run({:ok, %{run: registered(taken)}})
         {:ok, taken}
 
