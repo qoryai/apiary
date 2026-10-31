@@ -1920,13 +1920,6 @@ msgid_plural "%{number} runs"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} run alive"
-msgid_plural "%{number} runs alive"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} run alive now"
@@ -1945,6 +1938,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} run in a workspace you don't have access to"
 msgid_plural "%{number} runs in workspaces you don't have access to"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run in progress"
+msgid_plural "%{number} runs in progress"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2233,11 +2233,6 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work source connected yet."
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} may have no more workspaces."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -10951,11 +10946,6 @@ msgstr ""
 msgid "No rules yet"
 msgstr ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "No run alive"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "No run has reached out in the last 14 days."
@@ -10974,6 +10964,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No run in 90 days"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "No run in progress"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -12960,6 +12955,11 @@ msgstr ""
 msgid "Qory Apiary"
 msgstr ""
 
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary Community allows one workspace per organisation, and %{organisation} has it."
+msgstr ""
+
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary allows these hosts for every run. Host rules do not remove them."
@@ -14332,14 +14332,14 @@ msgstr ""
 msgid "Runs a page"
 msgstr ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "Runs and denied attempts in the last 14 days"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs and denied attempts per day"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs and denied network connections in the last 14 days"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -14416,6 +14416,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs per day"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs per day in the last 14 days"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

@@ -748,7 +748,7 @@ defmodule ApiaryWeb.SetUpComponents do
   card. A card's title is one heading level below `heading`. The empty
   organisation overview (`ApiaryWeb.OrganisationLive`) and New workspace
   (`/:org/workspaces/new`) show it, and each takes the event with `choose_kind/3`. With
-  `limit`, that line shows in place of the cards.
+  `limit`, that line shows in an information notice in place of the cards.
   """
   attr :id, :string, default: "set-up-cards"
   attr :title, :string, required: true
@@ -779,7 +779,7 @@ defmodule ApiaryWeb.SetUpComponents do
       >
         {@title}
       </.dynamic_tag>
-      <.notice :if={@limit} kind={:error}>
+      <.notice :if={@limit} kind={:info}>
         <span id="set-up-limit">{@limit}</span>
       </.notice>
       <ul
@@ -835,7 +835,8 @@ defmodule ApiaryWeb.SetUpComponents do
   organisation overview), and opens its first set-up step, Name. A type with no card
   changes nothing. Where someone else created the organisation's first workspace a moment
   before, or the person may no longer create one, the organisation's overview opens
-  again; where the organisation may have no more, the page says so.
+  again; where the organisation may have no more, the page says why in an information
+  notice (`limit_line/1`), not an error.
   """
   @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
           Phoenix.LiveView.Socket.t()
@@ -855,7 +856,8 @@ defmodule ApiaryWeb.SetUpComponents do
             )
 
           {:error, :limit} ->
-            Phoenix.LiveView.put_flash(socket, :error, limit_line(organisation))
+            # Reaching the edition's limit is no error: the line says why, as information.
+            Phoenix.LiveView.put_flash(socket, :info, limit_line(organisation))
 
           {:error, reason} when reason in [:exists, :forbidden, :not_found] ->
             Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
@@ -866,10 +868,13 @@ defmodule ApiaryWeb.SetUpComponents do
     end
   end
 
-  @doc "limit_line/1 is the line of an organisation that may have no more workspaces."
+  @doc """
+  limit_line/1 is the line of an organisation that has as many workspaces as the edition
+  allows, the edition's (`c:Apiary.Edition.workspace_limit_line/1`).
+  """
   @spec limit_line(%Organisation{}) :: String.t()
-  def limit_line(%Organisation{name: name}),
-    do: gettext("%{organisation} may have no more workspaces.", organisation: name)
+  def limit_line(%Organisation{} = organisation),
+    do: Apiary.Edition.workspace_limit_line(organisation)
 
   attr :id, :string, required: true
   attr :title, :string, required: true, doc: "where the steps happen, such as \"On GitHub\""

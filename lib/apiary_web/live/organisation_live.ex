@@ -127,7 +127,7 @@ defmodule ApiaryWeb.OrganisationLive do
             <div class="q-band">
               <h2 id="workspaces-title">{gettext("Workspaces")}</h2>
               <span class="q-band-hint">
-                {gettext("Runs and denied attempts in the last 14 days")}
+                {gettext("Runs and denied network connections in the last 14 days")}
               </span>
             </div>
             <ul id="workspaces" class="q-rows">
@@ -254,9 +254,10 @@ defmodule ApiaryWeb.OrganisationLive do
 
   # A workspace, one line: its name (the title), how many targets and its policy's mode in
   # faint words, how many steps of its set-up are done while it is not finished, how many
-  # runs are alive (pending or running), its runs a day with their count, its denied
-  # attempts and its last run. The band's hint shows that the run and denied counts are
-  # of 14 days.
+  # runs are in progress (pending or running), its runs a day where one started in the 14
+  # days, the count of its runs, its denied network connections and when its last run
+  # started. The band's hint shows that the run and denied counts are of 14 days. A
+  # workspace that never had a run shows "No run yet" alone.
   defp workspace_row(assigns) do
     ~H"""
     <.link
@@ -278,19 +279,32 @@ defmodule ApiaryWeb.OrganisationLive do
         <span :if={@facts}>{workspace_note(@facts, @mode)}</span>
       </span>
       <%= if @facts do %>
-        <span class={["q-wr-al", @facts.alive == 0 && "q-none-alive"]}>
+        <%!-- A workspace with no run ever has "No run yet" alone, in the last column. --%>
+        <span :if={!@facts.last_at}></span>
+        <span
+          :if={@facts.last_at}
+          class={["q-wr-al", @facts.alive == 0 && "q-none-alive"]}
+        >
           {if @facts.alive == 0,
-            do: gettext("No run alive"),
+            do: gettext("No run in progress"),
             else:
-              ngettext("%{number} run alive", "%{number} runs alive", @facts.alive,
+              ngettext("%{number} run in progress", "%{number} runs in progress", @facts.alive,
                 number: Format.number(@facts.alive)
               )}
         </span>
         <span class="q-wr-sp">
-          <.sparkline values={@facts.days} />
-          {ngettext("%{number} run", "%{number} runs", @facts.runs,
-            number: Format.number(@facts.runs)
-          )}
+          <%!-- The days' shape only where a run started in the 14 days: a flat line shows
+               nothing. --%>
+          <.sparkline
+            :if={@facts.runs > 0}
+            values={@facts.days}
+            label={gettext("Runs per day in the last 14 days")}
+          />
+          <span :if={@facts.last_at}>
+            {ngettext("%{number} run", "%{number} runs", @facts.runs,
+              number: Format.number(@facts.runs)
+            )}
+          </span>
         </span>
         <span class="q-wr-den">
           <span :if={@facts.denied > 0} class="inline-flex items-center gap-1">

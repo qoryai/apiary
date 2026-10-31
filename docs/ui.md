@@ -778,9 +778,13 @@ what needs the reader, then what their agents did, and never grows with the data
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
 settings, which the sidebar's foot, Organisation settings, leads to on the same page. A
-workspace's line shows how many of its runs are alive ("No run alive", "2 runs alive"),
-and the band's hint, "Runs and denied attempts in the last 14 days", covers the run and
-denied counts.
+workspace's line shows how many of its runs are in progress, pending or running ("No run
+in progress", "2 runs in progress"), the runs per day as small bars, named "Runs per day
+in the last 14 days", the count of runs, the denied network connections, and when its
+last run started; the band's hint, "Runs and denied network connections in the last 14
+days", covers the run and denied counts. Each figure shows once: a workspace that never
+had a run shows "No run yet" alone, and one whose runs all started before the 14 days
+shows "0 runs" and its last run, with no bars.
 
 ## Targets
 
@@ -1209,7 +1213,11 @@ mark and the theme menu.
   20rem wide, or the column's width where the column is narrower, and a further card
   wraps to the next line. **Choose** creates the workspace, named after the type ("Software factory", then "Software factory 2"), and
   opens its step Name. A person who may not create the first workspace sees "An owner of
-  Acme creates the first workspace." in place of the cards. The cards show no indicator:
+  Acme creates the first workspace." in place of the cards. Where the organisation has as
+  many workspaces as the edition allows, New workspace is headed "New workspace", with no
+  question, and shows the edition's line in an information notice in place of the cards:
+  "Qory Apiary Community allows one workspace per organisation, and Acme has it." The
+  cards show no indicator:
   the count starts at the step Name, in the sidebar's group Set up.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a

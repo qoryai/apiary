@@ -404,20 +404,31 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   end
 
   describe "New workspace" do
-    test "says the organisation may have no more workspaces, where the edition allows one",
+    test "says why the organisation may have no more workspaces, where the edition allows one",
          %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       conn = log_in_user(conn, user)
+      # The line's "one" is the limit Qory Apiary Community has.
+      assert Apiary.Edition.Core.limits().workspaces == 1
 
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
+      line =
+        "Qory Apiary Community allows one workspace per organisation, and #{organisation.name} has it."
 
-      assert has_element?(lv, "h1", "What will this workspace do?")
-      assert words(lv, "#set-up-limit") == "#{organisation.name} may have no more workspaces."
+      {:ok, lv, html} = live(conn, ~p"/#{organisation}/workspaces/new")
+
+      # No question at the limit, and the line is information, not an error.
+      assert html =~ ~r{<title[^>]*>\s*New workspace}
+      assert has_element?(lv, "h1#set-up-cards-title", "New workspace")
+      refute has_element?(lv, "h1", "What will this workspace do?")
+      assert words(lv, "#set-up-limit") == line
+      assert has_element?(lv, "[role=note] #set-up-limit")
+      refute has_element?(lv, ".bg-error-soft #set-up-limit")
       refute has_element?(lv, "#set-up-cards")
 
-      # A Choose sent all the same is refused, and says so.
+      # A Choose sent all the same is refused, and says so as information.
       render_click(lv, "choose_kind", %{"type" => "software"})
-      assert render(lv) =~ "#{organisation.name} may have no more workspaces."
+      assert render(lv) =~ line
+      refute has_element?(lv, "#flash-error")
 
       assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
                1

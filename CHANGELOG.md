@@ -125,14 +125,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An edition can change the set-up's steps and their notes, and, for a person who waits
   for the first workspace, the line on the organisation's overview, “An owner of Acme
   creates the first workspace.” in the core, through the callbacks `set_up_steps/2` and
-  `first_workspace_waiting_line/1` of `Apiary.Edition`. The core keeps its steps.
+  `first_workspace_waiting_line/1` of `Apiary.Edition`, and the line of New workspace
+  where the organisation has as many workspaces as the edition allows, through
+  `workspace_limit_line/1`. The core keeps its steps.
 - The kind cards show a card for each workspace type, with what you do in that kind of
   workspace, what you connect, and **Choose**. This release has one type, **Software
   factory**: “Agents change code in your repositories. You connect: where work comes
   from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
   adds a workspace where the edition allows another. Where the organisation has as many
-  workspaces as the edition allows, that page shows “Acme may have no more workspaces.”
-  in place of the cards. Only owners see the cards: anyone else reads who creates the
+  workspaces as the edition allows, that page is headed “New workspace” and shows, in an
+  information notice in place of the cards, “Qory Apiary Community allows one workspace
+  per organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates the
   first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
   workspace stores the type it was made from.
 <!-- feature: factory -->

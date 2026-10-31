@@ -180,6 +180,13 @@ defmodule Apiary.Edition do
   """
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 
+  @doc """
+  The line New workspace (`/:org/workspaces/new`) shows, in place of the kind cards, where
+  `organisation` has as many workspaces as `c:limits/0` allows, and the notice of a Choose
+  refused for that limit: why it may have no more. Translated when it is asked.
+  """
+  @callback workspace_limit_line(%Organisation{}) :: String.t()
+
   # The set-up's steps
 
   @doc """
@@ -784,6 +791,7 @@ defmodule Apiary.Edition do
     first_sign_up_line: 0,
     first_workspace_line: 1,
     first_workspace_waiting_line: 1,
+    workspace_limit_line: 1,
     set_up_steps: 2,
     set_up_title: 2,
     set_up_context: 2,

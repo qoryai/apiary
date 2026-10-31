@@ -12,8 +12,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # the workspace at once, named after its type, and opens its Name step
   # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The page is only for a person
   # `workspace.create` allows (`Apiary.Access`); where the organisation has as many
-  # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page shows that
-  # line in place of the cards.
+  # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page is headed
+  # "New workspace" and shows the edition's line on why
+  # (`c:Apiary.Edition.workspace_limit_line/1`) in an information notice, in place of the
+  # cards.
   #
   # **The flow.** A step is named by its id in the path (`Apiary.WorkspaceSetup.flow/0`);
   # a step the person does not see, or no step's id, is a path that does not exist. The
@@ -269,13 +271,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # of an organisation that has as many workspaces as the edition allows.
   defp assign_cards(socket) do
     scope = socket.assigns.current_scope
+    at_limit = at_limit?(scope)
 
     assign(socket,
       view: :cards,
       flow: nil,
       step: nil,
-      page_title: gettext("What will this workspace do?"),
-      limit: if(at_limit?(scope), do: SetUpComponents.limit_line(scope.organisation))
+      # At the limit the page asks no question: its title is New workspace, and the
+      # line says why the organisation may have no more.
+      page_title:
+        if(at_limit,
+          do: gettext("New workspace"),
+          else: gettext("What will this workspace do?")
+        ),
+      limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
   end
 
