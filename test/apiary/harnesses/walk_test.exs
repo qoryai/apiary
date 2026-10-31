@@ -1324,6 +1324,30 @@ defmodule Apiary.Harnesses.WalkTest do
              }
     end
 
+    test "a host that answers 429 fails rate_limited at once, with its host and port", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      PublicGitServer.serve(%{},
+        answer: fn conn ->
+          conn
+          |> Plug.Conn.put_resp_header("retry-after", "1")
+          |> Plug.Conn.send_resp(429, "")
+        end
+      )
+
+      # Retry-After is not read: the walk fails with no retry, after one request.
+      assert {:failed, %{failure: :rate_limited, source: @public, rule: rule}} =
+               Walk.run(ctx.input)
+
+      assert rule == %{
+               "rule" => "fetch",
+               "values" => %{"host" => "public.example.org", "port" => 443}
+             }
+
+      assert git_requests() == [{"GET", "public.example.org", "/qory/stack/info/refs"}]
+    end
+
     test "a host on a private address fails host_not_allowed, and gets no request", ctx do
       git = "https://private.example.org:8443/qory/stack"
 

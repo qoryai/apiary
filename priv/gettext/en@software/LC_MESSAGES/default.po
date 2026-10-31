@@ -5920,7 +5920,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or received no data within %{n} s."
+msgid "Contact support: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -18191,6 +18191,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Try again"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Try again later: %{host} limits how often Qory Apiary reads from it, and that limit is reached."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

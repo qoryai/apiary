@@ -1417,7 +1417,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"host" => "code.example.com", "port" => 8443, "seconds" => 10}
                }
              },
-             "Contact support: Qory Apiary could not connect to code.example.com on port 8443, or received no data within 10 s."},
+             "Contact support: Qory Apiary did not receive #{harness} from code.example.com on port 8443 within 10 s."},
+            {%{
+               code: "rate_limited",
+               source: harness,
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Try again later: code.example.com limits how often Qory Apiary reads from it, and that limit is reached."},
             {%{
                code: "host_not_allowed",
                source: harness,

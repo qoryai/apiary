@@ -842,8 +842,8 @@ defmodule ApiaryWeb.HarnessComponents do
   @doc false
   # public_read_words/2 is why a harness source was not read, for a code of a run's walk
   # that the source's host or the lack of a connection gives (`Apiary.Harnesses.Walk`):
-  # `:not_covered`, `:too_large`, `:source_unreachable`, `:host_not_allowed` or
-  # `:fetch_failed`; the fix, then the cause. `names`: `source`, the source as shown;
+  # `:not_covered`, `:too_large`, `:source_unreachable`, `:host_not_allowed`,
+  # `:rate_limited` or `:fetch_failed`; the fix, then the cause. `names`: `source`, the source as shown;
   # `organisation` and `workspace`, the names the read was for; and the `fetch` rule's
   # `host`, `port` and `seconds`. The run's page shows them too.
   @spec public_read_words(atom, map) :: String.t()
@@ -861,10 +861,18 @@ defmodule ApiaryWeb.HarnessComponents do
   def public_read_words(:source_unreachable, names),
     do:
       gettext(
-        "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or received no data within %{n} s.",
+        "Contact support: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s.",
+        source: names.source,
         host: names.host,
         port: names.port,
         n: names.seconds
+      )
+
+  def public_read_words(:rate_limited, names),
+    do:
+      gettext(
+        "Try again later: %{host} limits how often Qory Apiary reads from it, and that limit is reached.",
+        host: names.host
       )
 
   def public_read_words(:host_not_allowed, names),
@@ -1348,7 +1356,13 @@ defmodule ApiaryWeb.HarnessComponents do
   @spec refusal_words(term, map | nil, String.t() | nil, String.t(), String.t() | nil) ::
           String.t() | nil
   def refusal_words({:walk, %{failure: failure} = walk}, source, _ref, organisation, workspace)
-      when failure in [:too_large, :source_unreachable, :host_not_allowed, :fetch_failed],
+      when failure in [
+             :too_large,
+             :source_unreachable,
+             :host_not_allowed,
+             :rate_limited,
+             :fetch_failed
+           ],
       do:
         public_read_words(
           failure,

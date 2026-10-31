@@ -187,8 +187,8 @@ defmodule Apiary.Stacks.Sources do
       serves no such repository to anyone, or an adapter refused a read `grant_unknown`,
       `resource_not_covered` or `resource_not_public`, as for a run's walk;
     * `{:fetch, code, rule}`: a read of a public repository's host that failed, with a
-      run's walk's code, `:too_large`, `:source_unreachable`, `:host_not_allowed` or
-      `:fetch_failed`, and its `fetch` rule (`Apiary.Harnesses.Walk.fetch_rule/2`);
+      run's walk's code, `:too_large`, `:source_unreachable`, `:host_not_allowed`,
+      `:rate_limited` or `:fetch_failed`, and its `fetch` rule (`Apiary.Harnesses.Walk.fetch_rule/2`);
     * `:no_stack`: a root with no stack in a harness file's `exports` and no
       `qory-stack.yaml`;
     * `{:no_stack_file, file}`: no `file`, the `qory-stack.yaml` of a stack a root
@@ -214,7 +214,9 @@ defmodule Apiary.Stacks.Sources do
   """
   @type reason ::
           :not_covered
-          | {:fetch, :too_large | :source_unreachable | :host_not_allowed | :fetch_failed, map}
+          | {:fetch,
+             :too_large | :source_unreachable | :host_not_allowed | :rate_limited | :fetch_failed,
+             map}
           | :no_stack
           | {:no_stack_file, String.t()}
           | {:no_export, String.t()}
@@ -657,6 +659,9 @@ defmodule Apiary.Stacks.Sources do
 
   defp public_reason(:not_allowed, git, _at, _path),
     do: {:fetch, :host_not_allowed, Walk.fetch_rule(git, nil)}
+
+  defp public_reason(:rate_limited, git, _at, _path),
+    do: {:fetch, :rate_limited, Walk.fetch_rule(git, nil)}
 
   defp public_reason(:too_large, git, _at, _path),
     do: {:fetch, :too_large, Walk.fetch_rule(git, nil)}

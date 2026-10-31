@@ -517,6 +517,14 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert {:error, {:fetch, :fetch_failed, %{"values" => %{"host" => "code.example.com"}}}} =
                Sources.read(ctx.scope, source)
+
+      PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 429, "") end)
+      {:ok, source} = Sources.address(@public <> "/other")
+
+      assert Sources.read(ctx.scope, source) ==
+               {:error,
+                {:fetch, :rate_limited,
+                 %{"rule" => "fetch", "values" => %{"host" => "code.example.com", "port" => 443}}}}
     end
 
     test "a person reads sources at most 10 times a minute", ctx do

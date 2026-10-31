@@ -62,10 +62,11 @@ defmodule Apiary.Integrations.Fetch do
   Why `request/3` failed: `:not_allowed`, a host that is a refused name or resolves to an
   address that is not public, on any hop; `:unreachable`, a host that resolves to no
   address, no connection, no answer in time, or a `502`, `503` or `504`; `:too_large`, a
-  body over `max_bytes`; `:not_found`, a `401`, `403` or `404`; `:failed`, anything else,
-  such as another status, an address that is not https, or too many redirects.
+  body over `max_bytes`; `:not_found`, a `401`, `403` or `404`; `:rate_limited`, a `429`;
+  `:failed`, anything else, such as another status, an address that is not https, or too
+  many redirects.
   """
-  @type failure :: :not_allowed | :unreachable | :too_large | :not_found | :failed
+  @type failure :: :not_allowed | :unreachable | :too_large | :not_found | :rate_limited | :failed
 
   @typedoc "What `request/3` read: the body, the address of the last hop, and the `Content-Type`."
   @type answer :: %{body: binary, url: String.t(), content_type: String.t() | nil}
@@ -120,6 +121,7 @@ defmodule Apiary.Integrations.Fetch do
   defp failure(:timeout), do: :unreachable
   defp failure({:status, status}) when status in [502, 503, 504], do: :unreachable
   defp failure({:status, status}) when status in [401, 403, 404], do: :not_found
+  defp failure({:status, 429}), do: :rate_limited
   defp failure(:too_large), do: :too_large
   defp failure(_other), do: :failed
 

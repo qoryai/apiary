@@ -102,8 +102,9 @@ defmodule Apiary.Harnesses.Walk do
   #      `404`, a repository that is private or missing; else by why the read of rule 3
   #      failed: `host_not_allowed` for a host that resolves to an address that is not
   #      public, `source_unreachable` for one not reached in time, tried again as an
-  #      adapter that does not answer is, `too_large`, and `fetch_failed` for a host
-  #      that did not serve a git repository.
+  #      adapter that does not answer is, `rate_limited` for a host that answered `429`,
+  #      not tried again, `too_large`, and `fetch_failed` for a host that did not serve
+  #      a git repository.
   #
   # The run learns nothing of another organisation's grants; only a grant of the
   # instance's organisation shows, as `not_allowed`. A source with a full commit id and no
@@ -200,6 +201,7 @@ defmodule Apiary.Harnesses.Walk do
     :too_large,
     :source_unreachable,
     :host_not_allowed,
+    :rate_limited,
     :fetch_failed
   ]
 
@@ -234,7 +236,8 @@ defmodule Apiary.Harnesses.Walk do
   An `adapter_unavailable` or `source_unreachable` failure has no call failure, so a run
   records none, and has `call_cause`: `:timeout` or `:unreachable`, the call's cause, or
   `:late` for a walk out of time. A failed read of a public repository (`too_large`,
-  `source_unreachable`, `host_not_allowed` and `fetch_failed`) has the rule `fetch`,
+  `source_unreachable`, `host_not_allowed`, `rate_limited` and `fetch_failed`) has the
+  rule `fetch`,
   with its host, its port and, for `source_unreachable`, the seconds it had.
   """
   @type failure :: %{
@@ -1101,7 +1104,8 @@ defmodule Apiary.Harnesses.Walk do
   # A read of the public repository `git`, shown as `source`, that failed at `at`: a ref
   # the host does not list and a file that is not text break the walk's rules; a
   # repository its host serves to no one is not covered; a host not reached in time, or a
-  # walk out of time, is tried again; any other cause fails with the host and port.
+  # walk out of time, is tried again; a host's rate limit (`429`) and any other cause
+  # fail with the host and port.
   defp public_failed(:version_not_found, _git, source, at),
     do: fail(:invalid, source, rule("version", ref: at))
 
@@ -1118,6 +1122,7 @@ defmodule Apiary.Harnesses.Walk do
     code =
       case cause do
         :not_allowed -> :host_not_allowed
+        :rate_limited -> :rate_limited
         :too_large -> :too_large
         _failed -> :fetch_failed
       end

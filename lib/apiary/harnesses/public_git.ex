@@ -79,6 +79,7 @@ defmodule Apiary.Harnesses.PublicGit do
       public, on any hop (`Apiary.Integrations.Fetch.Address`);
     * `{:unreachable, seconds}`: no address, no connection, no answer within `seconds`,
       or a `502`, `503` or `504`;
+    * `:rate_limited`: the host answered `429`, a limit of how often it is read;
     * `:late`: the session's budget gave no time for another request;
     * `:too_large`: an answer, a file or the inflated packs over a limit;
     * `:failed`: the host did not serve a git repository by the protocol;
@@ -89,6 +90,7 @@ defmodule Apiary.Harnesses.PublicGit do
           :not_found
           | :not_allowed
           | {:unreachable, pos_integer}
+          | :rate_limited
           | :late
           | :too_large
           | :failed

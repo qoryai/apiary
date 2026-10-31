@@ -273,6 +273,7 @@ defmodule Apiary.Integrations.FetchTest do
                    {:error, :unreachable}
         end
 
+        assert request(:get, @url, &Plug.Conn.send_resp(&1, 429, "")) == {:error, :rate_limited}
         assert request(:get, @url, &Plug.Conn.send_resp(&1, 500, "")) == {:error, :failed}
 
         assert request(:get, @url, ok(String.duplicate("a", 11)), max_bytes: 10) ==

@@ -112,6 +112,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     "too_large" => :too_large,
     "source_unreachable" => :source_unreachable,
     "host_not_allowed" => :host_not_allowed,
+    "rate_limited" => :rate_limited,
     "fetch_failed" => :fetch_failed
   }
 

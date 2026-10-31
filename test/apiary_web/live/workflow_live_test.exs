@@ -568,7 +568,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#workflow-read-error",
-               "Contact support: Qory Apiary could not connect to nowhere.example.org on port 443, or received no data within 10 s."
+               "Contact support: Qory Apiary did not receive https://nowhere.example.org/qory/stack from nowhere.example.org on port 443 within 10 s."
              )
     end
 

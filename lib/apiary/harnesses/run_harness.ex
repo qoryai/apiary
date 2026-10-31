@@ -29,7 +29,7 @@ defmodule Apiary.Harnesses.RunHarness do
   #     `failure_rule`, `%{"message", "values"}`, the format rule an `invalid` source
   #     breaks, or `%{"rule" => "fetch", "values"}` with the host, port and seconds of a
   #     public repository's failed read (`too_large`, `source_unreachable`,
-  #     `host_not_allowed`, `fetch_failed`); and, for `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
+  #     `host_not_allowed`, `rate_limited`, `fetch_failed`); and, for `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
   #     the adapter's name then, and `failure_adapter_id`, the adapter (`failed_adapter`),
   #     nil for a walk that failed before walks kept it and once the adapter's row is
   #     gone; a page shows the adapter's title (`Apiary.Adapters.title/1`), else that
