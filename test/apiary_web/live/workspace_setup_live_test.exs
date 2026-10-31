@@ -568,8 +568,8 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   # The steps of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`) with the `factory`
-  # feature: Work sources and Destinations, each with a card per grant, Connect another,
-  # Connected, Connecting… and the adapter's guide; the chooser of a grant's collections
+  # feature: Work sources and Destinations, each with a card per grant, Connect and its
+  # page, Connected, Connecting… and the adapter's guide; the chooser of a grant's collections
   # (`ApiaryWeb.ChooseCollectionsLive`), with All, Only selected, a collection in another
   # workspace and Not listed?; the test run,
   # with its condition and its states; who may act on each; and an instance admin's first
@@ -706,7 +706,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   end
 
   describe "Work sources" do
-    test "lists the configured adapters with items for the type, each with Connect, and Skip",
+    test "Connect a source opens the step's Connect page: the configured adapters with items for the type, each with Connect; Back returns to the step",
          %{conn: conn} do
       %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
@@ -727,7 +727,42 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "h1", "Where does work for Main come from?")
       assert {"Work sources", :current} in set_up_group(lv)
 
-      row = "#set-up-adapter-#{adapter.public_id}"
+      # The step: with nothing connected, Connect a source, to the step's Connect page.
+      step_path = ~p"/#{organisation}/main/set-up/sources"
+      connect_path = step_path <> "/connect"
+      assert words(lv, "#set-up-connect") == "Connect a source"
+      assert href(lv, "#set-up-connect") == connect_path
+      refute has_element?(lv, "#set-up-adapters")
+      refute has_element?(lv, "#set-up-grants")
+
+      assert words(lv, "#set-up-later") ==
+               "You can change this later in Workspace settings › Work sources."
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system this instance has set up."
+
+      assert href(lv, "#set-up-skip") ==
+               ~p"/#{organisation}/main/set-up/destinations"
+
+      assert href(lv, "#set-up-back") == ~p"/#{organisation}/main/set-up/name"
+      refute has_element?(lv, "#set-up-continue")
+      refute has_element?(lv, "#set-up-no-adapter")
+
+      lv |> element("#set-up-connect") |> render_click()
+      assert_patch(lv, connect_path)
+
+      # The Connect page: the step current in the sidebar, the breadcrumb the step, a
+      # link to it, then the page; Back to the step, and no Skip or Continue.
+      assert has_element?(lv, "h1", "Connect a source")
+      assert page_title(lv) =~ "Connect a source"
+      assert {"Work sources", :current} in set_up_group(lv)
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Work sources")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Connect a source")
+      assert href(lv, "#set-up-back") == step_path
+      refute has_element?(lv, "#set-up-skip")
+      refute has_element?(lv, "#set-up-continue")
+
+      row = "#set-up-adapters #set-up-adapter-#{adapter.public_id}"
       assert has_element?(lv, row, adapter.name)
       assert has_element?(lv, row <> "-not-connected", "Not connected")
       refute has_element?(lv, "#set-up-adapter-#{other_type.public_id}")
@@ -742,17 +777,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "#{row}-connect-install.btn-primary", "Connect")
 
-      # With no card, the list of adapters to connect is open.
-      assert has_element?(lv, "#set-up-connect[open] #set-up-adapters #{row}")
-      assert words(lv, "#set-up-connect-another") == "Connect another source"
-      refute has_element?(lv, "#set-up-grants")
-
-      assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Work sources."
-
-      assert words(lv, "#set-up-context #set-up-what") ==
-               "Bring tickets in from a system this instance has set up."
-
       assert has_element?(
                lv,
                "#set-up-context",
@@ -760,13 +784,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "to Qory Apiary after its steps."
              )
 
-      assert href(lv, "#set-up-skip") ==
-               ~p"/#{organisation}/main/set-up/destinations"
-
+      # Back returns to the step, whose Back leads to Name.
+      lv |> element("#set-up-back") |> render_click()
+      assert_patch(lv, step_path)
+      assert has_element?(lv, "h1", "Where does work for Main come from?")
       assert href(lv, "#set-up-back") == ~p"/#{organisation}/main/set-up/name"
 
-      refute has_element?(lv, "#set-up-continue")
-      refute has_element?(lv, "#set-up-no-adapter")
+      # Opened at its address, the Connect page is the same; only Work sources and
+      # Destinations have one.
+      {:ok, lv, _html} = live(conn |> log_in_user(user), connect_path)
+      assert has_element?(lv, "h1", "Connect a source")
+      assert href(lv, "#set-up-back") == step_path
+
+      assert_raise ApiaryWeb.NotFound, fn ->
+        live(conn |> log_in_user(user), ~p"/#{organisation}/main/set-up/model/connect")
+      end
     end
 
     test "with no adapter for the type, shows the line for it", %{conn: conn} do
@@ -779,7 +811,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "No work source for this type is set up on this instance. An instance admin " <>
                  "sets one up in Instance settings › Adapters."
 
-      refute has_element?(lv, "#set-up-adapters")
+      refute has_element?(lv, "#set-up-connect")
       assert has_element?(lv, "#set-up-skip")
     end
 
@@ -803,14 +835,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert href(lv, "#{card}-choose") ==
                ~p"/#{organisation}/#{main}/set-up/sources/choose?#{[grant: grant.public_id]}"
 
-      # The connected adapter is not under Connect another source, which is closed; the
-      # other adapter is, and its install leads back to this step of Main.
-      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}")
-      assert has_element?(lv, "#set-up-connect:not([open]) #set-up-adapter-#{other.public_id}")
+      # With a card, Connect another source; its page lists the other adapter, not the
+      # connected one, and its install leads back to this step of Main.
+      assert words(lv, "#set-up-connect") == "Connect another source"
+
+      {:ok, connect, _html} =
+        live(conn |> log_in_user(user), ~p"/#{organisation}/main/set-up/sources/connect")
+
+      assert has_element?(connect, "h1", "Connect another source")
+      assert has_element?(connect, "#breadcrumb [aria-current=page]", "Connect another source")
+      refute has_element?(connect, "#set-up-adapter-#{adapter.public_id}")
+      assert has_element?(connect, "#set-up-adapters #set-up-adapter-#{other.public_id}")
       back = URI.encode_query(back: "set-up:sources:workspace=#{main.public_id}")
 
       assert has_element?(
-               lv,
+               connect,
                ~s{#set-up-adapter-#{other.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{other.public_id}/install?#{back}"]}
              )
 
@@ -864,7 +903,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "shows the adapter's guide beside the step", %{conn: conn} do
+    test "shows the adapter's guide beside the step's Connect page", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
       guide = source_guide_example()
@@ -872,6 +911,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {:ok, lv, _html} =
         conn |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/sources")
+
+      # On the step's Connect page, not on the step.
+      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/sources/connect")
 
       help = "#set-up-context #set-up-help-#{adapter.public_id}"
       assert has_element?(lv, help <> " h3", "On #{adapter.name}")
@@ -887,7 +932,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert steps == guide["connect"]["steps"]
     end
 
-    test "shows a member who may not connect who may, with no Connect and no guide", %{
+    test "shows a member who may not connect who may, with no connect control and no guide", %{
       conn: conn
     } do
       %{organisation: organisation} = sign_up_fixture()
@@ -897,6 +942,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {:ok, lv, _html} =
         conn |> log_in_user(member) |> live(~p"/#{organisation}/main/set-up/sources")
+
+      # The step has no Connect a source, as `adapter.connect` does not allow it.
+      refute has_element?(lv, "#set-up-connect")
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}")
+      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+
+      assert words(lv, "#set-up-connect-who-may") ==
+               "Only owners and admins change the integrations of the organisation."
+
+      # At its address, the Connect page lists the adapter with no Connect and no guide.
+      {:ok, lv, _html} =
+        conn |> log_in_user(member) |> live(~p"/#{organisation}/main/set-up/sources/connect")
 
       assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}", adapter.name)
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
@@ -908,8 +965,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # An install sent anyway starts nothing.
       render_click(lv, "install", %{"integration" => adapter.public_id})
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
-
-      assert has_element?(lv, "#set-up-skip")
     end
   end
 
@@ -931,7 +986,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "lists the adapters with targets alone, under Connect another destination, and the line for later",
+    test "lists the adapters with targets alone, on its Connect page, and the line for later",
          %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: forge} = connectable_adapter_fixture()
@@ -945,10 +1000,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
       assert {"Destinations", :current} in set_up_group(lv)
-      assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
-      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
-
-      assert words(lv, "#set-up-connect-another") == "Connect another destination"
+      step_path = ~p"/#{organisation}/main/set-up/destinations"
+      assert words(lv, "#set-up-connect") == "Connect a destination"
+      assert href(lv, "#set-up-connect") == step_path <> "/connect"
 
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Destinations."
@@ -959,6 +1013,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                lv,
                ~s{#set-up-back[href="/#{organisation.slug}/main/set-up/sources"]}
              )
+
+      # The Connect page: the adapters with targets alone; Back returns to the step.
+      lv |> element("#set-up-connect") |> render_click()
+      assert_patch(lv, step_path <> "/connect")
+      assert has_element?(lv, "h1", "Connect a destination")
+      assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
+      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Destinations")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Connect a destination")
+      assert href(lv, "#set-up-back") == step_path
     end
   end
 
@@ -1028,6 +1092,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#choose-count") == "1 selected"
       step_path = ~p"/#{ctx.organisation}/main/set-up/sources"
       assert href(lv, "#choose-back") == step_path
+      # The breadcrumb: the step, a link to it, then the chooser.
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Work sources")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", title)
       assert {:error, {:live_redirect, %{to: ^step_path}}} = save(lv)
 
       assert row(api) == {ctx.main.id, true}

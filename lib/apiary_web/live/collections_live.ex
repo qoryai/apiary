@@ -9,7 +9,8 @@ defmodule ApiaryWeb.CollectionsLive do
   # many, or All, and Choose, which opens the chooser at
   # `/:org/:workspace/settings/choose` (`ApiaryWeb.ChooseCollectionsLive`, `:settings`),
   # whose Save and Back return here. An adapter connected with no grant yet shows
-  # Connected. Connect another source, or Connect another destination, lists the
+  # Connected. Connect another source, or Connect another destination, for a person whom
+  # `adapter.connect` allows, lists the
   # instance's configured adapters that serve the type
   # (`Apiary.Adapters.list_configured/1`) and that the organisation has not connected,
   # each Connecting… while its connection is pending, with Connect, the Install of
@@ -19,8 +20,8 @@ defmodule ApiaryWeb.CollectionsLive do
   # connected adapter.
   #
   # Every member reads them (`adapter.read`, which the cards need); a person whom
-  # `adapter.connect` does not allow sees the adapters with no Connect, and who may
-  # connect; a person whom `collection.assign` does not allow sees who may assign. The
+  # `adapter.connect` does not allow sees no Connect another source or destination, and
+  # who may connect; a person whom `collection.assign` does not allow sees who may assign. The
   # page listens to the organisation's collections and connections
   # (`Apiary.Adapters.Collections.subscribe/1`) and reads the cards again on each change.
   #
@@ -203,7 +204,7 @@ defmodule ApiaryWeb.CollectionsLive do
           </ul>
 
           <details
-            :if={@unconnected != []}
+            :if={@may_connect and @unconnected != []}
             id={"#{@id}-connect"}
             class="grid gap-3"
             open={@cards == [] and @waiting == []}
@@ -236,7 +237,6 @@ defmodule ApiaryWeb.CollectionsLive do
                   <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
                 </span>
                 <IntegrationComponents.install_form
-                  :if={@may_connect}
                   id={"#{@id}-adapter-#{adapter.public_id}-connect"}
                   adapter={adapter}
                   action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}

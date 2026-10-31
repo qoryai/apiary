@@ -386,8 +386,9 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
     assert words(page, "#work-sources-who-may") == who_may
     assert has_element?(page, "#work-sources-grant-#{grant.public_id}-choose")
-    assert has_element?(page, "#work-sources-adapter-#{other.public_id}")
-    refute has_element?(page, "#work-sources-adapter-#{other.public_id}-connect")
+    # No connect control: neither Connect another source nor the adapters to connect.
+    refute has_element?(page, "#work-sources-connect")
+    refute has_element?(page, "#work-sources-adapter-#{other.public_id}")
 
     assert words(page, "#work-sources-connect-who-may") ==
              "Only owners and admins change the integrations of the organisation."
