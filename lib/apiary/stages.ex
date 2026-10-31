@@ -511,7 +511,9 @@ defmodule Apiary.Stages do
   # add_version/5 stores a version a person adds on the work item, as the scope's person
   # (`Apiary.Artifacts.push/5`, `{:person, scope}`), with the `stage_id` of the stage the
   # work item is in, whatever `opts` gives, then acts on that stage (`version_added/1`):
-  # `{:ok, version}`, or the push's refusal.
+  # `{:ok, version}`, or the push's refusal, with no action on the stage. The stage is read
+  # before the push takes the work item's lock, so the push checks it again under the lock
+  # (`expect_stage`): `{:error, :stage_changed}` when the work item moved in between.
   @doc false
   @spec add_version(Scope.t(), WorkItem.t(), String.t(), [map], keyword) ::
           {:ok, map} | {:error, term}
@@ -521,7 +523,8 @@ defmodule Apiary.Stages do
         {:error, :not_found}
 
       work_item ->
-        opts = Keyword.put(opts, :stage_id, work_item.stage_id)
+        opts =
+          Keyword.merge(opts, stage_id: work_item.stage_id, expect_stage: work_item.stage_id)
 
         with {:ok, version} <- Artifacts.push({:person, scope}, work_item, type, files, opts) do
           _placed_or_not = version_added(work_item)

@@ -679,7 +679,7 @@ defmodule Apiary.StagesTest do
     } do
       work_item = take_in!(scope)
 
-      assert {:ok, %{stage_id: @explore, writer: :person}} =
+      assert {:ok, %{stage_id: @explore, expect_stage: @explore, writer: :person}} =
                Stages.add_version(scope, work_item, "mockup", file("m.md"), stage_id: @build)
 
       # A stage with a workflow is left as it is.
@@ -708,6 +708,35 @@ defmodule Apiary.StagesTest do
       {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
       assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
       assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
+    end
+
+    test "a stage change during the push stores nothing and leaves the stage as it is", %{
+      scope: scope
+    } do
+      save!(scope, [
+        explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
+      ])
+
+      work_item = take_in!(scope)
+
+      # The input exists and nothing acted on it, so a call to version_added/1 starts the stage.
+      {:ok, _version} =
+        StagesArtifactsStub.push(
+          {:person, scope},
+          work_item,
+          "acceptance-criteria",
+          file("a.md"),
+          stage_id: @explore
+        )
+
+      :ok = StagesArtifactsStub.move_during_push(work_item, @shape)
+
+      assert Stages.add_version(scope, work_item, "mockup", file("m.md")) ==
+               {:error, :stage_changed}
+
+      assert versions(work_item, "mockup") == []
+      assert %WorkItem{stage_id: @explore, stage_state: :waiting_inputs} = reload(work_item)
+      assert runs(work_item) == []
     end
 
     test "a person's version leaves a closed work item waiting for inputs as it is", %{
