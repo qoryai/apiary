@@ -76,7 +76,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
             label={gettext("Name")}
             hint={
               gettext(
-                "main, unless this work item keeps two artifacts of this type, such as cart and receipt."
+                "Keep main. Give another name only when this work item keeps two artifacts of this type, such as two mockups called payment and receipt."
               )
             }
             autocomplete="off"

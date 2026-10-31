@@ -241,11 +241,14 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
   describe "adding a version by hand" do
     test "stores the files and goes to the new version's page", ctx do
-      {:ok, view, _html} =
+      {:ok, view, html} =
         live(
           ctx.conn,
           ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=explainer"
         )
+
+      assert html =~
+               "Keep main. Give another name only when this work item keeps two artifacts of this type, such as two mockups called payment and receipt."
 
       input =
         file_input(view, "#artifact-form", :files, [
