@@ -10,8 +10,9 @@ defmodule ApiaryWeb.StagesLive.Draft do
   @doc false
   def stages(doc), do: doc["stages"]
 
+  # A new stage named `name` at place `at` (0 is first), the end for nil or a place past it.
   @doc false
-  def add_stage(doc, name) do
+  def add_stage(doc, name, at \\ nil) do
     stage = %{
       "id" => Apiary.Processes.new_stage_id(),
       "name" => name,
@@ -21,7 +22,9 @@ defmodule ApiaryWeb.StagesLive.Draft do
       "gate" => %{"kind" => "person", "approvers" => "members"}
     }
 
-    {%{doc | "stages" => doc["stages"] ++ [stage]}, stage["id"]}
+    stages = doc["stages"]
+    at = if is_integer(at) and at >= 0, do: min(at, length(stages)), else: length(stages)
+    {%{doc | "stages" => List.insert_at(stages, at, stage)}, stage["id"]}
   end
 
   @doc false

@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.StagesLiveTest do
   @moduledoc """
-  Workspace settings › Stages (`ApiaryWeb.StagesLive.Index`) and the Workflow page's link
-  to it: not found while the feature `workflow_model` is off; the canvas and the list of stages; adding, renaming,
-  moving and removing a stage; a stage's sequence, loop, inputs, outputs and gate; the
-  placement check; a save, a trial and the history; and a member's page, with no edit
-  controls.
+  Workspace settings › Stages (`ApiaryWeb.StagesLive.Index`), the sidebar's Stages entry
+  and the Workflow page's link to it: not found while the feature `workflow_model` is off;
+  the canvas, the editor, with the inspector of the selected stage; adding a stage at a
+  place ("+"), renaming, moving and removing it; a stage's sequence, loop, inputs, outputs
+  and gate; the placement check; a save, a trial and the history; and a member's page,
+  with the same canvas and a read-only inspector.
 
   Not async: each test sets the instance's features, which are the whole node's.
   """
@@ -40,23 +41,12 @@ defmodule ApiaryWeb.StagesLiveTest do
     _error -> elem(assert_error_sent(:not_found, fn -> get(conn, path) end), 0)
   end
 
-  defp names(view) do
-    view
-    |> element("#stages-list ol")
-    |> render()
-    |> LazyHTML.from_fragment()
-    |> LazyHTML.query("li span.font-medium")
-    |> Enum.map(&LazyHTML.text/1)
-  end
+  # The stages' names and ids, in the order the canvas draws them.
+  defp names(view), do: Enum.map(canvas_view(view)["stages"], & &1["name"])
+  defp ids(view), do: Enum.map(canvas_view(view)["stages"], & &1["id"])
 
-  defp ids(view) do
-    view
-    |> render()
-    |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#stages-list li")
-    |> LazyHTML.attribute("id")
-    |> Enum.map(&String.replace_prefix(&1, "stage-row-", ""))
-  end
+  # A click or Enter on the card `name` on the canvas.
+  defp select(view, name), do: render_hook(view, "select", %{"id" => card(view, name)["id"]})
 
   # The work items of the trial's assign form, in the order the page lists them.
   defp assign_order(view) do
@@ -103,14 +93,27 @@ defmodule ApiaryWeb.StagesLiveTest do
   end
 
   describe "an owner" do
-    test "sees the software type's five stages, on the canvas and in the list", %{
-      conn: conn,
-      path: path
-    } do
+    test "sees the software type's five stages on the canvas, the inspector and the harness",
+         %{conn: conn, path: path, scope: scope} do
       {:ok, view, _html} = live(conn, path)
 
       assert has_element?(view, "#settings-section-title", "Stages")
+      assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-workflow")
       assert names(view) == ~w(Explore Shape Build Verify Release)
+
+      # No list and no form beside the canvas: the canvas is the editor.
+      refute has_element?(view, "#stages-list")
+      assert has_element?(view, "#stages-editor #stages-canvas")
+      assert has_element?(view, "#stages-editor #stage-panel")
+
+      assert has_element?(view, "#stages-harness", "Harness: Qory harness")
+
+      assert has_element?(
+               view,
+               ~s(#stages-harness-change[href="#{workspace_path(scope, "/settings/workflow")}"]),
+               "Change"
+             )
 
       assert has_element?(
                view,
@@ -126,9 +129,13 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert explore == %{
                "id" => id_of("Explore"),
                "name" => "Explore",
-               "workflows" => ["explore-a-ticket"],
-               "loop" => "Loop: at most 3 rounds",
+               "label" =>
+                 "Explore. a loop of explore-a-ticket, at most 3 rounds. Gate: a member approves",
+               "sequence" => [
+                 %{"loop" => "at most 3 rounds", "workflows" => ["explore-a-ticket"]}
+               ],
                "gate" => "Gate: a member approves",
+               "add" => "Add a stage after Explore",
                "alerts" => []
              }
 
@@ -138,10 +145,20 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-version-1", "The first version.")
     end
 
-    test "adds a stage with a new id, renames, moves and removes it", %{conn: conn, path: path} do
+    test "adds a stage with a new id at a +, renames, moves and removes it", %{
+      conn: conn,
+      path: path
+    } do
       {:ok, view, _html} = live(conn, path)
 
-      view |> element("#stages-add") |> render_click()
+      # The + between Explore and Shape.
+      render_hook(view, "add_stage", %{"at" => "1"})
+      assert names(view) == ["Explore", "New stage", "Shape", "Build", "Verify", "Release"]
+      assert has_element?(view, "#stage-panel-title", "Edit New stage")
+      view |> element("#stage-remove") |> render_click()
+
+      # The + after the last card.
+      render_hook(view, "add_stage", %{"at" => "5"})
       assert names(view) == ["Explore", "Shape", "Build", "Verify", "Release", "New stage"]
       id = List.last(ids(view))
       assert id =~ ~r/^st_[0-9a-hjkmnp-tv-z]{10}$/
@@ -152,7 +169,8 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert List.last(names(view)) == "Demo"
       assert List.last(ids(view)) == id
 
-      view |> element(~s(button[aria-label="Move Demo earlier"])) |> render_click()
+      # The left arrow key on the card.
+      render_hook(view, "move", %{"id" => id, "by" => "-1"})
       assert names(view) == ~w(Explore Shape Build Verify Demo Release)
 
       render_hook(view, "reorder", %{"ids" => [id | List.delete(ids(view), id)]})
@@ -162,7 +180,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       render_hook(view, "reorder", %{"ids" => [id_of("Explore")]})
       assert names(view) == ~w(Demo Explore Shape Build Verify Release)
 
-      view |> element(~s(button[aria-label="Remove Demo"])) |> render_click()
+      view |> element(~s(#stage-remove[aria-label="Remove Demo"])) |> render_click()
       assert names(view) == ~w(Explore Shape Build Verify Release)
       refute has_element?(view, "#stages-dirty")
     end
@@ -172,7 +190,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path
     } do
       {:ok, view, _html} = live(conn, path)
-      view |> element(~s(button[aria-label="Edit Build"])) |> render_click()
+      select(view, "Build")
 
       view |> element("#stage-add-entry") |> render_click()
       view |> element("#stage-add-loop") |> render_click()
@@ -184,30 +202,31 @@ defmodule ApiaryWeb.StagesLiveTest do
       |> render_change()
 
       # The form is novalidate: 40 is refused under the field, and the loop keeps 3.
-      assert card(view, "Build")["loop"] == "Loop: at most 3 rounds"
+      assert Enum.at(card(view, "Build")["sequence"], 1) == %{
+               "loop" => "at most 3 rounds",
+               "workflows" => ["explore-a-ticket"]
+             }
+
       assert has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
 
       view
       |> form("#stage-form", stage: %{sequence: %{"1" => %{rounds: "10"}}})
       |> render_change()
 
-      assert card(view, "Build")["loop"] == "Loop: at most 10 rounds"
+      assert Enum.at(card(view, "Build")["sequence"], 1)["loop"] == "at most 10 rounds"
       refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
       assert has_element?(view, "#stage-entry-0-machine[value=large]")
 
-      assert has_element?(
-               view,
-               "#stage-sequence",
-               "Qory Apiary stores the machine type in the process. It does not choose the machine that runs the workflow."
-             )
+      # The machine help text, once, under the default machine type only.
+      hint =
+        "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
+
+      assert has_element?(view, "#stages-process-form", hint)
+      refute has_element?(view, "#stage-panel", "Qory Apiary stores the machine type")
 
       view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
       refute has_element?(view, "#stage-loop-1")
       assert has_element?(view, "#stage-entry-1-workflow")
-
-      # No workflow, no machine field, no help text on it.
-      view |> element(~s(button[aria-label="Edit Shape"])) |> render_click()
-      refute has_element?(view, "#stage-sequence", "Qory Apiary stores the machine type")
     end
 
     test "the placement check lists a workflow the harness does not declare and an input no earlier stage outputs",
@@ -223,7 +242,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
 
       {:ok, view, _html} = live(conn, path)
-      view |> element(~s(button[aria-label="Edit Build"])) |> render_click()
+      select(view, "Build")
 
       undeclared =
         "Build uses capture-demo, which the harness no longer declares. Add it to the harness, or choose another workflow for Build."
@@ -338,9 +357,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       scope: scope
     } do
       {:ok, view, _html} = live(conn, path)
-      view |> element("#stages-add") |> render_click()
+      render_hook(view, "add_stage", %{"at" => "5"})
       assert has_element?(view, "#stages-dirty.badge-warning", "Unsaved changes")
-      view |> element(~s(button[aria-label="Remove Release"])) |> render_click()
+      select(view, "Release")
+      view |> element("#stage-remove") |> render_click()
 
       view |> element("#stages-save") |> render_click()
 
@@ -367,9 +387,9 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> form("#stage-form", stage: %{name: " "}) |> render_change()
       view |> element("#stages-save") |> render_click()
 
-      # Next to the name, as the form is novalidate.
+      # Next to the name, as the form is novalidate, and on the card.
       error = "Give every stage a name of 1 to 60 characters."
-      assert has_element?(view, ~s([data-stage-error="#{id_of("Explore")}"]), error)
+      assert error in Enum.at(canvas_view(view)["stages"], 0)["alerts"]
       assert has_element?(view, "#stage-form", error)
       refute has_element?(view, "[data-save-error]")
 
@@ -381,16 +401,19 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path
     } do
       {:ok, view, _html} = live(conn, path)
-      view |> element(~s(button[aria-label="Edit Shape"])) |> render_click()
+      select(view, "Shape")
       view |> form("#stage-form", stage: %{name: " explore "}) |> render_change()
-      view |> element("#stage-row-#{id_of("Explore")} button[phx-click=select]") |> render_click()
+      select(view, "Explore")
 
       view |> element("#stages-save") |> render_click()
 
-      error = "Two stages have the name"
-      assert has_element?(view, ~s([data-stage-error="#{id_of("Shape")}"]), error)
-      refute has_element?(view, ~s([data-stage-error="#{id_of("Explore")}"]))
-      assert has_element?(view, "#stage-form", error)
+      # Shape, the second stage named so, is selected, with the error next to its name and
+      # on its card.
+      [explore, shape | _] = canvas_view(view)["stages"]
+      assert Enum.any?(shape["alerts"], &(&1 =~ "Two stages have the name"))
+      assert explore["alerts"] == []
+      assert has_element?(view, ~s(#stage-name[value=" explore "]))
+      assert has_element?(view, "#stage-form", "Two stages have the name")
       assert has_element?(view, ~s(#stage-name[aria-invalid="true"]))
       refute has_element?(view, "[data-save-error]")
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
@@ -479,7 +502,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       {:ok, view, _html} = live(conn, path)
 
-      view |> element(~s(button[aria-label="Remove Explore"])) |> render_click()
+      view |> element(~s(#stage-remove[aria-label="Remove Explore"])) |> render_click()
       view |> element("#stages-save-trial") |> render_click()
 
       view |> form("#stages-assign-form", assign: %{items: [item.public_id]}) |> render_submit()
@@ -588,7 +611,8 @@ defmodule ApiaryWeb.StagesLiveTest do
       %{user: user} = member_fixture(scope, :admin)
       {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
       assert has_element?(view, "#stage-form")
-      assert has_element?(view, "#stages-add")
+      assert has_element?(view, "#stage-remove")
+      assert canvas_view(view)["editable"]
     end
   end
 
@@ -598,8 +622,16 @@ defmodule ApiaryWeb.StagesLiveTest do
       %{member: log_in_user(build_conn(), user)}
     end
 
-    test "reads the stages, with no edit control", %{member: conn, path: path} do
+    test "reads the stages on the same canvas, with no edit control", %{
+      member: conn,
+      path: path
+    } do
       {:ok, view, _html} = live(conn, path)
+
+      # The sidebar's Stages entry, for a member too.
+      assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+      assert has_element?(view, "#stages-harness", "Harness: Qory harness")
+      refute has_element?(view, "#stages-harness-change")
 
       assert names(view) == ~w(Explore Shape Build Verify Release)
       refute canvas_view(view)["editable"]
@@ -611,14 +643,14 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stage-panel", "Gate: a member approves")
 
       for selector <-
-            ~w(#stage-form #stages-add #stages-save #stages-save-trial #stages-process-form #stages-trial) do
+            ~w(#stage-form #stage-remove #stages-save #stages-save-trial #stages-process-form #stages-trial) do
         refute has_element?(view, selector), selector
       end
 
-      refute has_element?(view, ~s(button[phx-click="move"]))
       refute has_element?(view, ~s(button[phx-click="remove_stage"]))
 
-      view |> element(~s(button[aria-label="Show Build"])) |> render_click()
+      # A click or Enter on a card opens it, read-only.
+      select(view, "Build")
       assert has_element?(view, "#stage-panel-title", "Build")
     end
 
@@ -651,8 +683,9 @@ defmodule ApiaryWeb.StagesLiveTest do
 
     test "sends an edit, and nothing changes", %{member: conn, path: path} do
       {:ok, view, _html} = live(conn, path)
-      render_hook(view, "add_stage", %{})
+      render_hook(view, "add_stage", %{"at" => "1"})
       render_hook(view, "reorder", %{"ids" => Enum.reverse(ids(view))})
+      render_hook(view, "move", %{"id" => hd(ids(view)), "by" => "1"})
       assert names(view) == ~w(Explore Shape Build Verify Release)
     end
   end

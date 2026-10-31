@@ -8,19 +8,6 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   alias Apiary.Processes
 
-  @doc false
-  def loop_line(stage) do
-    case Enum.find(stage["sequence"], &Map.has_key?(&1, "loop")) do
-      %{"loop" => %{"rounds" => rounds}} ->
-        ngettext("Loop: at most %{number} round", "Loop: at most %{number} rounds", rounds,
-          number: rounds
-        )
-
-      nil ->
-        gettext("No loop")
-    end
-  end
-
   # A stage's gate, with each named approver by name: `people` maps a person's user id,
   # as the document keeps it, to the name the page shows. The id is never shown.
   @doc false
@@ -57,13 +44,55 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 
+  # A stage's sequence as its card draws it: each workflow, and each loop as a group with
+  # its label and its workflows. Text only.
   @doc false
-  def workflow_lines(stage) do
-    case Processes.workflows(stage) do
-      [] -> [gettext("No workflow")]
-      names -> names
+  def card_sequence(stage) do
+    for entry <- stage["sequence"] do
+      case entry do
+        %{"loop" => %{"rounds" => rounds, "body" => body}} ->
+          %{
+            loop:
+              ngettext("at most %{number} round", "at most %{number} rounds", rounds,
+                number: rounds
+              ),
+            workflows: Enum.map(body, &to_string(&1["workflow"]))
+          }
+
+        entry ->
+          %{workflow: to_string(entry["workflow"])}
+      end
     end
   end
+
+  # The words a screen reader reads for a card: its name, its workflows and loops, its
+  # gate, each in full.
+  @doc false
+  def card_label(stage, people) do
+    sequence =
+      case card_sequence(stage) do
+        [] ->
+          [gettext("No workflow")]
+
+        items ->
+          Enum.map(items, fn
+            %{loop: loop, workflows: names} ->
+              gettext("a loop of %{workflows}, %{rounds}",
+                workflows: Enum.join(names, ", "),
+                rounds: loop
+              )
+
+            %{workflow: name} ->
+              name
+          end)
+      end
+
+    Enum.join([stage["name"] | sequence] ++ [gate_line(stage, people)], ". ")
+  end
+
+  # The label of the "+" after a stage on the canvas.
+  @doc false
+  def add_after(name), do: gettext("Add a stage after %{stage}", stage: name)
 
   # A workflow the harness no longer declares (spec addition 2).
   @doc false

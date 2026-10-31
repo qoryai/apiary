@@ -2,14 +2,14 @@ defmodule ApiaryWeb.StagesLive.Index do
   # Workspace settings › Stages (`/:org/:workspace/settings/stages`), with the feature
   # `workflow_model` (decision D2): the workspace's process (`Apiary.Processes`), the
   # stages every work item goes through, edited on a canvas. Not found while
-  # `workflow_model` is off. The Workflow page links here (decision D3); the sidebar has no
-  # entry of its own, so the page marks Workflow as its section.
+  # `workflow_model` is off. With the feature, the sidebar's Stages entry leads here, and
+  # the Workflow page keeps the harness choice that "Change" opens.
   #
-  # The page is the only writer of the document: the canvas (`assets/js/canvas.js`, React
-  # Flow, through the hook `assets/js/hooks/stages_canvas.js`) sends a selection and an
-  # order of stages as events, and every other change comes from the page's buttons and
-  # forms, which also do all that the canvas does. Every save goes through
-  # `Apiary.Processes.save/4`, which checks the document against its schema.
+  # The canvas is the editor (`assets/js/canvas.js`, React Flow, through the hook
+  # `assets/js/hooks/stages_canvas.js`): it sends a selection, an order of stages, a move
+  # by the arrow keys and a "+" (add_stage) as events; the inspector beside it edits the
+  # selected stage. The page is the only writer of the document, and every save goes
+  # through `Apiary.Processes.save/4`, which checks the document against its schema.
   #
   # Owners and admins (`process.edit`) edit; members read the page with no edit controls.
   @moduledoc false
@@ -42,6 +42,8 @@ defmodule ApiaryWeb.StagesLive.Index do
         page_title: SettingsComponents.page_title(scope, :workspace, [gettext("Stages")]),
         sections: SettingsComponents.sections(scope, :workspace),
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
+        harness: harness_name(Apiary.Stacks.Sources.chosen(workspace)),
+        may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
         types: ArtifactTypes.types(workspace),
         members: members,
@@ -77,6 +79,10 @@ defmodule ApiaryWeb.StagesLive.Index do
     |> authors()
     |> refresh()
   end
+
+  # The harness of the workspace's runs, as the Workflow page names it.
+  defp harness_name(%{choice: :qory}), do: gettext("Qory harness")
+  defp harness_name(chosen), do: ApiaryWeb.HarnessComponents.chosen_line(chosen)
 
   defp first_id(%{"stages" => [%{"id" => id} | _]}), do: id
   defp first_id(_doc), do: nil
@@ -123,10 +129,12 @@ defmodule ApiaryWeb.StagesLive.Index do
           %{
             id: stage["id"],
             name: stage["name"],
-            workflows: Words.workflow_lines(stage),
-            loop: Words.loop_line(stage),
+            label: Words.card_label(stage, assigns.people),
+            sequence: Words.card_sequence(stage),
             gate: Words.gate_line(stage, assigns.people),
-            alerts: alerts(assigns.problems, stage)
+            add: Words.add_after(stage["name"]),
+            alerts:
+              alerts(assigns.problems, stage) ++ Map.get(assigns.stage_errors, stage["id"], [])
           }
         end
     }
@@ -157,9 +165,13 @@ defmodule ApiaryWeb.StagesLive.Index do
   def handle_event("move", %{"id" => id, "by" => by}, socket) when by in ["-1", "1"],
     do: {:noreply, edit(socket, &Draft.move(&1, id, String.to_integer(by)))}
 
-  def handle_event("add_stage", _params, socket) do
-    {draft, id} = Draft.add_stage(socket.assigns.draft, new_name(socket.assigns.draft))
-    {:noreply, socket |> assign(draft: draft, selected: id, save_errors: []) |> refresh()}
+  # A "+" on the canvas: a new stage at place `at`, after the stage before it.
+  def handle_event("add_stage", params, socket) do
+    draft = socket.assigns.draft
+    {draft, id} = Draft.add_stage(draft, new_name(draft), at(params["at"]))
+
+    {:noreply,
+     socket |> assign(draft: draft, selected: id, save_errors: [], notice: nil) |> refresh()}
   end
 
   def handle_event("remove_stage", %{"id" => id}, socket) do
@@ -576,13 +588,13 @@ defmodule ApiaryWeb.StagesLive.Index do
       counts={@nav_counts}
       nav={:settings}
       sections={@sections}
-      section={:workflow}
+      section={:stages}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        current={:workflow}
+        current={:stages}
         measure="list"
         title={gettext("Stages")}
       >
@@ -594,6 +606,21 @@ defmodule ApiaryWeb.StagesLive.Index do
         </:subtitle>
 
         <div id="stages" class="grid gap-6">
+          <p id="stages-harness" class="text-[13.5px]/5">
+            {gettext("Harness: %{harness}", harness: @harness)}
+            <span :if={@may_harness} aria-hidden="true" class="text-muted">·</span>
+            <.link
+              :if={@may_harness}
+              id="stages-harness-change"
+              navigate={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/workflow"
+              }
+              class="font-medium text-accent underline underline-offset-[3px]"
+              aria-label={gettext("Change the harness")}
+            >
+              {gettext("Change")}
+            </.link>
+          </p>
           <div id="stages-version" class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <p class="text-[13.5px]/5">
               {version_line(@base, @may)}
@@ -641,98 +668,44 @@ defmodule ApiaryWeb.StagesLive.Index do
             <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
           </.notice>
 
-          <div
-            id="stages-canvas"
-            phx-hook=".StagesCanvas"
-            phx-update="ignore"
-            data-script={~p"/assets/js/canvas.js"}
-            data-stylesheet={~p"/assets/js/canvas.css"}
-            data-view={Jason.encode!(view(assigns))}
-            data-words={Jason.encode!(canvas_words())}
-            class="h-60 overflow-hidden rounded-box border border-base-300 bg-base-200"
-          >
-            <div data-canvas class="h-full w-full"></div>
-            <p data-canvas-failed hidden class="p-4 text-[13px]/5 text-muted">
-              {gettext("The canvas did not load. Use the list of stages below.")}
-            </p>
-          </div>
-          <script :type={Phoenix.LiveView.ColocatedHook} name=".StagesCanvas">
-            import {StagesCanvas} from "@/js/hooks/stages_canvas"
-            export default StagesCanvas
-          </script>
-
-          <section id="stages-list" aria-labelledby="stages-list-title" class="grid gap-2">
-            <h2 id="stages-list-title" class="text-[15px]/6 font-semibold">
-              {gettext("Stages in order")}
-            </h2>
-            <ol class="grid gap-1">
-              <li
-                :for={{stage, index} <- Enum.with_index(@draft["stages"])}
-                id={"stage-row-#{stage["id"]}"}
-                class="flex flex-wrap items-center gap-2 rounded-box px-2 py-1 aria-[current=true]:bg-base-200"
-                aria-current={stage["id"] == @selected && "true"}
-              >
-                <span class="w-6 text-muted tabular-nums">{index + 1}</span>
-                <span class="min-w-0 flex-1 truncate font-medium">{stage["name"]}</span>
-                <span
-                  :for={error <- Map.get(@stage_errors, stage["id"], [])}
-                  class="order-last w-full pl-8 text-[13px]/5 text-error"
-                  data-stage-error={stage["id"]}
-                >
-                  {error}
-                </span>
-                <.button
-                  size="xs"
-                  phx-click="select"
-                  phx-value-id={stage["id"]}
-                  aria-label={
-                    if @may,
-                      do: gettext("Edit %{stage}", stage: stage["name"]),
-                      else: gettext("Show %{stage}", stage: stage["name"])
-                  }
-                >
-                  {if @may, do: gettext("Edit"), else: gettext("Show")}
-                </.button>
-                <%= if @may do %>
-                  <.button
-                    size="xs"
-                    variant="ghost"
-                    phx-click="move"
-                    phx-value-id={stage["id"]}
-                    phx-value-by="-1"
-                    disabled={index == 0}
-                    aria-label={gettext("Move %{stage} earlier", stage: stage["name"])}
-                  >
-                    {gettext("Earlier")}
-                  </.button>
-                  <.button
-                    size="xs"
-                    variant="ghost"
-                    phx-click="move"
-                    phx-value-id={stage["id"]}
-                    phx-value-by="1"
-                    disabled={index == length(@draft["stages"]) - 1}
-                    aria-label={gettext("Move %{stage} later", stage: stage["name"])}
-                  >
-                    {gettext("Later")}
-                  </.button>
-                  <.button
-                    size="xs"
-                    variant="danger-ghost"
-                    phx-click="remove_stage"
-                    phx-value-id={stage["id"]}
-                    disabled={length(@draft["stages"]) == 1}
-                    aria-label={gettext("Remove %{stage}", stage: stage["name"])}
-                  >
-                    {gettext("Remove")}
-                  </.button>
-                <% end %>
-              </li>
-            </ol>
-            <div :if={@may}>
-              <.button id="stages-add" phx-click="add_stage">{gettext("Add stage")}</.button>
+          <%!-- The canvas is the editor: a card selected on it opens in the inspector beside
+          it, at desktop width, or under it. --%>
+          <div id="stages-editor" class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <div
+              id="stages-canvas"
+              phx-hook=".StagesCanvas"
+              phx-update="ignore"
+              data-script={~p"/assets/js/canvas.js"}
+              data-stylesheet={~p"/assets/js/canvas.css"}
+              data-view={Jason.encode!(view(assigns))}
+              data-words={Jason.encode!(canvas_words())}
+              class="h-72 min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-200"
+            >
+              <div data-canvas class="h-full w-full"></div>
+              <p data-canvas-failed hidden class="p-4 text-[13px]/5 text-muted">
+                {gettext("The canvas did not load. Reload the page to edit the stages.")}
+              </p>
             </div>
-          </section>
+            <script :type={Phoenix.LiveView.ColocatedHook} name=".StagesCanvas">
+              import {StagesCanvas} from "@/js/hooks/stages_canvas"
+              export default StagesCanvas
+            </script>
+
+            <.stage_panel
+              :if={@stage}
+              stage={@stage}
+              may={@may}
+              last={length(@draft["stages"]) == 1}
+              declared={@declared}
+              types={@types}
+              members={@members}
+              people={@people}
+              stage_errors={@stage_errors}
+              rounds_errors={@rounds_errors}
+              problems={@problems}
+              machine={@draft["machine"]}
+            />
+          </div>
 
           <.form
             :if={@may}
@@ -756,20 +729,6 @@ defmodule ApiaryWeb.StagesLive.Index do
           <p :if={!@may} id="stages-machine-read" class="text-[13.5px]/5">
             {gettext("Default machine type: %{machine}", machine: @draft["machine"])}
           </p>
-
-          <.stage_panel
-            :if={@stage}
-            stage={@stage}
-            may={@may}
-            declared={@declared}
-            types={@types}
-            members={@members}
-            people={@people}
-            stage_errors={@stage_errors}
-            rounds_errors={@rounds_errors}
-            problems={@problems}
-            machine={@draft["machine"]}
-          />
 
           <section id="stages-check" aria-labelledby="stages-check-title" class="grid gap-2">
             <h2 id="stages-check-title" class="text-[15px]/6 font-semibold">
@@ -890,6 +849,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   attr :stage, :map, required: true
   attr :may, :boolean, required: true
+  attr :last, :boolean, default: false, doc: "whether the stage is the only one"
   attr :declared, :list, required: true
   attr :types, :list, required: true
   attr :members, :list, required: true
@@ -932,9 +892,22 @@ defmodule ApiaryWeb.StagesLive.Index do
       aria-labelledby="stage-panel-title"
       class="grid gap-4 rounded-box border border-base-300 p-4"
     >
-      <h2 id="stage-panel-title" class="text-[15px]/6 font-semibold">
-        {gettext("Edit %{stage}", stage: @stage["name"])}
-      </h2>
+      <div class="flex items-start justify-between gap-3">
+        <h2 id="stage-panel-title" class="min-w-0 break-words text-[15px]/6 font-semibold">
+          {gettext("Edit %{stage}", stage: @stage["name"])}
+        </h2>
+        <.button
+          id="stage-remove"
+          size="xs"
+          variant="danger-ghost"
+          phx-click="remove_stage"
+          phx-value-id={@stage["id"]}
+          disabled={@last}
+          aria-label={gettext("Remove %{stage}", stage: @stage["name"])}
+        >
+          {gettext("Remove")}
+        </.button>
+      </div>
       <.alerts stage={@stage} problems={@problems} />
       <.form
         for={%{}}
@@ -1021,7 +994,6 @@ defmodule ApiaryWeb.StagesLive.Index do
               {gettext("Add loop")}
             </.button>
           </div>
-          <p :if={@stage["sequence"] != []} class="text-[13px]/5 text-muted">{machine_hint()}</p>
         </fieldset>
 
         <.artifacts key="inputs" stage={@stage} types={@types} />
@@ -1222,18 +1194,23 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   ## Words
 
-  # The machine type is stored in the process (decision D5); no run or claim reads it yet.
+  # Under "Default machine type" only (Vito's text, 2026-10-31).
   defp machine_hint,
     do:
       gettext(
-        "Qory Apiary stores the machine type in the process. It does not choose the machine that runs the workflow."
+        "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
       )
 
   defp canvas_words do
     %{
       label: gettext("Stages, in order"),
-      node: gettext("Press Enter to select a stage. Then move it with the arrow keys."),
+      node:
+        gettext(
+          "Press Enter to open the stage beside the canvas. Move it with the left and right arrow keys."
+        ),
+      node_read: gettext("Press Enter to open the stage beside the canvas."),
       moved: gettext("Moved the selected stage."),
+      no_workflow: gettext("No workflow"),
       zoom_in: gettext("Zoom in"),
       zoom_out: gettext("Zoom out"),
       fit: gettext("Show every stage"),
