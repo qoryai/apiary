@@ -1,16 +1,18 @@
 defmodule ApiaryWeb.ArtifactComponents do
-  @moduledoc """
-  The artifacts of a work item, as Qory Apiary shows them, under the feature
-  `workflow_model`: the plain list of a work item's artifacts (`list/1`), the view of a
-  version by its type's base view (`view/1`), and a version's files (`files/1`).
+  # The artifacts of a work item, as Qory Apiary shows them, under the feature
+  # `workflow_model`: the plain list of a work item's artifacts (`list/1`), the view of a
+  # version by its type's base view (`view/1`), and a version's files (`files/1`).
+  #
+  # Every artifact is untrusted data, written by a run or a person (`Apiary.Artifacts`). It
+  # reaches a page only through these components: as text, which HEEx escapes; as the
+  # Markdown of a document, rendered without raw HTML and sanitised
+  # (`ApiaryWeb.ArtifactLive.Markdown`); or as a file the browser loads from the download
+  # route (`ApiaryWeb.ArtifactFileController`), which serves every file as an attachment.
+  # An SVG is never shown inline: it is a download.
+  #
+  # The module reference leaves out this module of the `workflow_model` feature.
+  @moduledoc false
 
-  Every artifact is untrusted data, written by a run or a person (`Apiary.Artifacts`). It
-  reaches a page only through these components: as text, which HEEx escapes; as the
-  Markdown of a document, rendered without raw HTML and sanitised
-  (`ApiaryWeb.ArtifactLive.Markdown`); or as a file the browser loads from the download
-  route (`ApiaryWeb.ArtifactFileController`), which serves every file as an attachment.
-  An SVG is never shown inline: it is a download.
-  """
   use ApiaryWeb, :html
 
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Type, Version}
