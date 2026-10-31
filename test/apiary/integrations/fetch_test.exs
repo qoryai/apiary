@@ -310,6 +310,20 @@ defmodule Apiary.Integrations.FetchTest do
       end)
     end
 
+    test "a redirect to a port outside 1..65,535 keeps the hop that sent it" do
+      for port <- ["65536", "0", String.duplicate("9", 131_000)] do
+        location = "https://other.example.com:#{port}/x"
+
+        redirect = fn conn ->
+          conn |> Plug.Conn.put_resp_header("location", location) |> Plug.Conn.send_resp(302, "")
+        end
+
+        capture_log(fn ->
+          assert failed_hop(@url, redirect, any_port: true) == {"github.com", 443}
+        end)
+      end
+    end
+
     test "a fetch out of time has the host of the hop that hung" do
       target = "https://other.example.com/x"
 

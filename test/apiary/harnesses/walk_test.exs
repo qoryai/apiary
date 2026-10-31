@@ -1490,6 +1490,25 @@ defmodule Apiary.Harnesses.WalkTest do
              }
     end
 
+    test "a redirect to a port outside 1..65,535 fails with the host that sent it, and the rule stores",
+         ctx do
+      for port <- ["65536", "0", String.duplicate("9", 131_000)] do
+        assert {:failed, %{failure: :fetch_failed, source: @public, rule: rule}} =
+                 redirected(
+                   ctx,
+                   "https://mirror.example.org:#{port}",
+                   &Plug.Conn.send_resp(&1, 200, "")
+                 )
+
+        assert rule == %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "public.example.org", "port" => 443}
+               }
+
+        assert rule |> Jason.encode!() |> Jason.decode!() == rule
+      end
+    end
+
     test "a redirect to a private address fails host_not_allowed with that host", ctx do
       assert {:failed, %{failure: :host_not_allowed, source: @public, rule: rule}} =
                redirected(

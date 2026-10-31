@@ -70,7 +70,8 @@ defmodule Apiary.Integrations.Fetch do
 
   @typedoc """
   The host and port of the hop a request failed at: the address asked for, or a
-  redirect's target whose host is an exact name (`Apiary.Kinds.Hosts.exact?/1`).
+  redirect's target whose host is an exact name (`Apiary.Kinds.Hosts.exact?/1`) and whose
+  port is in 1..65,535.
   """
   @type hop :: {String.t(), pos_integer}
 
@@ -176,11 +177,16 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
-  # A host that is no exact name stays out of the failure: a redirect's `Location` is any
-  # text a host sends, and the failure's host shows on a page.
+  # A host that is no exact name, or a port outside 1..65,535, stays out of the failure: a
+  # redirect's `Location` is any text a host sends, and the failure's host and port are
+  # stored and show on a page. A port of any length parses as an integer.
   defp report_hop(url, opts) do
     {pid, ref} = Keyword.fetch!(opts, :hops)
-    if Hosts.exact?(URI.parse(url).host), do: send(pid, {ref, address(url)})
+    uri = URI.parse(url)
+
+    if Hosts.exact?(uri.host) and uri.port in 1..65_535,
+      do: send(pid, {ref, address(url)})
+
     :ok
   end
 
