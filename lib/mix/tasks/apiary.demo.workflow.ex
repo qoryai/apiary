@@ -90,7 +90,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   alias Apiary.Runs.{Batch, Ingest, Run}
   alias Apiary.Sources.Backlog
   alias Apiary.Sources.Wire, as: SourceWire
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{Explore, WorkItem}
   alias Mix.Tasks.Apiary.Demo.Shell
 
   @owner {"dana@example.com", "demo-workflow-dana"}
@@ -738,7 +738,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   defp drive!(:shape_gate, ctx, work_item) do
     work_item = drive!(:explore_gate, ctx, work_item)
-    approve!(ctx.dana, work_item, "The approach fits the search index we have.")
+    confirm!(ctx.dana, work_item)
   end
 
   defp drive!(:build_inputs, ctx, work_item) do
@@ -827,6 +827,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     do: Shell.raise!("#{work_item.title} did not escalate at the round limit")
 
   defp escalated?(%WorkItem{stage_state: state}), do: state == :escalated
+
+  # Explore's gate is approved by confirming the run's proposal, as the work item page
+  # does it.
+  defp confirm!(%Scope{} = scope, %WorkItem{} = work_item) do
+    %{status: :confirm, step: %{attempt: attempt}} =
+      Explore.current(work_item, DateTime.utc_now())
+
+    ok!(WorkItems.confirm(scope, current(scope, work_item), attempt), "a confirmation")
+    current(scope, work_item)
+  end
 
   defp approve!(%Scope{} = scope, %WorkItem{} = work_item, note) do
     ok!(Stages.approve(scope, current(scope, work_item), note), "an approval")

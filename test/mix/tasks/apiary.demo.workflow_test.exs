@@ -84,6 +84,28 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
 
   describe "with the workflow model" do
     @describetag needs: [:factory, :workflow_model]
+    @describetag :tmp_dir
+
+    # The stage runner writes to `Apiary.Artifacts`, as in development, not to the stand-in
+    # the test configuration sets; the files go to the test's folder.
+    setup %{tmp_dir: tmp_dir} do
+      for {key, value} <- [
+            {Apiary.Stages.Artifacts, Apiary.Artifacts},
+            {:artifacts_dir, Path.join(tmp_dir, "artifacts")}
+          ] do
+        previous = Application.fetch_env(:apiary, key)
+        Application.put_env(:apiary, key, value)
+
+        on_exit(fn ->
+          case previous do
+            {:ok, value} -> Application.put_env(:apiary, key, value)
+            :error -> Application.delete_env(:apiary, key)
+          end
+        end)
+      end
+
+      :ok
+    end
 
     test "fills an empty instance: people, versions with a trial, and work items in each state" do
       Workflow.run([])
