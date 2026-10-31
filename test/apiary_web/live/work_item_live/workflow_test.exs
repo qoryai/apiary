@@ -633,6 +633,87 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-check")
     end
 
+    # A work item at Build, which needs no input here, waiting for a workflow the harness
+    # now lists: a check that finds it queues Build's run.
+    defp waiting_for_found_workflow(scope) do
+      stages =
+        for stage <- document("members")["stages"] do
+          if stage["id"] == @build, do: %{stage | "inputs" => []}, else: stage
+        end
+
+      version = save!(scope, %{document("members") | "stages" => stages})
+
+      WorkflowFake.check_result(
+        scope.workspace,
+        {:ok, ["implement", "capture-demo", "fix-demo-findings"]}
+      )
+
+      scope
+      |> work_item_fixture()
+      |> place!(version, @build, :waiting_workflow, stage_round: 1, stage_entry: 1)
+    end
+
+    defp run_count(work_item),
+      do: Repo.aggregate(from(r in DispatchRun, where: r.work_item_id == ^work_item.id), :count)
+
+    test "for a workflow: Check again that finds it queues the stage's run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_for_found_workflow(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      before = run_count(work_item)
+
+      view |> form("#work-item-stage-check") |> render_submit()
+      render_async(view)
+
+      assert run_count(work_item) == before + 1
+    end
+
+    test "for a workflow: a stale Check again on a closed work item queues no run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_for_found_workflow(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      before = run_count(work_item)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [state: :closed, closed_at: DateTime.utc_now()]
+      )
+
+      render_hook(view, "stage_check", %{"number" => "#{work_item.number}", "seen" => @build})
+      render_async(view)
+
+      assert run_count(work_item) == before
+      assert Repo.get!(WorkItem, work_item.id).stage_state == :waiting_workflow
+      refute has_element?(view, "#work-item-stage")
+    end
+
+    test "for a workflow: a stale Check again on another stage does not run the check", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_build(scope, :waiting_workflow)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      WorkflowFake.check_result(
+        scope.workspace,
+        {:ok, ["implement", "capture-demo", "fix-demo-findings"]}
+      )
+
+      version = Repo.get!(Apiary.Processes.Version, work_item.process_version_id)
+      place!(work_item, version, @release, :waiting_workflow, stage_round: 1)
+
+      render_hook(view, "stage_check", %{"number" => "#{work_item.number}", "seen" => @build})
+      render_async(view)
+
+      assert %{stage_id: @release, stage_state: :waiting_workflow} =
+               Repo.get!(WorkItem, work_item.id)
+
+      assert has_element?(view, "#work-item-stage-notice", "moved from Build to Release")
+    end
+
     test "for a workflow: no Check again for a person the stage does not list", %{
       conn: conn,
       scope: scope

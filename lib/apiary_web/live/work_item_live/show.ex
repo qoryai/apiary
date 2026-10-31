@@ -523,16 +523,22 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Check again, while the stage waits for a workflow: the read of the harness calls its
-  # adapter, so it runs outside the page's process (`handle_async/3`).
+  # adapter, so it runs outside the page's process (`handle_async/3`). A found workflow
+  # starts the stage's run, and a work item that ended keeps its stage state, so the check
+  # runs only on one that has not ended; `fresh/3` has read the page again by then.
   defp stage_act("stage_check", params, socket) do
     fresh(socket, params, fn socket, _seen ->
       %{row: row, flow: flow} = socket.assigns
       scope = scope(socket)
 
-      {:noreply,
-       socket
-       |> assign(:stage_check, :checking)
-       |> start_async(:stage_check, fn -> Workflow.check(scope, row, flow) end)}
+      if flow.ended do
+        {:noreply, socket}
+      else
+        {:noreply,
+         socket
+         |> assign(:stage_check, :checking)
+         |> start_async(:stage_check, fn -> Workflow.check(scope, row, flow) end)}
+      end
     end)
   end
 
