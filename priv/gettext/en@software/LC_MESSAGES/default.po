@@ -6079,6 +6079,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Connect opens the system in this tab. After its steps, it sends you back here."
 msgstr ""
 
@@ -7641,6 +7642,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Every system is connected."
 msgstr ""
 
