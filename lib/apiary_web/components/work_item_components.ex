@@ -20,7 +20,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:repository` - the title of the collection that holds the ticket, `"acme/shop"`.
   #     The ticket's full form is this title followed by its key (`"acme/shop#1204"`), or
   #     the title alone without a key (`BacklogComponents.full_form/1`);
-  #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory asked), `:used_up`
+  #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory wrote some), `:used_up`
   #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
   #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
@@ -131,8 +131,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## The status and its mark
 
   @doc """
-  A work item's status: its mark and its words, the row's and the meta line's. Waits for
-  you to confirm is the one strong status (`q-wi-hot`). Questions and a take in that used
+  A work item's status: its mark and its words, the row's and the meta line's. You confirm
+  next is the one strong status (`q-wi-hot`). Questions and a take in that used
   its runs wait for any member who may act: their mark is the reader's with `can_act`,
   another member's without. Questions or a run without a result at the take in's last
   run read as the run limit, here as on the step card and the tab.
@@ -159,8 +159,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc """
-  A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Qory is
-  exploring), `:wait` (waits for the reader), `:wait_other` (waits for another member),
+  A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Explore
+  is running), `:wait` (waits for the reader), `:wait_other` (waits for another member),
   `:err` (Explore's run gave no result: a red ring), `:ready` (Ready for Shape),
   `:declined` and `:closed` (closed or undone). Decorative: its words are always beside
   it.
@@ -520,7 +520,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Explore, running: what Qory does, and with whose answers from a second run (`:run`,
       `%{id:, path:, started_at:, answers_by:}`), and when the run started; the run's id
       links its page where `path` is given.
-    * Explore, questions (`:questions`): how many questions Qory asked; with `can_act`,
+    * Explore, questions (`:questions`): how many questions Qory wrote; with `can_act`,
       that answering them explores again, Answer the questions (a link to Explore's tab,
       `explore_path`, where it is given) and Decline (`"ask_decline"`); without, that it
       waits for a member to answer.
@@ -1861,7 +1861,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * queued or running: what Qory does next, with whose answers from a second run, and
       the answers that run reads, grouped by the run that asked them;
     * questions: Qory's questions, with the form for a reader who may act (`can_act`):
-      one answer for each, Answer and explore again (`"answer"`);
+      one answer for each, Send answers (`"answer"`);
     * the run limit, and questions or a run without a result at the last run of the take
       in: the note that the take in used its runs over the last questions, read-only, and
       that Take in again from the Backlog starts the count again, unless its ticket's
@@ -3281,7 +3281,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   level and why), Understanding, In scope and Out of scope (one line for each entry; a
   line break inside an entry shows as a space), and Approach. A field whose value differs
   from the run's words says Changed, in its description. Then that what Qory did not
-  choose and what it learned stay as Qory wrote them, and Confirm with your changes
+  choose and what it learned stay as Qory wrote them, and Confirm changes
   (`"confirm_changes"`) and Cancel, back to Explore's tab.
 
   The form sends `"change_proposal"` as a member types and `"confirm_changes"` to
@@ -3605,7 +3605,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   than are given.
 
   After the integration's uninstall (`uninstalled`) a line above it says when the
-  integration last sent it (`ticket.received_at`), and that it is no longer kept current.
+  integration last sent it (`ticket.received_at`), and that Qory Apiary no longer updates it.
 
   `ticket` is a map with `:filer` (`%{name:}`), `:filed_at`, `:updated_at`, `:labels` (a
   list of strings), `:body` and `:format` (as `SourceComponents.body/1` takes them),
@@ -3760,16 +3760,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:started` - Qory started Explore in a run (`run`), its first, again with the
       answers (`start: :answers`), or again after Run Explore again or a retry
       (`start: :again`), with the run's place in the take in beside it;
-    * `:asked` - how many questions Qory asked and after how long (`questions`,
+    * `:asked` - how many questions Qory wrote and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
-    * `:proposed` - Qory proposed what to do, after how long, and whose turn it is
+    * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
       (`outcome`: `:error`, `:none` or `:refused`); for a run the gateway refused for
       want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
       what a member fixes;
-    * `:explore_again` - who asked Qory to explore again;
+    * `:explore_again` - who ran Explore again;
     * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
     * `:closed`, `:declined` - who closed or declined it, and where it was declined
       (`stage`); a close by the instance has no `actor`, and says why (`reason`), where
