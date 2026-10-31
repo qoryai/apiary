@@ -420,6 +420,7 @@ defmodule Apiary.Stages do
            {:ok, work_item, version, stage} <- hold(scope, work_item),
            target when is_map(target) <-
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
+           {:ok, _decision} <- decide(scope, work_item, version, stage, :move, [], nil, note),
            {:ok, _entry} <-
              audit(scope, work_item, "move", %{
                "from" => stage["id"],
@@ -497,46 +498,123 @@ defmodule Apiary.Stages do
     end
   end
 
-  # artifact_index/1 is every artifact of the work item with its versions, their writers
-  # and approvals: for each artifact, the newest version an approval covers, the newest
-  # version, and whether a version newer than the approved one exists ("approved vN; vM
-  # is newer"); "changed after approval" for an artifact of an earlier stage.
+  # artifact_index/1 is every artifact of the work item with its versions, newest first,
+  # their writers and the approvals that cover each: for each artifact, the public id of
+  # the newest approved version, and whether a version of an earlier stage's artifact was
+  # made after that approval ("changed after approval").
   @doc false
   @spec artifact_index(WorkItem.t()) :: [map]
   def artifact_index(%WorkItem{} = work_item) do
     work_item = Repo.get!(WorkItem, work_item.id)
-    approved = approved_ids(work_item)
+    approvals = approvals_by_version(work_item)
 
     for artifact <- Artifacts.list(work_item) do
-      versions =
-        for version <- artifact.versions do
-          %{
-            id: version.public_id,
-            number: version.number,
-            writer: version.writer,
-            run_id: version.run_id,
-            user_id: version.user_id,
-            stage_id: version.stage_id,
-            inserted_at: version.inserted_at,
-            approved?: MapSet.member?(approved, version.public_id)
-          }
-        end
-
+      versions = Enum.map(artifact.versions, &version_map(&1, approvals))
       newest = List.first(versions)
-      approved_version = Enum.find(versions, & &1.approved?)
+      approved_version = Enum.find(versions, &(&1.approvals != []))
       newer? = approved_version != nil and newest.number > approved_version.number
 
       %{
         type: artifact.type,
         name: artifact.name,
         stage_id: newest && newest.stage_id,
-        versions: versions,
-        newest: newest && newest.number,
-        approved: approved_version && approved_version.number,
-        newer_than_approved?: newer?,
-        changed_after_approval?: newer? and newest.stage_id != work_item.stage_id
+        approved_version: approved_version && approved_version.id,
+        changed_after_approval: newer? and newest.stage_id != work_item.stage_id,
+        versions: versions
       }
     end
+  end
+
+  # notes/1 is what people wrote on the work item that its next run reads as work item
+  # data, oldest first: requests for changes, escalations resolved with a note, moves and
+  # the answers to a run's questions.
+  @doc false
+  @spec notes(WorkItem.t()) :: [map]
+  def notes(%WorkItem{id: id}) do
+    decisions =
+      Repo.all(
+        from d in GateDecision,
+          where: d.work_item_id == ^id and d.kind in [:request_changes, :move],
+          select: %{
+            kind: d.kind,
+            stage_id: d.stage_id,
+            user_id: d.user_id,
+            note: d.note,
+            artifact_version_id: d.artifact_version_id,
+            inserted_at: d.inserted_at
+          }
+      )
+
+    escalations =
+      Repo.all(
+        from e in Escalation,
+          where: e.work_item_id == ^id and not is_nil(e.resolved_at) and not is_nil(e.note),
+          select: %{
+            kind: :escalation,
+            stage_id: e.stage_id,
+            user_id: e.resolved_by_id,
+            note: e.note,
+            artifact_version_id: nil,
+            inserted_at: e.resolved_at
+          }
+      )
+
+    answers =
+      Repo.all(
+        from a in Apiary.WorkItems.Answer,
+          left_join: r in DispatchRun,
+          on:
+            r.work_item_id == a.work_item_id and r.take_in == a.take_in and
+              r.attempt == a.attempt,
+          where: a.work_item_id == ^id and not is_nil(a.answered_at) and not is_nil(a.answer),
+          order_by: [a.take_in, a.attempt, a.position],
+          select: %{
+            kind: :answer,
+            stage_id: r.stage_id,
+            user_id: a.answered_by_id,
+            note: a.answer,
+            artifact_version_id: nil,
+            inserted_at: a.answered_at
+          }
+      )
+
+    Enum.sort_by(decisions ++ escalations ++ answers, & &1.inserted_at, DateTime)
+  end
+
+  # A version of an artifact as the reads give it, with the approvals that cover it.
+  defp version_map(version, approvals) do
+    %{
+      id: version.public_id,
+      number: version.number,
+      writer: version.writer,
+      run_id: version.run_id,
+      user_id: version.user_id,
+      stage_id: version.stage_id,
+      note: Map.get(version, :note),
+      inserted_at: version.inserted_at,
+      files: Map.get(version, :files, []),
+      approvals: Map.get(approvals, version.public_id, [])
+    }
+  end
+
+  # The approvals of the work item by the public id of each version they cover, oldest
+  # first.
+  defp approvals_by_version(work_item) do
+    Repo.all(
+      from d in GateDecision,
+        where: d.work_item_id == ^work_item.id and d.kind == :approve,
+        order_by: d.inserted_at
+    )
+    |> Enum.flat_map(fn decision ->
+      approval = %{
+        user_id: decision.user_id,
+        stage_id: decision.stage_id,
+        inserted_at: decision.inserted_at
+      }
+
+      for id <- decision.versions, do: {id, approval}
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
   ## Applying the runner's rules
@@ -1113,13 +1191,7 @@ defmodule Apiary.Stages do
       %{
         type: type,
         required: input["required"] == true,
-        version: chosen && %{id: chosen.public_id, number: chosen.number},
-        source:
-          cond do
-            person -> :person
-            gated -> :approved
-            true -> nil
-          end
+        version: chosen && version_map(chosen, approvals_by_version(work_item))
       }
     end
   end
@@ -1130,16 +1202,6 @@ defmodule Apiary.Stages do
     |> Enum.map(& &1["id"])
     |> Enum.take_while(&(&1 != stage["id"]))
     |> Enum.reverse()
-  end
-
-  defp approved_ids(work_item) do
-    Repo.all(
-      from d in GateDecision,
-        where: d.work_item_id == ^work_item.id and d.kind == :approve,
-        select: d.versions
-    )
-    |> List.flatten()
-    |> MapSet.new()
   end
 
   defp approvals(work_item, stage, artifacts) do
@@ -1175,9 +1237,12 @@ defmodule Apiary.Stages do
   defp gaps(nil, _work_item, stage, artifacts) do
     case newest_made_in(artifacts, "verdict", stage["id"]) do
       nil -> nil
-      version -> (Artifacts.read_json(version) || %{})["gaps"]
+      version -> text((Artifacts.read_json(version) || %{})["gaps"])
     end
   end
+
+  defp text(text) when is_binary(text), do: text
+  defp text(_other), do: nil
 
   defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
     workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}

@@ -58,7 +58,7 @@ defmodule Apiary.Repo.Migrations.KeepGateDecisionsAndEscalations do
     create index(:gate_decisions, [:user_id])
 
     create constraint(:gate_decisions, :gate_decisions_kind_check,
-             check: "kind IN ('approve', 'request_changes')"
+             check: "kind IN ('approve', 'request_changes', 'move')"
            )
 
     create constraint(:gate_decisions, :gate_decisions_versions_check,

@@ -170,7 +170,7 @@ defmodule Apiary.StagesTest do
         )
 
       assert {:ok, %WorkItem{stage_state: :running}} = Stages.resume(work_item)
-      assert [%{source: :person, version: %{number: 1}}] = Stages.inputs(work_item)
+      assert [%{version: %{number: 1, writer: :person, approvals: []}}] = Stages.inputs(work_item)
       assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
     end
   end
@@ -495,8 +495,13 @@ defmodule Apiary.StagesTest do
 
       assert reload(work_item).stage_state == :at_gate
 
-      assert [%{type: "proposal", source: :approved, version: %{id: id}}] =
-               Stages.inputs(work_item)
+      assert [
+               %{
+                 type: "proposal",
+                 required: true,
+                 version: %{id: id, writer: :run, approvals: [%{stage_id: @explore}]}
+               }
+             ] = Stages.inputs(work_item)
 
       assert id == proposal.public_id
 
@@ -511,16 +516,57 @@ defmodule Apiary.StagesTest do
 
       assert [%{id: ^id}] = Enum.map(Stages.inputs(work_item), & &1.version)
 
+      user_id = scope.user.id
+
       assert [
                %{
                  type: "proposal",
-                 newest: 2,
-                 approved: 1,
-                 newer_than_approved?: true,
-                 changed_after_approval?: true
+                 stage_id: @explore,
+                 approved_version: ^id,
+                 changed_after_approval: true,
+                 versions: [
+                   %{number: 2, approvals: [], files: [_file]},
+                   %{
+                     id: ^id,
+                     number: 1,
+                     approvals: [%{user_id: ^user_id, stage_id: @explore}]
+                   }
+                 ]
                },
-               %{type: "verdict", approved: nil}
+               %{type: "verdict", approved_version: nil, changed_after_approval: false}
              ] = Stages.artifact_index(work_item)
+    end
+  end
+
+  describe "notes" do
+    test "are the requests for changes, escalation notes, moves and answers, oldest first",
+         %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The sale price", "2" => "Yes"})
+      work_item = end_run!(work_item, nil)
+      {:ok, _} = Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart")
+      work_item = end_run!(work_item, understood_result())
+      [proposal] = versions(work_item, "proposal")
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", proposal.public_id)
+
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough")
+      user_id = scope.user.id
+      proposal_id = proposal.public_id
+
+      assert [
+               %{kind: :answer, stage_id: @explore, user_id: ^user_id, note: "The sale price"},
+               %{kind: :answer, note: "Yes"},
+               %{kind: :escalation, stage_id: @explore, user_id: ^user_id, note: "Read the cart"},
+               %{
+                 kind: :request_changes,
+                 stage_id: @explore,
+                 note: "Name the price rule",
+                 artifact_version_id: ^proposal_id
+               },
+               %{kind: :move, stage_id: @explore, note: "Shaped enough"}
+             ] = Stages.notes(work_item)
     end
   end
 
