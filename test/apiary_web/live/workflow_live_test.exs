@@ -414,8 +414,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "Contact support: the #{Apiary.Adapters.title(adapter.adapter)} adapter returned " <>
-                 "the error internal for acme/harness."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
       serve_calls([adapter], covered: covered, files: files)
@@ -674,9 +674,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> render_change()
 
       assert words(view, "#harness-source-unplaced-#{adapter.adapter.public_id}-no_address") ==
-               "Contact support: Qory Apiary cannot read the repositories of the " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} adapter, because the adapter has no " <>
-                 "call address. The Qory harness needs no call address."
+               "Contact support: Qory Apiary could not read the repositories of the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       refute has_element?(view, "#harness-source-none")
       refute render(view) =~ adapter.host

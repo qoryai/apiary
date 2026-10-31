@@ -2534,62 +2534,40 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "contact support."
 
       for {cause, code, line} <- [
-            {:no_address, nil,
-             "Contact support: Qory Apiary does not call the GitHub adapter, because the " <>
-               "adapter has no call address. The Qory harness needs no call address."},
+            {:no_address, nil, "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:unauthorized, nil,
              "The GitHub adapter did not accept the call from Qory Apiary. Try again. If it " <>
                "repeats, contact support."},
             {:refused, "unsupported_contract_version",
-             "Contact support: the GitHub adapter does not implement the contract revision of " <>
-               "the call."},
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:refused, "invalid_request",
-             "Contact support: the GitHub adapter did not accept the call as valid under the " <>
-               "contract."},
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:refused, "source_unavailable",
              "The GitHub adapter could not read acme/harness. Try again."},
             {:invalid_answer, nil,
              "Qory Apiary did not accept the answer of the GitHub adapter. Try again. If it " <>
                "repeats, contact support."},
-            {:too_large, nil,
-             "Contact support: Qory Apiary did not send the call to the GitHub adapter, " <>
-               "because the call was over 256 KiB."}
+            {:too_large, nil, "Contact support: Qory Apiary could not call the GitHub adapter."}
           ] do
         assert reads.(call.(cause, code)) == line
       end
 
       for {refusal, line} <- [
             {{:address, :link_local},
-             "Contact support: Qory Apiary does not call the GitHub adapter, because the " <>
-               "adapter's call address leads to a link-local address. The Qory harness needs no " <>
-               "call address."},
-            {:form,
-             "Contact support: Qory Apiary does not call the GitHub adapter, because the " <>
-               "adapter's call address is not an https address at the adapter's host. The Qory " <>
-               "harness needs no call address."},
-            {:public_host,
-             "Contact support: Qory Apiary does not call the GitHub adapter, because the " <>
-               "public address of Qory Apiary has no host name. The Qory harness needs no call " <>
-               "address."}
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
+            {:form, "Contact support: Qory Apiary could not call the GitHub adapter."},
+            {:public_host, "Contact support: Qory Apiary could not call the GitHub adapter."}
           ] do
         not_allowed = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
         assert reads.({:call, Map.put(not_allowed, :refusal, refusal)}) == line
       end
 
-      for {kind, words} <- [
-            metadata: "a cloud metadata address",
-            unspecified: "the unspecified address",
-            multicast: "a multicast address",
-            broadcast: "a broadcast address",
-            reserved: "a reserved address",
-            loopback: "a loopback address written as an IPv6 address"
-          ] do
+      # The kind of the address is in the call's log line, not on the page.
+      for kind <- [:metadata, :unspecified, :multicast, :broadcast, :reserved, :loopback] do
         call = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
 
         assert reads.({:call, Map.put(call, :refusal, {:address, kind})}) ==
-                 "Contact support: Qory Apiary does not call the GitHub adapter, because the " <>
-                   "adapter's call address leads to #{words}. The Qory harness needs no call " <>
-                   "address."
+                 "Contact support: Qory Apiary could not call the GitHub adapter."
       end
 
       # A save's walk at a call that failed has the same words.
@@ -2606,8 +2584,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
          }}
 
       assert ApiaryWeb.HarnessComponents.refusal_words(walk, source, "main", "Acme") ==
-               "Contact support: Qory Apiary did not send the call to the GitHub adapter, " <>
-                 "because the call was over 256 KiB."
+               "Contact support: Qory Apiary could not call the GitHub adapter."
     end
 
     test "a save whose walk cannot reach the adapter or reads a file that is not valid: the cause, and nothing saved",
@@ -2650,8 +2627,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "Contact support: the #{Apiary.Adapters.title(adapter.adapter)} adapter returned " <>
-                 "the error internal for acme/harness."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
@@ -2664,8 +2641,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "Contact support: the #{Apiary.Adapters.title(adapter.adapter)} adapter returned " <>
-                 "the error internal for acme/harness."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       serve_harness(adapter, %{{"R_harness", "harness.yaml"} => "exports: 7\n"})
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -2711,13 +2688,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for {call_url, instance_id, cause, line} <- [
             {nil, nil, "no_address",
-             "Contact support: Qory Apiary cannot read the repositories of the #{title} " <>
-               "adapter, because the adapter has no call address. The Qory harness needs no call " <>
-               "address."},
+             "Contact support: Qory Apiary could not read the repositories of the #{title} " <>
+               "adapter."},
             {"https://code-host.example.org/calls/", "instance-1", "not_placed",
-             "Contact support: Qory Apiary cannot read the repositories of the #{title} " <>
-               "adapter, because the adapter's call address is not an https address at the " <>
-               "adapter's host. The Qory harness needs no call address."}
+             "Contact support: Qory Apiary could not read the repositories of the #{title} " <>
+               "adapter."}
           ] do
         {1, _} =
           Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
@@ -2758,9 +2733,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for node <- [adapter.adapter, other.adapter] do
         assert words(lv, "#harness-source-unplaced-#{node.public_id}-no_address") ==
-                 "Contact support: Qory Apiary cannot read the repositories of the " <>
-                   "#{Apiary.Adapters.title(node)} adapter, because the adapter has no call address. " <>
-                   "The Qory harness needs no call address."
+                 "Contact support: Qory Apiary could not read the repositories of the " <>
+                   "#{Apiary.Adapters.title(node)} adapter."
       end
     end
 
@@ -2785,9 +2759,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                |> LazyHTML.text()
                |> String.split()
                |> Enum.join(" ") ==
-                 "Contact support: Qory Apiary cannot read the repositories of the #{adapter} " <>
-                   "adapter, because the public address of Qory Apiary has no host name. The Qory " <>
-                   "harness needs no call address."
+                 "Contact support: Qory Apiary could not read the repositories of the #{adapter} " <>
+                   "adapter."
       end
 
       refute html =~ "harness-source-none"
