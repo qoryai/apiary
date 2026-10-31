@@ -31,7 +31,15 @@ defmodule Apiary.Harnesses.PublicGitTest do
     end
   end
 
-  defp read(git \\ @git, at, path),
+  # The read's result, a failure with its cause alone (`hopped/3` has its host).
+  defp read(git \\ @git, at, path) do
+    case hopped(git, at, path) do
+      {:error, cause, _hop} -> {:error, cause}
+      result -> result
+    end
+  end
+
+  defp hopped(git, at, path),
     do: PublicGit.session(&PublicGit.no_budget/0, fn -> PublicGit.read(git, at, path) end)
 
   describe "version 2, with filter" do
@@ -239,7 +247,79 @@ defmodule Apiary.Harnesses.PublicGitTest do
         end
       )
 
-      capture_log(fn -> assert read("HEAD", "harness.yaml") == {:error, :not_allowed} end)
+      capture_log(fn ->
+        assert hopped(@git, "HEAD", "harness.yaml") ==
+                 {:error, :not_allowed, {"private.example.com", 443}}
+      end)
+    end
+
+    test "a failure on a redirect's target has the target's host and port" do
+      redirect = fn conn ->
+        if Plug.Conn.get_req_header(conn, "host") == ["github.com"] do
+          conn
+          |> Plug.Conn.put_resp_header(
+            "location",
+            "https://mirror.example.com:8443/acme/harness/info/refs?service=git-upload-pack"
+          )
+          |> Plug.Conn.send_resp(302, "")
+        end
+      end
+
+      for {answer, cause} <- [
+            {&Plug.Conn.send_resp(&1, 429, ""), :rate_limited},
+            {&Plug.Conn.send_resp(&1, 503, ""), {:unreachable, 10}},
+            {&Plug.Conn.send_resp(&1, 200, "<html></html>"), :failed}
+          ] do
+        PublicGitServer.serve(%{}, answer: fn conn -> redirect.(conn) || answer.(conn) end)
+
+        capture_log(fn ->
+          assert hopped(@git, "HEAD", "harness.yaml") ==
+                   {:error, cause, {"mirror.example.com", 8443}}
+        end)
+      end
+    end
+
+    test "a failure of a request after a redirect has the host it ended at" do
+      repo = repository!()
+
+      PublicGitServer.serve(%{"https://mirror.example.com/acme/harness" => repo.dir},
+        answer: fn conn ->
+          case {Plug.Conn.get_req_header(conn, "host"), conn.method} do
+            {["github.com"], _method} ->
+              conn
+              |> Plug.Conn.put_resp_header(
+                "location",
+                "https://mirror.example.com/acme/harness/info/refs?service=git-upload-pack"
+              )
+              |> Plug.Conn.send_resp(301, "")
+
+            {_mirror, "POST"} ->
+              Plug.Conn.send_resp(conn, 429, "")
+
+            _advertisement ->
+              nil
+          end
+        end
+      )
+
+      capture_log(fn ->
+        assert hopped(@git, "HEAD", "harness.yaml") ==
+                 {:error, :rate_limited, {"mirror.example.com", 443}}
+      end)
+    end
+
+    test "a redirect to a host that is no exact name fails at the host that sent it" do
+      PublicGitServer.serve(%{},
+        answer: fn conn ->
+          conn
+          |> Plug.Conn.put_resp_header("location", "https://Not_A_Host/x")
+          |> Plug.Conn.send_resp(302, "")
+        end
+      )
+
+      capture_log(fn ->
+        assert hopped(@git, "HEAD", "harness.yaml") == {:error, :failed, {"github.com", 443}}
+      end)
     end
 
     test "a redirect of a POST is not followed" do
@@ -286,7 +366,7 @@ defmodule Apiary.Harnesses.PublicGitTest do
       assert PublicGit.session(fn -> {:error, :late} end, fn ->
                PublicGit.read(@git, "HEAD", "harness.yaml")
              end) ==
-               {:error, :late}
+               {:error, :late, {"github.com", 443}}
 
       assert requests() == []
     end
@@ -377,7 +457,7 @@ defmodule Apiary.Harnesses.PublicGitTest do
         &PublicGit.no_budget/0,
         fn ->
           assert {:ok, "x: 1\n", _} = PublicGit.read(@git, "main", "b.yaml")
-          assert PublicGit.read(@git <> ".git/", "main", "c.yaml") == {:error, :too_large}
+          assert {:error, :too_large, _hop} = PublicGit.read(@git <> ".git/", "main", "c.yaml")
         end,
         inflated: used
       )
@@ -394,7 +474,7 @@ defmodule Apiary.Harnesses.PublicGitTest do
         &PublicGit.no_budget/0,
         fn ->
           assert {:ok, _, _} = PublicGit.read(@git, "main", "b.yaml")
-          assert PublicGit.read(other, "main", "c.yaml") == {:error, :too_large}
+          assert {:error, :too_large, _hop} = PublicGit.read(other, "main", "c.yaml")
           assert inflated() == used
         end,
         session_inflated: used + 1

@@ -99,6 +99,9 @@ defmodule Apiary.Harnesses.PublicGit do
           | :version_not_found
           | :not_text
 
+  @typedoc "The host and port a read failed at: a redirect's target where one led there."
+  @type hop :: Fetch.hop()
+
   @typedoc """
   Each request's time: `{:ok, milliseconds}`, `{:error, :late}` for no time left, or
   `{:error, :no_calls}` for no request left.
@@ -146,8 +149,8 @@ defmodule Apiary.Harnesses.PublicGit do
 
   @doc false
   # public/1 is `:ok` where `git`'s host serves it to anyone (the moduledoc's first
-  # request), else `{:error, cause}`.
-  @spec public(String.t()) :: :ok | {:error, cause}
+  # request), else `{:error, cause, hop}`.
+  @spec public(String.t()) :: :ok | {:error, cause, hop}
   def public(git) when is_binary(git) do
     with {:ok, _repository} <- repository(git), do: :ok
   end
@@ -155,25 +158,28 @@ defmodule Apiary.Harnesses.PublicGit do
   @doc false
   # read/3 is the file at `path` of `git` at `at`: `{:ok, content, commit}`, content nil
   # for a commit that has no file there, `commit` the full id `at` resolved to; else
-  # `{:error, cause}`.
+  # `{:error, cause, hop}`.
   @spec read(String.t(), String.t(), String.t()) ::
-          {:ok, binary | nil, String.t()} | {:error, cause}
+          {:ok, binary | nil, String.t()} | {:error, cause, hop}
   def read(git, at, path) when is_binary(git) and is_binary(at) and is_binary(path) do
-    with {:ok, parts} <- parts(path),
-         {:ok, repository} <- repository(git),
-         {:ok, commit, given} <- resolve(repository, at),
-         {:ok, content} <- file(repository, commit, given, path, parts) do
-      {:ok, content, commit}
+    with {:ok, parts} <- at_hop(parts(path), address(git)),
+         {:ok, repository} <- repository(git) do
+      # Every request after the first goes to the address the first ended at.
+      with {:ok, commit, given} <- resolve(repository, at),
+           {:ok, content} <- file(repository, commit, given, path, parts) do
+        {:ok, content, commit}
+      end
+      |> at_hop(address(repository.base))
     end
   end
 
+  defp at_hop({:error, cause}, hop), do: {:error, cause, hop}
+  defp at_hop(result, _hop), do: result
+
   @doc false
   # address/1 is the host of `git` and its port, as a failure shows them.
-  @spec address(String.t()) :: {String.t(), pos_integer}
-  def address(git) do
-    uri = URI.parse(git)
-    {String.downcase(uri.host || ""), uri.port || 443}
-  end
+  @spec address(String.t()) :: hop
+  def address(git), do: Fetch.address(git)
 
   ## The repository
 
@@ -181,11 +187,13 @@ defmodule Apiary.Harnesses.PublicGit do
     key = key(git)
 
     memo({:repository, key}, fn ->
-      with {:ok, answer} <- request(:get, base(git) <> @service, nil, @refs_bytes),
-           :ok <- served(answer, @advertisement),
-           {:ok, base} <- redirected(answer.url),
-           {:ok, repository} <- advertisement(answer.body) do
-        {:ok, Map.merge(repository, %{git: git, key: key, base: base})}
+      with {:ok, answer} <- request(:get, base(git) <> @service, nil, @refs_bytes) do
+        with :ok <- served(answer, @advertisement),
+             {:ok, base} <- redirected(answer.url),
+             {:ok, repository} <- advertisement(answer.body) do
+          {:ok, Map.merge(repository, %{git: git, key: key, base: base})}
+        end
+        |> at_hop(address(answer.url))
       end
     end)
   end
@@ -658,6 +666,10 @@ defmodule Apiary.Harnesses.PublicGit do
     with {:ok, answer} <- request(:post, repository.base <> "/git-upload-pack", body, max_bytes),
          :ok <- served(answer, @result) do
       {:ok, answer}
+    else
+      # A POST follows no redirect, so its hop is the repository's: read/3 adds it.
+      {:error, cause, _hop} -> {:error, cause}
+      {:error, cause} -> {:error, cause}
     end
   end
 
@@ -698,10 +710,17 @@ defmodule Apiary.Harnesses.PublicGit do
         end
 
       case Fetch.request(method, url, opts) do
-        {:ok, answer} -> {:ok, answer}
-        {:error, :unreachable} -> {:error, {:unreachable, max(div(time + 999, 1000), 1)}}
-        {:error, failure} -> {:error, failure}
+        {:ok, answer} ->
+          {:ok, answer}
+
+        {:error, :unreachable, hop} ->
+          {:error, {:unreachable, max(div(time + 999, 1000), 1)}, hop}
+
+        {:error, failure, hop} ->
+          {:error, failure, hop}
       end
+    else
+      {:error, cause} -> {:error, cause, address(url)}
     end
   end
 

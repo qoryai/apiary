@@ -239,8 +239,8 @@ defmodule Apiary.Harnesses.Walk do
   records none, and has `call_cause`: `:timeout` or `:unreachable`, the call's cause, or
   `:late` for a walk out of time. A failed read of a public repository (`too_large`,
   `source_unreachable`, `host_not_allowed`, `rate_limited` and `fetch_failed`) has the
-  rule `fetch`,
-  with its host, its port and, for `source_unreachable`, the seconds it had.
+  rule `fetch`, with the host and port of the hop that failed, a redirect's target where
+  one led there, and, for `source_unreachable`, the seconds it had.
   """
   @type failure :: %{
           required(:failure) => atom,
@@ -791,8 +791,8 @@ defmodule Apiary.Harnesses.Walk do
                 {source, location(nil, nil, nil, shown, [], shown)}
 
               true ->
-                {:error, cause} = public
-                public_failed(cause, source["git"], shown, source["ref"])
+                {:error, cause, hop} = public
+                public_failed(cause, hop, shown, source["ref"])
             end
         end
       end)
@@ -902,13 +902,10 @@ defmodule Apiary.Harnesses.Walk do
         {:ok, _content, version} ->
           put_pin(git, ref, version)
 
-        {:error, :no_calls} ->
-          if commit?(ref),
+        {:error, cause, hop} ->
+          if cause == :no_calls and commit?(ref),
             do: put_pin(git, ref, ref),
-            else: public_failed(:no_calls, git, location.source, ref)
-
-        {:error, cause} ->
-          public_failed(cause, git, location.source, ref)
+            else: public_failed(cause, hop, location.source, ref)
       end
     end
 
@@ -1028,7 +1025,7 @@ defmodule Apiary.Harnesses.Walk do
   defp read(%{adapter: :public} = location, parts, at) do
     case public_read(location, parts, at) do
       {:ok, content, version} -> {content, version}
-      {:error, cause} -> public_failed(cause, location.resource_ref, location.source, at)
+      {:error, cause, hop} -> public_failed(cause, hop, location.source, at)
     end
   end
 
@@ -1125,28 +1122,28 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
-  # A read of the public repository `git`, shown as `source`, that failed at `at`: a ref
-  # the host does not list and a file that is not text break the walk's rules, as does
-  # a read with no public request left, under the harness's label; a repository its host
-  # serves to no one is not covered; a host not reached in time, or a walk out of time,
-  # is tried again; a host's rate limit (`429`) and any other cause fail with the host
-  # and port.
-  defp public_failed(:no_calls, _git, _source, _at),
+  # A read of a public repository, shown as `source`, that failed at the version `at`,
+  # `hop` the host and port it failed at: a ref the host does not list and a file that is
+  # not text break the walk's rules, as does a read with no public request left, under
+  # the harness's label; a repository its host serves to no one is not covered; a host
+  # not reached in time, or a walk out of time, is tried again; a host's rate limit
+  # (`429`) and any other cause fail with the host and port.
+  defp public_failed(:no_calls, _hop, _source, _at),
     do: fail(:invalid, get(:label), rule("calls", n: @max_calls))
 
-  defp public_failed(:version_not_found, _git, source, at),
+  defp public_failed(:version_not_found, _hop, source, at),
     do: fail(:invalid, source, rule("version", ref: at))
 
-  defp public_failed(:not_text, _git, source, _at), do: fail(:invalid, source, rule("not_text"))
-  defp public_failed(:not_found, _git, source, _at), do: fail(:not_covered, source)
+  defp public_failed(:not_text, _hop, source, _at), do: fail(:invalid, source, rule("not_text"))
+  defp public_failed(:not_found, _hop, source, _at), do: fail(:not_covered, source)
 
-  defp public_failed(:late, git, source, _at),
-    do: public_retry(git, source, :late, div(get(:time_limit), 1000))
+  defp public_failed(:late, hop, source, _at),
+    do: public_retry(hop, source, :late, div(get(:time_limit), 1000))
 
-  defp public_failed({:unreachable, seconds}, git, source, _at),
-    do: public_retry(git, source, :unreachable, seconds)
+  defp public_failed({:unreachable, seconds}, hop, source, _at),
+    do: public_retry(hop, source, :unreachable, seconds)
 
-  defp public_failed(cause, git, source, _at) do
+  defp public_failed(cause, hop, source, _at) do
     code =
       case cause do
         :not_allowed -> :host_not_allowed
@@ -1155,16 +1152,16 @@ defmodule Apiary.Harnesses.Walk do
         _failed -> :fetch_failed
       end
 
-    fail(code, source, fetch_rule(git, nil))
+    fail(code, source, fetch_rule(hop, nil))
   end
 
-  defp public_retry(git, source, cause, seconds) do
+  defp public_retry(hop, source, cause, seconds) do
     throw(
       {__MODULE__, :retry,
        %{
          failure: :source_unreachable,
          source: shown(source),
-         rule: fetch_rule(git, seconds),
+         rule: fetch_rule(hop, seconds),
          adapter: nil,
          adapter_id: nil,
          call_failure: nil,
@@ -1174,12 +1171,11 @@ defmodule Apiary.Harnesses.Walk do
   end
 
   @doc false
-  # fetch_rule/2 is the rule of a failed read of the public repository `git`: its host
-  # and port, and `seconds`, the time a request had, where it got no answer.
-  # `Apiary.Stacks.Sources` reports such a read with it.
-  @spec fetch_rule(String.t(), pos_integer | nil) :: map
-  def fetch_rule(git, seconds) do
-    {host, port} = PublicGit.address(git)
+  # fetch_rule/2 is the rule of a failed read of a public repository: the host and port
+  # it failed at (`t:Apiary.Harnesses.PublicGit.hop/0`), and `seconds`, the time a request
+  # had, where it got no answer. `Apiary.Stacks.Sources` reports such a read with it.
+  @spec fetch_rule(PublicGit.hop(), pos_integer | nil) :: map
+  def fetch_rule({host, port}, seconds) do
     values = %{"host" => host, "port" => port}
     values = if seconds, do: Map.put(values, "seconds", seconds), else: values
     %{"rule" => "fetch", "values" => values}

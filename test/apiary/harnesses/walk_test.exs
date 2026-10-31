@@ -1450,6 +1450,80 @@ defmodule Apiary.Harnesses.WalkTest do
       assert git_requests() == []
     end
 
+    # A walk of `@public`, whose host redirects to `target`, and every other host answers
+    # with `answer`.
+    defp redirected(ctx, target, answer) do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      PublicGitServer.serve(%{},
+        answer: fn conn ->
+          if Plug.Conn.get_req_header(conn, "host") == ["public.example.org"] do
+            location = target <> "/qory/stack/info/refs?service=git-upload-pack"
+
+            conn
+            |> Plug.Conn.put_resp_header("location", location)
+            |> Plug.Conn.send_resp(302, "")
+          else
+            answer.(conn)
+          end
+        end
+      )
+
+      Walk.run(ctx.input)
+    end
+
+    test "a redirect to a host that answers 429 fails rate_limited with that host", ctx do
+      assert {:failed, %{failure: :rate_limited, source: @public, rule: rule}} =
+               redirected(
+                 ctx,
+                 "https://mirror.example.org:8443",
+                 &Plug.Conn.send_resp(&1, 429, "")
+               )
+
+      assert rule == %{
+               "rule" => "fetch",
+               "values" => %{"host" => "mirror.example.org", "port" => 8443}
+             }
+    end
+
+    test "a redirect to a private address fails host_not_allowed with that host", ctx do
+      assert {:failed, %{failure: :host_not_allowed, source: @public, rule: rule}} =
+               redirected(
+                 ctx,
+                 "https://private.example.org",
+                 &Plug.Conn.send_resp(&1, 200, "")
+               )
+
+      assert rule == %{
+               "rule" => "fetch",
+               "values" => %{"host" => "private.example.org", "port" => 443}
+             }
+    end
+
+    test "a redirect to a host out of reach is source_unreachable with that host", ctx do
+      assert {:retry, %{failure: :source_unreachable, rule: %{"values" => values}}} =
+               redirected(
+                 ctx,
+                 "https://nowhere.example.org",
+                 &Plug.Conn.send_resp(&1, 200, "")
+               )
+
+      assert values == %{"host" => "nowhere.example.org", "port" => 443, "seconds" => 10}
+    end
+
+    test "a redirect to a host that serves no git repository is fetch_failed with that host",
+         ctx do
+      assert {:failed, %{failure: :fetch_failed, rule: %{"values" => values}}} =
+               redirected(
+                 ctx,
+                 "https://mirror.example.org",
+                 &Plug.Conn.send_resp(&1, 200, "<html></html>")
+               )
+
+      assert values == %{"host" => "mirror.example.org", "port" => 443}
+    end
+
     test "a host that is out of reach is a retry, source_unreachable, with the request's seconds",
          ctx do
       git = "https://nowhere.example.org/qory/stack"

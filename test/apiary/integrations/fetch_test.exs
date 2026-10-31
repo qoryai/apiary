@@ -222,6 +222,18 @@ defmodule Apiary.Integrations.FetchTest do
       end
 
       Fetch.request(method, url, Keyword.merge([req_options: [plug: plug]], opts))
+      |> then(fn
+        {:error, failure, _hop} -> {:error, failure}
+        answered -> answered
+      end)
+    end
+
+    # The hop of a failed request, each request answered by `answer`.
+    defp failed_hop(url, answer, opts \\ []) do
+      {:error, _failure, hop} =
+        Fetch.request(:get, url, Keyword.merge([req_options: [plug: answer]], opts))
+
+      hop
     end
 
     test "posts the body with the headers given, and returns the last hop and the content type" do
@@ -279,6 +291,42 @@ defmodule Apiary.Integrations.FetchTest do
         assert request(:get, @url, ok(String.duplicate("a", 11)), max_bytes: 10) ==
                  {:error, :too_large}
       end)
+    end
+
+    test "a failure has the host and port of the hop that failed" do
+      target = "https://other.example.com:8443/x"
+
+      redirected = fn conn ->
+        if conn.request_path == "/x" do
+          Plug.Conn.send_resp(conn, 429, "")
+        else
+          conn |> Plug.Conn.put_resp_header("location", target) |> Plug.Conn.send_resp(302, "")
+        end
+      end
+
+      capture_log(fn ->
+        assert failed_hop(@url, &Plug.Conn.send_resp(&1, 429, "")) == {"github.com", 443}
+        assert failed_hop(@url, redirected, any_port: true) == {"other.example.com", 8443}
+      end)
+    end
+
+    test "a fetch out of time has the host of the hop that hung" do
+      target = "https://other.example.com/x"
+
+      slow = fn conn ->
+        if conn.request_path == "/x" do
+          Process.sleep(500)
+          Plug.Conn.send_resp(conn, 200, "")
+        else
+          conn |> Plug.Conn.put_resp_header("location", target) |> Plug.Conn.send_resp(302, "")
+        end
+      end
+
+      capture_log(fn ->
+        assert failed_hop(@url, slow, timeout: 100) == {"other.example.com", 443}
+      end)
+
+      refute_received {_ref, {"other.example.com", 443}}
     end
 
     test "a 404 writes no log line; other failures do, with the URL" do

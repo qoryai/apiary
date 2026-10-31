@@ -33,7 +33,7 @@ defmodule Apiary.Integrations.Fetch do
   a `:body`, the `:headers` the protocol sends in place of `Accept`, and, with
   `any_port: true`, the port the address has, on every hop. It returns the address of
   the last hop and the answer's `Content-Type`, and a failure by its class
-  (`t:failure/0`).
+  (`t:failure/0`) with the host and port of the hop that failed (`t:hop/0`).
   """
 
   require Logger
@@ -68,6 +68,12 @@ defmodule Apiary.Integrations.Fetch do
   """
   @type failure :: :not_allowed | :unreachable | :too_large | :not_found | :rate_limited | :failed
 
+  @typedoc """
+  The host and port of the hop a request failed at: the address asked for, or a
+  redirect's target whose host is an exact name (`Apiary.Kinds.Hosts.exact?/1`).
+  """
+  @type hop :: {String.t(), pos_integer}
+
   @typedoc "What `request/3` read: the body, the address of the last hop, and the `Content-Type`."
   @type answer :: %{body: binary, url: String.t(), content_type: String.t() | nil}
 
@@ -79,10 +85,10 @@ defmodule Apiary.Integrations.Fetch do
   @spec get(String.t(), [option]) :: {:ok, binary} | {:error, :fetch_failed}
   def get(url, opts \\ []) when is_binary(url) do
     case run(:get, url, opts) do
-      {:ok, answer} ->
+      {{:ok, answer}, _hop} ->
         {:ok, answer.body}
 
-      {:error, reason} ->
+      {{:error, reason}, _hop} ->
         Logger.warning(
           "an integration release could not be fetched url=#{url} reason=#{inspect(reason)}"
         )
@@ -94,23 +100,30 @@ defmodule Apiary.Integrations.Fetch do
   @doc """
   request/3 sends `method`, `:get` or `:post`, to `url`, an https URL, under the guards of
   the module's documentation: `{:ok, answer}` for a `200` within them, else `{:error,
-  failure}` (`t:failure/0`), and a log line saying why for every failure but
-  `:not_found`.
+  failure, hop}` (`t:failure/0`, `t:hop/0`), and a log line saying why for every failure
+  but `:not_found`.
   """
-  @spec request(:get | :post, String.t(), [option]) :: {:ok, answer} | {:error, failure}
+  @spec request(:get | :post, String.t(), [option]) :: {:ok, answer} | {:error, failure, hop}
   def request(method, url, opts \\ []) when method in [:get, :post] and is_binary(url) do
     case run(method, url, opts) do
-      {:ok, answer} ->
+      {{:ok, answer}, _hop} ->
         {:ok, answer}
 
-      {:error, reason} ->
+      {{:error, reason}, hop} ->
         failure = failure(reason)
 
         if failure != :not_found,
           do: Logger.warning("a public git request failed url=#{url} reason=#{inspect(reason)}")
 
-        {:error, failure}
+        {:error, failure, hop}
     end
+  end
+
+  @doc "address/1 is the host of `url`, in lower case, and its port."
+  @spec address(String.t()) :: hop
+  def address(url) do
+    uri = URI.parse(url)
+    {String.downcase(uri.host || ""), uri.port || 443}
   end
 
   defp failure({:host_refused, _host}), do: :not_allowed
@@ -125,11 +138,15 @@ defmodule Apiary.Integrations.Fetch do
   defp failure(:too_large), do: :too_large
   defp failure(_other), do: :failed
 
+  # The result and the last hop. The task reports each hop as it starts, since a fetch
+  # out of time kills the task: `follow/5` cannot return the hop that hung.
   defp run(method, url, opts) do
     opts = :apiary |> Application.get_env(__MODULE__, []) |> Keyword.merge(opts)
 
     timeout = Keyword.get(opts, :timeout, @timeout)
     deadline = System.monotonic_time(:millisecond) + timeout
+    hops = {self(), make_ref()}
+    opts = Keyword.put(opts, :hops, hops)
 
     task =
       Task.async(fn ->
@@ -142,14 +159,35 @@ defmodule Apiary.Integrations.Fetch do
         end
       end)
 
-    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
-      {:ok, result} -> result
-      _none -> {:error, :timeout}
+    result =
+      case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+        {:ok, result} -> result
+        _none -> {:error, :timeout}
+      end
+
+    {result, last_hop(hops, address(url))}
+  end
+
+  defp last_hop({_pid, ref} = hops, hop) do
+    receive do
+      {^ref, next} -> last_hop(hops, next)
+    after
+      0 -> hop
     end
+  end
+
+  # A host that is no exact name stays out of the failure: a redirect's `Location` is any
+  # text a host sends, and the failure's host shows on a page.
+  defp report_hop(url, opts) do
+    {pid, ref} = Keyword.fetch!(opts, :hops)
+    if Hosts.exact?(URI.parse(url).host), do: send(pid, {ref, address(url)})
+    :ok
   end
 
   # One hop: `url` checked, resolved and pinned, then asked; a redirect followed from here.
   defp follow(method, url, hops, deadline, opts) do
+    report_hop(url, opts)
+
     with {:ok, uri} <- check_url(url, opts),
          {:ok, address} <- resolve(uri.host, opts),
          {:ok, response} <- send_request(method, uri, address, deadline, opts) do

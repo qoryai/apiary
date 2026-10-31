@@ -644,40 +644,41 @@ defmodule Apiary.Stacks.Sources do
           {:ok, _failed} ->
             {:ok, location(:public, nil, git)}
 
-          {{:error, _cause}, {adapter, failure, opts}} ->
+          {{:error, _cause, _hop}, {adapter, failure, opts}} ->
             {:error, call_failure(adapter, failure, opts, %{})}
 
-          {{:error, cause}, nil} ->
-            {:error, public_reason(cause, git, harness_source["ref"], nil)}
+          {{:error, cause, hop}, nil} ->
+            {:error, public_reason(cause, hop, harness_source["ref"], nil)}
         end
     end
   end
 
-  # Why the public repository `git` was not read at `at`, `path` the file, as a
-  # `t:reason/0`: as a run's walk fails (`Apiary.Harnesses.Walk`).
-  defp public_reason(:version_not_found, _git, at, _path),
+  # Why a public repository was not read at `at`, `hop` the host and port the read failed
+  # at and `path` the file, as a `t:reason/0`: as a run's walk fails
+  # (`Apiary.Harnesses.Walk`).
+  defp public_reason(:version_not_found, _hop, at, _path),
     do: if(at == @head, do: :no_commit, else: {:no_version, at})
 
-  defp public_reason(:not_text, _git, _at, path), do: {:not_text, path}
-  defp public_reason(:not_found, _git, _at, _path), do: :not_covered
+  defp public_reason(:not_text, _hop, _at, path), do: {:not_text, path}
+  defp public_reason(:not_found, _hop, _at, _path), do: :not_covered
 
-  defp public_reason(:late, git, _at, _path),
-    do: {:fetch, :source_unreachable, Walk.fetch_rule(git, div(@read_time, 1000))}
+  defp public_reason(:late, hop, _at, _path),
+    do: {:fetch, :source_unreachable, Walk.fetch_rule(hop, div(@read_time, 1000))}
 
-  defp public_reason({:unreachable, seconds}, git, _at, _path),
-    do: {:fetch, :source_unreachable, Walk.fetch_rule(git, seconds)}
+  defp public_reason({:unreachable, seconds}, hop, _at, _path),
+    do: {:fetch, :source_unreachable, Walk.fetch_rule(hop, seconds)}
 
-  defp public_reason(:not_allowed, git, _at, _path),
-    do: {:fetch, :host_not_allowed, Walk.fetch_rule(git, nil)}
+  defp public_reason(:not_allowed, hop, _at, _path),
+    do: {:fetch, :host_not_allowed, Walk.fetch_rule(hop, nil)}
 
-  defp public_reason(:rate_limited, git, _at, _path),
-    do: {:fetch, :rate_limited, Walk.fetch_rule(git, nil)}
+  defp public_reason(:rate_limited, hop, _at, _path),
+    do: {:fetch, :rate_limited, Walk.fetch_rule(hop, nil)}
 
-  defp public_reason(:too_large, git, _at, _path),
-    do: {:fetch, :too_large, Walk.fetch_rule(git, nil)}
+  defp public_reason(:too_large, hop, _at, _path),
+    do: {:fetch, :too_large, Walk.fetch_rule(hop, nil)}
 
-  defp public_reason(_failed, git, _at, _path),
-    do: {:fetch, :fetch_failed, Walk.fetch_rule(git, nil)}
+  defp public_reason(_failed, hop, _at, _path),
+    do: {:fetch, :fetch_failed, Walk.fetch_rule(hop, nil)}
 
   # The time of a request to a public repository's host: what is left before
   # `deadline`, at most a call's.
@@ -876,7 +877,7 @@ defmodule Apiary.Stacks.Sources do
       location.adapter == :public ->
         case PublicGit.read(location.resource_ref, at, path) do
           {:ok, content, version} -> {:ok, content, version}
-          {:error, cause} -> {:error, public_reason(cause, location.resource_ref, at, path)}
+          {:error, cause, hop} -> {:error, public_reason(cause, hop, at, path)}
         end
 
       opts = call_opts(deadline) ->
