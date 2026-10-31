@@ -53,7 +53,7 @@ defmodule ApiaryWeb.OrganisationLive do
         </div>
 
         <div class="q-org-main">
-          <section id="first-workspace" class="q-blk">
+          <section id="first-workspace">
             <SetUpComponents.kind_cards
               :if={@creates}
               title={gettext("What will your first workspace do?")}

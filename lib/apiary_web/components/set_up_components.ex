@@ -767,7 +767,13 @@ defmodule ApiaryWeb.SetUpComponents do
       <.dynamic_tag
         tag_name={@heading}
         id={"#{@id}-title"}
-        class="text-2xl/8 font-semibold tracking-[-0.025em]"
+        class={[
+          "font-semibold",
+          if(@heading == "h1",
+            do: "text-2xl/8 tracking-[-0.025em]",
+            else: "text-lg/7 tracking-[-0.015em]"
+          )
+        ]}
       >
         {@title}
       </.dynamic_tag>
