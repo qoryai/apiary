@@ -321,7 +321,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     assigns =
       assign(assigns,
         marks: Map.new(assigns.page.index, &{&1.type, &1}),
-        versions: Enum.filter(assigns.page.outputs, & &1.version_id)
+        versions: Enum.filter(assigns.page.outputs, & &1.version_id),
+        # A gate `none` takes no decision: the stage passes on once its outputs exist.
+        decides: assigns.page.gate_kind != "none"
       )
 
     ~H"""
@@ -336,13 +338,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </li>
       </ul>
       <.needs
-        :if={@page.missing_outputs != []}
+        :if={@page.missing_outputs != [] and not @page.confirm_gate}
         id={@id}
         page={@page}
         types={@page.missing_outputs}
         add_path={@add_path}
       />
-      <p id={"#{@id}-approvers"} class="text-xs opacity-70">
+      <p :if={@decides} id={"#{@id}-approvers"} class="text-xs opacity-70">
         <%= case @page.approvers do %>
           <% :members -> %>
             {gettext("One approval covers each version. Any member approves.")}
@@ -351,7 +353,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <% end %>
       </p>
       <%= if @page.can_decide and not @page.confirm_gate do %>
-        <%= if @asking == :changes do %>
+        <%= if @asking == :changes and @decides do %>
           <form
             novalidate
             id={"#{@id}-changes"}
@@ -391,7 +393,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
               )}
             </.button>
           </form>
-          <div class="q-wi-acts">
+          <div :if={@decides} class="q-wi-acts">
             <.button
               id={"#{@id}-ask-changes"}
               type="button"

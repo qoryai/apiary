@@ -109,6 +109,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       outputs: Enum.map(get(status, :outputs) || [], &output/1),
       escalation: escalation(scope, get(status, :escalation), runs),
       approvers: approvers(stage),
+      gate_kind: get(get(status, :gate) || %{}, :kind),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: Enum.map(index, &indexed/1),
       earlier: if(at, do: Enum.take(all, at), else: []),

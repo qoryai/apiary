@@ -23,6 +23,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   import Apiary.StagesFixtures
 
   alias Apiary.{Artifacts, Processes, Repo, Stages}
+  alias Apiary.Artifacts.Artifact
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.WorkItem
@@ -542,8 +543,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
   describe "a gate with a missing output" do
     # A work item at the gate of Shape, a stage with no workflow that has `outputs` as
-    # required outputs.
-    defp at_shape_gate(scope, outputs, approvers \\ "members") do
+    # required outputs and `gate` as its gate.
+    defp at_shape_gate(scope, outputs, gate \\ %{"kind" => "person", "approvers" => "members"}) do
       default = Processes.default_document("software")
 
       stages =
@@ -552,7 +553,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             %{
               stage
               | "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => true}),
-                "gate" => %{"kind" => "person", "approvers" => approvers}
+                "gate" => gate
             }
           else
             stage
@@ -626,7 +627,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       scope: scope
     } do
       listed = member_fixture(scope, :member)
-      work_item = at_shape_gate(scope, ["acceptance-criteria"], %{"members" => [listed.user.id]})
+      gate = %{"kind" => "person", "approvers" => %{"members" => [listed.user.id]}}
+      work_item = at_shape_gate(scope, ["acceptance-criteria"], gate)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
@@ -640,6 +642,43 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-stage-gate-line", "Build needs")
       assert has_element?(view, "#work-item-stage-gate-approve")
+    end
+
+    test "at a gate none: the line and Add, no approval, and a real push passes it on", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_shape_gate(scope, ["acceptance-criteria"], %{"kind" => "none"})
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+      assert has_element?(view, "#work-item-stage-gate-add-acceptance-criteria", "Add")
+      refute has_element?(view, "#work-item-stage-gate-approvers")
+      refute has_element?(view, "#work-item-stage-gate-ask-changes")
+      refute has_element?(view, "#work-item-stage-gate-approve")
+
+      {:ok, _version} =
+        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
+
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @build
+      assert decisions(work_item, :approve) == []
+      assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+    end
+
+    test "at Explore with a proposal waiting and no artifact: Confirm and no needs line", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+      Repo.delete_all(from a in Artifact, where: a.work_item_id == ^work_item.id)
+
+      assert %{state: :at_gate, missing_outputs: ["proposal"]} = Stages.status(work_item, scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-step-confirm")
+      refute has_element?(view, "#work-item-stage-gate-line")
+      refute has_element?(view, "#work-item-stage-gate-add-proposal")
     end
 
     test "a stale Approve: the notice lists the output and the stage", %{
