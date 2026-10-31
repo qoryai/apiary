@@ -532,8 +532,8 @@ defmodule Apiary.Stages do
   # stage that waits for inputs starts once its last required input exists (`resume/1`).
   # At the gate of a stage with no workflow the Exists checks run again: a gate `none`
   # passes on once every required output exists, and a person gate keeps waiting. A stage
-  # in any other state is left as it is. `{:error, :not_placed}` for a work item the
-  # runner has not placed.
+  # in any other state, or of a work item that is not `:exploring`, is left as it is.
+  # `{:error, :not_placed}` for a work item the runner has not placed.
   @doc false
   @spec version_added(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, :not_placed}
   def version_added(%WorkItem{id: id}) do
@@ -543,6 +543,9 @@ defmodule Apiary.Stages do
       case placed(work_item) do
         {:ok, version, stage} ->
           cond do
+            work_item.state != :exploring ->
+              {:ok, work_item}
+
             work_item.stage_state == :waiting_inputs ->
               {work_item, _run} = apply_event(work_item, version, stage, :resume)
               {:ok, work_item}

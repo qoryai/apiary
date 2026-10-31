@@ -709,6 +709,46 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
       assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
     end
+
+    test "a person's version leaves a closed work item waiting for inputs as it is", %{
+      scope: scope
+    } do
+      save!(scope, [
+        explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
+      ])
+
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_inputs
+      {:ok, _closed} = Moves.close(scope, work_item)
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+
+      assert %WorkItem{state: :closed, stage_state: :waiting_inputs} = reload(work_item)
+      assert runs(work_item) == []
+    end
+
+    test "a person's version leaves a closed work item at a gate none as it is", %{scope: scope} do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "mockup", "required" => true}],
+          "gate" => %{"kind" => "none"}
+        }),
+        stage(@build, "Build", [%{"workflow" => "explore-a-ticket"}])
+      ])
+
+      work_item = at_shape!(scope)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      {:ok, _closed} = Moves.close(scope, work_item)
+      run_count = length(runs(work_item))
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
+
+      assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
+               reload(work_item)
+
+      assert length(runs(work_item)) == run_count
+    end
   end
 
   describe "a work item the runner has not placed" do
