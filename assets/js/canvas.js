@@ -306,8 +306,11 @@ function Flow({initial, words, push, subscribe, el}) {
 
   const onNodesChange = useCallback(changes => setNodes(current => applyNodeChanges(changes, current)), [])
 
+  // A canvas whose cards open nothing (`selectable` false, such as New workspace's
+  // preview) sends no "select".
   const select = useCallback(
     id => {
+      if (viewRef.current.selectable === false) return
       if (id === viewRef.current.selected) return
       viewRef.current = {...viewRef.current, selected: id}
       push("select", {id})
@@ -362,7 +365,8 @@ function Flow({initial, words, push, subscribe, el}) {
   )
 
   const edges = layout(view).edges.map(edge => ({...edge, markerEnd: {type: MarkerType.ArrowClosed}}))
-  const description = view.editable === true ? words.node : words.node_read
+  const description =
+    view.selectable === false ? words.node_view : view.editable === true ? words.node : words.node_read
 
   const fade = side =>
     h("div", {
@@ -424,7 +428,7 @@ function Flow({initial, words, push, subscribe, el}) {
           nodesDraggable: view.editable === true,
           nodesConnectable: false,
           edgesFocusable: false,
-          elementsSelectable: true,
+          elementsSelectable: view.selectable !== false,
           deleteKeyCode: null,
           selectionKeyCode: null,
           multiSelectionKeyCode: null,

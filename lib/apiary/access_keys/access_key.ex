@@ -67,7 +67,7 @@ defmodule Apiary.AccessKeys.AccessKey do
     |> unique_constraint([:node_id, :label],
       name: :access_keys_node_label_index,
       error_key: :label,
-      message: dgettext_noop("errors", "is already the label of a key of this node")
+      message: dgettext_noop("errors", "is already the label of a key of this machine")
     )
   end
 

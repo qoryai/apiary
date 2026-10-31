@@ -32,7 +32,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     scope: scope
   } do
     node = node_fixture(scope)
-    path = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key"
+    path = ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/access-key"
 
     {code, log} =
       with_log([level: :debug], fn ->
@@ -87,7 +87,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
     defp generate_path(scope, node),
-      do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key/generate"
+      do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/access-key/generate"
 
     test "an event that carries a secret is refused, and the secret is in no log line", %{
       conn: conn,

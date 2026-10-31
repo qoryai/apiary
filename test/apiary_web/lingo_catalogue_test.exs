@@ -18,6 +18,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
     "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
+    "Contact support to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
@@ -38,10 +39,10 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Qory reads the %{item} and the answers of this take in when the run starts, and proposes what to do.",
     "Qory reads the %{item} and your answers when the run starts, and proposes what to do.",
     "Qory reads the %{item} when the run starts, and proposes what to do.",
-    "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
+    "Qory starts run %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
     "Run %{attempt} of %{of} reads the %{item} and these answers, from the start. It proposes what to do, or asks what it still needs to know.",
     "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know.",
-    "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
+    "Run %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
     "tag or version"
   ]
 

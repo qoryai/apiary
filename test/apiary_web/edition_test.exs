@@ -56,7 +56,7 @@ defmodule ApiaryWeb.EditionTest do
 
   test "the core's web edition says the empty Gateways page's body in the core's words" do
     assert Edition.Core.gateway_reach_sentence(:empty, %Organisation{name: "Acme"}) ==
-             "Add one so the nodes in Acme's workspaces can send runs through it."
+             "Add one so the machines and pools in Acme's workspaces can send runs through it."
   end
 
   test "an entry leads to its path, or where its function says" do

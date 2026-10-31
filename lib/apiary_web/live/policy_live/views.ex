@@ -447,7 +447,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             class="text-xl/7 font-semibold tracking-[-0.017em] outline-none"
             tabindex="-1"
           >
-            {gettext("Export for a node without a server")}
+            {gettext("Export for a machine without a server")}
           </.dynamic_tag>
           <p id="export-lead" class="mt-0.5 max-w-[80ch] text-sm/5 text-muted">
             <.rich text={export_lead(@export)} />
@@ -473,7 +473,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
       </.doc_well>
 
       <.doc_well :if={@export.policy_file} id="export-command">
-        <:caption>{gettext("on the node")}</:caption>
+        <:caption>{gettext("on the machine")}</:caption>
         <:actions>
           <.copy_button id="export-command-copy" text={@export.command} label={gettext("Copy")} />
         </:actions>

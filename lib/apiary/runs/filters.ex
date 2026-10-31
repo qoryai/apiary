@@ -36,8 +36,8 @@ defmodule Apiary.Runs.Filters do
   `q` is the free text of the query: the runs whose id starts with it, or whose title or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
-  `target:`, `state:`, `runtime:`, `host:`, `node:`, `started:` and
-  `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
+  `target:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`, its older word),
+  `started:` and `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
   the other words are `q`. A value in double quotes may hold spaces. A word whose qualifier
   the page does not know is free text; a qualifier it knows with a value it cannot read is
   refused and named. `tokens/2` writes the filters back as those words.
@@ -90,6 +90,7 @@ defmodule Apiary.Runs.Filters do
       "state" => :state,
       "runtime" => :runtime,
       "host" => :host,
+      "machine" => :node,
       "node" => :node,
       "started" => :started,
       "denied" => :denied,

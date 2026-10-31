@@ -571,6 +571,7 @@ defmodule Apiary.Audit do
           users: %{Ecto.UUID.t() => String.t()},
           access_keys: %{Ecto.UUID.t() => %{label: String.t() | nil, key_id: String.t()}},
           nodes: %{Ecto.UUID.t() => String.t()},
+          node_kinds: %{Ecto.UUID.t() => String.t()},
           workspaces: %{Ecto.UUID.t() => String.t()},
           targets: %{Ecto.UUID.t() => String.t()},
           runs: %{Ecto.UUID.t() => String.t()},
@@ -585,7 +586,9 @@ defmodule Apiary.Audit do
   names/2 looks up the names of the actors and the subjects of `entries`, as they are now,
   in one query per kind: the email address of each person (the person named as actor, or
   in `details` as `user_id`), the label and key id of each access key, the name of each
-  node, a deleted one's too, or an adapter's title where its description gives one, the
+  node, a deleted one's too, or an adapter's title where its description gives one, and
+  its kind (`node_kinds`, `"node"`, `"pool"`, `"gateway"`, `"adapter"` or
+  `"diagnostics"`), the
   name of each workspace (an entry's, or its subject), `system/path` of each target, the
   run id of each run, and the name of each other organisation an entry names by id, under
   a key that ends in `_id` in its `details`, `before` or `after`: the other side of a
@@ -717,6 +720,17 @@ defmodule Apiary.Audit do
             select: {n.id, coalesce(n.title, n.name)}
           )
         ),
+      node_kinds:
+        lookup(
+          nodes,
+          from(n in Node,
+            where:
+              n.organisation_id == ^organisation_id or
+                (^instance? and is_nil(n.organisation_id)),
+            select: {n.id, n.kind}
+          )
+        )
+        |> Map.new(fn {id, kind} -> {id, Atom.to_string(kind)} end),
       workspaces:
         lookup(
           workspaces,

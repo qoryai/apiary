@@ -58,6 +58,7 @@ defmodule ApiaryWeb.OrganisationLive do
               :if={@creates}
               title={gettext("What will your first workspace do?")}
               heading="h2"
+              previews={@previews}
             />
             <p :if={!@creates} id="first-workspace-waiting" class="text-sm/5 text-muted">
               {Edition.first_workspace_waiting_line(@current_scope.organisation)}
@@ -418,10 +419,14 @@ defmodule ApiaryWeb.OrganisationLive do
   defp load_empty(socket) do
     scope = socket.assigns.current_scope
 
+    creates = Access.can?(scope, :"workspace.create", scope.organisation)
+
     assign(socket,
       empty: true,
       page_title: scope.organisation.name,
-      creates: Access.can?(scope, :"workspace.create", scope.organisation),
+      creates: creates,
+      # With `workflow_model`, the stages each type's workspace starts with.
+      previews: if(creates, do: SetUpComponents.previews(scope), else: %{}),
       people: people(scope)
     )
   end

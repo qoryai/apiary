@@ -33,7 +33,8 @@ defmodule Apiary.AccessRows do
   `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
   the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks,
   nor for creating and deleting an instance assignment of a harness source, an instance
-  admin's, as `Apiary.Harnesses` asks.
+  admin's, as `Apiary.Harnesses` asks, nor for saving a workspace type's default process,
+  an instance admin's, as `Apiary.Processes.TypeTemplates.save/4` asks.
   Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
   let a signed-in person create one. Creating, deleting and restoring a workspace are
   asked of the organisation: an owner creates one, an owner or an admin deletes any
@@ -157,6 +158,7 @@ defmodule Apiary.AccessRows do
       {:"gate.approve", yes: @owners ++ [:member, :admin]},
       {:"artifact.write", yes: @owners ++ [:member, :admin]},
       {:"artifact_type.edit", yes: @owners ++ [:admin]},
+      {:"workspace_type.edit", yes: []},
       {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_set", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_seal", yes: [:adapter_key, :hidden], on: :adapter},

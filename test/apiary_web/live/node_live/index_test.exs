@@ -10,7 +10,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   alias Apiary.Nodes.Node
 
   defp nodes_path(scope, query \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes" <> query
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines" <> query
 
   # A member of the scope's organisation, signed in on a connection of their own.
   defp member_conn(scope, level \\ :member) do
@@ -58,17 +58,17 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
     test "is the workspace sidebar's Nodes, the current entry", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
-      assert has_element?(lv, ~s{#nav-nodes[aria-current="page"][href$="/nodes"]})
+      assert has_element?(lv, ~s{#nav-nodes[aria-current="page"][href$="/machines"]})
       assert has_element?(lv, "#nav-runs:not([aria-current])")
-      assert has_element?(lv, "#breadcrumb", "Nodes")
+      assert has_element?(lv, "#breadcrumb", "Machines")
     end
 
     test "says so when there are none, with the ways to add one", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
-      assert has_element?(lv, "#nodes-empty", "No nodes yet")
-      assert has_element?(lv, "#nodes-empty a", "New node")
-      assert has_element?(lv, "#nodes-empty a", "New node pool")
+      assert has_element?(lv, "#nodes-empty", "No machines yet")
+      assert has_element?(lv, "#nodes-empty a", "New machine")
+      assert has_element?(lv, "#nodes-empty a", "New pool")
       refute has_element?(lv, "#nodes")
     end
 
@@ -82,7 +82,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert_patch(lv, nodes_path(scope, "?q=build"))
       assert has_element?(lv, "#node-#{node.public_id}")
       refute has_element?(lv, "#node-#{pool.public_id}")
-      assert has_element?(lv, "#nodes-summary", "1 node matches")
+      assert has_element?(lv, "#nodes-summary", "1 match")
 
       {:ok, lv, _html} = live(conn, nodes_path(scope, "?q=#{pool.public_id}"))
       assert has_element?(lv, "#node-#{pool.public_id}")
@@ -91,11 +91,81 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "?kind=pool"))
       assert has_element?(lv, "#node-#{pool.public_id}")
       refute has_element?(lv, "#node-#{node.public_id}")
-      assert has_element?(lv, "#nodes-token-kind", "Node pool")
+      assert has_element?(lv, "#nodes-token-kind", "Pool")
 
       {:ok, lv, _html} = live(conn, nodes_path(scope, "?q=nothing-like-it"))
-      assert has_element?(lv, "#nodes-status", "No node matches")
+      assert has_element?(lv, "#nodes-status", "Nothing matches")
       refute has_element?(lv, "#nodes")
+    end
+  end
+
+  describe "the gateways' heading" do
+    setup :register_and_log_in_user
+
+    test "lists the machines and pools first, then the gateways under the heading Gateways", %{
+      conn: conn,
+      scope: scope
+    } do
+      gateway = gateway_fixture(scope, name: "aa-edge")
+      node = node_fixture(scope, name: "build-01")
+      pool = pool_fixture(scope, name: "spot-runners")
+      ours = organisation_gateway_fixture(scope, name: "acme-edge")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(lv, "h1", "Machines")
+      assert has_element?(lv, "[role=region][aria-label='Machines and pools'] #nodes")
+      assert has_element?(lv, "#nodes #node-#{node.public_id}")
+      assert has_element?(lv, "#nodes #node-#{pool.public_id}")
+      refute has_element?(lv, "#nodes #node-#{gateway.public_id}")
+
+      assert has_element?(
+               lv,
+               "section[aria-labelledby='gateways-title'] h2#gateways-title",
+               "Gateways"
+             )
+
+      assert has_element?(lv, "#gateways #node-#{gateway.public_id}")
+      assert has_element?(lv, "#gateways #node-#{ours.public_id}")
+      refute has_element?(lv, "#gateways #node-#{node.public_id}")
+
+      # The machines' table comes before the heading, whatever the names' order.
+      html = render(lv)
+      [before_heading, _after] = String.split(html, ~s(id="gateways-title"), parts: 2)
+      assert before_heading =~ "build-01"
+      refute before_heading =~ "aa-edge"
+    end
+
+    test "has no heading where no gateway is listed, and no machines' table where only gateways are",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      gateway = gateway_fixture(scope, name: "edge-01")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "?kind=node"))
+      assert has_element?(lv, "#nodes #node-#{node.public_id}")
+      refute has_element?(lv, "#gateways-title")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "?kind=gateway"))
+      refute has_element?(lv, "#nodes")
+      assert has_element?(lv, "#gateways #node-#{gateway.public_id}")
+    end
+
+    test "sends the old address on to Machines, with what followed and the query", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      base = ~p"/#{scope.organisation}/#{scope.workspace}"
+
+      for {old, new} <- [
+            {base <> "/nodes", base <> "/machines"},
+            {base <> "/nodes?kind=pool", base <> "/machines?kind=pool"},
+            {base <> "/nodes/new-pool", base <> "/machines/new-pool"},
+            {base <> "/nodes/#{node.public_id}/access-key",
+             base <> "/machines/#{node.public_id}/access-key"}
+          ] do
+        assert redirected_to(get(conn, old), 301) == new
+      end
     end
   end
 
@@ -128,20 +198,20 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       refute has_element?(lv, "#new-node-dialog")
       refute has_element?(lv, "#nodes-empty")
-      assert has_element?(lv, "main h1", "New node")
-      assert has_element?(lv, "main header", "One permanent machine.")
+      assert has_element?(lv, "main h1", "New machine")
+      assert has_element?(lv, "main header", "One computer that stays registered.")
       assert has_element?(lv, "main header", "You can't change the kind later.")
-      assert has_element?(lv, ~s{#breadcrumb a[href="#{nodes_path(scope)}"]}, "Nodes")
-      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New node")
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{nodes_path(scope)}"]}, "Machines")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New machine")
       assert has_element?(lv, ~s{#new-node-form input[name="node[name]"][phx-mounted]})
-      assert has_element?(lv, "#new-node-save #new-node-submit", "Add node")
+      assert has_element?(lv, "#new-node-save #new-node-submit", "Add machine")
       assert has_element?(lv, ~s{#new-node-save-cancel[href="#{nodes_path(scope)}"]}, "Cancel")
-      assert page_title(lv) =~ "New node"
+      assert page_title(lv) =~ "New machine"
 
       lv |> element("#new-node-save-cancel") |> render_click()
       assert_patch(lv, nodes_path(scope))
       refute has_element?(lv, "#new-node-form")
-      assert has_element?(lv, "#nodes-empty", "No nodes yet")
+      assert has_element?(lv, "#nodes-empty", "No machines yet")
     end
 
     test "New node pool is a page of the Nodes section", %{conn: conn, scope: scope} do
@@ -151,12 +221,18 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert_patch(lv, nodes_path(scope, "/new-pool"))
 
       refute has_element?(lv, "#new-node-dialog")
-      assert has_element?(lv, "main h1", "New node pool")
-      assert has_element?(lv, "main header", "Short-lived instances that share one access key.")
-      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New node pool")
-      assert has_element?(lv, "#new-node-save #new-node-submit", "Add node pool")
+      assert has_element?(lv, "main h1", "New pool")
+
+      assert has_element?(
+               lv,
+               "main header",
+               "One or more machines that use the pool's access key."
+             )
+
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New pool")
+      assert has_element?(lv, "#new-node-save #new-node-submit", "Add pool")
       assert has_element?(lv, ~s{#new-node-save-cancel[href="#{nodes_path(scope)}"]}, "Cancel")
-      assert page_title(lv) =~ "New node pool"
+      assert page_title(lv) =~ "New pool"
     end
 
     test "a node is named, and its page opens on its Access key tab", %{conn: conn, scope: scope} do
@@ -212,7 +288,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       html =
         render_hook(lv, "create", %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}})
 
-      assert html =~ "You can&#39;t change the instance limit."
+      assert html =~ "You can&#39;t change the machine limit."
       assert Nodes.list_nodes(scope) == []
 
       {:ok, _show, _html} =
@@ -230,10 +306,10 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new"))
 
       html = lv |> form("#new-node-form", node: %{name: "build-01"}) |> render_submit()
-      assert html =~ "is already the name of a node in this workspace"
-      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New node")
+      assert html =~ "is already the name of a machine, pool or gateway in this workspace"
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New machine")
       assert length(Nodes.list_nodes(scope)) == 1
-      refute has_element?(lv, "main h1", "New node pool")
+      refute has_element?(lv, "main h1", "New pool")
       refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
 
       # The page keeps its kind after a refused save, and the next one is made.
@@ -271,7 +347,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
     test "is told who adds nodes when there are none", %{scope: scope} do
       {:ok, lv, _html} = live(member_conn(scope), nodes_path(scope))
 
-      assert has_element?(lv, "#nodes-empty", "An owner or admin adds nodes.")
+      assert has_element?(lv, "#nodes-empty", "An owner or admin adds machines.")
       refute has_element?(lv, "#nodes-empty a")
     end
 
@@ -279,15 +355,15 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       conn = member_conn(scope)
 
       {:ok, _lv, html} = live(conn, nodes_path(scope, "/new-pool")) |> follow_redirect(conn)
-      assert html =~ "Only owners and admins add nodes."
+      assert html =~ "Only owners and admins add machines."
 
       {:ok, lv, html} = live(conn, nodes_path(scope, "/new")) |> follow_redirect(conn)
 
-      assert html =~ "Only owners and admins add nodes."
+      assert html =~ "Only owners and admins add machines."
       refute has_element?(lv, "#new-node-form")
 
       render_hook(lv, "create", %{"node" => %{"name" => "build-01"}})
-      assert render(lv) =~ "Only owners and admins add nodes."
+      assert render(lv) =~ "Only owners and admins add machines."
       assert Nodes.list_nodes(scope) == []
     end
   end

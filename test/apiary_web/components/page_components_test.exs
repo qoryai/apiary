@@ -255,18 +255,21 @@ defmodule ApiaryWeb.PageComponentsTest do
 
     html =
       rendered_to_string(~H"""
-      <.page_form id="new-node" title="New node">
+      <.page_form id="new-node" title="New machine">
         <:description>A machine that runs runs.</:description>
         <form id="new-node-form">
-          <.page_form_foot id="new-node-save" cancel="/acme/shop/nodes">
+          <.page_form_foot id="new-node-save" cancel="/acme/shop/machines">
             <.button variant="primary" type="submit">Create node</.button>
           </.page_form_foot>
         </form>
       </.page_form>
       """)
 
-    assert text(html, "#new-node h1#new-node-title") =~ "New node"
-    assert attribute(html, "#new-node-form #new-node-save-cancel", "href") == "/acme/shop/nodes"
+    assert text(html, "#new-node h1#new-node-title") =~ "New machine"
+
+    assert attribute(html, "#new-node-form #new-node-save-cancel", "href") ==
+             "/acme/shop/machines"
+
     refute html =~ "<dialog"
 
     # No bare Back in the header: Cancel and the breadcrumb lead back, and a caller that
@@ -276,13 +279,13 @@ defmodule ApiaryWeb.PageComponentsTest do
 
     html =
       rendered_to_string(~H"""
-      <.page_form id="new-node" title="New node" cancel="/acme/shop/nodes" cancel_by="patch">
+      <.page_form id="new-node" title="New machine" cancel="/acme/shop/machines" cancel_by="patch">
         <form id="new-node-form"></form>
       </.page_form>
       """)
 
     refute html =~ "new-node-back"
-    refute html =~ "/acme/shop/nodes"
+    refute html =~ "/acme/shop/machines"
   end
 
   test "the line of what a run receives, in the words the page gives" do
