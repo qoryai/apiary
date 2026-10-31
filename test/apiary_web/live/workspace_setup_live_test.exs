@@ -380,6 +380,10 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert has_element?(lv, "h1", "Name this workspace")
       assert words(lv, "#set-up-name") == "Main"
       assert words(lv, "#set-up-type") == "Type: Software factory"
+      # Its address, as the owner reads it under the field.
+      assert words(lv, "#set-up-address") ==
+               "Address: /#{organisation.slug}/main It follows the name."
+
       # Who may rename it, as the other steps say who may take them.
       assert words(lv, "#set-up-who-may") ==
                "Only owners and admins can change these settings. Ask one of them if a name needs to change."

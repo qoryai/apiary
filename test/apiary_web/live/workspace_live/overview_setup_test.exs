@@ -170,14 +170,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert overview_steps(lv) == expected
 
-      # Under each step's name, its page's heading.
-      assert has_element?(
-               lv,
-               "#overview-set-up-sources .q-su-note",
-               "Where does work for Main come from?"
-             )
+      # Under each step's name: a done step's value, the workspace's name for Name; a
+      # step not done its page's heading; Test run what it does.
+      assert words(lv, "#overview-set-up-name .q-su-note") == "Main"
 
-      assert has_element?(lv, "#overview-set-up-name .q-su-note", "Name this workspace")
+      assert words(lv, "#overview-set-up-sources .q-su-note") ==
+               "Where does work for Main come from?"
+
+      assert words(lv, "#overview-set-up-test .q-su-note") ==
+               "Starts one run to check the set-up"
+
+      refute has_element?(lv, "#overview-set-up-who")
 
       assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
       refute has_element?(lv, "#overview-activity")
@@ -202,6 +205,54 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert continue(conn, scope) == {"Continue: Machines", step_path(scope, :machines)}
 
       _pool = ready_instance!()
+      assert continue(conn, scope) == {"Continue: Test run", step_path(scope, :test)}
+    end
+
+    test "a done step's line shows its value: the integrations that bring work, the pool", %{
+      conn: conn,
+      scope: scope
+    } do
+      source = collection_fixture(scope)
+      # Another integration's collection of the workspace, with its Backlog off: it brings
+      # no work, so Work sources does not name it.
+      other = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(c in Apiary.Adapters.Collection, where: c.id == ^other.id),
+          set: [backlog: false]
+        )
+
+      pool = ready_instance!()
+      source_name = Repo.get!(Node, source.adapter_id).name
+      other_name = Repo.get!(Node, other.adapter_id).name
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-sources .q-su-note") == source_name
+      refute words(lv, "#overview-set-up-sources .q-su-note") =~ other_name
+      assert words(lv, "#overview-set-up-machines .q-su-note") == pool.name
+    end
+
+    test "a member whose next step is Test run, which they may start, is offered Continue", %{
+      scope: scope
+    } do
+      collection = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
+
+      if Apiary.Features.on?(:secrets), do: model_done!(scope)
+      {:ok, _stack} = Apiary.Stacks.Sources.choose(scope, :qory)
+      _pool = ready_instance!()
+
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up h1") == "Finish setting up Main"
+      refute has_element?(lv, "#overview-set-up-who")
       assert continue(conn, scope) == {"Continue: Test run", step_path(scope, :test)}
     end
 
@@ -327,8 +378,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
 
+      # The next step, Work sources, checks `collection.assign`, which a member does not
+      # hold: the steps keep their state, and who finishes them replaces Continue.
       {:ok, lv, _html} = live(conn, overview(scope))
-      assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
+      assert words(lv, "#overview-set-up h1") == "Main is being set up"
+
+      assert words(lv, "#overview-set-up-who") ==
+               "Owners and admins of #{scope.organisation.name} finish the set-up."
+
+      refute has_element?(lv, "#overview-set-up-continue")
+      assert {"Name", :done, step_path(scope, :name)} in overview_steps(lv)
 
       {:ok, lv, _html} = live(conn, step_path(scope, :sources))
       assert has_element?(lv, "#set-up-grant-#{grant.public_id}-choose")

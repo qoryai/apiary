@@ -2834,6 +2834,11 @@ msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} is being set up"
+msgstr ""
+
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} is this instance's only workspace."
@@ -11192,11 +11197,6 @@ msgstr ""
 msgid "No workspace"
 msgstr ""
 
-#: lib/apiary_web/dead_end.ex
-#, elixir-autogen, elixir-format
-msgid "No workspace has this address in %{organisation}. The workspace's name may have changed."
-msgstr ""
-
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
@@ -12560,6 +12560,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins can change these."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{organisation} finish the set-up."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
@@ -15489,6 +15494,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Started setting up an adapter"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Starts one run to check the set-up"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -19651,6 +19661,11 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
+msgstr ""
+
+#: lib/apiary_web/dead_end.ex
+#, elixir-autogen, elixir-format
+msgid "You have no workspace at this address in %{organisation}. Its address changes when the workspace is renamed."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
