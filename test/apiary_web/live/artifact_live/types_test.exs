@@ -105,6 +105,8 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
   test "shows the size line for a size too large to read", ctx do
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "/new"))
 
+    view |> form("#artifact-type-form", artifact_type: %{base_view: "file"}) |> render_change()
+
     for size <- ["1e308", "1048577", "1e400"] do
       html =
         view
