@@ -12,6 +12,7 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Gateways
   alias Apiary.Harnesses.{RunHarness, Walk}
+  alias Apiary.Integrations.ApplyTemplates
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -53,15 +54,33 @@ defmodule Apiary.Stages.StopCause do
 
   # set_up_step/1 is the step of the workspace's set-up whose page has the fix for why
   # `run` stopped, `/:org/:workspace/set-up/<step>`, which the fix line names as "the
-  # set-up step Harness" or "the set-up step Model": `:harness` for a harness walk that
-  # failed on the workspace's harness choice, `:model` for a missing or removed model key;
-  # nil otherwise.
+  # set-up step Harness", "the set-up step Model" or "the set-up step Destinations":
+  # `:harness` for a harness walk that failed on the workspace's harness choice, `:model`
+  # for a missing or removed model key, `:destinations` for a target path the access
+  # rules refuse a part of; nil otherwise.
   @doc false
-  @spec set_up_step(DispatchRun.t() | nil) :: :harness | :model | nil
+  @spec set_up_step(DispatchRun.t() | nil) :: :harness | :model | :destinations | nil
   def set_up_step(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}),
     do: :model
 
   def set_up_step(%DispatchRun{end_cause: :key_gone}), do: :model
+
+  def set_up_step(%DispatchRun{end_cause: :target_access_gone, work_item_id: id} = run)
+      when is_binary(id) do
+    case Repo.get(WorkItem, id) do
+      %WorkItem{} = work_item ->
+        case reach(run, %{work_item: work_item}) do
+          {:path_refused, _integration} ->
+            if ApplyTemplates.refused_in(work_item.target_path), do: :destinations
+
+          _other ->
+            nil
+        end
+
+      nil ->
+        nil
+    end
+  end
 
   def set_up_step(%DispatchRun{end_cause: :harness_unresolved, id: id}) do
     case Repo.get_by(RunHarness, dispatch_run_id: id) do
@@ -159,8 +178,7 @@ defmodule Apiary.Stages.StopCause do
   defp lines(%DispatchRun{end_cause: :target_access_gone} = run, n, _ctx) do
     case reach(run, n) do
       {:path_refused, integration} ->
-        {"The run did not start. #{capitalise(integration)} still reaches target #{n.target}, but the target's path has a character that Qory Apiary does not put in an access rule.",
-         "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
+        path_refused(n, integration)
 
       {_gone, integration} ->
         {"The run did not start, because #{integration} no longer reaches target #{n.target}.",
@@ -193,7 +211,38 @@ defmodule Apiary.Stages.StopCause do
     end
   end
 
-  defp capitalise("the" <> rest), do: "The" <> rest
+  # A target path the access rules do not take, by the first part of it they refuse
+  # (`Apiary.Integrations.ApplyTemplates.refused_in/1`).
+  defp path_refused(%{target: path} = n, integration) do
+    fix = fn without ->
+      "Whoever manages #{path} where it is kept renames it without #{without}, or owners and admins of #{n.workspace} remove it on the set-up step Destinations."
+    end
+
+    case ApplyTemplates.refused_in(path) do
+      {:character, char} ->
+        {"The run did not start, because target #{path} has the character #{shown(char)} in its path, which Qory Apiary does not put in an access rule.",
+         fix.("that character")}
+
+      {:sequence, sequence} ->
+        words = if sequence == "..", do: "two dots in a row", else: "two slashes in a row"
+
+        {"The run did not start, because target #{path} has #{words} in its path, which Qory Apiary does not put in an access rule.",
+         fix.(words)}
+
+      # The path has no refused part, so the integration's apply items made a path out of
+      # the grammar, which the check of its description refuses at its start.
+      nil ->
+        {"The run did not start, because the access rules of #{integration} do not take target #{path}.",
+         "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
+    end
+  end
+
+  # A character as a text shows it: in quotes, or a space character by its code point.
+  defp shown(<<code::utf8>> = char) do
+    if Regex.match?(~r/\A[\x{21}-\x{7E}]\z/u, char),
+      do: ~s("#{char}"),
+      else: "U+" <> String.pad_leading(Integer.to_string(code, 16), 4, "0")
+  end
 
   # A gateway that may not receive the run's secrets: one of its keys was made without
   # stored secrets, or the model key may not be sealed for it.

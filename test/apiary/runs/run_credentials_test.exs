@@ -677,8 +677,54 @@ defmodule Apiary.Runs.RunCredentialsTest do
       refute text(two) =~ two.tracker
     end
 
-    test "a path the access rules do not take, while the integration still reaches it", ctx do
-      two = two_integrations!(ctx, %{system: "forge.example.com", path: "acme/shop?x"})
+    test "a path the access rules do not take names its first refused part, and links Destinations",
+         ctx do
+      ws = ctx.scope.workspace.name
+
+      fix = fn path, without ->
+        "Whoever manages #{path} where it is kept renames it without #{without}, or owners and admins of #{ws} remove it on the set-up step Destinations."
+      end
+
+      for {path, part, without} <- [
+            {"acme/shop?x#y", ~s(the character "?"), "that character"},
+            {"acme/sh\u00A0op", "the character U+00A0", "that character"},
+            {"acme/../shop", "two dots in a row", "two dots in a row"},
+            {"acme//shop", "two slashes in a row", "two slashes in a row"}
+          ] do
+        two = two_integrations!(ctx, %{system: "forge.example.com", path: path})
+
+        run = %{
+          Repo.get!(DispatchRun, two.queued.id)
+          | state: :ended,
+            end_cause: :target_access_gone
+        }
+
+        assert Apiary.Stages.StopCause.text(run, two.work_item) ==
+                 "The run did not start, because target #{path} has #{part} in its path, which Qory Apiary does not put in an access rule.\n" <>
+                   fix.(path, without),
+               inspect(path)
+
+        assert Apiary.Stages.StopCause.set_up_step(run) == :destinations
+      end
+    end
+
+    test "a path filled out of the grammar by the integration's apply items names the integration",
+         ctx do
+      # A description's check refuses such apply items at the adapter's start; written
+      # here directly.
+      two = two_integrations!(ctx, %{system: "forge.example.com", path: "acme/shop"})
+
+      Repo.update_all(from(n in Node, where: n.id == ^two.forge.adapter_id),
+        set: [
+          source_apply: [
+            %{
+              "hosts" => ["git.example.com"],
+              "scheme" => "bearer",
+              "paths" => ["/{target.path} x"]
+            }
+          ]
+        ]
+      )
 
       run = %{
         Repo.get!(DispatchRun, two.queued.id)
@@ -689,8 +735,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
       org = ctx.scope.organisation.name
 
       assert Apiary.Stages.StopCause.text(run, two.work_item) ==
-               "The run did not start. #{String.replace_prefix(two.integration, "the", "The")} still reaches target acme/shop?x, but the target's path has a character that Qory Apiary does not put in an access rule.\n" <>
+               "The run did not start, because the access rules of #{two.integration} do not take target acme/shop.\n" <>
                  "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
+
+      assert Apiary.Stages.StopCause.set_up_step(run) == nil
     end
 
     test "a system that is no host name names the target's integration", ctx do
