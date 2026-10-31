@@ -39,24 +39,24 @@ beside it:
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
-- `Apiary.AccessKeys`: the access keys of a workspace's nodes, and the lookup a signed
+- `Apiary.AccessKeys`: the access keys of a workspace's machines and pools, and the lookup a signed
   request verifies against. Each key has one Ed25519 public key, and Qory Apiary holds no
-  secret of it; it belongs to one node or node pool: enrolment codes
+  secret of it; it belongs to one machine or pool: enrolment codes
   (`access_key_enrolment_codes`, kept as their SHA-256), the code being the approval of
   the key it brings while its maker is still an owner or an admin, a key made in a
-  browser active at once, revocation, at most two keys at a time per node, and the ledger of public keys
+  browser active at once, revocation, at most two keys at a time per machine or pool, and the ledger of public keys
   (`access_key_public_keys`), one public key for one access key, ever, whose tombstones
   outlive the purge. `Apiary.Contract.Ed25519`
   holds the checks every public key received passes, the fingerprint and cofactorless
   verification.
-- `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
-  a node is one permanent machine, a pool a fleet of short-lived instances up to its
+- `Apiary.Nodes`: a workspace's machines and pools (`nodes`), the places its runs run:
+  a machine is always there, a pool is a fleet of short-lived instances up to its
   instance limit or none; the kind is fixed when one is made, and a deleted one is gone
   from every read but keeps its row until its workspace is purged. Its instances
-  (`node_instances`) are claims Forager makes under the node's key, recorded by
+  (`node_instances`) are claims Forager makes under the machine's or pool's key, recorded by
   `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
   run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
-  the node's row lock when a run registers (`check_instance_limit/3`, `admit/4`).
+  the row lock of the machine or pool when a run registers (`check_instance_limit/3`, `admit/4`).
 - `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
   `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
@@ -167,7 +167,7 @@ Each organisation's data is kept apart by the schema, not by the pages:
 - A unique constraint is scoped by the organisation: `(organisation_id, name)` on
   workspaces, `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on
   pending invitations, `(organisation_id, workspace_id, label)` on today's active access
-  keys, `(node_id, label)` on a node's keys in use. A name is unique inside an
+  keys, `(node_id, label)` on the keys in use of a machine or pool. A name is unique inside an
   organisation, never across them; a public key is unique on the instance, by the ledger.
 - Every context function that reads or writes an organisation's data takes an
   `Apiary.Accounts.Scope` as its first argument and filters by its organisation and
@@ -433,7 +433,7 @@ where `QORY_FEATURES` lists it by name, and is never one of those. A feature may
 feature, and which are never on or off apart from it: the core's one part of a feature is
 the run's Terminal, `observability.terminal`, the run's log, which `run.read_log` belongs
 to (an action's `part`). A part may belong to no feature, and is then on in every
-instance: the core's one is `nodes`, the nodes, the node pools, their access keys and the
+instance: the core's one is `nodes`, the machines, the pools, their access keys and the
 gateways, which the `node.*` and `access_key.*` actions belong to.
 
 - **Absent, as off on the instance.** A feature that is off, or a feature or a part
@@ -443,7 +443,7 @@ gateways, which the `node.*` and `access_key.*` actions belong to.
   What belongs to the instance follows its switch only (`Apiary.Features.on?/1`): the
   guides at `/docs`, the sign-in and landing pages, the routes' first answer
   (`ApiaryWeb.Features.Routes`), and the server contract, whose access key, and its
-  scope, answer as the instance. A hidden feature still works in full for nodes: a run's
+  scope, answer as the instance. A hidden feature still works in full for machines: a run's
   registration, events, attach, outcome and reload, and its run configuration, follow the
   instance's features alone, and so do rendering and the instance's jobs; the discovery
   document reads no feature.
@@ -476,9 +476,9 @@ in a struct whose `inspect` shows its fingerprint alone.
 someone who can write to the database but does not hold the secret: an HMAC-SHA256 under
 the integrity key over a canonical encoding of a kind, a version and the fields the caller
 chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
-constant time. A caller codes what grants access, a node's access key rows (their node,
+constant time. A caller codes what grants access, the access key rows of a machine or pool (their machine or pool,
 public key, arrival and revocation) and the enrolment codes, and checks the code where it
-trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
+trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses the key of a machine or pool whose row
 does not match, before any signature is checked;
 the per-request columns stay outside it. Policy rules carry no code.
 
@@ -501,7 +501,7 @@ events the gateway posts are the record and leave no entry.
   workspace; inviting, changing the level of and removing a member; revoking and
   accepting an invitation; suspending and activating a member (`member.suspend`,
   `member.activate`); granting and revoking an instance admin, by a release command;
-  an access key's arrival on a node and its revocation, and making
+  an access key's arrival on a machine or pool and its revocation, and making
   and cancelling an enrolment code;
   the retention settings; every write of the security policy, whose
   history is the trail's entries of the policy's actions; and the trail's retention.
@@ -584,8 +584,8 @@ but a person's account, which leaves a tombstone.
   workspaces in use, its URLs answer not found, `Apiary.Access` answers not found to
   anything asked of it but cancelling and the purge, a page opened before the marking
   included, its access keys answer the contract as a revoked key does, its invitations
-  accept no one, and retention leaves it alone; nothing is removed. Its nodes' keys are
-  hidden so, not revoked, and come back with a cancelled deletion; the purge makes their
+  accept no one, and retention leaves it alone; nothing is removed. The keys of its machines and pools
+  are hidden so, not revoked, and come back with a cancelled deletion; the purge makes their
   public keys tombstones in the ledger, `workspace_deleted` for an organisation's purge
   too, before it deletes them. The organisation's
   last workspace in use is not deleted alone, `{:error, :last_workspace}`: the

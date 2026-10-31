@@ -1,40 +1,42 @@
-# Nodes and their keys
+# Machines, pools and their keys
 
 A machine posts its runs to a workspace with an access key, and every access key belongs to a
-node of the workspace. This page says what a node is, the two ways a node
-gets its key, and what to do when a key has to go. The owners and admins of the
-organisation do all of it; everyone in the workspace reads the nodes and their keys.
+machine, a pool or a gateway of the workspace. This page covers what each one is, the two ways
+one gets its key, and what to do when a key has to go. The owners and admins of the
+organisation do all of it; everyone in the workspace reads the machines, pools and gateways
+and their keys.
 
-## Nodes and node pools
+## Machines and pools
 
-**Nodes**, in the workspace's sidebar, lists them, with **New node**, **New node
-pool** and **New gateway**.
+**Machines**, in the workspace's sidebar, lists them, with **New machine**, **New pool**
+and **New gateway**. Machines and pools come first; under the heading **Gateways** follow
+the workspace's gateways, the organisation's gateways and the Qory Gateway.
 
-- A **node** is one permanent machine, `build-01` say. It runs one instance at a time.
-- A **node pool** is a fleet of short-lived instances that share one key, such as the
-  runners of a CI, `spot-runners` say. Its **Instance limit** is how many may run at
-  once, up to 10,000; empty means no limit.
+- A **machine** is always there, `build-01` say.
+- A **pool** is one or more machines that use the pool's access key, such as the
+  runners of a CI, `spot-runners` say. Its **Machine limit** is how many of its machines may
+  run at once, up to 10,000; empty means no limit.
 
-The kind is fixed when one is made. A new node opens on its **Access key** tab, where its
-machine gets its key. Its **Overview** shows its instance, or a pool's running instances,
+The kind is fixed when one is made. A new machine or pool opens on its **Access key** tab, where its
+machine gets its key. Its **Overview** shows the machine as Forager reports it, or a pool's running machines,
 and its recent runs; its **Settings** change its name and a pool's limit, and delete it.
 
 ## Gateways
 
-A **gateway** is a machine of yours that the runs of your nodes and node pools go through:
-the machine where you run `qory gateway`. On **Nodes** it is a separate kind, beside the
-node and the node pool, `edge-01` say. Its key enrols the gateway and registers no run.
+A **gateway** is a machine of yours that the runs of your machines and pools go through:
+the machine where you run `qory gateway`. On **Machines** it is a separate kind, under the
+heading **Gateways**, `edge-01` say. Its key enrols the gateway and registers no run.
 
 To add one:
 
 1. **Choose the machine and its address.** The machine runs `qory gateway` and reaches
-   Qory Apiary directly. Its address is where your nodes will reach it: `https://`, a
+   Qory Apiary directly. Its address is where your machines and pools will reach it: `https://`, a
    host, and a port if needed, nothing more. The host is a DNS name, such as
    `edge.example.com`, an IPv4 address, such as `10.0.0.5`, or an IPv6 address in
    brackets, such as `[2001:db8::1]`; a port is 1 to 65535. With
    `gateway.listen: 0.0.0.0:8443` on the machine, the address is
    `https://edge.example.com:8443`.
-2. **Add the gateway.** On **Nodes**, select **New gateway**, give its **Name** and that
+2. **Add the gateway.** On **Machines**, select **New gateway**, give its **Name** and that
    address as its **URL**, and select **Add gateway**. It opens on its **Access key** tab.
 3. **Give the machine its key.** On the **Access key** tab, select **Get the command** and
    run the command on the gateway's machine, or select **Generate a key**
@@ -47,15 +49,15 @@ You can change the URL later in the gateway's **Settings**. A machine connected 
 the gateway with `--via` keeps reaching it at the address in its Forager file,
 `gateway.server.via.url`, until you change it there.
 
-On the list a gateway reads **Gateway**, and **Kind** in the Filter menu keeps the
-gateways alone.
+On the list the gateways are under the heading **Gateways**, and **Gateway** under
+**Kind** in the Filter menu keeps them alone.
 
 The workspace's first gateway is its **default**, marked **Default** on the list and on
 its page. A second one moves nothing: its **Overview** shows its URL, says "Not the
 default.", and offers **Make default**, which moves the mark to it. Its **Settings**
 change its name and its URL.
 
-Each node and node pool chooses its **Gateway**, as it is made and in its **Settings**,
+Each machine and pool chooses its **Gateway**, as it is made and in its **Settings**,
 once the workspace has a gateway: **Default gateway**, whichever gateway is the
 workspace's default; **Direct**, through no gateway; or a gateway by name. A new one
 starts on **Default gateway**. The choice decides where its runs go. Its **Overview**'s
@@ -65,13 +67,13 @@ gateway has no active key, that the gateway isn't connected. The command and the
 file point at Qory Apiary, through that gateway: the command carries `--via` and the
 gateway's URL, and the Forager file a `via` line ([Behind a gateway](#behind-a-gateway)).
 
-Behind a gateway, a node holds its key, as any node does, and a node pool's runners
-hold none: the pool's key is with the run's starter, the system that starts its runs.
+Behind a gateway, a machine has its key, as any machine does, and a pool's runners
+have none: the pool's key is with the run's starter, the system that starts its runs.
 
 **Delete gateway…**, in a gateway's **Settings**, is confirmed in place. A gateway that a
-node or a node pool still points to, by name or as the default, isn't deleted: the page
-says "Nodes use this gateway: build-01, spot-runners. Point them to another gateway or to
-direct, then delete it.", naming the first five of the workspace and then how many more.
+machine or a pool still points to, by name or as the default, isn't deleted: the page
+shows "Machines and pools use this gateway: build-01, spot-runners. Point them to another
+gateway or to direct, then delete it.", naming the first five of the workspace and then how many more.
 Nor is one that runs still go through, live or waiting for the gateway to attach them:
 the page says "Runs are going through this gateway:", the first five to register, named
 by their `rn_` id, then how many more, and "Delete it once they end."; both in one notice when
@@ -86,10 +88,10 @@ it goes into a CI's secret store. Qory Apiary keeps only the public half, so not
 Apiary holds can sign for the machine. Every answer of Qory Apiary is signed too, with
 Qory Apiary's key, which the machine pins as `apiary_public_key` and checks every
 answer under. Qory Apiary's key and its address are set once for the instance, the same
-for every organisation, workspace and node: the address is its `PUBLIC_URL`, and the key is made
-from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the node's key.
+for every organisation, workspace and machine: the address is its `PUBLIC_URL`, and the key is made
+from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the key of the machine or pool.
 
-A key is active from the moment it arrives until it is revoked. A node holds two keys at a
+A key is active from the moment it arrives until it is revoked. A machine or pool has two keys at a
 time, so that a machine can move to a new key before the old one is revoked.
 <!-- feature: secrets -->
 Each key's **Stored secrets** is fixed when it is made, and every new key, either way,
@@ -97,8 +99,8 @@ gets **Not allowed**.
 <!-- /feature -->
 A key is never rotated: a new one is made, and the old one revoked.
 
-There are two ways to connect a node's machine, both on the node's **Access key** tab, for
-owners and admins. While the node holds no active key, the tab asks "How do you want to
+There are two ways to connect a machine or pool, both on its **Access key** tab, for
+owners and admins. While it has no active key, the tab asks "How do you want to
 connect build-01?": "build-01 connects to Qory Apiary with a key. Choose one of two ways
 to give it one." The two ways are two options side by side, each saying when to choose
 it, what happens, and the same four facts, with one button:
@@ -117,11 +119,11 @@ it, what happens, and the same four facts, with one button:
   key's ID, its secret, Qory Apiary's public key and address. Needs: this page open over
   HTTPS. The button is **Generate a key**.
 
-A node lists **Connect with a command** first, its button primary; a pool lists **Generate
+A machine lists **Connect with a command** first, its button primary; a pool lists **Generate
 a key in the browser** first. A member reads "build-01 has no key yet, so it can't start
 runs. An owner or admin connects it."
 
-Once the node holds a key, the tab lists it under **Keys**, one card per key, headed by
+Once the machine or pool has a key, the tab lists it under **Keys**, one card per key, headed by
 its label and **Active**: its **Key ID**, with **Copy**, which can always be seen again;
 how it was added ("Connected with a command by …" or "Generated in a browser by …");
 where its secret is; when it was last used ("Not yet" while unused); its **Fingerprint**;
@@ -129,9 +131,9 @@ where its secret is; when it was last used ("Not yet" while unused); its **Finge
 its **Stored secrets**;
 <!-- /feature -->
 with **Forager file** and **Revoke…**. Under the keys, **Add a
-key** offers the same two ways, in the same order, to move the node to a new key: add it
-either way, then revoke the old one. At two keys it offers neither, and says "build-01
-holds two keys, the most a node can. Revoke the one it no longer uses to add another." A
+key** offers the same two ways, in the same order, to move the machine or pool to a new key: add it
+either way, then revoke the old one. At two keys it offers neither, and shows "build-01
+has two keys, the most a machine can have. Revoke the one it no longer uses to add another." A
 member sees the keys and none of the buttons.
 
 At the foot, **Configure a machine**, for everyone, at two keys too: "A machine connected
@@ -139,10 +141,10 @@ with the command needs nothing more: qory saved all of this on it. Don't set the
 there; qory refuses a key ID or a public key set twice. With a generated key, set these
 where the machine runs qory." Then four numbered steps:
 
-1. **Point the node at Qory Apiary.** In the Forager file, with **Copy lines**. It is
-   required: without it, `qory` ignores the three variables below. A node pool's reads
-   **Point the node pool at Qory Apiary.**, a gateway's **Point the gateway at Qory
-   Apiary.** Behind a gateway it reads **Point the node at Qory Apiary, through
+1. **Point the machine at Qory Apiary.** In the Forager file, with **Copy lines**. It is
+   required: without it, `qory` ignores the three variables below. A pool's reads
+   **Point the pool at Qory Apiary.**, a gateway's **Point the gateway at Qory
+   Apiary.** Behind a gateway it reads **Point the machine at Qory Apiary, through
    edge-01.**, the lines carry `via` and its `url`, and it adds "via sends every request
    to Qory Apiary through edge-01."; a pool's adds "A starter that reaches Qory Apiary
    directly can leave via out."
@@ -156,7 +158,7 @@ where the machine runs qory." Then four numbered steps:
 
 ### Connect with a command
 
-1. On the node's **Access key** tab, select **Get the command**. There is nothing to fill
+1. On the **Access key** tab of the machine or pool, select **Get the command**. There is nothing to fill
    in.
    <!-- feature: secrets -->
    The key the command brings gets **Stored secrets** **Not allowed**.
@@ -179,7 +181,7 @@ where the machine runs qory." Then four numbered steps:
    **Fingerprint**. The code is the approval: the key needs nothing more. Its fingerprint
    is the one `qory` printed on the machine; if it is not, revoke the key on the **Access
    key** tab. The key is named after the machine's host name (`-2`, `-3` and on when the
-   node has a key of that name already).
+   machine or pool has a key of that name already).
 
 A command not yet run shows on the tab, in the **Connect with a command** card's first step
 or row: "A
@@ -198,7 +200,7 @@ machines use.
 
 #### Behind a gateway
 
-A node or a node pool whose choice leads to a gateway, `edge-01` at
+A machine or a pool whose choice leads to a gateway, `edge-01` at
 `https://edge.example.com` say, enrols through that gateway, on the command's page and in
 the overview's first-run box alike. The page says "The command connects build-01 by
 itself, through the gateway edge-01: …", and the command carries `--via` and the
@@ -258,9 +260,9 @@ description below). What it shows depends on how the key came:
   system that runs `qory`; if it is lost, generate a new key and revoke this one. **Set
   the key's ID**, `QORY_ACCESS_KEY_ID`. **Set Qory Apiary's public key**,
   `QORY_APIARY_PUBLIC_KEY`: the same for every machine connected to this Qory Apiary.
-  **Point the node at Qory Apiary**: the lines the Forager file needs,
+  **Point the machine at Qory Apiary**: the lines the Forager file needs,
   `gateway.server.url`, and, behind a gateway, `gateway.server.via.url`, under **Point
-  the node at Qory Apiary, through edge-01.**
+  the machine at Qory Apiary, through edge-01.**
 
 ### For a CI
 
@@ -276,12 +278,12 @@ Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the CI's `forage
 then needs `gateway.server.url` alone.
 `QORY_APIARY_PUBLIC_KEY` is JSON: in a shell, put its value in single quotes
 ([The Forager file's `server` section](forager-file.md#the-id-and-the-pin-in-the-environment)).
-A fleet of short-lived CI runners is a node pool with one key.
+A fleet of short-lived CI runners is a pool with one key.
 
 #### Generate a key in the browser
 
-1. On the node's **Access key** tab, select **Generate a key**. The page **Generate a key
-   for spot-runners** has one field, **Name of the key**, filled in with the node's name
+1. On the pool's **Access key** tab, select **Generate a key**. The page **Generate a key
+   for spot-runners** has one field, **Name of the key**, filled in with the pool's name
    (`spot-runners-2` when a key has that name already). Select **Generate key**.
 2. Your browser makes the Ed25519 key and sends Qory Apiary only its name and its public
    half. The key
@@ -298,7 +300,7 @@ A fleet of short-lived CI runners is a node pool with one key.
    2. **Set the key's ID.** `QORY_ACCESS_KEY_ID`. It stays on the **Access key** tab.
    3. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`. The same for
       every machine connected to this Qory Apiary. It stays on the **Access key** tab.
-   4. **Point the node pool at Qory Apiary.** In the Forager file. It is required:
+   4. **Point the pool at Qory Apiary.** In the Forager file. It is required:
       without it, `qory` ignores the three variables. With **Copy lines**:
 
       ```yaml
@@ -307,7 +309,7 @@ A fleet of short-lived CI runners is a node pool with one key.
           url: https://apiary.example.com
       ```
 
-      Behind a gateway, the step is **Point the node pool at Qory Apiary, through
+      Behind a gateway, the step is **Point the pool at Qory Apiary, through
       edge-01.**, its lines end with `via:` and `url: https://edge.example.com`, and it
       adds "via sends every request to Qory Apiary through edge-01." and, for a pool, "A
       starter that reaches Qory Apiary directly can leave via out."
@@ -326,27 +328,29 @@ The browser makes keys only on a page served over HTTPS (a browser counts
 Edge, Firefox or Safari. Where it can't, the page says why, and **Generate key** stays
 off; connect the machine with a command instead.
 
-## Instances and the instance limit
+## Running machines and the machine limit
 
-Each running copy of `qory` with a node's key is an **instance** of that node. `qory` keeps
+Each running copy of `qory` with the key of a pool is one machine of that pool; with the
+key of a machine, it is that machine. `qory` keeps
 its id in the file `instance-id` beside `forager.yaml`, and its name is
-`session.instance.name` in `forager.yaml`, else the host name. The instance is a claim,
-for display, the audit and the instance limit: what a request is allowed rests on the key
-alone.
+`session.instance.name` in `forager.yaml`, else the host name. The pages show that name
+and id as the machine. They are a claim, for display, the audit and the machine limit:
+what a request is allowed rests on the key alone.
 
-An instance counts as running while one of its runs is alive. A node runs one at a time,
-and a pool up to its limit: the registration that starts a run, from an instance beyond
-the limit, is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
-the starts refused. Lowering a limit stops nothing that runs; new instances wait
-until fewer run.
+A machine counts as running while one of its runs is alive. A machine added alone runs
+one copy at a time, and a pool up to its limit: the registration that starts a run, from a
+machine beyond the limit, is refused, `instance_limit`, the run does not start, and the
+**Overview** of the machine or pool counts the starts refused. Lowering a limit stops
+nothing that runs; new machines wait until fewer run.
 
-An instance that stopped without saying so keeps its place until its runs are found lost.
-**Clear instance…** on the node's **Overview** marks its open runs lost at once, so another
-instance can start.
+A machine that stopped without saying so keeps its place until its runs are found lost.
+**Clear machine…** on the **Overview** of the machine or pool marks its open runs lost at once, so another
+machine can start.
 
-Every run records its node and its instance. A run's page names both, beside its access
-key; the node's **Overview** lists its recent runs; and on **Runs**, `node:build-01` in the
-filter, or **Node** in the Filter menu, keeps a node's runs alone.
+Every run records its machine or pool and the machine that ran it, its **Machine id**. A run's page shows both, beside its
+access key; the **Overview** of the machine or pool lists its recent runs; and on **Runs**,
+`machine:build-01` in the filter, or **Machine or pool** in the Filter menu, keeps the runs
+of a machine or pool alone. The filter `node:build-01` works too.
 
 ## After an outage
 
@@ -360,7 +364,7 @@ by when it was recorded, not when it arrived, so the catch-up shows what happene
 - The alive counts, in the sidebar and on the Overview, count only the runs alive now.
 - An access key's **Last heartbeat** is when its newest heartbeat was recorded, allowing 5
   minutes for the machine's clock, and never later than it arrived.
-- A new run opens during a catch-up, on a node or pool the catching-up runs had filled
+- A new run opens during a catch-up, on a machine or pool the catching-up runs had filled
   too: old heartbeats hold no instance's place. Its registration has a separate rate limit,
   which a catch-up never spends.
 - Every event is kept, however late it arrives, while its run is: retention keeps a lost
@@ -384,14 +388,14 @@ Three limits stay:
 **Revoke…** on an active key's card revokes it at once: the machine's next request is
 refused, `401`, and it starts no new run. Its public key can never be used again. To move a
 machine to a new key without a gap, give it the new key first, under **Add a key**, and
-revoke the old one once the machine uses the new one. For a node that has or had a key,
+revoke the old one once the machine uses the new one. For a machine or pool that has or had a key,
 the command page adds `--replace` by itself, so a machine that already has a key moves to
 the new one; you add it only when you type the command yourself:
 `qory access-key enrol --replace <server> <code>`. The old key stays in use until the new
-one is active; then revoke the old key on the node's page.
+one is active; then revoke the old key on the page of the machine or pool.
 
-Deleting a node revokes its keys and cancels a command not yet run. Suspending a member
-revokes nothing: a key belongs to its node, not to the person who added it, so revoke the
+Deleting a machine or pool revokes its keys and cancels a command not yet run. Suspending
+a member revokes nothing: a key belongs to its machine or pool, not to the person who added it, so revoke the
 keys that should stop too.
 
 The workspace's overview lists, under **To review**, an active key nobody has used for
