@@ -10,7 +10,7 @@ defmodule Apiary.StagesTest do
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub, WorkItems}
+  alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub, StagesDeclaredStub, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Stages.{Escalation, GateDecision}
@@ -126,15 +126,59 @@ defmodule Apiary.StagesTest do
       assert_receive {:stage_changed, ^public_id}
     end
 
-    test "waits for a workflow the harness does not declare", %{scope: scope} do
+    test "with no snapshot of the harness's workflows, starts the run", %{scope: scope} do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope)
+
+      assert work_item.stage_state == :running
+      assert [%DispatchRun{workflow: "capture-demo"}] = runs(work_item)
+    end
+
+    test "starts a workflow the snapshot lists", %{scope: scope} do
+      StagesDeclaredStub.record_declared(scope.workspace, ["capture-demo"])
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+
+      assert [%DispatchRun{workflow: "capture-demo"}] = scope |> take_in!() |> runs()
+    end
+
+    test "waits for a workflow the snapshot does not list, until a check finds it", %{
+      scope: scope
+    } do
+      {:ok, %{read_at: read_at}} = StagesDeclaredStub.record_declared(scope.workspace, ["review"])
       save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
       work_item = take_in!(scope)
 
       assert work_item.stage_state == :waiting_workflow
       assert runs(work_item) == []
 
-      assert %{state: :waiting_workflow, waiting_workflow: "capture-demo"} =
+      time = Calendar.strftime(read_at, "%Y-%m-%d %H:%M UTC")
+
+      assert %{state: :waiting_workflow, waiting_workflow: "capture-demo", gaps: gaps} =
                Stages.status(work_item)
+
+      assert gaps ==
+               "Explore uses capture-demo, which #{scope.workspace.name}'s harness did not " <>
+                 "list at #{time}. Check again, or choose another workflow for Explore."
+
+      read = fn names -> fn _scope, _workspace -> {:ok, names} end end
+
+      assert Stages.check_workflows(scope, work_item, read.(["review"])) ==
+               {:error, :still_missing}
+
+      assert Stages.check_workflows(scope, work_item, fn _scope, _workspace ->
+               {:error, {:limited, 30}}
+             end) == {:error, {:limited, 30}}
+
+      assert {:ok, %WorkItem{stage_state: :running}} =
+               Stages.check_workflows(scope, work_item, read.(["review", "capture-demo"]))
+
+      assert %{names: ["review", "capture-demo"]} =
+               StagesDeclaredStub.declared_snapshot(scope.workspace)
+
+      assert [%DispatchRun{workflow: "capture-demo"}] = runs(work_item)
+
+      other = sign_up_fixture().scope
+      assert Stages.check_workflows(other, work_item, read.([])) == {:error, :not_found}
     end
 
     test "passes through a stage with no workflow and no gate", %{scope: scope} do

@@ -62,7 +62,8 @@ defmodule Apiary.Stages do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
-  alias Apiary.Stages.{Artifacts, Check, Escalation, GateDecision, Runner}
+  alias Apiary.Stacks.Sources
+  alias Apiary.Stages.{Artifacts, Check, Declared, Escalation, GateDecision, Runner}
   alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
 
   # Transition (D1): the workflow whose runs return today's explore v1 result.
@@ -320,6 +321,63 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # check_workflows/2 reads the workflow names the workspace's harness lists now, as the
+  # scope's person, through the harness sources (`Apiary.Stacks.Sources`), stores them as
+  # the workspace's snapshot, and starts the work item's stage when it waits for a
+  # workflow the read found: `{:ok, work_item}`; `{:error, :still_missing}` when the
+  # stage still waits; the read's error otherwise. `read` is the read, given only by tests.
+  @doc false
+  @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
+          {:ok, WorkItem.t()} | {:error, term}
+  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &read_declared/2) do
+    with {:ok, id} <- Ecto.UUID.cast(id),
+         {:ok, workspace} <- workspace(scope),
+         %WorkItem{} <- in_workspace(workspace, id) || {:error, :not_found},
+         {:ok, names} <- read.(scope, workspace) do
+      Declared.record(workspace, names)
+      start_found(id)
+    else
+      :error -> {:error, :not_found}
+      {:error, _reason} = refused -> refused
+      other -> {:error, other}
+    end
+  end
+
+  defp start_found(id) do
+    transact(fn ->
+      work_item = lock!(id)
+
+      with {:ok, version, stage} <- placed(work_item) do
+        cond do
+          work_item.stage_state != :waiting_workflow ->
+            {:ok, work_item}
+
+          facts(work_item, version, stage).undeclared != [] ->
+            {:error, :still_missing}
+
+          true ->
+            {work_item, _run} = apply_event(work_item, version, stage, :resume)
+            {:ok, work_item}
+        end
+      end
+    end)
+  end
+
+  # The workflow names the harness the workspace chose lists, read at its pin, or at
+  # `HEAD` with none: of its stack, or of every stack where it names none.
+  defp read_declared(scope, workspace) do
+    chosen = Sources.chosen(workspace)
+
+    with {:ok, source} <- Sources.address(chosen.git || ""),
+         {:ok, stacks} <- Sources.read(scope, %{source | ref: chosen.pin || source.ref}) do
+      {:ok,
+       stacks
+       |> Enum.filter(&(is_nil(chosen.stack) or &1.name == chosen.stack))
+       |> Enum.flat_map(& &1.workflows)
+       |> Enum.uniq()}
+    end
+  end
+
   # approve/3 approves the gate of the work item's stage, with the scope's person's
   # `note`: the decision covers the newest version of each output made in the stage, and
   # the work item enters the next stage, or its stage is done after the last. At Explore's
@@ -507,7 +565,7 @@ defmodule Apiary.Stages do
         round: work_item.stage_round,
         rounds: shown_rounds(stage, work_item.stage_entry),
         state: state,
-        gaps: gaps(escalation, work_item, stage, artifacts),
+        gaps: shown_gaps(escalation, work_item, stage, artifacts),
         outputs: outputs(work_item, stage, artifacts),
         inputs: inputs(work_item, version, stage, artifacts),
         escalation: escalation_map(escalation),
@@ -752,7 +810,7 @@ defmodule Apiary.Stages do
             inputs(work_item, version, stage, artifacts),
           do: type
         ),
-      undeclared: for({name, nil} <- declarations, do: name),
+      undeclared: undeclared(workspace, declarations),
       declarations: declarations,
       failed_checks:
         for(
@@ -761,6 +819,17 @@ defmodule Apiary.Stages do
         ),
       machine: version.document["machine"]
     }
+  end
+
+  # The stage's workflows that hold it back: with a snapshot of the names the workspace's
+  # harness listed, each that is in neither it nor the declarations
+  # (`Apiary.Processes.workflow_declaration/2`: explore-a-ticket and the saved workflow);
+  # with no snapshot, none, and the run starts.
+  defp undeclared(workspace, declarations) do
+    case Declared.snapshot(workspace) do
+      %{names: names} -> for {name, nil} <- declarations, name not in names, do: name
+      nil -> []
+    end
   end
 
   defp position(%WorkItem{stage_entry: entry, loop_entry: loop_entry, stage_round: round})
@@ -1336,6 +1405,32 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # A stage that waits for a workflow shows why; any other, its gaps.
+  defp shown_gaps(nil, %WorkItem{stage_state: :waiting_workflow} = work_item, stage, artifacts) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+
+    case {waiting_workflow(work_item, stage), Declared.snapshot(workspace)} do
+      {workflow, %{read_at: read_at}} when is_binary(workflow) ->
+        not_listed(stage["name"], workflow, workspace.name, read_at)
+
+      _none ->
+        gaps(nil, work_item, stage, artifacts)
+    end
+  end
+
+  defp shown_gaps(escalation, work_item, stage, artifacts),
+    do: gaps(escalation, work_item, stage, artifacts)
+
+  # not_listed/4 is why a stage waits for a workflow its harness did not list.
+  @doc false
+  @spec not_listed(String.t(), String.t(), String.t(), DateTime.t()) :: String.t()
+  def not_listed(stage, workflow, workspace, %DateTime{} = read_at) do
+    time = Calendar.strftime(read_at, "%Y-%m-%d %H:%M UTC")
+
+    "#{stage} uses #{workflow}, which #{workspace}'s harness did not list at #{time}. " <>
+      "Check again, or choose another workflow for #{stage}."
+  end
+
   defp gaps(%Escalation{gaps: gaps}, _work_item, _stage, _artifacts), do: gaps
 
   # With no escalation, the newer of the failed checks that started the round and the
@@ -1371,7 +1466,10 @@ defmodule Apiary.Stages do
   defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
     workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
 
-    Enum.find(Runner.workflows(stage), &is_nil(Processes.workflow_declaration(workspace, &1)))
+    declarations =
+      Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
+
+    workspace |> undeclared(declarations) |> List.first()
   end
 
   defp waiting_workflow(_work_item, _stage), do: nil
