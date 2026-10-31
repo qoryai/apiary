@@ -165,3 +165,7 @@ config :apiary, Apiary.PublicId, random: Apiary.PublicIdSource
 config :apiary, :registry_setting, "registry.test.example"
 config :apiary, Apiary.Registry, generate_key: true
 config :apiary, Apiary.Registry.InstanceName, enabled: false
+
+# Transition: the stage runner reaches a work item's artifacts through a stand-in until
+# `Apiary.Artifacts` is merged (`Apiary.Stages.Artifacts`, `Apiary.StagesArtifactsStub`).
+config :apiary, Apiary.Stages.Artifacts, Apiary.StagesArtifactsStub
