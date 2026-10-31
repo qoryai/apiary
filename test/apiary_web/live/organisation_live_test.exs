@@ -75,6 +75,24 @@ defmodule ApiaryWeb.OrganisationLiveTest do
              )
     end
 
+    test "Details has no Owners row for an organisation without an owner", %{conn: conn} do
+      %{organisation: organisation, user: owner, scope: scope} = sign_up_fixture()
+      %{user: admin} = member_fixture(scope, :admin)
+      require Ecto.Query
+
+      {1, _rows} =
+        Apiary.Repo.update_all(
+          Ecto.Query.from(m in Apiary.Organisations.Membership,
+            where: m.organisation_id == ^organisation.id and m.user_id == ^owner.id
+          ),
+          set: [level: :admin]
+        )
+
+      {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/#{organisation}")
+      assert has_element?(view, "#about dt", "Address")
+      refute has_element?(view, "#about dt", "Owners")
+    end
+
     test "each workspace's line says each of its figures once", %{conn: conn} do
       %{user: user, scope: scope, organisation: organisation} = sign_up_fixture()
       recent = workspace_fixture(organisation, "Recent")

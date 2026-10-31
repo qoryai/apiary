@@ -228,8 +228,14 @@ defmodule ApiaryWeb.OrganisationLive do
         <dl class="q-kvl">
           <dt>{gettext("Address")}</dt>
           <dd class="q-mono">{~p"/#{@current_scope.organisation}"}</dd>
-          <dt>{gettext("Owners")}</dt>
-          <dd class="truncate" title={Enum.map_join(@people.owners, ", ", & &1.user.email)}>
+          <%!-- No Owners row for an organisation without an owner, such as an operator's
+               client in an edition. --%>
+          <dt :if={@people.owners != []}>{gettext("Owners")}</dt>
+          <dd
+            :if={@people.owners != []}
+            class="truncate"
+            title={Enum.map_join(@people.owners, ", ", & &1.user.email)}
+          >
             {Enum.map_join(@people.owners, ", ", & &1.user.email)}
           </dd>
           <dt>{gettext("Created")}</dt>
