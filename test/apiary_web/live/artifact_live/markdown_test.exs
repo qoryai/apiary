@@ -111,7 +111,8 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     max = Markdown.max_bytes()
 
     for text <- [String.duplicate("\n", max), String.duplicate("|\r\n", div(max, 3))] do
-      assert capped(fn -> Markdown.render(text) end, 2_097_152)
+      assert {kind, _shown} = capped(fn -> Markdown.render(text) end, 2_097_152)
+      assert kind in [:html, :as_written]
     end
   end
 
