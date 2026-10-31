@@ -262,12 +262,28 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Explore waits for answers to the agent's questions."
              )
 
+      # The step card beside it has the link to the answers: the stage card has none.
+      refute has_element?(view, "#work-item-stage-answers")
+      assert length(String.split(html, "Answer the questions")) == 2
+      assert has_element?(view, ~s|#work-item-step a[href$="/explore"]|, "Answer the questions")
+      assert html =~ "Run 1 · explore-a-ticket · round 1 · questions"
+    end
+
+    test "waiting for answers past Explore: the stage card has the link", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> shape_gate_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :waiting_answers)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
       assert has_element?(
                view,
                ~s|#work-item-stage-answers[href="#{page(scope, work_item.number)}/explore"]|
              )
-
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · questions"
     end
 
     test "at its gate: today's Confirm, and no second Approve", %{conn: conn, scope: scope} do
@@ -435,6 +451,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "#work-item-marks-proposal-main-m-changed",
                "Changed after approval"
              )
+
+      # The two marks read apart.
+      words =
+        view
+        |> element("#work-item-marks-proposal-main")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.split()
+        |> Enum.join(" ")
+
+      assert words =~ "Approved v1; v2 is newer · Changed after approval"
     end
 
     test "an event for another number does nothing", %{conn: conn, scope: scope} do
@@ -731,6 +759,91 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "a work item that ended" do
+    for {how, words} <- [{"close", "Closed by you"}, {"decline", "Declined by you"}] do
+      test "#{how}: no stage card, and the track and the head's words stay", %{
+        conn: conn,
+        scope: scope
+      } do
+        work_item = at_build(scope, :escalated, round: 3)
+        escalate!(work_item, :escalate, "Blocked")
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        view
+        |> form("#work-item-stage-escalation-form", %{"note" => ""})
+        |> render_submit(%{"how" => unquote(how)})
+
+        for view <- [view, elem(live(conn, page(scope, work_item.number)), 1)] do
+          html = render(view)
+          refute has_element?(view, "#work-item-stage")
+          refute has_element?(view, "#work-item-stage-escalation-note")
+          refute html =~ "Waits for a person"
+          refute html =~ "Accept as it is"
+          assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+          refute has_element?(view, "#work-item-head-stages-#{@build}.q-wi-stage-wait")
+          assert has_element?(view, "#work-item-head-meta", unquote(words))
+          refute has_element?(view, "#work-item-head-stage-status")
+        end
+      end
+    end
+  end
+
+  describe "the head's status" do
+    for {state, words} <- [
+          {:running, "Build · Running"},
+          {:waiting_inputs, "Build · Waits for inputs"},
+          {:waiting_answers, "Build · Waits for answers"},
+          {:waiting_workflow, "Build · Waits for a workflow"},
+          {:escalated, "Build · Waits for a person"},
+          {:at_gate, "Build · At the gate"},
+          {:done, "Build · Done"}
+        ] do
+      test "at Build, #{state}: the stage and its state", %{conn: conn, scope: scope} do
+        work_item = at_build(scope, unquote(state))
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+        assert has_element?(view, "#work-item-head-stage-status", unquote(words))
+      end
+    end
+
+    test "after Approve at Shape, it follows the stage", %{conn: conn, scope: scope} do
+      save!(scope, document("members"))
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-head-stage-status", "Shape · At the gate")
+
+      view |> form("#work-item-stage-gate-approve") |> render_submit()
+
+      assert has_element?(view, "#work-item-head-stage-status", "Build · ")
+      refute render(view) =~ "Ready for Shape"
+    end
+
+    test "at Explore, Explore's words while a run, its questions or its gate are on", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {work_item, words} <- [
+            {taken_in_fixture(scope), "Explore is queued"},
+            {scope |> taken_in_fixture() |> end_run!(questions_result()), "Waits for answers"},
+            {explore_gate_fixture(scope), "Waits for you to confirm"}
+          ] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+        assert has_element?(view, "#work-item-head-meta", words)
+        refute has_element?(view, "#work-item-head-stage-status")
+      end
+    end
+
+    test "at Explore, escalated: the stage and its state", %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(nil)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-head-stage-status",
+               "Explore · Waits for a person"
+             )
+    end
+  end
+
   describe "an action on a stage the work item left" do
     test "Approve does nothing and says where the work item moved", %{conn: conn, scope: scope} do
       work_item = shape_gate_fixture(scope)
@@ -851,9 +964,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       hook(view, work_item, "stage_approve", %{"seen" => @shape, "note" => ""})
 
       assert work_item |> decisions(:approve) |> Enum.all?(&(&1.stage_id == @explore))
-
-      assert notice(view) =~
-               "Reload the page. A closed or declined work item has no stage actions."
+      refute has_element?(view, "#work-item-stage")
     end
 
     test "a note over 4,000 characters", %{conn: conn, scope: scope} do
@@ -909,6 +1020,27 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       refute html =~ "\\n"
       refute html =~ "<b>image</b>"
+    end
+  end
+
+  describe "an escalation with no gaps" do
+    for {cause, words} <- [
+          {:round_limit, "3 of 3 rounds ran."},
+          {:escalate, "The agent escalated."},
+          {:check_failed, "The output checks failed."},
+          {:run_stopped, "The run stopped before its verdict."}
+        ] do
+      test "#{cause}: the cause with no colon", %{conn: conn, scope: scope} do
+        work_item = at_build(scope, :escalated, round: 3)
+        escalate!(work_item, unquote(cause), nil)
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        assert view |> element("#work-item-stage-escalation-cause") |> render() =~
+                 unquote(words)
+
+        refute view |> element("#work-item-stage-escalation-cause") |> render() =~ ":<"
+        refute has_element?(view, "#work-item-stage-escalation-gaps")
+      end
     end
   end
 

@@ -144,6 +144,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       confirm_gate: false,
       explore: false,
+      at_explore: stage.id == Stages.explore_stage_id(row),
+      ended: false,
       can_decide: approver?(scope, stage) and Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
     }

@@ -2356,6 +2356,11 @@ msgstr ""
 msgid "%{ran} of %{rounds} rounds ran, with these gaps:"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{ran} of %{rounds} rounds ran."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{rate}, bursts of %{burst}"
@@ -14232,11 +14237,6 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page. A closed or declined work item has no stage actions."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
 msgid "Reload the page. The work item is closed or declined, so it has no stage to check."
 msgstr ""
 
@@ -17161,6 +17161,11 @@ msgstr ""
 msgid "The agent escalated, with these gaps:"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The agent escalated."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The agent is answering the line."
@@ -17788,6 +17793,11 @@ msgstr ""
 msgid "The outcome is that of the last attempt across the runs shown."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The output checks failed."
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "The output is cut: this is its last 64 KiB."
@@ -18047,6 +18057,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run stopped before its session started, at the step %{step}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run stopped before its verdict."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

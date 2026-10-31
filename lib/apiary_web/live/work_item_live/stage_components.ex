@@ -36,11 +36,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
 
   def process_track(assigns) do
-    assigns = assign(assigns, :wait, waits?(assigns.page.state))
+    assigns = assign(assigns, :wait, waits?(assigns.page.state) and !assigns.page.ended)
 
     ~H"""
     <div id={@id} class="q-wi-track">
-      <ol aria-label={gettext("Stages")}>
+      <ol aria-label={gettext("Stages")} class="flex-wrap">
         <li
           :for={{stage, i} <- Enum.with_index(@page.stages, 1)}
           id={"#{@id}-#{stage.id}"}
@@ -138,26 +138,43 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   attr :state, :atom, required: true
 
-  defp state_badge(%{state: :running} = assigns),
-    do: ~H|<.badge color="success" class="q-wi-badge">{gettext("Running")}</.badge>|
+  defp state_badge(assigns) do
+    assigns =
+      assign(assigns, color: state_color(assigns.state), words: state_words(assigns.state))
 
-  defp state_badge(%{state: :waiting_inputs} = assigns),
-    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for inputs")}</.badge>|
+    ~H"""
+    <.badge color={@color} class="q-wi-badge">{@words}</.badge>
+    """
+  end
 
-  defp state_badge(%{state: :waiting_answers} = assigns),
-    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for answers")}</.badge>|
+  defp state_color(:running), do: "success"
+  defp state_color(:at_gate), do: "info"
+  defp state_color(:done), do: "neutral"
+  defp state_color(_state), do: "warning"
 
-  defp state_badge(%{state: :waiting_workflow} = assigns),
-    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for a workflow")}</.badge>|
+  defp state_words(:running), do: gettext("Running")
+  defp state_words(:waiting_inputs), do: gettext("Waits for inputs")
+  defp state_words(:waiting_answers), do: gettext("Waits for answers")
+  defp state_words(:waiting_workflow), do: gettext("Waits for a workflow")
+  defp state_words(:escalated), do: gettext("Waits for a person")
+  defp state_words(:at_gate), do: gettext("At the gate")
+  defp state_words(:done), do: gettext("Done")
 
-  defp state_badge(%{state: :escalated} = assigns),
-    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for a person")}</.badge>|
+  @doc """
+  The head's status for the stage the work item is at: the stage and its state, with the
+  mark of the work item's status that matches them.
+  """
+  def head_status(page) do
+    %{
+      words: page.stage.name <> " · " <> state_words(page.state),
+      mark: head_mark(page)
+    }
+  end
 
-  defp state_badge(%{state: :at_gate} = assigns),
-    do: ~H|<.badge color="info" class="q-wi-badge">{gettext("At the gate")}</.badge>|
-
-  defp state_badge(%{state: :done} = assigns),
-    do: ~H|<.badge class="q-wi-badge">{gettext("Done")}</.badge>|
+  defp head_mark(%{state: :running}), do: :run
+  defp head_mark(%{state: :done}), do: :ready
+  defp head_mark(%{can_decide: true}), do: :wait
+  defp head_mark(_page), do: :wait_other
 
   attr :id, :string, required: true
   attr :page, :map, required: true
@@ -217,7 +234,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     <p id={"#{@id}-line"}>
       {gettext("%{stage} waits for answers to the agent's questions.", stage: @page.stage.name)}
     </p>
-    <.link :if={@answers_path} id={"#{@id}-answers"} patch={@answers_path} class="q-link">
+    <.link
+      :if={@answers_path && !@page.explore}
+      id={"#{@id}-answers"}
+      patch={@answers_path}
+      class="q-link"
+    >
       {gettext("Answer the questions")}
     </.link>
     """
@@ -405,7 +427,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <h3 id={"#{@id}-h"} class="text-sm font-semibold">
         {gettext("%{stage} waits for you", stage: @page.stage.name)}
       </h3>
-      <p id={"#{@id}-cause"}>{cause_words(@escalation.cause, @page)}</p>
+      <p id={"#{@id}-cause"}>{cause_words(@escalation.cause, @page, @escalation.gaps != [])}</p>
       <ul :if={@escalation.gaps != []} id={"#{@id}-gaps"} class="list-disc ps-5">
         <li :for={{gap, i} <- Enum.with_index(@escalation.gaps)}>
           <.gap_line line={gap} path={i == 1 && @escalation[:harness_path]} />
@@ -460,18 +482,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
-  defp cause_words(:round_limit, page) do
+  # The cause, with a colon only where a list of gaps follows it.
+  defp cause_words(:round_limit, page, gaps?) do
+    ran = Format.number(page.round || page.rounds || 1)
     rounds = Format.number(page.rounds || page.round || 1)
 
-    gettext("%{ran} of %{rounds} rounds ran, with these gaps:",
-      ran: Format.number(page.round || page.rounds || 1),
-      rounds: rounds
-    )
+    if gaps?,
+      do: gettext("%{ran} of %{rounds} rounds ran, with these gaps:", ran: ran, rounds: rounds),
+      else: gettext("%{ran} of %{rounds} rounds ran.", ran: ran, rounds: rounds)
   end
 
-  defp cause_words(:escalate, _page), do: gettext("The agent escalated, with these gaps:")
-  defp cause_words(:check_failed, _page), do: gettext("These output checks failed:")
-  defp cause_words(:run_stopped, _page), do: gettext("The run stopped before its verdict:")
+  defp cause_words(:escalate, _page, true), do: gettext("The agent escalated, with these gaps:")
+  defp cause_words(:escalate, _page, false), do: gettext("The agent escalated.")
+  defp cause_words(:check_failed, _page, true), do: gettext("These output checks failed:")
+  defp cause_words(:check_failed, _page, false), do: gettext("The output checks failed.")
+
+  defp cause_words(:run_stopped, _page, true),
+    do: gettext("The run stopped before its verdict:")
+
+  defp cause_words(:run_stopped, _page, false), do: gettext("The run stopped before its verdict.")
 
   ## Move back
 
@@ -626,6 +655,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         newer: Format.number(@mark.newer)
       )}
     </span>
+    <span :if={@mark && @mark.approved && @mark.newer && @mark.changed_after_approval}> · </span>
     <span :if={@mark && @mark.changed_after_approval} id={"#{@id}-changed"} class="text-warning">
       {gettext("Changed after approval")}
     </span>
@@ -650,7 +680,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <section
         :for={{column, i} <- Enum.with_index(@columns)}
         id={"#{@id}-#{i}"}
-        class="q-wl-st"
+        class="q-wl-st content-start"
         aria-labelledby={"#{@id}-#{i}-h"}
       >
         <h2 id={"#{@id}-#{i}-h"} class="q-wl-st-name">

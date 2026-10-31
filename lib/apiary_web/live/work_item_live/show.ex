@@ -49,7 +49,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # The page reads them again on `{:stage_changed, id}` and `{:artifact_pushed, …}` on the
   # work item's topics (`ApiaryWeb.WorkItemLive.Workflow.subscribe/1`), and does
   # Approve, Request changes, the escalation actions and Move back through
-  # `Apiary.Stages`, each refused without words as the other actions are. Without the
+  # `Apiary.Stages`, each refused without words as the other actions are. The head's
+  # status follows the stage and its state, as Explore's words do at Explore; a work item
+  # that ended keeps its words and the stage track, and has no stage card. Without the
   # feature the page is as before it.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -118,6 +120,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             }
             can_close={@can.close}
             can_act={@can.act}
+            stage_status={head_status(@flow, @item)}
           >
             <:track :if={@flow}>
               <StageComponents.process_track id="work-item-head-stages" page={@flow} />
@@ -151,7 +154,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         </:header>
         <:rail :if={@tab != :edit}>
           <StageComponents.stage_card
-            :if={@flow}
+            :if={@flow && !@flow.ended}
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
@@ -574,7 +577,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           do: {:noreply, socket},
           else: {:noreply, assign(socket, :stage_notice, moved(seen, socket.assigns.flow))}
 
-      {:error, reason} when reason in [:forbidden, :confirm_gate, :invalid] ->
+      # A work item that ended has no stage card, so the page read again is the answer.
+      {:error, reason} when reason in [:forbidden, :confirm_gate, :invalid, :not_live] ->
         {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> refresh()}
 
       {:error, reason} ->
@@ -597,9 +601,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       gettext(
         "Choose a stage from the list. The stage you sent is not in the work item's process version."
       )
-
-  defp refused(:not_live, _flow),
-    do: gettext("Reload the page. A closed or declined work item has no stage actions.")
 
   defp refused(:not_placed, _flow),
     do: gettext("Reload the page. The work item is not in a stage.")
@@ -818,7 +819,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           %{
             flow
             | confirm_gate: explore.status == :confirm,
-              explore: explore.status in @explore_statuses
+              explore: explore.status in @explore_statuses,
+              ended: explore.status in [:declined, :closed, :undone]
           }
 
       page = View.page(scope, row, explore, thread, names)
@@ -888,6 +890,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # What the reader may do here: undo, close, and act at the step it stands at. While the
   # stage runner holds an escalation, its card offers Run another round and Decline in
   # place of the step card's Run Explore again and Decline.
+  # The head's status under the workflow model: nil keeps the words of the work item's
+  # status, for one that ended, and at Explore while a run, its questions or its gate
+  # are what the stage is at; anywhere else, the stage and its state.
+  defp head_status(nil, _item), do: nil
+  defp head_status(%{ended: true}, _item), do: nil
+
+  defp head_status(%{at_explore: true, state: state}, %{status: status})
+       when state in [:running, :waiting_answers, :at_gate] and status in @explore_statuses,
+       do: nil
+
+  defp head_status(flow, _item), do: StageComponents.head_status(flow)
+
   defp can(scope, row, status, flow) do
     live? = status not in [:declined, :closed, :undone]
 
