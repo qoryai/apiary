@@ -14,7 +14,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Repo
+  alias Apiary.{Processes, Repo}
   alias Apiary.Harnesses.Assignment
   alias Apiary.Stacks
   alias Apiary.Stacks.Sources
@@ -316,12 +316,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"]), "fix")
       assert has_element?(view, ~s(#workflow_workflow option[value="0/triage"]), "triage")
 
-      # The workflows read are the workspace's snapshot of its harness source.
-      assert %{names: names} = Apiary.Processes.declared_snapshot(scope.workspace)
-      assert "fix" in names and "triage" in names
+      # A source only tried in Source is no snapshot of the workspace's harness source.
+      assert Processes.declared_snapshot(scope.workspace) == nil
 
       change(view, %{source: linked_id, workflow: "0/triage"})
       view |> form("#workflow-form", workflow: %{workflow: "0/triage"}) |> render_submit()
+
+      # Saved, it is: the workflows of its stack are the snapshot.
+      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
 
       assert render(view) =~ "Runs of #{scope.workspace.name} now follow the workflow triage."
 
@@ -380,6 +382,28 @@ defmodule ApiaryWeb.WorkflowLiveTest do
              )
 
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"][selected]))
+
+      # The saved source, read, is the workspace's snapshot.
+      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
+    end
+
+    test "a source tried in Source, read, changes no snapshot of the saved source", %{
+      conn: conn,
+      scope: scope,
+      path: path,
+      linked_id: linked_id
+    } do
+      base = %{"git" => @harness, "ref" => "v2", "stack" => "triage"}
+      {:ok, _stack} = Sources.save(scope, base, "fix")
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      %{read_at: read_at} = Processes.declared_snapshot(scope.workspace)
+
+      view = open(conn, path)
+      change(view, %{source: linked_id})
+      assert has_element?(view, ~s(#workflow_workflow option[value="0/triage"]), "triage")
+
+      assert Processes.declared_snapshot(scope.workspace) ==
+               %{names: ["review"], read_at: read_at}
     end
   end
 

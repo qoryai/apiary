@@ -773,8 +773,9 @@ defmodule Apiary.Processes do
   record_declared/2 keeps `names` as the workflows the workspace's harness source lists,
   read now: it replaces the names the workspace kept, with the time of this read
   (`declared_snapshot/1`). Call it after a read of the workspace's harness source
-  succeeds, such as the read on Workspace settings > Workflow. Each name is kept once,
-  sorted, at most 1,000. `:ok`.
+  succeeds: Workspace settings > Workflow calls it for the stack the saved workflow's
+  document extends, read or saved there, and for no other source a person tries. Each
+  name is kept once, sorted, at most 1,000. `:ok`.
   """
   @spec record_declared(%Workspace{}, [String.t()]) :: :ok
   def record_declared(%Workspace{id: id, organisation_id: organisation_id}, names)
@@ -797,9 +798,9 @@ defmodule Apiary.Processes do
   @doc """
   declared_snapshot/1 is the workflow names the workspace kept at the last read of its
   harness source (`record_declared/2`): `%{names: names, read_at: time}`, or nil before
-  the first read. It covers only the workspace's harness source, the source read on
-  Workspace settings > Workflow: not a harness file of a repository, and not the stack
-  chosen for a target.
+  the first read. It covers only the workspace's harness source, the stack the workflow
+  saved on Workspace settings > Workflow extends: not a harness file of a repository,
+  and not the stack chosen for a target.
   """
   @spec declared_snapshot(%Workspace{}) :: %{names: [String.t()], read_at: DateTime.t()} | nil
   def declared_snapshot(%Workspace{id: id}) do
