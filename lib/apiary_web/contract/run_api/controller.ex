@@ -115,7 +115,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
              note: push.note,
              writes: Boundary.writes(workspace, Boundary.workflow(run.dispatch_run))
            )
-           |> pushed(push.type, type, Boundary.workflow(run.dispatch_run)) do
+           |> pushed(%{
+             name: push.type,
+             type: type,
+             workflow: Boundary.workflow(run.dispatch_run),
+             filenames: Enum.map(files, & &1.filename)
+           }) do
       answer(conn, 201, Wire.version(version, push.type, push.name))
     else
       error -> write_error(conn, error)
@@ -128,7 +133,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     with {:ok, run} <- run(conn, run_id),
          :ok <- live(run),
          {:ok, verdict} <- Body.verdict(conn.assigns.raw_body),
-         content = Jason.encode!(%{"verdict" => verdict.verdict, "gaps" => verdict.gaps}),
+         content = verdict_json(verdict),
          file = %{filename: "verdict.json", content_type: "application/json", binary: content},
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, "verdict", [file],
@@ -137,7 +142,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
              note: nil,
              writes: :any
            )
-           |> pushed("verdict", nil, Boundary.workflow(run.dispatch_run)) do
+           |> pushed(%{
+             name: "verdict",
+             type: nil,
+             workflow: Boundary.workflow(run.dispatch_run),
+             filenames: ["verdict.json"]
+           }) do
       answer(conn, 201, Wire.version(version, "verdict", "main"))
     else
       error -> write_error(conn, error)
@@ -145,6 +155,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   rescue
     exception -> unavailable(conn, exception)
   end
+
+  # The verdict's file, as the schema of the type `verdict` takes it: `gaps` only where
+  # the body has it.
+  defp verdict_json(%{verdict: verdict, gaps: nil}), do: Jason.encode!(%{"verdict" => verdict})
+
+  defp verdict_json(%{verdict: verdict, gaps: gaps}),
+    do: Jason.encode!(Jason.OrderedObject.new([{"verdict", verdict}, {"gaps", gaps}]))
 
   ## The feature
 
@@ -295,48 +312,75 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   # What `Apiary.Artifacts.push/5` returns, turned into the run API's errors: the push's
   # type, the type's limit and the member at fault, never another detail of the push.
-  defp pushed({:ok, version}, _name, _type, _workflow), do: {:ok, version}
+  # `push` has the type's name (`name`), the type (`type`, nil where it was not read),
+  # the run's workflow and the filenames in the order of the files.
+  defp pushed({:ok, version}, _push), do: {:ok, version}
+  defp pushed({:error, refusal}, push), do: refused(refusal, push)
+  defp pushed(_error, _push), do: {:error, :unavailable}
 
-  defp pushed({:error, refusal}, name, type, workflow), do: refused(refusal, name, type, workflow)
-  defp pushed(_error, _name, _type, _workflow), do: {:error, :unavailable}
+  defp refused({:unknown_type, _name}, push), do: {:error, {:unknown_type, push.name}}
 
-  defp refused({:unknown_type, _name}, name, _type, _workflow),
-    do: {:error, {:unknown_type, name}}
+  defp refused({:not_writable, _type}, push),
+    do: {:error, {:not_writable, push.name, push.workflow}}
 
-  defp refused({:not_writable, _type}, name, _type_row, workflow),
-    do: {:error, {:not_writable, name, workflow}}
+  defp refused({:too_many_files, max_files}, push),
+    do: {:error, {:too_many_files, push.name, limit(max_files, push.type, :max_files)}}
 
-  defp refused({:too_many_files, max_files}, name, type, _workflow),
-    do: {:error, {:too_many_files, name, limit(max_files, type, :max_files)}}
+  defp refused({:too_large, size_limit}, push),
+    do: {:error, {:too_large, push.name, limit(size_limit, push.type, :size_limit)}}
 
-  defp refused({:too_large, size_limit}, name, type, _workflow),
-    do: {:error, {:too_large, name, limit(size_limit, type, :size_limit)}}
+  defp refused({:invalid, member}, _push) when member in [:type, :name, :note],
+    do: {:error, :invalid_request, Atom.to_string(member)}
 
-  defp refused({:invalid, member}, _name, _type, _workflow)
-       when member in [:type, :name, :note],
-       do: {:error, :invalid_request, Atom.to_string(member)}
+  defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
 
-  defp refused({:invalid, :no_files}, _name, _type, _workflow),
-    do: {:error, :invalid_request, "files"}
-
-  defp refused({:invalid, {:file, index}}, _name, _type, _workflow) when is_integer(index),
+  defp refused({:invalid, {:file, index}}, _push) when is_integer(index),
     do: {:error, :invalid_request, "files[#{index}]"}
 
-  defp refused({:invalid, {member, index}}, _name, _type, _workflow)
+  defp refused({:invalid, {member, index}}, _push)
        when member in [:filename, :duplicate_filename] and is_integer(index),
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
-  defp refused({:invalid, {_check, index}}, _name, _type, _workflow) when is_integer(index),
-    do: {:error, {:invalid_artifact, "files[#{index}]"}}
+  defp refused({:invalid, {check, index}}, push)
+       when check in [:format, :extension, :schema, :unreadable] and is_integer(index),
+       do:
+         {:error,
+          {:invalid_artifact, "files[#{index}]",
+           mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
 
-  defp refused({:invalid, :no_video}, _name, _type, _workflow),
-    do: {:error, {:invalid_artifact, "files"}}
+  defp refused({:invalid, :no_video}, push),
+    do:
+      {:error,
+       {:invalid_artifact, "files",
+        "Add an MP4 or WebM video to the version of #{push.name}: " <>
+          "a WebVTT file goes with a video."}}
 
   # A run of another work item; the person's refusals never come to a run.
-  defp refused(code, _name, _type, _workflow) when code in [:not_found, :forbidden],
-    do: {:error, :not_found}
+  defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
-  defp refused(_refusal, _name, _type, _workflow), do: {:error, :unavailable}
+  defp refused(_refusal, _push), do: {:error, :unavailable}
+
+  # The message of a file that `Apiary.Artifacts` refuses by its format check: the file,
+  # the type and what the type's base view takes.
+  defp mismatch(:unreadable, filename, _push),
+    do: "Push #{filename} again: Qory Apiary could not read it after it was received."
+
+  defp mismatch(check, filename, push),
+    do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, push)}."
+
+  defp takes(:extension, _push), do: "the filename of a document ends in .md"
+
+  defp takes(:schema, push),
+    do: "the file does not match the JSON Schema of #{push.name}"
+
+  defp takes(:format, push) do
+    case field(push.type, :base_view) do
+      :document -> "a document is a Markdown file of UTF-8 text"
+      :image -> "an image is a PNG, JPEG, GIF, WebP or SVG file"
+      :video -> "a file is an MP4 or WebM video, or a WebVTT file (.vtt)"
+      _structured -> "the file is one JSON document"
+    end
+  end
 
   defp limit(limit, _type, _key) when is_integer(limit), do: limit
   defp limit(_limit, type, key), do: field(type, key)
@@ -379,8 +423,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       limit: limit,
       message:
         if(is_integer(limit),
-          do: "The artifact type #{type} takes at most #{file_count(limit)} in one version.",
-          else: "The version has more files than the artifact type #{type} takes."
+          do: "Push at most #{file_count(limit)} in one version of #{type}.",
+          else: "Push fewer files in one version of #{type}."
         )
     )
   end
@@ -391,19 +435,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       limit: limit,
       message:
         if(is_integer(limit),
-          do:
-            "The files of one version of the artifact type #{type} take at most " <>
-              "#{limit} bytes together.",
-          else: "The files are larger together than the artifact type #{type} takes."
+          do: "Shrink the files of one version of #{type} to at most #{limit} bytes together.",
+          else:
+            "Shrink the files of one version of #{type}; together they are over its size limit."
         )
     )
   end
 
-  defp write_error(conn, {:error, {:invalid_artifact, member}}) do
-    error(conn, 422, "invalid_artifact",
-      names: [member],
-      message: "The files do not match the format of the artifact type."
-    )
+  defp write_error(conn, {:error, {:invalid_artifact, member, message}}) do
+    error(conn, 422, "invalid_artifact", names: [member], message: message)
   end
 
   defp write_error(conn, _error), do: error(conn, 503, "unavailable")

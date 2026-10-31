@@ -227,7 +227,8 @@ Checks, in order, after the checks of every request:
 6. A content that is not strict base64: `400` `invalid_request`.
 7. Files that do not match the type's format: `422` `invalid_artifact`, with the file
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file.
+   file. A version of the type `verdict` is checked against the type's JSON Schema, so
+   its `verdict` is `passed`, `changes-requested` or `escalate`.
 
 ## POST verdict
 
@@ -238,11 +239,12 @@ The body, at most 64 KiB:
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
-- `gaps`: optional text, at most 32000 code points, with no control character but a tab
-  or a line break.
+- `gaps`: optional text, 1 to 20000 code points, with no control character but a tab
+  or a line break, and none of the bidirectional, separator and format characters that
+  the schema of the type `verdict` refuses (`priv/schemas/artifacts/verdict.schema.json`).
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, where `gaps` is null when the body
+file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, without `gaps` when the body
 has none. A run of any workflow may give a verdict. Returns `201` with the version, as
 `POST artifacts` does.
 
@@ -265,7 +267,7 @@ is `400` `invalid_request`.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
-| `422` | `invalid_artifact` | `names`, `message` | The files do not match the type's format |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, or a video version has no video |
 | `503` | `unavailable` | | The request could not be completed; try again |
 
 The messages:
@@ -275,7 +277,19 @@ The messages:
   types, then run the round again."
 - `type_not_writable`: "Add the artifact type explainer to the writes list of the
   workflow capture-demo, or push a type that the workflow writes."
-- `too_many_files`: "The artifact type screenshot takes at most 2 files in one version."
-- `too_large`: "The files of one version of the artifact type demo-video take at most
-  16777216 bytes together."
-- `invalid_artifact`: "The files do not match the format of the artifact type."
+- `too_many_files`: "Push at most 2 files in one version of screenshot." ("1 file" for a
+  limit of 1)
+- `too_large`: "Shrink the files of one version of demo-video to at most 16777216 bytes
+  together."
+- `invalid_artifact`, by the check that failed:
+  - "Fix checkout.png to match the format of screenshot: an image is a PNG, JPEG, GIF,
+    WebP or SVG file." For a document type, the part after the colon is "a document is a
+    Markdown file of UTF-8 text"; for a video type, "a file is an MP4 or WebM video, or a
+    WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
+  - "Fix notes.txt to match the format of explainer: the filename of a document ends in
+    .md."
+  - "Fix verdict.json to match the format of verdict: the file does not match the JSON
+    Schema of verdict."
+  - "Push checkout.png again: Qory Apiary could not read it after it was received."
+  - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
+    video."

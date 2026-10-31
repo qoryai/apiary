@@ -652,7 +652,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "error" => "too_many_files",
                "type" => "screenshot",
                "limit" => 2,
-               "message" => "The artifact type screenshot takes at most 2 files in one version."
+               "message" => "Push at most 2 files in one version of screenshot."
              }
 
       assert RunApiStubs.pushed() == []
@@ -679,8 +679,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "type" => "screenshot",
                "limit" => 16,
                "message" =>
-                 "The files of one version of the artifact type screenshot take at most " <>
-                   "16 bytes together."
+                 "Shrink the files of one version of screenshot to at most 16 bytes together."
              }
 
       assert length(RunApiStubs.pushed()) == 1
@@ -740,27 +739,52 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "type" => "explainer",
            "limit" => 900,
            "message" =>
-             "The files of one version of the artifact type explainer take at most " <>
-               "900 bytes together."
+             "Shrink the files of one version of explainer to at most 900 bytes together."
          }},
         {{:too_many_files, 1}, 422,
          %{
            "error" => "too_many_files",
            "type" => "explainer",
            "limit" => 1,
-           "message" => "The artifact type explainer takes at most 1 file in one version."
+           "message" => "Push at most 1 file in one version of explainer."
          }},
         {{:invalid, {:format, 0}}, 422,
          %{
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
-           "message" => "The files do not match the format of the artifact type."
+           "message" =>
+             "Fix a.md to match the format of explainer: " <>
+               "a document is a Markdown file of UTF-8 text."
+         }},
+        {{:invalid, {:extension, 0}}, 422,
+         %{
+           "error" => "invalid_artifact",
+           "names" => ["files[0]"],
+           "message" =>
+             "Fix a.md to match the format of explainer: " <>
+               "the filename of a document ends in .md."
+         }},
+        {{:invalid, {:schema, 0}}, 422,
+         %{
+           "error" => "invalid_artifact",
+           "names" => ["files[0]"],
+           "message" =>
+             "Fix a.md to match the format of explainer: " <>
+               "the file does not match the JSON Schema of explainer."
+         }},
+        {{:invalid, {:unreadable, 0}}, 422,
+         %{
+           "error" => "invalid_artifact",
+           "names" => ["files[0]"],
+           "message" => "Push a.md again: Qory Apiary could not read it after it was received."
          }},
         {{:invalid, :no_video}, 422,
          %{
            "error" => "invalid_artifact",
            "names" => ["files"],
-           "message" => "The files do not match the format of the artifact type."
+           "message" =>
+             "Add an MP4 or WebM video to the version of explainer: " <>
+               "a WebVTT file goes with a video."
          }},
         {{:invalid, {:filename, 0}}, 400,
          %{"error" => "invalid_request", "names" => ["files[0].filename"]}},
@@ -905,6 +929,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             {%{}, "verdict"},
             {%{"verdict" => "passed", "gaps" => 3}, "gaps"},
             {%{"verdict" => "passed", "gaps" => "a\u009Bb"}, "gaps"},
+            {%{"verdict" => "passed", "gaps" => "a\u202Eb"}, "gaps"},
+            {%{"verdict" => "passed", "gaps" => ""}, "gaps"},
+            {%{"verdict" => "passed", "gaps" => String.duplicate("x", 20_001)}, "gaps"},
             {%{"verdict" => "passed", "type" => "verdict"}, "type"}
           ] do
         conn = write(ctx, "/verdict", body)
@@ -912,6 +939,40 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
 
       assert RunApiStubs.pushed() == []
+    end
+
+    test "a verdict without gaps is stored without the member, as its schema takes it",
+         ctx do
+      assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
+      assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a pushed verdict artifact whose value is not one of the three is 422, as Apiary.Artifacts refuses it",
+         ctx do
+      body =
+        push_body("verdict", [
+          {"verdict.json", "application/json", ~s({"verdict":"approved"})}
+        ])
+
+      conn = write(ctx, "/artifacts", body)
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix verdict.json to match the format of verdict: " <>
+                   "the file does not match the JSON Schema of verdict."
+             }
+
+      assert RunApiStubs.pushed() == []
+
+      body =
+        push_body("verdict", [
+          {"verdict.json", "application/json", ~s({"verdict":"changes-requested","gaps":"x"})}
+        ])
+
+      assert write(ctx, "/artifacts", body).status == 201
     end
 
     test "a body over 64 KiB is 413", ctx do

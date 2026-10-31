@@ -29,7 +29,11 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   @refused_in_filename ~r/[\/\\\x{0}-\x{1F}\x{7F}-\x{9F}]/u
   @refused_in_text ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u
   @max_note 4000
-  @max_gaps 32_000
+  # The gaps of a verdict, as the schema of the type `verdict` takes them
+  # (`priv/schemas/artifacts/verdict.schema.json`): 1 to 20000 code points, with none of
+  # the control, bidirectional, separator and format characters it refuses.
+  @max_gaps 20_000
+  @refused_in_gaps ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
   @max_files 100
 
   @verdicts ["passed", "changes-requested", "escalate"]
@@ -68,7 +72,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
     with {:ok, body} <- object(raw_body),
          :ok <- members(body, ~w(verdict gaps)),
          {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)),
-         {:ok, gaps} <- optional(body, "gaps", &text?(&1, @max_gaps), nil) do
+         {:ok, gaps} <- optional(body, "gaps", &gaps?/1, nil) do
       {:ok, %{verdict: verdict, gaps: gaps}}
     end
   end
@@ -200,6 +204,11 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   end
 
   defp content_type?(value), do: is_binary(value) and Regex.match?(@content_type, value)
+
+  defp gaps?(value) do
+    is_binary(value) and value != "" and String.valid?(value) and
+      code_points(value) <= @max_gaps and not Regex.match?(@refused_in_gaps, value)
+  end
 
   defp text?(value, max) do
     is_binary(value) and String.valid?(value) and code_points(value) <= max and

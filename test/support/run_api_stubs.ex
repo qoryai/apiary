@@ -156,11 +156,40 @@ defmodule ApiaryWeb.RunApiStubs do
     def type(_workspace, name), do: Map.get(RunApiStubs.get(:types, RunApiStubs.types()), name)
 
     def push({:run, _run} = actor, work_item, type, files, opts) do
-      case RunApiStubs.get(:push_error) do
+      case RunApiStubs.get(:push_error) || verdict_refusal(type, files) do
         nil -> {:ok, RunApiStubs.stored(work_item.id, type, files, [actor: actor] ++ opts)}
         error -> {:error, error}
       end
     end
+
+    # The format check of the type `verdict`, as `Apiary.Artifacts.Format` makes it with
+    # `priv/schemas/artifacts/verdict.schema.json`: one JSON document, `verdict` one of
+    # the three values, `gaps` absent or a text of 1 to 20000 code points, no other
+    # member; else the refusal `Apiary.Artifacts.push/5` returns.
+    defp verdict_refusal("verdict", [%{binary: binary}]) do
+      case Jason.decode(binary) do
+        {:ok, %{"verdict" => verdict} = document}
+        when verdict in ["passed", "changes-requested", "escalate"] ->
+          if Map.keys(document) -- ["verdict", "gaps"] == [] and gaps?(document["gaps"]),
+            do: nil,
+            else: {:invalid, {:schema, 0}}
+
+        {:ok, _document} ->
+          {:invalid, {:schema, 0}}
+
+        {:error, _reason} ->
+          {:invalid, {:format, 0}}
+      end
+    end
+
+    defp verdict_refusal(_type, _files), do: nil
+
+    defp gaps?(nil), do: true
+
+    defp gaps?(gaps) when is_binary(gaps),
+      do: gaps != "" and length(String.codepoints(gaps)) <= 20_000
+
+    defp gaps?(_gaps), do: false
 
     # The work item's artifacts by type and name, versions newest first.
     def list(work_item) do
