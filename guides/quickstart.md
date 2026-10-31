@@ -307,8 +307,8 @@ Each list shows a check mark on each step once it is done:
 later.
 
 1. **Work sources.** **Where does work for Main come from?** shows a card for each
-   account that Acme's connections reach. With nothing connected, **Connect another
-   source** is open and lists the adapters that the instance has set up. Select
+   account that Acme's connections reach. With nothing connected, select **Connect a
+   source**: its page lists the adapters that the instance has set up. Select
    **Connect** beside one, and follow the steps that **About this step** lists under its
    name: the adapter sends you back to this step, which shows a card such as “GitHub ·
    acme” with **Choose**. Select **Choose**. On “Choose repositories · GitHub · acme”,
@@ -326,8 +326,8 @@ later.
    connect an adapter in **Organisation settings › Integrations**. One connection to an
    adapter serves every workspace of Acme. Only owners and admins connect and choose.
 2. **Destinations.** **Which repositories may runs in Main change?** shows a card for
-   each account of the adapters with repositories, and **Connect another destination**
-   for an adapter not connected yet. Select **Choose**, choose **All repositories,
+   each account of the adapters with repositories, and **Connect a destination**, or
+   **Connect another destination**, for an adapter not connected yet. Select **Choose**, choose **All repositories,
    including new ones** or **Only selected** and tick the repositories Main's runs may
    change, then **Save** and **Continue**. Where **Work sources** has All for the
    account, the chooser shows All alone: “Work sources is set to All for acme. Change it

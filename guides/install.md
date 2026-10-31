@@ -840,9 +840,10 @@ With the `factory` feature, both pages have more steps:
   **Name**, and **Continue** on the other steps, open the next step.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
-    connect an adapter, open **Connect another source**, or **Connect another
-    destination**, select **Connect** beside the adapter, and follow the steps that the
-    column **About this step** lists under its name. **Choose** opens the account's
+    connect an adapter, select **Connect a source**, or **Connect a destination**
+    (**Connect another …** once one is connected), select **Connect** beside the
+    adapter, and follow the steps that the column **About this step** lists under its
+    name. **Back** returns to the step. **Choose** opens the account's
     collections: choose **All repositories, including new ones**, in the adapter's word
     for its collections, or **Only selected** and tick them, then **Save**. All also
     assigns to the workspace each collection that the adapter lists for the account

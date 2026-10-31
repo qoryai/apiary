@@ -496,10 +496,9 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"gate.approve",
-      "approve a stage's gate on a work item, move a work item past a stage, and act on an escalation. When a stage lists approvers, only those people approve its gate, and only once the stage has every output its checks require.",
+      "approve a stage's gate on a work item, move a work item past a stage, and act on an escalation. When a stage lists approvers, only those people approve its gate.",
       feature: :workflow_model,
-      roles: @members,
-      audited: {:not, "no function takes it yet"}
+      roles: @members
     ),
     Action.new(:"artifact.write", "store a version of an artifact on a work item",
       feature: :workflow_model,

@@ -769,17 +769,23 @@ defmodule ApiaryWeb.SetUpComponents do
   attr :steps, :list, required: true
   attr :page, :string, default: nil
 
+  attr :up, :map,
+    default: nil,
+    doc: "on a page of a step, the step itself, `path` and `label`, where Back leads"
+
   @doc """
   back/1 is the Back button at the foot of a step's form: a ghost button to the step
   before the current one in its progress, a patch where its path is `page`. None on the
   first step of a progress, such as Name, which leads back to no step of the
-  instance's, nor where the step before has no page, such as Your account.
+  instance's, nor where the step before has no page, such as Your account. On a page of a
+  step, such as Connect of Work sources, Back leads to the step (`up`).
   """
   def back(assigns) do
     steps = progress_steps(assigns.steps)
     at = Enum.find_index(steps, &(&1.state == :current))
     before = if at && at > 0, do: Enum.at(steps, at - 1)
     before = if before && is_binary(before.path), do: before
+    before = assigns.up || before
 
     assigns = assign(assigns, before: before, patch: before && patch?(before.path, assigns.page))
 

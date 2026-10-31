@@ -568,8 +568,8 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   # The steps of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`) with the `factory`
-  # feature: Work sources and Destinations, each with a card per grant, Connect another,
-  # Connected, Connecting… and the adapter's guide; the chooser of a grant's collections
+  # feature: Work sources and Destinations, each with a card per grant, Connect and its
+  # page, Connected, Connecting… and the adapter's guide; the chooser of a grant's collections
   # (`ApiaryWeb.ChooseCollectionsLive`), with All, Only selected, a collection in another
   # workspace and Not listed?; the test run,
   # with its condition and its states; who may act on each; and an instance admin's first
@@ -706,7 +706,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   end
 
   describe "Work sources" do
-    test "lists the configured adapters with items for the type, each with Connect, and Skip",
+    test "Connect a source opens the step's Connect page: the configured adapters with items for the type, each with Connect; Back returns to the step",
          %{conn: conn} do
       %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
@@ -727,7 +727,42 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "h1", "Where does work for Main come from?")
       assert {"Work sources", :current} in set_up_group(lv)
 
-      row = "#set-up-adapter-#{adapter.public_id}"
+      # The step: with nothing connected, Connect a source, to the step's Connect page.
+      step_path = ~p"/#{organisation}/main/set-up/sources"
+      connect_path = step_path <> "/connect"
+      assert words(lv, "#set-up-connect") == "Connect a source"
+      assert href(lv, "#set-up-connect") == connect_path
+      refute has_element?(lv, "#set-up-adapters")
+      refute has_element?(lv, "#set-up-grants")
+
+      assert words(lv, "#set-up-later") ==
+               "You can change this later in Workspace settings › Work sources."
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system this instance has set up."
+
+      assert href(lv, "#set-up-skip") ==
+               ~p"/#{organisation}/main/set-up/destinations"
+
+      assert href(lv, "#set-up-back") == ~p"/#{organisation}/main/set-up/name"
+      refute has_element?(lv, "#set-up-continue")
+      refute has_element?(lv, "#set-up-no-adapter")
+
+      lv |> element("#set-up-connect") |> render_click()
+      assert_patch(lv, connect_path)
+
+      # The Connect page: the step current in the sidebar, the breadcrumb the step, a
+      # link to it, then the page; Back to the step, and no Skip or Continue.
+      assert has_element?(lv, "h1", "Connect a source")
+      assert page_title(lv) =~ "Connect a source"
+      assert {"Work sources", :current} in set_up_group(lv)
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Work sources")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Connect a source")
+      assert href(lv, "#set-up-back") == step_path
+      refute has_element?(lv, "#set-up-skip")
+      refute has_element?(lv, "#set-up-continue")
+
+      row = "#set-up-adapters #set-up-adapter-#{adapter.public_id}"
       assert has_element?(lv, row, adapter.name)
       assert has_element?(lv, row <> "-not-connected", "Not connected")
       refute has_element?(lv, "#set-up-adapter-#{other_type.public_id}")
@@ -742,17 +777,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "#{row}-connect-install.btn-primary", "Connect")
 
-      # With no card, the list of adapters to connect is open.
-      assert has_element?(lv, "#set-up-connect[open] #set-up-adapters #{row}")
-      assert words(lv, "#set-up-connect-another") == "Connect another source"
-      refute has_element?(lv, "#set-up-grants")
-
-      assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Work sources."
-
-      assert words(lv, "#set-up-context #set-up-what") ==
-               "Bring tickets in from a system this instance has set up."
-
       assert has_element?(
                lv,
                "#set-up-context",
@@ -760,13 +784,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "to Qory Apiary after its steps."
              )
 
-      assert href(lv, "#set-up-skip") ==
-               ~p"/#{organisation}/main/set-up/destinations"
-
+      # Back returns to the step, whose Back leads to Name.
+      lv |> element("#set-up-back") |> render_click()
+      assert_patch(lv, step_path)
+      assert has_element?(lv, "h1", "Where does work for Main come from?")
       assert href(lv, "#set-up-back") == ~p"/#{organisation}/main/set-up/name"
 
-      refute has_element?(lv, "#set-up-continue")
-      refute has_element?(lv, "#set-up-no-adapter")
+      # Opened at its address, the Connect page is the same; only Work sources and
+      # Destinations have one.
+      {:ok, lv, _html} = live(conn |> log_in_user(user), connect_path)
+      assert has_element?(lv, "h1", "Connect a source")
+      assert href(lv, "#set-up-back") == step_path
+
+      assert_raise ApiaryWeb.NotFound, fn ->
+        live(conn |> log_in_user(user), ~p"/#{organisation}/main/set-up/model/connect")
+      end
     end
 
     test "with no adapter for the type, shows the line for it", %{conn: conn} do
@@ -779,7 +811,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "No work source for this type is set up on this instance. An instance admin " <>
                  "sets one up in Instance settings › Adapters."
 
-      refute has_element?(lv, "#set-up-adapters")
+      refute has_element?(lv, "#set-up-connect")
       assert has_element?(lv, "#set-up-skip")
     end
 
@@ -803,14 +835,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert href(lv, "#{card}-choose") ==
                ~p"/#{organisation}/#{main}/set-up/sources/choose?#{[grant: grant.public_id]}"
 
-      # The connected adapter is not under Connect another source, which is closed; the
-      # other adapter is, and its install leads back to this step of Main.
-      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}")
-      assert has_element?(lv, "#set-up-connect:not([open]) #set-up-adapter-#{other.public_id}")
+      # With a card, Connect another source; its page lists the other adapter, not the
+      # connected one, and its install leads back to this step of Main.
+      assert words(lv, "#set-up-connect") == "Connect another source"
+
+      {:ok, connect, _html} =
+        live(conn |> log_in_user(user), ~p"/#{organisation}/main/set-up/sources/connect")
+
+      assert has_element?(connect, "h1", "Connect another source")
+      assert has_element?(connect, "#breadcrumb [aria-current=page]", "Connect another source")
+      refute has_element?(connect, "#set-up-adapter-#{adapter.public_id}")
+      assert has_element?(connect, "#set-up-adapters #set-up-adapter-#{other.public_id}")
       back = URI.encode_query(back: "set-up:sources:workspace=#{main.public_id}")
 
       assert has_element?(
-               lv,
+               connect,
                ~s{#set-up-adapter-#{other.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{other.public_id}/install?#{back}"]}
              )
 
@@ -864,7 +903,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "shows the adapter's guide beside the step", %{conn: conn} do
+    test "shows the adapter's guide beside the step's Connect page", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
       guide = source_guide_example()
@@ -872,6 +911,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {:ok, lv, _html} =
         conn |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/sources")
+
+      # On the step's Connect page, not on the step.
+      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/sources/connect")
 
       help = "#set-up-context #set-up-help-#{adapter.public_id}"
       assert has_element?(lv, help <> " h3", "On #{adapter.name}")
@@ -887,7 +932,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert steps == guide["connect"]["steps"]
     end
 
-    test "shows a member who may not connect who may, with no Connect and no guide", %{
+    test "shows a member who may not connect who may, with no connect control and no guide", %{
       conn: conn
     } do
       %{organisation: organisation} = sign_up_fixture()
@@ -897,6 +942,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {:ok, lv, _html} =
         conn |> log_in_user(member) |> live(~p"/#{organisation}/main/set-up/sources")
+
+      # The step has no Connect a source, as `adapter.connect` does not allow it.
+      refute has_element?(lv, "#set-up-connect")
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}")
+      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+
+      assert words(lv, "#set-up-connect-who-may") ==
+               "Only owners and admins change the integrations of the organisation."
+
+      # At its address, the Connect page lists the adapter with no Connect and no guide.
+      {:ok, lv, _html} =
+        conn |> log_in_user(member) |> live(~p"/#{organisation}/main/set-up/sources/connect")
 
       assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}", adapter.name)
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
@@ -908,8 +965,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # An install sent anyway starts nothing.
       render_click(lv, "install", %{"integration" => adapter.public_id})
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
-
-      assert has_element?(lv, "#set-up-skip")
     end
   end
 
@@ -931,7 +986,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "lists the adapters with targets alone, under Connect another destination, and the line for later",
+    test "lists the adapters with targets alone, on its Connect page, and the line for later",
          %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: forge} = connectable_adapter_fixture()
@@ -945,10 +1000,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
       assert {"Destinations", :current} in set_up_group(lv)
-      assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
-      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
-
-      assert words(lv, "#set-up-connect-another") == "Connect another destination"
+      step_path = ~p"/#{organisation}/main/set-up/destinations"
+      assert words(lv, "#set-up-connect") == "Connect a destination"
+      assert href(lv, "#set-up-connect") == step_path <> "/connect"
 
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Destinations."
@@ -959,6 +1013,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                lv,
                ~s{#set-up-back[href="/#{organisation.slug}/main/set-up/sources"]}
              )
+
+      # The Connect page: the adapters with targets alone; Back returns to the step.
+      lv |> element("#set-up-connect") |> render_click()
+      assert_patch(lv, step_path <> "/connect")
+      assert has_element?(lv, "h1", "Connect a destination")
+      assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
+      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Destinations")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Connect a destination")
+      assert href(lv, "#set-up-back") == step_path
     end
   end
 
@@ -1028,6 +1092,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#choose-count") == "1 selected"
       step_path = ~p"/#{ctx.organisation}/main/set-up/sources"
       assert href(lv, "#choose-back") == step_path
+      # The breadcrumb: the step, a link to it, then the chooser.
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Work sources")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", title)
       assert {:error, {:live_redirect, %{to: ^step_path}}} = save(lv)
 
       assert row(api) == {ctx.main.id, true}
@@ -2187,9 +2254,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "Link acme/harness to #{ctx.organisation.name}, or ask an instance admin to " <>
-                 "assign it: Qory Apiary reads a harness repository that is not public only " <>
-                 "through a linked repository or an assignment."
+               "Qory Apiary reached no adapter that reads acme/harness, and no integration of " <>
+                 "#{ctx.organisation.name} covers it. If acme/harness is public, contact " <>
+                 "support to have it read from code.example.com. If it is private, owners and " <>
+                 "admins of #{ctx.organisation.name} connect an integration that covers it in " <>
+                 "Organisation settings › Integrations."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2204,8 +2273,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#harness-stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2227,8 +2295,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     # under `Apiary.Adapters.Calls.Supervisor`, and a raise there is an unreachable adapter.
     test "a read whose task exits: try again" do
       assert ApiaryWeb.HarnessComponents.read_words(:exited, %{label: "acme/harness"}, "Acme") ==
-               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. " <>
-                 "Try again. If it repeats, tell an instance admin."
+               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
+                 "again. If it repeats, contact support."
     end
 
     # The walk's failures of a save, as `Apiary.Harnesses.Walk.pin_base/3` returns them.
@@ -2311,17 +2379,63 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
 
-      assert reads.({:unreadable, :address}) ==
+      # No adapter answered for the source, so both fixes show, each with its condition.
+      not_covered =
+        "Qory Apiary reached no adapter that reads acme/harness, and no integration of Acme " <>
+          "covers it. If acme/harness is public, contact support to have it read from " <>
+          "code.example.com. If it is private, owners and admins of Acme connect an " <>
+          "integration that covers it in Organisation settings › Integrations."
+
+      assert reads.(:not_covered) == not_covered
+      assert words.(failure.(:not_covered, chosen, nil)) == not_covered
+
+      assert words.(failure.(:not_allowed, chosen, nil)) ==
+               "Contact support to make acme/harness available to Acme."
+
+      # A module the chosen stack lists, at another address: the walk failed on that
+      # module, so the words name it and its host, not the chosen source.
+      tools = "https://github.example.com/example-org/tools"
+
+      assert words.(failure.(:not_allowed, tools, nil)) ==
+               "Contact support to make #{tools} available to Acme."
+
+      assert words.(failure.(:not_covered, tools, nil)) ==
+               "Qory Apiary reached no adapter that reads #{tools}, and no integration of Acme " <>
+                 "covers it. If #{tools} is public, contact support to have it read from " <>
+                 "github.example.com. If it is private, owners and admins of Acme connect an " <>
+                 "integration that covers it in Organisation settings › Integrations."
+
+      # An address the person typed is the person's to correct; a connected repository's
+      # or an assignment's is not.
+      assert ApiaryWeb.HarnessComponents.read_words(
+               {:unreadable, :address},
+               Map.put(source, :kind, :address),
+               "Acme"
+             ) ==
                "Correct the address: write it as https://, a host, an optional port and an " <>
                  "optional path."
 
+      assert reads.({:unreadable, :address}) ==
+               "Contact support to correct the address of acme/harness: an address is " <>
+                 "https://, a host, an optional port and an optional path."
+
+      # A folder comes from an assignment alone.
       assert reads.({:unreadable, :path, "../x/qory-stack.yaml"}) ==
-               "Correct the folder: a folder is a relative path with no empty, . or .. part, " <>
-                 "at most 1,024 characters long."
+               "Contact support to correct the folder of acme/harness: a folder is a relative " <>
+                 "path with no empty, . or .. part, at most 1,024 characters long."
 
       assert reads.({:unreadable, :version, "v 9"}) ==
                "Correct the version: a branch, tag or commit name has 1 to 255 letters, digits, " <>
                  "dots, underscores, slashes and hyphens, and no spaces."
+
+      assert ApiaryWeb.HarnessComponents.read_words(
+               {:unreadable, :version, "v 9"},
+               Map.put(source, :kind, :assigned),
+               "Acme"
+             ) ==
+               "Contact support to correct the version of acme/harness: a branch, tag or " <>
+                 "commit name has 1 to 255 letters, digits, dots, underscores, slashes and " <>
+                 "hyphens, and no spaces."
 
       # A module's address, folder or ref, which the harness document lists.
       assert words.(
@@ -2401,8 +2515,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                harness <> "it has no harness file and no harness is set."
 
       assert words.(failure.(:walk_error, nil, nil)) ==
-               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. " <>
-                 "Try again. If it repeats, tell an instance admin."
+               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
+                 "again. If it repeats, contact support."
 
       # A stack the chosen source does not export, or has no stack file for; a module's.
       assert words.(
@@ -2458,7 +2572,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assigned = Map.merge(source, %{kind: :assigned, ref: "v9"})
 
       assert ApiaryWeb.HarnessComponents.read_words({:no_version, "v9"}, assigned, "Acme") ==
-               "acme/harness has no branch, tag or commit named v9. An instance admin corrects " <>
+               "acme/harness has no branch, tag or commit named v9. Contact support to correct " <>
                  "the version of this harness source."
 
       # A read at HEAD of a repository with no commit.
@@ -2497,68 +2611,43 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert reads.({:call, %{adapter: "GitHub", cause: :timeout, code: nil, seconds: 10}}) ==
                "The GitHub adapter did not answer within 10 seconds. Try again. If it repeats, " <>
-                 "an instance admin checks that the adapter is running."
+                 "contact support."
 
       for {cause, code, line} <- [
-            {:no_address, nil,
-             "Qory Apiary does not call the GitHub adapter: the adapter has no call address. " <>
-               "An instance admin sets the call address. The Qory harness needs no call " <>
-               "address."},
+            {:no_address, nil, "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:unauthorized, nil,
              "The GitHub adapter did not accept the call from Qory Apiary. Try again. If it " <>
-               "repeats, an instance admin checks the adapter's enrolment and that both " <>
-               "machines' clocks are right."},
+               "repeats, contact support."},
             {:refused, "unsupported_contract_version",
-             "The GitHub adapter does not implement the contract revision of the call. An " <>
-               "instance admin upgrades the adapter."},
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:refused, "invalid_request",
-             "The GitHub adapter did not accept the call as valid under the contract. An " <>
-               "instance admin checks that the adapter and Qory Apiary implement the same " <>
-               "contract revision."},
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:refused, "source_unavailable",
              "The GitHub adapter could not read acme/harness. Try again."},
             {:invalid_answer, nil,
              "Qory Apiary did not accept the answer of the GitHub adapter. Try again. If it " <>
-               "repeats, an instance admin checks the version and the enrolment of the adapter."},
-            {:too_large, nil,
-             "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
-               "KiB. Tell an instance admin."}
+               "repeats, contact support."},
+            {:too_large, nil, "Contact support: Qory Apiary could not call the GitHub adapter."}
           ] do
         assert reads.(call.(cause, code)) == line
       end
 
       for {refusal, line} <- [
             {{:address, :link_local},
-             "Qory Apiary does not call the GitHub adapter: the adapter's call address leads " <>
-               "to a link-local address. An instance admin sets the adapter's call address. " <>
-               "The Qory harness needs no call address."},
-            {:form,
-             "Qory Apiary does not call the GitHub adapter: the adapter's call address is not " <>
-               "an https address at the adapter's host. An instance admin corrects the call " <>
-               "address. The Qory harness needs no call address."},
-            {:public_host,
-             "Qory Apiary does not call the GitHub adapter: the instance's public address " <>
-               "(PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory " <>
-               "harness needs no call address."}
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
+            {:form, "Contact support: Qory Apiary could not call the GitHub adapter."},
+            {:public_host, "Contact support: Qory Apiary could not call the GitHub adapter."}
           ] do
         not_allowed = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
         assert reads.({:call, Map.put(not_allowed, :refusal, refusal)}) == line
       end
 
-      for {kind, words} <- [
-            metadata: "a cloud metadata address",
-            unspecified: "the unspecified address",
-            multicast: "a multicast address",
-            broadcast: "a broadcast address",
-            reserved: "a reserved address",
-            loopback: "a loopback address written as an IPv6 address"
-          ] do
+      # The kind of the address is in the call's log line, not on the page.
+      for kind <- [:metadata, :unspecified, :multicast, :broadcast, :reserved, :loopback] do
         call = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
 
         assert reads.({:call, Map.put(call, :refusal, {:address, kind})}) ==
-                 "Qory Apiary does not call the GitHub adapter: the adapter's call address " <>
-                   "leads to #{words}. An instance admin sets the adapter's call address. The " <>
-                   "Qory harness needs no call address."
+                 "Contact support: Qory Apiary could not call the GitHub adapter."
       end
 
       # A save's walk at a call that failed has the same words.
@@ -2575,8 +2664,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
          }}
 
       assert ApiaryWeb.HarnessComponents.refusal_words(walk, source, "main", "Acme") ==
-               "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
-                 "KiB. Tell an instance admin."
+               "Contact support: Qory Apiary could not call the GitHub adapter."
     end
 
     test "a save whose walk cannot reach the adapter or reads a file that is not valid: the cause, and nothing saved",
@@ -2592,8 +2680,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#set-up-harness-refusal") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       files =
         Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
@@ -2620,8 +2707,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
-                 "internal for acme/harness. An instance admin checks the adapter's log."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
@@ -2634,8 +2721,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
-                 "internal for acme/harness. An instance admin checks the adapter's log."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       serve_harness(adapter, %{{"R_harness", "harness.yaml"} => "exports: 7\n"})
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -2681,13 +2768,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for {call_url, instance_id, cause, line} <- [
             {nil, nil, "no_address",
-             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter " <>
-               "has no call address. An instance admin sets the call address. The Qory " <>
-               "harness needs no call address."},
+             "Contact support: Qory Apiary could not read the repositories of the #{title} " <>
+               "adapter."},
             {"https://code-host.example.org/calls/", "instance-1", "not_placed",
-             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter's " <>
-               "call address is not an https address at the adapter's host. An instance admin " <>
-               "corrects the call address. The Qory harness needs no call address."}
+             "Contact support: Qory Apiary could not read the repositories of the #{title} " <>
+               "adapter."}
           ] do
         {1, _} =
           Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
@@ -2728,10 +2813,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for node <- [adapter.adapter, other.adapter] do
         assert words(lv, "#harness-source-unplaced-#{node.public_id}-no_address") ==
-                 "Qory Apiary cannot read the repositories of the " <>
-                   "#{Apiary.Adapters.title(node)} adapter: the adapter has no call address. " <>
-                   "An instance admin sets the call address. The Qory harness needs no call " <>
-                   "address."
+                 "Contact support: Qory Apiary could not read the repositories of the " <>
+                   "#{Apiary.Adapters.title(node)} adapter."
       end
     end
 
@@ -2756,9 +2839,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                |> LazyHTML.text()
                |> String.split()
                |> Enum.join(" ") ==
-                 "Qory Apiary cannot read the repositories of the #{adapter} adapter: the " <>
-                   "instance's public address (PUBLIC_URL) has no host name. An instance admin " <>
-                   "sets PUBLIC_URL. The Qory harness needs no call address."
+                 "Contact support: Qory Apiary could not read the repositories of the #{adapter} " <>
+                   "adapter."
       end
 
       refute html =~ "harness-source-none"
@@ -2957,8 +3039,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#target_stack_stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       assert has_element?(lv, "#harness-target-save[disabled]")
     end
@@ -3091,8 +3172,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#harness-target-read-error") ==
-               "example-org/team-harness has no branch, tag or commit named v9. An instance " <>
-                 "admin corrects the version of this harness source."
+               "example-org/team-harness has no branch, tag or commit named v9. Contact support " <>
+                 "to correct the version of this harness source."
 
       refute has_element?(lv, "#target_stack_ref")
     end

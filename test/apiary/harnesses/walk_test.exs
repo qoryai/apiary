@@ -2013,6 +2013,31 @@ defmodule Apiary.Harnesses.WalkTest do
       assert row.failure_adapter_id == ctx.run.adapter.id
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a failed walk escalates the run's stage run_stopped", ctx do
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+      assert :ok = job(run)
+
+      assert %Apiary.WorkItems.WorkItem{stage_state: :escalated} =
+               Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
+
+      assert %Apiary.Stages.Escalation{cause: :run_stopped, gaps: gaps} =
+               Repo.get_by!(Apiary.Stages.Escalation, work_item_id: run.work_item_id)
+
+      # What could not be read and why, then who fixes it and where.
+      assert [cause, fix] = String.split(gaps, "\n")
+      org = ctx.scope.organisation.name
+
+      assert cause ==
+               "No integration of #{org} reaches #{@tools}. Qory Apiary reads a harness only through an integration."
+
+      assert fix ==
+               "Owners and admins of #{org} connect one in Organisation settings › Integrations."
+    end
+
     test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
          ctx do
       setting(ctx.scope, @setting)
@@ -2039,7 +2064,13 @@ defmodule Apiary.Harnesses.WalkTest do
       run = queued(ctx)
 
       serve([ctx.run], refuse_resolve: {400, "invalid_request"})
-      assert :ok = job(run)
+      log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = job(run) end)
+
+      # One line in the instance's log, with the run and the failure.
+      assert [line] =
+               log |> String.split("\n") |> Enum.filter(&(&1 =~ "end_cause=harness_unresolved"))
+
+      assert line =~ "failure=adapter_failed run_id=#{run.run_id}"
 
       assert %RunHarness{state: :failed, failure: "adapter_failed", failed_source: nil} =
                Repo.get_by!(RunHarness, dispatch_run_id: run.id)

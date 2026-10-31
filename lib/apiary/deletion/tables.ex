@@ -53,12 +53,13 @@ defmodule Apiary.Deletion.Tables do
   # and the workspaces they name; an adapter's collections, the
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
-  # item, and so are its artifacts and the workspace's artifact types; the work items and
-  # the runs of the queue before the process versions they run under, and a work item or
-  # a run of another workspace that still links to one has that link set to null
-  # (`ON DELETE SET NULL`); a connection's workspaces before the connection, and the
-  # connections before the releases, the service definitions and the secrets they name;
-  # everything of a workspace before the workspace.
+  # item, and so are its artifacts, the workspace's artifact types, the decisions at its
+  # gates and its stages' failed checks; its escalations before the runs of the queue they
+  # name; the work items and the runs of the queue before the process versions they run
+  # under, and a work item or a run of another workspace that still links to one has that
+  # link set to null (`ON DELETE SET NULL`); a connection's workspaces before the
+  # connection, and the connections before the releases, the service definitions and the
+  # secrets they name; everything of a workspace before the workspace.
   #
   # A run of the queue names its work item by the organisation, not the workspace: it
   # stays in the workspace it was queued in when its work item moves to another. So a
@@ -82,6 +83,9 @@ defmodule Apiary.Deletion.Tables do
     {"artifacts", :workspace},
     {"dispatch_machine_logs", :workspace},
     {"dispatches", :workspace},
+    {"gate_decisions", :workspace},
+    {"escalations", :workspace},
+    {"stage_checks", :workspace},
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
     {"work_item_events", :workspace},

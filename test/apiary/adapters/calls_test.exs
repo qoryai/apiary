@@ -434,9 +434,14 @@ defmodule Apiary.Adapters.CallsTest do
       |> answer(429, ~s({"error":"rate_limited"}), seed)
     end)
 
-    assert {:error, %CallFailure{cause: :refused, code: "rate_limited", status: 429}} =
-             resolve(adapter, @fast)
+    log =
+      capture_log(fn ->
+        assert {:error, %CallFailure{cause: :refused, code: "rate_limited", status: 429}} =
+                 resolve(adapter, @fast)
+      end)
 
+    # A page shows only that support is needed; the refusal's code is in the log.
+    assert log =~ ~s(cause=refused code="rate_limited")
     assert length(calls()) == 1
 
     # An unsigned 429 is no 429: its Retry-After counts for nothing.
