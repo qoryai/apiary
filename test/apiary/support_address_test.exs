@@ -76,13 +76,17 @@ defmodule Apiary.SupportAddressTest do
             "a@b.c?subject=hi&body=x",
             "a@b.c?bcc=e%40x.com%0D%0AX",
             "a@b.c#x",
+            "a@b.c?x",
+            "a@b.c?cc=x",
             "support%40x@example.com",
             ~s("support"@example.com),
             ~s("<x>"@b.c),
+            "<x>@b.c",
             "<support@example.com>",
             "support@example.com>",
             "Support <support@example.com>",
             "support@exa_mple.com",
+            String.duplicate("a", 255) <> "@example.com",
             "https://" <> String.duplicate("a", 2050) <> ".example.com"
           ] do
         assert {:error, reason} = SupportAddress.parse(value), value
