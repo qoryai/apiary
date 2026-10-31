@@ -574,7 +574,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <p class="text-xs opacity-70">
             {note_words(note.kind)}{if note.stage, do: " · #{note.stage}"}
           </p>
-          <p class="whitespace-pre-line">{note.text}</p>
+          <p :if={note.text not in [nil, ""]} class="whitespace-pre-line">{note.text}</p>
         </li>
       </ol>
     </section>

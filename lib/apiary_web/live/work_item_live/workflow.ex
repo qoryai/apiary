@@ -46,6 +46,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.{Access, Features, Processes, Repo, Stages}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.Run
+  alias Apiary.Stages.Escalation
   alias ApiaryWeb.WorkItemLive.Board
 
   @defaults [
@@ -206,6 +207,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp runs(row, index) do
     runs = Stages.runs(row)
     asked = asked(runs, index)
+    stopped = stopped(row, runs)
     count = length(runs)
 
     for {run, i} <- Enum.with_index(runs) do
@@ -216,7 +218,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
         number: count - i,
         workflow: run.workflow,
         round: run.round,
-        shows: shows(run, asked, later)
+        shows: shows(run, asked, stopped, later)
       }
     end
   end
@@ -227,34 +229,58 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       for %{type: "questions"} = artifact <- index,
           version <- Map.get(artifact, :versions, []),
           is_binary(version[:run_id]),
-          into: MapSet.new(),
           do: version.run_id
 
+    registered(runs, queued)
+  end
+
+  # The registered runs that ended with no result: the stage escalated each as
+  # `run_stopped`.
+  defp stopped(row, runs) do
+    queued =
+      Repo.all(
+        from e in Escalation,
+          where: e.work_item_id == ^row.id and e.cause == :run_stopped and not is_nil(e.run_id),
+          select: e.run_id
+      )
+
+    registered(runs, queued)
+  end
+
+  # The public ids (`rn_…`) of `runs` whose run of the queue is one of `queued`.
+  defp registered(runs, queued) do
     ids = for %{id: id} when is_binary(id) <- runs, do: id
 
-    if queued == MapSet.new() or ids == [] do
+    if queued == [] or ids == [] do
       MapSet.new()
     else
       Repo.all(
         from r in Run,
-          where: r.public_id in ^ids and r.dispatch_run_id in ^MapSet.to_list(queued),
+          where: r.public_id in ^ids and r.dispatch_run_id in ^Enum.uniq(queued),
           select: r.public_id
       )
       |> MapSet.new()
     end
   end
 
-  defp shows(%{verdict: verdict}, _asked, _later) when verdict in [:passed, :failed],
+  # What a run shows: its verdict, queued or running, its questions; for an ended run with
+  # neither, "goes on" where it ended with a result and its stage started a later round,
+  # else ended without a verdict, a run that stopped included.
+  defp shows(%{verdict: verdict}, _asked, _stopped, _later) when verdict in [:passed, :failed],
     do: verdict
 
-  defp shows(%{status: :waiting}, _asked, _later), do: :queued
+  defp shows(%{status: :waiting}, _asked, _stopped, _later), do: :queued
 
-  defp shows(%{status: status}, _asked, _later) when status in [:claimed, :handed_over],
-    do: :running
+  defp shows(%{status: status}, _asked, _stopped, _later)
+       when status in [:claimed, :handed_over],
+       do: :running
 
-  defp shows(run, asked, later) do
+  defp shows(run, asked, stopped, later) do
+    id = run.id
+
     cond do
-      is_binary(run.id) and MapSet.member?(asked, run.id) -> :questions
+      is_binary(id) and MapSet.member?(asked, id) -> :questions
+      is_binary(id) and MapSet.member?(stopped, id) -> :no_verdict
       Enum.any?(later, &(&1.stage_id == run.stage_id and &1.round > run.round)) -> :goes_on
       true -> :no_verdict
     end

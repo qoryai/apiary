@@ -322,6 +322,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = runs.()
       render_hook(view, "explore_again", %{"number" => "#{work_item.number}"})
       assert runs.() == before
+
+      # Run another round starts round 2; the run that stopped still reads as it did.
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "another_round"})
+
+      html = render(view)
+      assert html =~ "Run 2 · explore-a-ticket · round 2"
+      assert html =~ "Run 1 · explore-a-ticket · round 1 · ended without a verdict"
+      refute html =~ "no verdict, goes on"
     end
   end
 
@@ -979,6 +989,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-notes-0", "Split the plan in two")
       assert has_element?(view, "#work-item-notes-1", "Failed check · Shape")
       assert has_element?(view, "#work-item-notes-1", "The plan has no test step.")
+    end
+
+    test "a move with no note has no note line", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :waiting_inputs)
+      {:ok, _work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-notes-0", "Moved · Build")
+      refute has_element?(view, "#work-item-notes-0 p.whitespace-pre-line")
     end
   end
 
