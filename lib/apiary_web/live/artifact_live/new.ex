@@ -425,11 +425,8 @@ defmodule ApiaryWeb.ArtifactLive.New do
           )
         )
 
-      :forbidden ->
-        assign(socket, :error, role_line())
-
-      :not_found ->
-        assign(socket, :error, not_found_line(socket))
+      access when access in [:forbidden, :not_found] ->
+        assign(socket, :error, access_line(socket))
 
       _other ->
         assign(socket, :error, general_line())
@@ -444,10 +441,10 @@ defmodule ApiaryWeb.ArtifactLive.New do
         "Qory Apiary could not add the version. Try again; if it fails again, tell the instance admin."
       )
 
-  # Why the push found no work item it may write. The push answers `:not_found` for each
-  # cause, so the page asks again, with the reader's scope read again
-  # (`Apiary.Access.reload/2`); a cause it cannot find gets the general line.
-  defp not_found_line(socket) do
+  # Why the push found no work item it may write. The push refuses with `:forbidden` or
+  # `:not_found` for several causes, so the page asks again, with the reader's scope read
+  # again (`Apiary.Access.reload/2`); a cause it cannot find gets the general line.
+  defp access_line(socket) do
     scope = Access.reload(socket.assigns.current_scope)
     number = socket.assigns.number
 
