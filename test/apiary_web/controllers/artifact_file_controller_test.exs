@@ -87,6 +87,17 @@ defmodule ApiaryWeb.ArtifactFileControllerTest do
     assert get_resp_header(conn, "content-disposition") |> hd() =~ "attachment"
   end
 
+  test "answers a range that starts past the end with 416", ctx do
+    conn =
+      ctx.conn
+      |> put_req_header("range", "bytes=#{byte_size(@png)}-")
+      |> get(path(ctx.scope, ctx.work_item.number, ctx.version.public_id, "form.png"))
+
+    assert conn.status == 416
+    assert conn.resp_body == ""
+    assert get_resp_header(conn, "content-range") == ["bytes */#{byte_size(@png)}"]
+  end
+
   test "is not found for an unknown file, another work item's version, or a bad id", ctx do
     other = work_item_fixture(ctx.scope)
 

@@ -335,6 +335,17 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "says so when the store cannot keep the files", ctx do
+      blocked = Path.join(ctx.tmp_dir, "a-file")
+      File.write!(blocked, "")
+      Application.put_env(:apiary, :artifacts_dir, Path.join(blocked, "store"))
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      assert add_notes(view) =~
+               "Qory Apiary could not store the files. Try again; if it fails again, tell the instance admin."
+    end
+
     test "sets the upload from the chosen type", ctx do
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 

@@ -113,6 +113,17 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "create_type/3" do
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "is not found with workflow_model off", %{scope: scope} do
+      assert {:error, :not_found} =
+               Artifacts.create_type(scope, scope.workspace, %{
+                 "name" => "demo-findings",
+                 "base_view" => "document"
+               })
+
+      assert Artifacts.type(scope.workspace, "demo-findings") == nil
+    end
+
     test "makes a custom type with the base view's defaults and an audit entry", %{scope: scope} do
       assert {:ok, %Type{} = type} =
                Artifacts.create_type(scope, scope.workspace, %{
@@ -705,6 +716,14 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:error, :not_found} =
                Artifacts.push({:person, other}, context.work_item, "explainer", [doc()])
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "is not found with workflow_model off", %{scope: scope} = context do
+      assert {:error, :not_found} =
+               Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
+
+      assert Artifacts.list(context.work_item) == []
     end
 
     test "is not bound by a workflow's writes", %{scope: scope} = context do
