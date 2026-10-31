@@ -424,6 +424,38 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                "Remove the files and add them again, so they are checked against mockup."
     end
 
+    test "uploads no byte while a file has a size below 0", ctx do
+      half = @png <> String.duplicate("a", 6 * 1_048_576)
+
+      for {files, sizes} <- [
+            {[{"a.png", @png}, {"c.png", @png}], %{"c.png" => -1}},
+            # A size below 0 would lower the sum of 12 MiB under mockup's 10 MiB.
+            {[{"a.png", half}, {"b.png", half}, {"c.png", @png}], %{"c.png" => -100_000_000}}
+          ] do
+        {:ok, view, _html} = live(ctx.conn, new_page(ctx, "mockup"))
+
+        entries =
+          for {name, content} <- files, do: %{name: name, content: content, type: "image/png"}
+
+        input = file_input(view, "#artifact-form", :files, entries)
+
+        # The browser sends the sizes; LiveView takes any integer.
+        input = %{
+          input
+          | entries:
+              Enum.map(
+                input.entries,
+                &Map.put(&1, "size", Map.get(sizes, &1["name"], &1["size"]))
+              )
+        }
+
+        assert {:error, _reason} = render_upload(input, "a.png")
+
+        assert view |> form("#artifact-form", artifact: %{type: "mockup"}) |> render_change() =~
+                 "Remove c.png and add it again: the browser sent no size of 0 or more for it."
+      end
+    end
+
     test "uploads no byte of files that come to more than the type's size limit", ctx do
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "mockup"))
 

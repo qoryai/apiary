@@ -4,9 +4,10 @@ defmodule ApiaryWeb.ArtifactLive.UploadWriter do
   # file in, else it writes nothing.
   #
   # LiveView starts a writer for each file as the browser begins to send it, and caps the
-  # bytes of each file at the size the browser gave for it. The page lets a file in only
-  # while the sizes of all its files come to at most the chosen type's size limit and
-  # there are at most its most files (`fits: true`); with `fits: false`, `init/1` returns
+  # bytes of each file at the size the browser gave for it, which can be any integer. The
+  # page lets a file in only while every file has a size of 0 or more, their sizes come to
+  # at most the chosen type's size limit, and there are at most its most files
+  # (`fits: true`); with `fits: false`, `init/1` returns
   # `{:error, :too_large}` and LiveView ends that file's upload before a byte is written.
   # So the files of one Add version take at most the chosen type's size limit in the
   # temporary folder.

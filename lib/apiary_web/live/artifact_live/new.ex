@@ -10,8 +10,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # added (LiveView keeps an upload's settings while it has files). The chosen type's most
   # files and size limit, for all the files together, are checked as the reader changes
   # the form, before the push, and again by the push. A file starts to upload only while
-  # all the files fit the chosen type (`ApiaryWeb.ArtifactLive.UploadWriter`), so one Add
-  # version puts at most the type's size limit in the temporary folder.
+  # every file has a size of 0 or more and all the sizes fit the chosen type
+  # (`ApiaryWeb.ArtifactLive.UploadWriter`), so one Add version puts at most the type's
+  # size limit in the temporary folder.
   # Add version pushes the version as the reader (`Apiary.Artifacts.push/5`, `{:person,
   # scope}`), made in the work item's current stage, and goes to the new version's page.
   # Each refusal of the push is one line that says what to change, under the field it is
@@ -223,13 +224,17 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # LiveView calls it, in this page's process, as a file starts to upload.
   defp writer(_name, _entry, socket), do: {UploadWriter, fits: fits?(socket.assigns)}
 
-  # Whether the files added come to at most the chosen type's most files and size limit.
+  # Whether the files added come to at most the chosen type's most files and size limit,
+  # each with a size of 0 or more: LiveView takes any integer the browser sends as a
+  # file's size, and a negative one would lower the sum.
   defp fits?(%{type: type, uploads: %{files: %{entries: entries}}, file_errors: []}) do
-    length(entries) <= type.max_files and
+    Enum.all?(entries, &sized?/1) and length(entries) <= type.max_files and
       entries |> Enum.map(& &1.client_size) |> Enum.sum() <= type.size_limit
   end
 
   defp fits?(_assigns), do: false
+
+  defp sized?(%{client_size: size}), do: is_integer(size) and size >= 0
 
   @impl true
   def handle_event("validate", %{"artifact" => params}, socket) do
@@ -303,16 +308,18 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp check_files(socket) do
     type = socket.assigns.type
     entries = socket.assigns.uploads.files.entries
-    size = entries |> Enum.map(& &1.client_size) |> Enum.sum()
+    {sized, unsized} = Enum.split_with(entries, &sized?/1)
+    size = sized |> Enum.map(& &1.client_size) |> Enum.sum()
 
     errors =
-      Enum.reject(
-        [
-          length(entries) > type.max_files && too_many(type),
-          size > type.size_limit && too_large(type)
-        ],
-        &(&1 == false)
-      )
+      Enum.map(unsized, &unsized_line/1) ++
+        Enum.reject(
+          [
+            length(entries) > type.max_files && too_many(type),
+            size > type.size_limit && too_large(type)
+          ],
+          &(&1 == false)
+        )
 
     errors = errors ++ upload_errors(socket, type, errors)
     assign(socket, :file_errors, Enum.uniq(errors))
@@ -345,6 +352,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
         []
     end
   end
+
+  defp unsized_line(entry),
+    do:
+      gettext(
+        "Remove %{filename} and add it again: the browser sent no size of 0 or more for it.",
+        filename: entry.client_name
+      )
 
   defp upload_error(:too_large, type), do: too_large(type)
   defp upload_error(:too_many_files, type), do: too_many(type)
