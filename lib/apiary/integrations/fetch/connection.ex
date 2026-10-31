@@ -10,10 +10,11 @@ defmodule Apiary.Integrations.Fetch.Connection do
   #
   # The request's private `:fetch_connection` is `{address, hostname, deadline}`: the
   # address to connect to, the name for SNI and the certificate's check, and the
-  # monotonic time in milliseconds by which the request ends. The certificate is
-  # verified as Mint verifies it by default; a test adds the certificate authorities of
-  # its server in the private `:fetch_transport_opts`. The response's body goes through
-  # the request's `into` function where it has one, else is kept whole.
+  # monotonic time in milliseconds by which the request ends. The address is a tuple, so
+  # its size sets the IP family, with no transport option. The certificate is verified
+  # as Mint verifies it by default; a test adds the certificate authorities of its
+  # server in the private `:fetch_transport_opts`. The response's body goes through the
+  # request's `into` function where it has one, else is kept whole.
 
   @doc false
   @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
@@ -26,7 +27,7 @@ defmodule Apiary.Integrations.Fetch.Connection do
            mode: :passive,
            transport_opts:
              [timeout: left(deadline)] ++
-               family(address) ++ Req.Request.get_private(request, :fetch_transport_opts, [])
+               Req.Request.get_private(request, :fetch_transport_opts, [])
          ) do
       {:ok, conn} ->
         try do
@@ -39,9 +40,6 @@ defmodule Apiary.Integrations.Fetch.Connection do
         {request, error}
     end
   end
-
-  defp family(address) when tuple_size(address) == 8, do: [:inet6]
-  defp family(_address), do: []
 
   defp left(deadline), do: max(deadline - System.monotonic_time(:millisecond), 1)
 

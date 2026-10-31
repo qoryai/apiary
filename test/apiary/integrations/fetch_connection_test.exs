@@ -9,6 +9,16 @@ defmodule Apiary.Integrations.Fetch.ConnectionTest do
 
   @host "git.example.com"
 
+  # The reason to skip the test on a host with no IPv6 loopback, else false.
+  @no_ipv6_loopback (case :gen_tcp.listen(0, [:inet6, ip: {0, 0, 0, 0, 0, 0, 0, 1}]) do
+                       {:ok, socket} ->
+                         :gen_tcp.close(socket)
+                         false
+
+                       {:error, reason} ->
+                         "this host has no IPv6 loopback: #{inspect(reason)}"
+                     end)
+
   setup do
     san = {:Extension, {2, 5, 29, 17}, false, [{:dNSName, ~c"git.example.com"}]}
     rsa = {:rsa, 2048, 65_537}
@@ -29,7 +39,7 @@ defmodule Apiary.Integrations.Fetch.ConnectionTest do
 
     on_exit(fn -> :ssl.close(listen) end)
     {:ok, {_address, port}} = :ssl.sockname(listen)
-    %{listen: listen, port: port, cacerts: client[:cacerts]}
+    %{listen: listen, port: port, cacerts: client[:cacerts], server: server}
   end
 
   # Accepts `n` connections, each answered by `answer` (`:ok`, or `:silent` for none),
@@ -84,7 +94,10 @@ defmodule Apiary.Integrations.Fetch.ConnectionTest do
       raw: true,
       into: Keyword.get(opts, :into)
     )
-    |> Req.Request.put_private(:fetch_connection, {{127, 0, 0, 1}, hostname, deadline})
+    |> Req.Request.put_private(
+      :fetch_connection,
+      {Keyword.get(opts, :address, {127, 0, 0, 1}), hostname, deadline}
+    )
     |> Req.Request.put_private(:fetch_transport_opts, cacerts: cacerts)
     |> Req.request()
   end
@@ -97,6 +110,26 @@ defmodule Apiary.Integrations.Fetch.ConnectionTest do
              request(ctx.port, @host, ctx.cacerts)
 
     assert response.headers["content-type"] == ["text/plain"]
+    assert_receive {:closed, 1}, 5_000
+  end
+
+  @tag skip: @no_ipv6_loopback
+  test "reads the answer over a connection to an IPv6 address", ctx do
+    loopback = {0, 0, 0, 0, 0, 0, 0, 1}
+
+    {:ok, listen} =
+      :ssl.listen(
+        0,
+        ctx.server ++ [:inet6, active: false, mode: :binary, reuseaddr: true, ip: loopback]
+      )
+
+    on_exit(fn -> :ssl.close(listen) end)
+    {:ok, {^loopback, port}} = :ssl.sockname(listen)
+    serve(listen, 1, :ok)
+
+    assert {:ok, %Req.Response{status: 200, body: "hello"}} =
+             request(port, @host, ctx.cacerts, address: loopback)
+
     assert_receive {:closed, 1}, 5_000
   end
 
