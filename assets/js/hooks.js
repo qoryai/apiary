@@ -22,6 +22,7 @@ import {DaysChart, OverviewPage} from "./hooks/overview"
 import {FamilyBoxes} from "./hooks/family_boxes"
 import {SecretValues} from "./hooks/secret_values"
 import {GenerateKey} from "./hooks/generate_key"
+import {Mermaid} from "./hooks/mermaid"
 
 export {autoDismiss}
 
@@ -49,4 +50,5 @@ export const hooks = {
   FamilyBoxes,
   SecretValues,
   GenerateKey,
+  Mermaid,
 }

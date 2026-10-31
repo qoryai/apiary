@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/schemas/artifacts/change.schema.json",
+  "title": "Change",
+  "description": "A change artifact: a link to the change request a run made, such as a pull request. One JSON document of this schema is the one file of a version of the standard type change. Every object refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "url"
+  ],
+  "properties": {
+    "url": {
+      "description": "Where the change request is.",
+      "$ref": "#/$defs/url"
+    },
+    "title": {
+      "description": "The change request's title, 1 to 500 characters.",
+      "$ref": "#/$defs/text",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  },
+  "$defs": {
+    "text": {
+      "description": "Text that may span lines: tab, line feed and carriage return are its only control characters, and U+0000 to U+0008, U+000B, U+000C, U+000E to U+001F, U+007F and U+0080 to U+009F are refused. So are the characters https://qory.dev/contracts/integration/v1/description.schema.json refuses in a prose line, $defs line, beyond control characters: the bidirectional controls, the marks U+061C, U+200E and U+200F, the embeddings and overrides U+202A to U+202E and the isolates U+2066 to U+2069; the separators U+2028 and U+2029; and the format characters U+00AD, U+180E, U+200B, U+2060 to U+2064, U+FEFF and U+FFF9 to U+FFFB.",
+      "type": "string",
+      "pattern": "^[^\u0000-\b\u000b\f\u000e-\u001f\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*$"
+    },
+    "short_text": {
+      "description": "A short text, such as a reason, a summary, a question or a scope entry: 1 to 2000 characters.",
+      "$ref": "#/$defs/text",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "long_text": {
+      "description": "A long text, 1 to 20000 characters.",
+      "$ref": "#/$defs/text",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "url": {
+      "description": "An absolute http or https URL, at most 2048 characters. Its authority, the part after the scheme's :// up to the first /, ? or #, is not empty and holds no @, so the URL carries no user information, and no backslash, U+005C, which a browser reads as /; a path, a query or a fragment may follow it. Nowhere does it hold a space, U+0020, a control character, U+0000 to U+001F, U+007F and U+0080 to U+009F, or a character $defs text refuses beyond control characters.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\u0000- \u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb@/?#\\\\]+([/?#][^\u0000- \u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*)?$"
+    }
+  }
+}
