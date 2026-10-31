@@ -2186,10 +2186,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
       pick_repository(lv)
 
+      org = ctx.organisation.name
+
       assert words(lv, "#harness-stack-error") ==
-               "Link acme/harness to #{ctx.organisation.name}, or ask an instance admin to " <>
-                 "assign it: Qory Apiary reads a harness repository that is not public only " <>
-                 "through a linked repository or an assignment."
+               "Owners and admins of #{org} check the address on the set-up step Harness, or " <>
+                 "connect the repository's account in Organisation settings › Integrations. " <>
+                 "acme/harness is not public, or does not exist, and no connection of #{org} " <>
+                 "reaches it."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2743,6 +2746,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
           form: form,
           linked: [],
           organisation: "Acme",
+          workspace_name: "Main",
           unplaced: [
             %{id: "qn_a", adapter: "GitHub", cause: :no_instance_host},
             %{id: "qn_b", adapter: "Tracker", cause: :no_instance_host}

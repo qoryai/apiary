@@ -102,6 +102,7 @@ defmodule ApiaryWeb.HarnessComponents do
         "`{:ok, names}` or `{:error, reason}`"
 
   attr :organisation, :string, required: true
+  attr :workspace_name, :string, required: true, doc: "the workspace's name"
   attr :disabled, :boolean, default: false
 
   attr :shared, :map,
@@ -258,6 +259,7 @@ defmodule ApiaryWeb.HarnessComponents do
         source={@source}
         exports={@exports}
         organisation={@organisation}
+        workspace_name={@workspace_name}
         disabled={@disabled}
       />
       <.version id="harness" form={@form} disabled={@disabled} />
@@ -270,6 +272,7 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :source, :map, default: nil
   attr :exports, :any, default: nil
   attr :organisation, :string, required: true
+  attr :workspace_name, :string, required: true
   attr :disabled, :boolean, default: false
 
   # The stacks the chosen repository exports: Reading… while they are read, why the read
@@ -280,7 +283,12 @@ defmodule ApiaryWeb.HarnessComponents do
       {gettext("Reading the stack of %{source}…", source: @source.label)}
     </p>
     <.notice :if={@source && match?({:error, _reason}, @exports)} kind={:error}>
-      <span id={"#{@id}-error"}>{read_words(elem(@exports, 1), @source, @organisation)}</span>
+      <span id={"#{@id}-error"}>{read_words(
+        elem(@exports, 1),
+        @source,
+        @organisation,
+        @workspace_name
+      )}</span>
     </.notice>
     <p :if={@source && @exports == {:ok, []}} id={"#{@id}-none"} class="text-[13px]/5 text-muted">
       {no_stack_words(@source)}
@@ -432,6 +440,7 @@ defmodule ApiaryWeb.HarnessComponents do
 
   attr :assigned, :list, default: [], doc: "the sources an instance admin assigned"
   attr :organisation, :string, required: true
+  attr :workspace_name, :string, required: true, doc: "the workspace's name"
 
   # The destinations under a heading, each with its Stack select, and the form of the one
   # whose A stack of another repository… was chosen. No list shows for a workspace with no
@@ -483,6 +492,7 @@ defmodule ApiaryWeb.HarnessComponents do
             linked={@linked}
             assigned={@assigned}
             organisation={@organisation}
+            workspace_name={@workspace_name}
           />
         </li>
       </ul>
@@ -531,6 +541,7 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :linked, :list, default: nil
   attr :assigned, :list, default: []
   attr :organisation, :string, required: true
+  attr :workspace_name, :string, required: true
 
   # The form of one destination's stack of another repository: Repository among the three
   # groups of Workflow's Source; for a connected repository, its exported stacks and
@@ -600,6 +611,7 @@ defmodule ApiaryWeb.HarnessComponents do
           source={@edit.source}
           exports={exports_state(@edit)}
           organisation={@organisation}
+          workspace_name={@workspace_name}
           disabled={@edit.saving}
         />
         <.version id="target_stack" form={@form} disabled={@edit.saving} />
@@ -611,7 +623,8 @@ defmodule ApiaryWeb.HarnessComponents do
           <span id="harness-target-read-error">{read_words(
             @edit.read_error,
             @edit.source,
-            @organisation
+            @organisation,
+            @workspace_name
           )}</span>
         </.notice>
         <.input
@@ -717,6 +730,16 @@ defmodule ApiaryWeb.HarnessComponents do
       )
 
   @doc false
+  # read_words/4 is `read_words/3` for the workspace named `workspace`, with the words of
+  # a public repository's host that failed (`{:fetch, code, rule}`).
+  @spec read_words(term, map | nil, String.t(), String.t() | nil) :: String.t()
+  def read_words({:fetch, code, rule}, source, organisation, workspace),
+    do: public_read_words(code, fetch_names(rule, label(source), organisation, workspace))
+
+  def read_words(reason, source, organisation, _workspace),
+    do: read_words(reason, source, organisation)
+
+  @doc false
   # read_words/3 is why the stacks of `source` were not read, as the Harness step,
   # Workflow and a destination's form show it: a reason of `Apiary.Stacks.Sources`
   # (`t:Apiary.Stacks.Sources.reason/0`), or `:exited` for a read whose task exited.
@@ -788,14 +811,76 @@ defmodule ApiaryWeb.HarnessComponents do
         source: label(source)
       )
 
-  # A source no adapter links to the organisation and none reads in public.
+  # A source no adapter links to the organisation and its host serves to no one.
   defp not_covered_words(source, organisation),
     do:
-      pgettext(
-        "plain",
-        "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment.",
-        source: label(source),
-        organisation: organisation
+      gettext(
+        "Owners and admins of %{org} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{org} reaches it.",
+        org: organisation,
+        source: label(source)
+      )
+
+  @doc false
+  # fetch_names/4 is the names `public_read_words/2` takes: `source` as shown, the names
+  # `organisation` and `workspace`, and the host, port and seconds of `rule`, a failed
+  # read's `fetch` rule (`Apiary.Harnesses.Walk.fetch_rule/2`), nil for none.
+  @spec fetch_names(map | nil, String.t(), String.t() | nil, String.t() | nil) :: map
+  def fetch_names(rule, source, organisation, workspace) do
+    values = (is_map(rule) && rule["values"]) || %{}
+
+    %{
+      source: source,
+      organisation: organisation,
+      workspace: workspace,
+      host: values["host"],
+      port: values["port"] || 443,
+      seconds: values["seconds"] || Apiary.Harnesses.PublicGit.request_seconds()
+    }
+  end
+
+  @doc false
+  # public_read_words/2 is why a harness source was not read, for a code of a run's walk
+  # that the source's host or the lack of a connection gives (`Apiary.Harnesses.Walk`):
+  # `:not_covered`, `:too_large`, `:source_unreachable`, `:host_not_allowed` or
+  # `:fetch_failed`; the fix, then the cause. `names`: `source`, the source as shown;
+  # `organisation` and `workspace`, the names the read was for; and the `fetch` rule's
+  # `host`, `port` and `seconds`. The run's page shows them too.
+  @spec public_read_words(atom, map) :: String.t()
+  def public_read_words(:not_covered, names),
+    do: not_covered_words(%{label: names.source}, names.organisation)
+
+  def public_read_words(:too_large, names),
+    do:
+      gettext(
+        "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads: over 4 MiB of folders, or a harness file over 256 KiB.",
+        source: names.source,
+        ws: names.workspace
+      )
+
+  def public_read_words(:source_unreachable, names),
+    do:
+      gettext(
+        "The instance admin checks that the Qory Apiary server reaches %{host} on port %{port}. Qory Apiary could not connect to %{host}, or got nothing within %{n} s.",
+        host: names.host,
+        port: names.port,
+        n: names.seconds
+      )
+
+  def public_read_words(:host_not_allowed, names),
+    do:
+      gettext(
+        "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise the instance admin installs one. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only.",
+        org: names.organisation,
+        host: names.host
+      )
+
+  def public_read_words(:fetch_failed, names),
+    do:
+      gettext(
+        "Owners and admins of %{org} check the address on the set-up step Harness, or link the repository through a connection. %{host} did not serve %{source} as a git repository over HTTPS.",
+        org: names.organisation,
+        host: names.host,
+        source: names.source
       )
 
   defp limited_words(seconds, source),
@@ -1253,6 +1338,22 @@ defmodule ApiaryWeb.HarnessComponents do
     do: ref_words(failure, source, ref) || walk_words(failure, source)
 
   def refusal_words(_reason, _source, _ref, _organisation), do: nil
+
+  @doc false
+  # refusal_words/5 is `refusal_words/4` for the workspace named `workspace`, with the
+  # words of a public repository's host that failed.
+  @spec refusal_words(term, map | nil, String.t() | nil, String.t(), String.t() | nil) ::
+          String.t() | nil
+  def refusal_words({:walk, %{failure: failure} = walk}, source, _ref, organisation, workspace)
+      when failure in [:too_large, :source_unreachable, :host_not_allowed, :fetch_failed],
+      do:
+        public_read_words(
+          failure,
+          fetch_names(walk.rule, walk.source || label(source), organisation, workspace)
+        )
+
+  def refusal_words(reason, source, ref, organisation, _workspace),
+    do: refusal_words(reason, source, ref, organisation)
 
   @doc false
   # refused/1 is the source and the version name of a refused save of `choice`, as

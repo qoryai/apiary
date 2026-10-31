@@ -1395,8 +1395,49 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                }
              },
              "Correct #{harness}, then run Explore again. It breaks the harness format: qory.yaml is not valid YAML."},
+            {%{code: "not_covered", source: harness, organisation: "Acme"},
+             "Owners and admins of Acme check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of Acme reaches it."},
             {%{code: "not_covered", source: harness},
-             "Connect the account that holds #{harness} to this organisation, then run Explore again. No connection of this organisation reaches that harness source."},
+             "Owners and admins of this organisation check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of this organisation reaches it."},
+            {%{
+               code: "too_large",
+               source: harness,
+               workspace: "Main",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Whoever maintains #{harness} makes it smaller, or owners and admins of Main choose another harness on the set-up step Harness. #{harness} is larger than Qory Apiary reads: over 4 MiB of folders, or a harness file over 256 KiB."},
+            {%{
+               code: "source_unreachable",
+               source: harness,
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 8443, "seconds" => 10}
+               }
+             },
+             "The instance admin checks that the Qory Apiary server reaches code.example.com on port 8443. Qory Apiary could not connect to code.example.com, or got nothing within 10 s."},
+            {%{
+               code: "host_not_allowed",
+               source: harness,
+               organisation: "Acme",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Owners and admins of Acme link the repository through a connection in Organisation settings › Integrations, if an integration serves code.example.com; otherwise the instance admin installs one. code.example.com resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."},
+            {%{
+               code: "fetch_failed",
+               source: harness,
+               organisation: "Acme",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Owners and admins of Acme check the address on the set-up step Harness, or link the repository through a connection. code.example.com did not serve #{harness} as a git repository over HTTPS."},
             {%{code: "not_allowed"},
              "Ask the owner of #{setting} to assign it to this organisation, then run Explore again. Another owner keeps that harness source and has not assigned it here."},
             {%{code: "scp_form", source: "code.example.com:acme/harness"},

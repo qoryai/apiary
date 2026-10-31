@@ -5866,11 +5866,6 @@ msgstr ""
 msgid "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Connect the account that holds %{source} to this organisation, then run Explore again. No connection of this organisation reaches that harness source."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -9670,12 +9665,6 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
 msgid "Linked repositories"
 msgstr ""
 
@@ -12576,6 +12565,21 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} install integrations."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{org} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{org} reaches it."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{org} check the address on the set-up step Harness, or link the repository through a connection. %{host} did not serve %{source} as a git repository over HTTPS."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise the instance admin installs one. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -16588,6 +16592,11 @@ msgstr ""
 msgid "The instance admin can read the machine's log."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The instance admin checks that the Qory Apiary server reaches %{host} on port %{port}. Qory Apiary could not connect to %{host}, or got nothing within %{n} s."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
@@ -18970,6 +18979,11 @@ msgstr "While %{name} is locked, no repository may override it."
 msgid "Who"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads: over 4 MiB of folders, or a harness file over 256 KiB."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Why"
@@ -21250,6 +21264,16 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "this instance"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "this organisation"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "this workspace"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
