@@ -204,11 +204,11 @@ page and an Instance page, the one the person came from (Two levels, below).
   them is a `404` inside the shell, with the organisation's sidebar
   (`ApiaryWeb.DeadEnd`): a workspace address that matches no workspace they reach,
   "Workspace not found", "You have no workspace at this address in Acme. Its address
-  changes when the workspace is renamed.", and the workspaces of Acme they reach, as links; New workspace for a
-  person who may not create one, "New workspace" with no kind cards and one line: where
-  the organisation has as many workspaces as the edition allows, the limit's line in an
-  information notice, as the owner sees it there, since nobody creates another; else who
-  creates workspaces.
+  changes when the workspace is renamed.", and the workspaces of Acme they reach, as
+  links; New workspace for a person who may not create one, "New workspace" with no kind
+  cards and one line: where the organisation has as many workspaces as the edition allows,
+  the limit's line in an information notice, as the owner sees it there, since nobody
+  creates another; else who creates workspaces.
   A workspace they do not reach gets the same page as an address that matches none. An
   organisation they do not reach is the plain `404`, "Not Found".
 

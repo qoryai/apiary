@@ -208,6 +208,54 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert continue(conn, scope) == {"Continue: Test run", step_path(scope, :test)}
     end
 
+    test "a done step's line shows its value: the integrations that bring work, the pool", %{
+      conn: conn,
+      scope: scope
+    } do
+      source = collection_fixture(scope)
+      # Another integration's collection of the workspace, with its Backlog off: it brings
+      # no work, so Work sources does not name it.
+      other = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(c in Apiary.Adapters.Collection, where: c.id == ^other.id),
+          set: [backlog: false]
+        )
+
+      pool = ready_instance!()
+      source_name = Repo.get!(Node, source.adapter_id).name
+      other_name = Repo.get!(Node, other.adapter_id).name
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-sources .q-su-note") == source_name
+      refute words(lv, "#overview-set-up-sources .q-su-note") =~ other_name
+      assert words(lv, "#overview-set-up-machines .q-su-note") == pool.name
+    end
+
+    test "a member whose next step is Test run, which they may start, is offered Continue", %{
+      scope: scope
+    } do
+      collection = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
+
+      if Apiary.Features.on?(:secrets), do: model_done!(scope)
+      {:ok, _stack} = Apiary.Stacks.Sources.choose(scope, :qory)
+      _pool = ready_instance!()
+
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up h1") == "Finish setting up Main"
+      refute has_element?(lv, "#overview-set-up-who")
+      assert continue(conn, scope) == {"Continue: Test run", step_path(scope, :test)}
+    end
+
     test "a step done after a skipped one keeps its tick, and Continue opens the first not done",
          %{conn: conn, scope: scope} do
       {:ok, _stack} = Apiary.Stacks.Sources.choose(scope, :qory)

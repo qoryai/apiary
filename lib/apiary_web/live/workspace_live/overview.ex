@@ -122,6 +122,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         workspace={@current_scope.workspace}
         organisation={@current_scope.organisation}
         set_up={@set_up}
+        notes={@notes}
         continues={@continues}
       />
     </Layouts.app>
@@ -274,6 +275,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   attr :organisation, :any, required: true
   attr :set_up, :map, required: true
   attr :continues, :boolean, required: true
+  attr :notes, :map, required: true, doc: "each step's line, by its id"
 
   # The set-up while it is not finished: each step with its state, done, the next or to
   # come, its line under its name (`SetUpComponents.step_note/3`), and a link to its page;
@@ -309,7 +311,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
               <span class="q-su-nm">{step.label}</span>
               <span :if={step.done} class="sr-only">{gettext(", done")}</span>
               <small class="q-su-note">
-                {SetUpComponents.step_note(step.id, step.done, @workspace)}
+                {@notes[step.id]}
               </small>
             </span>
           </.link>
@@ -350,6 +352,12 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
            # Continue and its heading for a person who may take the next step's action, as
            # its page checks; for anyone else, the steps read only and who finishes them.
            continues: SetUpComponents.changes_step?(scope, set_up.next.id),
+           # Each step's line, read once here rather than on every render.
+           notes:
+             Map.new(
+               set_up.steps,
+               &{&1.id, SetUpComponents.step_note(&1.id, &1.done, scope.workspace)}
+             ),
            page_title: scope.workspace.name <> " · " <> scope.organisation.name
          )}
     end
