@@ -210,11 +210,11 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
       for {work_item, status} <- [
             {ctx.queued, "Explore is queued"},
-            {ctx.running, "Qory is exploring"},
-            {ctx.questions, "Waits for answers"},
+            {ctx.running, "Explore is running"},
+            {ctx.questions, "Needs answers"},
             {ctx.used_up, "Explore used its 3 runs"},
-            {ctx.mine, "Waits for you to confirm"},
-            {ctx.theirs, "Waits for #{name(ctx.member)} to confirm"},
+            {ctx.mine, "You confirm next"},
+            {ctx.theirs, "#{name(ctx.member)} confirms next"},
             {ctx.shape, "Ready for Shape"}
           ] do
         assert words(view, row(work_item) <> " .q-wl-nx") == status
@@ -814,7 +814,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       work_item = at!(scope, :running)
       {:ok, view, _html} = live(conn, page(scope))
 
-      assert words(view, row(work_item) <> " .q-wl-nx") == "Qory is exploring"
+      assert words(view, row(work_item) <> " .q-wl-nx") == "Explore is running"
       refute has_element?(view, "#nav-work_items .q-nav-count")
 
       Repo.delete_all(
@@ -829,7 +829,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
         {:work_items_changed, [work_item.public_id]}
       )
 
-      assert words(view, row(work_item) <> " .q-wl-nx") == "Waits for you to confirm"
+      assert words(view, row(work_item) <> " .q-wl-nx") == "You confirm next"
       assert words(view, "#nav-work_items .q-nav-count") == "1"
       assert words(view, "#work-items-views") == "Open 1 Waiting on you 1 Declined 0 Closed 0"
     end

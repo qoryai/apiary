@@ -459,7 +459,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert attr(html, "#work-item-step-decline-go", "phx-click") == ["decline"]
       assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["94"]
-      refute html =~ "Qory asked"
+      refute html =~ "Answer Qory's"
     end
   end
 
@@ -1279,7 +1279,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         for html <- [html, earlier, taken] do
           refute html =~ "ended with an error"
-          refute html =~ "Its last result was an error"
+          refute html =~ "The run's last result was an error"
         end
       end
     end
