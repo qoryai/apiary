@@ -68,21 +68,22 @@ its content, a push stores its files before it writes their rows, and Qory Apiar
 no stored file, so a copy taken after the dump has every file the dump lists. Files pushed
 after the dump are in the copy too; the restored database does not list them, and they
 take space and do nothing else. Files whose names start with `.staging-` are copies of a
-push that has not finished, and a backup can leave them out.
+push that has not finished, and the commands below leave them out.
 
 With `compose.yaml`, from the directory that holds it:
 
 ```sh
-docker compose exec -T apiary tar -C /var/lib/apiary/artifacts -cf - . > qory-artifacts.tar
+docker compose exec -T apiary tar -C /var/lib/apiary/artifacts --exclude='./.staging-*' -cf - . > qory-artifacts.tar
 ```
 
 With a release run outside `compose.yaml`, as a user that can read the folder:
 
 ```sh
-tar -C /var/lib/apiary/artifacts -cf qory-artifacts.tar .
+tar -C /var/lib/apiary/artifacts --exclude='./.staging-*' -cf qory-artifacts.tar .
 ```
 
-Use the folder `QORY_ARTIFACTS_DIR` is set to, where it is set.
+Use the folder `QORY_ARTIFACTS_DIR` is set to, where it is set. Keep `qory-artifacts.tar`
+as you keep the database dump: it contains the content of every artifact.
 
 ### How often
 
