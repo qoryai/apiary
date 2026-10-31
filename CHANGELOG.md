@@ -351,11 +351,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
   ```
 
-  Under a pool that is not ready, an instance admin has **Check the nodes** for the
-  instance's pool. For a pool of the workspace, owners and admins have its name as a
-  link to its page. Anyone else reads who acts, such as “Only an instance admin checks
-  the Qory Pool and the Qory Gateway.” While the workspace has no pool, anyone who may not
-  add one sees the Qory Pool, read only. The step is done once a pool is ready. **About
+  Under a Qory Pool that is not ready, an instance admin has **Check the Qory Pool and
+  Qory Gateway**; anyone else sees no Qory Pool on this step, and is offered only a pool
+  for the workspace. For a pool of the workspace, owners and admins have its name as a
+  link to its page. Anyone else reads who acts: “Only owners and admins add a pool and
+  join a machine to it.” While the workspace has no pool, anyone who may not add one sees
+  a ready Qory Pool, read only. The step is done once a pool is ready. **About
   this step** explains what a pool does, which pool takes the workspace's runs, what
   makes a pool ready, and that every run gets an isolated environment.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your

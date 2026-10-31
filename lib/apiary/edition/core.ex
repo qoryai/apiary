@@ -53,13 +53,6 @@ defmodule Apiary.Edition.Core do
   def first_sign_up_line, do: gettext("Your account and your organisation.")
 
   @impl true
-  def first_workspace_line(_organisation),
-    do:
-      gettext("%{workspace} is this instance's only workspace.",
-        workspace: Organisations.default_workspace_name()
-      )
-
-  @impl true
   def first_workspace_waiting_line(organisation),
     do:
       gettext("An owner of %{organisation} creates the first workspace.",
@@ -93,10 +86,7 @@ defmodule Apiary.Edition.Core do
   def set_up_context(_scope, _step_id), do: nil
 
   @impl true
-  def machines_who_may(_scope, _workspace, :instance),
-    do: gettext("Only an instance admin checks the Qory Pool and the Qory Gateway.")
-
-  def machines_who_may(_scope, _workspace, :workspace),
+  def machines_who_may(_scope, _workspace),
     do: gettext("Only owners and admins add a pool and join a machine to it.")
 
   @impl true

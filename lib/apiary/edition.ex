@@ -25,7 +25,7 @@ defmodule Apiary.Edition do
 
   - **Limits and sign-up**: `limits/0`, `sign_up_open?/0`, `organisation_created/2`,
     `workspace_created/3`, `instance_organisation_id/0`, `first_sign_up_line/0`,
-    `first_workspace_line/1`, `first_workspace_waiting_line/1`,
+    `first_workspace_waiting_line/1`,
     `audit_retention_max_days/0`, `attribution?/0`.
   - **The set-up's steps**: `set_up_steps/2`, `set_up_title/2`, `set_up_context/2`,
     `set_up_finishers_line/2`.
@@ -168,13 +168,6 @@ defmodule Apiary.Edition do
   @callback first_sign_up_line() :: String.t()
 
   @doc """
-  A line on which workspace `organisation`'s first one is, for a person who may create
-  it, translated when it is asked. No core page shows it: the type screen of the
-  workspace set-up showed it, and the kind cards of `/:org` replaced that screen.
-  """
-  @callback first_workspace_line(%Organisation{}) :: String.t()
-
-  @doc """
   The line the organisation's overview (`/:org`) shows, in place of the kind cards, to a
   person who may not create `organisation`'s first workspace: who does. Translated when the
   callback runs.
@@ -234,15 +227,11 @@ defmodule Apiary.Edition do
   @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
 
   # With the `factory` feature: the line of the workspace set-up's Machines step
-  # (`ApiaryWeb.WorkspaceSetupLive`) on who acts on a pool that serves `workspace`'s runs
-  # and is not ready, for the person of `scope`, who may not act on it. `pool` is
-  # `:instance` for the instance's pool and gateway, `:workspace` for a pool of the
-  # workspace. Translated when it is asked. The core answers "Only an instance admin
-  # checks the Qory Pool and the Qory Gateway." for `:instance`, and "Only owners and admins
-  # add a pool and join a machine to it." for `:workspace`.
+  # (`ApiaryWeb.WorkspaceSetupLive`) on who acts on a pool of `workspace` that is not ready,
+  # or on adding one, for the person of `scope`, who may not act. Translated when it is
+  # asked. The core answers "Only owners and admins add a pool and join a machine to it."
   @doc false
-  @callback machines_who_may(Scope.t(), %Workspace{}, pool :: :instance | :workspace) ::
-              String.t()
+  @callback machines_who_may(Scope.t(), %Workspace{}) :: String.t()
 
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
@@ -802,14 +791,13 @@ defmodule Apiary.Edition do
     workspace_created: 3,
     instance_organisation_id: 0,
     first_sign_up_line: 0,
-    first_workspace_line: 1,
     first_workspace_waiting_line: 1,
     workspace_limit_line: 1,
     set_up_finishers_line: 2,
     set_up_steps: 2,
     set_up_title: 2,
     set_up_context: 2,
-    machines_who_may: 3,
+    machines_who_may: 2,
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,
