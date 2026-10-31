@@ -9,6 +9,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
 
   alias Apiary.{Accounts, Artifacts, Processes, Repo, Stages}
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.WorkItems.WorkItem
@@ -185,6 +186,12 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       running = items["Save a basket for later"]
       assert at.("Save a basket for later") == {"Explore", "running"}
       assert running.process_version_id == trial.id
+
+      assert Repo.one!(
+               from d in DispatchRun,
+                 where: d.work_item_id == ^running.id and d.state == :waiting,
+                 select: d.process_version_id
+             ) == trial.id
 
       # Explore at its gate, with the run's proposal, which passed its Exists check.
       gate = items["Checkout total ignores the voucher after a reload"]
