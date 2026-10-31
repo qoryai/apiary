@@ -631,13 +631,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {push_body("screenshot", []), "files"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"extra" => 1}), "extra"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"name" => "../x"}), "name"},
-        {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"name" => "Check_out"}), "name"},
+        {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"name" => "Check_out"}),
+         "name"},
         {push_body("Screenshot", [{"a.png", "image/png", "x"}]), "type"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{
            "note" => "a" <> String.duplicate("\u0301", 4001)
          }), "note"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"note" => "a\u0085b"}), "note"},
-        {push_body("screenshot", [{"a.png", "image/png", @png}], %{"note" => "a\u202Eb"}), "note"},
+        {push_body("screenshot", [{"a.png", "image/png", @png}], %{"note" => "a\u202Eb"}),
+         "note"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{
            String.duplicate("k", 65) => 1
          }), "body"},
