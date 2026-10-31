@@ -195,6 +195,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
       else: {:noreply, socket}
   end
 
+  def handle_event("show-document", _params, socket), do: {:noreply, socket}
+
   @impl true
   def handle_info({:artifact_pushed, work_item_id, _version_id}, socket) do
     %{work_item: work_item, current_scope: scope} = socket.assigns

@@ -284,8 +284,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
       refute render(view) =~ "Alpha findings"
 
-      # A filename of no file of the version changes nothing.
+      # A filename of no file of the version, or no filename, changes nothing.
       render_hook(view, "show-document", %{"file" => "c.md"})
+      assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
+      render_hook(view, "show-document", %{})
       assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
     end
 
