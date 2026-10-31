@@ -847,7 +847,13 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   end
 
   defp approve!(%Scope{} = scope, %WorkItem{} = work_item, note) do
-    ok!(Stages.approve(scope, current(scope, work_item), note), "an approval")
+    work_item = current(scope, work_item)
+
+    ok!(
+      Stages.approve(scope, work_item, note, expect_stage: work_item.stage_id),
+      "an approval"
+    )
+
     current(scope, work_item)
   end
 
