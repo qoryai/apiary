@@ -435,6 +435,20 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
+    # The stages a new workspace of each type starts with, with the `workflow_model`
+    # feature, which the instance has or not, as the adapters. After the edition's, before
+    # Adapters.
+    workspace_types =
+      admin? && Apiary.Features.on?(:workflow_model) &&
+        %Entry{
+          section: :instance,
+          key: :workspace_types,
+          label: gettext("Workspace types"),
+          icon: "hero-rectangle-stack",
+          path: ~p"/instance/workspace-types",
+          place: :instance
+        }
+
     configuration =
       admin? &&
         %Entry{
@@ -449,7 +463,7 @@ defmodule ApiaryWeb.Layouts do
     for %Entry{} = entry <-
           [general] ++
             ApiaryWeb.Edition.instance_sections(scope) ++
-            [adapters, nodes, diagnostics_keys, mail, configuration],
+            [workspace_types, adapters, nodes, diagnostics_keys, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

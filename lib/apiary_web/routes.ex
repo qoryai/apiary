@@ -540,6 +540,12 @@ defmodule ApiaryWeb.Routes do
                  InstanceLive.DiagnosticsKeys,
                  :revoke
 
+            # Instance settings › Workspace types, with the `workflow_model` feature, for
+            # the instance's admins: each workspace type, and the stages a new workspace of
+            # one type starts with, edited on the Stages canvas, by the type's key.
+            live "/instance/workspace-types", InstanceLive.WorkspaceTypes, :index
+            live "/instance/workspace-types/:type", InstanceLive.WorkspaceTypes, :edit
+
             unquote(@block)
           end
         end
