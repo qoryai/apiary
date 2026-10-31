@@ -39,7 +39,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def gate_value(%{"gate" => %{"kind" => "none"}}, _people), do: gettext("None")
 
   def gate_value(%{"gate" => %{"approvers" => %{"members" => [id]}}}, people),
-    do: gettext("%{person} approves", person: person(people, id))
+    do: gettext("%{person} approves", person: person_first(people, id))
 
   def gate_value(%{"gate" => %{"approvers" => %{"members" => ids}}}, people),
     do: gettext("One of %{people} approves", people: people(people, ids))
@@ -49,6 +49,11 @@ defmodule ApiaryWeb.StagesLive.Words do
   # The name of the person with the user id `id`, or the words for one who left.
   @doc false
   def person(people, id), do: Map.get(people, id) || gettext("a former member")
+
+  # The same at the start of a line or a label: "Former member", as `ApiaryWeb.People`
+  # writes it in the history.
+  @doc false
+  def person_first(people, id), do: Map.get(people, id) || ApiaryWeb.People.former_member()
 
   defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 

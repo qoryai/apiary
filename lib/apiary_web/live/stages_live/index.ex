@@ -1026,7 +1026,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                   checked
                   class="checkbox checkbox-sm checkbox-primary"
                 />
-                {Words.person(@people, id)}
+                {Words.person_first(@people, id)}
               </label>
             </div>
           </div>

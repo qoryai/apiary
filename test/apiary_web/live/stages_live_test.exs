@@ -661,6 +661,15 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert Enum.any?(lines, &(&1 =~ ~r/^Moved (Release|Verify) from place \d to place \d\.$/))
     end
 
+    test "a person who left reads Former member at the start of a line, else a former member" do
+      gone = %{
+        "gate" => %{"kind" => "person", "approvers" => %{"members" => [Ecto.UUID.generate()]}}
+      }
+
+      assert Words.gate_value(gone, %{}) == "Former member approves"
+      assert Words.gate_line(gone, %{}) == "Gate: a former member approves"
+    end
+
     test "a refused save says which stage and what to do" do
       doc = Processes.default_document("software")
 
