@@ -172,38 +172,42 @@ defmodule Apiary.Access do
     # The access keys of nodes and node pools: one Ed25519 public key each.
     Action.new(
       :"access_key.create_code",
-      "make an enrolment code for a node, with the settings of the key it brings",
+      "make an enrolment code for a machine, pool or gateway, with the settings of the key it brings",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
+    Action.new(
+      :"access_key.cancel_code",
+      "cancel the outstanding enrolment code of a machine, pool or gateway",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.add", "add an access key to a node by its public key",
+    Action.new(
+      :"access_key.add",
+      "add an access key to a machine, pool or gateway by its public key",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.revoke", "revoke a node's access key",
+    Action.new(:"access_key.revoke", "revoke an access key of a machine, pool or gateway",
       part: :nodes,
       roles: @admins
     ),
     # The workspace's nodes and node pools, the places its runs run.
-    Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
+    Action.new(:"node.read", "read the workspace's machines and pools, and each one's page",
       part: :nodes,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"node.create",
-      "make a node or a node pool, whose kind is fixed from then on",
+      "make a machine or a pool, whose kind is fixed from then on",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node or a node pool", part: :nodes, roles: @admins),
+    Action.new(:"node.edit", "rename a machine or a pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.set_limit",
-      "set a node pool's instance limit, as it is made or after",
+      "set a pool's machine limit, as it is made or after",
       part: :nodes,
       roles: @admins,
       audited:
@@ -211,10 +215,10 @@ defmodule Apiary.Access do
          "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
            "node.edit, records it with what else the change made"}
     ),
-    Action.new(:"node.delete", "delete a node or a node pool", part: :nodes, roles: @admins),
+    Action.new(:"node.delete", "delete a machine or a pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.clear_instance",
-      "clear an instance of a node that stopped without saying so: its open runs are marked lost, and another instance can start",
+      "clear a machine that stopped without reporting that it stopped: its open runs are marked lost, and another machine can start",
       part: :nodes,
       roles: @admins
     ),
@@ -406,7 +410,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"node.install",
-      "make the instance's node pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
+      "make the instance's pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
       feature: :factory,
       roles: [:instance],
       asked_of: :organisation
@@ -507,6 +511,14 @@ defmodule Apiary.Access do
     Action.new(:"artifact_type.edit", "add, change or remove the workspace's artifact types",
       feature: :workflow_model,
       roles: @admins
+    ),
+    # A workspace type's default process, which new workspaces copy, in Instance settings
+    # › Workspace types (`Apiary.Processes.TypeTemplates`).
+    Action.new(
+      :"workspace_type.edit",
+      "save a version of a workspace type's default process, which new workspaces copy: an instance admin, which no role takes (Apiary.Processes.TypeTemplates.save/4)",
+      feature: :workflow_model,
+      asked_of: :organisation
     ),
     # An adapter's key at the server contract, asked of the adapter itself.
     Action.new(

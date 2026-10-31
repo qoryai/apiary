@@ -1167,7 +1167,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
              "Qory policy of github.example/acme/shop, version 1"
 
     assert has_element?(view, "#export-download[download='acme-shop-policy.yaml']")
-    assert has_element?(view, "h2#policy-export-h", "Export for a node without a server")
+    assert has_element?(view, "h2#policy-export-h", "Export for a machine without a server")
     refute has_element?(view, "dialog#policy-export")
     refute has_element?(view, "#export-crumbs")
     assert Enum.take(crumbs(view), -2) == [{"Version 1", path <> "/versions/1"}, {"Export", nil}]

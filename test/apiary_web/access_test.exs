@@ -48,7 +48,7 @@ defmodule ApiaryWeb.AccessTest do
     end
 
     test "is the core's sentence where the edition has none", %{scope: scope} do
-      default = "Only owners and admins add nodes."
+      default = "Only owners and admins add machines."
 
       assert ApiaryWeb.Access.who_may(ApiaryWeb.Edition.Core, scope, :"node.create", default) ==
                default
@@ -60,15 +60,15 @@ defmodule ApiaryWeb.AccessTest do
                NodesEdition,
                scope,
                :"node.create",
-               "Only owners and admins add nodes."
+               "Only owners and admins add machines."
              ) == "In Acme, someone else adds the nodes."
 
       assert ApiaryWeb.Access.who_may(
                NodesEdition,
                scope,
                :"node.delete",
-               "Only owners and admins delete nodes."
-             ) == "Only owners and admins delete nodes."
+               "Only owners and admins delete machines."
+             ) == "Only owners and admins delete machines."
 
       assert NodesEdition.product_name() == ApiaryWeb.Edition.Core.product_name()
     end
@@ -97,7 +97,7 @@ defmodule ApiaryWeb.AccessTest do
                NodesEdition,
                scope,
                :"node.create",
-               "Nodes are full. Only owners and admins add nodes.",
+               "Nodes are full. Only owners and admins add machines.",
                "Nodes are full."
              ) == "Nodes are full. In Acme, someone else adds the nodes."
     end

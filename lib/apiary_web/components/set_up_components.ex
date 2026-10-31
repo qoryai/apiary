@@ -32,8 +32,9 @@ defmodule ApiaryWeb.SetUpComponents do
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
   alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
+  alias Apiary.Processes.TypeTemplates
   alias Apiary.Stacks.Sources
-  alias ApiaryWeb.HarnessComponents
+  alias ApiaryWeb.{HarnessComponents, WorkspaceComponents}
   alias Apiary.Accounts.Scope
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.{Invitation, Organisation, Workspace}
@@ -853,6 +854,11 @@ defmodule ApiaryWeb.SetUpComponents do
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
   attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
 
+  attr :previews, :map,
+    default: %{},
+    doc:
+      "a domain's name to the process its workspace starts with (`previews/1`), shown under the cards"
+
   def kind_cards(assigns) do
     assigns =
       assigns
@@ -910,8 +916,33 @@ defmodule ApiaryWeb.SetUpComponents do
           </div>
         </li>
       </ul>
+      <%= for {domain, _card} <- @cards, document = !@limit && @previews[domain.name()] do %>
+        <WorkspaceComponents.process_preview
+          id={"#{@id}-preview-#{domain.name()}"}
+          document={document}
+        />
+      <% end %>
     </div>
     """
+  end
+
+  @doc """
+  previews/1 is, with the feature `workflow_model` where `scope` is, the process a new
+  workspace of each type with a kind card starts with, the newest version of its type's
+  default (`Apiary.Processes.TypeTemplates.newest/1`), by the domain's name, for
+  `kind_cards/1`'s `previews`; else none.
+  """
+  @spec previews(Scope.t()) :: %{String.t() => map}
+  def previews(%Scope{} = scope) do
+    if Features.visible?(scope, :workflow_model) do
+      for domain <- Domain.choices(),
+          kind_card_words(domain) != nil,
+          %{document: document} <- [TypeTemplates.newest(Domain.definition(domain).key)],
+          into: %{},
+          do: {domain.name(), document}
+    else
+      %{}
+    end
   end
 
   # The words of a domain's card, nil for a domain without one, which shows no card. A

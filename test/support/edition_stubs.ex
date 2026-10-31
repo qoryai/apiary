@@ -832,6 +832,23 @@ defmodule Apiary.EditionStubs do
     def model_key_ready?(_workspace), do: true
   end
 
+  defmodule SetupReadyQoryPool do
+    @moduledoc """
+    As `SetupReady`, with the instance's pool, the Qory Pool, as the ready pool: a pool of
+    no organisation and no workspace.
+    """
+    alias Apiary.Nodes.Node
+
+    def machines_ready(workspace) do
+      %{
+        Apiary.EditionStubs.SetupReady.machines_ready(workspace)
+        | pool: %Node{kind: :pool, name: "qory-pool"}
+      }
+    end
+
+    defdelegate model_key_ready?(workspace), to: Apiary.EditionStubs.SetupReady
+  end
+
   defmodule NoLimitWorded do
     @moduledoc """
     Nobody sets a pool's instance limit, as `NoLimit` has it, and the pages say who may in

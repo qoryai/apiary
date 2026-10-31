@@ -168,8 +168,8 @@ curl http://localhost:4100/health
 answers `200` with `"database":"ok"`: the instance started, so its `APIARY_ENCRYPTION_SECRET`
 and `APIARY_SIGNING_SECRET` are the ones the dump recorded, since another stops the boot
 and the log says which (What each key is for, below). Sign in, open **Runs**, and start a
-run on a machine connected to one of the workspace's nodes: if it appears, the keys'
-integrity codes verified, and the machine took the server's signed answers.
+run on one of the workspace's machines: if it appears, the keys' integrity codes
+verified, and the machine took the server's signed answers.
 
 ## What each key is for
 

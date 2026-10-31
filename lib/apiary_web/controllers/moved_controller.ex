@@ -11,9 +11,12 @@ defmodule ApiaryWeb.MovedController do
   Those answer 302, found. A page that took a new name, for good: the workspace's
   connections, `/:org/:workspace/connections`, are its Network access,
   `/:org/:workspace/network`, and a run's Connections tab, `/runs/:run_id/connections`, is
-  `/runs/:run_id/network`; those answer 301, moved permanently. A bookmark, a link in an
-  old message and a page of a browser's history still land; the router answers the new
-  paths only.
+  `/runs/:run_id/network`; a workspace's Nodes, `/:org/:workspace/nodes/…`, are its
+  Machines, `/:org/:workspace/machines/…`; and Instance settings › Nodes,
+  `/instance/nodes/…`, is Instance settings › Qory Pool and Qory Gateway,
+  `/instance/qory-pool-and-gateway/…`. Those answer 301, moved permanently. A bookmark, a
+  link in an old message and a page of a browser's history still land; the router answers
+  the new paths only.
   """
   use ApiaryWeb, :controller
 
@@ -37,6 +40,12 @@ defmodule ApiaryWeb.MovedController do
 
         [organisation, workspace, "runs", run_id, "connections"] ->
           {:moved_permanently, [organisation, workspace, "runs", run_id, "network"]}
+
+        ["instance", "nodes" | rest] ->
+          {:moved_permanently, ["instance", "qory-pool-and-gateway" | rest]}
+
+        [organisation, workspace, "nodes" | rest] ->
+          {:moved_permanently, [organisation, workspace, "machines" | rest]}
       end
 
     path =

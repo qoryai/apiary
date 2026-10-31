@@ -133,7 +133,7 @@ defmodule Apiary.Stages.StopCauseTest do
     workspace = %{organisation | workspace_id: work_item.workspace_id}
 
     assert text(:secrets_not_allowed, work_item, [], %{gateway: workspace, keys: keys}) =~
-             "\nOwners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Nodes › edge-1 › Access key."
+             "\nOwners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Machines › edge-1 › Access key."
 
     assert text(:secrets_not_allowed, work_item, [], %{
              gateway: organisation,

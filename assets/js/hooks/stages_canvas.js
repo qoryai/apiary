@@ -108,6 +108,12 @@ export const layout = view => {
     type: "stage",
     position: {x: cardX(index), y: 0},
     selected: stage.id === view.selected,
+    // A card of a canvas whose cards open nothing is not selected by a click, and Tab
+    // passes it by (no tabindex). It stays a labelled group, with the canvas's card
+    // description, so a screen reader still reads each stage.
+    selectable: view?.selectable !== false,
+    focusable: view?.selectable !== false,
+    ariaRole: "group",
     draggable: editable,
     // A ring on keyboard focus: React Flow's stylesheet draws none for a custom node.
     className:
