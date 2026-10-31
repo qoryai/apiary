@@ -2696,12 +2696,12 @@ msgstr ""
 msgid "%{tool} failed: %{summary}"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "%{type}, optional"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "%{type}, required"
 msgstr ""
@@ -2885,7 +2885,7 @@ msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow}, machine type %{machine}"
 msgstr ""
@@ -3264,7 +3264,7 @@ msgstr ""
 msgid "A path starts with / and may end in one *; no other wildcard and no query, such as %{example}."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "A person approves before the work item moves on"
 msgstr ""
@@ -3872,7 +3872,7 @@ msgstr ""
 msgid "Add gateway"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Add input"
 msgstr ""
@@ -3887,7 +3887,7 @@ msgstr ""
 msgid "Add it"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Add loop"
 msgstr ""
@@ -3907,7 +3907,7 @@ msgstr ""
 msgid "Add one so the nodes in %{organisation}'s workspaces can send runs through it."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Add output"
 msgstr ""
@@ -3947,12 +3947,12 @@ msgstr ""
 msgid "Add value…"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Add workflow"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Add workflow to the loop"
 msgstr ""
@@ -4597,7 +4597,7 @@ msgstr ""
 msgid "Anthropic's terms"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Any member"
 msgstr ""
@@ -7202,7 +7202,7 @@ msgstr ""
 msgid "Edit"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Edit %{stage}"
 msgstr ""
@@ -8315,7 +8315,7 @@ msgstr ""
 msgid "Full screen"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Gate"
 msgstr ""
@@ -8957,7 +8957,7 @@ msgstr ""
 msgid "In this browser"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Inputs"
 msgstr ""
@@ -10215,14 +10215,14 @@ msgstr ""
 msgid "Looked up an integration's release"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Loop: at most %{number} round"
 msgid_plural "Loop: at most %{number} rounds"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Loop: rounds at most"
 msgstr ""
@@ -10284,7 +10284,7 @@ msgid "Machine started"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Machine type"
 msgstr ""
@@ -10670,7 +10670,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -10692,7 +10692,7 @@ msgstr ""
 msgid "Name this workspace"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Named members"
 msgstr ""
@@ -10852,12 +10852,12 @@ msgstr ""
 msgid "New secret"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/editor.ex
 #, elixir-autogen, elixir-format
 msgid "New stage"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/editor.ex
 #, elixir-autogen, elixir-format
 msgid "New stage %{number}"
 msgstr ""
@@ -11063,7 +11063,7 @@ msgstr ""
 msgid "No gate"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "No gate: the work item moves on when the sequence ends"
 msgstr ""
@@ -11552,7 +11552,7 @@ msgid "No work source is connected to %{workspace}. Connect one to bring its tic
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/canvas.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "No workflow"
@@ -11705,7 +11705,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "None"
@@ -12846,7 +12846,7 @@ msgstr ""
 msgid "Outcome"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Outputs"
 msgstr ""
@@ -13558,7 +13558,7 @@ msgstr ""
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
 msgstr ""
@@ -13962,7 +13962,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/secret_live/index.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr ""
@@ -14004,7 +14004,7 @@ msgstr ""
 msgid "Remove %{name}?"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{stage}"
 msgstr ""
@@ -14016,12 +14016,12 @@ msgstr ""
 msgid "Remove %{token}"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{type}"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{workflow}"
 msgstr ""
@@ -14046,7 +14046,7 @@ msgstr ""
 msgid "Remove harness sources or files, then start the run again. The run stopped before it started: the call to %{adapter} for %{what} was over 256 KiB."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove loop"
 msgstr ""
@@ -14333,7 +14333,7 @@ msgstr ""
 msgid "Repository"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Required"
 msgstr ""
@@ -15320,7 +15320,7 @@ msgstr ""
 msgid "Sentry's web API on sentry.io."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Sequence"
 msgstr ""
@@ -18821,7 +18821,7 @@ msgstr ""
 
 #: lib/apiary_web/components/workspace_components.ex
 #: lib/apiary_web/live/settings_live.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Type"
 msgstr ""
@@ -19203,6 +19203,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "View it"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/canvas.ex
+#, elixir-autogen, elixir-format
+msgid "View only: the stage's workflows and gate."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -19739,7 +19744,7 @@ msgid "Work sources is set to All for this account. Change it there first."
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workflow"

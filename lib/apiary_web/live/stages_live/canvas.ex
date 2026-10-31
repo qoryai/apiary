@@ -8,7 +8,9 @@ defmodule ApiaryWeb.StagesLive.Canvas do
   #   * `:view`: the cards show their stages, workflows, loops and gates, with no "+", no
   #     drag and no move; the canvas sends no event that changes the document.
   #
-  # In both modes a click or Enter on a card sends "select" with the stage's id. The
+  # In both modes a click or Enter on a card sends "select" with the stage's id, unless
+  # `selectable` is false: then a card opens nothing and the canvas sends no event, for a
+  # page with no "select" to take, such as New workspace's preview. The
   # canvas is drawn by `assets/js/canvas.js` (React Flow) through the colocated hook
   # below; it reads `data-view` once, then each "stages:view" event the page pushes with
   # `view/3`. Its inputs are plain data: the document, the mode, and optionally the
@@ -30,6 +32,10 @@ defmodule ApiaryWeb.StagesLive.Canvas do
 
   attr :alerts, :map, default: %{}, doc: "a stage's id to the alert lines its card shows"
 
+  attr :selectable, :boolean,
+    default: true,
+    doc: "whether a click or Enter on a card sends \"select\"; false sends no event"
+
   def canvas(assigns) do
     ~H"""
     <div
@@ -39,7 +45,14 @@ defmodule ApiaryWeb.StagesLive.Canvas do
       data-script={~p"/assets/js/canvas.js"}
       data-stylesheet={~p"/assets/js/canvas.css"}
       data-view={
-        Jason.encode!(view(@document, @mode, selected: @selected, people: @people, alerts: @alerts))
+        Jason.encode!(
+          view(@document, @mode,
+            selected: @selected,
+            people: @people,
+            alerts: @alerts,
+            selectable: @selectable
+          )
+        )
       }
       data-words={Jason.encode!(words())}
       class="min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-200"
@@ -65,7 +78,8 @@ defmodule ApiaryWeb.StagesLive.Canvas do
 
   @doc false
   # view/3 is what the canvas draws for `document` in `mode`: each stage's name and lines,
-  # as text. `opts`: `selected`, `people` and `alerts`, as the component's attributes.
+  # as text. `opts`: `selected`, `people`, `alerts` and `selectable`, as the component's
+  # attributes.
   def view(document, mode, opts \\ []) when mode in [:edit, :view] do
     people = Keyword.get(opts, :people, %{})
     alerts = Keyword.get(opts, :alerts, %{})
@@ -73,6 +87,7 @@ defmodule ApiaryWeb.StagesLive.Canvas do
 
     %{
       editable: mode == :edit,
+      selectable: Keyword.get(opts, :selectable, true),
       selected: Keyword.get(opts, :selected),
       first:
         case stages do
@@ -103,6 +118,7 @@ defmodule ApiaryWeb.StagesLive.Canvas do
           "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
         ),
       node_read: gettext("Press Enter to open the stage under the canvas."),
+      node_view: gettext("View only: the stage's workflows and gate."),
       moved: gettext("Moved the selected stage."),
       no_workflow: gettext("No workflow"),
       zoom_in: gettext("Zoom in"),

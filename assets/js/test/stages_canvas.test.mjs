@@ -224,3 +224,11 @@ test("a card that takes the focus is panned into view as little as it can", () =
 test("each card has a ring on keyboard focus", () => {
   for (const node of stages(view)) assert.match(node.className, /focus-visible:!outline-primary/)
 })
+
+test("a canvas whose cards open nothing draws cards a click does not select", () => {
+  assert.ok(stages(view).every(node => node.selectable === true))
+  const preview = {...view, editable: false, selectable: false}
+  assert.ok(stages(preview).every(node => node.selectable === false))
+  // View only: no "+" either.
+  assert.equal(layout(preview).nodes.filter(node => node.type === "add").length, 0)
+})

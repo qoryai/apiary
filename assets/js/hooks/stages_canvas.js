@@ -108,6 +108,8 @@ export const layout = view => {
     type: "stage",
     position: {x: cardX(index), y: 0},
     selected: stage.id === view.selected,
+    // A card of a canvas whose cards open nothing is not selected by a click.
+    selectable: view?.selectable !== false,
     draggable: editable,
     // A ring on keyboard focus: React Flow's stylesheet draws none for a custom node.
     className:
