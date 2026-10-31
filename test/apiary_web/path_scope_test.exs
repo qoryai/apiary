@@ -43,6 +43,17 @@ defmodule ApiaryWeb.PathScopeTest do
 
   defp not_found?(conn, path), do: conn |> get(path) |> response(404) == "Not Found"
 
+  # A page under an organisation the user reaches whose workspace slug matches none they
+  # reach: a 404 inside the app's layout (`ApiaryWeb.DeadEnd`); a path that is not a page,
+  # such as a run's log, gets the plain 404.
+  defp dead_end?(conn, path, page) do
+    body = conn |> get(path) |> response(404)
+
+    if String.ends_with?(page, "/log"),
+      do: body == "Not Found",
+      else: body =~ ~s(id="dead-end-line")
+  end
+
   test "another organisation's workspace is unreachable by its URL", %{conn: conn} do
     other = sign_up_fixture()
 
@@ -63,7 +74,7 @@ defmodule ApiaryWeb.PathScopeTest do
   } do
     for page <- @pages do
       assert not_found?(conn, "/no-such-organisation/main#{page}"), page
-      assert not_found?(conn, "/#{scope.organisation.slug}/no-such-workspace#{page}"), page
+      assert dead_end?(conn, "/#{scope.organisation.slug}/no-such-workspace#{page}", page), page
     end
   end
 
@@ -79,8 +90,16 @@ defmodule ApiaryWeb.PathScopeTest do
       |> Workspace.put_slug("platform")
       |> Repo.insert()
 
-    assert not_found?(conn, "/#{scope.organisation.slug}/#{platform.slug}")
-    assert not_found?(conn, "/#{scope.organisation.slug}/#{platform.slug}/runs")
+    # The user's organisation's dead end, which lists its workspaces and not the other's.
+    for path <- [
+          "/#{scope.organisation.slug}/#{platform.slug}",
+          "/#{scope.organisation.slug}/#{platform.slug}/runs"
+        ] do
+      body = conn |> get(path) |> response(404)
+      assert body =~ ~s(id="dead-end-line")
+      assert body =~ scope.workspace.name
+      refute body =~ "Platform"
+    end
   end
 
   test "a live navigation to another organisation's workspace is not found", %{

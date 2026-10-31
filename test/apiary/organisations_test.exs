@@ -1050,7 +1050,7 @@ defmodule Apiary.OrganisationsTest do
       assert Organisations.suggest_workspace_slug(scope, "Data") == "data"
     end
 
-    test "a name whose address is a page of Qory Apiary is refused, never numbered" do
+    test "a name whose address Qory Apiary keeps for its pages is refused, never numbered" do
       %{scope: scope} = sign_up_fixture()
       scope = mark_only_workspace(scope)
       org = scope.organisation.slug

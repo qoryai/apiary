@@ -343,7 +343,8 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
              "Choose another name. Another workspace already has the address /#{org}/billing."},
             {"Old",
              "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
-            {"Settings", "Choose another name. /#{org}/settings is a page of Qory Apiary."},
+            {"Settings",
+             "Choose another name. Qory Apiary keeps /#{org}/settings for its pages."},
             {"株式会社",
              "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
                "The address is made from those characters."}
