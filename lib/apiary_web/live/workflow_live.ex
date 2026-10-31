@@ -494,6 +494,13 @@ defmodule ApiaryWeb.WorkflowLive do
       if match?(%{id: ^id, git: ^git}, socket.assigns.source) do
         case result do
           {:ok, stacks} ->
+            # The workflows read are the workspace's snapshot (`Apiary.Processes`).
+            :ok =
+              Apiary.Processes.record_declared(
+                socket.assigns.current_scope.workspace,
+                Enum.flat_map(stacks, & &1.workflows)
+              )
+
             socket |> assign(stacks: stacks, reading: false) |> preselect_workflow()
 
           {:error, reason} ->

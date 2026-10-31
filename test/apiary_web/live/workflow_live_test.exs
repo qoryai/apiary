@@ -316,6 +316,10 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"]), "fix")
       assert has_element?(view, ~s(#workflow_workflow option[value="0/triage"]), "triage")
 
+      # The workflows read are the workspace's snapshot of its harness source.
+      assert %{names: names} = Apiary.Processes.declared_snapshot(scope.workspace)
+      assert "fix" in names and "triage" in names
+
       change(view, %{source: linked_id, workflow: "0/triage"})
       view |> form("#workflow-form", workflow: %{workflow: "0/triage"}) |> render_submit()
 

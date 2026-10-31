@@ -132,7 +132,7 @@
               "required": ["members"],
               "properties": {
                 "members": {
-                  "description": "The public ids of the people who approve.",
+                  "description": "The ids of the people who approve, from the users table.",
                   "type": "array",
                   "minItems": 1,
                   "maxItems": 50,
