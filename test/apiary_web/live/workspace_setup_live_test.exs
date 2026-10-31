@@ -811,6 +811,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert href(lv, "#set-up-back") == step_path
     end
 
+    test "with one connected, Connect another opens the Connect page, whose Back returns to the step, not Name",
+         %{conn: conn} do
+      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+      %{adapter: connected} = connectable_adapter_fixture()
+      connected = targets!(connected)
+      {_connection, _nonce} = connection_fixture(scope, connected, :connected)
+      %{adapter: other} = connectable_adapter_fixture()
+      targets!(other)
+
+      for {step, label, heading, before} <- [
+            {"sources", "Connect another source", "Where does work for Main come from?", "name"},
+            {"destinations", "Connect another destination",
+             "Which repositories may runs in Main change?", "sources"}
+          ] do
+        step_path = ~p"/#{organisation}/main/set-up/#{step}"
+        {:ok, lv, _html} = conn |> log_in_user(user) |> live(step_path)
+
+        assert words(lv, "#set-up-connect") == label
+        lv |> element("#set-up-connect") |> render_click()
+        assert_patch(lv, step_path <> "/connect")
+        assert has_element?(lv, "h1", label)
+
+        # Back from the Connect page: the step, not the step before it.
+        lv |> element("#set-up-back") |> render_click()
+        assert_patch(lv, step_path)
+        assert has_element?(lv, "h1", heading)
+        assert href(lv, "#set-up-back") == ~p"/#{organisation}/main/set-up/#{before}"
+      end
+    end
+
     test "with no adapter for the type, shows the line for it", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
 
