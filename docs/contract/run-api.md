@@ -1,12 +1,12 @@
 # The run API
 
 A run, an agent on a machine, uses the run API to read its work item and the work
-item's artifacts, and to push artifacts and its verdict. The run's gateway sends each
-request to Qory Apiary and signs it; the run itself never holds a key.
+item's artifacts, and to push artifacts and its verdict. Each request is signed with the
+access key of the gateway the run goes through; the run has no access key.
 
 The run API is part of the feature `workflow_model`, which is off by default. On an
 instance without the feature, a request that verifies gets `404` with the error page,
-signed, as a verified request to a path the router does not know gets. A request without
+signed: the same body and type as a path the router does not know. A request without
 a signature gets the `404` of a path the router does not know where the instance does
 not have the routes' feature: `workflow_model`, or `factory` on an instance whose
 features do not list `workflow_model` yet (`__feature__/0` of
@@ -33,21 +33,24 @@ A request is signed as a request to the run endpoint is (`ApiaryWeb.Contract.Sig
 `guides/contract.md`): `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`,
 `X-Qory-Contract-Version: 1` and `X-Qory-Signature-Ed25519` under the gateway's access
 key; a GET also signs `X-Qory-Timestamp`, and a POST signs its raw body. A POST has
-`Content-Type: application/json`. Requests spend the run endpoint's bucket of the key's
+`Content-Type: application/json`. A request sends no `Accept` header, or one that
+accepts `application/json`, the file request included; any other gets `406`, unsigned.
+Requests spend the run endpoint's bucket of the key's
 rate limit. Every answer to a request that verifies is signed, except a `401`.
 
 The checks run in this order:
 
-1. The checks of every signed request: `415`, `400` `bad_request`, `401`, `429`
-   `rate_limited`, `400` `unsupported_contract_version`, and for a GET a timestamp
-   outside 300 seconds, `401`.
+1. The checks of every signed request: `415`, `400` `bad_request` for a header sent
+   twice, `401`, `429` `rate_limited`, `400` `bad_request` for an instance id absent or
+   malformed, `400` `unsupported_contract_version`, and for a GET a timestamp outside
+   300 seconds, `401`.
 2. Without the feature `workflow_model`: `404`, the error page.
 3. The run. The key must be a key of the gateway the run goes through, listed in the
    run's run key, from the instance that attached the run, of a gateway that may still
    serve the run's workspace; and the run must be a run of a work item. Any other case
    is `404` `not_found`, the same answer whatever the cause.
-4. For a POST: a run that is no longer pending or running, or whose sending has ended,
-   is `409` `run_ended`. A run reads its work item after it ends; it writes nothing.
+4. For a POST: a run that is no longer pending or running, whose sending has ended, or
+   whose run of the workspace's queue has ended, is `409` `run_ended`. A run reads its work item after it ends; it writes nothing.
 5. The checks listed with each request below.
 
 An error is a JSON object with `error`, the code. Some errors also have `type`,
@@ -151,7 +154,8 @@ version id and an unknown filename all return `404` `not_found`.
 
 ## POST artifacts
 
-The body, at most 32 MiB:
+The body, at most 32 MiB encoded, which is about 24 MiB of files once decoded. A larger
+version cannot be pushed through the run API, whatever the type's size limit:
 
 ```json
 {
@@ -168,7 +172,8 @@ The body, at most 32 MiB:
   letter or a digit.
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
   have different names, such as screenshots of two screens.
-- `note`: optional, at most 4000 characters.
+- `note`: optional, at most 4000 code points, with no control character but a tab or a
+  line break.
 - `files`: 1 to 100 files. A `filename` is 1 to 255 bytes of UTF-8, not `.` or `..`,
   with no `/`, no `\` and no control character, and unique in the version. A
   `content_type` is `type/subtype`. `content_base64` is the content in standard base64
@@ -206,7 +211,8 @@ The body, at most 64 KiB:
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
-- `gaps`: optional text, at most 32000 characters.
+- `gaps`: optional text, at most 32000 code points, with no control character but a tab
+  or a line break.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
 file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, where `gaps` is null when the body
@@ -240,8 +246,8 @@ The messages:
 - `run_ended`: "The run has ended, so it can no longer push artifacts or give a verdict."
 - `unknown_type`: "Define the artifact type demo-findings in the workspace's Artifact
   types, then run the round again."
-- `type_not_writable`: "The workflow capture-demo may not write the artifact type
-  explainer."
+- `type_not_writable`: "Add the artifact type explainer to the writes list of the
+  workflow capture-demo, or push a type that the workflow writes."
 - `too_many_files`: "The artifact type screenshot takes at most 2 files in one version."
-- `too_large`: "The artifact type demo-video takes files of at most 104857600 bytes."
+- `too_large`: "The artifact type demo-video takes files of at most 16777216 bytes."
 - `invalid_artifact`: "The files do not match the format of the artifact type."

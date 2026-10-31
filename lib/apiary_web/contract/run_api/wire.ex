@@ -13,9 +13,9 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   newest verdict with its gaps, the stage's gaps and the notes from people.
   # - `index/1`: every artifact of the work item with its versions, each version's files,
   #   writer and approvals (`Apiary.Stages.artifact_index/1`).
-  # - `version/1`: a version as a push answers it.
+  # - `version/3`: a version as a push returns it.
   #
-  # A person is written by name, as Explore's input names a person
+  # A person is written by name, as Explore's input writes a person
   # (`Apiary.Dispatches.Inputs.person_name/1`); a run by its run id.
 
   alias Apiary.Dispatches.Inputs
@@ -27,7 +27,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # The members of Explore's input that the work item's answer takes, in this order.
   @from_explore ~w(ticket instruction comments comments_omitted answers)
 
-  @spec work_item(map, map) ::
+  @spec work_item(map, Jason.OrderedObject.t() | nil) ::
           {:ok, Jason.OrderedObject.t()} | {:error, :ticket_gone | :inputs_invalid}
   def work_item(%{run: run, dispatch_run: dispatch_run, work_item: work_item}, verdict) do
     explore =
@@ -100,7 +100,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # verdict/3 is the newest verdict as the work item's answer has it: its value, its gaps
+  # verdict/2 is the newest verdict as the work item's answer has it: its value, its gaps
   # and its version, or nil for none.
   @spec verdict(map | nil, map | nil) :: Jason.OrderedObject.t() | nil
   def verdict(nil, _content), do: nil

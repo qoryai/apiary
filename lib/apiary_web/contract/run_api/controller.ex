@@ -11,14 +11,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # contract's order of refusals, spends the run endpoint's bucket of the key's rate limit
   # and signs every answer to a verified request. Then, in order:
   #
-  #   1. where the instance does not have `workflow_model`, the answer is the one a path
-  #      the router does not know gets once the request verified: `404`, the error page;
-  #   2. a run the key does not hold as the run's gateway (`ApiaryWeb.Contract.RunApi.Run`)
-  #      is `404` `not_found`, and so is, for a file, a version id or a filename the run's
+  #   1. where the instance does not have `workflow_model`, `404` with the error page,
+  #      signed: the same body and type as a path the router does not know;
+  #   2. a run whose gateway is not the key's (`ApiaryWeb.Contract.RunApi.Run`) is `404`
+  #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
   #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, then a body
-  #      over its size `413` `payload_too_large`, then a body the contract refuses `400`
+  #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have is `422` `unknown_type`; a type
   #      the run's workflow may not write `403` `type_not_writable`; more files than the
@@ -79,14 +79,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     with {:ok, run} <- run(conn, run_id),
          {:ok, version} <- version(run.work_item, version_id),
          {:ok, file} <- file_of(version, filename),
-         {:ok, content} <- read(file) do
+         {:ok, content} <- stored(file) do
       conn
       |> put_resp_header("content-disposition", disposition(filename))
       |> put_resp_header("x-content-type-options", "nosniff")
       |> put_resp_content_type(served_type(field(file, :content_type)), nil)
       |> send_resp(200, content)
     else
-      _not_found -> error(conn, 404, "not_found")
+      {:error, :not_found} -> error(conn, 404, "not_found")
+      {:error, :unreadable} -> error(conn, 503, "unavailable")
     end
   rescue
     exception -> unavailable(conn, exception)
@@ -197,6 +198,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
+  # A file the version lists whose content cannot be read is not the run's error.
+  defp stored(file) do
+    case read(file) do
+      {:ok, content} -> {:ok, content}
+      _error -> {:error, :unreadable}
+    end
+  end
+
   defp read(file) do
     case Boundary.open_file(file) do
       {:ok, path} when is_binary(path) -> File.read(path)
@@ -275,8 +284,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # What `Apiary.Artifacts.push/5` returns, as the run API answers it: the push's type
-  # and the type's limit, never the detail the push returns.
+  # What `Apiary.Artifacts.push/5` returns, turned into the run API's errors: the push's
+  # type and the type's limit, never the detail the push returns.
   defp pushed({:ok, version}, _name, _type, _workflow), do: {:ok, version}
 
   defp pushed({:error, {code, _detail}}, name, type, workflow) do
@@ -318,7 +327,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp write_error(conn, {:error, {:not_writable, type, workflow}}) do
     error(conn, 403, "type_not_writable",
       type: type,
-      message: "The workflow#{named(workflow)} may not write the artifact type #{type}."
+      message:
+        "Add the artifact type #{type} to the writes list of the workflow#{named(workflow)}, " <>
+          "or push a type that the workflow writes."
     )
   end
 
@@ -376,7 +387,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     do: Enum.map(members, fn {key, value} -> {Atom.to_string(key), value} end)
 
   defp unavailable(conn, exception) do
-    Logger.error("a run API request could not be answered: #{inspect(exception.__struct__)}")
+    Logger.error("a run API request failed: #{inspect(exception.__struct__)}")
     error(conn, 503, "unavailable")
   end
 

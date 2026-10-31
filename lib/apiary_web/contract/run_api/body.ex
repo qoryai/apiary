@@ -15,9 +15,8 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # first member that failed, such as `files[0].filename`. A body over its size is
   # `{:error, :too_large}`.
 
-  # A push of base64 JSON: 32 MiB, the size of the largest version a type can take through
-  # this API, encoded. A larger file goes through a streamed upload, which this version
-  # does not have.
+  # A push of base64 JSON: at most 32 MiB encoded, about 24 MiB of files decoded. A larger
+  # version cannot be pushed through this API, whatever the type's size limit.
   @push_max_bytes 32 * 1024 * 1024
   @verdict_max_bytes 64 * 1024
 
@@ -120,7 +119,8 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   defp members(body, known) do
     case Enum.sort(Map.keys(body) -- known) do
       [] -> :ok
-      [member | _] -> {:error, :invalid_request, member}
+      [member | _] when byte_size(member) <= 64 -> {:error, :invalid_request, member}
+      [_long | _] -> {:error, :invalid_request, "body"}
     end
   end
 
@@ -173,7 +173,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   defp prefixed({:error, :invalid_request, name}, member), do: invalid(member.(name))
   defp prefixed(result, _member), do: result
 
-  # Two files of one version under one filename: the second is refused.
+  # Two files of one version under one filename: the second is an error.
   defp unique(files) do
     files
     |> Enum.with_index()
@@ -202,9 +202,13 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   defp content_type?(value), do: is_binary(value) and Regex.match?(@content_type, value)
 
   defp text?(value, max) do
-    is_binary(value) and String.valid?(value) and String.length(value) <= max and
+    is_binary(value) and String.valid?(value) and code_points(value) <= max and
       not Regex.match?(@refused_in_text, value)
   end
+
+  # The length counted in code points, never graphemes: a letter with any number of
+  # combining marks is one grapheme.
+  defp code_points(text), do: text |> String.codepoints() |> length()
 
   defp invalid(member), do: {:error, :invalid_request, member}
 end

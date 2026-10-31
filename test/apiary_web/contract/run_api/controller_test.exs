@@ -411,6 +411,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {push_body("screenshot", []), "files"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"extra" => 1}), "extra"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"name" => "../x"}), "name"},
+        {push_body("screenshot", [{"a.png", "image/png", "x"}], %{
+           "note" => "a" <> String.duplicate("\u0301", 4001)
+         }), "note"},
+        {push_body("screenshot", [{"a.png", "image/png", "x"}], %{
+           String.duplicate("k", 65) => 1
+         }), "body"},
         {push_body("screenshot", [{"a.png", "not a type", "x"}]), "files[0].content_type"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}, {"a.png", "image/png", "y"}]),
          "files[1].filename"}
@@ -528,7 +534,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          %{
            "error" => "type_not_writable",
            "type" => "explainer",
-           "message" => "The workflow may not write the artifact type explainer."
+           "message" =>
+             "Add the artifact type explainer to the writes list of the workflow, " <>
+               "or push a type that the workflow writes."
          }},
         {{:too_large, "detail"}, 422,
          %{
