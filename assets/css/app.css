@@ -5184,12 +5184,12 @@
   .q-outcome-error::before {
     background-color: var(--color-warning);
   }
-  .q-outcome .q-status {
+  .q-outcome-code {
     color: var(--color-base-content);
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
-  .q-outcome .q-status::before {
+  .q-outcome-code::before {
     content: "·";
     margin-right: 5px;
     color: var(--q-faint);
@@ -6539,6 +6539,15 @@
   }
 
   /* ---- Timeline ---- */
+  /* A wide window puts no more air between a row and its time: the tab's content stops at
+     72rem, and the rail stays where the column ends. */
+  .q-run-tl {
+    max-width: 72rem;
+  }
+  /* The legend over the time columns, shown where the columns are (below). */
+  .q-tlegend {
+    display: none;
+  }
   .q-tl {
     --lane: 22px;
     --lanes: 1;
@@ -6795,6 +6804,7 @@
   /* Prepare machine: one row per step, the head row of a disclosure as a tool's. */
   .q-prep {
     display: grid;
+    max-width: 72rem;
     gap: 6px;
   }
   .q-prep-hd {
@@ -6823,6 +6833,14 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .q-prep-pulse {
+    animation: q-prep-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes q-prep-pulse {
+    50% {
+      opacity: 0.4;
+    }
   }
   .q-prep-ok {
     color: var(--q-success-soft-content);
@@ -7223,11 +7241,16 @@
     }
   }
   @container (max-width: 640px) {
-    .q-tseg,
+    .q-tseg:not(.q-tview),
     .q-term-sep,
     .q-term-px {
       display: none;
     }
+  }
+
+  /* The note under the box describes what Raw shows; Collapsed shows something else. */
+  .q-termbox:has([data-view="collapsed"][aria-pressed="true"]) + .q-term-note {
+    display: none;
   }
 
   .q-term-screen [data-screen] {
@@ -7379,13 +7402,82 @@
     }
   }
 
+  /* From the width the rail stands beside the column, the times sit in two fixed columns,
+     the same in Prepare machine's rows, the run's rows and the connection rows, with a
+     faint band over the row under the pointer to lead the eye to them. A tool's duration
+     stays left of the columns. Below it a row sets out its times as they come, and an
+     empty cell takes no gap. */
+  @media (max-width: 1279.98px) {
+    .q-prep-cell:not(:has(*)) {
+      display: none;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-run-tl,
+    .q-prep {
+      --q-tc1: 5.25rem;
+      --q-tc2: 4.25rem;
+      --q-tc-gap: 10px;
+    }
+    .q-tc1,
+    .q-tc2 {
+      flex: none;
+      text-align: right;
+    }
+    .q-tc1 {
+      width: var(--q-tc1);
+    }
+    .q-tc2 {
+      width: var(--q-tc2);
+    }
+    .q-tlegend {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--q-tc-gap);
+      padding-right: 10px;
+      color: var(--q-faint);
+      font-size: 0.6875rem;
+      line-height: 1rem;
+      white-space: nowrap;
+    }
+    .q-prep-hd,
+    .q-prep-row {
+      padding-right: 10px;
+    }
+    .q-prep-row {
+      border-radius: var(--radius-field);
+      transition: background-color 120ms var(--q-ease-out);
+    }
+    .q-prep-row:hover,
+    .q-during .q-cx:hover {
+      background-color: var(--color-base-200);
+    }
+    .q-tl .q-cx {
+      grid-template-columns: 16px minmax(0, 1.1fr) minmax(0, 1.4fr) auto var(--q-tc1) var(--q-tc2);
+      column-gap: var(--q-tc-gap);
+    }
+    .q-tl .q-cx .q-cx-at {
+      text-align: right;
+    }
+    .q-tl .q-cx .q-slot {
+      width: auto;
+    }
+    .q-tl .q-cx-sum {
+      padding-right: 0;
+    }
+    .q-tl .q-cx-sum .q-cx-at {
+      margin-right: calc(var(--q-tc2) + var(--q-tc-gap));
+    }
+  }
+
   /* Still under reduced motion: no spinner rotation, no fade. */
   @media (prefers-reduced-motion: reduce) {
     .q-spin {
       border-right-color: transparent;
       animation: none;
     }
-    .q-ti {
+    .q-ti,
+    .q-prep-pulse {
       animation: none;
     }
   }

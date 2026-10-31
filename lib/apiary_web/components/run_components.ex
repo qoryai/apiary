@@ -503,6 +503,24 @@ defmodule ApiaryWeb.RunComponents do
   def elapsed(%{inserted_at: %DateTime{} = at}), do: {0, at}
   def elapsed(_run), do: {nil, nil}
 
+  ## The time columns
+
+  @doc """
+  The legend over a list of rows whose right-hand values sit in two columns (`.q-tc1`,
+  `.q-tc2`), wide enough for the rail to stand beside them; `app.css` shows it from 1280 px.
+  """
+  attr :first, :string, required: true
+  attr :second, :string, required: true
+
+  def time_legend(assigns) do
+    ~H"""
+    <div class="q-tlegend" aria-hidden="true">
+      <span class="q-tc1">{@first}</span>
+      <span class="q-tc2">{@second}</span>
+    </div>
+    """
+  end
+
   ## Duration
 
   @doc """
@@ -3442,7 +3460,7 @@ defmodule ApiaryWeb.RunComponents do
     <span :if={@value == "connected" && !@invocation} class={["q-outcome", answer_tone(@status)]}>
       {gettext("Connected")}<span
         :if={@status}
-        class="q-status"
+        class="q-outcome-code"
         title={gettext("The host answered %{status}.", status: @status)}
       >{@status}</span>
     </span>
