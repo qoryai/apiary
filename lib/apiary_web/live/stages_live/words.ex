@@ -34,6 +34,18 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   def gate_line(_stage, _people), do: gettext("Gate: a member approves")
 
+  # The gate under the heading Gate, in a member's read-only panel.
+  @doc false
+  def gate_value(%{"gate" => %{"kind" => "none"}}, _people), do: gettext("None")
+
+  def gate_value(%{"gate" => %{"approvers" => %{"members" => [id]}}}, people),
+    do: gettext("%{person} approves", person: person(people, id))
+
+  def gate_value(%{"gate" => %{"approvers" => %{"members" => ids}}}, people),
+    do: gettext("One of %{people} approves", people: people(people, ids))
+
+  def gate_value(_stage, _people), do: gettext("A member approves")
+
   # The name of the person with the user id `id`, or the words for one who left.
   @doc false
   def person(people, id), do: Map.get(people, id) || gettext("a former member")

@@ -58,6 +58,15 @@ defmodule ApiaryWeb.StagesLiveTest do
     |> Enum.map(&String.replace_prefix(&1, "stage-row-", ""))
   end
 
+  # The work items of the trial's assign form, in the order the page lists them.
+  defp assign_order(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(~s(#stages-assign-form input[type="checkbox"]))
+    |> LazyHTML.attribute("value")
+  end
+
   defp canvas_view(view) do
     [json] =
       view
@@ -180,8 +189,12 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stage-sequence",
-               "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
+               "Qory Apiary stores the machine type in the process. It does not choose the machine that runs the workflow."
              )
+
+      # No workflow, no machine field, no help text on it.
+      view |> element(~s(button[aria-label="Edit Shape"])) |> render_click()
+      refute has_element?(view, "#stage-sequence", "Qory Apiary stores the machine type")
 
       view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
       refute has_element?(view, "#stage-loop-1")
@@ -243,9 +256,18 @@ defmodule ApiaryWeb.StagesLiveTest do
       )
       |> render_change()
 
-      gate = "Gate: #{scope.user.email} approves"
+      gate = "Gate: #{ApiaryWeb.People.short(scope.user.email)} approves"
       assert card(view, "Explore")["gate"] == gate
       refute Jason.encode!(canvas_view(view)) =~ scope.user.id
+
+      # Any member and Named members sit under "A person approves", above "No gate".
+      gate_html = view |> element("#stage-gate") |> render()
+
+      [person, approvers, none] =
+        for marker <- ["stage-gate-kind-0", "stage-gate-approvers", "stage-gate-kind-1"],
+            do: :binary.match(gate_html, marker) |> elem(0)
+
+      assert person < approvers and approvers < none
 
       view |> form("#stage-form", stage: %{gate: %{kind: "none"}}) |> render_change()
       assert card(view, "Explore")["gate"] == "No gate"
@@ -272,7 +294,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> element("#stages-save") |> render_click()
 
       history = view |> element("#stages-history") |> render()
-      assert history =~ "Changed the gate of Explore: #{scope.user.email} approves."
+
+      assert history =~
+               "Changed the gate of Explore: #{ApiaryWeb.People.short(scope.user.email)} approves."
+
       refute history =~ scope.user.id
     end
 
@@ -298,9 +323,14 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
-    test "saves a version, with its changes in the history", %{conn: conn, path: path} do
+    test "saves a version, with its changes in the history", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
       {:ok, view, _html} = live(conn, path)
       view |> element("#stages-add") |> render_click()
+      assert has_element?(view, "#stages-dirty.badge-warning", "Unsaved changes")
       view |> element(~s(button[aria-label="Remove Release"])) |> render_click()
 
       view |> element("#stages-save") |> render_click()
@@ -310,6 +340,16 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stages-dirty")
       assert has_element?(view, "#stages-version-2", "Removed the stage Release.")
       assert has_element?(view, "#stages-version-2", "Added the stage New stage.")
+
+      # The author by name, as the policy history shows people, not by address.
+      author = ApiaryWeb.People.short(scope.user.email)
+      assert has_element?(view, "#stages-version-2", author <> ", ")
+      refute has_element?(view, "#stages-version-2", scope.user.email)
+
+      # A later refusal replaces the notice: the document is now the saved one.
+      render_hook(view, "save", %{"trial" => "false"})
+      refute has_element?(view, "#stages-notice")
+      assert has_element?(view, "#stages-save-note", "Nothing to save")
       assert has_element?(view, "#stages-version-1", "past")
     end
 
@@ -366,6 +406,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       scope: scope
     } do
       item = work_item_fixture(scope, %{title: "Web shop checkout"})
+      _other = work_item_fixture(scope, %{title: "Web shop search", external_ref: "acme/shop#13"})
       {:ok, view, _html} = live(conn, path)
 
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
@@ -373,9 +414,12 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert has_element?(view, "#stages-trial-title", "Trial: version 2")
       assert has_element?(view, "#stages-assign-form", "Web shop checkout")
+      order = assign_order(view)
 
       view |> form("#stages-assign-form", assign: %{items: [item.public_id]}) |> render_submit()
       refute has_element?(view, "[data-assign-error]")
+      assert has_element?(view, "#stages-notice", "Assigned 1 work item to version 2.")
+      assert assign_order(view) == order
 
       assert has_element?(view, ~s(#stages-assign-form input[value="#{item.public_id}"][checked]))
       [trial] = for v <- Processes.list_versions(scope.workspace), v.status == :trial, do: v
@@ -385,6 +429,26 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-notice", "Version 2 is now current.")
       refute has_element?(view, "#stages-trial")
       assert has_element?(view, "#stages-version-2", "Renamed the stage Explore to Discover.")
+    end
+
+    test "a drop of a trial with work items puts them back on the current version", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      item = work_item_fixture(scope, %{title: "Web shop checkout"})
+      {added, _id} = Draft.add_stage(Processes.current(scope.workspace).document, "Discover")
+      {:ok, trial} = Processes.save(scope, scope.workspace, added, trial: true)
+      {:ok, _item} = Processes.assign(scope, Repo.get!(WorkItem, item.id), trial)
+
+      {:ok, view, _html} = live(conn, path)
+      view |> element("#stages-drop-trial") |> render_click()
+
+      assert has_element?(
+               view,
+               "#stages-notice",
+               "Dropped version 2. Its work items are back on the current version."
+             )
     end
 
     test "a trial without the work item's stage keeps the work item, and a drop returns to current",
@@ -413,6 +477,8 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       view |> element("#stages-drop-trial") |> render_click()
       assert has_element?(view, "#stages-notice", "Dropped version 2.")
+      # The work item stayed on version 1, so the trial had none to give back.
+      refute has_element?(view, "#stages-notice", "Its work items")
       assert has_element?(view, "#stages-version-2", "dropped")
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
     end
@@ -524,6 +590,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute canvas_view(view)["editable"]
       assert has_element?(view, "#stage-panel-title", "Explore")
       assert has_element?(view, "#stage-panel", "explore-a-ticket, machine type default")
+      assert has_element?(view, "#stages-version", "Version 1, current.")
+      refute has_element?(view, "#stages-version", "Editing")
+      assert has_element?(view, "#stage-panel dd", "A member approves")
+      refute has_element?(view, "#stage-panel", "Gate: a member approves")
 
       for selector <-
             ~w(#stage-form #stages-add #stages-save #stages-save-trial #stages-process-form #stages-trial) do

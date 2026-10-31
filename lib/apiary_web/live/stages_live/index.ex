@@ -17,8 +17,11 @@ defmodule ApiaryWeb.StagesLive.Index do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :workflow_model
 
-  alias Apiary.{Organisations, Processes, WorkItems}
-  alias ApiaryWeb.SettingsComponents
+  import Ecto.Query, only: [from: 2]
+
+  alias Apiary.{Organisations, Processes, Repo, WorkItems}
+  alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.{People, SettingsComponents}
   alias ApiaryWeb.StagesLive.{ArtifactTypes, Draft, Words}
 
   @impl true
@@ -42,7 +45,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         declared: Processes.declared_workflows(workspace),
         types: ArtifactTypes.types(workspace),
         members: members,
-        people: Map.new(members, &{&1.user.id, &1.user.email}),
+        people: Map.new(members, &{&1.user.id, People.short(People.email(&1.user))}),
         work_items: [],
         assign_errors: [],
         save_errors: [],
@@ -69,6 +72,7 @@ defmodule ApiaryWeb.StagesLive.Index do
       stage_errors: %{},
       save_note: nil
     )
+    |> authors()
     |> refresh()
   end
 
@@ -78,10 +82,11 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp load_work_items(socket) do
     scope = socket.assigns.current_scope
 
-    # The open work items of the list's first page, each with the version it runs under.
+    # The open work items of the list's first page, newest first, each with the version it
+    # runs under. By creation, so an assign, which changes a work item, keeps the order.
     items =
       if socket.assigns.may do
-        for row <- WorkItems.list_work_items(scope).rows,
+        for row <- WorkItems.list_work_items(scope, %{sort: :created}).rows,
             item = WorkItems.get_by_public_id(scope, row.id),
             item != nil,
             do: item
@@ -196,9 +201,10 @@ defmodule ApiaryWeb.StagesLive.Index do
       do: {:noreply, edit_selected(socket, &Draft.remove_artifact(&1, key, at(at)))}
 
   def handle_event("discard", _params, socket),
-    do: {:noreply, socket |> assign(save_errors: [], notice: nil) |> load(socket.assigns.base)}
+    do: {:noreply, socket |> fresh() |> load(socket.assigns.base)}
 
   def handle_event("save", params, socket) do
+    socket = fresh(socket)
     %{current_scope: scope, draft: draft} = socket.assigns
     trial? = params["trial"] == "true"
 
@@ -229,6 +235,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   def handle_event("assign", params, socket) do
+    socket = fresh(socket)
     %{current_scope: scope, work_items: items} = socket.assigns
 
     case trial(socket.assigns.versions) do
@@ -242,7 +249,7 @@ defmodule ApiaryWeb.StagesLive.Index do
           for item <- items, item.public_id in chosen do
             case Processes.assign(scope, item, trial) do
               {:ok, _item} ->
-                :ok
+                if item.process_version_id == trial.id, do: :kept, else: :assigned
 
               {:error, {:missing_stage, stage_id}} ->
                 {:missing, missing_stage(item, stage_id, trial)}
@@ -256,7 +263,10 @@ defmodule ApiaryWeb.StagesLive.Index do
           [] ->
             {:noreply,
              socket
-             |> assign(assign_errors: for({:missing, error} <- results, do: error))
+             |> assign(
+               assign_errors: for({:missing, error} <- results, do: error),
+               notice: assigned(Enum.count(results, &(&1 == :assigned)), trial)
+             )
              |> load_work_items()}
 
           [reason | _] ->
@@ -266,6 +276,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   def handle_event("make_current", _params, socket) do
+    socket = fresh(socket)
     scope = socket.assigns.current_scope
 
     with %{} = trial <- trial(socket.assigns.versions),
@@ -283,6 +294,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   def handle_event("drop_trial", _params, socket) do
+    socket = fresh(socket)
     scope = socket.assigns.current_scope
 
     case trial(socket.assigns.versions) do
@@ -290,13 +302,18 @@ defmodule ApiaryWeb.StagesLive.Index do
         {:noreply, socket}
 
       trial ->
+        had_items? = Repo.exists?(from w in WorkItem, where: w.process_version_id == ^trial.id)
+
         case Processes.drop_trial(scope, trial) do
           {:ok, version} ->
             notice =
-              gettext(
-                "Dropped version %{number}. Its work items are back on the current version.",
-                number: version.number
-              )
+              if had_items?,
+                do:
+                  gettext(
+                    "Dropped version %{number}. Its work items are back on the current version.",
+                    number: version.number
+                  ),
+                else: gettext("Dropped version %{number}.", number: version.number)
 
             current = Processes.current(scope.workspace)
 
@@ -365,6 +382,26 @@ defmodule ApiaryWeb.StagesLive.Index do
     end
   end
 
+  # The accounts of the versions' authors, by user id (`ApiaryWeb.People.accounts/1`).
+  defp authors(socket),
+    do:
+      assign(socket, authors: People.accounts(Enum.map(socket.assigns.versions, & &1.author_id)))
+
+  # Each action starts with no message from an earlier one.
+  defp fresh(socket),
+    do: assign(socket, notice: nil, save_errors: [], save_note: nil, assign_errors: [])
+
+  defp assigned(0, _trial), do: nil
+
+  defp assigned(count, trial),
+    do:
+      ngettext(
+        "Assigned %{count} work item to version %{number}.",
+        "Assigned %{count} work items to version %{number}.",
+        count,
+        number: trial.number
+      )
+
   # One trial at a time (the canvas edits one): a trial save while the workspace has a
   # trial, made on this page or elsewhere, is refused here, as Apiary.Processes allows several.
   defp save(scope, draft, true, base) do
@@ -391,7 +428,12 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   defp reload(socket) do
     versions = Processes.list_versions(socket.assigns.current_scope.workspace)
-    socket |> assign(versions: versions, assign_errors: []) |> refresh() |> load_work_items()
+
+    socket
+    |> assign(versions: versions, assign_errors: [])
+    |> authors()
+    |> refresh()
+    |> load_work_items()
   end
 
   # The trial was not dropped: each of its work items in a stage that the current version
@@ -513,8 +555,8 @@ defmodule ApiaryWeb.StagesLive.Index do
         <div id="stages" class="grid gap-6">
           <div id="stages-version" class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <p class="text-[13.5px]/5">
-              {version_line(@base)}
-              <span :if={@dirty} id="stages-dirty" class="ml-2 text-warning-content">
+              {version_line(@base, @may)}
+              <span :if={@dirty} id="stages-dirty" class="badge badge-sm badge-warning ml-2">
                 {gettext("Unsaved changes")}
               </span>
             </p>
@@ -566,7 +608,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             data-stylesheet={~p"/assets/js/canvas.css"}
             data-view={Jason.encode!(view(assigns))}
             data-words={Jason.encode!(canvas_words())}
-            class="h-64 overflow-hidden rounded-box border border-base-300 bg-base-200 sm:h-72"
+            class="h-60 overflow-hidden rounded-box border border-base-300 bg-base-200"
           >
             <div data-canvas class="h-full w-full"></div>
             <p data-canvas-failed hidden class="p-4 text-[13px]/5 text-muted">
@@ -783,7 +825,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                   </span>
                   <span class="ml-2 badge badge-sm">{status_word(version.status)}</span>
                   <span class="ml-2 text-muted">
-                    {author_line(version, @members)}
+                    {author_line(version, @authors)}
                   </span>
                 </p>
                 <ul class="grid gap-0.5 text-[13px]/5 text-muted">
@@ -828,7 +870,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         <dd :for={item <- @stage["outputs"]}>{artifact_line(item)}</dd>
         <dd :if={@stage["outputs"] == []}>{gettext("None")}</dd>
         <dt class="font-medium">{gettext("Gate")}</dt>
-        <dd>{Words.gate_line(@stage, @people)}</dd>
+        <dd>{Words.gate_value(@stage, @people)}</dd>
       </dl>
     </section>
     """
@@ -922,7 +964,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               {gettext("Add loop")}
             </.button>
           </div>
-          <p class="text-[13px]/5 text-muted">{machine_hint()}</p>
+          <p :if={@stage["sequence"] != []} class="text-[13px]/5 text-muted">{machine_hint()}</p>
         </fieldset>
 
         <.artifacts key="inputs" stage={@stage} types={@types} />
@@ -930,16 +972,20 @@ defmodule ApiaryWeb.StagesLive.Index do
 
         <fieldset id="stage-gate" class="grid gap-2">
           <legend class="mb-1 text-[13.5px]/5 font-medium">{gettext("Gate")}</legend>
-          <.input
-            id="stage-gate-kind"
-            name="stage[gate][kind]"
-            type="radio"
-            value={@stage["gate"]["kind"]}
-            options={[
-              {gettext("A person approves before the work item moves on"), "person"},
-              {gettext("No gate: the work item moves on when the sequence ends"), "none"}
-            ]}
-          />
+          <label
+            for="stage-gate-kind-0"
+            class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+          >
+            <input
+              type="radio"
+              id="stage-gate-kind-0"
+              name="stage[gate][kind]"
+              value="person"
+              checked={@stage["gate"]["kind"] == "person"}
+              class="radio radio-sm radio-primary"
+            />
+            <span>{gettext("A person approves before the work item moves on")}</span>
+          </label>
           <div :if={@stage["gate"]["kind"] == "person"} class="grid gap-2 pl-6">
             <.input
               id="stage-gate-approvers"
@@ -984,6 +1030,20 @@ defmodule ApiaryWeb.StagesLive.Index do
               </label>
             </div>
           </div>
+          <label
+            for="stage-gate-kind-1"
+            class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+          >
+            <input
+              type="radio"
+              id="stage-gate-kind-1"
+              name="stage[gate][kind]"
+              value="none"
+              checked={@stage["gate"]["kind"] == "none"}
+              class="radio radio-sm radio-primary"
+            />
+            <span>{gettext("No gate: the work item moves on when the sequence ends")}</span>
+          </label>
         </fieldset>
       </.form>
     </section>
@@ -1105,11 +1165,11 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   ## Words
 
-  # The machine type is stored and sent with each run (decision D5); no claim reads it.
+  # The machine type is stored in the process (decision D5); no run or claim reads it yet.
   defp machine_hint,
     do:
       gettext(
-        "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
+        "Qory Apiary stores the machine type in the process. It does not choose the machine that runs the workflow."
       )
 
   defp canvas_words do
@@ -1124,9 +1184,16 @@ defmodule ApiaryWeb.StagesLive.Index do
     }
   end
 
-  defp version_line(version),
+  defp version_line(version, true),
     do:
       gettext("Editing version %{number}, %{status}.",
+        number: version.number,
+        status: status_word(version.status)
+      )
+
+  defp version_line(version, false),
+    do:
+      gettext("Version %{number}, %{status}.",
         number: version.number,
         status: status_word(version.status)
       )
@@ -1136,20 +1203,17 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp status_word(:past), do: gettext("past")
   defp status_word(:dropped), do: gettext("dropped")
 
-  defp author_line(%{author_id: nil, inserted_at: at}, _members),
+  defp author_line(%{author_id: nil, inserted_at: at}, _authors),
     do: gettext("Copied from the workspace type, %{date}", date: Format.date(at))
 
-  defp author_line(%{author_id: id, inserted_at: at}, members) do
-    who =
-      case Enum.find(members, &(&1.user.id == id)) do
-        nil -> gettext("a former member")
-        m -> m.user.email
-      end
-
+  # The author by the short form of their address, as the policy history shows people
+  # (`ApiaryWeb.People`), whether or not they are still a member: "Former member" for an
+  # account that is gone.
+  defp author_line(%{author_id: id, inserted_at: at}, authors) do
+    who = authors |> People.account(id) |> People.short()
     gettext("%{person}, %{date}", person: who, date: Format.date(at))
   end
 
-  # Newest first, each with the version before it by number.
   # Each version with the version its save started from (`based_on_id`), so a version
   # saved from v1 after a dropped trial v2 lists its changes against v1.
   defp with_older(versions) do
