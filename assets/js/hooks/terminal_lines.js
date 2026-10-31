@@ -1,7 +1,7 @@
 // The Collapsed view of a run's terminal (docs/ui.md, The terminal), without a page:
 // the Terminal hook (terminal.js) feeds the log's bytes in and writes what comes out to
-// xterm.js. A log's line that is a JSON object becomes one row; every other line stays
-// its bytes.
+// xterm.js. A log's line of up to 16 MiB that is a JSON object becomes one row; every other
+// line stays its bytes.
 //
 // JSON escapes control characters, so a decoded string is more dangerous than the line it
 // came from: "\u001b[2J" is six plain characters in the raw log and a live escape sequence
@@ -219,7 +219,8 @@ export const ANCHOR_ROWS = 1000
 
 // The places of rows in xterm.js's buffer. One marker in `ANCHOR_ROWS` rows moves with the
 // buffer, and a row is its offset from that marker. Each anchor has its distance from the
-// one before (`at`), so a row whose marker the scrollback dropped is found from a later one.
+// first anchor (`at`), so a row whose marker the scrollback dropped is found from a later
+// one.
 export class Anchors {
   constructor() {
     this.all = []

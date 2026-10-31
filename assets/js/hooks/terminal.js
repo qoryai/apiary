@@ -11,9 +11,9 @@
 //
 // A run on pipes has two views, the reader's choice in localStorage. Raw hands the bytes
 // over as they are and interprets none of them. Collapsed, the default, cuts the stream
-// into lines (terminal_lines.js): a line that is a JSON object is one row of the screen, with
-// no control character of its decoded text, and every other line passes through as its
-// bytes. xterm.js cannot rewrite a row above the end, so the lines stay here: a click on a
+// into lines (terminal_lines.js): a line of up to 16 MiB that is a JSON object is one row of
+// the screen, with no control character of its decoded text, and every other line passes
+// through as its bytes. xterm.js cannot rewrite a row above the end, so the lines stay here: a click on a
 // row (a link provider) opens it to the object, printed, or closes it, and the screen is
 // written again at the same scroll position. Search reads only the screen, so typing in
 // it shows Raw. A pseudo-terminal's output is cursor movement, not lines: it has Raw alone.
@@ -693,7 +693,8 @@ export const Terminal = {
     return part.length
   },
 
-  // The row just written, one line above the cursor. The alternate buffer has no markers.
+  // The row just written, one line above the cursor. A row in the alternate buffer gets no
+  // place: its lines are not the normal buffer's.
   placeRow(line) {
     const buffer = this.term.buffer.active
     if (buffer.type !== "normal") return

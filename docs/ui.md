@@ -1801,13 +1801,12 @@ other page. The screen is `role="log"` with `aria-live="off"`.
   the reader's choice kept in `localStorage`. A run on a pseudo-terminal has none: its log
   is cursor movement, and it stays Raw. Raw is the bytes as they are, with the note under
   the box; Collapsed has no note. Collapsed cuts the stream into lines in `terminal_lines.js`:
-  a line that starts with `{` and parses to a JSON object is one row of the screen, with a
-  marker, its `type` and `subtype`, a preview (its `result`, else the first text in
+  a line of up to 16 MiB that starts with `{` and parses to a JSON object is one row of the
+  screen, with a marker, its `type` and `subtype`, a preview (its `result`, else the first text in
   `message.content`, cut to the row) and its size, as "> result success  API Error: 400 ...
   1.1 kB"; every other line passes through as its bytes. A click on a row opens it to the
-  object, printed, and a click on the row closes it; a row whose printed object is over
-  1 MiB shows Raw instead. xterm.js cannot rewrite a row above
-  the end, so the view keeps its lines and writes the screen again at the same scroll
+  object, printed, and a click on the row closes it; a row over 1 MiB, as a line or printed,
+  shows Raw instead. xterm.js cannot rewrite a row above the end, so the view keeps its lines and writes the screen again at the same scroll
   position, as it does when the box's width changes. A log of over 50,000 lines or 256 MiB
   shows Raw. Rows open by mouse alone; Raw and the link to the log as text are the way to
   read all of it by keyboard. Download is the same in both views.
