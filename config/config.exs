@@ -72,7 +72,7 @@ config :esbuild,
   version: "0.25.4",
   apiary: [
     args:
-      ~w(js/app.js js/terminal.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+      ~w(js/app.js js/terminal.js js/canvas.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=. --alias:react=./vendor/flow/react --alias:react-dom=./vendor/flow/react-dom --alias:scheduler=./vendor/flow/scheduler --define:process.env.NODE_ENV="production"),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]
