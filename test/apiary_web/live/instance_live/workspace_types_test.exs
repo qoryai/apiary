@@ -95,6 +95,8 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert has_element?(view, "#type-version", "Editing version 2.")
 
       assert LazyHTML.text(history(view, 2)) =~ "Renamed the stage Explore to Discover."
+      assert LazyHTML.text(history(view, 2)) =~ "Newest"
+      refute LazyHTML.text(history(view, 1)) =~ "Newest"
       assert LazyHTML.text(history(view, 1)) =~ "Qory Apiary default"
       assert LazyHTML.text(history(view, 1)) =~ "The first version."
     end
@@ -122,7 +124,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert has_element?(
                view,
                "[data-save-error]",
-               "A workspace type has no members to name. Choose Members."
+               ~s(A workspace type has no members to name. Choose "A person approves before the work item moves on.")
              )
 
       assert TypeTemplates.newest(@type_key).number == 1

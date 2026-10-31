@@ -235,7 +235,10 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   # A type's process lists no people (`Apiary.Processes.TypeTemplates.save/4`).
   def refusal(%{error: :named_approvers}, _doc),
-    do: gettext("A workspace type has no members to name. Choose Members.")
+    do:
+      gettext(
+        "A workspace type has no members to name. Choose \"A person approves before the work item moves on.\""
+      )
 
   def refusal(%{error: :duplicate_stage_id}, _doc),
     do: gettext("Two stages have the same id. Reload the page, then make the change again.")

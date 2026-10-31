@@ -3502,7 +3502,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "A workspace type has no members to name. Choose Members."
+msgid "A workspace type has no members to name. Choose \"A person approves before the work item moves on.\""
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -10997,6 +10997,7 @@ msgid "Newer"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format

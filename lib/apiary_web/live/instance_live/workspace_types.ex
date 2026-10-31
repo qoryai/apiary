@@ -324,6 +324,9 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
                   <span class="font-medium">
                     {gettext("Version %{number}", number: version.number)}
                   </span>
+                  <span :if={version.number == hd(@versions).number} class="ml-2 badge badge-sm">
+                    {gettext("Newest")}
+                  </span>
                   <span class="ml-2 text-muted">{author_line(version)}</span>
                 </p>
                 <ul class="grid gap-0.5 text-[13px]/5 text-muted">
