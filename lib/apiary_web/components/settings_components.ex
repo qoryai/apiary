@@ -18,7 +18,7 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.SecretLive.Index`), with the `factory` feature Work sources and
     Destinations (the tick lists of the set-up's steps), and Runs (how long it keeps runs,
     their events and their logs).
-  - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
+  - A node's (`/:org/:workspace/machines/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
 
@@ -174,14 +174,36 @@ defmodule ApiaryWeb.SettingsComponents do
           path: ~p"/#{organisation}/#{workspace}/settings/destinations"
         },
       # The workflow of the workspace's runs, with the `factory` feature, for whoever may
-      # save it.
-      Access.can?(scope, :"harness.save", workspace) &&
+      # save it. With `workflow_model`, Stages takes its place, for every member: the
+      # Stages page's Change leads to the harness choice that the Workflow page keeps.
+      if Features.visible?(scope, :workflow_model) do
+        Access.can?(scope, :"work_item.read", workspace) &&
+          %Entry{
+            section: :main,
+            key: :stages,
+            label: stages_label(),
+            icon: "hero-arrow-path-rounded-square",
+            path: ~p"/#{organisation}/#{workspace}/settings/stages"
+          }
+      else
+        Access.can?(scope, :"harness.save", workspace) &&
+          %Entry{
+            section: :main,
+            key: :workflow,
+            label: gettext("Workflow"),
+            icon: "hero-arrow-path-rounded-square",
+            path: ~p"/#{organisation}/#{workspace}/settings/workflow"
+          }
+      end,
+      # The workspace's artifact types, with the `workflow_model` feature, for whoever may
+      # edit them.
+      Access.can?(scope, :"artifact_type.edit", workspace) &&
         %Entry{
           section: :main,
-          key: :workflow,
-          label: gettext("Workflow"),
-          icon: "hero-arrow-path-rounded-square",
-          path: ~p"/#{organisation}/#{workspace}/settings/workflow"
+          key: :artifact_types,
+          label: gettext("Artifact types"),
+          icon: "hero-document-duplicate",
+          path: ~p"/#{organisation}/#{workspace}/settings/artifact-types"
         },
       %Entry{
         section: :main,
@@ -203,7 +225,7 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-adjustments-horizontal",
         path:
           if(node.workspace_id,
-            do: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings",
+            do: ~p"/#{organisation}/#{workspace}/machines/#{node}/settings",
             else: ~p"/#{organisation}/gateways/#{node}/settings"
           )
       }
@@ -951,4 +973,11 @@ defmodule ApiaryWeb.SettingsComponents do
     </.form>
     """
   end
+
+  @doc """
+  stages_label/0 is the name of Workspace settings › Stages, as its sidebar entry shows it,
+  for a text that leads a person there.
+  """
+  @spec stages_label() :: String.t()
+  def stages_label, do: gettext("Stages")
 end

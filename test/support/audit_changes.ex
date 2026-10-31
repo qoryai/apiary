@@ -143,7 +143,10 @@ defmodule Apiary.AuditChanges do
       :"secret.seal",
       :"run_credential.issue",
       :"process.edit",
-      :"gate.approve"
+      :"artifact.write",
+      :"artifact_type.edit",
+      :"gate.approve",
+      :"workspace_type.edit"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -934,8 +937,21 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
-  # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
-  # the limit.
+  # An instance admin's save of a workspace type's default process, in the trail of the
+  # instance's organisation, about the organisation.
+  def make(:"workspace_type.edit", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+    {:ok, _version} = attempt(:"workspace_type.edit", admin, nil)
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
   # A save of the workspace's process, a new current version: the workspace's entry.
   # A member approves Shape's gate on a work item of the workspace, about it.
   def make(:"gate.approve", %{scope: scope} = ctx) do
@@ -951,6 +967,24 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
   end
 
+  # A person stores a version of an artifact on a work item of the workspace: the work
+  # item's entry.
+  def make(:"artifact.write", %{scope: scope} = ctx) do
+    work_item = prepare(:"artifact.write", ctx)
+    before = entries()
+    {:ok, _version} = attempt(:"artifact.write", scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  # A custom artifact type added to the workspace: the workspace's entry.
+  def make(:"artifact_type.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, _type} = attempt(:"artifact_type.edit", scope, nil)
+    %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
+  end
+
+  # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
+  # the limit.
   def make(:"time_limit.edit", %{scope: scope}) do
     before = entries()
     {:ok, limit} = Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
@@ -1043,6 +1077,12 @@ defmodule Apiary.AuditChanges do
   def refuse(:"instance.rename", %{scope: scope}) do
     before = entries()
     {before, Apiary.ProductName.rename(scope, %{"product_name" => "Acme Agents"})}
+  end
+
+  # Anyone but an instance admin: the owner of an organisation that is not the instance's.
+  def refuse(:"workspace_type.edit", %{scope: scope}) do
+    before = entries()
+    {before, attempt(:"workspace_type.edit", scope, nil)}
   end
 
   # An instance admin whose sign-in is no longer recent signs in again first, for the
@@ -1485,6 +1525,8 @@ defmodule Apiary.AuditChanges do
        when action in @work_item_moves or action in @work_item_comments,
        do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
+  defp prepare(:"artifact.write", %{scope: scope}), do: work_item_fixture(scope)
+
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -1670,7 +1712,17 @@ defmodule Apiary.AuditChanges do
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
 
   defp attempt(:"gate.approve", scope, work_item),
-    do: Apiary.Stages.approve(scope, work_item, nil)
+    do: Apiary.Stages.approve(scope, work_item, nil, expect_stage: work_item.stage_id)
+
+  defp attempt(:"workspace_type.edit", scope, _) do
+    document = Apiary.Processes.default_document("software")
+    [explore | rest] = document["stages"]
+
+    Apiary.Processes.TypeTemplates.save(scope, "qory.software", %{
+      document
+      | "stages" => [%{explore | "name" => "Understand"} | rest]
+    })
+  end
 
   defp attempt(:"process.edit", scope, _) do
     document = Apiary.Processes.default_document("software")
@@ -1679,6 +1731,30 @@ defmodule Apiary.AuditChanges do
     Apiary.Processes.save(scope, scope.workspace, %{
       document
       | "stages" => [%{explore | "name" => "Understand"} | rest]
+    })
+  end
+
+  # The push keeps its file in a store under the system's temporary folder, set for the
+  # push alone and removed after it.
+  defp attempt(:"artifact.write", scope, work_item) do
+    dir = Path.join(System.tmp_dir!(), "apiary-audit-#{System.unique_integer([:positive])}")
+    previous = Application.get_env(:apiary, :artifacts_dir)
+    Application.put_env(:apiary, :artifacts_dir, dir)
+
+    try do
+      Apiary.Artifacts.push({:person, scope}, work_item, "explainer", [
+        %{filename: "notes.md", binary: "# Notes\n\nThe gift card field."}
+      ])
+    after
+      Application.put_env(:apiary, :artifacts_dir, previous)
+      File.rm_rf!(dir)
+    end
+  end
+
+  defp attempt(:"artifact_type.edit", scope, _) do
+    Apiary.Artifacts.create_type(scope, scope.workspace, %{
+      "name" => "demo-findings",
+      "base_view" => "document"
     })
   end
 

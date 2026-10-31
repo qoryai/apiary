@@ -529,7 +529,8 @@ defmodule Apiary.Dispatches do
   end
 
   # end_held/4 ends the waiting runs of the work items `work_item_ids`, which the caller
-  # holds `FOR KEY SHARE`, that are not prebuilds, in the workspace `workspace_id`, of
+  # holds `FOR KEY SHARE`, or `FOR UPDATE` with the workflow model on
+  # (`Apiary.Environments.hold_build/2`), that are not prebuilds, in the workspace `workspace_id`, of
   # work items with `target`, `build_failed`, with the outcome `error`, with any stale
   # dispatch of them (`run_ended`), inside the caller's transaction
   # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
@@ -582,7 +583,8 @@ defmodule Apiary.Dispatches do
       end
 
     # Hand-over: with the workflow model, the stage runner acts on each run's end
-    # (`Apiary.Stages.run_ended/1`). It writes the work items, which the caller holds.
+    # (`Apiary.Stages.run_ended/2`). It writes the work items, which the caller holds
+    # `FOR UPDATE`.
     staged =
       if Apiary.Stages.on?(), do: Enum.flat_map(run_ids, &Apiary.Stages.run_ended/1), else: []
 
@@ -825,18 +827,20 @@ defmodule Apiary.Dispatches do
 
           case take(key, pool, through, now) do
             {:error, :unavailable} = error -> error
-            {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended}}
+            {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended, through}}
           end
         end
       end)
 
     case result do
-      {:ok, {taken, freed}} ->
+      {:ok, {taken, freed, through}} ->
         # Hand-over: with the workflow model, the stage runner acts on the end of each run
         # the claim ended, once the claim commits, in a transaction of its own that locks
-        # the work item before the run (`Apiary.Stages.claim_ended/1`).
+        # the work item before the run, with the claim's gateway and its keys, which its
+        # text of why a run stopped reads (`Apiary.Stages.claim_ended/2`).
         {staged, freed} = Enum.split_with(freed, &match?({:stage_run, _id}, &1))
-        broadcast(freed ++ Apiary.Stages.claim_ended(Enum.map(staged, &elem(&1, 1))))
+        ids = Enum.map(staged, &elem(&1, 1))
+        broadcast(freed ++ Apiary.Stages.claim_ended(ids, Map.take(through, [:gateway, :keys])))
         Handover.broadcast_run({:ok, %{run: registered(taken)}})
         {:ok, taken}
 

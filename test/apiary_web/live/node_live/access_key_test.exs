@@ -32,7 +32,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   @fixture_public_key "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
 
   defp tab_path(scope, node, rest \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key" <> rest
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/access-key" <> rest
 
   # A key's row changed behind the application's back: its integrity code no longer fits.
   defp tamper(%AccessKey{id: id}),
@@ -139,7 +139,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(
                lv,
-               ~s{#node-tabs-overview[href="#{~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}"}"]}
+               ~s{#node-tabs-overview[href="#{~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}"}"]}
              )
 
       refute has_element?(lv, "#not-on-runs")
@@ -340,7 +340,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         live(conn, tab_path(scope, node, "/keys/#{elsewhere.key_id}/revoke"))
         |> follow_redirect(conn, tab_path(scope, node))
 
-      assert html =~ "This node has no such key."
+      assert html =~ "This machine has no such key."
       assert is_nil(Repo.get!(AccessKey, elsewhere.id).revoked_at)
     end
 
@@ -392,7 +392,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     assert_patch(lv, tab_path(scope, node))
 
     assert lv |> element("#flash-group") |> render() =~
-             "That key or code is gone: this node&#39;s keys changed meanwhile."
+             "That key or code is gone: this machine&#39;s keys changed meanwhile."
   end
 
   describe "the pages a way opens" do
@@ -577,7 +577,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert words(lv, "#key-forager-file-belongs") ==
                "The same for every machine connected to this Qory Apiary."
 
-      assert words(lv, "#key-forager-file-steps-4") =~ "4 Point the node pool at Qory Apiary."
+      assert words(lv, "#key-forager-file-steps-4") =~ "4 Point the pool at Qory Apiary."
 
       assert lv |> element("#key-forager-file-url") |> render() |> text() |> String.trim() ==
                "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
@@ -595,7 +595,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       for {rest, words} <- [
             {"/keys/#{revoked.key_id}/forager-file", "old is revoked."},
-            {"/keys/ak_0000000000000000/forager-file", "This node has no such key."}
+            {"/keys/ak_0000000000000000/forager-file", "This machine has no such key."}
           ] do
         {:ok, lv, html} =
           live(conn, tab_path(scope, node, rest)) |> follow_redirect(conn, tab_path(scope, node))
@@ -1013,7 +1013,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
       assert words(lv, "#node-add-full") ==
-               "build-01 holds two keys, the most a node can. Revoke the one it no longer uses to add another."
+               "build-01 has two keys, the most a machine can have. Revoke the one it no longer uses to add another."
 
       assert has_element?(
                lv,
@@ -1213,7 +1213,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect spot-runners?")
 
       assert words(lv, "#node-connect-intro") ==
-               "spot-runners connects to Qory Apiary with a key; its instances share one. Choose one of two ways to give it one."
+               "spot-runners connects to Qory Apiary with a key; its machines share one. Choose one of two ways to give it one."
 
       assert ways(lv, "#node-ways") ==
                {~w(key-generate-button code-new-button), ["key-generate-button"]}
@@ -1231,7 +1231,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-add-title", "Add a key")
 
       assert words(lv, "#node-add-intro") ==
-               "To move build-01 to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node holds two keys at most."
+               "To move build-01 to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A machine has two keys at most."
 
       assert ways(lv, "#node-ways") == {~w(code-new-button key-generate-button), []}
 
@@ -1244,10 +1244,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, pool))
       assert ways(lv, "#node-ways") == {~w(key-generate-button code-new-button), []}
 
-      assert words(lv, "#node-add-intro") =~ "A node pool holds two keys at most."
+      assert words(lv, "#node-add-intro") =~ "A pool has two keys at most."
 
       assert words(lv, "#node-keys-intro") ==
-               "The instances of spot-runners sign every request with the pool's key. Qory Apiary keeps only the public half."
+               "The machines of spot-runners sign every request with the pool's key. Qory Apiary keeps only the public half."
 
       {:ok, _} = AccessKeys.revoke_access_key(scope, key)
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
@@ -1275,7 +1275,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert words(lv, "#node-configure-lead") ==
                  "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice. With a generated key, set these where the machine runs qory."
 
-        pointed = if target.kind == :pool, do: "the node pool", else: "the node"
+        pointed = if target.kind == :pool, do: "the pool", else: "the machine"
 
         assert words(lv, "#node-configure-steps-1") =~
                  "1 Point #{pointed} at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables below."
@@ -1362,7 +1362,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
       assert words(lv, "#node-add-full") ==
-               "build-01 holds two keys, the most a node can. Revoke the one it no longer uses to add another."
+               "build-01 has two keys, the most a machine can have. Revoke the one it no longer uses to add another."
 
       refute has_element?(lv, "#code-new-button")
       refute has_element?(lv, "#key-generate-button")
@@ -1370,7 +1370,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, pool))
 
       assert words(lv, "#node-add-full") ==
-               "spot-runners holds two keys, the most a node pool can. Revoke the one it no longer uses to add another."
+               "spot-runners has two keys, the most a pool can have. Revoke the one it no longer uses to add another."
     end
   end
 
@@ -1532,7 +1532,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/generate"))
 
       assert words(lv, "#key-generate-header-description") ==
-               "This browser makes a key for spot-runners. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory Apiary receives only the public half. The key's ID stays on the Access key tab."
+               "This browser makes a key for spot-runners. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the machines; Qory Apiary receives only the public half. The key's ID stays on the Access key tab."
 
       assert has_element?(
                lv,
@@ -1605,7 +1605,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute render(lv) =~ "plain setting"
 
       assert words(lv, "#key-generated-steps-4") =~
-               "4 Point the node pool at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."
+               "4 Point the pool at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."
 
       assert lv |> element("#key-generated-yaml") |> render() |> text() =~
                "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
@@ -1902,7 +1902,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       html = push_key(lv, browser_key(%{"label" => "ci"}))
       assert_reply(lv, reply)
       refute Map.has_key?(reply, :key_id)
-      assert html =~ "is already the label of a key of this node"
+      assert html =~ "is already the label of a key of this machine"
       assert has_element?(lv, "#key-generate-form")
       assert length(AccessKeys.list_for_node(scope, node)) == 1
     end
@@ -1959,7 +1959,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       for {key, words} <- [
             {others, "others is revoked."},
-            {elsewhere, "This node has no such key."}
+            {elsewhere, "This machine has no such key."}
           ] do
         {:ok, _lv, html} =
           live(conn, generated_path(scope, node, key.key_id))
@@ -1977,14 +1977,14 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         live(conn, tab_path(scope, node, "/generate"))
         |> follow_redirect(conn, tab_path(scope, node))
 
-      assert html =~ "Only owners and admins add a node&#39;s keys."
+      assert html =~ "Only owners and admins add a machine&#39;s keys."
 
       # The event, pushed from the tab they may read: refused, no key, nothing written.
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
       push_key(lv, browser_key())
       assert_reply(lv, reply)
       refute Map.has_key?(reply, :key_id)
-      assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
+      assert render(lv) =~ "Only owners and admins manage a machine&#39;s keys."
 
       assert AccessKeys.list_for_node(scope, node) == []
       assert add_entries(node) == []
@@ -2040,7 +2040,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#node-keys-members",
-               "Only owners and admins manage a node's keys."
+               "Only owners and admins manage a machine's keys."
              )
 
       assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
@@ -2059,10 +2059,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       conn = member_conn(scope)
 
       for {rest, words} <- [
-            {"/generate", "Only owners and admins add a node's keys."},
-            {"/new-code", "Only owners and admins connect a node."},
-            {"/keys/#{key.key_id}/revoke", "Only owners and admins manage a node's keys."},
-            {"/codes/#{row.id}/revoke", "Only owners and admins manage a node's keys."}
+            {"/generate", "Only owners and admins add a machine's keys."},
+            {"/new-code", "Only owners and admins connect a machine."},
+            {"/keys/#{key.key_id}/revoke", "Only owners and admins manage a machine's keys."},
+            {"/codes/#{row.id}/revoke", "Only owners and admins manage a machine's keys."}
           ] do
         {:ok, _lv, html} =
           live(conn, tab_path(scope, node, rest)) |> follow_redirect(conn, tab_path(scope, node))
@@ -2083,7 +2083,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         render_hook(lv, event, params)
 
         assert lv |> element("#flash-group") |> render() =~
-                 "Only owners and admins manage a node&#39;s keys."
+                 "Only owners and admins manage a machine&#39;s keys."
       end
 
       assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
@@ -2103,7 +2103,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-    assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
+    assert render(lv) =~ "Only owners and admins manage a machine&#39;s keys."
     assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
   end
 
@@ -2118,7 +2118,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     render_hook(lv, "generate_key", %{"key" => browser_key()})
-    assert render(lv) =~ "Only owners and admins add a node&#39;s keys."
+    assert render(lv) =~ "Only owners and admins add a machine&#39;s keys."
     assert AccessKeys.list_for_node(scope, node) == []
 
     assert Repo.all(
@@ -2127,7 +2127,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
            ) == []
   end
 
-  test "a node of another workspace or organisation is not found", %{conn: conn, scope: scope} do
+  test "a machine or pool of another workspace or organisation is not found", %{
+    conn: conn,
+    scope: scope
+  } do
     other_workspace = node_fixture(%{scope | workspace: workspace_fixture(scope.organisation)})
     other_organisation = node_fixture(sign_up_fixture().scope)
 

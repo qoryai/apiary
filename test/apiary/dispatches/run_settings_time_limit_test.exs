@@ -68,13 +68,14 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   describe "with the workflow model, a run of a stage entry with limits" do
     @describetag needs: [:factory, :workflow_model]
 
-    # The workspace's process: Explore runs explore-a-ticket with `limits`.
-    defp entry_limits!(%{scope: scope}, limits) do
+    # The workspace's process: Explore runs `workflow`, explore-a-ticket by default, with
+    # `limits`.
+    defp entry_limits!(%{scope: scope}, limits, workflow \\ "explore-a-ticket") do
       stage = %{
         "id" => "st_r79kph11eg",
         "name" => "Explore",
         "inputs" => [],
-        "sequence" => [Map.merge(%{"workflow" => "explore-a-ticket"}, limits)],
+        "sequence" => [Map.merge(%{"workflow" => workflow}, limits)],
         "outputs" => [],
         "gate" => %{"kind" => "person", "approvers" => "members"}
       }
@@ -83,10 +84,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _version} = Apiary.Processes.save(scope, scope.workspace, document)
     end
 
-    test "sends the lower of the entry's and the stack's time limit", ctx do
+    test "sends the lower of the entry's and the resolved time limit; explore-a-ticket's by the saved workflow",
+         ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
+      # Transition: explore-a-ticket resolves its limit as today's Explore run does.
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 30)
 
       entry_limits!(ctx, %{"time_limit" => "45m"})
       assert %{"time_limit_minutes" => 45} = settings(claim!(ctx, place))
@@ -95,15 +99,31 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
     end
 
-    test "sends the entry's limit with none from the stack, at least 15 minutes", ctx do
+    test "sends no limit when none resolved, as the entry only lowers one", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
 
       entry_limits!(ctx, %{"time_limit" => "1h30m"})
-      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+      refute Map.has_key?(settings(claim!(ctx, place)), "time_limit_minutes")
+    end
+
+    test "lowers to at least 15 minutes", ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
       entry_limits!(ctx, %{"time_limit" => "5m"})
       assert %{"time_limit_minutes" => 15} = settings(claim!(ctx, place))
+    end
+
+    test "any other workflow resolves its limit by the name its entry names", ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 30)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
+
+      entry_limits!(ctx, %{"time_limit" => "2h"}, "review")
+      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
     end
 
     test "reads the target when the entry's access is read, whatever the walk resolved",

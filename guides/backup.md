@@ -1,13 +1,17 @@
 # Backup and restore
 
-Postgres is the only state of Qory Apiary. The container holds nothing that a restart does
-not rebuild, and nothing is written to a disk outside the database but the keys, which
-`compose.yaml` keeps in the volume `keys`. A backup is therefore four things:
+Qory Apiary keeps its state in Postgres and in the artifact store, the folder that holds
+the files of artifacts: the volume `artifacts` with `compose.yaml`, or the folder
+`QORY_ARTIFACTS_DIR` is set to (`/var/lib/apiary/artifacts` when it is not set). The
+container holds nothing else that a restart does not rebuild, and nothing else is written
+to a disk but the keys, which `compose.yaml` keeps in the volume `keys`. A backup is
+therefore five things:
 
 1. a dump of the database;
-2. `APIARY_ENCRYPTION_SECRET`;
-3. `APIARY_SIGNING_SECRET`;
-4. `SECRET_KEY_BASE`.
+2. a copy of the artifact store, taken after the dump;
+3. `APIARY_ENCRYPTION_SECRET`;
+4. `APIARY_SIGNING_SECRET`;
+5. `SECRET_KEY_BASE`.
 
 Keep the three values beside the dumps and not inside them, in a password manager or a
 secret store: a dump restored without its `APIARY_ENCRYPTION_SECRET` does not start, and a
@@ -57,6 +61,30 @@ pg_dump --format=custom --no-owner --file=qory.dump "postgres://USER:PASS@HOST/D
 A managed Postgres with built-in snapshots and point-in-time recovery does the same job. Test
 its restore the same way.
 
+### The artifact store
+
+Copy the store after the dump. Each file in the store is named by the SHA-256 digest of
+its content, a push stores its files before it writes their rows, and Qory Apiary deletes
+no stored file, so a copy taken after the dump has every file the dump lists. Files pushed
+after the dump are in the copy too; the restored database does not list them, and they
+take space and do nothing else. Files whose names start with `.staging-` are copies of a
+push that has not finished, and the commands below leave them out.
+
+With `compose.yaml`, from the directory that holds it:
+
+```sh
+docker compose exec -T apiary tar -C /var/lib/apiary/artifacts --exclude='./.staging-*' -cf - . > qory-artifacts.tar
+```
+
+With a release run outside `compose.yaml`, as a user that can read the folder:
+
+```sh
+tar -C /var/lib/apiary/artifacts --exclude='./.staging-*' -cf qory-artifacts.tar .
+```
+
+Use the folder `QORY_ARTIFACTS_DIR` is set to, where it is set. Keep `qory-artifacts.tar`
+as you keep the database dump: it contains the content of every artifact.
+
 ### How often
 
 [Retention](retention.md) deletes old rows for good: what it pruned comes back from a backup
@@ -96,12 +124,18 @@ hand. Then:
 ```sh
 docker compose up -d postgres
 docker compose exec -T postgres pg_restore -U apiary -d apiary --no-owner < qory.dump
+docker compose run --rm -T --no-deps --entrypoint tar apiary -C /var/lib/apiary/artifacts -xf - < qory-artifacts.tar
 docker compose up -d
 ```
 
 The first command runs the service `keys` and starts Postgres alone, which creates the
-empty database `apiary` with the backup's database password. The last starts the server,
-which migrates and serves.
+empty database `apiary` with the backup's database password. The third puts the copy of
+the artifact store into the volume `artifacts`, as the user the image runs as. The last
+starts the server, which migrates and serves.
+
+With a release run outside `compose.yaml`, restore the store before the release starts,
+as the user the release runs as: `tar -C /var/lib/apiary/artifacts -xf qory-artifacts.tar`,
+or the folder `QORY_ARTIFACTS_DIR` is set to.
 
 Over an installation that already has data, stop the server and empty the database first:
 
@@ -110,6 +144,7 @@ docker compose stop apiary
 docker compose exec -T postgres dropdb -U apiary apiary
 docker compose exec -T postgres createdb -U apiary apiary
 docker compose exec -T postgres pg_restore -U apiary -d apiary --no-owner < qory.dump
+docker compose run --rm -T --no-deps --entrypoint tar apiary -C /var/lib/apiary/artifacts -xf - < qory-artifacts.tar
 docker compose up -d
 ```
 
@@ -121,8 +156,8 @@ Create an empty database that the role of `DATABASE_URL` may create tables in, t
 pg_restore --no-owner --dbname="postgres://USER:PASS@HOST/DATABASE" qory.dump
 ```
 
-Start the release afterwards, with the keys of the backup: with `compose.yaml`, put them in
-`.env` as above.
+Restore the copy of the artifact store as above, then start the release, with the keys of
+the backup: with `compose.yaml`, put them in `.env` as above.
 
 ### Check it
 
@@ -133,8 +168,8 @@ curl http://localhost:4100/health
 answers `200` with `"database":"ok"`: the instance started, so its `APIARY_ENCRYPTION_SECRET`
 and `APIARY_SIGNING_SECRET` are the ones the dump recorded, since another stops the boot
 and the log says which (What each key is for, below). Sign in, open **Runs**, and start a
-run on a machine connected to one of the workspace's nodes: if it appears, the keys'
-integrity codes verified, and the machine took the server's signed answers.
+run on one of the workspace's machines: if it appears, the keys' integrity codes
+verified, and the machine took the server's signed answers.
 
 ## What each key is for
 

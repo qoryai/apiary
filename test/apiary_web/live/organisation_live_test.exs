@@ -179,14 +179,14 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       conn = log_in_user(conn, user)
 
       assert_error_sent 404, fn -> get(conn, ~p"/#{organisation}/#{scope.workspace}") end
-      assert redirected_to(get(conn, ~p"/")) == ~p"/#{organisation}/#{scope.workspace}/nodes"
+      assert redirected_to(get(conn, ~p"/")) == ~p"/#{organisation}/#{scope.workspace}/machines"
 
       {:ok, view, _html} = live(conn, ~p"/#{organisation}")
 
       for workspace <- [scope.workspace, platform] do
         assert has_element?(
                  view,
-                 ~s(#workspace-#{workspace.id} a[href="/#{organisation.slug}/#{workspace.slug}/nodes"]),
+                 ~s(#workspace-#{workspace.id} a[href="/#{organisation.slug}/#{workspace.slug}/machines"]),
                  workspace.name
                )
       end
@@ -232,7 +232,7 @@ defmodule ApiaryWeb.OrganisationLiveTest do
 
       assert has_element?(
                view,
-               ~s(#added-open[href="/#{organisation.slug}/#{owner.workspace.slug}/nodes"]),
+               ~s(#added-open[href="/#{organisation.slug}/#{owner.workspace.slug}/machines"]),
                owner.workspace.name
              )
     end

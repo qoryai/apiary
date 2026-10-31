@@ -82,8 +82,8 @@ random part of an hour, and prunes every workspace that has a setting.
 - Each daily job prunes at most 10,000 runs of a workspace, oldest first, and the next
   daily job goes on. The first job after a setting is shortened is the long one.
 - Under the same lock, on every workspace whatever its settings, the job deletes the
-  instances of nodes the pages no longer show: a node pool's instances not seen for a
-  day, and a node's instances other than its latest not seen for thirty days. Runs keep
+  instances of machines and pools the pages no longer show: a pool's instances not seen for
+  a day, and a machine's instances other than its latest not seen for thirty days. Runs keep
   the instance id they were started under. The log line is `retention pruned node
   instances=<count>`, on a day that pruned any.
 - Postgres reuses the space of deleted rows; it does not give it back to the operating

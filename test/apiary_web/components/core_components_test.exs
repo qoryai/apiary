@@ -792,14 +792,14 @@ defmodule ApiaryWeb.CoreComponentsTest do
 
       html =
         rendered_to_string(~H"""
-        <CoreComponents.empty_state title="No nodes yet" heading="h1">
+        <CoreComponents.empty_state title="No machines yet" heading="h1">
           A node runs runs.
         </CoreComponents.empty_state>
         <CoreComponents.empty_state title="No runs match">Clear the filters.</CoreComponents.empty_state>
         """)
 
       doc = LazyHTML.from_fragment(html)
-      assert doc |> LazyHTML.query("h1[tabindex='-1']") |> LazyHTML.text() =~ "No nodes yet"
+      assert doc |> LazyHTML.query("h1[tabindex='-1']") |> LazyHTML.text() =~ "No machines yet"
       assert [_] = doc |> LazyHTML.query("h2:not([tabindex])") |> Enum.to_list()
     end
   end

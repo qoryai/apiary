@@ -614,10 +614,19 @@ defmodule Apiary.Dispatches.HandoverTest do
 
   describe "a run the claim cannot form" do
     test "with run variables that break their rules ends variables_invalid", ctx do
-      {_work_item, queued} = queued!(ctx, %{target_path: "acme/shop/web"})
+      {work_item, queued} = queued!(ctx, %{target_path: "acme/shop/web"})
 
-      assert claim(ctx) == {:ok, :none}
+      log = ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
       ended!(ctx, queued, :variables_invalid)
+
+      # One line in the instance's log, with the run, the variable and its rule.
+      assert [line] =
+               log |> String.split("\n") |> Enum.filter(&(&1 =~ "end_cause=variables_invalid"))
+
+      assert line =~ "[warning]"
+      assert line =~ "run_id=#{queued.run_id} work_item=#{work_item.public_id}"
+      assert line =~ "variable=QORY_RUN_REPOSITORIES rule=repositories_invalid"
+      assert line =~ "target_path=acme/shop/web"
     end
 
     test "whose software work item has no target ends inputs_invalid", ctx do
@@ -657,7 +666,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert %Apiary.Stages.Escalation{
                cause: :run_stopped,
                gaps:
-                 "The run did not start, because the work item's ticket is no longer in Qory Apiary."
+                 "The run did not start, because the work item's ticket is no longer in Qory Apiary.\n" <>
+                   "Close the work item, or take the ticket in again."
              } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: work_item.id)
 
       public_id = work_item.public_id

@@ -149,6 +149,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
 
     [
       back: SetUpComponents.flow_path(flow, list),
+      crumb: heading(card),
       page_title: heading(card)
     ]
   end
@@ -413,6 +414,7 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       sections={@sections}
       section={@section}
       crumb={@crumb}
+      back={@back}
     >
       <IntegrationComponents.chooser
         id="choose"
@@ -448,14 +450,15 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
   attr :sections, :list, doc: "the workspace's settings' sections, for `:settings`"
   attr :section, :atom, doc: "the step's section, for `:settings`"
 
-  attr :crumb, :string,
-    doc: "the chooser's heading, the breadcrumb's last segment, for `:settings`"
+  attr :crumb, :string, doc: "the chooser's heading, the breadcrumb's last segment"
+  attr :back, :string, doc: "the set-up's step, its segment of the breadcrumb, for `:set_up`"
 
   slot :inner_block, required: true
 
   # The chooser's frame: the set-up's, in the workspace's sidebar with the step current in
-  # its group Set up; or the workspace's settings, with the step's section current and the
-  # chooser's heading in the breadcrumb.
+  # its group Set up, the breadcrumb the step, a link to it, then the chooser's heading; or
+  # the workspace's settings, with the step's section current and the chooser's heading in
+  # the breadcrumb.
   defp page(%{action: :set_up} = assigns) do
     ~H"""
     <Layouts.app
@@ -466,7 +469,8 @@ defmodule ApiaryWeb.ChooseCollectionsLive do
       place={:workspace}
       set_up_step={@list}
     >
-      <:crumb>{SetUpComponents.step_label(@list)}</:crumb>
+      <:crumb navigate={@back}>{SetUpComponents.step_label(@list)}</:crumb>
+      <:crumb>{@crumb}</:crumb>
       <SetUpComponents.frame>
         {render_slot(@inner_block)}
       </SetUpComponents.frame>

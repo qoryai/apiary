@@ -561,13 +561,24 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   # A work item of another workspace moves to the scope's, numbered next there, right
-  # after the work item is held.
+  # after the work item is held. It leaves its place in the other workspace's process:
+  # it runs under the current version of the scope's workspace
+  # (`Apiary.Processes.version_for/1`).
   defp move(changeset, %WorkItem{workspace_id: workspace_id}, %Workspace{id: workspace_id}),
     do: changeset
 
   defp move(changeset, _ended, %Workspace{} = workspace),
     do:
-      Ecto.Changeset.change(changeset, workspace_id: workspace.id, number: Number.next(workspace))
+      Ecto.Changeset.change(changeset,
+        workspace_id: workspace.id,
+        number: Number.next(workspace),
+        process_version_id: nil,
+        stage_id: nil,
+        stage_state: nil,
+        stage_round: nil,
+        stage_entry: nil,
+        loop_entry: nil
+      )
 
   # How `work_item` had ended, for the undo of the take in again that leaves it.
   defp before(%WorkItem{} = work_item) do

@@ -203,7 +203,7 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("members users invitations")
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
-  defp also(%Entry{key: :nodes}), do: gettext("access keys machines enrolment pool")
+  defp also(%Entry{key: :nodes}), do: gettext("access keys nodes enrolment pool gateway")
   defp also(%Entry{key: :runs, section: :settings}), do: gettext("retention prune keep")
   defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")
