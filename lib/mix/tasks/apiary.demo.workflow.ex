@@ -24,11 +24,13 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       and is its instance admin, with the software workspace **Web shop**.
       **ana@example.com** joins as an admin, **max@example.com** as a member.
     * Dana saves the process until it has versions 1 to 3 (`Apiary.Processes.save/4`):
-      version 2 adds an optional acceptance-criteria output to Shape and makes it a
-      required input of Build; version 3 adds an optional mockup output to Shape and an
-      optional screenshot output to Verify.
+      version 2 adds an optional acceptance-criteria output to Shape, makes it a required
+      input of Build, and gives Build a loop of the workflows `capture-demo` and
+      `fix-demo-findings`, which the harness does not declare; version 3 removes that
+      loop again, and adds an optional mockup output to Shape and an optional screenshot
+      output to Verify.
     * The adapter **Tracker** is made and connected for Acme, with the repository
-      `acme/web-shop` in Web shop and its tickets; Dana and Max take eight of them in.
+      `acme/web-shop` in Web shop and its tickets; Dana and Max take nine of them in.
       With `workflow_model` on, a take in enters Explore.
     * The node pool **preview-pool** and its key. A run of Explore needs a gateway to be
       claimed, and the preview has none: the task hands a waiting run over in the
@@ -51,7 +53,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         acceptance-criteria document (Markdown with a Mermaid diagram) and a mockup
         image that Max added;
       * Remove the old promotion banner: acceptance criteria that Max added in Shape,
-        then Shape approved by Dana, Build at its gate.
+        then Shape approved by Dana, Build at its gate;
+      * Record a demo of the new checkout: on version 2, acceptance criteria that Max
+        added in Shape, then Shape approved by Dana, Build waiting for its workflows,
+        which the harness does not declare.
     * Last, Dana saves a trial version (Explore with 2 rounds instead of 3) and assigns
       the first work item to it.
 
@@ -123,7 +128,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     {:artifacts, :max, 107, "Show delivery dates on the product page",
      "The warehouse API has a date for each postcode; the page shows none."},
     {:approved, :dana, 108, "Remove the old promotion banner",
-     "The autumn promotion ended; the banner code is still shipped."}
+     "The autumn promotion ended; the banner code is still shipped."},
+    {:waiting_workflow, :dana, 109, "Record a demo of the new checkout",
+     "Sales asks for a short video of the three checkout steps."}
   ]
 
   @impl Mix.Task
@@ -427,13 +434,22 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     v2 =
       v1
       |> update_stage("Shape", &Map.put(&1, "outputs", [optional("acceptance-criteria")]))
-      |> update_stage(
-        "Build",
-        &Map.put(&1, "inputs", [%{"type" => "acceptance-criteria", "required" => true}])
-      )
+      |> update_stage("Build", fn stage ->
+        stage
+        |> Map.put("inputs", [%{"type" => "acceptance-criteria", "required" => true}])
+        |> Map.put("sequence", [
+          %{
+            "loop" => %{
+              "rounds" => 3,
+              "body" => [%{"workflow" => "capture-demo"}, %{"workflow" => "fix-demo-findings"}]
+            }
+          }
+        ])
+      end)
 
     v3 =
       v2
+      |> update_stage("Build", &Map.put(&1, "sequence", []))
       |> update_stage(
         "Shape",
         &Map.update!(&1, "outputs", fn outputs -> outputs ++ [optional("mockup")] end)
@@ -769,6 +785,28 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     approve!(ctx.dana, work_item, "The criteria cover the banner and its styles.")
   end
 
+  # On version 2, whose Build runs workflows the harness does not declare: Build does not
+  # start, and waits for them.
+  defp drive!(:waiting_workflow, ctx, work_item) do
+    work_item = drive!(:shape_gate, ctx, work_item)
+
+    version_2 =
+      Enum.find(Processes.list_versions(ctx.dana.workspace), &(&1.number == 2)) ||
+        Shell.raise!("Web shop has no process version 2")
+
+    ok!(Processes.assign(ctx.dana, work_item, version_2), "the work item on version 2")
+
+    push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
+      %{
+        filename: "acceptance-criteria.md",
+        content_type: "text/markdown",
+        binary: demo_criteria()
+      }
+    ])
+
+    approve!(ctx.dana, work_item, "Ready for the demo recording.")
+  end
+
   # Questions in each round, answered by Dana, until the stage escalates at its round
   # limit; at most one round more than the default process's three.
   defp rounds!(ctx, work_item, round) when round <= 4 do
@@ -842,9 +880,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     end
   end
 
-  # What a claim and its handover write, which need a gateway the preview does not have:
-  # the run of the queue handed over, and the run registered for it on the pool, under
-  # its key. Written to the database, in one transaction.
+  # Stands in for the claim and handover, which need a gateway the preview does not have:
+  # writes the handed-over run of the queue and its registered run straight to the
+  # database. For development only, as is the whole task.
   defp hand_over!(%DispatchRun{} = dispatch_run, key, now) do
     {:ok, run} =
       Repo.transact(fn ->
@@ -1018,6 +1056,17 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       C --> E[Show the date]
       D --> E
     ```
+    """
+  end
+
+  defp demo_criteria do
+    """
+    # Record a demo of the new checkout
+
+    ## Acceptance criteria
+
+    1. The video shows the address, delivery and payment steps in that order.
+    2. The video is at most two minutes long.
     """
   end
 

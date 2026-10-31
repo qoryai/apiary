@@ -141,7 +141,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
         Repo.all(from w in WorkItem, where: w.workspace_id == ^workspace.id)
         |> Map.new(&{&1.title, &1})
 
-      assert map_size(items) == 8
+      assert map_size(items) == 9
 
       at = fn title ->
         work_item = Map.fetch!(items, title)
@@ -207,12 +207,29 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert {shape_id, "approve", dana.user.id} in decisions(approved)
       assert Artifacts.newest(approved, "acceptance-criteria")
 
+      # On version 2, Build waits for capture-demo and fix-demo-findings, which the
+      # harness does not declare.
+      demo = items["Record a demo of the new checkout"]
+      assert at.(demo.title) == {"Build", "waiting_workflow"}
+      assert demo.process_version_id == v2.id
+      build_id = stage_id(v2, "Build")
+
+      missing =
+        Processes.placement_check(
+          v2.document,
+          Processes.declared_workflows(workspace),
+          Artifacts.types(workspace)
+        )
+
+      assert {:missing_workflow, build_id, "capture-demo"} in missing
+      assert {:missing_workflow, build_id, "fix-demo-findings"} in missing
+
       # A second run adds nothing.
       Workflow.run([])
       assert_received {:mix_shell, :info, ["The preview is there already: nothing more is made."]}
 
       assert Repo.aggregate(from(w in WorkItem, where: w.workspace_id == ^workspace.id), :count) ==
-               8
+               9
 
       assert length(Processes.list_versions(workspace)) == 4
     end
