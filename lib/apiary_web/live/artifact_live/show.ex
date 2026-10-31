@@ -105,7 +105,9 @@ defmodule ApiaryWeb.ArtifactLive.Show do
               <dt class="text-muted">{gettext("Version")}</dt>
               <dd id="artifact-number" class="tabular-nums">{@version.number}</dd>
               <dt class="text-muted">{gettext("Made by")}</dt>
-              <dd id="artifact-writer" class="break-all">{ArtifactComponents.writer(@version)}</dd>
+              <dd id="artifact-writer" class="break-all">
+                <ArtifactComponents.made_by version={@version} scope={@current_scope} />
+              </dd>
               <dt class="text-muted">{gettext("Stage")}</dt>
               <dd id="artifact-stage">{@stage || gettext("None")}</dd>
               <dt class="text-muted">{gettext("Note")}</dt>
@@ -134,7 +136,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
                   {gettext("Version %{number}", number: version.number)}
                 </.link>
                 <span class="text-[12.5px] text-muted">
-                  {ArtifactComponents.writer(version)} · {Format.datetime(version.inserted_at)}
+                  <ArtifactComponents.made_by version={version} scope={@current_scope} />
+                  · {Format.datetime(version.inserted_at)}
                 </span>
               </li>
             </ol>

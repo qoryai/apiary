@@ -40,13 +40,14 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
     %{user: user, scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run, run: registered} = explore_run_fixture(work_item)
 
     Map.merge(context, %{
       conn: log_in_user(build_conn(), user),
       scope: scope,
       work_item: work_item,
-      run: run
+      run: run,
+      registered: registered
     })
   end
 
@@ -87,7 +88,15 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#artifact-header-title", "explainer v2")
       assert has_element?(view, "#artifact-type", "explainer")
       assert has_element?(view, "#artifact-number", "2")
-      assert has_element?(view, "#artifact-writer", "A run")
+      short = String.slice(ctx.registered.public_id, 0, 11)
+      run_page = "/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/"
+
+      assert has_element?(
+               view,
+               ~s(#artifact-writer a[href="#{run_page}#{ctx.registered.public_id}"]),
+               short
+             )
+
       assert has_element?(view, "#artifact-note", "Second pass")
       refute html =~ "<script>window"
       refute html =~ "pwned"
@@ -189,6 +198,32 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute shown.(%{"a" => List.duplicate(1, 4999)}) =~ "Shown: the first"
       assert shown.(List.duplicate(1, 5001)) =~ "Shown: the first 5,000 values."
       assert shown.(%{"a" => List.duplicate(1, 5000)}) =~ "Shown: the first 5,000 values."
+    end
+
+    test "names the run that made a version, with its round, or a run it cannot name", ctx do
+      import Ecto.Query
+
+      Apiary.Repo.update_all(from(d in Apiary.Dispatches.DispatchRun, where: d.id == ^ctx.run.id),
+        set: [round: 2]
+      )
+
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      short = String.slice(ctx.registered.public_id, 0, 11)
+      assert has_element?(view, "#artifact-writer a", "#{short} · round 2")
+      assert has_element?(view, "#artifact-history a.font-mono", "#{short} · round 2")
+
+      %{dispatch_run: unclaimed} =
+        explore_run_fixture(ctx.work_item, state: :waiting, registered: false)
+
+      {:ok, by_unclaimed} =
+        Artifacts.push({:run, unclaimed}, ctx.work_item, "explainer", [
+          %{filename: "plan.md", binary: "# Second"}
+        ])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, by_unclaimed))
+      assert has_element?(view, "#artifact-writer", "A run")
+      refute has_element?(view, "#artifact-writer a")
     end
 
     test "is read again when a version is pushed to its work item", ctx do

@@ -16,7 +16,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   use ApiaryWeb, :html
 
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Type, Version}
-  alias ApiaryWeb.People
+  alias Apiary.Runs.Run
+  alias ApiaryWeb.{People, RunComponents}
 
   # The content types an image view shows inline: raster formats only.
   @inline_images ~w(image/png image/jpeg image/gif image/webp)
@@ -106,7 +107,8 @@ defmodule ApiaryWeb.ArtifactComponents do
 
     * `id`, required: the list's DOM id; each row's id is `<id>-<artifact public id>`.
     * `artifacts`, required: `Apiary.Artifacts.list/1`, each artifact with its versions,
-      newest first, their files, and their `user` and `run` where the version has one.
+      newest first, their files, and their `user` and `run` where the version has one,
+      as `Apiary.Artifacts.list/1` reads them.
     * `scope` and `number`: the reader's scope and the work item's number, for the links
       to each version's page and to Add a version. Without both, the rows have no links.
     * `checks`: a map from a type's name to `:passed`, `:missing` or `:not_checked`, the
@@ -149,13 +151,9 @@ defmodule ApiaryWeb.ArtifactComponents do
             <.check_word :if={check = Map.get(@checks, artifact.type)} check={check} />
           </div>
           <span class="text-[12.5px]/5 text-muted">
-            {ngettext(
-              "%{number} file · %{writer}",
-              "%{number} files · %{writer}",
-              length(newest.files),
-              number: Format.number(length(newest.files)),
-              writer: writer(newest)
-            )}
+            {ngettext("%{number} file", "%{number} files", length(newest.files),
+              number: Format.number(length(newest.files))
+            )} · <.made_by version={newest} scope={@scope} />
           </span>
         </li>
       </ul>
@@ -210,8 +208,10 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   @doc """
   writer/1 is who made a version, in words: a person's email address, "Former member"
-  for an account that is gone, the run's workflow and round where the run of the queue
-  has them, or "A run".
+  for an account that is gone; for a run, the short public id of the run its claim
+  registered (`Apiary.Runs.Run`, `ApiaryWeb.RunComponents.short_id/1`) and the round
+  where the run of the queue has one, such as "rn_01234567 · round 2", or "A run" where
+  no run is registered or read.
   """
   @spec writer(Version.t()) :: String.t()
   def writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}),
@@ -219,14 +219,46 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   def writer(%Version{writer: :person}), do: People.former_member()
 
-  def writer(%Version{writer: :run, run: %{workflow: workflow, round: round}})
-      when is_binary(workflow) and is_integer(round),
-      do: gettext("Run of %{workflow}, round %{round}", workflow: workflow, round: round)
+  def writer(%Version{writer: :run, run: %{run: %Run{public_id: id}, round: round}})
+      when is_binary(id) and is_integer(round),
+      do:
+        gettext("%{run} · round %{round}",
+          run: RunComponents.short_id(id),
+          round: Format.number(round)
+        )
 
-  def writer(%Version{writer: :run, run: %{workflow: workflow}}) when is_binary(workflow),
-    do: gettext("Run of %{workflow}", workflow: workflow)
+  def writer(%Version{writer: :run, run: %{run: %Run{public_id: id}}}) when is_binary(id),
+    do: RunComponents.short_id(id)
 
   def writer(%Version{writer: :run}), do: gettext("A run")
+
+  @doc """
+  made_by/1 is who made a version (`writer/1`); for a run, a link to the run's page where
+  `scope` is given, a run is registered, and the run pages are shown (the feature
+  `observability`), as an Activity line links a run.
+  """
+  attr :version, Version, required: true
+  attr :scope, :any, default: nil
+
+  def made_by(
+        %{version: %Version{writer: :run, run: %{run: %Run{public_id: id}}}, scope: %{}} = assigns
+      )
+      when is_binary(id) do
+    assigns = assign(assigns, :link?, Apiary.Features.visible?(assigns.scope, :observability))
+
+    ~H"""
+    <span :if={!@link?} class="font-mono">{writer(@version)}</span>
+    <.link
+      :if={@link?}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@version.run.run.public_id}"}
+      class="font-mono text-accent"
+    >
+      {writer(@version)}
+    </.link>
+    """
+  end
+
+  def made_by(assigns), do: ~H"{writer(@version)}"
 
   ## A version's files
 
