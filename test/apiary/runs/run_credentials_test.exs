@@ -708,7 +708,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
     end
 
-    test "a path filled out of the grammar by the integration's apply items names the integration",
+    test "a path filled out of the grammar by the adapter's access rules names the adapter",
          ctx do
       # A description's check refuses such apply items at the adapter's start; written
       # here directly.
@@ -732,11 +732,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
           end_cause: :target_access_gone
       }
 
-      org = ctx.scope.organisation.name
+      adapter = String.replace_prefix(two.integration, "the integration", "the adapter")
 
       assert Apiary.Stages.StopCause.text(run, two.work_item) ==
-               "The run did not start, because the access rules of #{two.integration} do not take target acme/shop.\n" <>
-                 "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
+               "The run did not start, because the access rules of #{adapter} do not take target acme/shop.\n" <>
+                 "The instance admin corrects the access rules of #{adapter}, in Instance settings › Adapters."
 
       assert Apiary.Stages.StopCause.set_up_step(run) == nil
     end

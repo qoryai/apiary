@@ -177,10 +177,12 @@ defmodule Apiary.Stages.StopCause do
 
   defp lines(%DispatchRun{end_cause: :target_access_gone} = run, n, _ctx) do
     case reach(run, n) do
-      {:path_refused, integration} ->
-        path_refused(n, integration)
+      {:path_refused, title} ->
+        path_refused(n, title)
 
-      {_gone, integration} ->
+      {_gone, title} ->
+        integration = "the integration " <> title
+
         {"The run did not start, because #{integration} no longer reaches target #{n.target}.",
          "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
 
@@ -200,20 +202,20 @@ defmodule Apiary.Stages.StopCause do
 
   # How the run reached its target, as the claim's work entry did
   # (`Apiary.Runs.RunCredentials.reach/3`), read when the run ends: the state, and the
-  # integration of the collection the entry comes from, as a noun phrase; nil for no
+  # title of the adapter of the collection the entry comes from; nil for no
   # collection.
   defp reach(run, %{work_item: work_item}) do
     target = %{system: work_item.target_system, path: work_item.target_path}
 
     case Apiary.Runs.RunCredentials.reach(run, work_item, target) do
-      {state, %Node{} = adapter} -> {state, "the integration " <> Apiary.Adapters.title(adapter)}
+      {state, %Node{} = adapter} -> {state, Apiary.Adapters.title(adapter)}
       nil -> nil
     end
   end
 
   # A target path the access rules do not take, by the first part of it they refuse
   # (`Apiary.Integrations.ApplyTemplates.refused_in/1`).
-  defp path_refused(%{target: path} = n, integration) do
+  defp path_refused(%{target: path} = n, title) do
     fix = fn without ->
       "Whoever manages #{path} where it is kept renames it without #{without}, or owners and admins of #{n.workspace} remove it on the set-up step Destinations."
     end
@@ -229,11 +231,11 @@ defmodule Apiary.Stages.StopCause do
         {"The run did not start, because target #{path} has #{words} in its path, which Qory Apiary does not put in an access rule.",
          fix.(words)}
 
-      # The path has no refused part, so the integration's apply items made a path out of
+      # The path has no refused part, so the adapter's apply items made a path out of
       # the grammar, which the check of its description refuses at its start.
       nil ->
-        {"The run did not start, because the access rules of #{integration} do not take target #{path}.",
-         "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
+        {"The run did not start, because the access rules of the adapter #{title} do not take target #{path}.",
+         "The instance admin corrects the access rules of the adapter #{title}, in Instance settings › Adapters."}
     end
   end
 
@@ -283,7 +285,7 @@ defmodule Apiary.Stages.StopCause do
       :system_invalid ->
         integration =
           case reach(run, n) do
-            {_state, integration} -> integration
+            {_state, title} -> "the integration " <> title
             nil -> "the integration that brings in target #{n.target}"
           end
 
