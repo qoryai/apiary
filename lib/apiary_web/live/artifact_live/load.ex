@@ -124,8 +124,9 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   end
 
   # The file's bytes, where it has at most `limit` of them. The recorded size is checked
-  # first, and no more than `limit` + 1 bytes are read, so a larger file never reaches the
-  # page's process.
+  # first. From a file on disk, at most `limit` + 1 bytes are read; from a stream, reading
+  # stops at the first chunk that takes it past `limit`, so the page's process holds at
+  # most `limit` bytes plus one chunk.
   defp read(%{size: size}, limit) when size > limit, do: :error
 
   defp read(file, limit) do
