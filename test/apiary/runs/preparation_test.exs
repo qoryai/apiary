@@ -219,6 +219,7 @@ defmodule Apiary.Runs.PreparationTest do
                step: nil,
                fixer: :workspace_admin,
                text: "No machine was made: No capacity in the region. " <> fix,
+               what: "No machine was made: No capacity in the region.",
                fix: fix
              }
     end
@@ -266,13 +267,12 @@ defmodule Apiary.Runs.PreparationTest do
       assert stopped == %{
                cause: :code_not_redeemed,
                step: nil,
-               fixer: :instance_admin,
+               fixer: :support,
                text:
                  "The machine did not start the run within 15 minutes of the request. " <>
-                   "An instance admin finds the cause in the machine log of the Machine " <>
-                   "started step.",
-               fix:
-                 "An instance admin finds the cause in the machine log of the Machine started step."
+                   "Contact support with run #{run.public_id}.",
+               what: "The machine did not start the run within 15 minutes of the request.",
+               fix: "Contact support with run #{run.public_id}."
              }
     end
 
@@ -328,6 +328,7 @@ defmodule Apiary.Runs.PreparationTest do
                text:
                  "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
                    "#{ctx.scope.workspace.name} reads the cause in the step's output.",
+               what: "Fetch git.example.com/acme/shop failed with exit code 128.",
                fix:
                  "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
              }
@@ -348,11 +349,11 @@ defmodule Apiary.Runs.PreparationTest do
         ])
 
       assert %{stopped: stopped} = Preparation.read(ctx.scope, run)
-      assert %{cause: :step_failed, step: 1, fixer: :instance_admin} = stopped
+      assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
 
       assert stopped.text ==
-               "Fetch image registry.example/agent failed with exit code 0. An instance admin " <>
-                 "reads the cause in the step's output."
+               "Fetch image registry.example/agent failed with exit code 0. " <>
+                 "Contact support with run #{run.public_id}."
     end
 
     test "a refused join has no exit status: its line shows no exit code", ctx do

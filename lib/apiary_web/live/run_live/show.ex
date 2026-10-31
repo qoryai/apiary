@@ -471,8 +471,12 @@ defmodule ApiaryWeb.RunLive.Show do
             }
             data-failed-signed-out={gettext("Sign in again, then copy again. Your session ended.")}
             data-failed-server={
-              gettext(
-                "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
+              plain_text(
+                rich_gettext(
+                  "Copy again in a minute. If it fails again, %{contact_support} with run %{run}. Qory Apiary could not build the diagnostics.",
+                  contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
+                  run: @run.public_id
+                )
               )
             }
             data-failed-clipboard={

@@ -4556,19 +4556,9 @@ msgstr ""
 msgid "An https address, such as https://example.com/shop/description.json. The release's other files are beside it."
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin"
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin finds the cause in the machine log of the Machine started step."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6244,6 +6234,11 @@ msgstr ""
 msgid "Contact support at %{address}."
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support with run %{run}."
+msgstr ""
+
 #: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support."
@@ -6297,7 +6292,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
+msgid "Copy again in a minute. If it fails again, %{contact_support} with run %{run}. Qory Apiary could not build the diagnostics."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -17436,11 +17431,6 @@ msgstr ""
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The instance"
-msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "The instance admin can read the machine's log."
 msgstr ""
 
 #: lib/apiary_web/components/host_components.ex

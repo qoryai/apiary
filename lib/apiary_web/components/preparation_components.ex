@@ -18,11 +18,12 @@ defmodule ApiaryWeb.PreparationComponents do
 
   import ApiaryWeb.CoreComponents, only: [icon: 1]
   import ApiaryWeb.ExternalText, only: [external_text: 1]
+  import ApiaryWeb.RichText, only: [rich: 1]
   import ApiaryWeb.RunComponents, only: [duration: 1]
 
   alias Apiary.ExternalText
   alias Apiary.Runs.Preparation
-  alias ApiaryWeb.Format
+  alias ApiaryWeb.{Format, Support}
   alias Phoenix.LiveView.JS
 
   # The most of a machine log the section shows, in bytes.
@@ -100,7 +101,7 @@ defmodule ApiaryWeb.PreparationComponents do
             <.cause
               :if={@preparation.stopped && @preparation.stopped.step == nil}
               id={"#{@id}-cause"}
-              text={@preparation.stopped.fix}
+              text={Support.stored_line(@preparation.stopped.fix)}
             />
           </.row>
         </li>
@@ -122,7 +123,7 @@ defmodule ApiaryWeb.PreparationComponents do
             <.cause
               :if={@preparation.stopped && @preparation.stopped.step == step.number}
               id={"#{@id}-cause"}
-              text={@preparation.stopped.text}
+              text={[@preparation.stopped.what, " ", Support.stored_line(@preparation.stopped.fix)]}
             />
           </.row>
         </li>
@@ -276,20 +277,14 @@ defmodule ApiaryWeb.PreparationComponents do
     """
   end
 
-  defp machine_log(assigns) do
-    ~H"""
-    <p id={@id} class="text-sm text-faint">
-      {gettext("The instance admin can read the machine's log.")}
-    </p>
-    """
-  end
+  defp machine_log(assigns), do: ~H""
 
   attr :id, :string, required: true
-  attr :text, :string, required: true
+  attr :text, :any, required: true, doc: "rich text (`ApiaryWeb.RichText`)"
 
   defp cause(assigns) do
     ~H"""
-    <p id={@id} class="q-prep-cause" role="status">{@text}</p>
+    <p id={@id} class="q-prep-cause" role="status"><.rich text={@text} /></p>
     """
   end
 

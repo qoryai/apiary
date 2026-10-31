@@ -300,8 +300,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "Reload the page, then copy again. This run, or your access to its log, is gone."},
             {"signed-out", "Sign in again, then copy again. Your session ended."},
             {"server",
-             "Copy again in a minute. Qory Apiary could not build the diagnostics. " <>
-               "If it fails again, tell your instance admin."},
+             "Copy again in a minute. If it fails again, contact support with run " <>
+               "#{run.public_id}. Qory Apiary could not build the diagnostics."},
             {"clipboard",
              "Allow this page to use the clipboard, then copy again. " <>
                "The browser did not allow the copy."}

@@ -2184,13 +2184,17 @@ defmodule ApiaryWeb.OverviewComponents do
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
       when cause in [:ended, :silent] do
     assigns =
-      assign(assigns, step: Preparation.stopped_step(assigns.preparation), text: stopped.text)
+      assign(assigns,
+        step: Preparation.stopped_step(assigns.preparation),
+        what: stopped.what,
+        fix: ApiaryWeb.Support.stored_line(stopped.fix)
+      )
 
     ~H"""
     <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
       <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
-    {@text}
+    {@what} <.rich text={@fix} />
     <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
       {gettext("Open the run's Prepare machine section")}
     </.link>

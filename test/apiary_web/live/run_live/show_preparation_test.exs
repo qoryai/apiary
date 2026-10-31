@@ -97,7 +97,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
              ]
 
       refute has_element?(lv, "#prepare-machine details[open]")
-      assert lv |> element("#prepare-machine-machine-log") |> render() =~ @admin_only
+      refute has_element?(lv, "#prepare-machine-machine-log")
+      refute render(lv) =~ @admin_only
       assert lv |> element("#prepare-machine-requested") |> render() =~ "build-pool"
       assert lv |> element("#prepare-machine-requested") |> render() =~ "pool default"
 
