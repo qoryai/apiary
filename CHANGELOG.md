@@ -469,6 +469,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- review: Vito accepts these words before the branch is pushed -->
+- The workspace's **Nodes** page is **Machines**, at `/<organisation>/<workspace>/machines`:
+  machines and pools first, then the gateways under the heading **Gateways**. On every
+  page a node is a machine, a node pool is a pool, and an instance of a pool is one of
+  its machines: **Machine limit**, **Running machines** and **Clear machine…**.
+  **Instance settings › Nodes** is
+  **Qory Pool and Qory Gateway**, at `/instance/qory-pool-and-gateway`. The old `/nodes`
+  addresses send on to the new ones. The runs query takes `machine:`, and `node:` still
+  works.
 - An organisation's address follows its name, as a workspace's does. A rename in
   Organisation settings › General changes it, the page opens at the new address, and
   links to the old one stop working, with no redirect. A sign-up, the set-up link's page
