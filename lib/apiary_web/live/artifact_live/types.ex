@@ -358,6 +358,16 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     |> push_patch(to: types_path(socket.assigns.current_scope, :index))
   end
 
+  # The reader's role no longer lets them edit the types (`artifact_type.edit`).
+  defp not_allowed(socket) do
+    socket
+    |> put_flash(
+      :error,
+      gettext("Your role in this workspace no longer lets you change artifact types.")
+    )
+    |> push_patch(to: types_path(socket.assigns.current_scope, :index))
+  end
+
   defp assign_form(socket, params, errors),
     do: assign(socket, :form, to_form(params, as: :artifact_type, errors: errors))
 
@@ -406,6 +416,9 @@ defmodule ApiaryWeb.ArtifactLive.Types do
             {:noreply,
              socket |> assign(in_use: type.name) |> push_patch(to: types_path(scope, :index))}
 
+          {:error, :forbidden} ->
+            {:noreply, socket |> load() |> not_allowed()}
+
           {:error, _refused} ->
             {:noreply, socket |> load() |> gone()}
         end
@@ -437,6 +450,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     {:noreply, assign_form(socket, params, errors)}
   end
 
+  defp saved(socket, _params, {:error, :forbidden}), do: {:noreply, not_allowed(socket)}
   defp saved(socket, _params, {:error, _refused}), do: {:noreply, gone(socket)}
 
   defp form_field(:size_limit), do: :size_mib

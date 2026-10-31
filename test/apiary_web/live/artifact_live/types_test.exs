@@ -3,8 +3,8 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
   # owners and admins, not for members; the standard types read only; a custom type
   # added, edited and deleted, a type in use kept with a line why; the add form filled
   # from `?name=` when the name is free and well formed; and the section absent with
-  # `workflow_model` off. Not async: a test sets the store's folder, which the
-  # application's environment holds for every test.
+  # `workflow_model` off. Not async: a test sets the store's folder in the application's
+  # environment, which every test reads.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -219,6 +219,21 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
 
     refute has_element?(view, "#settings-tab-artifact_types")
     assert status(conn, types_path(ctx.scope)) in [302, 404]
+  end
+
+  test "says so when the reader's role no longer lets them change types", ctx do
+    type = custom!(ctx.scope, %{"name" => "demo-findings", "base_view" => "document"})
+    %{user: admin, membership: membership} = member_fixture(ctx.scope, :admin)
+    conn = log_in_user(build_conn(), admin)
+    {:ok, view, _html} = live(conn, types_path(ctx.scope, "/#{type.public_id}/delete"))
+
+    {:ok, _membership} = Apiary.Organisations.set_member_level(ctx.scope, membership.id, :member)
+    view |> element("#artifact-type-delete") |> render_click()
+
+    assert render(view) =~
+             "Your role in this workspace no longer lets you change artifact types."
+
+    assert Artifacts.type(ctx.scope.workspace, "demo-findings")
   end
 
   test "is open to an admin", ctx do
