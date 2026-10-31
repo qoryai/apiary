@@ -564,6 +564,10 @@ defmodule ApiaryWeb.SettingsLiveTest do
             ],
             else: []
           ) ++
+          if(Apiary.Features.on?(:workflow_model),
+            do: [artifact_types: base <> "/artifact-types"],
+            else: []
+          ) ++
           [runs: base <> "/runs"]
 
       for {key, path} <- sections do
@@ -572,8 +576,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       # In the nav's order: General, People, with the `secrets` feature Integrations and
       # Secrets and variables, with `secrets` and `factory` Model, with `factory` Work
-      # sources, Destinations and Workflow, and Runs last. The access keys are on their
-      # nodes' pages.
+      # sources, Destinations and Workflow, with `workflow_model` Artifact types, and Runs
+      # last. The access keys are on their nodes' pages.
       assert lv
              |> element("#settings-tabs")
              |> render()

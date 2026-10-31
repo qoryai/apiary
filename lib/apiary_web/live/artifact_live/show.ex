@@ -1,0 +1,194 @@
+defmodule ApiaryWeb.ArtifactLive.Show do
+  # A version of a work item's artifact, `/:org/:workspace/work/:number/artifacts/:version_id`,
+  # under the feature `workflow_model`: its type and base view, its name, its number,
+  # who made it (a run or a person), the stage it was made in, its note, its files with
+  # their sizes and downloads, the view of its type's base view
+  # (`ApiaryWeb.ArtifactComponents.view/1`), and the artifact's history, every version
+  # newest first, each a link to its page.
+  #
+  # Every member who may read the work item reads it (`work_item.read`); a number, or a
+  # version id, of no work item or version the reader may read is not found. A reader who
+  # may add a version (`artifact.write`) has Add a version, which opens the add page with
+  # the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
+  #
+  # **Live.** The page listens on its workspace's work items
+  # (`Apiary.WorkItems.subscribe/1`) and reads the history again on
+  # `{:artifact_pushed, work_item_id, version_id}` for its work item.
+  #
+  # The module reference leaves out this module of the `workflow_model` feature.
+  @moduledoc false
+
+  use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :workflow_model
+  on_mount {ApiaryWeb.Access, :"work_item.read"}
+
+  alias Apiary.{Access, Artifacts, WorkItems}
+  alias ApiaryWeb.ArtifactComponents
+  alias ApiaryWeb.ArtifactLive.Load
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:work_items}
+      width="list"
+    >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/work"}>
+        {gettext("Work items")}
+      </:crumb>
+      <:crumb navigate={
+        ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/work/#{@number}"
+      }>
+        {gettext("Work item #%{number}", number: @number)}
+      </:crumb>
+      <:crumb>{ArtifactComponents.title(@version.artifact, @version)}</:crumb>
+
+      <.page_header id="artifact-header" title={ArtifactComponents.title(@version.artifact, @version)}>
+        <:description>
+          {gettext("Version %{number} of this artifact, made on %{date}.",
+            number: @version.number,
+            date: Format.datetime(@version.inserted_at, zone: true)
+          )}
+        </:description>
+        <:actions :if={@writes}>
+          <.button
+            id="artifact-add"
+            navigate={add_path(@current_scope, @number, @version.artifact)}
+          >
+            {gettext("Add a version")}
+          </.button>
+        </:actions>
+      </.page_header>
+
+      <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div class="grid min-w-0 content-start gap-8">
+          <section id="artifact-view-part" aria-labelledby="artifact-view-title" class="grid gap-3">
+            <h2 id="artifact-view-title" class="q-part-h">{Load.base_view(@type.base_view)}</h2>
+            <ArtifactComponents.view
+              id={"artifact-view-#{@version.public_id}"}
+              type={@type}
+              version={@version}
+              content={@content}
+              path={&ArtifactComponents.file_path(@current_scope, @number, @version.public_id, &1)}
+              script={~p"/assets/js/mermaid.js"}
+            />
+          </section>
+
+          <section id="artifact-files-part" aria-labelledby="artifact-files-title" class="grid gap-3">
+            <h2 id="artifact-files-title" class="q-part-h">
+              {gettext("Files")}
+              <span class="q-part-n">{Format.number(length(@version.files))}</span>
+            </h2>
+            <ArtifactComponents.files
+              id="artifact-files"
+              files={@version.files}
+              path={&ArtifactComponents.file_path(@current_scope, @number, @version.public_id, &1)}
+            />
+          </section>
+        </div>
+
+        <aside class="grid content-start gap-8">
+          <section id="artifact-details" aria-labelledby="artifact-details-title" class="grid gap-3">
+            <h2 id="artifact-details-title" class="q-part-h">{gettext("Details")}</h2>
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]/5">
+              <dt class="text-muted">{gettext("Type")}</dt>
+              <dd id="artifact-type">
+                {@version.artifact.type}
+                <span class="text-muted">· {Load.base_view(@type.base_view)}</span>
+              </dd>
+              <dt class="text-muted">{gettext("Name")}</dt>
+              <dd id="artifact-name" class="break-all">{@version.artifact.name}</dd>
+              <dt class="text-muted">{gettext("Version")}</dt>
+              <dd id="artifact-number" class="tabular-nums">{@version.number}</dd>
+              <dt class="text-muted">{gettext("Made by")}</dt>
+              <dd id="artifact-writer" class="break-all">{ArtifactComponents.writer(@version)}</dd>
+              <dt class="text-muted">{gettext("Stage")}</dt>
+              <dd id="artifact-stage">{@stage || gettext("None")}</dd>
+              <dt class="text-muted">{gettext("Note")}</dt>
+              <dd id="artifact-note" class="whitespace-pre-wrap break-words" phx-no-format>{@note || gettext("None")}</dd>
+            </dl>
+          </section>
+
+          <section id="artifact-history" aria-labelledby="artifact-history-title" class="grid gap-3">
+            <h2 id="artifact-history-title" class="q-part-h">
+              {gettext("History")}
+              <span class="q-part-n">{Format.number(length(@history))}</span>
+            </h2>
+            <ol class="grid gap-2 text-[13px]/5">
+              <li :for={version <- @history} id={"artifact-history-#{version.public_id}"} class="grid">
+                <.link
+                  navigate={
+                    ArtifactComponents.version_path(@current_scope, @number, version.public_id)
+                  }
+                  aria-current={version.id == @version.id && "page"}
+                  class={[
+                    "font-medium",
+                    version.id == @version.id && "text-base-content",
+                    version.id != @version.id && "text-accent"
+                  ]}
+                >
+                  {gettext("Version %{number}", number: version.number)}
+                </.link>
+                <span class="text-[12.5px] text-muted">
+                  {ArtifactComponents.writer(version)} · {Format.datetime(version.inserted_at)}
+                </span>
+              </li>
+            </ol>
+          </section>
+        </aside>
+      </div>
+    </Layouts.app>
+    """
+  end
+
+  @impl true
+  def mount(%{"number" => number, "version_id" => version_id}, _session, socket) do
+    scope = socket.assigns.current_scope
+
+    with %{} = work_item <- Load.work_item(scope, number),
+         %{} = version <- Load.version(work_item, version_id) do
+      if connected?(socket), do: WorkItems.subscribe(scope)
+      type = Load.type(work_item, version.artifact.type)
+
+      {:ok,
+       socket
+       |> assign(
+         work_item: work_item,
+         number: work_item.number,
+         version: version,
+         type: type,
+         content: Load.content(type, version),
+         stage: Load.stage_name(work_item, version.stage_id),
+         note: Apiary.ExternalText.present_lines(version.note),
+         writes: Access.can?(scope, :"artifact.write", work_item),
+         page_title: ArtifactComponents.title(version.artifact, version)
+       )
+       |> load_history()}
+    else
+      _not_found -> raise ApiaryWeb.NotFound
+    end
+  end
+
+  defp load_history(socket),
+    do: assign(socket, :history, Artifacts.versions(socket.assigns.version.artifact))
+
+  @impl true
+  def handle_info({:artifact_pushed, work_item_id, _version_id}, socket) do
+    work_item = socket.assigns.work_item
+
+    if work_item_id in [work_item.id, work_item.public_id],
+      do: {:noreply, load_history(socket)},
+      else: {:noreply, socket}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp add_path(scope, number, artifact),
+    do:
+      ArtifactComponents.new_path(scope, number) <>
+        "?" <> URI.encode_query(type: artifact.type, name: artifact.name)
+end

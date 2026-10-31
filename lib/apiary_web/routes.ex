@@ -718,6 +718,10 @@ defmodule ApiaryWeb.Routes do
               live "/work/:number/explore", WorkItemLive.Show, :explore
               live "/work/:number/explore/edit", WorkItemLive.Show, :edit
               live "/work/:number/thread", WorkItemLive.Show, :thread
+              # A work item's artifacts, with the `workflow_model` feature: Add a version by
+              # hand, and one version's page, by the version's public id (`av_…`).
+              live "/work/:number/artifacts/new", ArtifactLive.New, :new
+              live "/work/:number/artifacts/:version_id", ArtifactLive.Show, :show
               live "/backlog", BacklogLive.Index, :index
               live "/backlog/:item_id", BacklogLive.Ticket, :show
               # The targets the workspace's runs changed, and one target's page. `:target_id`
@@ -817,6 +821,13 @@ defmodule ApiaryWeb.Routes do
               # The workflow of the workspace's runs and the harness source it comes from,
               # with the `factory` feature.
               live "/settings/workflow", WorkflowLive, :edit
+              # The workspace's artifact types, with the `workflow_model` feature: the list,
+              # `?name=<type>` opening Add a type with that name; each form a page, and
+              # Delete confirmed on its row. A type is named by its public id (`at_…`).
+              live "/settings/artifact-types", ArtifactLive.Types, :index
+              live "/settings/artifact-types/new", ArtifactLive.Types, :new
+              live "/settings/artifact-types/:type_id/edit", ArtifactLive.Types, :edit
+              live "/settings/artifact-types/:type_id/delete", ArtifactLive.Types, :delete
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
@@ -888,6 +899,12 @@ defmodule ApiaryWeb.Routes do
 
           # The raw bytes of a run's log, for the terminal of the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
+
+          # A file of a version of a work item's artifact, as an attachment, with the
+          # `workflow_model` feature. Not a page.
+          get "/:org/:workspace/work/:number/artifacts/:version_id/files/:filename",
+              ArtifactFileController,
+              :show
 
           # A run's diagnostics document, for Copy diagnostics on the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/diagnostics", RunDiagnosticsController, :show
