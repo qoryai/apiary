@@ -79,6 +79,21 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
   defp choose(lv), do: lv |> element("#set-up-card-software-choose") |> render_click()
 
+  # An edition whose `:organisation_heading` slot is a New workspace button, as an
+  # edition's may be (`ApiaryWeb.Extension`).
+  defmodule HeadingButton do
+    @moduledoc false
+    use Phoenix.Component
+
+    def slot(:organisation_heading, assigns) do
+      ~H"""
+      <a id="edition-new-workspace" href="#">New workspace</a>
+      """
+    end
+
+    def slot(_name, _assigns), do: nil
+  end
+
   describe "the kind cards on the empty organisation overview" do
     test "show an owner the card of Software factory alone, with no steps", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
@@ -87,14 +102,15 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       assert html =~ ~r{<title[^>]*>\s*Acme Studio}
       assert has_element?(lv, "h1", "Acme Studio")
-      assert has_element?(lv, "h2#set-up-cards-title", "Choose what your first workspace does")
+      assert has_element?(lv, "h2#set-up-cards-title", "What will your first workspace do?")
       refute has_element?(lv, "#set-up-steps")
       # The organisation's people and details, as for any other.
       assert has_element?(lv, "#people")
       assert has_element?(lv, "#about")
 
       # Example has no card's words, so it has no card.
-      assert has_element?(lv, "#set-up-card-software h2", "Software factory")
+      # The card's title is one level below the section's h2.
+      assert has_element?(lv, "#set-up-card-software h3", "Software factory")
       refute has_element?(lv, "#set-up-card-example")
 
       assert has_element?(
@@ -107,6 +123,44 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                lv,
                "#set-up-card-software p",
                "You connect: where work comes from, where changes go, a model."
+             )
+    end
+
+    test "show the header's actions only once the organisation has a workspace", %{
+      conn: conn
+    } do
+      :ok = Apiary.Edition.put_test_stub(HeadingButton)
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+      assert has_element?(lv, "#set-up-card-software")
+      refute has_element?(lv, "#edition-new-workspace")
+
+      {:ok, _workspace} =
+        Organisations.create_workspace_of_kind(
+          Organisations.load_scope(Scope.for_user(user), organisation.id),
+          Apiary.Lingo.Domain.Software,
+          :first
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+      assert has_element?(lv, "#organisation-overview #edition-new-workspace", "New workspace")
+      refute has_element?(lv, "#set-up-cards")
+    end
+
+    test "New workspace shows the same cards, in the organisation's sidebar", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new")
+
+      assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
+      assert has_element?(lv, "#set-up-card-software h2", "Software factory")
+      assert has_element?(lv, "#set-up-card-software-choose", "Choose")
+
+      assert has_element?(
+               lv,
+               ~s(#sidebar #nav-organisation_overview[href="/#{organisation.slug}"])
              )
     end
 
@@ -135,7 +189,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                "Address: /#{organisation.slug}/software-factory It follows the name."
 
       refute has_element?(lv, "#set-up-form input[name='workspace[slug]']")
-      assert words(lv, "#set-up-type") == "Software factory · Acme Studio"
+      assert words(lv, "#set-up-type") == "Type: Software factory"
       assert has_element?(lv, "#set-up-form button", "Save and next")
       refute has_element?(lv, "#set-up-steps")
 
@@ -289,7 +343,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
              "Choose another name. Another workspace already has the address /#{org}/billing."},
             {"Old",
              "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
-            {"Settings", "Choose another name. /#{org}/settings is a page of Qory Apiary."},
+            {"Settings", "Choose another name. Qory Apiary keeps the address /#{org}/settings."},
             {"株式会社",
              "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
                "The address is made from those characters."}
@@ -325,7 +379,11 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       assert has_element?(lv, "h1", "Name this workspace")
       assert words(lv, "#set-up-name") == "Main"
-      assert words(lv, "#set-up-type") == "Software factory · #{organisation.name}"
+      assert words(lv, "#set-up-type") == "Type: Software factory"
+      # Who may rename it, as the other steps say who may take them.
+      assert words(lv, "#set-up-who-may") ==
+               "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+
       refute has_element?(lv, "#set-up-form")
       # A page of the workspace: its sidebar lists the steps, and the frame has no indicator.
       assert has_element?(lv, "#sidebar #nav-up")
@@ -350,20 +408,31 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   end
 
   describe "New workspace" do
-    test "says the organisation may have no more workspaces, where the edition allows one",
+    test "says why the organisation may have no more workspaces, where the edition allows one",
          %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       conn = log_in_user(conn, user)
+      # The line's "one" is the limit Qory Apiary Community has.
+      assert Apiary.Edition.Core.limits().workspaces == 1
 
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
+      line =
+        "Qory Apiary Community allows one workspace per organisation, and #{organisation.name} has it."
 
-      assert has_element?(lv, "h1", "What will this workspace do?")
-      assert words(lv, "#set-up-limit") == "#{organisation.name} may have no more workspaces."
+      {:ok, lv, html} = live(conn, ~p"/#{organisation}/workspaces/new")
+
+      # No question at the limit, and the line is information, not an error.
+      assert html =~ ~r{<title[^>]*>\s*New workspace}
+      assert has_element?(lv, "h1#set-up-cards-title", "New workspace")
+      refute has_element?(lv, "h1", "What will this workspace do?")
+      assert words(lv, "#set-up-limit") == line
+      assert has_element?(lv, "[role=note] #set-up-limit")
+      refute has_element?(lv, ".bg-error-soft #set-up-limit")
       refute has_element?(lv, "#set-up-cards")
 
-      # A Choose sent all the same is refused, and says so.
+      # A Choose sent all the same is refused, and says so as information.
       render_click(lv, "choose_kind", %{"type" => "software"})
-      assert render(lv) =~ "#{organisation.name} may have no more workspaces."
+      assert has_element?(lv, "#flash-info", line)
+      refute has_element?(lv, "#flash-error")
 
       assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
                1
@@ -382,6 +451,18 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
           ] do
         {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
         assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
+        # A page of the organisation, in its sidebar, with no entry current, and its
+        # breadcrumb: the organisation, a link to its overview, then New workspace.
+        assert has_element?(lv, "#breadcrumb [aria-current=page]", "New workspace")
+        assert has_element?(lv, ~s(#breadcrumb a[href="/#{organisation.slug}"]))
+
+        assert has_element?(
+                 lv,
+                 ~s(#sidebar #nav-organisation_overview[href="/#{organisation.slug}"])
+               )
+
+        refute has_element?(lv, "#sidebar [aria-current=page]")
+        refute has_element?(lv, "#set-up")
 
         assert {:error, {:live_redirect, %{to: to}}} = choose(lv)
         assert to == ~p"/#{organisation}/#{slug}/set-up/name"

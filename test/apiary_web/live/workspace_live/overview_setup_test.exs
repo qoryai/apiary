@@ -170,6 +170,15 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert overview_steps(lv) == expected
 
+      # Under each step's name, its page's heading.
+      assert has_element?(
+               lv,
+               "#overview-set-up-sources .q-su-note",
+               "Where does work for Main come from?"
+             )
+
+      assert has_element?(lv, "#overview-set-up-name .q-su-note", "Name this workspace")
+
       assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
       refute has_element?(lv, "#overview-activity")
       refute has_element?(lv, "#onboarding")

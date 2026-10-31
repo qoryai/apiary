@@ -12,7 +12,8 @@ defmodule ApiaryWeb.SettingsLive do
     core's edition, with the deletion of one and the cancelling of a deletion for whoever
     may take them.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
-    slug, its type (its domain, read only: "Software workspace") and, last, its danger
+    slug, its type (its domain's name, read only, as its kind card shows it: "Software
+    factory") and, last, its danger
     zone, its deletion while it is one of several; Runs,
     `/:org/:workspace/settings/runs` (`:runs`), how long the workspace keeps runs, their
     events and their logs, and what the daily job last pruned. Its path before,
@@ -328,7 +329,7 @@ defmodule ApiaryWeb.SettingsLive do
       <dl id="workspace-type" class="grid gap-1.5">
         <dt class="text-[13px]/[18px] font-medium">{gettext("Type")}</dt>
         <dd id="workspace-type-value" class="m-0">
-          {Apiary.Lingo.Domain.for_workspace(@current_scope.workspace).label()}
+          {Apiary.Lingo.Domain.for_workspace(@current_scope.workspace).type_name()}
         </dd>
         <dd id="workspace-type-description" class="m-0 text-[12.5px]/[18px] text-muted">
           {Apiary.Lingo.Domain.for_workspace(@current_scope.workspace).description()}

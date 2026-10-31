@@ -61,12 +61,6 @@ msgstr ""
 msgid "Choose another default key for %{provider} first: %{value} is its default key."
 msgstr ""
 
-#: lib/apiary/organisations/organisation.ex
-#: lib/apiary/organisations/workspace.ex
-#, elixir-autogen, elixir-format
-msgid "Choose another name. %{address} is a page of Qory Apiary."
-msgstr ""
-
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another name. A workspace marked for deletion still has the address %{address}."
@@ -85,6 +79,12 @@ msgstr ""
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another name. Another workspace is already named %{name}."
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name. Qory Apiary keeps the address %{address}."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -410,6 +410,11 @@ msgstr ""
 msgid "is already the slug of another organisation"
 msgstr ""
 
+#: lib/apiary/organisations/slug.ex
+#, elixir-autogen, elixir-format
+msgid "is kept by Qory Apiary"
+msgstr ""
+
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "is locked above, so it cannot be set here"
@@ -458,11 +463,6 @@ msgstr ""
 
 ## From Ecto.Changeset.validate_exclusion/3
 msgid "is reserved"
-msgstr ""
-
-#: lib/apiary/organisations/slug.ex
-#, elixir-autogen, elixir-format
-msgid "is reserved for a page of Qory Apiary"
 msgstr ""
 
 ## From Ecto.Changeset.no_assoc_constraint/3

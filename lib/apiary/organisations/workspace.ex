@@ -161,9 +161,9 @@ defmodule Apiary.Organisations.Workspace do
         "Choose another name. A workspace marked for deletion still has the address %{address}."
       )
 
-  @doc "The error of a name whose address is a page of Qory Apiary."
+  @doc "The error of a name whose address Qory Apiary keeps."
   def page_address,
-    do: dgettext_noop("errors", "Choose another name. %{address} is a page of Qory Apiary.")
+    do: dgettext_noop("errors", "Choose another name. Qory Apiary keeps the address %{address}.")
 
   @doc "The error of a form that creates a workspace with no domain chosen: its type."
   def no_type, do: dgettext_noop("errors", "Choose a type.")

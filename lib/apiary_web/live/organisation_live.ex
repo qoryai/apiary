@@ -11,10 +11,12 @@ defmodule ApiaryWeb.OrganisationLive do
   (`ApiaryWeb.SetUpComponents.workspace_set_up/1`).
 
   An organisation with no workspace in use yet shows, in place of its workspaces, the kind
-  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`) to a person `workspace.create` allows
-  there, whose Choose creates the first workspace and opens its Name step, and to anyone
-  else one line on who creates it (`c:Apiary.Edition.first_workspace_waiting_line/1`).
-  The page shows that organisation's people and details as for any other. A member who reaches no workspace yet, where the edition says
+  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), as New workspace shows them, to a
+  person `workspace.create` allows there, whose Choose creates the first workspace and
+  opens its Name step, and to anyone else one line on who creates it
+  (`c:Apiary.Edition.first_workspace_waiting_line/1`). Its header has no actions: the
+  edition's (the `:organisation_heading` slot) show once the organisation has a
+  workspace. The page shows that organisation's people and details as for any other. A member who reaches no workspace yet, where the edition says
   which workspaces their level reaches (`c:Apiary.Edition.reaches_workspace?/3`), is told
   so, and led to the People section of the settings, where the owners and admins are listed. Once they reach
   one while the page is open, the member's scope is loaded again (`ApiaryWeb.UserAuth`),
@@ -47,17 +49,14 @@ defmodule ApiaryWeb.OrganisationLive do
         <div class="q-org-top">
           <.page_header title={@current_scope.organisation.name}>
             <:description>{gettext("The organisation's workspaces and its people.")}</:description>
-            <:actions>
-              <ApiaryWeb.Extension.slot name={:organisation_heading} scope={@current_scope} />
-            </:actions>
           </.page_header>
         </div>
 
         <div class="q-org-main">
-          <section id="first-workspace" class="q-blk">
+          <section id="first-workspace">
             <SetUpComponents.kind_cards
               :if={@creates}
-              title={gettext("Choose what your first workspace does")}
+              title={gettext("What will your first workspace do?")}
               heading="h2"
             />
             <p :if={!@creates} id="first-workspace-waiting" class="text-sm/5 text-muted">
@@ -127,8 +126,9 @@ defmodule ApiaryWeb.OrganisationLive do
           <section class="q-blk" aria-labelledby="workspaces-title">
             <div class="q-band">
               <h2 id="workspaces-title">{gettext("Workspaces")}</h2>
-              <span class="q-band-n">{Format.number(length(@workspaces))}</span>
-              <span class="q-band-hint">{gettext("14 days")}</span>
+              <span class="q-band-hint">
+                {gettext("Runs and denied network connections in the last 14 days")}
+              </span>
             </div>
             <ul id="workspaces" class="q-rows">
               <li :for={workspace <- Enum.take(@workspaces, @shown)} id={"workspace-#{workspace.id}"}>
@@ -169,7 +169,8 @@ defmodule ApiaryWeb.OrganisationLive do
   attr :current_scope, :any, required: true
   attr :people, :map, required: true
 
-  # Beside the workspaces: the organisation's people and its details.
+  # Beside the workspaces: the organisation's people and its details, its address the path
+  # of its overview, as Organisation settings shows it.
   defp side(assigns) do
     ~H"""
     <aside class="q-org-side" aria-label={gettext("About the organisation")}>
@@ -225,10 +226,16 @@ defmodule ApiaryWeb.OrganisationLive do
           <h2 id="about-title">{gettext("Details")}</h2>
         </div>
         <dl class="q-kvl">
-          <dt>{gettext("Slug")}</dt>
-          <dd class="q-mono">{@current_scope.organisation.slug}</dd>
-          <dt>{gettext("Owners")}</dt>
-          <dd class="truncate" title={Enum.map_join(@people.owners, ", ", & &1.user.email)}>
+          <dt>{gettext("Address")}</dt>
+          <dd class="q-mono">{~p"/#{@current_scope.organisation}"}</dd>
+          <%!-- No Owners row for an organisation without an owner, such as an operator's
+               client in an edition. --%>
+          <dt :if={@people.owners != []}>{gettext("Owners")}</dt>
+          <dd
+            :if={@people.owners != []}
+            class="truncate"
+            title={Enum.map_join(@people.owners, ", ", & &1.user.email)}
+          >
             {Enum.map_join(@people.owners, ", ", & &1.user.email)}
           </dd>
           <dt>{gettext("Created")}</dt>
@@ -252,8 +259,11 @@ defmodule ApiaryWeb.OrganisationLive do
   attr :mode, :string, default: nil
 
   # A workspace, one line: its name (the title), how many targets and its policy's mode in
-  # faint words, how many steps of its set-up are done while it is not finished, what is
-  # alive, its runs a day with their count, its denied attempts and its last run.
+  # faint words, how many steps of its set-up are done while it is not finished, how many
+  # runs are in progress (pending or running), its runs a day where one started in the 14
+  # days, the count of its runs, its denied network connections and when its last run
+  # started. The band's hint shows that the run and denied counts are of 14 days. A
+  # workspace that never had a run shows "No run yet" alone.
   defp workspace_row(assigns) do
     ~H"""
     <.link
@@ -275,16 +285,32 @@ defmodule ApiaryWeb.OrganisationLive do
         <span :if={@facts}>{workspace_note(@facts, @mode)}</span>
       </span>
       <%= if @facts do %>
-        <span class={["q-wr-al", @facts.alive == 0 && "q-none-alive"]}>
+        <%!-- A workspace with no run ever has "No run yet" alone, in the last column. --%>
+        <span :if={!@facts.last_at}></span>
+        <span
+          :if={@facts.last_at}
+          class={["q-wr-al", @facts.alive == 0 && "q-none-alive"]}
+        >
           {if @facts.alive == 0,
-            do: gettext("none alive"),
-            else: gettext("%{number} alive", number: Format.number(@facts.alive))}
+            do: gettext("No run in progress"),
+            else:
+              ngettext("%{number} run in progress", "%{number} runs in progress", @facts.alive,
+                number: Format.number(@facts.alive)
+              )}
         </span>
         <span class="q-wr-sp">
-          <.sparkline values={@facts.days} />
-          {ngettext("%{number} run", "%{number} runs", @facts.runs,
-            number: Format.number(@facts.runs)
-          )}
+          <%!-- The days' shape only where a run started in the 14 days: a flat line shows
+               nothing. --%>
+          <.sparkline
+            :if={@facts.runs > 0}
+            values={@facts.days}
+            label={gettext("Runs per day in the last 14 days")}
+          />
+          <span :if={@facts.last_at}>
+            {ngettext("%{number} run", "%{number} runs", @facts.runs,
+              number: Format.number(@facts.runs)
+            )}
+          </span>
         </span>
         <span class="q-wr-den">
           <span :if={@facts.denied > 0} class="inline-flex items-center gap-1">

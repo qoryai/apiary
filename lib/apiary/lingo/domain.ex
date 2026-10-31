@@ -81,8 +81,9 @@ defmodule Apiary.Lingo.Domain do
   @callback name() :: String.t()
 
   @doc """
-  The domain's label, as a person picks a workspace's type and reads it in the workspace's
-  settings: "Software workspace". Translated in the locale of the caller's process.
+  The domain's label: "Software workspace". No core page shows it: the workspace's
+  settings show the type's name (`c:type_name/0`), as its kind card does. Translated in
+  the locale of the caller's process.
   """
   @callback label() :: String.t()
 
@@ -96,7 +97,8 @@ defmodule Apiary.Lingo.Domain do
   The domain's name as a type of workspace: the title of its kind card, on the empty
   organisation overview `/:org` and on `/:org/workspaces/new`, the name a workspace
   created from that card gets, and of its line where a person picks a new workspace's
-  type from a list (`ApiaryWeb.WorkspaceComponents.type_field/1`): "Software factory".
+  type from a list (`ApiaryWeb.WorkspaceComponents.type_field/1`), and the type the
+  workspace's settings and its Name step show: "Software factory".
   Translated in the locale of the caller's process.
   """
   @callback type_name() :: String.t()

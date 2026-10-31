@@ -127,7 +127,7 @@ defmodule Apiary.Organisations.Slug do
         )
     )
     |> validate_exclusion(:slug, reserved,
-      message: dgettext_noop("errors", "is reserved for a page of Qory Apiary")
+      message: dgettext_noop("errors", "is kept by Qory Apiary")
     )
   end
 end
