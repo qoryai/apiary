@@ -169,8 +169,8 @@ defmodule Apiary.Stages do
   def run_ended(id) when is_binary(id) do
     in_transaction!()
 
-    with %DispatchRun{state: :ended, work_item_id: work_item_id, stage_id: stage_id} = run
-         when is_binary(work_item_id) and is_binary(stage_id) <- Repo.get(DispatchRun, id),
+    with %DispatchRun{state: :ended, step: "explore", work_item_id: work_item_id} = run
+         when is_binary(work_item_id) <- Repo.get(DispatchRun, id),
          %WorkItem{} = work_item <- lock!(work_item_id),
          true <- current_run?(work_item, run),
          {:ok, version, stage} <- placed(work_item),
@@ -362,7 +362,7 @@ defmodule Apiary.Stages do
     transact(fn ->
       with {:ok, note} <- note(note),
            {:ok, work_item, version, stage} <- hold(scope, work_item),
-           %Escalation{} = escalation <- open_escalation(work_item) || {:error, :not_escalated},
+           %Escalation{} = escalation <- escalation!(work_item, version, stage),
            {:ok, work_item} <-
              resolve(scope, work_item, version, stage, escalation, resolution, note),
            {:ok, _entry} <-
@@ -446,7 +446,7 @@ defmodule Apiary.Stages do
     with %WorkItem{} <- work_item,
          {:ok, version, stage} <- placed(work_item) do
       artifacts = Artifacts.list(work_item)
-      escalation = open_escalation(work_item)
+      escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
 
       %{
@@ -668,6 +668,8 @@ defmodule Apiary.Stages do
   ## A run's end
 
   # The run is the newest of the work item's take in, of its stage, while that stage runs.
+  # A run with no stage is one queued before the work item was placed (the migration that
+  # placed the open work items): it counts for the stage the work item is in.
   defp current_run?(work_item, run) do
     newest =
       Repo.one(
@@ -677,7 +679,7 @@ defmodule Apiary.Stages do
       )
 
     work_item.state == :exploring and work_item.stage_state == :running and
-      work_item.stage_id == run.stage_id and work_item.take_in == run.take_in and
+      run.stage_id in [nil, work_item.stage_id] and work_item.take_in == run.take_in and
       newest == run.attempt
   end
 
@@ -707,11 +709,11 @@ defmodule Apiary.Stages do
        when is_map(run.result) do
     with {:ok, _proposal} <-
            Artifacts.push_json({:run, run}, work_item, "proposal", proposal_document(run.result),
-             stage_id: run.stage_id
+             stage_id: work_item.stage_id
            ),
          {:ok, _verdict} <-
            Artifacts.push_json({:run, run}, work_item, "verdict", %{"verdict" => "passed"},
-             stage_id: run.stage_id
+             stage_id: work_item.stage_id
            ) do
       {:verdict, :passed, nil}
     else
@@ -727,7 +729,7 @@ defmodule Apiary.Stages do
     document = Map.take(run.result, ["questions", "understanding", "knowledge"])
 
     case Artifacts.push_json({:run, run}, work_item, "questions", document,
-           stage_id: run.stage_id
+           stage_id: work_item.stage_id
          ) do
       {:ok, _questions} -> {:questions, Enum.join(Map.get(run.result, "questions", []), "\n")}
       {:error, _reason} -> {:stopped, "The run's questions could not be stored."}
@@ -953,6 +955,47 @@ defmodule Apiary.Stages do
       from e in Escalation, where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)
     )
   end
+
+  # The open escalation of the work item, stored now for a work item that the migration
+  # placing open work items placed as escalated without one; else `{:error, :not_escalated}`.
+  defp escalation!(work_item, version, stage) do
+    cond do
+      escalation = open_escalation(work_item) ->
+        escalation
+
+      escalation = placed_escalation(work_item, version, stage) ->
+        Repo.insert!(escalation)
+
+      true ->
+        {:error, :not_escalated}
+    end
+  end
+
+  # An escalated work item with no open escalation: its run stopped before the stage runner
+  # placed it. The escalation that stands for it, not stored.
+  defp placed_escalation(%WorkItem{stage_state: :escalated} = work_item, version, stage) do
+    run =
+      Repo.one(
+        from r in DispatchRun,
+          where: r.work_item_id == ^work_item.id and r.take_in == ^work_item.take_in,
+          order_by: [desc: r.attempt],
+          limit: 1
+      )
+
+    %Escalation{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: stage["id"],
+      process_version_id: version.id,
+      round: work_item.stage_round || 0,
+      cause: :run_stopped,
+      run_id: run && run.id,
+      inserted_at: DateTime.utc_now()
+    }
+  end
+
+  defp placed_escalation(_work_item, _version, _stage), do: nil
 
   # Resolves an open escalation of the work item, if one is open, with `resolution`.
   defp close_open(work_item, resolution, scope, note) do

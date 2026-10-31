@@ -52,7 +52,8 @@ defmodule Apiary.Deletion.Tables do
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
   # item, and so are the decisions at its gates and its escalations; the work items and
-  # the runs of the queue before the process versions they run under; a connection's workspaces before the connection, and the connections before the
+  # the runs of the queue before the process versions they run under; a connection's
+  # workspaces before the connection, and the connections before the
   # releases, the service definitions and the secrets they name; everything of a
   # workspace before the workspace.
   #

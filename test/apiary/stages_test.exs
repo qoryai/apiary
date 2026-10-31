@@ -14,7 +14,7 @@ defmodule Apiary.StagesTest do
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Stages.{Escalation, GateDecision}
-  alias Apiary.WorkItems.{Confirmation, WorkItem}
+  alias Apiary.WorkItems.{Confirmation, Moves, WorkItem}
 
   @moduletag needs: [:factory, :workflow_model]
 
@@ -295,6 +295,26 @@ defmodule Apiary.StagesTest do
                gaps: "The run stopped reporting and was marked lost."
              } =
                escalation(work_item)
+    end
+
+    test "a run queued before its work item was placed counts for the stage it is in", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope)
+
+      newest_run(work_item)
+      |> Ecto.Changeset.change(
+        stage_id: nil,
+        round: nil,
+        stage_entry: nil,
+        loop_entry: nil,
+        workflow: nil,
+        machine_type: nil,
+        process_version_id: nil
+      )
+      |> Repo.update!()
+
+      assert %WorkItem{stage_state: :at_gate} = end_run!(work_item, understood_result())
     end
 
     test "a run's end is read once: a second settle changes nothing", %{scope: scope} do
@@ -599,6 +619,96 @@ defmodule Apiary.StagesTest do
     test "is refused with nothing open", %{scope: scope} do
       work_item = take_in!(scope)
       assert Stages.resolve_escalation(scope, work_item, :accept, nil) == {:error, :not_escalated}
+    end
+  end
+
+  describe "work items placed by the migration" do
+    # The migration that adds processes places each open work item without the runner:
+    # no escalation row, and runs with no place in a stage.
+    defp as_placed!(work_item, fields) do
+      Repo.update_all(
+        from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
+        set: [
+          stage_id: nil,
+          round: nil,
+          stage_entry: nil,
+          loop_entry: nil,
+          workflow: nil,
+          machine_type: nil,
+          process_version_id: nil
+        ]
+      )
+
+      Repo.delete_all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: fields)
+      reload(work_item)
+    end
+
+    test "an escalated work item shows its stopped run and takes another round", %{
+      scope: scope
+    } do
+      work_item =
+        take_in!(scope)
+        |> end_run!(nil)
+        |> as_placed!(stage_state: :escalated, stage_round: 1, stage_entry: 0, loop_entry: 0)
+
+      assert %{state: :escalated, escalation: %{cause: :run_stopped, round: 1}} =
+               Stages.status(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
+               Stages.resolve_escalation(scope, work_item, :another_round, nil)
+
+      assert %Escalation{resolution: :another_round} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      assert %DispatchRun{attempt: 2, round: 2, stage_id: @explore} = newest_run(work_item)
+    end
+
+    test "an escalated work item explores again", %{scope: scope} do
+      work_item =
+        take_in!(scope)
+        |> end_run!(nil)
+        |> as_placed!(stage_state: :escalated, stage_round: 1, stage_entry: 0, loop_entry: 0)
+
+      assert {:ok, _work_item} = WorkItems.explore_again(scope, work_item, 1)
+      assert %DispatchRun{attempt: 2, round: 2} = newest_run(work_item)
+    end
+
+    test "a work item waiting for answers runs the next round", %{scope: scope} do
+      work_item =
+        take_in!(scope)
+        |> end_run!(questions_result())
+        |> as_placed!(
+          stage_state: :waiting_answers,
+          stage_round: 1,
+          stage_entry: 0,
+          loop_entry: 0
+        )
+
+      assert {:ok, _work_item} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+
+      assert %DispatchRun{attempt: 2, round: 2, workflow: "explore-a-ticket"} =
+               newest_run(work_item)
+    end
+
+    test "a confirmed work item at Shape's gate moves on when approved", %{scope: scope} do
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result())
+
+      {:ok, _work_item} = Moves.confirm(scope, work_item, 1, nil)
+
+      work_item =
+        as_placed!(work_item,
+          stage_id: @shape,
+          stage_state: :at_gate,
+          stage_round: 0,
+          stage_entry: 0,
+          loop_entry: nil
+        )
+
+      assert %{stage: %{id: @shape}, state: :at_gate} = Stages.status(work_item)
+      assert {:ok, %WorkItem{stage_id: @build}} = Stages.approve(scope, work_item, nil)
     end
   end
 
