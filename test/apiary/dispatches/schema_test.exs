@@ -58,6 +58,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # dispatches: down first, up last.
   @leaked_version 20_261_030_190_000
   @leaked Apiary.Repo.Migrations.KeepTheSecretsARunPrinted
+  # The later migration that keeps the artifacts of work items, whose versions have a key
+  # to the run of the queue that wrote them: down first, up last.
+  @artifacts_version 20_261_031_121_000
+  @artifacts Apiary.Repo.Migrations.CreateArtifacts
 
   setup_all do
     for {version, migration, name} <- [
@@ -68,7 +72,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@hold_version, @hold, "hold_runs_for_their_environment_build"},
           {@walk_version, @walk, "keep_each_run_s_harness_walk"},
           {@start_failed_version, @start_failed, "keep_a_run_that_failed_to_start"},
-          {@leaked_version, @leaked, "keep_the_secrets_a_run_printed"}
+          {@leaked_version, @leaked, "keep_the_secrets_a_run_printed"},
+          {@artifacts_version, @artifacts, "create_artifacts"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -989,6 +994,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @artifacts_version, @artifacts, @options)
     assert :ok = Ecto.Migrator.down(Repo, @leaked_version, @leaked, @options)
     assert :ok = Ecto.Migrator.down(Repo, @start_failed_version, @start_failed, @options)
     assert :ok = Ecto.Migrator.down(Repo, @walk_version, @walk, @options)
@@ -1007,6 +1013,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @walk_version, @walk, @options)
     assert :ok = Ecto.Migrator.up(Repo, @start_failed_version, @start_failed, @options)
     assert :ok = Ecto.Migrator.up(Repo, @leaked_version, @leaked, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @artifacts_version, @artifacts, @options)
 
     # `DispatchRun` writes `image_requeue`, of the migration left down, on every insert.
     Repo.query!(
