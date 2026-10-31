@@ -366,9 +366,10 @@ defmodule Apiary.Stages.StopCause do
   # is read with no integration, so both are the cause.
   defp harness_reason("not_covered", walk, n) do
     source = walk.failed_source || "the harness of #{n.workspace}"
+    subject = walk.failed_source || "The harness of #{n.workspace}"
 
     {:line,
-     "#{source} is not public, or does not exist, and no connection of #{n.organisation} reaches it.",
+     "#{subject} is not public, or does not exist, and no connection of #{n.organisation} reaches it.",
      "Owners and admins of #{n.organisation} connect an integration that covers #{source} in Organisation settings › Integrations."}
   end
 

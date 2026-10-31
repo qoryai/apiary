@@ -96,8 +96,9 @@ defmodule Apiary.Harnesses.Walk do
   #   4. a source a grant of the instance's organisation covers fails `not_allowed`;
   #   5. a `ref` that is a full commit id (40 or 64 lower-case hex digits): no link, and
   #      the source is not read; once the walk has no public request left, such a source
-  #      passes here with no probe of rule 3, and one that rule 3 passed is pinned at its
-  #      `ref`, with no read;
+  #      passes here with no probe of rule 3. A module that rule 3 passed is then pinned
+  #      at its `ref`, with no read; a base that rule 3 passed has to be read for its
+  #      stack, so it fails `invalid` with the rule `calls`;
   #   6. any other source fails, one no grant covers or one only other organisations'
   #      grants cover: `not_covered` where the host of rule 3 answered `401`, `403` or
   #      `404`, a repository that is private or missing; else by why the read of rule 3

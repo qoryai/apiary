@@ -197,6 +197,17 @@ defmodule Apiary.Stages.StopCauseTest do
       assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
     end
 
+    test "with no source shown, the line starts with a capital and the fix does not" do
+      %{scope: scope} = sign_up_fixture()
+      org = scope.organisation.name
+      ws = scope.workspace.name
+      {run, work_item} = walk_failed(scope, "not_covered", nil)
+
+      assert StopCause.text(run, work_item) ==
+               "The harness of #{ws} is not public, or does not exist, and no connection of #{org} reaches it.\n" <>
+                 "Owners and admins of #{org} connect an integration that covers the harness of #{ws} in Organisation settings › Integrations."
+    end
+
     test "with a source that is not public and no connection that reaches it" do
       %{scope: scope} = sign_up_fixture()
       org = scope.organisation.name
