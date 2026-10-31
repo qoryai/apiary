@@ -678,7 +678,7 @@ defmodule ApiaryWeb.HarnessComponents do
 
     [
       {pgettext("plain", "Linked repositories"), linked},
-      {gettext("Assigned by an instance admin"), Enum.map(assigned, &source_option/1)},
+      {gettext("Assigned to this organisation"), Enum.map(assigned, &source_option/1)},
       {gettext("Public address"),
        [%{value: "address", title: gettext("Enter an address"), keep: true}]}
     ]
@@ -698,21 +698,21 @@ defmodule ApiaryWeb.HarnessComponents do
   defp unplaced_words(%{cause: :no_address, adapter: adapter}),
     do:
       gettext(
-        "Qory Apiary cannot read the targets of the %{adapter} adapter: the adapter has no call address. An instance admin sets the call address. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary cannot read the targets of the %{adapter} adapter, because the adapter has no call address. The Qory harness needs no call address.",
         adapter: adapter
       )
 
   defp unplaced_words(%{cause: :no_instance_host, adapter: adapter}),
     do:
       gettext(
-        "Qory Apiary cannot read the targets of the %{adapter} adapter: the instance's public address (PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary cannot read the targets of the %{adapter} adapter, because the public address of Qory Apiary has no host name. The Qory harness needs no call address.",
         adapter: adapter
       )
 
   defp unplaced_words(%{adapter: adapter}),
     do:
       gettext(
-        "Qory Apiary cannot read the targets of the %{adapter} adapter: the adapter's call address is not an https address at the adapter's host. An instance admin corrects the call address. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary cannot read the targets of the %{adapter} adapter, because the adapter's call address is not an https address at the adapter's host. The Qory harness needs no call address.",
         adapter: adapter
       )
 
@@ -804,7 +804,7 @@ defmodule ApiaryWeb.HarnessComponents do
   defp exited_words(source),
     do:
       gettext(
-        "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, tell an instance admin.",
+        "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, contact support.",
         source: label(source)
       )
 
@@ -915,7 +915,7 @@ defmodule ApiaryWeb.HarnessComponents do
   defp no_version_words(ref, %{kind: :assigned} = source),
     do:
       gettext(
-        "%{source} has no version named %{ref}. An instance admin corrects the version of this harness source.",
+        "%{source} has no version named %{ref}. Contact support to correct the version of this harness source.",
         source: label(source),
         ref: ref
       )
@@ -934,8 +934,8 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :timeout, adapter: adapter, seconds: seconds}, _source),
     do:
       ngettext(
-        "The %{adapter} adapter did not answer within %{count} second. Try again. If it repeats, an instance admin checks that the adapter is running.",
-        "The %{adapter} adapter did not answer within %{count} seconds. Try again. If it repeats, an instance admin checks that the adapter is running.",
+        "The %{adapter} adapter did not answer within %{count} second. Try again. If it repeats, contact support.",
+        "The %{adapter} adapter did not answer within %{count} seconds. Try again. If it repeats, contact support.",
         seconds,
         adapter: adapter
       )
@@ -951,21 +951,21 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :unreachable, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, an instance admin checks that the adapter is running.",
+        "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, contact support.",
         adapter: adapter
       )
 
   def call_words(%{cause: :no_address, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary does not call the %{adapter} adapter: the adapter has no call address. An instance admin sets the call address. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary does not call the %{adapter} adapter, because the adapter has no call address. The Qory harness needs no call address.",
         adapter: adapter
       )
 
   def call_words(%{cause: :not_allowed, refusal: {:address, kind}, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary does not call the %{adapter} adapter: the adapter's call address leads to %{kind}. An instance admin sets the adapter's call address. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary does not call the %{adapter} adapter, because the adapter's call address leads to %{kind}. The Qory harness needs no call address.",
         adapter: adapter,
         kind: address_kind_words(kind)
       )
@@ -973,7 +973,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :not_allowed, refusal: :public_host, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary does not call the %{adapter} adapter: the instance's public address (PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary does not call the %{adapter} adapter, because the public address of Qory Apiary has no host name. The Qory harness needs no call address.",
         adapter: adapter
       )
 
@@ -981,14 +981,14 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :not_allowed, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary does not call the %{adapter} adapter: the adapter's call address is not an https address at the adapter's host. An instance admin corrects the call address. The Qory harness needs no call address.",
+        "Contact support: Qory Apiary does not call the %{adapter} adapter, because the adapter's call address is not an https address at the adapter's host. The Qory harness needs no call address.",
         adapter: adapter
       )
 
   def call_words(%{cause: :unauthorized, adapter: adapter}, _source),
     do:
       gettext(
-        "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, an instance admin checks the adapter's enrolment and that both machines' clocks are right.",
+        "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, contact support.",
         adapter: adapter
       )
 
@@ -998,14 +998,14 @@ defmodule ApiaryWeb.HarnessComponents do
       ),
       do:
         gettext(
-          "The %{adapter} adapter does not implement the contract revision of the call. An instance admin upgrades the adapter.",
+          "Contact support: the %{adapter} adapter does not implement the contract revision of the call.",
           adapter: adapter
         )
 
   def call_words(%{cause: :refused, code: "invalid_request", adapter: adapter}, _source),
     do:
       gettext(
-        "The %{adapter} adapter did not accept the call as valid under the contract. An instance admin checks that the adapter and Qory Apiary implement the same contract revision.",
+        "Contact support: the %{adapter} adapter did not accept the call as valid under the contract.",
         adapter: adapter
       )
 
@@ -1020,7 +1020,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :refused, code: code, adapter: adapter}, source),
     do:
       gettext(
-        "The %{adapter} adapter returned the error %{code} for %{source}. An instance admin checks the adapter's log.",
+        "Contact support: the %{adapter} adapter returned the error %{code} for %{source}.",
         adapter: adapter,
         source: label(source),
         code: code || ""
@@ -1029,14 +1029,14 @@ defmodule ApiaryWeb.HarnessComponents do
   def call_words(%{cause: :invalid_answer, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, an instance admin checks the version and the enrolment of the adapter.",
+        "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, contact support.",
         adapter: adapter
       )
 
   def call_words(%{cause: :too_large, adapter: adapter}, _source),
     do:
       gettext(
-        "Qory Apiary did not send the call to the %{adapter} adapter: the call was over 256 KiB. Tell an instance admin.",
+        "Contact support: Qory Apiary did not send the call to the %{adapter} adapter, because the call was over 256 KiB.",
         adapter: adapter
       )
 
