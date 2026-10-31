@@ -111,7 +111,7 @@ defmodule Apiary.Organisations.SlugTest do
             {"Integrations", "integrations"}
           ] do
         assert {:error, changeset} = sign_up(name)
-        message = "Choose another name. /#{slug} is a page of Qory Apiary."
+        message = "Choose another name. Qory Apiary keeps /#{slug} for its pages."
         assert %{organisation_name: [^message]} = errors_on(changeset)
       end
     end
@@ -170,7 +170,7 @@ defmodule Apiary.Organisations.SlugTest do
       taken = organisation_fixture().slug
 
       for {slug, message} <- [
-            {"docs", "is reserved for a page of Qory Apiary"},
+            {"docs", "is kept by Qory Apiary for its pages"},
             {"Acme", "may hold lowercase letters"},
             {"-acme", "may hold lowercase letters"},
             {"acme-", "may hold lowercase letters"},
@@ -197,7 +197,7 @@ defmodule Apiary.Organisations.SlugTest do
         |> Workspace.changeset(%{name: "Members"})
         |> Workspace.put_slug("members")
 
-      assert "is reserved for a page of Qory Apiary" in errors_on(changeset).slug
+      assert "is kept by Qory Apiary for its pages" in errors_on(changeset).slug
 
       assert {:error, changeset} =
                %Workspace{organisation_id: organisation.id}

@@ -429,7 +429,7 @@ defmodule Apiary.SetupTest do
                end)
 
       assert output ==
-               "Not created: organisation_name Choose another name. /settings is a page of Qory Apiary.\n"
+               "Not created: organisation_name Choose another name. Qory Apiary keeps /settings for its pages.\n"
 
       assert {^code, nil} = stored()
       refute Setup.set_up?()
