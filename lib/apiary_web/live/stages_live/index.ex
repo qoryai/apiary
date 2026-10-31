@@ -51,6 +51,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         save_errors: [],
         stage_errors: %{},
         save_note: nil,
+        assigned: nil,
         notice: nil
       )
       |> load(current)
@@ -265,7 +266,7 @@ defmodule ApiaryWeb.StagesLive.Index do
              socket
              |> assign(
                assign_errors: for({:missing, error} <- results, do: error),
-               notice: assigned(Enum.count(results, &(&1 == :assigned)), trial)
+               assigned: assigned(Enum.count(results, &(&1 == :assigned)), trial)
              )
              |> load_work_items()}
 
@@ -389,7 +390,14 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   # Each action starts with no message from an earlier one.
   defp fresh(socket),
-    do: assign(socket, notice: nil, save_errors: [], save_note: nil, assign_errors: [])
+    do:
+      assign(socket,
+        notice: nil,
+        save_errors: [],
+        save_note: nil,
+        assign_errors: [],
+        assigned: nil
+      )
 
   defp assigned(0, _trial), do: nil
 
@@ -796,6 +804,10 @@ defmodule ApiaryWeb.StagesLive.Index do
                 <.button id="stages-assign" type="submit">{gettext("Assign to the trial")}</.button>
               </div>
             </.form>
+            <%!-- Here, next to the button, not under Save at the top of the page. --%>
+            <.notice :if={@assigned} kind={:success}>
+              <span id="stages-assigned">{@assigned}</span>
+            </.notice>
             <.notice :if={@assign_errors != []} kind={:warning}>
               <span :for={error <- @assign_errors} class="block" data-assign-error>{error}</span>
             </.notice>

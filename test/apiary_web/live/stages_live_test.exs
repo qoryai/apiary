@@ -418,7 +418,13 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       view |> form("#stages-assign-form", assign: %{items: [item.public_id]}) |> render_submit()
       refute has_element?(view, "[data-assign-error]")
-      assert has_element?(view, "#stages-notice", "Assigned 1 work item to version 2.")
+
+      assert has_element?(
+               view,
+               "#stages-trial #stages-assigned",
+               "Assigned 1 work item to version 2."
+             )
+
       assert assign_order(view) == order
 
       assert has_element?(view, ~s(#stages-assign-form input[value="#{item.public_id}"][checked]))
