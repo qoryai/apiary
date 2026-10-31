@@ -345,6 +345,65 @@ defmodule ApiaryWeb.SetUpComponents do
   def step_heading(:test, _workspace), do: gettext("Run a test")
 
   @doc """
+  step_note/3 is the line under a step's name in the workspace's overview while the set-up
+  is not finished. A done step shows what it set where a value of it is at hand: Name the
+  workspace's name, Work sources the integrations whose collections bring work to the
+  workspace's Backlog, by name, the ones the step's done rule counts, and Machines
+  the node pool that runs the workspace's runs. Test run shows what it does, "Starts one
+  run to check the set-up". Every other step, and a step not done, shows its page's heading
+  (`step_heading/2`).
+  """
+  @spec step_note(atom, boolean, %Workspace{}) :: String.t()
+  def step_note(:name, _done, %Workspace{name: name}), do: name
+  def step_note(:test, _done, _workspace), do: gettext("Starts one run to check the set-up")
+
+  def step_note(:sources, true, workspace) do
+    case WorkspaceSetup.source_names(workspace, Domain.for_workspace(workspace)) do
+      [] -> step_heading(:sources, workspace)
+      names -> Enum.join(names, ", ")
+    end
+  end
+
+  def step_note(:machines, true, workspace) do
+    case WorkspaceSetup.machines(workspace) do
+      %{pool: %{name: name}} -> name
+      nil -> step_heading(:machines, workspace)
+    end
+  end
+
+  def step_note(id, _done, workspace), do: step_heading(id, workspace)
+
+  @doc """
+  changes_step?/2 is whether the person of `scope` may take the action of the set-up step
+  `id` of the scope's workspace, the action its page checks before it shows its form
+  rather than the step read only: Name `workspace.rename`, Work sources and Destinations
+  `collection.assign`, Model `model_choice.write`, Harness `harness.save`, Machines
+  `node.create`, Test run `work_item.take_in`.
+  """
+  @spec changes_step?(Scope.t(), atom) :: boolean
+  def changes_step?(%Scope{organisation: organisation, workspace: workspace} = scope, id) do
+    case id do
+      :name ->
+        Access.can?(scope, :"workspace.rename", workspace)
+
+      list when list in [:sources, :destinations] ->
+        Access.can?(scope, :"collection.assign", organisation)
+
+      :model ->
+        Access.can?(scope, :"model_choice.write", workspace)
+
+      :harness ->
+        Access.can?(scope, :"harness.save", workspace)
+
+      :machines ->
+        Access.can?(scope, :"node.create", workspace)
+
+      :test ->
+        Access.can?(scope, :"work_item.take_in", workspace)
+    end
+  end
+
+  @doc """
   flow_title/1 is the line above the indicator's count: "Set up Payments · Software
   factory", or "Set up a new Software factory" before the workspace exists.
   """

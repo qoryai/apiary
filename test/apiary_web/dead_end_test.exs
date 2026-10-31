@@ -41,7 +41,7 @@ defmodule ApiaryWeb.DeadEndTest do
       assert texts(page, "h1") == ["Workspace not found"]
 
       assert texts(page, "#dead-end-line") == [
-               "No workspace has this address in #{organisation.name}. The workspace's name may have changed."
+               "You have no workspace at this address in #{organisation.name}. Its address changes when the workspace is renamed."
              ]
 
       assert hrefs(page, "#dead-end-workspaces a") ==

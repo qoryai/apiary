@@ -23,12 +23,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
 - An address under an organisation that matches no workspace the person reaches, such as
-  an old address after a rename, shows inside the app's layout, with status 404: “No
-  workspace has this address in Acme. The workspace's name may have changed.”, then the
-  workspaces of Acme the person can open, as links. New workspace for a person who may
-  not create one shows, the same way and with no kind cards, the Community limit's line
-  where the organisation has its one workspace, else who creates workspaces. An
-  organisation the person does not reach still shows the plain “Not Found”.
+  an old address after a rename, shows inside the app's layout, with status 404: “You
+  have no workspace at this address in Acme. Its address changes when the workspace is
+  renamed.”, then the workspaces of Acme the person can open, as links. New workspace for
+  a person who may not create one shows, the same way and with no kind cards, the
+  Community limit's line where the organisation has its one workspace, else who creates
+  workspaces. An organisation the person does not reach still shows the plain “Not
+  Found”.
 - Organisation settings › Workspaces shows each workspace's address, `/acme/payments`,
   beside its name; with no workspace, it shows “Acme has no workspace yet.” and a link
   to the overview, in place of the empty list.
@@ -380,8 +381,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   done. The workspace's sidebar starts with “Set up · 3 of 7” and a link to each step, the
   page's step current, above its other pages. The organisation's list of workspaces shows
   “Set-up: 3 of 7 steps” under the workspace's name. A person who may not act on a step
-  reads who may. Once the test run has passed, the Overview, the sidebar and the
-  organisation's list show no set-up. The workspace's other pages, such as **Backlog** and
+  reads who may; on the Overview, “Main is being set up” and “Owners and admins of Acme
+  finish the set-up.”, with no **Continue**. Under each step's name, a done step shows its
+  value, such as the workspace's name, and Test run “Starts one run to check the
+  set-up”. Once the test run has passed, the Overview, the sidebar and the organisation's
+  list show no set-up. The workspace's other pages, such as **Backlog** and
   **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** lists the organisation's model providers,
   and **New model provider** adds one with its key, and an address for a provider that
