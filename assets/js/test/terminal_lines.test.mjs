@@ -66,19 +66,14 @@ test("every other line passes through as its bytes", () => {
 })
 
 test("a line over 16 MiB is not read as JSON", () => {
-  const object = text => {
-    const line = encode(text)
-    const bytes = new Uint8Array(MOST_READ + 1).fill(0x20)
-    bytes.set(line.subarray(0, 8))
-    bytes.set(line.subarray(8), bytes.length - (line.length - 8))
+  const object = size => {
+    const bytes = new Uint8Array(size).fill(0x20)
+    bytes.set(encode('{"type":"system"'))
+    bytes.set(encode("}\n"), size - 2)
     return bytes
   }
-  const long = object('{"type":"system"}\n')
-  assert.equal(long.length, MOST_READ + 1)
-  assert.equal("names" in entry({bytes: long, start: true}), false)
-  const longest = long.subarray(1)
-  longest[0] = 0x7b
-  assert.equal("names" in entry({bytes: longest, start: true}), true)
+  assert.equal("names" in entry({bytes: object(MOST_READ), start: true}), true)
+  assert.equal("names" in entry({bytes: object(MOST_READ + 1), start: true}), false)
 })
 
 test("a row has the marker, the type and subtype, the preview and the size", () => {
