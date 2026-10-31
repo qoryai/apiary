@@ -121,6 +121,9 @@ defmodule Apiary.Application do
       Apiary.Adapters.CallClock,
       Apiary.Runs.RateLimit,
       Apiary.Nodes.Throttle,
+      # The files read from public harness repositories, by commit
+      # (`Apiary.Harnesses.PublicGit.Cache`).
+      Apiary.Harnesses.PublicGit.Cache,
       # The holds of adapters' reads of their change feeds, a few per key
       # (`ApiaryWeb.Contract.ChangesController`).
       {Registry, keys: :unique, name: ApiaryWeb.Contract.ChangesController.Holds},

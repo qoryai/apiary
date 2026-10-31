@@ -2,7 +2,8 @@ defmodule Apiary.Stacks.Sources do
   # The harness sources Workspace settings › Workflow offers a workspace
   # (`ApiaryWeb.WorkflowLive`), the stacks each has, the workflows each stack lists, and
   # the save of the workspace's document. Every read goes through the adapters' calls
-  # (`Apiary.Adapters.Calls`: `resolve`, `read` and `read-public`), as a run's walk reads
+  # (`Apiary.Adapters.Calls`: `resolve` and `read`), or reads a public repository from
+  # its host with no adapter (`Apiary.Harnesses.PublicGit`), as a run's walk reads
   # (`Apiary.Harnesses.Walk`), and writes nothing.
   #
   # ## The sources
@@ -27,10 +28,12 @@ defmodule Apiary.Stacks.Sources do
   # resolved at every adapter with a `call_url`, in the order of their names, as a run's
   # walk resolves it:
   # the first result under a live grant of a connected connection that the rule allows
-  # (`Apiary.Harnesses.allowed?/3`) is its link; with none, the first result with
-  # `public`, true, makes it public, read at that result's `public_ref` (`read-public`),
-  # with no grant and no link. Neither is `:not_covered`, and a run's walk could not read
-  # it either. A source with `stack` is that export of its root harness file, one with
+  # (`Apiary.Harnesses.allowed?/3`) is its link; with none, a repository its host serves
+  # to anyone is public, read from its host with no grant and no link. Neither is
+  # `:not_covered` where the host answered that it serves no such repository to anyone,
+  # else `{:fetch, code, rule}` for a read of the host that failed, as a run's walk
+  # fails; a run's walk could not read it either. A source with `stack` is that export of
+  # its root harness file, one with
   # `path` the `qory-stack.yaml` in that folder, and a root the stacks its harness file
   # exports, else its `qory-stack.yaml`.
   #
@@ -44,8 +47,8 @@ defmodule Apiary.Stacks.Sources do
   # system it reaches under credentials every organisation shares, so a person's reads
   # stay a few. A read of a source makes one resolve per adapter and at most 3 reads to
   # find its stacks, then, for `read/2`, reads the first 20 stacks it has, in the order
-  # its harness file exports them; its calls take at most 30 seconds together, and one
-  # past that makes the source not read.
+  # its harness file exports them; its calls, and its requests to a public repository's
+  # host, take at most 30 seconds together, and one past that makes the source not read.
   #
   # ## The save
   #
@@ -106,7 +109,7 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.{Access, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
-  alias Apiary.Harnesses.{Assignment, Reader, Walk}
+  alias Apiary.Harnesses.{Assignment, PublicGit, Reader, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Lingo.Domain.Definition
   alias Apiary.Nodes.Node
@@ -182,9 +185,12 @@ defmodule Apiary.Stacks.Sources do
   @typedoc """
   Why a source's stacks were not read:
 
-    * `:not_covered`: no adapter links the source to the organisation and none reads it
-      in public, or an adapter refused a read `grant_unknown`, `resource_not_covered` or
-      `resource_not_public`, as for a run's walk;
+    * `:not_covered`: no adapter links the source to the organisation and its host
+      serves no such repository to anyone, or an adapter refused a read `grant_unknown`,
+      `resource_not_covered` or `resource_not_public`, as for a run's walk;
+    * `{:fetch, code, rule}`: a read of a public repository's host that failed, with a
+      run's walk's code, `:too_large`, `:source_unreachable`, `:host_not_allowed`,
+      `:rate_limited` or `:fetch_failed`, and its `fetch` rule (`Apiary.Harnesses.Walk.fetch_rule/2`);
     * `:no_stack`: a root with no stack in a harness file's `exports` and no
       `qory-stack.yaml`;
     * `{:no_stack_file, file}`: no `file`, the `qory-stack.yaml` of a stack a root
@@ -210,6 +216,9 @@ defmodule Apiary.Stacks.Sources do
   """
   @type reason ::
           :not_covered
+          | {:fetch,
+             :too_large | :source_unreachable | :host_not_allowed | :rate_limited | :fetch_failed,
+             map}
           | :no_stack
           | {:no_stack_file, String.t()}
           | {:no_export, String.t()}
@@ -483,17 +492,19 @@ defmodule Apiary.Stacks.Sources do
     deadline = now() + @read_time
     harness_source = Map.merge(source.narrowing, %{"git" => source.git, "ref" => source.ref})
 
-    with :ok <- spend(scope, :read, @reads_a_minute),
-         {:ok, location} <- locate(organisation, harness_source, deadline),
-         {:ok, harness, version} <- read_file(location, "harness.yaml", source.ref, deadline),
-         {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
-      case {harness, qory} do
-        {nil, nil} -> {:ok, []}
-        {content, nil} -> export_names("harness.yaml", content)
-        {nil, content} -> export_names("qory.yaml", content)
-        _both -> {:error, both_files()}
+    PublicGit.session(public_budget(deadline), fn ->
+      with :ok <- spend(scope, :read, @reads_a_minute),
+           {:ok, location} <- locate(organisation, harness_source, deadline),
+           {:ok, harness, version} <- read_file(location, "harness.yaml", source.ref, deadline),
+           {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
+        case {harness, qory} do
+          {nil, nil} -> {:ok, []}
+          {content, nil} -> export_names("harness.yaml", content)
+          {nil, content} -> export_names("qory.yaml", content)
+          _both -> {:error, both_files()}
+        end
       end
-    end
+    end)
   end
 
   defp export_names(file, content) do
@@ -519,9 +530,12 @@ defmodule Apiary.Stacks.Sources do
   # for a person past their reads of the minute. It calls the adapters, so a page runs it
   # outside its process.
   @spec read(Scope.t(), source) :: {:ok, [stack]} | {:error, reason}
-  def read(%Scope{organisation: %Organisation{} = organisation} = scope, %{} = source) do
+  def read(%Scope{} = scope, %{} = source) do
     deadline = now() + @read_time
+    PublicGit.session(public_budget(deadline), fn -> read_stacks(scope, source, deadline) end)
+  end
 
+  defp read_stacks(%Scope{organisation: %Organisation{} = organisation} = scope, source, deadline) do
     with :ok <- spend(scope, :read, @reads_a_minute),
          {:ok, location, version, stacks} <- stacks_of(organisation, source, deadline) do
       stacks
@@ -586,7 +600,7 @@ defmodule Apiary.Stacks.Sources do
 
   # Where `harness_source` is read: its link, the first result of an adapter, in the order
   # of their names, under a live grant of a connected connection that the rule allows;
-  # else the first public result, with no grant.
+  # else its host, where it serves the repository to anyone, with no grant.
   defp locate(%Organisation{id: organisation_id}, %{"git" => git} = harness_source, deadline) do
     if CallWire.address?(git),
       do: locate_at(adapters(), organisation_id, git, harness_source, deadline),
@@ -601,34 +615,79 @@ defmodule Apiary.Stacks.Sources do
     )
   end
 
-  # An adapter whose resolve fails is passed over. A link at a later adapter comes before
-  # a public result at an earlier one, as in a run's walk. With neither, the source is
-  # not read for the first adapter whose resolve failed (`call_failure/4`), since that
-  # adapter may have covered it.
+  # An adapter whose resolve fails is passed over. A link at any adapter comes before a
+  # read from the host, as in a run's walk. With neither, the source is not read for the
+  # first adapter whose resolve failed (`call_failure/4`), since that adapter may have
+  # covered it; else for why its host does not serve it (`public_reason/4`).
   defp locate_at(adapters, organisation_id, git, harness_source, deadline) do
     adapters
-    |> Enum.reduce_while(%{public: nil, failed: nil}, fn adapter, found ->
+    |> Enum.reduce_while(nil, fn adapter, failed ->
       opts = call_opts(deadline)
 
       with opts when is_list(opts) <- opts || {:error, :late},
            {:ok, [%{} = result]} <- Calls.resolve(adapter, [git], opts) do
         case linked(adapter, result, organisation_id, harness_source) do
           %{} = link -> {:halt, {:ok, link}}
-          nil -> {:cont, %{found | public: found.public || public(adapter, result)}}
+          nil -> {:cont, failed}
         end
       else
-        {:error, failure} ->
-          {:cont, %{found | failed: found.failed || {adapter, failure, opts}}}
-
-        _other ->
-          {:cont, found}
+        {:error, failure} -> {:cont, failed || {adapter, failure, opts}}
+        _other -> {:cont, failed}
       end
     end)
     |> case do
-      {:ok, link} -> {:ok, link}
-      %{public: %{} = public} -> {:ok, public}
-      %{failed: {adapter, failure, opts}} -> {:error, call_failure(adapter, failure, opts, %{})}
-      _none -> {:error, :not_covered}
+      {:ok, link} ->
+        {:ok, link}
+
+      failed ->
+        case {PublicGit.public(git), failed} do
+          {:ok, _failed} ->
+            {:ok, location(:public, nil, git)}
+
+          {{:error, _cause, _hop}, {adapter, failure, opts}} ->
+            {:error, call_failure(adapter, failure, opts, %{})}
+
+          {{:error, cause, hop}, nil} ->
+            {:error, public_reason(cause, hop, harness_source["ref"], nil)}
+        end
+    end
+  end
+
+  # Why a public repository was not read at `at`, `hop` the host and port the read failed
+  # at and `path` the file, as a `t:reason/0`: as a run's walk fails
+  # (`Apiary.Harnesses.Walk`).
+  defp public_reason(:version_not_found, _hop, at, _path),
+    do: if(at == @head, do: :no_commit, else: {:no_version, at})
+
+  defp public_reason(:not_text, _hop, _at, path), do: {:not_text, path}
+  defp public_reason(:not_found, _hop, _at, _path), do: :not_covered
+
+  defp public_reason(:late, hop, _at, _path),
+    do: {:fetch, :source_unreachable, Walk.fetch_rule(hop, div(@read_time, 1000))}
+
+  defp public_reason({:unreachable, seconds}, hop, _at, _path),
+    do: {:fetch, :source_unreachable, Walk.fetch_rule(hop, seconds)}
+
+  defp public_reason(:not_allowed, hop, _at, _path),
+    do: {:fetch, :host_not_allowed, Walk.fetch_rule(hop, nil)}
+
+  defp public_reason(:rate_limited, hop, _at, _path),
+    do: {:fetch, :rate_limited, Walk.fetch_rule(hop, nil)}
+
+  defp public_reason(:too_large, hop, _at, _path),
+    do: {:fetch, :too_large, Walk.fetch_rule(hop, nil)}
+
+  defp public_reason(_failed, hop, _at, _path),
+    do: {:fetch, :fetch_failed, Walk.fetch_rule(hop, nil)}
+
+  # The time of a request to a public repository's host: what is left before
+  # `deadline`, at most a call's.
+  defp public_budget(deadline) do
+    fn ->
+      case call_opts(deadline) do
+        [total: total] -> {:ok, total}
+        nil -> {:error, :late}
+      end
     end
   end
 
@@ -709,14 +768,6 @@ defmodule Apiary.Stacks.Sources do
   end
 
   defp linked(_adapter, _result, _organisation_id, _source), do: nil
-
-  # A public result's location, with no grant, at its `public_ref`: a covered result's
-  # `resource_ref` may be a ref only its grant's organisation may use, so it is never read
-  # with no grant. Nil for a result that is not public.
-  defp public(adapter, %{public: true, public_ref: public_ref}),
-    do: location(adapter, nil, public_ref)
-
-  defp public(_adapter, _result), do: nil
 
   # The live grant of `adapter` with `grant_ref`, of a connected connection, whatever its
   # organisation; nil for none.
@@ -803,8 +854,9 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The document at `path` at `location`, read at `at` before `deadline`, with no grant
-  # for a public source's location (`read-public`): `{:ok, content | nil, resolved_at}`;
+  # The document at `path` at `location`, read at `at` before `deadline`, from its host
+  # for a public source's location, whose resource is its address
+  # (`Apiary.Harnesses.PublicGit`): `{:ok, content | nil, resolved_at}`;
   # `{:error, {:unreadable, :path | :version, value}}` for a path or a version a read does
   # not take; or the call's failure (`call_failure/4`).
   defp read_file(location, path, at, deadline) do
@@ -822,8 +874,14 @@ defmodule Apiary.Stacks.Sources do
       not CallWire.version_ref?(at) ->
         {:error, {:unreadable, :version, at}}
 
+      location.adapter == :public ->
+        case PublicGit.read(location.resource_ref, at, path) do
+          {:ok, content, version} -> {:ok, content, version}
+          {:error, cause, hop} -> {:error, public_reason(cause, hop, at, path)}
+        end
+
       opts = call_opts(deadline) ->
-        case Calls.read_at(location.adapter, request, opts) do
+        case Calls.read_document(location.adapter, request, opts) do
           {:ok, %{found: true, content: content, resolved_at: version}} ->
             {:ok, content, version}
 

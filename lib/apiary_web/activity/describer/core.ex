@@ -98,6 +98,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"gate.approve"), do: gettext("Work item stage decided")
   def label(:"process.edit"), do: gettext("Process changed")
   def label(:"workspace_type.edit"), do: gettext("Workspace type changed")
+  def label(:"artifact.write"), do: gettext("Artifact version added")
+  def label(:"artifact_type.edit"), do: gettext("Artifact type changed")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -176,12 +178,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"run_credential.issue"
         ]
 
-      # Of the actions on a workspace's process, a stage's decisions on a work item, the
-      # changes to the process and to a workspace type's default have labels; the
-      # artifacts' actions have none yet, so the filter offers only those three, and the
-      # others' entries show as any change.
+      # The actions on a workspace's process with a label: a stage's decisions on a work
+      # item, the changes to the process and to a workspace type's default, a person's
+      # artifact versions, and the changes to the workspace's artifact types.
       :workflow_model ->
-        action in [:"gate.approve", :"process.edit", :"workspace_type.edit"]
+        action in [
+          :"gate.approve",
+          :"process.edit",
+          :"workspace_type.edit",
+          :"artifact.write",
+          :"artifact_type.edit"
+        ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
         Features.visible?(scope, shown_as)
@@ -665,6 +672,29 @@ defmodule ApiaryWeb.Activity.Describer.Core do
        do: said_process(change, number)
 
   defp said(:"workspace_type.edit", _details, _actor), do: label(:"workspace_type.edit")
+
+  # A version a person added to an artifact (`Apiary.Artifacts.push/5`); the entry is the
+  # work item's. An artifact's name is left out where it is the default, `main`.
+  defp said(:"artifact.write", %{"type" => type, "name" => "main", "number" => number}, _actor),
+    do: gettext("Added version %{number} of %{type}", number: number, type: type)
+
+  defp said(:"artifact.write", %{"type" => type, "name" => name, "number" => number}, _actor),
+    do:
+      gettext("Added version %{number} of %{type} %{name}",
+        number: number,
+        type: type,
+        name: name
+      )
+
+  # A change to the workspace's artifact types (`Apiary.Artifacts`), by its change.
+  defp said(:"artifact_type.edit", %{"change" => "create", "type" => type}, _actor),
+    do: gettext("Added artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "update", "type" => type}, _actor),
+    do: gettext("Saved artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "delete", "type" => type}, _actor),
+    do: gettext("Deleted artifact type %{type}", type: type)
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 

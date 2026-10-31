@@ -40,7 +40,9 @@ defmodule Apiary.Deletion.Tables do
   # configurations before the run configurations they were composed from; the run
   # configurations and the policy's rules
   # before the targets, and so are the pins; the runs before the runs of the queue they
-  # name, a dispatch's machine log before the dispatch, the dispatches before the runs of
+  # name; an artifact's files before its versions, its versions before it, and the
+  # versions before the runs of the queue they link to; a dispatch's machine log before
+  # the dispatch, the dispatches before the runs of
   # the queue, the node pools and the access keys they name, and the runs of the queue
   # before their work items; the environment records before the
   # node pools and the collections they name; a node's instances before the access keys
@@ -52,13 +54,13 @@ defmodule Apiary.Deletion.Tables do
   # and the workspaces they name; an adapter's collections, the
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
-  # item, and so are the decisions at its gates and its stages' failed checks; its
-  # escalations before the runs of the queue they name; the work items and the runs of
-  # the queue before the process versions they run under, and a work item or a run of
-  # another workspace that still links to one has that link set to null (`ON DELETE SET
-  # NULL`); a connection's workspaces before the connection, and the connections before
-  # the releases, the service definitions and the secrets they name; everything of a
-  # workspace before the workspace.
+  # item, and so are its artifacts, the workspace's artifact types, the decisions at its
+  # gates and its stages' failed checks; its escalations before the runs of the queue they
+  # name; the work items and the runs of the queue before the process versions they run
+  # under, and a work item or a run of another workspace that still links to one has that
+  # link set to null (`ON DELETE SET NULL`); a connection's workspaces before the
+  # connection, and the connections before the releases, the service definitions and the
+  # secrets they name; everything of a workspace before the workspace.
   #
   # A run of the queue names its work item by the organisation, not the workspace: it
   # stays in the workspace it was queued in when its work item moves to another. So a
@@ -77,6 +79,9 @@ defmodule Apiary.Deletion.Tables do
     {"run_configurations", :workspace},
     {"run_credentials", :workspace},
     {"runs", :workspace},
+    {"artifact_files", :workspace},
+    {"artifact_versions", :workspace},
+    {"artifacts", :workspace},
     {"dispatch_machine_logs", :workspace},
     {"dispatches", :workspace},
     {"gate_decisions", :workspace},
@@ -91,6 +96,7 @@ defmodule Apiary.Deletion.Tables do
     {"model_choices", :workspace},
     {"time_limits", :workspace},
     {"stacks", :workspace},
+    {"artifact_types", :workspace},
     {"work_items", :workspace},
     {"process_versions", :workspace},
     {"work_item_counters", :workspace},

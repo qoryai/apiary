@@ -512,13 +512,11 @@ defmodule Apiary.Access do
     ),
     Action.new(:"artifact.write", "store a version of an artifact on a work item",
       feature: :workflow_model,
-      roles: @members,
-      audited: {:not, "no function takes it yet"}
+      roles: @members
     ),
     Action.new(:"artifact_type.edit", "add, change or remove the workspace's artifact types",
       feature: :workflow_model,
-      roles: @admins,
-      audited: {:not, "no function takes it yet"}
+      roles: @admins
     ),
     # A workspace type's default process, which new workspaces copy, in Instance settings
     # › Workspace types (`Apiary.Processes.TypeTemplates`).

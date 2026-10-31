@@ -207,6 +207,25 @@ if config_env() != :test do
   config :apiary, :machine_logs_dir, System.get_env("APIARY_MACHINE_LOGS_DIR")
 end
 
+# QORY_ARTIFACTS_DIR is the folder where the content of artifacts is kept, one file per
+# content, named by its SHA-256 digest (`Apiary.Artifacts.Store.Volume`). Unset or blank,
+# it is /var/lib/apiary/artifacts in a release, beside the keys in /var/lib/apiary/keys,
+# and tmp/artifacts under the checkout in development. Not read under test: the tests set
+# it.
+if config_env() != :test do
+  config :apiary,
+         :artifacts_dir,
+         (case System.get_env("QORY_ARTIFACTS_DIR") do
+            blank when blank in [nil, ""] ->
+              if config_env() == :prod,
+                do: "/var/lib/apiary/artifacts",
+                else: Path.expand("tmp/artifacts")
+
+            dir ->
+              dir
+          end)
+end
+
 # QORY_REGISTRY is the private image registry's address, with the opt-in feature
 # registry: a host and an optional port, with no scheme or path, for example
 # registry.qory.example. Its signing key is registry-token.key in APIARY_KEYS_DIR

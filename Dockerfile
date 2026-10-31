@@ -153,6 +153,13 @@ RUN mkdir -p /var/lib/apiary/keys \
   && chown 65532:65532 /var/lib/apiary/keys
 ENV APIARY_KEYS_DIR=/var/lib/apiary/keys
 
+# The content of artifacts, in QORY_ARTIFACTS_DIR (`Apiary.Artifacts.Store.Volume`). The
+# directory belongs to 65532, so a new volume mounted on it takes that owner and the
+# release can write to it.
+RUN mkdir -p /var/lib/apiary/artifacts \
+  && chown 65532:65532 /var/lib/apiary/artifacts
+ENV QORY_ARTIFACTS_DIR=/var/lib/apiary/artifacts
+
 # The one-time codes of the adapters installed with Qory Apiary, in QORY_ENROLMENT_DIR
 # (`Apiary.Adapters.Installed`). The directory belongs to 65532, mode 0755, so the release
 # makes a folder in it per adapter where it is missing and writes each code there; each

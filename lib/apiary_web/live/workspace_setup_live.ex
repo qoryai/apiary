@@ -824,7 +824,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       |> put_flash(:error, socket.assigns.who_may)
 
   defp target_saved(socket, choice, {:error, reason}),
-    do: HarnessTargets.refused(socket, choice, reason, socket.assigns.flow.organisation.name)
+    do:
+      HarnessTargets.refused(
+        socket,
+        choice,
+        reason,
+        socket.assigns.flow.organisation.name,
+        socket.assigns.flow.workspace.name
+      )
 
   defp harness_targets(scope, flow),
     do: HarnessTargets.targets(scope, flow.workspace, flow.domain)
@@ -1616,9 +1623,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp harness_saved(socket, choice, {:error, reason}) do
     {source, ref} = HarnessComponents.refused(choice)
 
-    organisation = socket.assigns.flow.organisation.name
+    flow = socket.assigns.flow
 
-    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
+    case HarnessComponents.refusal_words(
+           reason,
+           source,
+           ref,
+           flow.organisation.name,
+           flow.workspace.name
+         ) do
       nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
       words -> assign(socket, :harness_refusal, {reason, words})
     end
@@ -2381,6 +2394,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             unplaced={@unplaced}
             exports={@exports}
             organisation={@flow.organisation.name}
+            workspace_name={@flow.workspace.name}
             disabled={!@may or @saving}
             shared={@shared_harness}
           />
@@ -2414,6 +2428,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           linked={@linked}
           assigned={@harness_assigned}
           organisation={@flow.organisation.name}
+          workspace_name={@flow.workspace.name}
         />
 
         <p

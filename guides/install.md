@@ -675,6 +675,12 @@ The value is read at boot, so a change takes a restart. A release asked for from
 address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 `integration_source_refused`, and a release found before is not added.
 <!-- /feature -->
+<!-- feature: factory -->
+
+Qory Apiary reads a public harness repository from its host over HTTPS, from public
+addresses only. Allow the Qory Apiary server outbound HTTPS to each host your harnesses
+use, such as `github.com:443`.
+<!-- /feature -->
 
 ### Sign-up and invitations
 
@@ -1073,11 +1079,13 @@ prints what it made, and last the address to open.
 
 ## Backups
 
-Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
-three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
-`SECRET_KEY_BASE`, which `compose.yaml` keeps in the volume `keys`.
-[Backup and restore](backup.md) has the commands for the compose installation, its keys
-and an external Postgres, what is lost without each key, and a restore drill. A deleted account
+Postgres and the artifact store are the state: a `pg_dump` of the database and a copy of
+the store taken after it, the volume `artifacts` or the folder `QORY_ARTIFACTS_DIR` is set
+to, are a complete backup. The three values to keep beside them are
+`APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`, which
+`compose.yaml` keeps in the volume `keys`. [Backup and restore](backup.md) has the
+commands for the compose installation, its keys, its artifact store and an external
+Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so
 how long you keep dumps bounds how long a deletion takes to be complete. What the server
 deletes with age, and how to keep less or more, is in [Retention](retention.md).

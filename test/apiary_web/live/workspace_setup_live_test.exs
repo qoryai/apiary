@@ -2342,12 +2342,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
       pick_repository(lv)
 
+      org = ctx.organisation.name
+
       assert words(lv, "#harness-stack-error") ==
-               "Qory Apiary reached no adapter that reads acme/harness, and no integration of " <>
-                 "#{ctx.organisation.name} covers it. If acme/harness is public, contact " <>
-                 "support to have it read from code.example.com. If it is private, owners and " <>
-                 "admins of #{ctx.organisation.name} connect an integration that covers it in " <>
-                 "Organisation settings › Integrations."
+               "Owners and admins of #{org} connect an integration that covers acme/harness " <>
+                 "in Organisation settings › Integrations. acme/harness is not public, or does not exist, and no connection of #{org} " <>
+                 "reaches it."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2468,12 +2468,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       reads = &read_words(&1, source, "Acme")
 
-      # No adapter answered for the source, so both fixes show, each with its condition.
       not_covered =
-        "Qory Apiary reached no adapter that reads acme/harness, and no integration of Acme " <>
-          "covers it. If acme/harness is public, contact support to have it read from " <>
-          "code.example.com. If it is private, owners and admins of Acme connect an " <>
-          "integration that covers it in Organisation settings › Integrations."
+        "Owners and admins of Acme connect an integration that covers acme/harness in " <>
+          "Organisation settings › Integrations. acme/harness is not public, or does not " <>
+          "exist, and no connection of Acme reaches it."
 
       assert reads.(:not_covered) == not_covered
       assert words.(failure.(:not_covered, chosen, nil)) == not_covered
@@ -2482,17 +2480,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Contact support to make acme/harness available to Acme."
 
       # A module the chosen stack lists, at another address: the walk failed on that
-      # module, so the words name it and its host, not the chosen source.
+      # module, so the words name it, not the chosen source.
       tools = "https://github.example.com/example-org/tools"
 
       assert words.(failure.(:not_allowed, tools, nil)) ==
                "Contact support to make #{tools} available to Acme."
 
       assert words.(failure.(:not_covered, tools, nil)) ==
-               "Qory Apiary reached no adapter that reads #{tools}, and no integration of Acme " <>
-                 "covers it. If #{tools} is public, contact support to have it read from " <>
-                 "github.example.com. If it is private, owners and admins of Acme connect an " <>
-                 "integration that covers it in Organisation settings › Integrations."
+               "Owners and admins of Acme connect an integration that covers #{tools} in " <>
+                 "Organisation settings › Integrations. #{tools} is not public, or does not " <>
+                 "exist, and no connection of Acme reaches it."
 
       # An address the person typed is the person's to correct; a connected repository's
       # or an assignment's is not.
@@ -2915,6 +2912,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
           form: form,
           linked: [],
           organisation: "Acme",
+          workspace_name: "Main",
           unplaced: [
             %{id: "qn_a", adapter: "GitHub", cause: :no_instance_host},
             %{id: "qn_b", adapter: "Tracker", cause: :no_instance_host}

@@ -55,7 +55,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         "holds it)",
     "/docs/admin/*path" =>
       "for an instance admin alone (`test/apiary_web/controllers/docs_controller_test.exs` " <>
-        "holds it)"
+        "holds it)",
+    "/:org/:workspace/work/:number/artifacts/:version_id/files/:filename" =>
+      "a file of an artifact, never a page: served as an attachment under a sandbox " <>
+        "policy instead of the console's " <>
+        "(`test/apiary_web/controllers/artifact_file_controller_test.exs` holds it)"
   }
 
   # Routes that answer 404 to anyone here, each with the reason.
@@ -456,6 +460,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("type", "/instance/workspace-types/" <> _, p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
+  defp value_of("version_id", _path, p), do: p.version_id
+  defp value_of("type_id", "/:org/:workspace/settings/artifact-types/" <> _, p), do: p.type_id
   defp value_of("number", _path, p), do: p.work_item_number
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
@@ -595,10 +601,46 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       component_stories: component_stories
     }
 
+    factory = factory_params(scope)
+
     base
     |> Map.merge(security_params(scope))
-    |> Map.merge(factory_params(scope))
+    |> Map.merge(factory)
     |> Map.merge(secrets_params(scope))
+    |> Map.merge(workflow_params(scope, factory.work_item_number))
+  end
+
+  # A custom artifact type, and a version of an artifact on the work item, for their
+  # pages, with the `workflow_model` feature. The version's file is kept in a store under
+  # the system's temporary folder, set for the test and removed after it.
+  defp workflow_params(scope, number) do
+    if Features.on?(:workflow_model) do
+      {:ok, type} =
+        Apiary.Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-findings",
+          "base_view" => "document"
+        })
+
+      work_item = Apiary.WorkItems.get_by_number(scope, number)
+      %{dispatch_run: run} = Apiary.WorkItemsFixtures.explore_run_fixture(work_item)
+      dir = Path.join(System.tmp_dir!(), "apiary-csp-#{System.unique_integer([:positive])}")
+      previous = Application.get_env(:apiary, :artifacts_dir)
+      Application.put_env(:apiary, :artifacts_dir, dir)
+
+      on_exit(fn ->
+        Application.put_env(:apiary, :artifacts_dir, previous)
+        File.rm_rf!(dir)
+      end)
+
+      {:ok, version} =
+        Apiary.Artifacts.push({:run, run}, work_item, "explainer", [
+          %{filename: "notes.md", binary: "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"}
+        ])
+
+      %{type_id: type.public_id, version_id: version.public_id}
+    else
+      %{type_id: "at_0000000000000000", version_id: "av_0000000000000000"}
+    end
   end
 
   # The storybook's stories, and those of them that are a component's. The storybook is

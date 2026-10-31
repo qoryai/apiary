@@ -13,8 +13,9 @@ defmodule Apiary.Harnesses.WalkJob do
   # writes the result on the row, the row held `FOR UPDATE`. A walk that failed ends the
   # run before it starts, `harness_unresolved` (`fail/3`); a claim takes no run whose walk
   # has not resolved (`Apiary.Dispatches.waiting_query/1`). A walk that timed out or
-  # reached no adapter is tried again after 10 seconds, then after 30; after the third
-  # attempt it fails `adapter_unavailable`. A refusal is not tried again. A job that
+  # reached no adapter, or no public repository's host, is tried again after 10 seconds,
+  # then after 30; after the third attempt it fails `adapter_unavailable`, or
+  # `source_unreachable` for a host. A refusal is not tried again. A job that
   # raises is tried again, and on its last attempt it fails `walk_error` before it raises,
   # so its run ends and does not wait for ever. Run twice, the second finds the row no
   # longer pending and does nothing.

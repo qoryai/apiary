@@ -169,9 +169,15 @@ defmodule ApiaryWeb.WorkflowLive do
   defp harness_saved(socket, choice, {:error, reason}) do
     {source, ref} = HarnessComponents.refused(choice)
 
-    organisation = socket.assigns.current_scope.organisation.name
+    scope = socket.assigns.current_scope
 
-    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
+    case HarnessComponents.refusal_words(
+           reason,
+           source,
+           ref,
+           scope.organisation.name,
+           scope.workspace.name
+         ) do
       nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
       words -> assign(socket, :harness_refusal, words)
     end
@@ -223,7 +229,8 @@ defmodule ApiaryWeb.WorkflowLive do
         socket,
         choice,
         reason,
-        socket.assigns.current_scope.organisation.name
+        socket.assigns.current_scope.organisation.name,
+        socket.assigns.current_scope.workspace.name
       )
 
   ## Events
@@ -707,6 +714,7 @@ defmodule ApiaryWeb.WorkflowLive do
               unplaced={@unplaced}
               exports={@exports}
               organisation={@organisation}
+              workspace_name={@workspace}
               disabled={@harness_saving}
             />
             <.notice :if={@harness_refusal} kind={:error}>
@@ -742,6 +750,7 @@ defmodule ApiaryWeb.WorkflowLive do
             linked={@linked}
             assigned={@assigned}
             organisation={@organisation}
+            workspace_name={@workspace}
           />
         </div>
 
@@ -808,7 +817,8 @@ defmodule ApiaryWeb.WorkflowLive do
               HarnessComponents.read_words(
                 @read_error,
                 @source,
-                @organisation
+                @organisation,
+                @workspace
               )
             } /></span>
           </.notice>
