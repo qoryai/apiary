@@ -750,11 +750,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, view, _html} = live(conn, path)
       render_async(view, 5_000)
 
-      # The read covers both stacks the root exports, each in its folder; only the base
-      # the saved document extends picks triage, not "review" of the other stack.
-      reads = for {"read", call} <- calls(), do: call["path"]
-      assert "stacks/triage/qory-stack.yaml" in reads
-      assert "stacks/other/qory-stack.yaml" in reads
+      # Only the stack the saved document extends is recorded.
       assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
 
       # The line has the names the harness listed; explore-a-ticket, of the Qory harness,

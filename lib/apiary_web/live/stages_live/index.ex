@@ -95,10 +95,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp read_declared(socket, _none), do: socket
 
   # The source a document's base is read from: its address and version, narrowed to its
-  # folder where it has one, as a source the Workflow page offers
-  # (`t:Apiary.Stacks.Sources.source/0`). A base with a stack name is read at the root,
-  # every stack the root exports, as the Workflow page reads a connected repository; the
-  # base then picks its stack.
+  # stack or folder, as a source the Workflow page offers (`t:Apiary.Stacks.Sources.source/0`).
   defp saved_source(base) do
     %{
       id: "saved",
@@ -106,7 +103,7 @@ defmodule ApiaryWeb.StagesLive.Index do
       label: Document.shown(base["git"]),
       git: base["git"],
       ref: base["ref"],
-      narrowing: Map.take(base, ["path"]),
+      narrowing: Map.take(base, ["path", "stack"]),
       location: nil,
       version: nil,
       stacks: nil
