@@ -37,7 +37,7 @@ defmodule ApiaryWeb.WorkspaceTypePreviewTest do
     newest = TypeTemplates.newest("qory.software")
 
     document =
-      update_in(newest.document["stages"], fn [first | rest] ->
+      Map.update!(newest.document, "stages", fn [first | rest] ->
         [Map.put(first, "name", "Discover") | rest]
       end)
 

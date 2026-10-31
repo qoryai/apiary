@@ -177,10 +177,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
     setup :register_and_log_in_user
 
+    # The route gate (`ApiaryWeb.Features.Routes`) answers a path that does not exist.
     test "an instance admin finds no entry and no page", %{conn: conn, scope: scope} do
       refute Enum.any?(ApiaryWeb.Layouts.instance_sections(scope), &(&1.key == :workspace_types))
-      assert_raise ApiaryWeb.NotFound, fn -> live(conn, @index) end
-      assert_raise ApiaryWeb.NotFound, fn -> live(conn, @edit) end
+      assert conn |> get(@index) |> response(404)
+      assert conn |> get(@edit) |> response(404)
     end
   end
 end
