@@ -290,10 +290,7 @@ The messages:
   - "Fix notes.txt to match the format of explainer: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: the file does not match the JSON
-    Schema of verdict." Where Qory Apiary has the first member that fails the schema,
-    the part after the colon is "at <path>, <error>.", with the member's JSON pointer
-    and the schema check's text, such as "at /verdict, value is not one of the
-    allowed values."
+    Schema of verdict."
   - "Push checkout.png again: Qory Apiary could not read it after it was received."
   - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
     video."
