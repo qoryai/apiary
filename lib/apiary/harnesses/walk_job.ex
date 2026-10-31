@@ -3,7 +3,8 @@ defmodule Apiary.Harnesses.WalkJob do
   # instance, in the queue `harness`. `queue/2` writes the run's row of `run_harnesses`
   # (`Apiary.Harnesses.RunHarness`) in the transaction that queues the run
   # (`Apiary.Dispatches`), and the job where the run has a workflow
-  # (`Apiary.Stacks.workflow_for/2`). A run with no workflow gets a row resolved with
+  # (`Apiary.Stacks.workflow_for/2`), or, with the workflow model, the workflow of its
+  # stage entry (`Apiary.Stages.run_workflow/1`). A run with no workflow gets a row resolved with
   # origin `:none` and no job: nothing is read for it. A test work item's run gets a row
   # resolved with the built-in harness (`Apiary.Harnesses.Builtin`), origin `:builtin`,
   # and no job: the workspace's levels are not read for it, and no adapter is called.
@@ -53,7 +54,16 @@ defmodule Apiary.Harnesses.WalkJob do
   def queue(%DispatchRun{} = run, target) do
     workspace = Repo.get!(Workspace, run.workspace_id)
 
-    case Stacks.workflow_for(workspace, target) do
+    # Hand-over: with the workflow model, a run of a stage walks the harness for the
+    # workflow its stage entry names (`Apiary.Stages.walked_workflow/1`); explore-a-ticket,
+    # Qory's own, needs no walk, as a run with no workflow today.
+    workflow =
+      case Apiary.Stages.walked_workflow(run) do
+        :not_staged -> Stacks.workflow_for(workspace, target)
+        staged -> staged
+      end
+
+    case workflow do
       nil ->
         Repo.insert(%RunHarness{dispatch_run_id: run.id, state: :resolved, origin: :none})
 

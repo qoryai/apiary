@@ -37,8 +37,10 @@ defmodule Apiary.Dispatches.Settle do
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the registered
-  # run and its result event with no lock. Nothing else is locked: no work item, counter,
-  # environment record or feed counter.
+  # run and its result event with no lock. Nothing else is locked: no counter,
+  # environment record or feed counter, and no work item with the workflow model off.
+  # With it on, the work item is locked `FOR UPDATE` before the run of the queue, since
+  # the stage runner writes it (`Apiary.Stages.hold_work_item/1`, `run_ended/2`).
   #
   # **What is told.** Each write is told once its transaction commits, on the topic of
   # the work items of the work item's workspace (`Apiary.WorkItems.topic/1`),

@@ -12,6 +12,52 @@ defmodule Apiary.StagesFixtures do
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.WorkItem
 
+  @doc """
+  With the workflow model on, saves the workspace's process with Explore running
+  `workflow` in a loop of 3 rounds, as the Workflow page's saved workflow ran before the
+  process replaced it; nothing with the model off. For tests of the saved workflow that
+  hold in both.
+  """
+  def explore_runs!(%Scope{} = scope, workflow) do
+    if Apiary.Stages.on?() do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [%{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => workflow}]}}],
+        "outputs" => [%{"type" => "proposal", "required" => true}],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      current = Apiary.Processes.current(scope.workspace)
+
+      # Written as a save writes it, whoever the scope's person is: the test is of the
+      # saved workflow, not of who may edit the process.
+      if current.document != document do
+        {_count, _rows} =
+          Repo.update_all(
+            from(v in Apiary.Processes.Version,
+              where: v.workspace_id == ^scope.workspace.id and v.status == :current
+            ),
+            set: [status: :past, updated_at: DateTime.utc_now()]
+          )
+
+        Repo.insert!(%Apiary.Processes.Version{
+          organisation_id: scope.workspace.organisation_id,
+          workspace_id: scope.workspace.id,
+          public_id: Apiary.PublicId.generate("pv"),
+          number: current.number + 1,
+          status: :current,
+          document: document,
+          based_on_id: current.id
+        })
+      end
+    end
+
+    :ok
+  end
+
   @doc "A ticket of the scope's Backlog taken in: the work item as it is after the take in."
   def taken_in_fixture(%Scope{} = scope) do
     ticket = Apiary.WorkItemsFixtures.backlog_ticket_fixture(scope)

@@ -1,0 +1,310 @@
+defmodule Apiary.Stages.StopCause do
+  # StopCause is why a run of a stage stopped, as an escalation's gaps show it
+  # (`Apiary.Stages`): for a run that ended before it started, two lines, the cause, then
+  # who fixes it and on which page. The text is written once, when the run ends, from what
+  # the end left: the run of the queue, its work item, and, for a run a claim ended, the
+  # claim's gateway and that gateway's keys (`context`).
+  @moduledoc false
+
+  import Ecto.Query
+
+  alias Apiary.Adapters.Collection
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Gateways
+  alias Apiary.Harnesses.{RunHarness, Walk}
+  alias Apiary.Lingo.Domain
+  alias Apiary.Nodes.Node
+  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Repo
+  alias Apiary.Runs.{Run, Target}
+  alias Apiary.Targets
+  alias Apiary.WorkItems.WorkItem
+
+  @prebuild "prebuild"
+
+  @typedoc "What a claim knew when it ended a run: its gateway and the gateway's keys."
+  @type context :: %{optional(:gateway) => Node.t(), optional(:keys) => [map]}
+
+  # text/3 is why `run` stopped: one line for a run that started, two for one that ended
+  # before it started.
+  @doc false
+  @spec text(DispatchRun.t(), WorkItem.t(), context) :: String.t()
+  def text(run, work_item, context \\ %{})
+
+  def text(%DispatchRun{end_cause: :run_ended, result_outcome: :refused}, _work_item, _context),
+    do: "The run's result does not match the explore result schema."
+
+  def text(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _context),
+    do: "The run ended with an error."
+
+  def text(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
+    do: "The run ended without a result."
+
+  def text(%DispatchRun{end_cause: :lost}, _work_item, _context),
+    do: "The run stopped reporting and was marked lost."
+
+  def text(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
+    {cause, fix} = lines(run, names(work_item), context)
+    cause <> "\n" <> fix
+  end
+
+  # build_run/1 is the public id of the newest registered run that built the environment
+  # of the work item's target, whose page has the build's log; nil for none.
+  @doc false
+  @spec build_run(WorkItem.t()) :: String.t() | nil
+  def build_run(%WorkItem{target_system: system, target_path: path} = work_item)
+      when is_binary(system) and is_binary(path) do
+    Repo.one(
+      from d in DispatchRun,
+        join: c in Collection,
+        on: c.id == d.source_collection_id,
+        join: r in Run,
+        on: r.dispatch_run_id == d.id,
+        where: d.workspace_id == ^work_item.workspace_id and d.step == ^@prebuild,
+        where: c.target_system == ^system and c.target_path == ^path,
+        order_by: [desc: d.updated_at, desc: d.id],
+        limit: 1,
+        select: r.public_id
+    )
+  end
+
+  def build_run(%WorkItem{}), do: nil
+
+  ## The causes
+
+  defp lines(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}, n, _ctx),
+    do:
+      {"The gateway did not start the run, because it had no model key for the run.",
+       "Owners and admins of #{n.workspace} set a model key in Workspace settings › Model."}
+
+  defp lines(%DispatchRun{end_cause: :run_refused, end_detail: code}, _n, _ctx),
+    do: unknown("The gateway did not start the run.", "refusal", code)
+
+  defp lines(%DispatchRun{end_cause: :build_failed}, n, _ctx) do
+    cause =
+      "The run did not start, because the build of the environment for target #{n.target} failed."
+
+    case build_run(n.work_item) do
+      nil ->
+        {cause,
+         "Read why on the page of target #{n.target}, under Targets, then choose Rebuild there."}
+
+      run ->
+        {cause,
+         "Read the build's log on the page of run #{run}, under Runs. Then choose Rebuild on the page of target #{n.target}, under Targets."}
+    end
+  end
+
+  defp lines(%DispatchRun{end_cause: :harness_unresolved} = run, n, _ctx),
+    do: harness(Repo.get_by(RunHarness, dispatch_run_id: run.id), n)
+
+  defp lines(%DispatchRun{end_cause: :variables_invalid}, n, _ctx), do: variables(n)
+
+  defp lines(%DispatchRun{end_cause: :ticket_gone}, _n, _ctx),
+    do:
+      {"The run did not start, because the work item's ticket is no longer in Qory Apiary.",
+       "Close the work item, or take the ticket in again."}
+
+  defp lines(%DispatchRun{end_cause: :inputs_invalid}, _n, _ctx),
+    do:
+      {"The run did not start, because a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit.",
+       "Whoever can edit the ticket where it comes from shortens or corrects it, then takes it in again."}
+
+  defp lines(%DispatchRun{end_cause: :provider_gone}, n, _ctx),
+    do:
+      {"The run did not start, because the model provider of its model choice was removed, or no longer applies to #{n.workspace}.",
+       "Owners and admins of #{n.workspace} choose another model provider in Workspace settings › Model."}
+
+  defp lines(%DispatchRun{end_cause: :runtime_unserved}, n, _ctx),
+    do:
+      {"The run did not start, because the chosen model provider no longer serves the chosen runtime.",
+       "Owners and admins of #{n.workspace} choose another runtime or model provider in Workspace settings › Model."}
+
+  defp lines(%DispatchRun{end_cause: :key_gone}, n, _ctx),
+    do:
+      {"The run did not start, because the chosen model provider no longer has the chosen key.",
+       "Owners and admins of #{n.workspace} choose another key in Workspace settings › Model."}
+
+  defp lines(%DispatchRun{end_cause: :model_gone}, n, _ctx),
+    do:
+      {"The run did not start, because the model provider has no model for the run, or no longer offers the chosen effort.",
+       "Owners and admins of #{n.workspace} choose another model or effort in Workspace settings › Model."}
+
+  defp lines(%DispatchRun{end_cause: :secrets_not_allowed}, n, ctx), do: secrets(n, ctx)
+
+  defp lines(%DispatchRun{end_cause: :target_access_gone}, n, _ctx),
+    do:
+      {"The run did not start, because #{n.integration} no longer reaches target #{n.target}.",
+       "Owners and admins of #{n.organisation} check #{n.integration} in Organisation settings › Integrations."}
+
+  defp lines(%DispatchRun{end_cause: cause}, _n, _ctx),
+    do: unknown("The run ended before it started.", "end cause", cause)
+
+  defp unknown(first, kind, code),
+    do:
+      {"#{first} Qory Apiary has no description for its #{kind} (#{code}).",
+       "The instance admin finds the details in the run's log."}
+
+  # A gateway that may not receive the run's secrets: one of its keys was made without
+  # stored secrets, or the model key may not be sealed for it.
+  defp secrets(n, %{gateway: %Node{} = gateway} = ctx) do
+    {who, page} = gateway_fixer(gateway, n)
+
+    if Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) do
+      {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
+       "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}
+    else
+      {"The run did not start, because gateway #{gateway.name} is not allowed to receive the run's secrets.",
+       "#{who} an access key for #{gateway.name} with stored secrets allowed, on #{page}."}
+    end
+  end
+
+  defp secrets(_n, _ctx),
+    do:
+      {"The run did not start, because its gateway is not allowed to receive the run's secrets.",
+       "The instance admin finds the gateway in the run's log."}
+
+  defp gateway_fixer(gateway, n) do
+    case Gateways.level(gateway) do
+      :instance ->
+        {"The instance admin adds", "Instance settings › Nodes › #{gateway.name} › Access key"}
+
+      {:organisation, _id} ->
+        {"Owners and admins of #{n.organisation} add", "Gateways › #{gateway.name} › Access key"}
+
+      {:workspace, _id} ->
+        {"Owners and admins of #{n.workspace} add", "Nodes › #{gateway.name} › Access key"}
+    end
+  end
+
+  # A run variable that breaks its rule, found again from the work item's target as the
+  # claim formed it (`Apiary.Dispatches.Handover`).
+  defp variables(n) do
+    case variable_rule(n) do
+      :system_invalid ->
+        {"The run did not start, because its variable QORY_RUN_SYSTEM, the system of target #{n.target}, is not a host name of a-z, 0-9, dots and dashes.",
+         "Owners and admins of #{n.organisation} check #{n.integration} in Organisation settings › Integrations."}
+
+      _repositories ->
+        {"The run did not start, because its variable QORY_RUN_REPOSITORIES breaks its rule: each entry owner/name, all of the target's owner, none twice, and at most 256 bytes together.",
+         "Owners and admins of #{n.workspace} correct the targets its runs also read, on the page of target #{n.target}, under Targets."}
+    end
+  end
+
+  defp variable_rule(%{work_item: %WorkItem{target_system: system, target_path: path}} = n)
+       when is_binary(system) do
+    target = %{system: system, path: path}
+
+    found =
+      Repo.one(
+        from t in Target,
+          where: t.workspace_id == ^n.workspace_struct.id,
+          where: t.system == ^system and t.path == ^path
+      )
+
+    picked =
+      if found && Domain.paths_label(n.workspace_struct),
+        do: Targets.further_repositories(found),
+        else: []
+
+    case Domain.run_variables(n.workspace_struct, target, picked) do
+      {:error, rule} -> rule
+      _ok -> nil
+    end
+  end
+
+  defp variable_rule(_n), do: nil
+
+  # A harness walk that failed: what Qory Apiary could not read, and why, then the fix.
+  defp harness(%RunHarness{} = walk, n) do
+    walk = Repo.preload(walk, :failed_adapter)
+    source = walk.failed_source || "of #{n.workspace}"
+    {reason, fix} = harness_reason(walk.failure, walk, n)
+    {"Qory Apiary could not read the harness #{source} (#{reason}).", fix}
+  end
+
+  defp harness(nil, n), do: harness(%RunHarness{failure: nil}, n)
+
+  defp harness_reason("no_harness", _walk, n),
+    do:
+      {"the target has no harness file, and the workspace sets no harness",
+       "Owners and admins of #{n.workspace} choose a harness in Workspace settings › Workflow."}
+
+  defp harness_reason("invalid", _walk, _n),
+    do:
+      {"it breaks the harness format",
+       "Whoever maintains the harness corrects it where it is kept."}
+
+  defp harness_reason("not_covered", _walk, n),
+    do:
+      {"no connection of #{n.organisation} reaches it",
+       "Owners and admins of #{n.organisation} connect the account that holds it, in Organisation settings › Integrations."}
+
+  defp harness_reason("not_allowed", _walk, n),
+    do:
+      {"another owner keeps it and has not assigned it to #{n.organisation}",
+       "The owner of the harness assigns it to #{n.organisation}."}
+
+  defp harness_reason("scp_form", _walk, n),
+    do:
+      {"its address has the form user@host:path, and Qory Apiary fetches harness sources over https only",
+       "Owners and admins of #{n.workspace} write it as an https address in Workspace settings › Workflow."}
+
+  defp harness_reason("credential_in_address", _walk, n),
+    do:
+      {"its address contains a user name or a password",
+       "Owners and admins of #{n.workspace} remove them from the address in Workspace settings › Workflow."}
+
+  defp harness_reason("too_many", _walk, n),
+    do:
+      {"it takes harness sources from more than #{Walk.max_links()} accounts",
+       "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, in Workspace settings › Workflow."}
+
+  defp harness_reason("adapter_unavailable", walk, _n) do
+    adapter = adapter_name(walk)
+
+    {"the adapter #{adapter} did not answer three times",
+     "The instance admin checks #{adapter} in Instance settings › Adapters."}
+  end
+
+  defp harness_reason("walk_error", _walk, _n),
+    do:
+      {"the harness walk stopped on an error in Qory Apiary",
+       "The instance admin finds the details in the instance's log."}
+
+  defp harness_reason(code, _walk, _n),
+    do:
+      {"a failure Qory Apiary has no description for#{if code, do: ", with the code #{code}", else: ""}",
+       "The instance admin finds the details in the run's log."}
+
+  defp adapter_name(%RunHarness{failed_adapter: %Node{} = adapter}),
+    do: Apiary.Adapters.title(adapter)
+
+  defp adapter_name(%RunHarness{failure_adapter: name}) when is_binary(name), do: name
+  defp adapter_name(_walk), do: "of the harness source"
+
+  ## Names
+
+  defp names(%WorkItem{} = work_item) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+    organisation = Repo.get!(Organisation, work_item.organisation_id)
+
+    %{
+      work_item: work_item,
+      workspace_struct: workspace,
+      workspace: workspace.name,
+      organisation: organisation.name,
+      target: work_item.target_path || "of the work item",
+      integration: integration(work_item)
+    }
+  end
+
+  defp integration(%WorkItem{adapter_id: id}) when is_binary(id) do
+    case Repo.get(Node, id) do
+      %Node{kind: :adapter} = adapter -> "the integration " <> Apiary.Adapters.title(adapter)
+      _none -> "the integration that brings in the work item"
+    end
+  end
+
+  defp integration(_work_item), do: "the integration that brings in the work item"
+end

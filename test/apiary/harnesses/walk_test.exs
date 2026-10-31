@@ -114,6 +114,9 @@ defmodule Apiary.Harnesses.WalkTest do
     if Stacks.workflow_for(scope.workspace, nil) == nil,
       do: {:ok, _row} = Stacks.put_stack(scope, {:workspace, scope.workspace, "explore"}, nil)
 
+    # With the workflow model, Explore's process runs the workflow the page saved.
+    :ok = Apiary.StagesFixtures.explore_runs!(scope, Stacks.workflow_for(scope.workspace, nil))
+
     {:ok, stack} = Stacks.put_stack(scope, {:workspace, scope.workspace}, document, choice: :qory)
     stack
   end
@@ -2024,11 +2027,14 @@ defmodule Apiary.Harnesses.WalkTest do
       assert %Apiary.WorkItems.WorkItem{stage_state: :escalated} =
                Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
 
-      assert %Apiary.Stages.Escalation{
-               cause: :run_stopped,
-               gaps:
-                 "The run did not start, because the harness for the run could not be resolved."
-             } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: run.work_item_id)
+      assert %Apiary.Stages.Escalation{cause: :run_stopped, gaps: gaps} =
+               Repo.get_by!(Apiary.Stages.Escalation, work_item_id: run.work_item_id)
+
+      # What could not be read and why, then who fixes it and where.
+      assert [cause, fix] = String.split(gaps, "\n")
+      assert cause =~ ~r/\AQory Apiary could not read the harness .+ \(.+\)\.\z/
+      refute cause =~ "no description"
+      assert fix =~ ~r/\A(Owners and admins of|The instance admin|The owner of|Whoever)/
     end
 
     test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
