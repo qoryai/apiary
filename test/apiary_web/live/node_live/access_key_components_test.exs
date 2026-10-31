@@ -13,7 +13,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
   alias Apiary.Nodes.Node
   alias ApiaryWeb.NodeLive.AccessKey, as: Tab
 
-  @paths %{access_key: "/acme/shop/nodes/n/access-key"}
+  @paths %{access_key: "/acme/shop/machines/n/access-key"}
   @may %{revoke: true, revoke_code: true}
   @at ~U[2026-10-16 10:12:00.000000Z]
 

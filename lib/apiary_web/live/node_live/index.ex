@@ -1,15 +1,17 @@
 defmodule ApiaryWeb.NodeLive.Index do
   @moduledoc """
-  The workspace's nodes, node pools and gateways, `/:org/:workspace/nodes`, the places
-  its runs run and the gateways they may go through, on the list pattern
-  (`docs/ui.md`, Lists): one line a node, its name the title with its public id beside
+  The workspace's machines, pools and gateways (Machines), `/:org/:workspace/machines`,
+  the places its runs run and the gateways they may go through, on the list pattern
+  (`docs/ui.md`, Lists): the machines and pools in one table, then the gateways in a
+  second under the heading Gateways, each in the order of the sort, and neither table
+  where it has no line. One line a node, its name the title with its public id beside
   it, and Default beside the workspace's default gateway, its kind in words for a pool
   and a gateway, its state
   (`ApiaryWeb.NodeComponents.node_state/1`: "Running", "3 of 10 running", "Last seen …"
   or "Never seen") and Forager's version it last reported. Under a pool's line, its
   running instances as indented lines, ten at most, then "and 12 more", which leads to the
-  pool's page; an instance shows only while it runs. A Node has none: its one instance
-  is its line.
+  pool's page; an instance shows only while it runs. A machine has none: its one
+  instance is its line.
 
   The views are All, Running and Not running (`?view=running`, `?view=idle`), each counted
   under the search and the kind. The list is narrowed by one search, `?q=`, words of a
@@ -20,8 +22,8 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   Owners and admins make a node, a node pool or a gateway here (`node.create`), a pool's
   instance limit asked only of one who sets it (`node.set_limit`), each a separate
-  page, `/nodes/new`, `/nodes/new-pool` and `/nodes/new-gateway`, on the pattern of a form
-  page (`docs/ui.md`, A form is a page): the breadcrumb `Nodes / New node`, the page's
+  page, `/machines/new`, `/machines/new-pool` and `/machines/new-gateway`, on the pattern of a form
+  page (`docs/ui.md`, A form is a page): the breadcrumb `Machines / New machine`, the page's
   heading and one sentence, the form in the 720 px column, its button and Cancel back to
   the list (`ApiaryWeb.PageComponents.page_form/1`). A gateway's form asks its name and
   its URL. A node's and a pool's ask their gateway too, where the workspace has one
@@ -32,8 +34,8 @@ defmodule ApiaryWeb.NodeLive.Index do
   Everyone in the workspace reads the list (`node.read`); a member sees it without the
   buttons, and a form's path refuses them.
 
-  The sidebar's Nodes leads here: the pages pass `nav: :nodes`, so Nodes is the current entry
-  on the list and on the New node and New node pool forms.
+  The sidebar's Machines leads here: the pages pass `nav: :nodes`, so Machines is the current
+  entry on the list and on the New machine, New pool and New gateway forms.
 
   Live: the list reads the nodes and what they do again on `{:nodes_touched, …}`
   (`Apiary.Nodes.topic/1`), on a `{:run_changed, run}` of a run on a node, at most every
@@ -47,7 +49,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   # Qory Gateway and Qory Pool (`ApiaryWeb.NodeComponents.shown_name/1`), each with a
   # sentence that the instance provides it. The pool's row has this workspace's running
   # instances alone, and no limit. Only an instance admin sees their names as links, to
-  # Instance settings › Nodes.
+  # Instance settings › Qory Pool and Qory Gateway.
 
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
@@ -77,7 +79,7 @@ defmodule ApiaryWeb.NodeLive.Index do
      socket
      |> NodeComponents.leave_when_hidden(["create"])
      |> assign(
-       page_title: gettext("Nodes"),
+       page_title: gettext("Machines"),
        may_create: Access.can?(scope, :"node.create", scope.workspace),
        may_set_limit: Access.can?(scope, :"node.set_limit", scope.workspace),
        may_runs: may_runs,
@@ -107,7 +109,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   end
 
   defp apply_action(socket, :index),
-    do: assign(socket, form: nil, kind: nil, page_title: gettext("Nodes"))
+    do: assign(socket, form: nil, kind: nil, page_title: gettext("Machines"))
 
   defp apply_action(socket, action) when action in [:new, :new_pool, :new_gateway] do
     if socket.assigns.may_create do
@@ -126,7 +128,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       socket
       |> assign(gateways: gateways, default: default)
       |> assign_form(Nodes.change_new_node(first_node(kind, default)))
-      |> assign(kind: kind, page_title: form_title(kind) <> " · " <> gettext("Nodes"))
+      |> assign(kind: kind, page_title: form_title(kind) <> " · " <> gettext("Machines"))
     else
       socket
       |> put_flash(:error, only_admins_add(socket.assigns.current_scope))
@@ -184,9 +186,15 @@ defmodule ApiaryWeb.NodeLive.Index do
     running? = &(activity[&1.id].running != [])
     shown = Enum.filter(nodes, &in_view?(filters.view, running?.(&1)))
 
+    # The machines and pools first, then the gateways under their heading, each in the
+    # order of the sort.
+    {gateways, machines} =
+      shown |> sorted(activity, filters.sort) |> Enum.split_with(&(&1.kind == :gateway))
+
     assign(socket,
       nodes: shown,
-      rows: rows(sorted(shown, activity, filters.sort), activity),
+      rows: rows(machines, activity),
+      gateway_rows: rows(gateways, activity),
       activity: activity,
       views: %{
         all: length(nodes),
@@ -352,7 +360,7 @@ defmodule ApiaryWeb.NodeLive.Index do
          socket
          |> put_flash(:info, gettext("%{name} is added.", name: node.name))
          |> push_navigate(
-           to: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key"
+           to: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/access-key"
          )}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -394,7 +402,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       NodeComponents.managed_by(
         scope,
         :"node.create",
-        gettext("Only owners and admins add nodes.")
+        gettext("Only owners and admins add machines.")
       )
 
   # The membership this page was opened with no longer allows it, or is gone: one who
@@ -438,7 +446,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       ]
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
-    ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{query}"
+    ~p"/#{scope.organisation}/#{scope.workspace}/machines?#{query}"
   end
 
   defp narrowed?(filters), do: not is_nil(filters.q) or not is_nil(filters.kind)
@@ -460,9 +468,9 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   defp row_id({:more, node, _more}), do: "node-#{node.public_id}-more"
 
-  # A node's page: the workspace's under its Nodes, an organisation's gateway's under the
-  # organisation's Gateways, the instance's under Instance settings › Nodes, which only an
-  # instance admin is shown.
+  # A node's page: the workspace's under its Machines, an organisation's gateway's under
+  # the organisation's Gateways, the instance's under Instance settings › Qory Pool and
+  # Qory Gateway, which only an instance admin is shown.
   defp node_path(_scope, %Node{organisation_id: nil} = node),
     do: ApiaryWeb.InstanceLive.Node.paths(node).overview
 
@@ -493,7 +501,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       nav={:nodes}
       width="read"
     >
-      <:crumb navigate={list_path(@current_scope, @filters)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={list_path(@current_scope, @filters)}>{gettext("Machines")}</:crumb>
       <:crumb>{form_title(@kind)}</:crumb>
 
       <.page_form
@@ -541,9 +549,9 @@ defmodule ApiaryWeb.NodeLive.Index do
             field={@form[:instance_limit]}
             type="text"
             inputmode="numeric"
-            label={gettext("Instance limit")}
+            label={gettext("Machine limit")}
             hint={
-              gettext("How many instances may run at once, up to %{max}. Empty means no limit.",
+              gettext("How many machines may run at once, up to %{max}. Empty means no limit.",
                 max: Format.number(Node.max_limit())
               )
             }
@@ -586,20 +594,20 @@ defmodule ApiaryWeb.NodeLive.Index do
       counts={@nav_counts}
       nav={:nodes}
     >
-      <:crumb>{gettext("Nodes")}</:crumb>
+      <:crumb>{gettext("Machines")}</:crumb>
 
-      <.page_header title={gettext("Nodes")}>
+      <.page_header title={gettext("Machines")}>
         <:description>
           {gettext(
-            "A node is one permanent machine; a node pool is a fleet of short-lived instances that share one access key."
+            "A machine is one computer that stays registered, such as build-01. A pool is one or more machines that use the pool's access key. A gateway is a machine that runs go through."
           )}
         </:description>
         <:actions :if={@may_create}>
           <.button id="new-node" patch={new_path(@current_scope, :node)}>
-            <.icon name="hero-plus-micro" class="size-4" />{gettext("New node")}
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("New machine")}
           </.button>
           <.button id="new-node-pool" patch={new_path(@current_scope, :pool)}>
-            <.icon name="hero-plus-micro" class="size-4" />{gettext("New node pool")}
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("New pool")}
           </.button>
           <.button id="new-gateway" patch={new_path(@current_scope, :gateway)}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New gateway")}
@@ -608,19 +616,19 @@ defmodule ApiaryWeb.NodeLive.Index do
       </.page_header>
 
       <div :if={total(@counts) == 0} id="nodes-empty">
-        <.empty_state icon="hero-server-stack" tone="neutral" title={gettext("No nodes yet")}>
+        <.empty_state icon="hero-server-stack" tone="neutral" title={gettext("No machines yet")}>
           <p :if={@may_create}>
             {gettext(
-              "Add a node for a machine that is always there, or a node pool for instances that come and go."
+              "Add a machine for one computer that stays registered, or a pool of one or more machines that use one access key."
             )}
           </p>
           <p :if={!@may_create}>
             {ApiaryWeb.Edition.nodes_managed_by_sentence(@current_scope.organisation) ||
-              gettext("An owner or admin adds nodes.")}
+              gettext("An owner or admin adds machines.")}
           </p>
           <:actions :if={@may_create}>
-            <.button patch={new_path(@current_scope, :node)}>{gettext("New node")}</.button>
-            <.button patch={new_path(@current_scope, :pool)}>{gettext("New node pool")}</.button>
+            <.button patch={new_path(@current_scope, :node)}>{gettext("New machine")}</.button>
+            <.button patch={new_path(@current_scope, :pool)}>{gettext("New pool")}</.button>
           </:actions>
         </.empty_state>
       </div>
@@ -657,8 +665,8 @@ defmodule ApiaryWeb.NodeLive.Index do
           <.list_search
             id="nodes-search"
             value={@filters.q}
-            label={gettext("Find a node")}
-            placeholder={gettext("Find a node by its name or id")}
+            label={gettext("Find a machine, pool or gateway")}
+            placeholder={gettext("Find a machine, pool or gateway by its name or id")}
           />
           <.filter_menu id="nodes-filter" count={if(@filters.kind, do: 1, else: 0)}>
             <.menu_heading title={gettext("Kind")} />
@@ -672,11 +680,7 @@ defmodule ApiaryWeb.NodeLive.Index do
                 })
               }
               checked={@filters.kind == kind}
-              hint={
-                ngettext("%{number} node", "%{number} nodes", @counts[kind],
-                  number: Format.number(@counts[kind])
-                )
-              }
+              hint={Format.number(@counts[kind])}
             >
               {kind_label(kind)}
             </.menu_item>
@@ -710,7 +714,7 @@ defmodule ApiaryWeb.NodeLive.Index do
         <%!-- Always there, so a screen reader hears what the search left. --%>
         <div id="nodes-status" role="status" class="q-status">
           <p :if={narrowed?(@filters) && @nodes != []} id="nodes-summary">
-            {ngettext("%{number} node matches", "%{number} nodes match", length(@nodes),
+            {ngettext("%{number} match", "%{number} matches", length(@nodes),
               number: Format.number(length(@nodes))
             )}
           </p>
@@ -719,14 +723,14 @@ defmodule ApiaryWeb.NodeLive.Index do
             icon={nil}
             tone="neutral"
             title={
-              if narrowed?(@filters), do: gettext("No node matches"), else: gettext("No node here")
+              if narrowed?(@filters), do: gettext("Nothing matches"), else: gettext("Nothing here")
             }
           >
             <p :if={narrowed?(@filters)}>{gettext("Nothing here has that name, id or kind.")}</p>
             <p :if={!narrowed?(@filters)}>
               {if @filters.view == :running,
-                do: gettext("No node is running now."),
-                else: gettext("Every node is running now.")}
+                do: gettext("Nothing here is running now."),
+                else: gettext("Everything here is running now.")}
             </p>
             <:actions :if={narrowed?(@filters)}>
               <.button patch={list_path(@current_scope, cleared(@filters))}>
@@ -736,186 +740,216 @@ defmodule ApiaryWeb.NodeLive.Index do
           </.empty_state>
         </div>
 
-        <.table
-          :if={@nodes != []}
+        <.node_table
+          :if={@rows != []}
           id="nodes"
-          label={gettext("Nodes")}
+          label={gettext("Machines and pools")}
           rows={@rows}
-          row_id={&row_id/1}
-        >
-          <:col :let={row} label={gettext("Name")} kind="title">
-            <%= case row do %>
-              <% {:node, node} -> %>
-                <span class="q-nm">
-                  <.link
-                    :if={!instance?(node) or @instance_admin}
-                    id={"node-#{node.public_id}-link"}
-                    navigate={node_path(@current_scope, node)}
-                    class="q-title q-cut hover:underline"
-                    title={NodeComponents.shown_name(node)}
-                  >
-                    {NodeComponents.shown_name(node)}
-                  </.link>
-                  <span
-                    :if={instance?(node) and !@instance_admin}
-                    id={"node-#{node.public_id}-name"}
-                    class="q-title q-cut"
-                    title={NodeComponents.shown_name(node)}
-                  >
-                    {NodeComponents.shown_name(node)}
-                  </span>
-                  <span class="q-side q-mono" title={node.public_id}>{node.public_id}</span>
-                  <.side_words
-                    :if={instance?(node) and node.kind == :pool}
-                    id={"node-#{node.public_id}-level"}
-                    text={
-                      gettext(
-                        "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
-                      )
-                    }
-                  />
-                  <.side_words
-                    :if={instance?(node) and node.kind == :gateway}
-                    id={"node-#{node.public_id}-level"}
-                    text={
-                      gettext(
-                        "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
-                      )
-                    }
-                  />
-                  <.side_words
-                    :if={is_nil(node.workspace_id) and !instance?(node)}
-                    id={"node-#{node.public_id}-level"}
-                    text={
-                      gettext("Set for %{organisation}",
-                        organisation: @current_scope.organisation.name
-                      )
-                    }
-                  />
-                  <.state_word :if={node.id == @default_id} id={"node-#{node.public_id}-default"}>
-                    {gettext("Default")}
-                  </.state_word>
-                </span>
-              <% {:instance, _node, instance} -> %>
-                <span class="q-nm pl-5 font-normal">
-                  <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
-                  <span
-                    class="q-cut"
-                    title={instance.name || Apiary.ExternalText.sent(instance.instance_id)}
-                  >
-                    <bdi>{instance.name || Apiary.ExternalText.sent(instance.instance_id)}</bdi>
-                  </span>
-                  <span
-                    :if={instance.name}
-                    class="q-side q-mono"
-                    title={Apiary.ExternalText.sent(instance.instance_id)}
-                  >
-                    <.external_text text={instance.instance_id} />
-                  </span>
-                </span>
-              <% {:more, node, more} -> %>
-                <.link
-                  :if={!instance?(node) or @instance_admin}
-                  id={"node-#{node.public_id}-more-link"}
-                  navigate={node_path(@current_scope, node)}
-                  class="pl-5 text-[12.5px] font-normal text-accent hover:underline"
-                >
-                  {ngettext("and %{number} more", "and %{number} more", more,
-                    number: Format.number(more)
-                  )}
-                </.link>
-                <span
-                  :if={instance?(node) and !@instance_admin}
-                  id={"node-#{node.public_id}-more"}
-                  class="pl-5 text-[12.5px] font-normal text-muted"
-                >
-                  {ngettext("and %{number} more", "and %{number} more", more,
-                    number: Format.number(more)
-                  )}
-                </span>
-            <% end %>
-          </:col>
-          <:col :let={row} label={gettext("Kind")} from="sm">
-            <%= case row do %>
-              <% {:node, %{kind: :pool} = node} -> %>
-                <span id={"node-#{node.public_id}-kind"}>{gettext("Pool")}</span>
-              <% {:node, %{kind: :gateway} = node} -> %>
-                <span id={"node-#{node.public_id}-kind"}>{gettext("Gateway")}</span>
-              <% {:node, _node} -> %>
-                <span class="sr-only">{gettext("Node")}</span>
-              <% _instance -> %>
-            <% end %>
-          </:col>
-          <:col :let={row} label={gettext("State")}>
-            <%= case row do %>
-              <% {:node, node} -> %>
-                <NodeComponents.node_state
-                  id={"node-#{node.public_id}-state"}
-                  node={node}
-                  activity={@activity[node.id]}
-                />
-              <% {:instance, _node, instance} -> %>
-                <span class="q-parts">
-                  {gettext("Running since")}
-                  <.relative_time format="clock" at={instance.since} />{" "}
-                  <.link
-                    :if={@may_runs}
-                    navigate={
-                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{instance.run_public_id}"
-                    }
-                    class="q-mono text-accent hover:underline"
-                  >
-                    {gettext("run %{id}", id: short_id(instance.run_public_id))}
-                  </.link>
-                </span>
-              <% _more -> %>
-            <% end %>
-          </:col>
-          <:col :let={row} label={gettext("Forager")} kind="faint" from="md">
-            <%= case row do %>
-              <% {:node, node} -> %>
-                <.external_text text={forager_version(@activity[node.id])} />
-              <% {:instance, _node, instance} -> %>
-                <.external_text text={instance.forager_version} />
-              <% _more -> %>
-            <% end %>
-          </:col>
-        </.table>
+          current_scope={@current_scope}
+          instance_admin={@instance_admin}
+          default_id={@default_id}
+          activity={@activity}
+          may_runs={@may_runs}
+        />
+
+        <section :if={@gateway_rows != []} class="mt-4 grid gap-3" aria-labelledby="gateways-title">
+          <h2 id="gateways-title" class="text-[14px]/5 font-semibold">{gettext("Gateways")}</h2>
+          <.node_table
+            id="gateways"
+            label={gettext("Gateways")}
+            rows={@gateway_rows}
+            current_scope={@current_scope}
+            instance_admin={@instance_admin}
+            default_id={@default_id}
+            activity={@activity}
+            may_runs={@may_runs}
+          />
+        </section>
       </div>
     </Layouts.app>
     """
   end
 
-  defp new_path(scope, :node), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new"
-  defp new_path(scope, :pool), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-pool"
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :rows, :list, required: true
+  attr :current_scope, :map, required: true
+  attr :instance_admin, :boolean, required: true
+  attr :default_id, :any, required: true
+  attr :activity, :map, required: true
+  attr :may_runs, :boolean, required: true
+
+  # One table of the list: the machines and pools, or the gateways under their heading.
+  defp node_table(assigns) do
+    ~H"""
+    <.table id={@id} label={@label} rows={@rows} row_id={&row_id/1}>
+      <:col :let={row} label={gettext("Name")} kind="title">
+        <%= case row do %>
+          <% {:node, node} -> %>
+            <span class="q-nm">
+              <.link
+                :if={!instance?(node) or @instance_admin}
+                id={"node-#{node.public_id}-link"}
+                navigate={node_path(@current_scope, node)}
+                class="q-title q-cut hover:underline"
+                title={NodeComponents.shown_name(node)}
+              >
+                {NodeComponents.shown_name(node)}
+              </.link>
+              <span
+                :if={instance?(node) and !@instance_admin}
+                id={"node-#{node.public_id}-name"}
+                class="q-title q-cut"
+                title={NodeComponents.shown_name(node)}
+              >
+                {NodeComponents.shown_name(node)}
+              </span>
+              <span class="q-side q-mono" title={node.public_id}>{node.public_id}</span>
+              <.side_words
+                :if={instance?(node) and node.kind == :pool}
+                id={"node-#{node.public_id}-level"}
+                text={
+                  gettext(
+                    "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
+                  )
+                }
+              />
+              <.side_words
+                :if={instance?(node) and node.kind == :gateway}
+                id={"node-#{node.public_id}-level"}
+                text={
+                  gettext(
+                    "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
+                  )
+                }
+              />
+              <.side_words
+                :if={is_nil(node.workspace_id) and !instance?(node)}
+                id={"node-#{node.public_id}-level"}
+                text={
+                  gettext("Set for %{organisation}",
+                    organisation: @current_scope.organisation.name
+                  )
+                }
+              />
+              <.state_word :if={node.id == @default_id} id={"node-#{node.public_id}-default"}>
+                {gettext("Default")}
+              </.state_word>
+            </span>
+          <% {:instance, _node, instance} -> %>
+            <span class="q-nm pl-5 font-normal">
+              <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
+              <span
+                class="q-cut"
+                title={instance.name || Apiary.ExternalText.sent(instance.instance_id)}
+              >
+                <bdi>{instance.name || Apiary.ExternalText.sent(instance.instance_id)}</bdi>
+              </span>
+              <span
+                :if={instance.name}
+                class="q-side q-mono"
+                title={Apiary.ExternalText.sent(instance.instance_id)}
+              >
+                <.external_text text={instance.instance_id} />
+              </span>
+            </span>
+          <% {:more, node, more} -> %>
+            <.link
+              :if={!instance?(node) or @instance_admin}
+              id={"node-#{node.public_id}-more-link"}
+              navigate={node_path(@current_scope, node)}
+              class="pl-5 text-[12.5px] font-normal text-accent hover:underline"
+            >
+              {ngettext("and %{number} more", "and %{number} more", more, number: Format.number(more))}
+            </.link>
+            <span
+              :if={instance?(node) and !@instance_admin}
+              id={"node-#{node.public_id}-more"}
+              class="pl-5 text-[12.5px] font-normal text-muted"
+            >
+              {ngettext("and %{number} more", "and %{number} more", more, number: Format.number(more))}
+            </span>
+        <% end %>
+      </:col>
+      <:col :let={row} label={gettext("Kind")} from="sm">
+        <%= case row do %>
+          <% {:node, %{kind: :pool} = node} -> %>
+            <span id={"node-#{node.public_id}-kind"}>{gettext("Pool")}</span>
+          <% {:node, %{kind: :gateway} = node} -> %>
+            <span id={"node-#{node.public_id}-kind"}>{gettext("Gateway")}</span>
+          <% {:node, _node} -> %>
+            <span class="sr-only">{gettext("Machine")}</span>
+          <% _instance -> %>
+        <% end %>
+      </:col>
+      <:col :let={row} label={gettext("State")}>
+        <%= case row do %>
+          <% {:node, node} -> %>
+            <NodeComponents.node_state
+              id={"node-#{node.public_id}-state"}
+              node={node}
+              activity={@activity[node.id]}
+            />
+          <% {:instance, _node, instance} -> %>
+            <span class="q-parts">
+              {gettext("Running since")}
+              <.relative_time format="clock" at={instance.since} />{" "}
+              <.link
+                :if={@may_runs}
+                navigate={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{instance.run_public_id}"
+                }
+                class="q-mono text-accent hover:underline"
+              >
+                {gettext("run %{id}", id: short_id(instance.run_public_id))}
+              </.link>
+            </span>
+          <% _more -> %>
+        <% end %>
+      </:col>
+      <:col :let={row} label={gettext("Forager")} kind="faint" from="md">
+        <%= case row do %>
+          <% {:node, node} -> %>
+            <.external_text text={forager_version(@activity[node.id])} />
+          <% {:instance, _node, instance} -> %>
+            <.external_text text={instance.forager_version} />
+          <% _more -> %>
+        <% end %>
+      </:col>
+    </.table>
+    """
+  end
+
+  defp new_path(scope, :node), do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/new"
+  defp new_path(scope, :pool), do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/new-pool"
 
   defp new_path(scope, :gateway),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-gateway"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/new-gateway"
 
   # Every node in use of the workspace, of any kind.
   defp total(counts), do: counts.node + counts.pool + counts.gateway
 
   # A form page's title and its breadcrumb's last segment: the act, by the kind.
-  defp form_title(:node), do: gettext("New node")
-  defp form_title(:pool), do: gettext("New node pool")
+  defp form_title(:node), do: gettext("New machine")
+  defp form_title(:pool), do: gettext("New pool")
   defp form_title(:gateway), do: gettext("New gateway")
 
   # The sentence under a form page's heading: what the kind is.
-  defp form_sentence(:node), do: gettext("One permanent machine. It runs one instance at a time.")
-  defp form_sentence(:pool), do: gettext("Short-lived instances that share one access key.")
+  defp form_sentence(:node), do: gettext("One computer that stays registered.")
+  defp form_sentence(:pool), do: gettext("One or more machines that use the pool's access key.")
 
   defp form_sentence(:gateway),
     do:
       gettext(
-        "An address the runs of this workspace's nodes and node pools go through, as each chooses."
+        "An address the runs of this workspace's machines and pools go through, as each chooses."
       )
 
   defp name_placeholder(:node), do: "build-01"
   defp name_placeholder(:pool), do: "spot-runners"
   defp name_placeholder(:gateway), do: "edge-01"
 
-  defp add_label(:node), do: gettext("Add node")
-  defp add_label(:pool), do: gettext("Add node pool")
+  defp add_label(:node), do: gettext("Add machine")
+  defp add_label(:pool), do: gettext("Add pool")
   defp add_label(:gateway), do: gettext("Add gateway")
 
   defp kind_label(kind), do: NodeComponents.kind_label(kind)

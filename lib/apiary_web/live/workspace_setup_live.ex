@@ -136,7 +136,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (`t:Apiary.WorkspaceSetup.not_ready_reason/0`): no pool, no active key, a choice
   #     of Direct, no gateway, a chosen gateway that the pool's runs may not go through,
   #     or a gateway with no active key. Under a pool that is not ready: for the
-  #     instance's pool, Check the nodes, to `/instance/nodes`, for an instance admin; for
+  #     instance's pool, Check the Qory Pool and Qory Gateway, to
+  #     `/instance/qory-pool-and-gateway`, for an instance admin; for
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
@@ -209,6 +210,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Dispatches.RunSettings
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
+  alias Apiary.Nodes.Node
   alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stacks.Sources
 
@@ -216,6 +218,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessComponents,
     HarnessTargets,
     IntegrationComponents,
+    NodeComponents,
     OverviewComponents,
     SetUpComponents,
     SettingsComponents
@@ -597,13 +600,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       if match?(%{dispatch_run: %{state: state}} when state != :ended, test),
         do: socket.assigns.test_notice
 
+    machines = Edition.machines_ready(workspace)
+
     socket
     |> assign(
       test: test,
       test_state: test && test.state,
       test_preparation: test_preparation(scope, workspace, test),
       test_choice: test_choice(test),
-      machines: Edition.machines_ready(workspace),
+      test_machine: test_machine(scope, workspace, test),
+      test_pool: test_pool(machines, workspace),
+      machines: machines,
       may: Access.can?(scope, :"work_item.take_in", workspace),
       who_may:
         ApiaryWeb.Access.who_may(
@@ -616,11 +623,39 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     |> wait_for_machine()
   end
 
+  # The pool of a test run's no-machine line: the ready pool, else the first pool that
+  # serves the workspace's runs, not ready; nil where no pool serves them.
+  defp test_pool(%{pool: pool}, _workspace), do: pool
+
+  defp test_pool(nil, workspace),
+    do: workspace |> WorkspaceSetup.serving_pools() |> List.first()
+
   # How a failed test run's machine was prepared, for its run's step and cause line.
   defp test_preparation(scope, workspace, %{state: {:failed, _cause}, run: %Run{} = run}),
     do: Preparation.read(%{scope | workspace: workspace}, run)
 
   defp test_preparation(_scope, _workspace, _test), do: nil
+
+  # The name of the machine a lost test run ran on, for its line: the machine's, or for a
+  # pool's run the name its instance reported, else its instance id; nil for no node.
+  defp test_machine(_scope, _workspace, %{
+         state: {:failed, :silent},
+         run: %Run{node: %Node{kind: :node} = node}
+       }),
+       do: NodeComponents.shown_name(node)
+
+  defp test_machine(scope, workspace, %{
+         state: {:failed, :silent},
+         run: %Run{node: %Node{} = node, node_instance_id: instance_id}
+       })
+       when is_binary(instance_id) do
+    case Apiary.Nodes.get_instance(%{scope | workspace: workspace}, node, instance_id) do
+      %{name: name} when is_binary(name) -> name
+      _instance -> Apiary.ExternalText.sent(instance_id)
+    end
+  end
+
+  defp test_machine(_scope, _workspace, _test), do: nil
 
   # The model choice a new test run takes, for a test run that ended at its claim on a
   # cause of its model choice, so the line names the Model step only where its choice is
@@ -1471,7 +1506,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
            ApiaryWeb.Access.who_may(
              scope,
              :"node.delete",
-             gettext("Only owners and admins delete nodes.")
+             gettext("Only owners and admins delete machines.")
            )
          )
          |> reload()}
@@ -2248,6 +2283,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             preparation={@test_preparation}
             choice={@test_choice}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            item={@test.work_item && @test.work_item.number}
+            pool={@test_pool}
+            machine={@test_machine}
           />
         </span>
       </.notice>
@@ -2462,8 +2500,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               </span>
             </span>
             <span :if={act == :check} class="q-choice-p">
-              <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
-                {gettext("Check the nodes")}
+              <.link id={"#{id}-check"} navigate={~p"/instance/qory-pool-and-gateway"} class="q-link">
+                {gettext("Check the Qory Pool and Qory Gateway")}
               </.link>
             </span>
             <span :if={act == :instance} id={"#{id}-who-may"} class="q-choice-p">
@@ -2548,7 +2586,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <span :if={!line.instance and act != :pool}>{line.pool.name}</span>
             <.link
               :if={act == :pool}
-              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/nodes/#{line.pool}"}
+              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/machines/#{line.pool}"}
               class="q-link"
             >
               {line.pool.name}
@@ -2560,8 +2598,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             </span>
           </span>
           <span :if={act == :check} class="q-choice-p">
-            <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
-              {gettext("Check the nodes")}
+            <.link id={"#{id}-check"} navigate={~p"/instance/qory-pool-and-gateway"} class="q-link">
+              {gettext("Check the Qory Pool and Qory Gateway")}
             </.link>
           </span>
           <span :if={act in [:instance, :workspace]} id={"#{id}-who-may"} class="q-choice-p">
@@ -2787,7 +2825,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_taken_line(name, workspace),
     do:
       gettext(
-        "Rename the node %{name} on the Nodes page, then add the pool. A node of %{workspace} already has that name.",
+        "Rename the machine %{name} on the Machines page, then add the pool. A machine of %{workspace} already has that name.",
         name: name,
         workspace: workspace.name
       )

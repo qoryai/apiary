@@ -593,7 +593,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     Organisations,
     Repo,
     Stacks,
-    WorkItems
+    WorkItems,
+    WorkspaceSetup
   }
 
   alias Apiary.Accounts.Scope
@@ -3333,12 +3334,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
     @no_run_lead "The test run ended before a machine started it. "
     @no_run_unknown @no_run_lead <> "No run was recorded, so this step cannot show why."
+    # ITEM_ID stands for the number of the test run's work item.
     @no_run_secrets @no_run_lead <>
-                      "The gateway for this run is not allowed to receive its secrets, which " <>
-                      "the run needs. Only the instance's gateway is allowed to receive them. " <>
-                      "An instance admin " <>
-                      "installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to " <>
-                      "go through it."
+                      "Set the run's pool to go through the Qory Gateway in the pool's " <>
+                      "Settings, or contact support with work item #ITEM_ID. The gateway for " <>
+                      "this run is not allowed to receive the secrets the run needs; only the " <>
+                      "Qory Gateway is."
 
     # The Test run step's line for `item`'s run ended at its claim on `cause`.
     defp no_run_line(conn, scope, item, cause) do
@@ -3441,10 +3442,100 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-failed[data-cause=no_machine]")
 
       assert words(lv, "#set-up-test-failed") ==
-               "Check the pool in Instance settings › Nodes. No machine has taken the test " <>
-                 "run yet."
+               "Check on the Machines page that a machine of shared-pool is running. No machine " <>
+                 "has taken the test run yet."
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
+    end
+
+    test "no machine took the run of the Qory Pool: contact support with the work item", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReadyQoryPool)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Contact support with work item ##{item.number}. No machine has taken the test " <>
+                 "run yet."
+    end
+
+    test "no machine took the run, the workspace's pool not ready: check that pool",
+         %{conn: conn, scope: scope} do
+      pool_fixture(scope, %{name: "spot-runners"})
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Check on the Machines page that a machine of spot-runners is running. No " <>
+                 "machine has taken the test run yet."
+    end
+
+    test "no machine took the run, the workspace with no pool: contact support", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Contact support with work item ##{item.number}. No machine has taken the test " <>
+                 "run yet."
+    end
+
+    test "no machine took the run, the Qory Pool not ready: contact support", %{
+      conn: conn,
+      scope: scope
+    } do
+      %Node{id: id} = instance_pool_fixture()
+      assert WorkspaceSetup.machines(scope.workspace) == nil
+      assert [%Node{id: ^id}] = WorkspaceSetup.serving_pools(scope.workspace)
+
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Contact support with work item ##{item.number}. No machine has taken the test " <>
+                 "run yet."
+    end
+
+    test "a lost run of a machine of the workspace names the machine; of the Qory Pool, support",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      machine = node_fixture(scope, %{name: "build-01"})
+      pool = pool_fixture(scope, %{name: "spot-runners"})
+      qory_pool = instance_pool_fixture()
+      changes = [state: :ended, end_cause: :lost, end_detail: nil]
+      lost = %{state: "lost", silenced_at: DateTime.utc_now(), node_instance_id: "i-7"}
+
+      for {node, line} <- [
+            {machine,
+             "Check on the Machines page that build-01 is running. It stopped sending for 10 minutes."},
+            {pool,
+             "Check on the Machines page that i-7 is running. It stopped sending for 10 minutes."},
+            {qory_pool,
+             "Contact support with run RUN_ID. The machine stopped sending for 10 minutes."}
+          ] do
+        Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
+        run = test_run!(item, changes, Map.put(lost, :node_id, node.id))
+        {:ok, lv, _html} = live(conn, test_path(scope))
+
+        assert has_element?(lv, "#set-up-test-failed[data-cause=silent]")
+
+        assert words(lv, "#set-up-test-failed") ==
+                 String.replace(line, "RUN_ID", run.public_id),
+               node.name
+      end
     end
 
     test "one who may not take an item in reads who runs the test, and has no field", %{
@@ -3548,8 +3639,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "Add a model key on the Model step. The gateway had no model key for the run."},
             {[state: :ended, end_cause: :lost, end_detail: nil],
              %{state: "lost", silenced_at: DateTime.utc_now()}, "silent",
-             "Check that the gateway is running in Instance settings › Nodes. The machine " <>
-               "stopped sending for 10 minutes."},
+             "Contact support with run RUN_ID. The machine stopped sending for 10 minutes."},
             {[state: :ended, end_cause: :run_ended],
              %{state: "failed", exit_code: 1, exited_at: DateTime.utc_now()}, "ended",
              "The test run failed: exit 1. See the run"},
@@ -3574,11 +3664,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "The test run was cancelled: no longer needed. See the run"}
           ] do
         Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
-        test_run!(item, changes, run_attrs)
+        run = test_run!(item, changes, run_attrs)
         {:ok, lv, _html} = live(conn, test_path(scope))
 
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
-        assert words(lv, "#set-up-test-failed") == line
+        assert words(lv, "#set-up-test-failed") == String.replace(line, "RUN_ID", run.public_id)
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
@@ -3603,7 +3693,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {:variables_invalid, @no_run_unknown},
             {:closed, @no_run_unknown}
           ] do
-        assert no_run_line(conn, scope, item, cause) == line, "#{cause}"
+        assert no_run_line(conn, scope, item, cause) ==
+                 String.replace(line, "ITEM_ID", to_string(item.number)),
+               "#{cause}"
       end
     end
 
@@ -3651,7 +3743,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       workspace_choice = choose.(:workspace, %{model: "claude-opus-5-5"})
 
       for {cause, line} <- Map.put(fixes, :secrets_not_allowed, @no_run_secrets) do
-        assert no_run_line(conn, scope, item, cause) == line, "#{cause}"
+        assert no_run_line(conn, scope, item, cause) ==
+                 String.replace(line, "ITEM_ID", to_string(item.number)),
+               "#{cause}"
       end
 
       # The same choice with no model: model_gone is then a model no description lists.
@@ -4696,8 +4790,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       |> live(~p"/#{admin.organisation}/#{admin.workspace}/set-up/machines")
 
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
-    assert words(lv, "#set-up-pool-instance-check") == "Check the nodes"
-    assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/nodes"
+    assert words(lv, "#set-up-pool-instance-check") == "Check the Qory Pool and Qory Gateway"
+    assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/qory-pool-and-gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
 
     lv = open(ctx, member(ctx.organisation))
@@ -4725,7 +4819,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#{id}-state") == "Not ready: no active key"
 
     assert href(lv, "#{id}-name a") ==
-             ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/nodes/#{pool.public_id}"
+             ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/machines/#{pool.public_id}"
 
     refute has_element?(lv, "#{id}-who-may")
     assert words(lv, "#{id}-code") == "Get the command"
@@ -4898,7 +4992,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-pool-add-button")
 
     assert words(lv, "#set-up-pool-taken") ==
-             "Rename the node #{node.name} on the Nodes page, then add the pool. A node of #{workspace.name} already has that name."
+             "Rename the machine #{node.name} on the Machines page, then add the pool. A machine of #{workspace.name} already has that name."
 
     # Once the node has another name, Add pool makes the pool.
     node |> Ecto.Changeset.change(name: "build-renamed") |> Repo.update!()
@@ -5291,7 +5385,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     lv |> element("#set-up-pool-remove-button") |> render_click()
     refute deleted?(pool)
-    assert words(lv, "#flash-error") =~ "Only owners and admins delete nodes."
+    assert words(lv, "#flash-error") =~ "Only owners and admins delete machines."
     refute has_element?(lv, "#set-up-pool-remove")
   end
 

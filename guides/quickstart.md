@@ -99,7 +99,7 @@ follow:
    address follows its name, so it moves to `http://localhost:4100/acme/main`.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
-Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
+Until a run reaches it, the overview is one box, **Send your first run**: Add a machine,
 Connect it, See runs here. Steps 5 to 7 below are those steps.
 
 <!-- feature: factory -->
@@ -110,9 +110,9 @@ as [Set up a new instance](install.md#set-up-a-new-instance) shows.
 
 **Save and next** on **Name** then opens **Work sources**, the next step of Main's
 set-up, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
-to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
-sidebar, but Main's overview has no box for them, and their node does not count for the
-step **Machines**, which counts node pools only.
+to a test run. Steps 5 to 7 still connect a machine and post a run, from **Machines** in the
+sidebar, but Main's overview has no box for them, and their machine does not count for the
+step **Machines**, which counts pools only.
 <!-- /feature -->
 
 The link works once: after it, its page shows "This Qory Apiary is already set up.", and
@@ -168,16 +168,16 @@ organisation's. Mail to you, once the instance sends mail, is written in your la
 of the workspace's pages are its type's, chosen when it was created and fixed after: in
 a Software factory they are repository, forge and pull request.
 
-## 5. Add a node, then connect it
+## 5. Add a machine, then connect it
 
-A machine posts its runs with an access key, on a **node** of the workspace: a
-node is one permanent machine, a **node pool** a fleet of short-lived instances that share
-one key. These are the overview's first two steps, **Add a node** and **Connect it**.
+A machine posts its runs with an access key, once it is added as a **machine** of the
+workspace: a machine is one computer that stays registered; a **pool** is one or more
+machines that use the pool's access key. These are the overview's first two steps, **Add a machine** and **Connect it**.
 Here you connect the machine with a command: `qory` makes the key on the machine, and Qory
 Apiary keeps only its public half.
 
-1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
-   `build-01` say, and select **Add node**. The node's **Access key** tab opens and asks
+1. Select **Machines** in the sidebar, then **New machine**. Name it after the machine,
+   `build-01` say, and select **Add machine**. The machine's **Access key** tab opens and asks
    "How do you want to connect build-01?", with two ways: **Connect with a command**
    first, and **Generate a key in the browser**. (Back on the overview, step 2 asks the
    same, and **Get the command** there shows the command in place.)
@@ -210,9 +210,9 @@ use it at once. On the **Access key** tab, the key's card says where its secret 
 The Forager file belongs to the machine and to no repository.
 [The Forager file's `server` section](forager-file.md) has the rest of it.
 
-For a CI or a node pool, **Generate a key in the browser** on the same tab makes the key
-in your browser and shows its secret once, with the other values the CI sets; [Nodes and
-their keys](nodes.md) says more about both ways, node pools and revoking a key.
+For a CI or a pool, **Generate a key in the browser** on the same tab makes the key
+in your browser and shows its secret once, with the other values the CI sets; [Machines,
+pools and their keys](nodes.md) has more on both ways, pools and revoking a key.
 
 ## 6. First run
 
@@ -274,13 +274,13 @@ does, under `~/.local/state/qory/runs/`, or `$XDG_STATE_HOME/qory/runs/` when
 
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,
-terminal, network access and details, among them its node and its instance. The `hello`
+terminal, network access and details, among them its machine or pool and its instance. The `hello`
 directory has no origin remote, so the run names no repository: the repositories beside
 the list count it under **Unassigned**. A run started in a checkout with an origin remote
 names that repository, and choosing the repository there, or typing `repo:` and its path
 in the filter, lists its runs alone.
 
-On the node's **Overview**, the machine is now its instance, with its run. On its **Access
+On the machine's **Overview**, the machine is now its instance, with its run. On its **Access
 key** tab, the key's card shows when it was last used, its last heartbeat and Forager's
 version.
 
@@ -300,7 +300,7 @@ Each list shows a check mark on each step once it is done:
 | **Destinations** | At least one repository is Main's. |
 | **Model** | Main has a default model, with a model provider that applies to Main and has a key. |
 | **Harness** | Main has a saved harness choice. |
-| **Machines** | A node pool that serves Main's runs has a key in use, and so does the gateway the pool's runs go through. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
+| **Machines** | A pool that serves Main's runs has a key in use, and so does the gateway the pool's runs go through. While Main has no pool, the instance's pool and gateway serve its runs, on an install that has them. |
 | **Test run** | The step shows **Test run passed**. |
 
 **Run the test** shows once **Machines** is done, so you can leave the other steps for
@@ -362,21 +362,21 @@ later.
    whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
    and **Change** there opens the same two choices. Only owners and admins save a
    harness choice.
-5. **Machines.** **Which machines run the runs in Main?** shows the node pools that
+5. **Machines.** **Which machines run the runs in Main?** shows the pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
    shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
-   node pool, you choose between **Qory Pool** and **A pool for
+   pool, you choose between **Qory Pool** and **A pool for
    Main**. The test run passes only through the instance's gateway, set with
    `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
-   `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
-   pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added
-   on **Nodes** gets a key without stored secrets, so a test run through it ends before
+   `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's pool
+   and gateway](install.md#the-instance-s-pool-and-gateway)). A gateway added
+   on **Machines** gets a key without stored secrets, so a test run through it ends before
    a machine starts it. On an install with the instance's pool and gateway, keep
-   **Qory Pool**; an instance admin selects **Check the nodes**, which
-   opens **Instance settings › Nodes**: each is ready when **State** shows **Running**
+   **Qory Pool**; an instance admin selects **Check the Qory Pool and Qory Gateway**,
+   which opens **Instance settings › Pool and gateway**: each is ready when **State** shows **Running**
    or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
    for this pool, and the Qory Pool stops taking them." Its **Add pool** adds a
-   node pool with the name Main. **Get the command** then shows "On the machine for the
+   pool with the name Main. **Get the command** then shows "On the machine for the
    pool Main, run:" and the enrol command, with **Copy command**. Under it, the step
    shows the command that installs qory. Run it first on the Linux machine with Docker
    that runs Main's runs:
@@ -397,12 +397,14 @@ later.
    pool. See Machines." in place of **Run the test**.
 
 A pass shows "Test run passed: the agent answered on a machine of the Qory Pool.",
-with Main's node pool by name in place of the instance's pool, or "…on a machine." for a
-run with no node, and **See the run**: the agent's output is in the run's log. Owners,
+with Main's pool by name in place of the instance's pool, or "…on a machine." for a
+run with no machine or pool, and **See the run**: the agent's output is in the run's log. Owners,
 admins and members run the test. If the step shows another line, follow its first
 sentence, then select **Run the test** again. When no machine takes the test run within 5
-minutes, for example, the step shows "Check the pool in Instance settings › Nodes. No
-machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
+minutes, for example, the step shows "Check on the Machines page that a machine of
+main-pool is running. No machine has taken the test run yet." for a pool of Main named
+`main-pool`, or "Contact support with work item #…. No machine has taken the test run yet."
+for the Qory Pool. After a pass, **Go to Main** opens Main's overview,
 and opening Main opens the overview from then on.
 
 The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,

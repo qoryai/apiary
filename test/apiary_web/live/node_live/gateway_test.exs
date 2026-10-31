@@ -12,10 +12,10 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
   alias Apiary.Repo
 
   defp nodes_path(scope, rest \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes" <> rest
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines" <> rest
 
   defp node_path(scope, node, rest \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}" <> rest
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}" <> rest
 
   defp member_conn(scope) do
     %{user: user} = member_fixture(scope, :member)
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert has_element?(lv, "#node-#{other.public_id}-state", "Never seen")
       refute has_element?(lv, "#node-#{node.public_id}-kind")
       assert has_element?(lv, "#nodes-filter-kind-gateway", "Gateway")
-      assert has_element?(lv, "#nodes-filter-kind-gateway", "2 nodes")
+      assert has_element?(lv, "#nodes-filter-kind-gateway", "2")
 
       {:ok, lv, _html} = live(conn, nodes_path(scope, "?kind=gateway"))
       assert has_element?(lv, "#node-#{default.public_id}")
@@ -149,7 +149,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
 
       assert text(lv, "#new-node-form #node_url-hint") ==
-               "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+               "Where your machines and pools will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
     end
 
     test "shows the URL's errors as core gives them", %{conn: conn, scope: scope} do
@@ -264,7 +264,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       refute has_element?(lv, "#gateway-make-default")
 
       render_hook(lv, "make_default", %{})
-      assert render(lv) =~ "Only owners and admins change nodes."
+      assert render(lv) =~ "Only owners and admins change machines."
       refute Repo.get!(Node, second.id).default_gateway
     end
 
@@ -302,7 +302,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings"))
 
       assert text(lv, "#node-form #node_url-hint") ==
-               "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+               "Where your machines and pools reach the machine you run qory gateway on: https://, a host, and a port if needed."
 
       refute render(lv) =~ "You can change it later"
     end
@@ -339,7 +339,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       _on_default = pool_fixture(scope, name: "spot-runners", gateway_choice: "default")
       _direct = node_fixture(scope, name: "mac-mini", gateway_choice: "direct")
 
-      # A node of another workspace, and one of another organisation, that name it: the
+      # A machine or pool of another workspace, and one of another organisation, that name it: the
       # database takes either, by a write no page makes.
       %{scope: elsewhere} =
         %{scope: workspace_scope(scope.user, workspace_fixture(scope.organisation))}
@@ -359,7 +359,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
 
       # By name, the workspace's own; the two of other workspaces counted, never named.
       assert text(lv, "#delete-node-refused") ==
-               "Nodes use this gateway: build-01, spot-runners and 2 more. " <>
+               "Machines and pools use this gateway: build-01, spot-runners and 2 more. " <>
                  "Point them to another gateway or to direct, then delete it."
 
       html = render(lv)
@@ -477,7 +477,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       html =
         render_submit(lv, "create", %{"node" => %{"name" => "build-01", "gateway" => theirs.id}})
 
-      assert html =~ "is not a gateway this node may use"
+      assert html =~ "is not a gateway this machine may use"
       refute html =~ "elsewhere"
       assert Nodes.list_nodes(scope, %{kind: :node}) == []
     end
@@ -640,7 +640,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
 
       assert text(lv, "#node-configure-steps-1") =~
-               "Point the node at Qory Apiary, through edge-02. In the Forager file. It is required: without it, qory ignores the three variables below. via sends every request to Qory Apiary through edge-02."
+               "Point the machine at Qory Apiary, through edge-02. In the Forager file. It is required: without it, qory ignores the three variables below. via sends every request to Qory Apiary through edge-02."
 
       refute text(lv, "#node-configure-steps-1") =~ "A starter"
       refute render(lv) =~ "Point qory at"
@@ -676,7 +676,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/generated"))
 
       assert text(lv, "#key-generated-steps-4") =~
-               "Point the node pool at Qory Apiary, through edge-01. In the Forager file. It is required: without it, qory ignores the three variables. " <>
+               "Point the pool at Qory Apiary, through edge-01. In the Forager file. It is required: without it, qory ignores the three variables. " <>
                  note
 
       assert String.trim(lines(lv, "#key-generated-yaml")) == address
@@ -686,7 +686,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/forager-file"))
 
       assert text(lv, "#key-forager-file-steps-4") =~
-               "Point the node pool at Qory Apiary, through edge-01."
+               "Point the pool at Qory Apiary, through edge-01."
 
       assert text(lv, "#key-forager-file-via") == note
 
@@ -695,7 +695,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, pool, "/access-key"))
 
       assert text(lv, "#node-configure-steps-1") =~
-               "Point the node pool at Qory Apiary, through edge-01."
+               "Point the pool at Qory Apiary, through edge-01."
 
       assert text(lv, "#node-configure-steps-1") =~ "below. " <> note
       assert String.trim(lines(lv, "#node-configure-yaml")) == address
@@ -759,7 +759,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         title =
           if node.kind == :gateway,
             do: "Point the gateway at Qory Apiary.",
-            else: "Point the node at Qory Apiary."
+            else: "Point the machine at Qory Apiary."
 
         %{access_key: key} = browser_key_fixture(scope, node)
         {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
@@ -850,16 +850,16 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
 
       assert render(lv) =~
-               "An address the runs of this workspace&#39;s nodes and node pools go through, as each chooses."
+               "An address the runs of this workspace&#39;s machines and pools go through, as each chooses."
 
       gateway = gateway_fixture(scope, name: "edge-01")
       {:ok, lv, _html} = live(conn, node_path(scope, gateway))
 
       assert render(lv) =~
-               "Gateway: the runs of nodes and node pools that choose it go through it."
+               "Gateway: the runs of machines and pools that choose it go through it."
 
       assert text(lv, "#gateway-default") =~
-               "Runs of nodes and node pools on Default gateway go through the default."
+               "Runs of machines and pools on Default gateway go through the default."
 
       {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/access-key"))
 
@@ -888,12 +888,12 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings/delete"))
 
       assert text(lv, "#delete-node-form .q-danger-lost") ==
-               "edge-01 leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone."
+               "edge-01 leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While machines or pools point to it, or runs still go through it, it isn't deleted. This cannot be undone."
 
       refute text(lv, "#delete-node-form") =~ "Its runs stay in the record."
 
       assert text(lv, "#delete-node") =~
-               "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted."
+               "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that machines or pools still point to, or that runs still go through, isn't deleted."
     end
   end
 
@@ -972,9 +972,9 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       [one, two] = register(through, [run_id(1), run_id(2)])
 
       assert refused(conn, scope, through.gateway) ==
-               "Nodes use this gateway: build-01. Runs are going through it: " <>
+               "Machines and pools use this gateway: build-01. Runs are going through it: " <>
                  "#{one}, #{two}. " <>
-                 "Delete it once the nodes point elsewhere and the runs end."
+                 "Delete it once the machines and pools point elsewhere and the runs end."
     end
 
     test "names the first five runs, then and N more", %{conn: conn, scope: scope} do
@@ -1012,15 +1012,15 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       runs = [run_here(scope, "run-1"), run_here(scope, "run-2")]
 
       assert NodeComponents.in_use_words(scope, %{nodes: nodes}) ==
-               "Nodes use this gateway: build-01, a-pool. " <>
+               "Machines and pools use this gateway: build-01, a-pool. " <>
                  "Point them to another gateway or to direct, then delete it."
 
       assert NodeComponents.in_use_words(scope, %{nodes: [], runs: runs}) ==
                "Runs are going through this gateway: run-1, run-2. Delete it once they end."
 
       assert NodeComponents.in_use_words(scope, %{nodes: nodes, runs: runs}) ==
-               "Nodes use this gateway: build-01, a-pool. Runs are going through it: " <>
-                 "run-1, run-2. Delete it once the nodes point elsewhere and the runs end."
+               "Machines and pools use this gateway: build-01, a-pool. Runs are going through it: " <>
+                 "run-1, run-2. Delete it once the machines and pools point elsewhere and the runs end."
 
       assert NodeComponents.in_use_words(scope, %{nodes: []}) == nil
       assert NodeComponents.in_use_words(scope, %{nodes: [], runs: []}) == nil
@@ -1034,12 +1034,12 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       runs = for n <- 1..6, do: run_here(scope, "run-#{n}")
 
       assert NodeComponents.in_use_words(scope, %{nodes: nodes ++ [elsewhere], runs: runs}) ==
-               "Nodes use this gateway: build-01, build-02, build-03, build-04, build-05 " <>
+               "Machines and pools use this gateway: build-01, build-02, build-03, build-04, build-05 " <>
                  "and 3 more. Runs are going through it: run-1, run-2, run-3, run-4, run-5 " <>
-                 "and 1 more. Delete it once the nodes point elsewhere and the runs end."
+                 "and 1 more. Delete it once the machines and pools point elsewhere and the runs end."
 
       assert NodeComponents.in_use_words(scope, %{nodes: [elsewhere]}) ==
-               "Nodes use this gateway: 1 node of another workspace. " <>
+               "Machines and pools use this gateway: 1 machine or pool of another workspace. " <>
                  "Point them to another gateway or to direct, then delete it."
     end
   end
@@ -1057,7 +1057,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       render_async(lv)
 
       assert text(lv, "#entry-#{created.id}-change") == "Gateway #{gateway.public_id}"
-      assert text(lv, "#entry-#{pooled.id}-change") == "Node pool #{pool.public_id}"
+      assert text(lv, "#entry-#{pooled.id}-change") == "Pool #{pool.public_id}"
     end
   end
 end
