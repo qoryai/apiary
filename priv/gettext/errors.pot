@@ -430,7 +430,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user.ex
 #, elixir-autogen, elixir-format
-msgid "is not a language this instance has"
+msgid "is not a language Qory Apiary offers"
 msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
@@ -441,7 +441,7 @@ msgstr ""
 
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
-msgid "is not on a forge this instance adds integrations from"
+msgid "is not on a forge Qory Apiary adds integrations from"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -512,7 +512,7 @@ msgstr ""
 
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
-msgid "must be a repository's path: this instance adds no integration from an address"
+msgid "must be a repository's path: Qory Apiary adds no integration from an address"
 msgstr ""
 
 #: lib/apiary/nodes/node.ex

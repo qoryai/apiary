@@ -195,10 +195,10 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       {:ok, %{entries: [emptied, renamed | _]}} =
         Apiary.Audit.list_entries(scope, %{action: "instance.rename"})
 
-      assert has_element?(view, "#filter-action-form li", "Instance renamed")
-      assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed the instance"
+      assert has_element?(view, "#filter-action-form li", "Name in the header changed")
+      assert text(view, "#entry-#{renamed.id}-action") =~ "Changed the name in the header"
       assert text(view, "#entry-#{renamed.id}-change") == "Qory Apiary → Acme Agents"
-      assert text(view, "#entry-#{emptied.id}-action") =~ "Renamed the instance"
+      assert text(view, "#entry-#{emptied.id}-action") =~ "Changed the name in the header"
       assert text(view, "#entry-#{emptied.id}-change") == "Acme Agents → Qory Apiary"
       assert text(view, "#entry-#{renamed.id}-actor") =~ scope.user.email
     end

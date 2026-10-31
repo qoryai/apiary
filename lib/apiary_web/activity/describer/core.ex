@@ -41,7 +41,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
   def label(:"instance.mail_resend"), do: gettext("Mail test link sent again")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
-  def label(:"instance.rename"), do: gettext("Instance renamed")
+  def label(:"instance.rename"), do: gettext("Name in the header changed")
   def label(:"instance.configure"), do: gettext("Configuration changed")
   def label(:"instance.support_save"), do: gettext("Support address saved")
   def label(:"member.suspend"), do: gettext("Member suspended")
@@ -525,10 +525,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"instance.mail_on", _details, _actor),
     do: gettext("Turned mail on, by the test link")
 
-  defp said(:"instance.rename", _details, _actor), do: gettext("Renamed the instance")
+  defp said(:"instance.rename", _details, _actor), do: gettext("Changed the name in the header")
 
   defp said(:"instance.configure", _details, _actor),
-    do: gettext("Changed the instance's configuration")
+    do: gettext("Changed the configuration of Qory Apiary")
 
   defp said(:"instance.support_save", _details, _actor),
     do: gettext("Saved the support address")
@@ -537,7 +537,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
 
   defp said(:"audit.prune", _details, _actor),
-    do: gettext("Deleted the activity older than the instance keeps")
+    do: gettext("Deleted the activity older than the retention period")
 
   defp said(:"workspace.create", _details, _actor), do: gettext("Created the workspace")
   defp said(:"workspace.rename", _details, _actor), do: gettext("Renamed the workspace")
