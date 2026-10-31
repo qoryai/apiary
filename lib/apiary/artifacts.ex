@@ -317,9 +317,10 @@ defmodule Apiary.Artifacts do
 
   # log_refusal/3 writes one warning to the server log for a refused push that a page
   # shows with no cause, or as a store failure: the refusal's shape, the work item's
-  # public id and the type's name. Nothing of a file, a filename or a note is written: a text in the refusal is
-  # `"…"`, a changeset is its schema and the fields with errors, an exception its module,
-  # and a type name that is not one (`Type.name?/1`) is `"…"`.
+  # public id and the type's name. Nothing of a file, a filename or a note is written: a
+  # text in the refusal is `"…"`, a list `[…]` (a charlist is text too), a changeset its
+  # schema and the fields with errors, an exception its module, and a type name that is
+  # not one (`Type.name?/1`) `"…"`.
   @doc false
   @spec log_refusal(WorkItem.t(), term, term) :: :ok
   def log_refusal(%WorkItem{public_id: id}, type_name, refusal) do
@@ -330,8 +331,6 @@ defmodule Apiary.Artifacts do
   end
 
   defp logged_type(name), do: if(Type.name?(name), do: name, else: ~s("…"))
-
-  @shown_items 10
 
   defp shape(%Ecto.Changeset{data: %schema{}, errors: errors}) do
     fields = errors |> Keyword.keys() |> Enum.uniq() |> Enum.map_join(", ", &Atom.to_string/1)
@@ -346,10 +345,7 @@ defmodule Apiary.Artifacts do
   defp shape(value) when is_tuple(value),
     do: "{" <> (value |> Tuple.to_list() |> Enum.map_join(", ", &shape/1)) <> "}"
 
-  defp shape(value) when is_list(value) do
-    shown = value |> Enum.take(@shown_items) |> Enum.map_join(", ", &shape/1)
-    if length(value) > @shown_items, do: "[#{shown}, …]", else: "[#{shown}]"
-  end
+  defp shape(value) when is_list(value), do: "[…]"
 
   defp shape(value) when is_map(value), do: "%{…}"
   defp shape(_value), do: "…"

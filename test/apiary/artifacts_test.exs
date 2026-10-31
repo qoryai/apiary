@@ -714,6 +714,7 @@ defmodule Apiary.ArtifactsTest do
         capture_log(fn ->
           Artifacts.log_refusal(context.work_item, "explainer", {:error, changeset})
           Artifacts.log_refusal(context.work_item, "<b>plan.md</b>", {:odd, "plan.md", [1, 2]})
+          Artifacts.log_refusal(context.work_item, "explainer", {:error, ~c"plan.md"})
         end)
 
       assert log =~
@@ -722,8 +723,12 @@ defmodule Apiary.ArtifactsTest do
                  "work item #{context.work_item.public_id}, type explainer"
 
       assert log =~
-               ~s(Add a version failed: {:odd, "…", [1, 2]}; ) <>
+               ~s(Add a version failed: {:odd, "…", […]}; ) <>
                  ~s(work item #{context.work_item.public_id}, type "…")
+
+      # A charlist is a list: its characters are not written, as numbers or as text.
+      assert log =~ "Add a version failed: {:error, […]}; work item"
+      refute log =~ "[112"
 
       refute log =~ "secret"
       refute log =~ "plan.md"
