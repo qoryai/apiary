@@ -3,8 +3,9 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
   # owners and admins, not for members; the standard types read only; a custom type
   # added, edited and deleted, a type in use kept with a line why; the add form filled
   # from `?name=` when the name is free and well formed; and the section absent with
-  # `workflow_model` off.
-  use ApiaryWeb.ConnCase, async: true
+  # `workflow_model` off. Not async: a test sets the store's folder, which the
+  # application's environment holds for every test.
+  use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
