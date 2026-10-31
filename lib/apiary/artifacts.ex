@@ -78,7 +78,8 @@ defmodule Apiary.Artifacts do
   # copy, a path or a stream of its bytes. Each version comes with its `user`, the
   # person who made it, and its `run`, the run of the queue that made it, where the row
   # is there; that run comes with its `run`, the run its claim registered
-  # (`Apiary.Runs.Run`, its id and public id only), or nil before a claim. These read no scope: the caller has read the work item through
+  # (`Apiary.Runs.Run`, with its id, public id and `dispatch_run_id` only), or nil before
+  # a claim. These read no scope: the caller has read the work item through
   # `Apiary.Access`.
   #
   # `exists?(work_item, stage_id, type)` is the Exists check of a stage's output: whether
@@ -738,7 +739,8 @@ defmodule Apiary.Artifacts do
   end
 
   # The run a run of the queue registered when it was claimed (`Apiary.Runs.Run`), for its
-  # public id (`rn_…`) and its page: only the columns a page shows.
+  # public id (`rn_…`) and its page: its id and public id, and `dispatch_run_id`, which
+  # the preload needs to match each run to its run of the queue.
   defp runs_query,
     do: from(r in Apiary.Runs.Run, select: struct(r, [:id, :public_id, :dispatch_run_id]))
 
