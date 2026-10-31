@@ -8,9 +8,44 @@ defmodule Apiary.StagesArtifactsStub do
 
   @table __MODULE__
 
-  @doc "push/5 keeps a new version, numbered after the artifact's newest."
+  @doc """
+  move_during_push/2 sets the stage a push of the work item reads under its lock to
+  `stage_id`, as an approve or a move that commits between a caller's read and its push.
+  """
+  def move_during_push(%{id: id}, stage_id) do
+    table()
+    true = :ets.insert(@table, {{:stage, id}, stage_id})
+    :ok
+  end
+
+  @doc """
+  push/5 keeps a new version, numbered after the artifact's newest. With
+  `opts[:expect_stage]`, a work item in another stage is `{:error, :stage_changed}` and
+  nothing is kept, as `Apiary.Artifacts.push/5` does; nil is a value, not an absent option.
+  """
   def push(actor, work_item, type, files, opts) do
     table()
+
+    case Keyword.fetch(opts, :expect_stage) do
+      :error -> keep(actor, work_item, type, files, opts)
+      {:ok, stage_id} -> keep_in(stage_id, actor, work_item, type, files, opts)
+    end
+  end
+
+  defp keep_in(stage_id, actor, work_item, type, files, opts) do
+    if stage_id == held_stage(work_item),
+      do: keep(actor, work_item, type, files, opts),
+      else: {:error, :stage_changed}
+  end
+
+  defp held_stage(%{id: id, stage_id: stage_id}) do
+    case :ets.lookup(@table, {:stage, id}) do
+      [{_key, moved_to}] -> moved_to
+      [] -> stage_id
+    end
+  end
+
+  defp keep(actor, work_item, type, files, opts) do
     name = Keyword.get(opts, :name, "main")
     {writer, run_id, user_id} = writer(actor)
 
@@ -29,6 +64,7 @@ defmodule Apiary.StagesArtifactsStub do
       run_id: run_id,
       user_id: user_id,
       stage_id: Keyword.get(opts, :stage_id),
+      expect_stage: Keyword.get(opts, :expect_stage),
       note: Keyword.get(opts, :note),
       inserted_at: DateTime.utc_now(),
       artifact: %{type: type, name: name},
