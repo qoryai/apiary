@@ -109,7 +109,8 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert has_element?(lv, "#about")
 
       # Example has no card's words, so it has no card.
-      assert has_element?(lv, "#set-up-card-software h2", "Software factory")
+      # The card's title is one level below the section's h2.
+      assert has_element?(lv, "#set-up-card-software h3", "Software factory")
       refute has_element?(lv, "#set-up-card-example")
 
       assert has_element?(
@@ -154,6 +155,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new")
 
       assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
+      assert has_element?(lv, "#set-up-card-software h2", "Software factory")
       assert has_element?(lv, "#set-up-card-software-choose", "Choose")
 
       assert has_element?(

@@ -255,7 +255,8 @@ defmodule ApiaryWeb.OrganisationLive do
   # A workspace, one line: its name (the title), how many targets and its policy's mode in
   # faint words, how many steps of its set-up are done while it is not finished, how many
   # runs are alive (pending or running), its runs a day with their count, its denied
-  # attempts and its last run. The band above says the runs and denials are of 14 days.
+  # attempts and its last run. The band's hint shows that the run and denied counts are
+  # of 14 days.
   defp workspace_row(assigns) do
     ~H"""
     <.link

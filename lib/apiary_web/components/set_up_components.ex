@@ -743,8 +743,9 @@ defmodule ApiaryWeb.SetUpComponents do
   `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
   type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
   connect, and Choose, which sends the event `choose_kind` with the domain's name as
-  `type`. The cards are 20rem wide, the page's width on a phone, in a grid that wraps a
-  further card to the next line; Choose sits at the foot of its card. The empty
+  `type`. The cards are 20rem wide, or the column's width where the column is narrower,
+  in a grid that wraps a further card to the next line; Choose is at the foot of its
+  card. A card's title is one heading level below `heading`. The empty
   organisation overview (`ApiaryWeb.OrganisationLive`) and New workspace
   (`/:org/workspaces/new`) show it, and each takes the event with `choose_kind/3`. With
   `limit`, that line shows in place of the cards.
@@ -756,11 +757,12 @@ defmodule ApiaryWeb.SetUpComponents do
 
   def kind_cards(assigns) do
     assigns =
-      assign(
-        assigns,
+      assigns
+      |> assign(
         :cards,
         for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
       )
+      |> assign(:card_heading, if(assigns.heading == "h1", do: "h2", else: "h3"))
 
     ~H"""
     <div class="grid gap-4">
@@ -791,7 +793,9 @@ defmodule ApiaryWeb.SetUpComponents do
           id={"set-up-card-#{domain.name()}"}
           class="flex min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4"
         >
-          <h2 class="font-semibold">{domain.type_name()}</h2>
+          <.dynamic_tag tag_name={@card_heading} class="font-semibold">
+            {domain.type_name()}
+          </.dynamic_tag>
           <p class="text-[13.5px]/5">{card.what}</p>
           <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
           <div class="mt-auto pt-1">

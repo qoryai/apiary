@@ -778,9 +778,9 @@ what needs the reader, then what their agents did, and never grows with the data
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
 settings, which the sidebar's foot, Organisation settings, leads to on the same page. A
-workspace's line says how many of its runs are alive ("No run alive", "2 runs alive"),
-and the band above the lines says its other figures count "Runs and denied attempts in
-the last 14 days".
+workspace's line shows how many of its runs are alive ("No run alive", "2 runs alive"),
+and the band's hint, "Runs and denied attempts in the last 14 days", covers the run and
+denied counts.
 
 ## Targets
 
@@ -1206,8 +1206,8 @@ mark and the theme menu.
   your first workspace do?", and on `/<org>/workspaces/new`, under "What will this
   workspace do?". There is one card per type of workspace, "Software factory" the one,
   each with what you do there, what you connect, and **Choose** at its foot. Each card is
-  20rem wide, or the page's width on a phone, and a further card wraps to the next line. **Choose** creates the
-  workspace, named after the type ("Software factory", then "Software factory 2"), and
+  20rem wide, or the column's width where the column is narrower, and a further card
+  wraps to the next line. **Choose** creates the workspace, named after the type ("Software factory", then "Software factory 2"), and
   opens its step Name. A person who may not create the first workspace sees "An owner of
   Acme creates the first workspace." in place of the cards. The cards show no indicator:
   the count starts at the step Name, in the sidebar's group Set up.
