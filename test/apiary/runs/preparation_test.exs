@@ -274,6 +274,10 @@ defmodule Apiary.Runs.PreparationTest do
                what: "The machine did not start the run within 15 minutes of the request.",
                fix: "Contact support with run #{run.public_id}."
              }
+
+      # Version 1 of the diagnostics contract has `instance_admin` for this fixer.
+      document = Apiary.Runs.Diagnostics.document(run, :instance)
+      assert document["preparation"]["stopped"]["fixer"] == "instance_admin"
     end
 
     @tag :tmp_dir

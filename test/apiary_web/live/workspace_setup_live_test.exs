@@ -849,8 +849,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         conn |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/sources")
 
       assert words(lv, "#set-up-no-adapter") ==
-               "No work source for this type is set up on this instance. An instance admin " <>
-                 "sets one up in Instance settings › Adapters."
+               "Contact support to add a work source. Qory Apiary offers none for this type yet."
 
       refute has_element?(lv, "#set-up-connect")
       assert has_element?(lv, "#set-up-skip")
@@ -1020,8 +1019,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         |> live(~p"/#{organisation}/main/set-up/destinations")
 
       assert words(lv, "#set-up-no-adapter") ==
-               "No work destination for this type is set up on this instance. An instance " <>
-                 "admin sets one up in Instance settings › Adapters."
+               "Contact support to add a work destination. Qory Apiary offers none for this " <>
+                 "type yet."
 
       refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
       assert has_element?(lv, "#set-up-skip")
@@ -4724,7 +4723,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
            |> LazyHTML.from_fragment()
            |> LazyHTML.query("#set-up-context p")
            |> LazyHTML.attribute("id") ==
-             ["set-up-what", "set-up-machines-pools", "set-up-machines-join", "set-up-machines-why"]
+             [
+               "set-up-what",
+               "set-up-machines-pools",
+               "set-up-machines-join",
+               "set-up-machines-why"
+             ]
 
     assert words(lv, "#set-up-context #set-up-what") ==
              "A pool takes the waiting runs of #{workspace} and starts each run on a machine " <>
@@ -4790,6 +4794,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       refute render(lv) =~ "instance"
       assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
       assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
+
       assert words(lv, "#set-up-pool-workspace-line") ==
                "Runs in #{workspace.name} then wait for this pool."
 
@@ -4870,6 +4875,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     assert words(lv, "#set-up-pool-instance-state") ==
              "Not ready: the pool is set to Direct, and runs need a gateway"
+
     refute has_element?(open(ctx), "#set-up-pool-instance")
 
     # The instance's pool names a gateway of the workspace: its runs go through the
@@ -5048,6 +5054,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a second click, or a pool made meanwhile, makes no other pool and shows the one there",
        ctx do
+    _instance_pool = ready_instance!()
     workspace = ctx.scope.workspace
     lv = open(ctx)
     other = open(ctx)
@@ -5441,7 +5448,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "the line on the pool's machines shows only where a machine enrolled on the pool", ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5463,7 +5470,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "a person whom node.delete no longer allows is refused, and the pool stays", ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5484,7 +5491,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a pool deleted meanwhile: Remove pool reads the step again, and Shared shows chosen",
        ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5500,7 +5507,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a second pool added elsewhere while the removal is open: Remove pool deletes nothing, and no removal is offered",
        ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)

@@ -427,8 +427,8 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       {:ok, _lv, html} = live(conn, base <> "/settings")
 
       assert html =~
-               "On Default gateway, runs go through the Qory Gateway, the default for this " <>
-                 "instance. On Direct, they go through no gateway."
+               "On Default gateway, runs go through the Qory Gateway, the default for Qory " <>
+                 "Apiary. On Direct, they go through no gateway."
 
       {:ok, lv, _html} = live(conn, base <> "/access-key")
 

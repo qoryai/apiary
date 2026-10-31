@@ -241,7 +241,7 @@ defmodule Apiary.SignUpRacesTest do
              Enum.filter(results, &match?({:error, _}, &1))
 
     assert [message] = Keyword.get_values(changeset.errors, :email) |> Enum.map(&elem(&1, 0))
-    assert message =~ "as many as it may"
+    assert message =~ "as it may"
 
     assert 2 ==
              Repo.aggregate(

@@ -484,6 +484,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- The pages people in an organisation read no longer say “instance”, “instance admin” or
+  “this server”, and state no limit of the server. Where only support can fix a case, the
+  page says “Contact support”, which links to the support address where one is set, and
+  what Qory Apiary offers is named “Qory Apiary”. **Add an integration**, the work source
+  and destination lists, and a target's Environment card keep their old lines for an
+  instance admin. An integration that cannot be installed yet shows only to an instance
+  admin, unless the organisation already has a connection to it.
 - The guides Install and configure and Hosting checklist are only for signed-in instance
   admins: `/docs` leads an instance admin to `/docs/admin`, which has every guide, and
   gives anyone else 404 there. The public documentation leaves them out of its pages,

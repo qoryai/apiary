@@ -212,6 +212,49 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                "No machine was made: Key #{run_key} refused"
     end
 
+    test "a stop on the Qory Pool links Contact support and has no line on a machine log",
+         ctx do
+      before = Application.get_env(:apiary, :support_address)
+      Application.put_env(:apiary, :support_address, "https://help.example.com")
+      on_exit(fn -> Application.put_env(:apiary, :support_address, before) end)
+
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      qory_pool = instance_pool_fixture(%{name: "qory-pool"})
+
+      {1, _rows} =
+        Apiary.Repo.update_all(
+          from(d in Apiary.Dispatches.Dispatch, where: d.id == ^dispatch.id),
+          set: [pool_id: qory_pool.id]
+        )
+
+      run =
+        run
+        |> Ecto.Changeset.change(unattached())
+        |> Ecto.Changeset.change(
+          state: "lost",
+          lost_at: run.run_code_expires_at,
+          run_code_public_key: nil,
+          run_key_payload: nil,
+          run_key_signature: nil,
+          run_key_issued_at: dispatch.claimed_at,
+          attach_by: run.run_code_expires_at
+        )
+        |> Apiary.Repo.update!()
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(
+               lv,
+               ~s(#prepare-machine a[href="https://help.example.com"]),
+               "Contact support"
+             )
+
+      html = render(lv)
+      assert html =~ "with run #{run.public_id}."
+      refute has_element?(lv, "#prepare-machine-machine-log")
+      refute html =~ "nstance admin"
+    end
+
     test "a pending run with no event shows the section in place of the wait", ctx do
       %{run: run} = claimed_run(ctx.scope)
 

@@ -1185,6 +1185,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "explore_tab/1, a run without a result" do
+    # Contact support reads the support address.
+    setup do: Ecto.Adapters.SQL.Sandbox.checkout(Apiary.Repo)
+
     test "what happened, and the run's page" do
       for {status, overrides, run_state, heading, body} <- [
             {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended}, "Failed",
