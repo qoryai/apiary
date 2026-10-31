@@ -454,12 +454,13 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       %{version: List.last(RunApiStubs.pushed()).public_id}
     end
 
-    test "is the file as a download, with nosniff", ctx do
+    test "is the file as a download, with nosniff and a sandbox policy", ctx do
       conn = read(ctx, "/artifacts/#{ctx.version}/files/one.png")
       assert signed_answer?(conn)
       assert response(conn, 200) == "png"
       assert get_resp_header(conn, "content-type") == ["image/png"]
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+      assert get_resp_header(conn, "content-security-policy") == ["sandbox"]
 
       assert get_resp_header(conn, "content-disposition") == [
                ~s(attachment; filename="one.png"; filename*=UTF-8''one.png)

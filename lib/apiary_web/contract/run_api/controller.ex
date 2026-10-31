@@ -28,8 +28,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      not match the type's format among it, `422` `invalid_artifact`.
   #
   # A file is served as a download (`Content-Disposition: attachment`) with
-  # `X-Content-Type-Options: nosniff`, and HTML, SVG, XML and script types as
-  # `application/octet-stream`, so no artifact is shown inline from Qory Apiary's origin.
+  # `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`, and HTML,
+  # SVG, XML and script types as `application/octet-stream`, so no artifact is shown
+  # inline from Qory Apiary's origin.
   #
   # Errors are short JSON; nothing logs the body, the signature or the headers. An
   # exception is `503` `unavailable`, logged by its module's name alone.
@@ -85,6 +86,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       conn
       |> put_resp_header("content-disposition", disposition(filename))
       |> put_resp_header("x-content-type-options", "nosniff")
+      |> put_resp_header("content-security-policy", "sandbox")
       |> put_resp_content_type(served_type(field(file, :content_type)), nil)
       |> send_resp(200, content)
     else

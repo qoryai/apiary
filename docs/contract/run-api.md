@@ -167,6 +167,8 @@ Returns `200` with the file's bytes, and these headers:
 - `Content-Disposition: attachment; filename="<name>"; filename*=UTF-8''<name>`, where
   the first name has every character outside `A-Z a-z 0-9 . _ -` replaced by `_`;
 - `X-Content-Type-Options: nosniff`;
+- `Content-Security-Policy: sandbox`, so a browser that opens the file runs no script
+  of it and treats it as a page of no origin;
 - `Content-Type`: the file's content type, or `application/octet-stream` for a type
   with `html`, `xml`, `svg`, `javascript` or `ecmascript` in it, and for a type that is
   not a plain `type/subtype`.
