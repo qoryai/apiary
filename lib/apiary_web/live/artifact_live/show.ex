@@ -161,7 +161,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          number: work_item.number,
          version: version,
          type: type,
-         content: Load.content(type, version),
+         content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),
          note: Apiary.ExternalText.present_lines(version.note),
          writes: Access.can?(scope, :"artifact.write", work_item),

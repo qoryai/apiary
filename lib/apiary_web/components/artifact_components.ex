@@ -16,7 +16,6 @@ defmodule ApiaryWeb.ArtifactComponents do
   use ApiaryWeb, :html
 
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Type, Version}
-  alias ApiaryWeb.ArtifactLive.Markdown
   alias ApiaryWeb.People
 
   # The content types an image view shows inline: raster formats only.
@@ -240,14 +239,15 @@ defmodule ApiaryWeb.ArtifactComponents do
       rows, every value as text; a `change`'s `url` is a link where it is `http` or `https`.
 
   `content` is what the page read of the files, a map from filename: for a document,
-  `{:text, text}` or `:too_large`; for a structured view, `{:json, value}` or
-  `:unreadable`. `path` is a function from a file to its download address. `script` is
+  `{:markdown, rendered}` (`ApiaryWeb.ArtifactLive.Markdown.render/1`) or `:too_large`;
+  for a structured view, `{:json, value}` or `:unreadable`. `:pending`, before the page
+  has read them, shows the document and structured views empty. `path` is a function from a file to its download address. `script` is
   the address of the Mermaid bundle.
   """
   attr :id, :string, required: true
   attr :type, Type, required: true
   attr :version, Version, required: true
-  attr :content, :map, default: %{}
+  attr :content, :any, default: %{}
   attr :path, :any, required: true
   attr :script, :string, default: nil
 
@@ -265,7 +265,7 @@ defmodule ApiaryWeb.ArtifactComponents do
     >
       <section :for={file <- @version.files} class="grid gap-2" aria-label={file.filename}>
         <p :if={length(@version.files) > 1} class="text-[12.5px] text-muted">{file.filename}</p>
-        <.document text={Map.get(@content, file.filename)} file={file} path={@path} />
+        <.document text={content(@content, file)} file={file} path={@path} />
       </section>
     </div>
     """
@@ -340,7 +340,7 @@ defmodule ApiaryWeb.ArtifactComponents do
     <div id={@id} class="grid gap-4">
       <.structured
         :for={file <- @version.files}
-        content={Map.get(@content, file.filename)}
+        content={content(@content, file)}
         change={@type.view == :change}
       />
     </div>
@@ -349,12 +349,17 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp inline_images, do: @inline_images
 
+  defp content(:pending, _file), do: :pending
+  defp content(content, file), do: Map.get(content, file.filename)
+
   attr :text, :any, required: true
   attr :file, ArtifactFile, required: true
   attr :path, :any, required: true
 
-  defp document(%{text: {:text, text}} = assigns) do
-    assigns = assign(assigns, :rendered, Markdown.render(text))
+  defp document(%{text: :pending} = assigns), do: ~H|<div class="min-h-6"></div>|
+
+  defp document(%{text: {:markdown, rendered}} = assigns) do
+    assigns = assign(assigns, :rendered, rendered)
 
     ~H"""
     <%= case @rendered do %>
@@ -382,6 +387,8 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   attr :content, :any, required: true
   attr :change, :boolean, default: false
+
+  defp structured(%{content: :pending} = assigns), do: ~H|<div class="min-h-6"></div>|
 
   defp structured(%{content: {:json, value}} = assigns) do
     {rows, shown} = rows(value, assigns.change, 0, @max_values)

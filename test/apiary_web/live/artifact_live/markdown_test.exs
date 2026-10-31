@@ -80,6 +80,36 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     assert {:as_written, _text} = Markdown.render(deep)
   end
 
+  # Each of these texts of 1 MiB makes a parse hold hundreds of MiB. The render runs in a
+  # process whose heap may not pass 32 MiB, so the parse cannot happen there.
+  test "shows a text whose parse needs more than the budget as written" do
+    for text <- [String.duplicate("> ", 524_288), String.duplicate("# a\n", 262_144)] do
+      assert {:as_written, _text} = capped(fn -> Markdown.render(text) end)
+    end
+  end
+
+  # The value of `fun`, run in a process whose heap may hold at most 32 MiB.
+  defp capped(fun) do
+    parent = self()
+
+    {pid, ref} =
+      :erlang.spawn_opt(fn -> send(parent, {self(), fun.()}) end, [
+        :monitor,
+        {:max_heap_size, %{size: 4_194_304, kill: true, error_logger: false}}
+      ])
+
+    receive do
+      {^pid, value} ->
+        Process.demonitor(ref, [:flush])
+        value
+
+      {:DOWN, ^ref, :process, ^pid, reason} ->
+        flunk("the render passed the heap cap: #{inspect(reason)}")
+    after
+      30_000 -> flunk("the render took longer than 30 s")
+    end
+  end
+
   test "link?/1 takes absolute http and https URLs and mailto addresses" do
     assert Markdown.link?("https://example.com")
     assert Markdown.link?("HTTP://example.com/x")

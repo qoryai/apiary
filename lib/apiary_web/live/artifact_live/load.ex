@@ -78,14 +78,16 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   end
 
   # content/2 is what a view shows of the version's files, by filename: for a document,
-  # `{:text, text}` for a file of at most `Markdown.max_bytes/0` bytes, else `:too_large`;
-  # for a structured type, `{:json, value}`, or `:unreadable`. Nothing for other views.
+  # `{:markdown, rendered}`, the file's text as `Markdown.render/1` returns it, for a file
+  # of at most `Markdown.max_bytes/0` bytes, else `:too_large`; for a structured type,
+  # `{:json, value}`, or `:unreadable`. Nothing for other views. The page reads it once,
+  # on its connected mount (`ApiaryWeb.ArtifactLive.Show`).
   @doc false
   @spec content(Type.t(), Version.t()) :: map
   def content(%Type{base_view: :document}, %Version{files: files}) do
     Map.new(files, fn file ->
       case read(file, Markdown.max_bytes()) do
-        {:ok, text} -> {file.filename, {:text, text}}
+        {:ok, text} -> {file.filename, {:markdown, Markdown.render(text)}}
         :error -> {file.filename, :too_large}
       end
     end)

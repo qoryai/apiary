@@ -26,10 +26,15 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
   #
-  # The work is bounded. A text over `max_bytes/0` bytes, with more table cells than
-  # `max_cells/0` or nested deeper than `max_depth/0`, or not valid UTF-8, is
-  # `{:as_written, text}`, which a page interpolates, so HEEx escapes it; a text over
-  # `max_bytes/0` is not read at all (`ApiaryWeb.ArtifactLive.Show`).
+  # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes,
+  # with more table cells than `max_cells/0`, nested deeper than `max_depth/0`, or not
+  # valid UTF-8, is `{:as_written, text}`, which a page interpolates, so HEEx escapes it.
+  # The parse, the walk and the HTML run in another process within `budget/0`
+  # (`Apiary.Kinds.Budget`): a heap of at most 64 MiB, 100,000,000 reductions and 10 s.
+  # Past the budget the text is `{:as_written, text}`. Measured on OTP 29: 384 KiB of
+  # prose with links, emphasis and code fits; 512 KiB of it needs more heap, and so do
+  # 262,144 headings of one letter (about 600 MiB) and 524,288 nested quote marks. A
+  # file over `max_bytes/0` is not read at all (`ApiaryWeb.ArtifactLive.Load.content/2`).
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -39,6 +44,9 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @max_bytes 1_048_576
   @max_cells 50_000
   @max_depth 128
+
+  # What one render may take (`Apiary.Kinds.Budget`): 64 MiB of heap, in 8-byte words.
+  @budget [heap_words: 8_388_608, reductions: 100_000_000, ms: 10_000]
 
   @parse_options [
     extension: [table: true, strikethrough: true, autolink: true, tasklist: true],
@@ -102,12 +110,31 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @spec render(binary) :: {:html, Phoenix.HTML.safe()} | {:as_written, String.t()}
   def render(text) when is_binary(text) do
     with true <- formattable?(text),
-         {:ok, html} <- markdown(text) do
+         {:ok, {:ok, html}} <- budgeted(text) do
       {:html, Phoenix.HTML.raw(html)}
     else
       _not -> {:as_written, Apiary.ExternalText.lines(text)}
     end
   end
+
+  # The words the HTML adds, such as "Not done", are in the reader's language and domain:
+  # the process takes the caller's Gettext locale, as `ApiaryWeb.Async` does.
+  defp budgeted(text) do
+    locale = Gettext.get_locale()
+
+    Apiary.Kinds.Budget.run(
+      fn ->
+        Gettext.put_locale(locale)
+        markdown(text)
+      end,
+      @budget
+    )
+  end
+
+  # budget/0 is what one render may take (`Apiary.Kinds.Budget`).
+  @doc false
+  @spec budget() :: Apiary.Kinds.Budget.budget()
+  def budget, do: @budget
 
   defp formattable?(text),
     do: byte_size(text) <= @max_bytes and String.valid?(text) and table_cells(text) <= @max_cells
