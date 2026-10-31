@@ -5612,7 +5612,7 @@ msgid "Closed a work item"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Closed a work item, from an escalation"
 msgstr ""
 
@@ -6334,7 +6334,7 @@ msgid "Declined a work item"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Declined a work item, from an escalation"
 msgstr ""
 
@@ -12901,7 +12901,7 @@ msgid "Previous"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Process changed"
 msgstr ""
 
@@ -19137,7 +19137,7 @@ msgid "Work item questions answered"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Work item stage decided"
 msgstr ""
 
