@@ -255,9 +255,17 @@ defmodule Apiary.Stacks.SourcesTest do
                  "acme/harness"
                ]
 
-        assert Sources.unplaced(ctx.scope) == [
-                 %{id: other.adapter.public_id, adapter: title, cause: cause}
-               ]
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert Sources.unplaced(ctx.scope) == [
+                     %{id: other.adapter.public_id, adapter: title, cause: cause}
+                   ]
+          end)
+
+        # The page shows only that support is needed; the cause is in the log.
+        assert log =~
+                 "an adapter's call address is not called " <>
+                   "adapter=#{other.adapter.public_id} cause=#{cause}"
       end
 
       # An instance whose public address has no host calls no adapter: each adapter with
