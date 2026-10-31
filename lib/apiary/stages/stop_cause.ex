@@ -238,7 +238,7 @@ defmodule Apiary.Stages.StopCause do
             nil -> "the integration that brings in target #{n.target}"
           end
 
-        {"The run did not start, because its variable QORY_RUN_SYSTEM, the system of target #{n.target}, is not a host name of a-z, 0-9, dots and dashes.",
+        {"The run did not start, because its variable QORY_RUN_SYSTEM, the system #{n.work_item.target_system} of target #{n.target}, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.",
          "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
 
       nil ->

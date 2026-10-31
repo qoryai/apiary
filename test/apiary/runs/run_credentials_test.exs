@@ -678,24 +678,32 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     test "a path the access rules do not take, while the integration still reaches it", ctx do
-      two = two_integrations!(ctx, %{system: "forge.example.com", path: "acme/shop two"})
+      two = two_integrations!(ctx, %{system: "forge.example.com", path: "acme/shop?x"})
 
-      assert claim(ctx) == {:ok, :none}
-      gone!(two.queued)
+      run = %{
+        Repo.get!(DispatchRun, two.queued.id)
+        | state: :ended,
+          end_cause: :target_access_gone
+      }
+
       org = ctx.scope.organisation.name
 
-      assert text(two) ==
-               "The run did not start. #{String.replace_prefix(two.integration, "the", "The")} still reaches target acme/shop two, but the target's path has a character that Qory Apiary does not put in an access rule.\n" <>
+      assert Apiary.Stages.StopCause.text(run, two.work_item) ==
+               "The run did not start. #{String.replace_prefix(two.integration, "the", "The")} still reaches target acme/shop?x, but the target's path has a character that Qory Apiary does not put in an access rule.\n" <>
                  "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
     end
 
     test "a system that is no host name names the target's integration", ctx do
-      two = two_integrations!(ctx, %{system: "Not_A_Host", path: "acme/shop"})
-      run = Repo.get!(DispatchRun, two.queued.id)
-      run = %{run | state: :ended, end_cause: :variables_invalid}
+      two = two_integrations!(ctx, %{system: "forge..example.com", path: "acme/shop"})
+
+      run = %{
+        Repo.get!(DispatchRun, two.queued.id)
+        | state: :ended,
+          end_cause: :variables_invalid
+      }
 
       assert Apiary.Stages.StopCause.text(run, two.work_item) ==
-               "The run did not start, because its variable QORY_RUN_SYSTEM, the system of target acme/shop, is not a host name of a-z, 0-9, dots and dashes.\n" <>
+               "The run did not start, because its variable QORY_RUN_SYSTEM, the system forge..example.com of target acme/shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
                  "Owners and admins of #{ctx.scope.organisation.name} check #{two.integration} in Organisation settings › Integrations."
     end
   end

@@ -88,7 +88,7 @@ defmodule Apiary.Stages.StopCauseTest do
     work_item = %{work_item | target_system: "Not_A_Host"}
 
     assert text(:variables_invalid, work_item) ==
-             "The run did not start, because its variable QORY_RUN_SYSTEM, the system of target acme/web-shop, is not a host name of a-z, 0-9, dots and dashes.\n" <>
+             "The run did not start, because its variable QORY_RUN_SYSTEM, the system Not_A_Host of target acme/web-shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
                "Owners and admins of #{org} check the integration that brings in target acme/web-shop in Organisation settings › Integrations."
 
     work_item = %{work_item | target_system: "git.example.com", target_path: "-acme/web-shop"}
@@ -186,7 +186,7 @@ defmodule Apiary.Stages.StopCauseTest do
 
       {run, _work_item} = walk_failed(scope, "invalid", "https://code.example.com/team/stacks")
       assert StopCause.set_up_step(run) == nil
-      assert StopCause.set_up_step(%DispatchRun{end_cause: :key_gone}) == nil
+      assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
     end
 
     test "with no integration that reaches it, in the Workflow page's words" do
