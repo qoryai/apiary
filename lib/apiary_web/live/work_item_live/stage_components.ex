@@ -93,6 +93,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     values: [nil, :note],
     doc: "a field of Request changes the server refused: `:note`, left blank"
 
+  attr :check, :any,
+    default: nil,
+    doc: "the result of Check again: `{:still_missing, workflow}`, `{:failed, message}`, or nil"
+
   def stage_card(assigns) do
     ~H"""
     <section
@@ -121,6 +125,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         answers_path={@answers_path}
         asking={@asking}
         error={@error}
+        check={@check}
       />
     </section>
     """
@@ -156,6 +161,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :answers_path, :string, default: nil
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
+  attr :check, :any, default: nil
 
   defp stage_body(%{page: %{state: :running}} = assigns) do
     ~H"""
@@ -214,13 +220,22 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp stage_body(%{page: %{state: :waiting_workflow}} = assigns) do
     ~H"""
-    <p :for={workflow <- @page.missing_workflows} id={"#{@id}-workflow-#{workflow}"}>
-      {gettext(
-        "%{stage} uses %{workflow}, which the harness no longer declares. Add it to the harness, or choose another workflow for %{stage}.",
-        stage: @page.stage.name,
-        workflow: workflow
-      )}
-    </p>
+    <p :for={{line, i} <- Enum.with_index(@page.gaps)} id={"#{@id}-gap-#{i}"}>{line}</p>
+    <form :if={@page.can_decide} id={"#{@id}-check"} phx-submit="stage_check" novalidate>
+      <input type="hidden" name="number" value={@number} />
+      <%= case @check do %>
+        <% {:still_missing, workflow} -> %>
+          <p id={"#{@id}-check-result"} class="q-xp-err">
+            {gettext("The harness still does not list %{workflow}.", workflow: workflow)}
+          </p>
+          <.button id={"#{@id}-check-go"} type="submit">{gettext("Check again")}</.button>
+        <% {:failed, message} -> %>
+          <p id={"#{@id}-check-result"} class="q-xp-err">{message}</p>
+          <.button id={"#{@id}-check-go"} type="submit">{gettext("Try again")}</.button>
+        <% _none -> %>
+          <.button id={"#{@id}-check-go"} type="submit">{gettext("Check again")}</.button>
+      <% end %>
+    </form>
     """
   end
 
@@ -276,7 +291,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("One approval covers each version. The members this stage lists approve.")}
         <% end %>
       </p>
-      <%= if @page.can_decide do %>
+      <%= if @page.can_decide and not @page.confirm_gate do %>
         <%= if @asking == :changes do %>
           <form
             novalidate
@@ -347,7 +362,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       assign(
         assigns,
         :escalation,
-        assigns.page.escalation || %{cause: :escalate, gaps: [], run_id: nil}
+        assigns.page.escalation || %{cause: :escalate, gaps: [], run: nil}
       )
 
     ~H"""
@@ -359,8 +374,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <ul :if={@escalation.gaps != []} id={"#{@id}-gaps"} class="list-disc ps-5">
         <li :for={gap <- @escalation.gaps}>{gap}</li>
       </ul>
-      <p :if={@escalation.run_id} id={"#{@id}-run"} class="text-xs opacity-70">
-        {gettext("From run %{run}", run: @escalation.run_id)}
+      <p :if={@escalation.run} id={"#{@id}-run"} class="text-xs opacity-70">
+        {gettext("From run %{run} · %{workflow}",
+          run: Format.number(@escalation.run.number),
+          workflow: @escalation.run.workflow || ""
+        )}
       </p>
       <form
         :if={@page.can_decide}
@@ -487,7 +505,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp run_words(run) do
     gettext("Run %{run} · %{workflow} · round %{round} · %{verdict}",
-      run: run.id || "",
+      run: Format.number(run.id),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
       verdict: verdict_words(run)
@@ -498,10 +516,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp verdict_words(%{verdict: :changes_requested}), do: gettext("changes requested")
   defp verdict_words(%{verdict: :escalate}), do: gettext("escalated")
 
-  defp verdict_words(%{state: state}) when state in [:pending, :running, "pending", "running"],
-    do: gettext("running")
-
-  defp verdict_words(%{state: state}) when state in [:stopped, "stopped"], do: gettext("stopped")
+  defp verdict_words(%{state: :running}), do: gettext("running")
+  defp verdict_words(%{state: :stopped}), do: gettext("stopped")
   defp verdict_words(_run), do: gettext("no verdict, goes on")
 
   ## Approval marks
@@ -537,18 +553,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp approval_mark(assigns) do
     ~H"""
-    <%= cond do %>
-      <% @mark && @mark.approved && @mark.newer -> %>
-        <span id={@id} class="text-warning">
-          {gettext("Approved v%{approved}; v%{newer} is newer",
-            approved: Format.number(@mark.approved),
-            newer: Format.number(@mark.newer)
-          )}
-        </span>
-      <% @mark && @mark.changed_after_approval -> %>
-        <span id={@id} class="text-warning">{gettext("Changed after approval")}</span>
-      <% true -> %>
-    <% end %>
+    <span :if={@mark && @mark.approved && @mark.newer} id={@id} class="text-warning">
+      {gettext("Approved v%{approved}; v%{newer} is newer",
+        approved: Format.number(@mark.approved),
+        newer: Format.number(@mark.newer)
+      )}
+    </span>
+    <span :if={@mark && @mark.changed_after_approval} id={"#{@id}-changed"} class="text-warning">
+      {gettext("Changed after approval")}
+    </span>
     """
   end
 

@@ -46,7 +46,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`ApiaryWeb.WorkItemLive.Workflow`), the header shows the stages of the work item's
   # process version, the rail the stage card in place of the step card, and the body
   # the runs and the artifacts above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`).
-  # The page reads them again on `{:stage_changed, id}` for its work item, and does
+  # The page reads them again on `{:stage_changed, id}` and `{:artifact_pushed, …}` on the
+  # work item's topics (`ApiaryWeb.WorkItemLive.Workflow.subscribe/1`), and does
   # Approve, Request changes, the escalation actions and Move back through
   # `Apiary.Stages`, each refused without words as the other actions are. Without the
   # feature the page is as before it.
@@ -68,7 +69,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @edit_keys ["understanding", "scope_in", "scope_out", "approach"]
   @comment_events Comments.events() -- ["cancel_question"]
   @actions ~w(undo ask_decline decline ask_close close confirm explore_again answer change_proposal confirm_changes)
-  @stage_events ~w(stage_approve stage_ask_changes stage_request_changes stage_resolve stage_move)
+  @stage_events ~w(stage_approve stage_ask_changes stage_request_changes stage_resolve stage_move stage_check)
   @resolutions %{
     "accept" => :accept,
     "another_round" => :another_round,
@@ -144,9 +145,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             answers_path={tab_path(@current_scope, @number, :explore)}
             asking={@stage_asking}
             error={@stage_error}
+            check={@stage_check}
           />
           <.step_card
-            :if={!@flow}
+            :if={!@flow or @flow.confirm_gate}
             work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
@@ -276,7 +278,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         raise ApiaryWeb.NotFound
 
       row ->
-        if connected?(socket), do: WorkItems.subscribe(scope)
+        if connected?(socket) do
+          WorkItems.subscribe(scope)
+          if Workflow.on?(scope), do: Workflow.subscribe(row)
+        end
 
         {:ok,
          socket
@@ -298,7 +303,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            flow: nil,
            artifacts: [],
            stage_asking: nil,
-           stage_error: nil
+           stage_error: nil,
+           stage_check: nil
          )}
     end
   end
@@ -483,6 +489,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  # Check again, while the stage waits for a workflow: the stage started, the harness
+  # still does not list the workflow, or the check failed with its message.
+  defp stage_act("stage_check", _params, socket) do
+    %{row: row, flow: flow} = socket.assigns
+
+    case Workflow.check(scope(socket), row, flow) do
+      {:ok, _work_item} ->
+        {:noreply, socket |> assign(:stage_check, nil) |> load()}
+
+      {:error, :still_missing} ->
+        workflow = List.first(flow.missing_workflows) || ""
+        {:noreply, socket |> assign(:stage_check, {:still_missing, workflow}) |> load()}
+
+      {:error, reason} when reason in [:forbidden, :not_found, :not_approver] ->
+        {:noreply, socket |> assign(:stage_check, nil) |> refresh()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :stage_check, {:failed, check_message(reason)})}
+    end
+  end
+
   defp decided(socket, action) do
     %{row: row, flow: flow} = socket.assigns
 
@@ -494,6 +521,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> refresh()}
     end
   end
+
+  # What a failed check says: the read's message where it gave one.
+  defp check_message(message) when is_binary(message), do: message
+  defp check_message(%{message: message}) when is_binary(message), do: message
+  defp check_message(_reason), do: gettext("The check of the harness failed.")
 
   # A note as the Stages functions take it: its text, or nil where it is blank.
   defp note(params), do: text(params["note"])
@@ -571,6 +603,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       else: {:noreply, socket}
   end
 
+  def handle_info({:artifact_pushed, _pushed}, socket) do
+    if socket.assigns.flow,
+      do: {:noreply, refresh(socket, &editable/1)},
+      else: {:noreply, socket}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   ## Reads
@@ -596,7 +634,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
          %{} = source <- WorkItems.ticket(scope, row, comments) do
       names = Map.get(WorkItems.ticket_names(scope, [row]), row.id, %{})
       thread = if socket.assigns.tab == :thread, do: thread_entries(scope, row, now), else: []
+      # At Explore's gate the step card's Confirm approves the gate
+      # (`Apiary.WorkItems.confirm/4`), so the stage card offers no second Approve there.
       flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
+      flow = flow && %{flow | confirm_gate: explore.status == :confirm}
       page = View.page(scope, row, explore, thread, names)
 
       # Take in again is reached from the Backlog only while it shows the ticket: its

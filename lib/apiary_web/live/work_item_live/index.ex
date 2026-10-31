@@ -39,8 +39,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # stage of the workspace's current process version, then one for each stage that
   # version removed while live work items remain in it, marked with its version
   # (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`). It is read again on
-  # `{:stage_changed, id}` as on `{:work_items_changed, ids}`. Without the feature the
-  # page is as before it.
+  # `{:work_items_changed, ids}`. Without the feature the page is as before it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -354,9 +353,6 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # who may no longer be here; any other reads what it shows again, whatever the message
   # names, and the sidebar's count beside Work items.
   @impl true
-  def handle_info({:stage_changed, _id}, socket),
-    do: handle_info({:work_items_changed, []}, socket)
-
   def handle_info({:work_items_changed, _ids}, socket) do
     socket = UserAuth.reload_scope(socket)
 
@@ -373,6 +369,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
        |> count_waiting_on()}
     end
   end
+
+  # Any other message on the topic: nothing to read again.
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   ## Reads
 

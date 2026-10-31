@@ -2530,11 +2530,6 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{stage} uses %{workflow}, which the harness no longer declares. Add it to the harness, or choose another workflow for %{stage}."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
 msgid "%{stage} waits for answers to the agent's questions."
 msgstr ""
 
@@ -5383,6 +5378,11 @@ msgstr "Changes to this repository's rules, newest first"
 msgid "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check again"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
 msgid "Check that %{adapter} is running. It has a key in use, but it has not sent the address where it is set up; this step updates once it has."
@@ -8082,7 +8082,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
-msgid "From run %{run}"
+msgid "From run %{run} · %{workflow}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -16539,6 +16539,11 @@ msgstr ""
 msgid "The change was not made: the run configuration it renders is over 1 MiB, more than the gateway reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The check of the harness failed."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
@@ -16726,6 +16731,11 @@ msgstr ""
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The harness source %{source}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness still does not list %{workflow}."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -18382,6 +18392,7 @@ msgid "Tried to send the test link again; the relay did not accept it"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Try again"
 msgstr ""

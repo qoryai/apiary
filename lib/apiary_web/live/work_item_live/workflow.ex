@@ -4,17 +4,31 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `Apiary.Processes` and `Apiary.Artifacts`, and the plain maps the stage parts draw
   # (`ApiaryWeb.WorkItemLive.StageComponents`).
   #
-  # **The modules not on `next` yet.** Transition: the stage runner (`stages`,
-  # `Apiary.Stages`), the artifacts (`artifacts`, `Apiary.Artifacts`) and their list
-  # (`artifact_components`, `ApiaryWeb.ArtifactComponents`) are read from the
-  # application's environment (`config :apiary, ApiaryWeb.WorkItemLive.Workflow,
-  # stages: …`), with the shared contract's module as the default. The calls go through
-  # a variable, so the pages compile before those modules land; the tests put fakes
-  # there (`ApiaryWeb.WorkflowFake`). Each one becomes a plain call once its piece lands.
+  # **The artifacts.** Transition, until piece A lands: the artifacts (`artifacts`,
+  # `Apiary.Artifacts`) and their plain list (`artifact_components`,
+  # `ApiaryWeb.ArtifactComponents`) are read from the application's environment
+  # (`config :apiary, ApiaryWeb.WorkItemLive.Workflow, artifacts: …`), with the shared
+  # contract's module as the default, through a variable, so the page compiles before
+  # they land; the tests put fakes there (`ApiaryWeb.WorkflowFake`). While a module is
+  # not loaded, the page lists no artifact.
   #
-  # **The feature.** `on?/1` is whether the reader is shown `workflow_model`. Transition:
-  # it is also false while the stage runner is not loaded, so every page draws as before
-  # the feature until the runner lands.
+  # **Check again.** Transition, until `Apiary.Stages.check_workflows/2` lands in the
+  # stage runner's next round: `check/3` calls it through the same environment
+  # (`workflow_checks`), so the page compiles before it exists.
+  #
+  # **The work item's topics.** Transition: the stage runner tells `{:stage_changed, id}`
+  # on `Apiary.Stages.topic/1`, and piece A `{:artifact_pushed, …}` on
+  # `Apiary.Artifacts.topic/1`. Neither function is on `next` yet, so `subscribe/1` reads
+  # the modules from the same environment (`stage_topic`, `artifact_topic`) and subscribes
+  # only where the module has `topic/1`.
+  #
+  # **The runs.** Transition: `Apiary.Stages` gives no list of a work item's runs, so
+  # `runs/2` reads the runs the stage runner queued (`dispatch_runs` with a workflow) and
+  # each run's newest `verdict` in the artifact index.
+  #
+  # **The feature.** `on?/1` is whether the reader is shown `workflow_model`. A work item
+  # the stage runner has not placed (`Apiary.Stages.status/2` is nil) draws as before the
+  # feature.
   #
   # **Who decides.** A gate's Approve and Request changes, every escalation action and a
   # move back take `gate.approve`, and only the stage's listed approvers where the stage
@@ -24,14 +38,21 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  alias Apiary.{Access, Features, Processes}
+  import Ecto.Query, only: [from: 2]
+  import Phoenix.Component, only: [sigil_H: 2]
+
+  alias Apiary.{Access, Features, Processes, Repo, Stages}
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Stages.Escalation
   alias ApiaryWeb.WorkItemLive.Board
 
   @defaults [
-    stages: Apiary.Stages,
     artifacts: Apiary.Artifacts,
-    artifact_components: ApiaryWeb.ArtifactComponents
+    artifact_components: ApiaryWeb.ArtifactComponents,
+    workflow_checks: Apiary.Stages,
+    stage_topic: Apiary.Stages,
+    artifact_topic: Apiary.Artifacts
   ]
 
   @states Apiary.Processes.Version.stage_states()
@@ -59,24 +80,43 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   @doc false
   # on?/1 is whether the reader of `scope` is shown the workflow model: the instance has
-  # the feature `workflow_model`, and the scope does not hide it; and, until the stage
-  # runner lands, it is loaded.
+  # the feature `workflow_model`, and the scope does not hide it.
   @spec on?(Scope.t()) :: boolean
-  def on?(scope),
-    do: Features.visible?(scope, :workflow_model) and Code.ensure_loaded?(module(:stages))
+  def on?(scope), do: Features.visible?(scope, :workflow_model)
 
   ## The work item page
+
+  @doc false
+  # subscribe/1 subscribes the calling process to the topics of `row` that tell a change of
+  # its stage or a pushed artifact, where those functions exist.
+  @spec subscribe(struct) :: :ok
+  def subscribe(row) do
+    for key <- [:stage_topic, :artifact_topic],
+        topics = module(key),
+        Code.ensure_loaded?(topics) and function_exported?(topics, :topic, 1) do
+      Phoenix.PubSub.subscribe(Apiary.PubSub, topics.topic(row))
+    end
+
+    :ok
+  end
 
   @doc false
   # page/2 is what the work item page draws of `row` under the workflow model: the
   # stages of its process version with the current one marked, the current stage with
   # its state, round and gaps, the runs, the inputs, the outputs at the gate, the
-  # escalation, the artifacts' approval marks, and what the reader may do.
-  @spec page(Scope.t(), struct) :: map
+  # escalation, the artifacts' approval marks, and what the reader may do; nil for a work
+  # item the stage runner has not placed.
+  @spec page(Scope.t(), struct) :: map | nil
   def page(scope, row) do
-    stages = module(:stages)
-    status = stages.status(row)
+    case Stages.status(row, scope) do
+      nil -> nil
+      status -> page(scope, row, status)
+    end
+  end
+
+  defp page(scope, row, status) do
     version = Processes.version_for(row)
+    index = Stages.artifact_index(row)
     document = get(version, :document) || %{}
     all = Enum.map(get(document, :stages) || [], &stage_map/1)
     current_id = id_of(get(status, :stage))
@@ -91,36 +131,46 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       )
 
     %{
-      version: get(version, :number),
+      version: get(get(status, :version), :number) || get(version, :number),
       stages: track(all, at, state),
       stage: stage,
       state: state,
       round: get(status, :round),
       rounds: get(status, :rounds),
       gaps: lines(get(status, :gaps)),
-      runs: Enum.map(get(status, :runs) || [], &run/1),
-      inputs: Enum.map(stages.inputs(row) || [], &input/1),
+      runs: runs(row, index),
+      inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: Enum.map(get(status, :outputs) || [], &output/1),
       escalation: escalation(get(status, :escalation)),
       approvers: approvers(stage),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
-      index: Enum.map(stages.artifact_index(row) || [], &indexed/1),
+      index: Enum.map(index, &indexed/1),
       earlier: if(at, do: Enum.take(all, at), else: []),
-      missing_workflows: missing_workflows(scope, stage, state),
+      missing_workflows: List.wrap(get(status, :waiting_workflow)),
+      confirm_gate: false,
       can_decide: approver?(scope, stage) and Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
     }
   end
 
   @doc false
-  # artifacts/1 is every artifact of `row`, as `Apiary.Artifacts.list/1` gives them.
+  # artifacts/1 is every artifact of `row`, as `Apiary.Artifacts.list/1` gives them; none
+  # while that module is not loaded.
   @spec artifacts(struct) :: list
-  def artifacts(row), do: module(:artifacts).list(row)
+  def artifacts(row) do
+    artifacts = module(:artifacts)
+    if Code.ensure_loaded?(artifacts), do: artifacts.list(row), else: []
+  end
 
   @doc false
-  # artifact_list/1 draws the plain list of artifacts, `ApiaryWeb.ArtifactComponents.list/1`.
+  # artifact_list/1 draws the plain list of artifacts, `ApiaryWeb.ArtifactComponents.list/1`;
+  # nothing while that module is not loaded.
   @spec artifact_list(map) :: Phoenix.LiveView.Rendered.t()
-  def artifact_list(assigns), do: module(:artifact_components).list(assigns)
+  def artifact_list(assigns) do
+    components = module(:artifact_components)
+
+    if Code.ensure_loaded?(components), do: components.list(assigns), else: ~H""
+  end
 
   # The stages of the version, each with whether it is done, the current one or to come.
   defp track(all, nil, _state), do: Enum.map(all, &Map.put(&1, :at, :todo))
@@ -154,21 +204,60 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp state(_state), do: :running
 
-  defp run(run) do
-    %{
-      id: get(run, :id),
-      workflow: get(run, :workflow),
-      round: get(run, :round),
-      verdict: verdict(get(run, :verdict)),
-      state: get(run, :state)
-    }
+  # The runs the stage runner queued for the work item, newest first: each with its
+  # number in its take in, its workflow, its round, its newest verdict, and whether it
+  # runs, stopped (it ended with an error, or the stage runner escalated it as
+  # `run_stopped`), or ended.
+  defp runs(row, index) do
+    stopped =
+      Repo.all(
+        from e in Escalation,
+          where: e.work_item_id == ^row.id and e.cause == :run_stopped and not is_nil(e.run_id),
+          select: e.run_id
+      )
+
+    verdicts =
+      for %{type: "verdict"} = artifact <- index,
+          version <- Map.get(artifact, :versions, []),
+          is_binary(version[:run_id]),
+          reduce: %{} do
+        acc -> Map.put_new(acc, version.run_id, version)
+      end
+
+    Repo.all(
+      from r in DispatchRun,
+        where: r.work_item_id == ^row.id and not is_nil(r.workflow),
+        order_by: [desc: r.take_in, desc: r.attempt]
+    )
+    |> Enum.map(fn run ->
+      %{
+        id: run.attempt,
+        workflow: run.workflow,
+        round: run.round,
+        verdict: verdict(verdicts[run.id]),
+        state: if(run.id in stopped, do: :stopped, else: run_state(run))
+      }
+    end)
   end
 
-  defp verdict(verdict) when is_atom(verdict) and not is_nil(verdict),
-    do: verdict |> Atom.to_string() |> String.replace("_", "-") |> verdict()
+  defp run_state(%{state: :ended, end_cause: :run_ended, result_outcome: outcome})
+       when outcome not in [:error, :refused],
+       do: :ended
 
-  defp verdict(verdict) when is_binary(verdict), do: Map.get(@verdicts, verdict)
-  defp verdict(_none), do: nil
+  defp run_state(%{state: :ended}), do: :stopped
+  defp run_state(_run), do: :running
+
+  defp verdict(nil), do: nil
+
+  defp verdict(version) do
+    case Stages.Artifacts.read_json(version) do
+      %{"verdict" => verdict} -> verdict_value(verdict)
+      _other -> nil
+    end
+  end
+
+  defp verdict_value(verdict) when is_binary(verdict), do: Map.get(@verdicts, verdict)
+  defp verdict_value(_none), do: nil
 
   defp input(input) do
     %{
@@ -196,41 +285,33 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
 
+    run = get(escalation, :run)
+
     %{
       cause: Map.get(@causes, cause, :escalate),
       gaps: lines(get(escalation, :gaps)),
       round: get(escalation, :round),
-      run_id: get(escalation, :run_id)
+      run: run && %{number: get(run, :attempt), workflow: get(run, :workflow)}
     }
   end
 
+  # An artifact of the index with its approval marks: the number of the version a gate
+  # approved, and of a newer one where there is one.
   defp indexed(artifact) do
+    versions = get(artifact, :versions) || []
+    approved = Enum.find(versions, &(get(&1, :id) == get(artifact, :approved_version)))
+    newest = List.first(versions)
+    approved = approved && get(approved, :number)
+    newest = newest && get(newest, :number)
+
     %{
       type: get(artifact, :type),
       name: get(artifact, :name) || "main",
-      approved: get(artifact, :approved),
-      newer: get(artifact, :newer),
+      approved: approved,
+      newer: if(approved && newest && newest > approved, do: newest),
       changed_after_approval: get(artifact, :changed_after_approval) == true
     }
   end
-
-  # The workflows of the stage that the composed harness no longer declares, while the
-  # stage waits for one.
-  defp missing_workflows(scope, stage, :waiting_workflow) do
-    declared = Processes.declared_workflows(scope.workspace)
-
-    stage.sequence
-    |> Enum.flat_map(fn entry ->
-      case get(entry, :loop) do
-        nil -> [get(entry, :workflow)]
-        loop -> Enum.map(get(loop, :body) || [], &get(&1, :workflow))
-      end
-    end)
-    |> Enum.reject(&(is_nil(&1) or &1 in declared))
-    |> Enum.uniq()
-  end
-
-  defp missing_workflows(_scope, _stage, _state), do: []
 
   # Who approves the stage's gate: any member, or the members it lists.
   defp approvers(%{gate: gate}) do
@@ -260,22 +341,28 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `page` is the page as the reader saw it, for the stage and the earlier stages.
   @spec decide(Scope.t(), struct, map, tuple) :: {:ok, term} | {:error, term}
   def decide(scope, row, page, action) do
-    stages = module(:stages)
-
     with :ok <- Access.authorize(scope, :"gate.approve", row),
          true <- approver?(scope, page.stage) || {:error, :forbidden},
          {:ok, action} <- checked(action, page) do
       case action do
-        {:approve, note} -> stages.approve(scope, row, note)
-        {:request_changes, note, av} -> stages.request_changes(scope, row, note, av)
-        {:resolve, how, note} -> stages.resolve_escalation(scope, row, how, note)
-        {:move, stage_id, note} -> stages.move(scope, row, stage_id, note)
+        {:approve, note} -> Stages.approve(scope, row, note)
+        {:request_changes, note, av} -> Stages.request_changes(scope, row, note, av)
+        {:resolve, how, note} -> Stages.resolve_escalation(scope, row, how, note)
+        {:move, stage_id, note} -> Stages.move(scope, row, stage_id, note)
       end
     end
   end
 
   # An action the page offered: a move back only to an earlier stage, a Request changes
   # only about a version at the gate.
+  #
+  # At Explore's gate, a member confirms the proposal (`Apiary.WorkItems.confirm/4`),
+  # which approves the gate: the page offers no Approve and no Request changes there.
+  defp checked({:approve, _note}, %{confirm_gate: true}), do: {:error, :confirm_gate}
+
+  defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
+    do: {:error, :confirm_gate}
+
   defp checked({:resolve, {:move_back, id}, _note} = action, page),
     do: if(earlier?(page, id), do: {:ok, action}, else: {:error, :invalid})
 
@@ -294,6 +381,20 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked(action, _page), do: {:ok, action}
 
   defp earlier?(page, id), do: Enum.any?(page.earlier, &(&1.id == id))
+
+  @doc false
+  # check/3 reads again whether the harness lists the workflows of the work item's stage
+  # while it waits for one (`Apiary.Stages.check_workflows/2`), for a reader who may act
+  # on the stage, asked again with the scope read from the database:
+  # `{:ok, work_item}` once the stage started, `{:error, :still_missing}`, or another
+  # `{:error, reason}`.
+  @spec check(Scope.t(), struct, map) :: {:ok, struct} | {:error, term}
+  def check(scope, row, page) do
+    with :ok <- Access.authorize(scope, :"gate.approve", row),
+         true <- approver?(scope, page.stage) || {:error, :forbidden} do
+      module(:workflow_checks).check_workflows(scope, row)
+    end
+  end
 
   ## The board
 
