@@ -199,7 +199,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       refute has_element?(lv, "#new-node-dialog")
       refute has_element?(lv, "#nodes-empty")
       assert has_element?(lv, "main h1", "New machine")
-      assert has_element?(lv, "main header", "One machine that is always there.")
+      assert has_element?(lv, "main header", "One computer that stays registered.")
       assert has_element?(lv, "main header", "You can't change the kind later.")
       assert has_element?(lv, ~s{#breadcrumb a[href="#{nodes_path(scope)}"]}, "Machines")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "New machine")

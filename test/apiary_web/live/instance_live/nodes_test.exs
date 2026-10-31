@@ -103,7 +103,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       assert has_element?(
                lv,
                ~s|a[href="/instance/qory-pool-and-gateway"]|,
-               "Qory Pool and Qory Gateway"
+               "Pool and gateway"
              )
 
       assert has_element?(lv, "h1", "Qory Pool and Qory Gateway")

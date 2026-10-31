@@ -18,7 +18,7 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.SecretLive.Index`), with the `factory` feature Work sources and
     Destinations (the tick lists of the set-up's steps), and Runs (how long it keeps runs,
     their events and their logs).
-  - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
+  - A node's (`/:org/:workspace/machines/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
 

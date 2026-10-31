@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.NodeLive.AccessKey do
   @moduledoc """
-  A node's Access key tab, `/:org/:workspace/nodes/:node_id/access-key`: how to connect
+  A node's Access key tab, `/:org/:workspace/machines/:node_id/access-key`: how to connect
   the node, its access keys, and the commands that wait to be run on it, over
   `Apiary.AccessKeys` as it is. Its header and tabs are the node's page's
   (`ApiaryWeb.NodeComponents`).

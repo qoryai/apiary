@@ -3210,12 +3210,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
     @no_run_lead "The test run ended before a machine started it. "
     @no_run_unknown @no_run_lead <> "No run was recorded, so this step cannot show why."
+    # ITEM_ID stands for the public id of the test run's work item.
     @no_run_secrets @no_run_lead <>
-                      "The gateway for this run is not allowed to receive its secrets, which " <>
-                      "the run needs. Only the instance's gateway is allowed to receive them. " <>
-                      "An instance admin " <>
-                      "installs it with QORY_INSTALLED_GATEWAY, and the run's pool has to " <>
-                      "go through it."
+                      "Set the run's pool to go through the Qory Gateway in the pool's " <>
+                      "Settings, or contact support with work item ITEM_ID. The gateway for " <>
+                      "this run is not allowed to receive the secrets the run needs; only the " <>
+                      "Qory Gateway is."
 
     # The Test run step's line for `item`'s run ended at its claim on `cause`.
     defp no_run_line(conn, scope, item, cause) do
@@ -3318,8 +3318,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-failed[data-cause=no_machine]")
 
       assert words(lv, "#set-up-test-failed") ==
-               "Check the pool in Instance settings › Qory Pool and Qory Gateway. No machine has taken the test " <>
-                 "run yet."
+               "Check on the Machines page that a machine of the pool is running, or contact " <>
+                 "support with work item #{item.public_id}. No machine has taken the test run yet."
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
     end
@@ -3425,8 +3425,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "Add a model key on the Model step. The gateway had no model key for the run."},
             {[state: :ended, end_cause: :lost, end_detail: nil],
              %{state: "lost", silenced_at: DateTime.utc_now()}, "silent",
-             "Check that the gateway is running in Instance settings › Qory Pool and Qory Gateway. The machine " <>
-               "stopped sending for 10 minutes."},
+             "Check on the Machines page that the machine is running, or contact support with " <>
+               "run RUN_ID. The machine stopped sending for 10 minutes."},
             {[state: :ended, end_cause: :run_ended],
              %{state: "failed", exit_code: 1, exited_at: DateTime.utc_now()}, "ended",
              "The test run failed: exit 1. See the run"},
@@ -3451,11 +3451,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "The test run was cancelled: no longer needed. See the run"}
           ] do
         Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
-        test_run!(item, changes, run_attrs)
+        run = test_run!(item, changes, run_attrs)
         {:ok, lv, _html} = live(conn, test_path(scope))
 
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
-        assert words(lv, "#set-up-test-failed") == line
+        assert words(lv, "#set-up-test-failed") == String.replace(line, "RUN_ID", run.public_id)
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
@@ -3480,7 +3480,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {:variables_invalid, @no_run_unknown},
             {:closed, @no_run_unknown}
           ] do
-        assert no_run_line(conn, scope, item, cause) == line, "#{cause}"
+        assert no_run_line(conn, scope, item, cause) ==
+                 String.replace(line, "ITEM_ID", item.public_id),
+               "#{cause}"
       end
     end
 
@@ -3528,7 +3530,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       workspace_choice = choose.(:workspace, %{model: "claude-opus-5-5"})
 
       for {cause, line} <- Map.put(fixes, :secrets_not_allowed, @no_run_secrets) do
-        assert no_run_line(conn, scope, item, cause) == line, "#{cause}"
+        assert no_run_line(conn, scope, item, cause) ==
+                 String.replace(line, "ITEM_ID", item.public_id),
+               "#{cause}"
       end
 
       # The same choice with no model: model_gone is then a model no description lists.

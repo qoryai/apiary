@@ -860,7 +860,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 ## Machines
 
 A workspace's machines and pools are where its runs run (`ApiaryWeb.NodeLive.Index`,
-`…Show`; the reads and changes are `Apiary.Nodes`'s). A **machine** is always there, such
+`…Show`; the reads and changes are `Apiary.Nodes`'s). A **machine** is one computer that stays registered, such
 as `build-01`; a **pool** is one or more machines that use the pool's access key, which
 run up to its machine limit, or any number without one. A
 **gateway**, the third kind, is a machine that runs go through: an address the runs of its
@@ -928,7 +928,7 @@ address under `/machines`, with what followed `/nodes` and the query.
   (`/machines/:node_id/access-key`, `ApiaryWeb.NodeLive.AccessKey`). **Overview**: a machine
   as Forager reports it (running since when,
   its run and Forager version, or when it was last seen) or a pool's running machines on the
-  list pattern with "3 of 10 running", the starts refused at the machine limit, the
+  list pattern with "3 of 10 running", the runs that did not start at the machine limit, the
   machines past the bound of 256 new ones a day, the sentence that each machine there is what
   Forager, run with the key, reports itself as, and its recent runs (`runs.node_id`,
   for a reader of the record) with the way to all of them on the runs list (`?node=`),
@@ -1173,7 +1173,7 @@ address under `/machines`, with what followed `/nodes` and the query.
   its newest open run, and the address accepts any open run of that machine), never
   the machine id Forager reports, that line, or that row in
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
-  build-01? Clear this machine if it stopped without saying so. Another machine can then
+  build-01? Clear this machine if it stopped without reporting that it stopped. Another machine can then
   start at once." with Yes, clear and Cancel; a machine that does not run now confirms at
   the top of the running machines. Its open runs are marked lost, which is not final: a heartbeat
   that counts within three intervals of its arrival brings a run back.

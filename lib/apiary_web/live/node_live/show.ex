@@ -1,13 +1,13 @@
 defmodule ApiaryWeb.NodeLive.Show do
   @moduledoc """
-  A node's or a node pool's page, `/:org/:workspace/nodes/:node_id`, where `:node_id` is
+  A node's or a node pool's page, `/:org/:workspace/machines/:node_id`, where `:node_id` is
   the node's public id. A node the workspace does not have, or one that is deleted, is
   not found. Its tabs are Overview, Access key and Settings, the operational side first
   and Settings last, set apart (`docs/ui.md`, Nodes; `ApiaryWeb.NodeComponents.node_tabs/1`).
   Overview and Settings are patches of this LiveView; Access key is
   `ApiaryWeb.NodeLive.AccessKey`'s, a navigation:
 
-  - **Overview** (`/nodes/:node_id`): what the node is doing (`Apiary.Nodes.activity/3`).
+  - **Overview** (`/machines/:node_id`): what the node is doing (`Apiary.Nodes.activity/3`).
     A Node's instance, running or when it was last seen; a pool's running instances,
     "3 of 10"; the starts refused at the instance limit; the sentence that says an
     instance is a claim; and its recent runs (`runs.node_id`, for a reader of the record,
@@ -16,15 +16,15 @@ defmodule ApiaryWeb.NodeLive.Show do
     it, with the way to its Settings. Owners and admins clear a running instance
     (`node.clear_instance`): a text action on a Node's, an item of each row's menu on a
     pool's, either turning that line or row into its confirmation in place, never a
-    dialog, at `/nodes/:node_id/instances/:instance/clear`, `:instance` the id of the
+    dialog, at `/machines/:node_id/instances/:instance/clear`, `:instance` the id of the
     instance's row in `node_instances`, or, for an instance with no row, at
-    `/nodes/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of an open
+    `/machines/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of an open
     run: the page links its newest open run, and the address accepts any open run of that
     instance. Neither address, nor any DOM id, carries the node's instance id.
-  - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
+  - **Settings** (`/machines/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
-    place, at `/nodes/:node_id/settings/delete`.
+    place, at `/machines/:node_id/settings/delete`.
 
   **A gateway's page** has the same tabs. Its Overview leads with the gateway: its URL,
   and whether it is the workspace's default gateway, with Make default for one that is
@@ -831,8 +831,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           class="text-[13px]/5 text-muted"
         >
           {ngettext(
-            "%{number} start was refused at the machine limit; the last",
-            "%{number} starts were refused at the machine limit; the last",
+            "%{number} run did not start at the machine limit; the last",
+            "%{number} runs did not start at the machine limit; the last",
             @node.instance_limit_refused,
             number: Format.number(@node.instance_limit_refused)
           )}
@@ -844,8 +844,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           class="text-[13px]/5 text-muted"
         >
           {ngettext(
-            "%{number} new machine was not recorded: Qory Apiary records at most 256 new machines a day here.",
-            "%{number} new machines were not recorded: Qory Apiary records at most 256 new machines a day here.",
+            "Contact support: %{number} new machine was not recorded today.",
+            "Contact support: %{number} new machines were not recorded today.",
             @node.instance_ids_over_bound,
             number: Format.number(@node.instance_ids_over_bound)
           )}
@@ -1107,7 +1107,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       cancel={@cancel}
     >
       {gettext(
-        "Clear this machine if it stopped without saying so. Another machine can then start at once."
+        "Clear this machine if it stopped without reporting that it stopped. Another machine can then start at once."
       )}
       {gettext(
         "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the machine limit again."
@@ -1364,7 +1364,8 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp no_runs(:pool), do: gettext("No run of this pool is in the record yet.")
   defp no_runs(:gateway), do: gettext("No run through this gateway is in the record yet.")
 
-  defp kind_sentence(:node), do: gettext("Machine: always there, such as build-01.")
+  defp kind_sentence(:node),
+    do: gettext("Machine: one computer that stays registered, such as build-01.")
 
   defp kind_sentence(:gateway),
     do: gettext("Gateway: the runs of machines and pools that choose it go through it.")

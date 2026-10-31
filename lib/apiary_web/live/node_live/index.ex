@@ -599,7 +599,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       <.page_header title={gettext("Machines")}>
         <:description>
           {gettext(
-            "A machine is always there; a pool is one or more machines that use the pool's access key; a gateway is a machine that runs go through."
+            "A machine is one computer that stays registered, such as build-01. A pool is one or more machines that use the pool's access key. A gateway is a machine that runs go through."
           )}
         </:description>
         <:actions :if={@may_create}>
@@ -619,7 +619,7 @@ defmodule ApiaryWeb.NodeLive.Index do
         <.empty_state icon="hero-server-stack" tone="neutral" title={gettext("No machines yet")}>
           <p :if={@may_create}>
             {gettext(
-              "Add a machine that is always there, or a pool of one or more machines that use one access key."
+              "Add a machine for one computer that stays registered, or a pool of one or more machines that use one access key."
             )}
           </p>
           <p :if={!@may_create}>
@@ -935,7 +935,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp form_title(:gateway), do: gettext("New gateway")
 
   # The sentence under a form page's heading: what the kind is.
-  defp form_sentence(:node), do: gettext("One machine that is always there.")
+  defp form_sentence(:node), do: gettext("One computer that stays registered.")
   defp form_sentence(:pool), do: gettext("One or more machines that use the pool's access key.")
 
   defp form_sentence(:gateway),

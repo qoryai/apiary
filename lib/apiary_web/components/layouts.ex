@@ -416,7 +416,7 @@ defmodule ApiaryWeb.Layouts do
         %Entry{
           section: :instance,
           key: :nodes,
-          label: gettext("Qory Pool and Qory Gateway"),
+          label: gettext("Pool and gateway"),
           icon: "hero-server-stack",
           path: ~p"/instance/qory-pool-and-gateway",
           place: :instance

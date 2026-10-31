@@ -2169,6 +2169,7 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the model choice a new test run takes, as `{level, choice}`"
 
   attr :path, :string, default: nil
+  attr :item, :string, default: nil, doc: "the public id of the test run's work item"
 
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
       when cause in [:ended, :silent] do
@@ -2198,7 +2199,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # A test run with no run record: why, by its run of the queue's end cause, where the
   # set-up has a fix for that cause.
   def test_failed(%{cause: :no_run, dispatch_run: %{end_cause: cause}} = assigns) do
-    assigns = assign(assigns, :words, no_run_words(cause, assigns.choice))
+    assigns = assign(assigns, :words, no_run_words(cause, assigns.choice, assigns.item))
 
     ~H"""
     {gettext("The test run ended before a machine started it.")}
@@ -2207,7 +2208,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   def test_failed(assigns) do
-    ~H"{failed_line(@cause)}"
+    ~H"{failed_line(@cause, @run, @item)}"
   end
 
   # What fixes a test run that ended at its claim, and why it ended
@@ -2216,7 +2217,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # (level 5) and not locked; model_gone only where that choice names a model, whose
   # effort is then the part no longer offered. The other causes of the claim have no fix
   # on the set-up's steps.
-  defp no_run_words(:inputs_invalid, _choice),
+  defp no_run_words(:inputs_invalid, _choice, _item),
     do:
       gettext(
         "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
@@ -2225,18 +2226,19 @@ defmodule ApiaryWeb.OverviewComponents do
   # Either way the claim ends a run secrets_not_allowed, a key of the gateway made without
   # stored secrets or a model key that may not be sealed for it, the instance's gateway
   # passes: its key allows them, and a key of either chain may be sealed for it.
-  defp no_run_words(:secrets_not_allowed, _choice),
+  defp no_run_words(:secrets_not_allowed, _choice, item),
     do:
       gettext(
-        "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's pool has to go through it."
+        "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item %{item}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is.",
+        item: item
       )
 
-  defp no_run_words(cause, {5, %{locked: false, model_id: model}})
+  defp no_run_words(cause, {5, %{locked: false, model_id: model}}, _item)
        when cause in [:runtime_unserved, :key_gone, :provider_gone] or
               (cause == :model_gone and is_binary(model)),
        do: model_step_words(cause)
 
-  defp no_run_words(_cause, _choice),
+  defp no_run_words(_cause, _choice, _item),
     do: gettext("No run was recorded, so this step cannot show why.")
 
   defp model_step_words(:runtime_unserved),
@@ -2263,19 +2265,21 @@ defmodule ApiaryWeb.OverviewComponents do
         "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
       )
 
-  defp failed_line(:no_machine),
+  defp failed_line(:no_machine, _run, item),
     do:
       gettext(
-        "Check the pool in Instance settings › Qory Pool and Qory Gateway. No machine has taken the test run yet."
+        "Check on the Machines page that a machine of the pool is running, or contact support with work item %{item}. No machine has taken the test run yet.",
+        item: item
       )
 
-  defp failed_line(:model_key_missing),
+  defp failed_line(:model_key_missing, _run, _item),
     do: gettext("Add a model key on the Model step. The gateway had no model key for the run.")
 
-  defp failed_line(:silent),
+  defp failed_line(:silent, run, _item),
     do:
       gettext(
-        "Check that the gateway is running in Instance settings › Qory Pool and Qory Gateway. The machine stopped sending for 10 minutes."
+        "Check on the Machines page that the machine is running, or contact support with run %{run}. The machine stopped sending for 10 minutes.",
+        run: run.public_id
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason

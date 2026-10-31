@@ -1803,13 +1803,6 @@ msgid_plural "%{number} new lines"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} new machine was not recorded: Qory Apiary records at most 256 new machines a day here."
-msgid_plural "%{number} new machines were not recorded: Qory Apiary records at most 256 new machines a day here."
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
@@ -1927,6 +1920,13 @@ msgid_plural "%{number} runs alive now: open them"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run did not start at the machine limit; the last"
+msgid_plural "%{number} runs did not start at the machine limit; the last"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} run in a workspace you don't have access to"
@@ -2003,13 +2003,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} so far"
 msgid_plural "%{number} so far"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} start was refused at the machine limit; the last"
-msgid_plural "%{number} starts were refused at the machine limit; the last"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3148,7 +3141,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A machine is always there; a pool is one or more machines that use the pool's access key; a gateway is a machine that runs go through."
+msgid "A machine is one computer that stays registered, such as build-01. A pool is one or more machines that use the pool's access key. A gateway is a machine that runs go through."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -3673,7 +3666,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Add a machine that is always there, or a pool of one or more machines that use one access key."
+msgid "Add a machine for one computer that stays registered, or a pool of one or more machines that use one access key."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -5338,14 +5331,19 @@ msgstr "Changes to this repository's rules, newest first"
 msgid "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/set_up.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Check that %{adapter} is running. It has a key in use, but it has not sent the address where it is set up; this step updates once it has."
+msgid "Check on the Machines page that a machine of the pool is running, or contact support with work item %{item}. No machine has taken the test run yet."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Check that the gateway is running in Instance settings › Qory Pool and Qory Gateway. The machine stopped sending for 10 minutes."
+msgid "Check on the Machines page that the machine is running, or contact support with run %{run}. The machine stopped sending for 10 minutes."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Check that %{adapter} is running. It has a key in use, but it has not sent the address where it is set up; this step updates once it has."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -5382,11 +5380,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its target, because the integration no longer reaches it or the target's path has a character that Qory Apiary does not put in an access rule."
 msgstr "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its repository, because the integration no longer reaches it or the repository's path has a character that Qory Apiary does not put in an access rule."
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Check the pool in Instance settings › Qory Pool and Qory Gateway. No machine has taken the test run yet."
-msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
@@ -5568,7 +5561,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Clear this machine if it stopped without saying so. Another machine can then start at once."
+msgid "Clear this machine if it stopped without reporting that it stopped. Another machine can then start at once."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -5966,6 +5959,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Connections inline"
 msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support: %{number} new machine was not recorded today."
+msgid_plural "Contact support: %{number} new machines were not recorded today."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -10104,7 +10104,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Machine: always there, such as build-01."
+msgid "Machine: one computer that stays registered, such as build-01."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -12031,6 +12031,11 @@ msgstr ""
 msgid "One agent's events: the main session, or a subagent from its start to its finish."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "One computer that stays registered."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "One line for each."
@@ -12039,11 +12044,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "One line for each. Leave it empty when nothing is left out."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "One machine that is always there."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -12895,6 +12895,11 @@ msgstr ""
 msgid "Pool"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Pool and gateway"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -13281,7 +13286,6 @@ msgstr ""
 msgid "Qory Pool"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/instance_live/nodes.ex
 #, elixir-autogen, elixir-format
@@ -15117,6 +15121,11 @@ msgstr ""
 msgid "Set the key's ID."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item %{item}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set the workspace's default to enforce?"
@@ -16653,11 +16662,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The gateway fetched its run configuration again; the digest is the one it had."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's pool has to go through it."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex

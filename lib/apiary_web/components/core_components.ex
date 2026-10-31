@@ -1285,8 +1285,8 @@ defmodule ApiaryWeb.CoreComponents do
   one primary and one default action.
 
       <.header>
-        Nodes
-        <:subtitle>A node is one permanent machine; a node pool is a fleet of short-lived instances.</:subtitle>
+        Machines
+        <:subtitle>A machine is one computer that stays registered; a pool is one or more machines that use the pool's access key.</:subtitle>
         <:actions><.button variant="primary">New machine</.button></:actions>
       </.header>
   """
@@ -1357,7 +1357,7 @@ defmodule ApiaryWeb.CoreComponents do
   Summary figures as one bordered object with internal dividers.
 
       <.stats>
-        <.stat label="Nodes" value={3} hint="running" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/nodes"} />
+        <.stat label="Machines" value={3} hint="running" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/machines"} />
       </.stats>
   """
   attr :class, :any, default: nil

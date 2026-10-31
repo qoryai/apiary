@@ -148,7 +148,13 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       assert has_element?(lv, "#settings-tab-general[aria-current=page]", "General")
       refute has_element?(lv, "#settings-tabs a", "Access keys")
-      assert has_element?(lv, "#node-kind-field", "Machine: always there, such as build-01.")
+
+      assert has_element?(
+               lv,
+               "#node-kind-field",
+               "Machine: one computer that stays registered, such as build-01."
+             )
+
       assert has_element?(lv, "#node-limit-field", "1: one machine.")
       refute has_element?(lv, "#node-form input[name='node[instance_limit]']")
 
@@ -409,7 +415,12 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       refute has_element?(lv, "#clear-instance-dialog")
       refute has_element?(lv, "#node-instance-clear")
       assert has_element?(lv, "#node-instance #clear-instance", "Clear build-01.example.com?")
-      assert has_element?(lv, "#node-instance #clear-instance", "stopped without saying so")
+
+      assert has_element?(
+               lv,
+               "#node-instance #clear-instance",
+               "stopped without reporting that it stopped"
+             )
 
       # Cancel puts the line back.
       lv |> element("#clear-instance-cancel") |> render_click()
@@ -454,7 +465,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-running .q-nm > .q-cut[title='spot-1']", "spot-1")
       assert has_element?(lv, "#node-running .q-nm > .q-side.q-mono[title='i_1']", "i_1")
       assert has_element?(lv, "#node-running .q-nm > .q-cut[title='i_2']", "i_2")
-      assert has_element?(lv, "#node-refused", "4 starts were refused at the machine limit")
+      assert has_element?(lv, "#node-refused", "4 runs did not start at the machine limit")
 
       {:ok, _} = Nodes.update_node(scope, pool, %{instance_limit: ""})
       send(lv.pid, :tick)

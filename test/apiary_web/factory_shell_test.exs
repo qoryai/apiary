@@ -598,7 +598,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert rest in [[:mail, :configuration], [:diagnostics_keys, :mail, :configuration]]
 
       assert %{
-               label: "Qory Pool and Qory Gateway",
+               label: "Pool and gateway",
                path: "/instance/qory-pool-and-gateway",
                place: :instance
              } =

@@ -50,8 +50,8 @@ beside it:
   holds the checks every public key received passes, the fingerprint and cofactorless
   verification.
 - `Apiary.Nodes`: a workspace's machines and pools (`nodes`), the places its runs run:
-  a machine is always there, a pool is a fleet of short-lived instances up to its
-  instance limit or none; the kind is fixed when one is made, and a deleted one is gone
+  a machine is one computer that stays registered, a pool is one or more machines that
+  use the pool's access key, up to its machine limit or none; the kind is fixed when one is made, and a deleted one is gone
   from every read but keeps its row until its workspace is purged. Its instances
   (`node_instances`) are claims Forager makes under the machine's or pool's key, recorded by
   `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a

@@ -171,8 +171,8 @@ a Software factory they are repository, forge and pull request.
 ## 5. Add a machine, then connect it
 
 A machine posts its runs with an access key, once it is added as a **machine** of the
-workspace: a machine is always there; a **pool** is one or more machines that use the
-pool's access key. These are the overview's first two steps, **Add a machine** and **Connect it**.
+workspace: a machine is one computer that stays registered; a **pool** is one or more
+machines that use the pool's access key. These are the overview's first two steps, **Add a machine** and **Connect it**.
 Here you connect the machine with a command: `qory` makes the key on the machine, and Qory
 Apiary keeps only its public half.
 
@@ -373,7 +373,7 @@ later.
    on **Machines** gets a key without stored secrets, so a test run through it ends before
    a machine starts it. On an install with the instance's pool and gateway, keep
    **Qory Pool**; an instance admin selects **Check the Qory Pool and Qory Gateway**,
-   which opens **Instance settings › Qory Pool and Qory Gateway**: each is ready when **State** shows **Running**
+   which opens **Instance settings › Pool and gateway**: each is ready when **State** shows **Running**
    or **Last seen**. Under **A pool for Main**, the step shows "Runs in Main then wait
    for this pool, and the Qory Pool stops taking them." Its **Add pool** adds a
    pool with the name Main. **Get the command** then shows "On the machine for the
@@ -401,8 +401,8 @@ with Main's pool by name in place of the instance's pool, or "…on a machine." 
 run with no machine or pool, and **See the run**: the agent's output is in the run's log. Owners,
 admins and members run the test. If the step shows another line, follow its first
 sentence, then select **Run the test** again. When no machine takes the test run within 5
-minutes, for example, the step shows "Check the pool in Instance settings › Qory Pool and
-Qory Gateway. No machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
+minutes, for example, the step shows "Check on the Machines page that a machine of the pool
+is running, or contact support with work item wi_…. No machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
 and opening Main opens the overview from then on.
 
 The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,

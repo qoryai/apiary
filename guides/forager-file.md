@@ -107,7 +107,7 @@ key, and the gateway verifies it under the pin before it reads anything of it.
 
 The run fails closed. A configuration fetch that fails or is refused, an answer that does
 not verify under the pin, or a registration Qory Apiary does not accept: no run, and the
-error names the URL and the status. An instance beyond its pool's instance limit is
+error names the URL and the status. A machine beyond its pool's machine limit is
 refused `instance_limit`. A redirect is not followed.
 
 Once the run is under way Qory Apiary never delays the session. Events are posted behind a

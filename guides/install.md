@@ -561,7 +561,7 @@ that a person makes on **Machines** never allows them, so a test run through a g
 there ends before a machine starts it. For a workspace with no pool in use, the
 set-up's step **Machines** shows the instance's pool as ready once the pool and the
 gateway each have a key in use. An instance admin checks them in **Instance settings ›
-Qory Pool and Qory Gateway**: each is ready when **State** shows **Running** or **Last seen**. If one shows
+Pool and gateway**: each is ready when **State** shows **Running** or **Last seen**. If one shows
 **Never seen**, open the logs of the pool and the gateway on the instance's host.
 
 The variables are read at boot. A malformed value, the same name for the pool and the

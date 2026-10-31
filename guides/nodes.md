@@ -12,7 +12,7 @@ and their keys.
 and **New gateway**. Machines and pools come first; under the heading **Gateways** follow
 the workspace's gateways, the organisation's gateways and the Qory Gateway.
 
-- A **machine** is always there, `build-01` say.
+- A **machine** is one computer that stays registered, `build-01` say.
 - A **pool** is one or more machines that use the pool's access key, such as the
   runners of a CI, `spot-runners` say. Its **Machine limit** is how many of its machines may
   run at once, up to 10,000; empty means no limit.
@@ -340,10 +340,10 @@ what a request is allowed rests on the key alone.
 A machine counts as running while one of its runs is alive. A machine added alone runs
 one copy at a time, and a pool up to its limit: the registration that starts a run, from a
 machine beyond the limit, is refused, `instance_limit`, the run does not start, and the
-**Overview** of the machine or pool counts the starts refused. Lowering a limit stops
+**Overview** of the machine or pool counts the runs that did not start. Lowering a limit stops
 nothing that runs; new machines wait until fewer run.
 
-A machine that stopped without saying so keeps its place until its runs are found lost.
+A machine that stopped without reporting that it stopped keeps its place until its runs are found lost.
 **Clear machine…** on the **Overview** of the machine or pool marks its open runs lost at once, so another
 machine can start.
 

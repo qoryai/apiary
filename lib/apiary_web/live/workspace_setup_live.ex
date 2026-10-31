@@ -131,7 +131,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (`t:Apiary.WorkspaceSetup.not_ready_reason/0`): no pool, no active key, a choice
   #     of Direct, no gateway, a chosen gateway that the pool's runs may not go through,
   #     or a gateway with no active key. Under a pool that is not ready: for the
-  #     instance's pool, Check the nodes, to `/instance/nodes`, for an instance admin; for
+  #     instance's pool, Check the Qory Pool and Qory Gateway, to
+  #     `/instance/qory-pool-and-gateway`, for an instance admin; for
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
@@ -2176,6 +2177,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             preparation={@test_preparation}
             choice={@test_choice}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            item={@test.work_item && @test.work_item.public_id}
           />
         </span>
       </.notice>
