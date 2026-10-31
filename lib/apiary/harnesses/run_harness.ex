@@ -20,13 +20,16 @@ defmodule Apiary.Harnesses.RunHarness do
   #   * `target_version`: the version at which the walk read the target's harness file, nil
   #     where it read none.
   #   * `pins`: one `%{"git", "ref", "at"}` per remote source, `at` the version its read
-  #     returned, or its `ref` for a source with no link, which the walk does not read.
+  #     returned, the commit for a public source read from its host, or its `ref` for a
+  #     source with no link that the walk does not read.
   #   * `harness_links`: one `%{"grant_id", "adapter_id", "grant_ref", "resources"}` per
   #     link the run reads its harness sources through (`Apiary.Harnesses.entries/1`).
   #   * `failure`, once failed: the code (`Apiary.Harnesses.Walk.failures/0`), with
   #     `failed_source`, the source as shown, nil for none or for a hidden harness;
   #     `failure_rule`, `%{"message", "values"}`, the format rule an `invalid` source
-  #     breaks; and, for `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
+  #     breaks, or `%{"rule" => "fetch", "values"}` with the host, port and seconds of a
+  #     public repository's failed read (`too_large`, `source_unreachable`,
+  #     `host_not_allowed`, `fetch_failed`); and, for `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
   #     the adapter's name then, and `failure_adapter_id`, the adapter (`failed_adapter`),
   #     nil for a walk that failed before walks kept it and once the adapter's row is
   #     gone; a page shows the adapter's title (`Apiary.Adapters.title/1`), else that
