@@ -370,14 +370,16 @@ defmodule Apiary.Stages do
   # newest run's questions as the gaps, when it waits for answers to a run that was the
   # last its take in may have, as a work item the migration placed may (the answer to it
   # is refused `:used_up`, `Apiary.WorkItems.Moves`): `{:ok, work_item}`. `refused`
-  # otherwise.
+  # otherwise, also for a work item that is no longer `:exploring`: the answer's
+  # transaction ended, and a person may have closed the work item since.
   @doc false
   @spec answers_used_up(WorkItem.t(), {:error, term}) :: {:ok, WorkItem.t()} | {:error, term}
   def answers_used_up(%WorkItem{id: id}, refused) do
     transact(fn ->
       work_item = lock!(id)
 
-      with {:ok, version, stage} <- placed(work_item),
+      with :exploring <- work_item.state,
+           {:ok, version, stage} <- placed(work_item),
            :waiting_answers <- work_item.stage_state do
         run = newest_of_take_in(work_item)
         questions = Enum.join(List.wrap(((run && run.result) || %{})["questions"]), "\n")
@@ -458,7 +460,7 @@ defmodule Apiary.Stages do
 
   # enter/3 moves the work item into the stage `stage_id` of its version and starts it.
   # `cause` is what moved it, for the caller's records. Checks no access: `move/4` is the
-  # person's move.
+  # person's move. `{:error, :not_live}` for a work item that is not `:exploring`.
   @doc false
   @spec enter(WorkItem.t(), String.t(), atom) :: {:ok, WorkItem.t()} | {:error, refusal}
   def enter(%WorkItem{id: id}, stage_id, _cause) when is_binary(stage_id) do
@@ -466,25 +468,24 @@ defmodule Apiary.Stages do
       work_item = lock!(id)
       version = Processes.version_for(work_item)
 
-      case Processes.stage(version, stage_id) do
-        nil ->
-          {:error, :unknown_stage}
+      with :ok <- live(work_item),
+           stage when is_map(stage) <-
+             Processes.stage(version, stage_id) || {:error, :unknown_stage} do
+        :ok = close_open(work_item, :move_back, nil, nil)
 
-        stage ->
-          :ok = close_open(work_item, :move_back, nil, nil)
+        {work_item, _run} =
+          enter_locked(%{work_item | process_version_id: version.id}, version, stage)
 
-          {work_item, _run} =
-            enter_locked(%{work_item | process_version_id: version.id}, version, stage)
-
-          {:ok, work_item}
+        {:ok, work_item}
       end
     end)
   end
 
   # resume/1 starts a stage that waits for a required input or for a workflow, once the
   # input exists or the harness declares the workflow: after a person adds an input, or
-  # the harness changes. A stage in any other state is left as it is. `{:error,
-  # :not_placed}` for a work item the runner has not placed.
+  # the harness changes. A stage in any other state, or of a work item that is not
+  # `:exploring`, is left as it is. `{:error, :not_placed}` for a work item the runner has
+  # not placed.
   @doc false
   @spec resume(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, refusal}
   def resume(%WorkItem{id: id}) do
@@ -493,7 +494,8 @@ defmodule Apiary.Stages do
 
       case placed(work_item) do
         {:ok, version, stage} ->
-          if work_item.stage_state in [:waiting_inputs, :waiting_workflow] do
+          if work_item.state == :exploring and
+               work_item.stage_state in [:waiting_inputs, :waiting_workflow] do
             {work_item, _run} = apply_event(work_item, version, stage, :resume)
             {:ok, work_item}
           else
@@ -568,7 +570,8 @@ defmodule Apiary.Stages do
   # scope's person, through the harness sources (`Apiary.Stacks.Sources`), stores them as
   # the workspace's snapshot, and starts the work item's stage when it waits for a
   # workflow the read found: `{:ok, work_item}`; `{:error, :still_missing}` when the
-  # stage still waits; the read's error otherwise. `read` is the read, given only by tests.
+  # stage still waits; `{:error, :not_live}` for a work item that is not `:exploring`, read
+  # under its lock; the read's error otherwise. `read` is the read, given only by tests.
   @doc false
   @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
           {:ok, WorkItem.t()} | {:error, term}
@@ -590,22 +593,22 @@ defmodule Apiary.Stages do
     transact(fn ->
       work_item = lock!(id)
 
-      case placed(work_item) do
-        {:ok, version, stage} ->
-          cond do
-            work_item.stage_state != :waiting_workflow ->
-              {:ok, work_item}
+      with :ok <- live(work_item),
+           {:ok, version, stage} <- placed(work_item) do
+        cond do
+          work_item.stage_state != :waiting_workflow ->
+            {:ok, work_item}
 
-            facts(work_item, version, stage).undeclared != [] ->
-              {:error, :still_missing}
+          facts(work_item, version, stage).undeclared != [] ->
+            {:error, :still_missing}
 
-            true ->
-              {work_item, _run} = apply_event(work_item, version, stage, :resume)
-              {:ok, work_item}
-          end
-
-        :not_placed ->
-          {:error, :not_placed}
+          true ->
+            {work_item, _run} = apply_event(work_item, version, stage, :resume)
+            {:ok, work_item}
+        end
+      else
+        :not_placed -> {:error, :not_placed}
+        {:error, :not_live} = refused -> refused
       end
     end)
   end
@@ -1389,7 +1392,7 @@ defmodule Apiary.Stages do
          :ok <- Access.authorize(scope, @action, found),
          work_item = lock!(found.id),
          :ok <- expected(work_item, opts),
-         :ok <- if(work_item.state == :exploring, do: :ok, else: {:error, :not_live}),
+         :ok <- live(work_item),
          {:ok, version, stage} <- placed(work_item),
          :ok <- if(may_approve?(scope, stage), do: :ok, else: {:error, :not_approver}) do
       {:ok, work_item, version, stage}
@@ -1400,6 +1403,9 @@ defmodule Apiary.Stages do
       {:error, _reason} = refused -> refused
     end
   end
+
+  defp live(%WorkItem{state: :exploring}), do: :ok
+  defp live(%WorkItem{}), do: {:error, :not_live}
 
   # A person's action applies only to the stage their page showed: a work item that moved
   # on since, or an action that names no stage, is refused (`t:expect/0`).

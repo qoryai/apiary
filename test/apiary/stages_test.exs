@@ -1326,4 +1326,57 @@ defmodule Apiary.StagesTest do
       assert {:ok, _} = Stages.approve(scope, work_item, fits, expect_stage: @explore)
     end
   end
+
+  describe "a work item that is not live" do
+    defp closed_waiting_workflow!(scope) do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_workflow
+      {:ok, _closed} = Moves.close(scope, work_item)
+      work_item
+    end
+
+    test "check_workflows returns not_live and queues no run", %{scope: scope} do
+      work_item = closed_waiting_workflow!(scope)
+      read = fn _scope, _workspace -> {:ok, ["review", "capture-demo"]} end
+
+      assert Stages.check_workflows(scope, work_item, read) == {:error, :not_live}
+
+      assert %WorkItem{state: :closed, stage_state: :waiting_workflow} = reload(work_item)
+      assert runs(work_item) == []
+    end
+
+    test "resume leaves a stage waiting for a workflow as it is", %{scope: scope} do
+      work_item = closed_waiting_workflow!(scope)
+      :ok = Processes.record_declared(scope.workspace, ["review", "capture-demo"])
+
+      assert {:ok, %WorkItem{state: :closed, stage_state: :waiting_workflow}} =
+               Stages.resume(work_item)
+
+      assert runs(work_item) == []
+    end
+
+    test "enter returns not_live and leaves the stage as it is", %{scope: scope} do
+      people_process!(scope, %{"kind" => "person", "approvers" => "members"}, ["mockup"])
+      work_item = at_shape!(scope)
+      {:ok, _closed} = Moves.close(scope, work_item)
+
+      assert Stages.enter(work_item, @build, :moved) == {:error, :not_live}
+
+      assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
+               reload(work_item)
+    end
+
+    test "answers_used_up returns the refusal and opens no escalation", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      assert work_item.stage_state == :waiting_answers
+      {:ok, _closed} = Moves.close(scope, work_item)
+
+      assert Stages.answers_used_up(work_item, {:error, :used_up}) == {:error, :used_up}
+
+      assert %WorkItem{state: :closed, stage_state: :waiting_answers} = reload(work_item)
+      refute escalation(work_item)
+    end
+  end
 end
