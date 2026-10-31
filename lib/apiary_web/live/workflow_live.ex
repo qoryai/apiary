@@ -86,7 +86,10 @@ defmodule ApiaryWeb.WorkflowLive do
         harness_refusal: nil,
         target_edit: nil,
         workspace_stacks: nil,
-        workspace_stacks_of: nil
+        workspace_stacks_of: nil,
+        # With the feature `workflow_model`, the stages replace the workflow choice
+        # (decision D3): the page keeps the harness choice and links to Stages.
+        stages?: Apiary.Features.visible?(scope, :workflow_model)
       )
       |> assign_harness_form(nil)
       |> load_targets()
@@ -308,6 +311,7 @@ defmodule ApiaryWeb.WorkflowLive do
         {:noreply,
          socket
          |> assign(current: Sources.current(scope.workspace), save_error: nil)
+         |> record_declared()
          |> put_flash(
            :info,
            gettext("Saved. Runs of %{workspace} now follow the workflow %{workflow}.",
@@ -501,7 +505,10 @@ defmodule ApiaryWeb.WorkflowLive do
       if match?(%{id: ^id, git: ^git}, socket.assigns.source) do
         case result do
           {:ok, stacks} ->
-            socket |> assign(stacks: stacks, reading: false) |> preselect_workflow()
+            socket
+            |> assign(stacks: stacks, reading: false)
+            |> record_declared()
+            |> preselect_workflow()
 
           {:error, reason} ->
             assign(socket, read_error: reason, reading: false)
@@ -597,6 +604,29 @@ defmodule ApiaryWeb.WorkflowLive do
     end
   end
 
+  # The workflows of the stack read under the saved document's base, kept as the
+  # workspace's snapshot (`Apiary.Processes.record_declared/2`), once read and again once
+  # saved. A source only tried in Source changes no snapshot.
+  defp record_declared(
+         %{assigns: %{current: %{base: %{} = base}, stacks: [_ | _] = stacks}} = socket
+       ) do
+    case Enum.find(stacks, &(&1.base == base)) do
+      nil ->
+        socket
+
+      stack ->
+        :ok =
+          Apiary.Processes.record_declared(
+            socket.assigns.current_scope.workspace,
+            stack.workflows
+          )
+
+        socket
+    end
+  end
+
+  defp record_declared(socket), do: socket
+
   # The current workflow, where the chosen source's stacks have it under the current base.
   defp preselect_workflow(%{assigns: %{current: %{workflow: workflow, base: base}}} = socket) do
     socket.assigns.stacks
@@ -645,13 +675,13 @@ defmodule ApiaryWeb.WorkflowLive do
       counts={@nav_counts}
       nav={:settings}
       sections={@sections}
-      section={:workflow}
+      section={if @stages?, do: :stages, else: :workflow}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        current={:workflow}
+        current={if @stages?, do: :stages, else: :workflow}
         title={gettext("Workflow")}
       >
         <div id="workflow-harness" class="grid gap-3">
@@ -724,11 +754,31 @@ defmodule ApiaryWeb.WorkflowLive do
           />
         </div>
 
-        <p :if={@current} id="workflow-current" class="text-[13px]/[20px]">
+        <div :if={@stages?} id="workflow-stages" class="grid gap-2">
+          <p class="text-[13.5px]/5">
+            {gettext(
+              "Set the stages of %{workspace}, and the workflows each stage runs, on the Stages page.",
+              workspace: @workspace
+            )}
+          </p>
+          <div>
+            <.button
+              id="workflow-stages-link"
+              navigate={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/stages"
+              }
+            >
+              {gettext("Open Stages")}
+            </.button>
+          </div>
+        </div>
+
+        <p :if={@current && !@stages?} id="workflow-current" class="text-[13px]/[20px]">
           {current_words(@current, @workspace)}
         </p>
 
         <.form
+          :if={!@stages?}
           for={@form}
           id="workflow-form"
           phx-change="change"
@@ -805,14 +855,14 @@ defmodule ApiaryWeb.WorkflowLive do
           </SettingsComponents.save>
         </.form>
         <:context>
-          <p id="workflow-what">
+          <p :if={!@stages?} id="workflow-what">
             {pgettext(
               "plain",
               "Runs in %{workspace} use the workflow you choose here, from a harness repository.",
               workspace: @workspace
             )}
           </p>
-          <p id="workflow-list">
+          <p :if={!@stages?} id="workflow-list">
             {pgettext(
               "plain",
               "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it.",

@@ -104,6 +104,8 @@ defmodule Apiary.Stacks.Sources do
 
   import Ecto.Query
 
+  require Logger
+
   alias Apiary.{Access, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
@@ -322,7 +324,8 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Adapters.CallAddress.placed?/1`), by its shown name (`t:unplaced/0`). The
   # repositories of such an adapter are not in `repositories/1`. It makes no call.
   # `:instance_host` in `opts` replaces the host of `PUBLIC_URL`, for a test: with none,
-  # no adapter is called, as `placed?/1` has it.
+  # no adapter is called, as `placed?/1` has it. It writes one warning for each, with the
+  # adapter's public id and the cause, which the page does not show.
   @spec unplaced(Scope.t(), keyword) :: [unplaced]
   def unplaced(%Scope{organisation: %Organisation{} = organisation}, opts \\ []) do
     host = Keyword.get_lazy(opts, :instance_host, &CallAddress.instance_host/0)
@@ -332,9 +335,16 @@ defmodule Apiary.Stacks.Sources do
     |> Enum.map(fn {_collection, adapter} -> adapter end)
     |> Enum.uniq_by(& &1.id)
     |> Enum.reject(&(host not in [nil, ""] and CallAddress.placed?(&1)))
-    |> Enum.map(
-      &%{id: &1.public_id, adapter: Apiary.Adapters.title(&1), cause: unplaced_cause(&1, host)}
-    )
+    |> Enum.map(fn adapter ->
+      cause = unplaced_cause(adapter, host)
+
+      # The page shows only that support is needed; the cause is here.
+      Logger.warning(
+        "an adapter's call address is not called adapter=#{adapter.public_id} cause=#{cause}"
+      )
+
+      %{id: adapter.public_id, adapter: Apiary.Adapters.title(adapter), cause: cause}
+    end)
     |> Enum.sort_by(&String.downcase(&1.adapter))
   end
 

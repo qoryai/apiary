@@ -85,6 +85,11 @@ defmodule Apiary.Environments do
   # the workspace with that target and a waiting run, read without a lock, `FOR KEY SHARE`, by
   # id; then the record `FOR UPDATE` (`lock_record/2`), before the run of the queue.
   #
+  # With the workflow model on, those work items are locked `FOR UPDATE` in place of
+  # `FOR KEY SHARE`: the end of the runs held for the build writes each one's place in its
+  # stage (`Apiary.Stages.run_ended/2`), and an upgrade of the lock there could deadlock
+  # with another end that holds the same work item.
+  #
   # `record_end_failure(record, cause, now)` records the last build as failed, with `now`
   # and no reason: `lost` when the prebuild's gateway never attached it by its run key's
   # `attach_by`, `timed_out` when it had no exit by its backstop, and, when its exit ends
@@ -318,14 +323,7 @@ defmodule Apiary.Environments do
               select: w.id
           )
 
-        locked =
-          Repo.all(
-            from w in WorkItem,
-              where: w.id in ^work_item_ids,
-              order_by: w.id,
-              lock: "FOR KEY SHARE",
-              select: w.id
-          )
+        locked = lock_waiting(work_item_ids)
 
         {:build, lock_record(pool_id, collection_id), collections, locked}
 
@@ -407,6 +405,16 @@ defmodule Apiary.Environments do
     if served?,
       do: [],
       else: Dispatches.end_held(work_item_ids, collection.workspace_id, target, now)
+  end
+
+  # The work items whose runs wait for a build, by id, in order: `FOR KEY SHARE`, or
+  # `FOR UPDATE` with the workflow model on (the moduledoc).
+  defp lock_waiting(work_item_ids) do
+    query = from w in WorkItem, where: w.id in ^work_item_ids, order_by: w.id, select: w.id
+
+    if Apiary.Stages.on?(),
+      do: Repo.all(from(w in query, lock: "FOR UPDATE")),
+      else: Repo.all(from(w in query, lock: "FOR KEY SHARE"))
   end
 
   # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,

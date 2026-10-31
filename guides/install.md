@@ -487,6 +487,13 @@ environment variable SMTP_TLS must be always, if_available or never
   test run among them, model providers and model, and workflow. Opt-in. Needs
   `observability`, `security` and `secrets`.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- `workflow_model`: changes to the process of each workspace, its stages in order, each
+  with its workflows and its gate. Owners and admins save numbered versions, and trial
+  versions that chosen work items are assigned to. With the switch off, each workspace
+  keeps version 1 of its process, a copy of its type's default. Opt-in. Needs
+  `observability`, `security`, `secrets` and `factory`.
+<!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
 the discovery document leave it out, and the documentation at `/docs` does not describe
@@ -839,9 +846,10 @@ With the `factory` feature, both pages have more steps:
   **Name**, and **Continue** on the other steps, open the next step.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
-    connect an adapter, open **Connect another source**, or **Connect another
-    destination**, select **Connect** beside the adapter, and follow the steps that the
-    column **About this step** lists under its name. **Choose** opens the account's
+    connect an adapter, select **Connect a source**, or **Connect a destination**
+    (**Connect another …** once one is connected), select **Connect** beside the
+    adapter, and follow the steps that the column **About this step** lists under its
+    name. **Back** returns to the step. **Choose** opens the account's
     collections: choose **All repositories, including new ones**, in the adapter's word
     for its collections, or **Only selected** and tick them, then **Save**. All also
     assigns to the workspace each collection that the adapter lists for the account

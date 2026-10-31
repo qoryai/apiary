@@ -703,7 +703,9 @@ defmodule ApiaryWeb.Routes do
               # (`Apiary.WorkspaceSetup.flow/0`), in the workspace's sidebar; and the
               # chooser of the steps Work sources and Destinations, with the `factory`
               # feature: which collections of one grant the workspace has, `?grant=<ag_…>`.
+              # Connect of those steps lists the adapters to connect, on a page of the step.
               live "/set-up/:step", WorkspaceSetupLive, :step
+              live "/set-up/:step/connect", WorkspaceSetupLive, :connect
               live "/set-up/:step/choose", ChooseCollectionsLive, :set_up
               # The record: the runs of the workspace, and where they reached out to (Network
               # access). Every filter is a query parameter.
@@ -817,6 +819,9 @@ defmodule ApiaryWeb.Routes do
               # The workflow of the workspace's runs and the harness source it comes from,
               # with the `factory` feature.
               live "/settings/workflow", WorkflowLive, :edit
+              # The workspace's stages, with the `factory` feature and the feature
+              # `workflow_model`; the Workflow page links to it.
+              live "/settings/stages", StagesLive.Index, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by

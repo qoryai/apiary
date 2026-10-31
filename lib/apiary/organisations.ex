@@ -1319,6 +1319,9 @@ defmodule Apiary.Organisations do
           do: organisation |> main_workspace(domain) |> PublicId.Insert.insert(),
           else: {:ok, nil}
       end)
+      |> Ecto.Multi.run(:process, fn _repo, %{workspace: workspace} ->
+        if workspace, do: Apiary.Processes.copy_default(workspace), else: {:ok, nil}
+      end)
       |> Ecto.Multi.run(:membership, fn repo, %{organisation: organisation} ->
         if user,
           do: repo.insert(membership_changeset(organisation, user, :owner)),
@@ -1654,7 +1657,8 @@ defmodule Apiary.Organisations do
   an owner's, asked of the organisation), named `attrs["name"]`, at the slug the name
   gives it (`change_new_workspace/2`), of the domain `attrs["domain"]`, one of
   `Apiary.Lingo.Domain.names/0`, which never changes after, and with nothing in it:
-  no key, no run, its policy in observe. A slug in `attrs` is ignored. The organisation's
+  no key, no run, its policy in observe, and the first version of its process, a copy of
+  its type's default. A slug in `attrs` is ignored. The organisation's
   row is locked while its workspaces in use are counted against the edition's limit
   (`c:Apiary.Edition.limits/0`), the entry is written in the organisation's trail, and
   the edition is told (`c:Apiary.Edition.workspace_created/3`), all in one transaction.
@@ -1822,6 +1826,7 @@ defmodule Apiary.Organisations do
            attrs = if(is_function(attrs, 1), do: attrs.(organisation), else: attrs),
            {:ok, workspace} <-
              organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
+           {:ok, _version} <- Apiary.Processes.copy_default(workspace),
            {:ok, _entry} <-
              Audit.record(
                Repo,

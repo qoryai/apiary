@@ -189,12 +189,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   card shows the adapter and the account, such as “GitHub · acme”, how many of the
   account's collections the workspace has, such as “2 of 14 repositories”, or “All
   repositories”, and **Choose**. An adapter connected with no account yet shows
-  **Connected**. **Connect another source**, or **Connect another destination** in
-  **Destinations**, lists the adapters the instance has set up for the workspace's type
-  that the organisation has not connected, each with **Not connected**, or
-  **Connecting…** while the connection is pending. That list is open while the step
-  shows no card and no **Connected** line. Owners and admins have **Connect**, which returns to the step after the
-  adapter's steps; anyone else reads who may connect. A connection to an adapter is the
+  **Connected**, and one whose connection is pending **Connecting…**. Owners and admins
+  have **Connect a source**, or **Connect a destination** in **Destinations**, which
+  reads **Connect another source** once the step has a card or a **Connected** line. It
+  opens a page of the step, such as `/acme/main/set-up/sources/connect`, that lists the
+  adapters the instance has set up for the workspace's type that the organisation has
+  not connected, each with **Not connected**, or **Connecting…** while the connection
+  is pending, and **Connect**, which returns to the step after the adapter's steps.
+  **Back** on that page, and on the chooser, returns to the step, and the breadcrumb
+  shows the step, a link to it, then the page: “Work sources / Connect a source”.
+  Anyone else sees no **Connect** and reads who may connect. A connection to an adapter is the
   organisation's and serves every workspace, so its **Connect** has no setting of where
   it applies: one connection to GitHub serves both steps of every workspace. With no
   adapter to list, the step shows “No work source for this type is set up on this
@@ -232,7 +236,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Workspace settings › Work sources**, “Which work sources does Main use?”, and
   **› Destinations**, “Which repositories may runs in Main change?”, show the same cards
   as the set-up's steps, with **Connect another source** or **Connect another
-  destination**. **Choose** opens the same chooser in the workspace's settings, at
+  destination** for owners and admins. **Choose** opens the same chooser in the workspace's settings, at
   `/acme/main/settings/choose?step=sources&grant=<id>`. Its **Save** and **Back** return
   to the settings page. **Connect** and **Change access** return to the set-up's step of
   the workspace. Under **Only selected**, ticking a work source assigns it to the

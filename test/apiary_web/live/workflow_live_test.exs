@@ -4,9 +4,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   (`Req.Test`): who opens it and where it is in the list; About this step, with the
   paragraphs on the harness; the harness choice and its version; the destinations' Stack
   selects under the choice, their saves and refusals; each kind of source, read when
-  chosen; a refused address; the save, its document, and the setting shown again.
+  chosen; a refused address; the save, its document, and the setting shown again. With
+  the feature `workflow_model`, the page keeps the harness choice, drops the workflow
+  choice and links to Stages.
+
+  Not async: each test sets the instance's features, which are the whole node's. The
+  workflow choice is tested with `workflow_model` off, as an instance without it shows it.
   """
-  use ApiaryWeb.ConnCase, async: true
+  use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
@@ -14,13 +19,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Repo
+  alias Apiary.{Processes, Repo}
   alias Apiary.Harnesses.Assignment
   alias Apiary.Stacks
   alias Apiary.Stacks.Sources
   alias Apiary.PublicGitServer
 
   @moduletag needs: :factory
+  @moduletag with_features: Apiary.Features.all() -- [:workflow_model]
   @moduletag :capture_log
 
   @harness "https://code.example.com/acme/harness"
@@ -219,7 +225,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       # The list is built with no read, so a repository with no stack is listed too.
       assert has_element?(view, "#workflow_source-g0 ~ label .q-pick-t.mono", "acme/app")
 
-      assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
+      assert has_element?(view, "#workflow_source-g1", "Assigned to this organisation")
 
       assert has_element?(
                view,
@@ -260,7 +266,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = open(conn, path)
 
       assert has_element?(view, "#workflow_source-g0", "Linked repositories")
-      assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
+      assert has_element?(view, "#workflow_source-g1", "Assigned to this organisation")
       refute has_element?(view, "#workflow_source-g1 ~ label")
     end
 
@@ -317,8 +323,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"]), "fix")
       assert has_element?(view, ~s(#workflow_workflow option[value="0/triage"]), "triage")
 
+      # A source only tried in Source is no snapshot of the workspace's harness source.
+      assert Processes.declared_snapshot(scope.workspace) == nil
+
       change(view, %{source: linked_id, workflow: "0/triage"})
       view |> form("#workflow-form", workflow: %{workflow: "0/triage"}) |> render_submit()
+
+      # Saved, it is: the workflows of its stack are the snapshot.
+      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
 
       assert render(view) =~ "Runs of #{scope.workspace.name} now follow the workflow triage."
 
@@ -377,6 +389,28 @@ defmodule ApiaryWeb.WorkflowLiveTest do
              )
 
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"][selected]))
+
+      # The saved source, read, is the workspace's snapshot.
+      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
+    end
+
+    test "a source tried in Source, read, changes no snapshot of the saved source", %{
+      conn: conn,
+      scope: scope,
+      path: path,
+      linked_id: linked_id
+    } do
+      base = %{"git" => @harness, "ref" => "v2", "stack" => "triage"}
+      {:ok, _stack} = Sources.save(scope, base, "fix")
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      %{read_at: read_at} = Processes.declared_snapshot(scope.workspace)
+
+      view = open(conn, path)
+      change(view, %{source: linked_id})
+      assert has_element?(view, ~s(#workflow_workflow option[value="0/triage"]), "triage")
+
+      assert Processes.declared_snapshot(scope.workspace) ==
+               %{names: ["review"], read_at: read_at}
     end
   end
 
@@ -397,8 +431,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#workflow-read-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
       serve_calls([adapter], covered: covered, files: files)
@@ -416,8 +449,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
-                 "internal for acme/harness. An instance admin checks the adapter's log."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
       serve_calls([adapter], covered: covered, files: files)
@@ -544,7 +577,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow_workflow[disabled]")
     end
 
-    test "that no linked repository or assignment covers, and that is not public, says so", %{
+    test "that no integration reaches, and that is not public, says so", %{
       conn: conn,
       scope: scope,
       path: path
@@ -665,10 +698,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> render_change()
 
       assert words(view, "#harness-source-unplaced-#{adapter.adapter.public_id}-no_address") ==
-               "Qory Apiary cannot read the repositories of the " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} adapter: the adapter has no call " <>
-                 "address. An instance admin sets the call address. The Qory harness needs no " <>
-                 "call address."
+               "Contact support: Qory Apiary could not read the repositories of the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       refute has_element?(view, "#harness-source-none")
       refute render(view) =~ adapter.host
@@ -913,8 +944,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#harness-stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       files = %{{"R_harness", "qory.yaml"} => "exports: [triage\n"}
       serve_calls([adapter], covered: covered, files: files)
@@ -1206,6 +1236,58 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       })
 
       assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
+    end
+  end
+
+  describe "with workflow_model" do
+    @describetag with_features: Apiary.Features.all()
+
+    test "the workflow choice is gone, with its line and its About paragraphs", %{
+      conn: conn,
+      path: path
+    } do
+      view = open(conn, path)
+
+      refute has_element?(view, "#workflow-form")
+      refute has_element?(view, "#workflow-current")
+      refute has_element?(view, "#workflow-what")
+      refute has_element?(view, "#workflow-list")
+    end
+
+    test "the harness choice stays, with Change and the destinations", %{conn: conn, path: path} do
+      view = open(conn, path)
+
+      assert has_element?(view, "#workflow-harness")
+      view |> element("#workflow-harness-change") |> render_click()
+      assert has_element?(view, "#workflow-harness-form")
+    end
+
+    test "the sidebar's Stages entry takes the place of Workflow", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      view = open(conn, path)
+
+      stages = workspace_path(scope, "/settings/stages")
+      assert has_element?(view, ~s(#settings-tab-stages[href="#{stages}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-workflow")
+    end
+
+    test "the page links to Stages", %{conn: conn, path: path, scope: scope} do
+      view = open(conn, path)
+
+      assert has_element?(
+               view,
+               "#workflow-stages",
+               "Set the stages of #{scope.workspace.name}, and the workflows each stage runs, on the Stages page."
+             )
+
+      assert has_element?(
+               view,
+               ~s(#workflow-stages-link[href="#{workspace_path(scope, "/settings/stages")}"]),
+               "Open Stages"
+             )
     end
   end
 end
