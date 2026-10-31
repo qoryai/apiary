@@ -250,8 +250,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # neither ended without a verdict. `Apiary.Stages.runs/1` gives no end cause, so the page
   # does not tell a run that ended with a result from one that stopped.
   defp shows(%{verdict: verdict}, _asked) when verdict in [:passed, :failed], do: verdict
-  defp shows(%{status: :waiting}, _asked), do: :queued
-  defp shows(%{status: status}, _asked) when status in [:claimed, :handed_over], do: :running
+  defp shows(%{status: status}, _asked) when status in [:waiting, :claimed], do: :queued
+  defp shows(%{status: :handed_over}, _asked), do: :running
 
   defp shows(%{id: id}, asked) when is_binary(id) do
     if MapSet.member?(asked, id), do: :questions, else: :no_verdict

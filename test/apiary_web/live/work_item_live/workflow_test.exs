@@ -236,6 +236,20 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert html =~ "Run 1 · explore-a-ticket · round 1 · queued"
     end
 
+    test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
+      work_item = taken_in_fixture(scope)
+
+      work_item
+      |> newest_run()
+      |> Ecto.Changeset.change(state: :claimed)
+      |> Repo.update!()
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
+      assert html =~ "Run 1 · explore-a-ticket · round 1 · queued"
+    end
+
     test "waiting for answers: a link to the questions", %{conn: conn, scope: scope} do
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
       {:ok, view, html} = live(conn, page(scope, work_item.number))
