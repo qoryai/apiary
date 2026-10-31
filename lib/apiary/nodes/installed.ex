@@ -437,7 +437,7 @@ defmodule Apiary.Nodes.Installed do
 
   @doc false
   # The instance's pool in use when it takes the runs of `workspace`, which has no pool in
-  # use, and the instance's gateway in use: what a workspace's Nodes page shows beside
+  # use, and the instance's gateway in use: what a workspace's Machines page shows beside
   # the workspace's nodes. Nil for each where there is none.
   @spec serving(Workspace.t()) :: %{pool: Node.t() | nil, gateway: Node.t() | nil}
   def serving(%Workspace{id: workspace_id}) do

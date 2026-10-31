@@ -704,7 +704,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-wait-h") == "Explore is queued."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts run 1 of 3 when the workspace's pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
 
       assert count(html, ".q-xp-frame") == 0
     end
@@ -725,7 +725,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Explore is queued again, with your answers."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Run 2 of 3 starts when the workspace's node pool takes it. It reads the ticket, the code and these answers, from the start."
+               "Run 2 of 3 starts when the workspace's pool takes it. It reads the ticket, the code and these answers, from the start."
 
       assert text(html, "#work-item-explore-read-h") == "The answers run 2 reads"
 
@@ -2167,7 +2167,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       queued = work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}})
 
       assert text(tab(queued, item_noun: @bug), "#work-item-explore-wait p:last-child") ==
-               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts run 1 of 3 when the workspace's pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
 
       asked =
         work_item(%{

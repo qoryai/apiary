@@ -288,7 +288,7 @@ defmodule Apiary.Stages.StopCause do
         {"Owners and admins of #{n.organisation} add", "Gateways › #{gateway.name} › Access key"}
 
       {:workspace, _id} ->
-        {"Owners and admins of #{n.workspace} add", "Nodes › #{gateway.name} › Access key"}
+        {"Owners and admins of #{n.workspace} add", "Machines › #{gateway.name} › Access key"}
     end
   end
 

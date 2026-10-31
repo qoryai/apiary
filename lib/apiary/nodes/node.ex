@@ -9,10 +9,10 @@ defmodule Apiary.Nodes.Node do
   (`create_changeset/2`) and never changes: `changeset/2` does not cast it, and the
   database refuses an update that changes it.
 
-  `public_id` is the node's name in a URL, `/:org/:workspace/nodes/:public_id`: `nd_` for
+  `public_id` is the node's name in a URL, `/:org/:workspace/machines/:public_id`: `nd_` for
   a node, `np_` for a pool or `ng_` for a gateway, then sixteen lowercase Crockford base32
   characters, made once with the node (`Apiary.PublicId`). A path built with
-  `~p"/\#{organisation}/\#{workspace}/nodes/\#{node}"` uses it.
+  `~p"/\#{organisation}/\#{workspace}/machines/\#{node}"` uses it.
 
   A gateway has an address, `url` (`validate_url/1`), no instance limit, and may be its
   level's default gateway, its workspace's or its organisation's (`default_gateway`, which `Apiary.Nodes` sets through
@@ -243,7 +243,11 @@ defmodule Apiary.Nodes.Node do
     |> unique_constraint([:organisation_id, :workspace_id, :name],
       name: :nodes_live_name_index,
       error_key: :name,
-      message: dgettext_noop("errors", "is already the name of a node in this workspace")
+      message:
+        dgettext_noop(
+          "errors",
+          "is already the name of a machine, pool or gateway in this workspace"
+        )
     )
     |> unique_constraint([:organisation_id, :name],
       name: :nodes_organisation_live_name_index,

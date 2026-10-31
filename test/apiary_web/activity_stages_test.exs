@@ -27,7 +27,9 @@ defmodule ApiaryWeb.ActivityStagesTest do
     assert Core.label(:"gate.approve") == "Work item stage decided"
     assert Core.label(:"process.edit") == "Process changed"
     assert Core.offered?(scope, :"gate.approve")
+    assert Core.label(:"workspace_type.edit") == "Workspace type changed"
     assert Core.offered?(scope, :"process.edit")
+    assert Core.offered?(scope, :"workspace_type.edit")
     refute Core.offered?(scope, :"artifact.write")
     refute Core.offered?(scope, :"artifact_type.edit")
   end
@@ -66,5 +68,12 @@ defmodule ApiaryWeb.ActivityStagesTest do
     assert said.("make_current") == "Made version 3 the current process"
     assert said.("drop_trial") == "Dropped the trial version 3 of the process"
     assert said.("assign") == "Assigned a work item to version 3 of the process"
+  end
+
+  test "the sentence of a change to a workspace type's default" do
+    details = %{"change" => "save", "type" => "qory.software", "number" => 2}
+
+    assert Core.sentence(:"workspace_type.edit", entry(:"workspace_type.edit", details), %{}) ==
+             "Workspace type changed"
   end
 end

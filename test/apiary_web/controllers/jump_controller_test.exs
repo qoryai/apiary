@@ -27,7 +27,7 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     assert "Runs" in labels(go_to)
     refute "Workspace settings › Access keys" in labels(go_to)
-    assert "Nodes" in labels(go_to)
+    assert "Machines" in labels(go_to)
     assert "Workspace settings › Runs" in labels(go_to)
     assert "Workspace settings › People" in labels(go_to)
     assert "Organisation settings › People" in labels(go_to)
@@ -45,8 +45,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert runs["href"] == workspace_path(scope, "/runs")
     assert runs["detail"] == scope.workspace.name
 
-    nodes = Enum.find(go_to["items"], &(&1["label"] == "Nodes"))
-    assert nodes["href"] == workspace_path(scope, "/nodes")
+    nodes = Enum.find(go_to["items"], &(&1["label"] == "Machines"))
+    assert nodes["href"] == workspace_path(scope, "/machines")
 
     # nothing else is listed for nothing typed but what New offers; a network access rule
     # with the `security` feature, Add integration, secrets and variables with the
@@ -61,14 +61,17 @@ defmodule ApiaryWeb.JumpControllerTest do
         else: []
 
     assert labels(group(answer, "Actions")) ==
-             ["New node", "New node pool"] ++ rule ++ security ++ ["Invite people"]
+             ["New machine", "New pool"] ++ rule ++ security ++ ["Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
-    # A workspace's keys are its nodes': the old words find Nodes.
+    # A workspace's keys are its machines': the old words find Machines.
     answer = jump(conn, workspace_path(scope, "/jump"), "access keys")
-    assert labels(group(answer, "Go to")) == ["Nodes"]
+    assert labels(group(answer, "Go to")) == ["Machines"]
     assert answer["status"] == "1 result"
+
+    answer = jump(conn, workspace_path(scope, "/jump"), "nodes")
+    assert labels(group(answer, "Go to")) == ["Machines"]
 
     answer = jump(conn, workspace_path(scope, "/jump"), "no such page")
     assert answer["groups"] == []

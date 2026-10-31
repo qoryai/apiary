@@ -440,13 +440,14 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("key_id", "/:org/gateways/" <> _, p), do: p.gateway_key_id
   defp value_of("code_id", "/:org/gateways/" <> _, p), do: p.gateway_code_id
   # The instance's pool's pages, and its key's.
-  defp value_of("node_id", "/instance/nodes/" <> _, p), do: p.instance_node_id
-  defp value_of("key_id", "/instance/nodes/" <> _, p), do: p.instance_key_id
+  defp value_of("node_id", "/instance/qory-pool-and-gateway/" <> _, p), do: p.instance_node_id
+  defp value_of("key_id", "/instance/qory-pool-and-gateway/" <> _, p), do: p.instance_key_id
   defp value_of("node_id", _path, p), do: p.node_id
   # An adapter's key and waiting code, on its Access key tab.
   defp value_of("key_id", "/instance/adapters/" <> _, p), do: p.adapter_key_id
   defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
+  defp value_of("type", "/instance/workspace-types/" <> _, p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
   defp value_of("number", _path, p), do: p.work_item_number
@@ -458,6 +459,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("section", _path, _p), do: "runs"
   # Each step of a workspace's set-up; the chooser opens the owner's grant in Work sources.
   defp value_of("step", "/:org/:workspace/set-up/:step/choose", _p), do: "sources"
+  # The Connect page of Work sources. Work sources and Destinations, the steps with a
+  # Connect page, are steps of the feature `factory`: without it, no step has one.
+  defp value_of("step", "/:org/:workspace/set-up/:step/connect", _p),
+    do: if(Features.on?(:factory), do: "sources", else: [])
 
   # Name, the step every workspace has, whatever the features.
   defp value_of("step", "/:org/:workspace/set-up/:step", _p), do: "name"
@@ -497,9 +502,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     end
   end
 
-  defp value_of("rest", path, _p) do
+  defp value_of("rest", path, p) do
     cond do
       String.starts_with?(path, "/:org/members/") -> "invite"
+      path == "/:org/:workspace/nodes/*rest" -> p.node_id
+      path == "/instance/nodes/*rest" -> p.instance_node_id
       String.contains?(path, "/policy/targets/") -> "history"
       true -> nil
     end
@@ -567,6 +574,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       gateway_key_id: gateway_key.key_id,
       gateway_code_id: gateway_code.id,
       instance: "i_1",
+      # Instance settings › Workspace types: the software type's stages.
+      workspace_type: "qory.software",
       key_id: key.key_id,
       code_id: code.id,
       run_id: run.public_id,
@@ -622,7 +631,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       %{access_key: adapter_key} = enrolled_key_fixture(admin, adapter)
       {:ok, adapter_code, _code} = Apiary.Adapters.create_code(admin, adapter)
 
-      # The instance's pool, with a key, for Instance settings › Nodes.
+      # The instance's pool, with a key, for Instance settings › Qory Pool and Qory Gateway.
       pool = instance_pool_fixture(%{installed_as: "pool"})
       %{access_key: pool_key} = installed_key_fixture(pool)
 

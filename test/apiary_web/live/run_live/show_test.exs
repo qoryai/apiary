@@ -411,7 +411,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           do: assert(has_element?(lv, "#run-details ##{section}"))
 
       assert has_element?(lv, "#run-id", run.public_id)
-      assert has_element?(lv, "#run-details dt", "Node's run id")
+      assert has_element?(lv, "#run-details dt", "Run id on the machine")
       assert has_element?(lv, "#run-details dd#run-node-run-id", run.node_run_id)
       refute page_title(lv) =~ "Details ·"
       assert page_title(lv) == "#{ApiaryWeb.RunComponents.run_title(run)} · Runs · Qory Apiary"

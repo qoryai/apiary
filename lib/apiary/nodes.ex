@@ -396,7 +396,7 @@ defmodule Apiary.Nodes do
             Ecto.Changeset.add_error(
               changeset,
               :gateway_id,
-              dgettext_noop("errors", "is not a gateway this node may use")
+              dgettext_noop("errors", "is not a gateway this machine may use")
             )
 
       choice == :default and changed? and is_nil(Gateways.default_gateway_for(scope.workspace)) ->
@@ -1181,7 +1181,7 @@ defmodule Apiary.Nodes do
   # `:instance` in place of a scope reads the instance's pool and gateway, which have no
   # organisation: their instances, their keys, and the runs of the pool in every workspace
   # it served. Only a caller that checked the person is an instance admin shows all of it
-  # (`Apiary.Nodes.Installed.activity/3`); a workspace's Nodes page takes from it only
+  # (`Apiary.Nodes.Installed.activity/3`); a workspace's Machines page takes from it only
   # when the nodes' keys were last used.
   @spec activity(Scope.t() | :instance, [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
   def activity(scope, nodes, now \\ DateTime.utc_now())

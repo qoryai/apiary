@@ -122,16 +122,11 @@ defmodule Apiary.Adapters.Calls do
   defp refusal({:address, ip, kind}), do: " refusal=address ip=#{Address.ntoa(ip)} kind=#{kind}"
   defp refusal(refusal), do: " refusal=#{refusal}"
 
-  # The code of a refusal, in the log line: ` code="invalid_request"`.
-  defp code(nil), do: ""
-  defp code(code), do: " code=#{inspect(code)}"
-
   # The failure of the call, with its one log line.
   defp failure(adapter, path, cause, details, started) do
     Logger.warning(
       "a call to an adapter failed adapter=#{adapter.public_id} path=#{path} " <>
-        "cause=#{cause}#{code(details[:code])}#{refusal(details[:refusal])} " <>
-        "duration_ms=#{now() - started}"
+        "cause=#{cause}#{refusal(details[:refusal])} duration_ms=#{now() - started}"
     )
 
     struct!(
