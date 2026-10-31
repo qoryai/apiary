@@ -1359,8 +1359,11 @@ defmodule Apiary.Harnesses.WalkTest do
     test "with no public request left, a public source at a commit is pinned at it unread, and one at a branch fails the calls rule",
          ctx do
       %{@public => commit} = public!(%{@public => @public_files})
-      files = Map.put(@base_files, {"R_harness", "stacks/web/qory-stack.yaml"}, "modules: []\n")
-      serve([ctx.run], covered: covering(ctx), files: files)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
 
       # One request is the probe; the read that pins the module has none left.
       module = fn ref -> "modules:\n  - source: {git: \"#{@public}\", ref: #{ref}}\n" end
@@ -1369,7 +1372,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
       assert {:ok, walked} = Walk.run(ctx.input, max_public_calls: 1)
       assert %{"git" => @public, "ref" => commit, "at" => commit} in walked.pins
-      assert walked.harness_links |> Enum.flat_map(& &1["resources"]) == ["R_harness"]
+      assert [%{"resources" => ["R_harness", "R_tools"]}] = walked.harness_links
 
       setting(ctx.scope, @setting <> module.("main"))
 
@@ -1569,7 +1572,7 @@ defmodule Apiary.Harnesses.WalkTest do
                Walk.run(ctx.input)
     end
 
-    test "each request to a public host counts as one of the walk's calls", ctx do
+    test "each request to a public host counts as one of the walk's public requests", ctx do
       setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
       public!(%{@public => @public_files})
 
@@ -1584,13 +1587,12 @@ defmodule Apiary.Harnesses.WalkTest do
       git_requests()
       assert {:ok, _walked} = Walk.run(ctx.input)
       requests = length(git_requests())
-      used = length(calls()) + requests
       assert requests > 0
 
       assert {:failed, %{failure: :invalid, rule: %{"rule" => "calls"}}} =
-               Walk.run(ctx.input, max_calls: used - 1)
+               Walk.run(ctx.input, max_public_calls: requests - 1)
 
-      assert {:ok, _walked} = Walk.run(ctx.input, max_calls: used)
+      assert {:ok, _walked} = Walk.run(ctx.input, max_public_calls: requests)
     end
 
     test "a private base whose stack lists a public module at a branch: the module is pinned at its commit, with no link",
