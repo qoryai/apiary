@@ -839,11 +839,11 @@ defmodule ApiaryWeb.NodeLive.Show do
           <.relative_time id="node-refused-at" at={@node.instance_limit_refused_at} />.
         </p>
         <p
-          :if={@node.instance_ids_over_bound > 0}
+          :if={@node.kind == :pool && @node.instance_ids_over_bound > 0}
           id="node-over-bound"
           class="text-[13px]/5 text-muted"
         >
-          {gettext("Contact support: some machines here were not recorded.")}
+          {gettext("Contact support: some machines of this pool were not recorded.")}
         </p>
 
         <p id="node-instance-claim" class="text-[13px]/5 text-faint">

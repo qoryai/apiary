@@ -2170,7 +2170,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :path, :string, default: nil
   attr :item, :integer, default: nil, doc: "the number of the test run's work item"
-  attr :pool, :any, default: nil, doc: "the pool the Machines step found ready, or nil"
+
+  attr :pool, :any,
+    default: nil,
+    doc: "the ready pool, else the first pool that serves the workspace's runs, or nil"
+
   attr :machine, :string, default: nil, doc: "the name of the machine a lost run ran on"
 
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)

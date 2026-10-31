@@ -5972,7 +5972,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support: some machines here were not recorded."
+msgid "Contact support: some machines of this pool were not recorded."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex

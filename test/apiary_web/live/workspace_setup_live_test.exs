@@ -593,7 +593,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     Organisations,
     Repo,
     Stacks,
-    WorkItems
+    WorkItems,
+    WorkspaceSetup
   }
 
   alias Apiary.Accounts.Scope
@@ -3356,6 +3357,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       conn: conn,
       scope: scope
     } do
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Contact support with work item ##{item.number}. No machine has taken the test " <>
+                 "run yet."
+    end
+
+    test "no machine took the run, the Qory Pool not ready: contact support", %{
+      conn: conn,
+      scope: scope
+    } do
+      %Node{id: id} = instance_pool_fixture()
+      assert WorkspaceSetup.machines(scope.workspace) == nil
+      assert [%Node{id: ^id}] = WorkspaceSetup.serving_pools(scope.workspace)
+
       {:ok, item} = WorkItems.take_in_test(scope, @line)
       test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
 
