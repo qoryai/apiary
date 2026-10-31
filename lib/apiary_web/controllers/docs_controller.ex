@@ -62,7 +62,7 @@ defmodule ApiaryWeb.DocsController do
   def admin(conn, params) do
     cond do
       not admin?(conn) -> not_found(conn)
-      not admin_built?() -> index(conn, params)
+      not admin_built?() -> redirect(conn, to: "/docs")
       Map.get(params, "path", []) == [] -> redirect(conn, to: "/docs/admin/index.html")
       true -> serve_admin(conn)
     end

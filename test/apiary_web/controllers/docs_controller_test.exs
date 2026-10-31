@@ -5,6 +5,7 @@ defmodule ApiaryWeb.DocsControllerTest do
   import Phoenix.LiveViewTest, only: [live: 2]
 
   @moduletag :tmp_dir
+  @moduletag :feature_sets
 
   setup %{tmp_dir: tmp_dir} do
     Application.put_env(:apiary, :docs_root, tmp_dir)
@@ -126,6 +127,14 @@ defmodule ApiaryWeb.DocsControllerTest do
 
     test "so does every path below it", %{conn: conn} do
       html = conn |> get("/docs/no-such-page.html") |> html_response(404)
+      assert html =~ "The documentation is not built"
+    end
+
+    test "/docs/admin leads an instance admin to /docs, which says so", %{conn: conn} do
+      {conn, _scope} = admin_conn(conn)
+      assert redirected_to(get(conn, "/docs/admin")) == "/docs"
+
+      html = conn |> get(~p"/docs") |> html_response(404)
       assert html =~ "The documentation is not built"
     end
 
