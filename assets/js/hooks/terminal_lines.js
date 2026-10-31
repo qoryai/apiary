@@ -70,10 +70,14 @@ export class LineBuffer {
   }
 }
 
+// The longest line read as JSON: JSON.parse runs on the page's thread, 2.9 s and 1.3 GB for
+// 100 MB. A longer line passes through as its bytes.
+export const MOST_READ = 16 * 1024 * 1024
+
 // A line's object, or null. A line that does not start with `{`, or whose last byte before
 // its line ending is not `}`, is not read as JSON at all.
 const object = bytes => {
-  if (bytes[0] !== BRACE) return null
+  if (bytes.length > MOST_READ || bytes[0] !== BRACE) return null
   let end = bytes.length - 1
   while (end > 0 && (bytes[end] === NEWLINE || bytes[end] === 13)) end -= 1
   if (bytes[end] !== CLOSING_BRACE) return null

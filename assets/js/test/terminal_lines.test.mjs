@@ -5,7 +5,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {ANCHOR_ROWS, Anchors, LineBuffer, MOST_OPENED, clean, entry, label, opened, row, rowAt, rowLine, size} from "../hooks/terminal_lines.js"
+import {ANCHOR_ROWS, Anchors, LineBuffer, MOST_OPENED, MOST_READ, clean, entry, label, opened, row, rowAt, rowLine, size} from "../hooks/terminal_lines.js"
 
 const encode = text => new TextEncoder().encode(text)
 const decode = bytes => new TextDecoder().decode(bytes)
@@ -63,6 +63,22 @@ test("every other line passes through as its bytes", () => {
     assert.equal("names" in kept, false, text)
     assert.equal(decode(kept.bytes), `${text}\n`)
   }
+})
+
+test("a line over 16 MiB is not read as JSON", () => {
+  const object = text => {
+    const line = encode(text)
+    const bytes = new Uint8Array(MOST_READ + 1).fill(0x20)
+    bytes.set(line.subarray(0, 8))
+    bytes.set(line.subarray(8), bytes.length - (line.length - 8))
+    return bytes
+  }
+  const long = object('{"type":"system"}\n')
+  assert.equal(long.length, MOST_READ + 1)
+  assert.equal("names" in entry({bytes: long, start: true}), false)
+  const longest = long.subarray(1)
+  longest[0] = 0x7b
+  assert.equal("names" in entry({bytes: longest, start: true}), true)
 })
 
 test("a row has the marker, the type and subtype, the preview and the size", () => {
