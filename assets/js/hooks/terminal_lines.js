@@ -164,13 +164,41 @@ export const row = (line, width, sizeWords) => {
 
 const escaped = character => `\\u${character.codePointAt(0).toString(16).padStart(4, "0")}`
 
-// The object of a line, printed with two spaces, or null when it cannot be. JSON.stringify
-// escapes C0 characters and leaves C1 and DEL as they are, and xterm.js acts on a C1
-// character as on its escape sequence, so those are escaped here.
+// The most of a printed object a row opens to.
+export const MOST_OPENED = 1024 * 1024
+
+// Whether a value printed with two spaces can stay within `most`, found before it is
+// printed: each line has its depth's indent, so 10 KB of nested arrays print to 52 MB.
+const fits = (value, most) => {
+  const left = [[value, 1]]
+  let room = most
+  while (left.length > 0 && room >= 0) {
+    const [item, depth] = left.pop()
+    room -= depth * 2 + 2
+    if (typeof item === "string") {
+      room -= item.length
+    } else if (item !== null && typeof item === "object") {
+      room -= depth * 2 + 2
+      for (const [key, value] of Object.entries(item)) {
+        room -= key.length
+        left.push([value, depth + 1])
+      }
+    }
+  }
+  return room >= 0
+}
+
+// The object of a line, printed with two spaces, or null when it cannot be or when it is
+// over `MOST_OPENED`. JSON.stringify escapes C0 characters and leaves C1 and DEL as they
+// are, and xterm.js acts on a C1 character as on its escape sequence, so those are escaped
+// here.
 export const opened = bytes => {
+  if (bytes.length > MOST_OPENED) return null
   try {
-    const text = JSON.stringify(JSON.parse(decoder.decode(bytes)), null, 2)
-    return `${text.replace(/[\u007f-\u009f]/g, escaped).replace(/\n/g, "\r\n")}\r\n`
+    const value = JSON.parse(decoder.decode(bytes))
+    if (!fits(value, MOST_OPENED)) return null
+    const text = JSON.stringify(value, null, 2).replace(/[\u007f-\u009f]/g, escaped)
+    return text.length > MOST_OPENED ? null : `${text.replace(/\n/g, "\r\n")}\r\n`
   } catch (_err) {
     return null
   }

@@ -5,7 +5,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {ANCHOR_ROWS, Anchors, LineBuffer, clean, entry, label, opened, row, rowAt, rowLine, size} from "../hooks/terminal_lines.js"
+import {ANCHOR_ROWS, Anchors, LineBuffer, MOST_OPENED, clean, entry, label, opened, row, rowAt, rowLine, size} from "../hooks/terminal_lines.js"
 
 const encode = text => new TextEncoder().encode(text)
 const decode = bytes => new TextDecoder().decode(bytes)
@@ -142,6 +142,27 @@ test("the opened form escapes every control character", () => {
 
 test("a value that cannot be printed opens to nothing", () => {
   assert.equal(opened(encode("{not json}")), null)
+})
+
+test("an object that prints over 1 MiB opens to nothing, before it is printed", () => {
+  const depth = 5100
+  const nested = encode(`{"a":${"[".repeat(depth)}${"]".repeat(depth)}}\n`)
+  assert.ok(nested.length < 11000)
+  const began = performance.now()
+  assert.equal(opened(nested), null)
+  assert.ok(performance.now() - began < 200)
+  assert.equal(opened(encode(`{"a":"${"x".repeat(MOST_OPENED)}"}\n`)), null)
+})
+
+test("a C1 character's escape counts toward the most a row opens to", () => {
+  const line = encode(`{"a":"${"\u0085".repeat(Math.floor(MOST_OPENED / 4))}"}\n`)
+  assert.ok(line.length < MOST_OPENED)
+  assert.equal(opened(line), null)
+})
+
+test("an object just under the limit opens", () => {
+  const text = opened(encode(`{"a":"${"x".repeat(MOST_OPENED - 100)}"}\n`))
+  assert.ok(text.length <= MOST_OPENED + 10)
 })
 
 test("a size is written as the server writes it", () => {

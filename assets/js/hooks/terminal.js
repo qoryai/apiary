@@ -536,6 +536,7 @@ export const Terminal = {
     this.lines = new LineBuffer()
     this.entries = []
     this.drawn = 0
+    this.piece = null
     this.clearRows()
     this.pass = (this.pass || 0) + 1
     this.kept = 0
@@ -639,26 +640,37 @@ export const Terminal = {
     this.draw(then)
   },
 
-  // The lines not on the screen yet, at most 256 KB of them per animation frame.
+  // The lines not on the screen yet, at most 256 KB of them per animation frame, each
+  // frame's after the last has landed: xterm.js throws past 50 MB waiting in its queue.
   draw(then) {
     if (this.dead) return
     this.rowCols = this.seenCols || this.term.cols
     this.drawnCols = this.term.cols
     let budget = SLICE
-    while (this.drawn < this.entries.length && budget > 0) {
-      budget -= this.drawLine(this.entries[this.drawn])
-      this.drawn += 1
+    while (budget > 0) {
+      if (this.piece) {
+        budget -= this.drawPiece(budget)
+      } else if (this.drawn < this.entries.length) {
+        budget -= this.drawLine(this.entries[this.drawn])
+        this.drawn += 1
+      } else {
+        break
+      }
     }
-    if (this.drawn < this.entries.length) this.term.write("", () => nextFrame(() => this.draw(then)))
-    else this.term.write("", then)
+    if (this.piece || this.drawn < this.entries.length) {
+      this.term.write("", () => nextFrame(() => this.draw(then)))
+    } else {
+      this.term.write("", then)
+    }
   },
 
-  // One line on the screen; how many bytes that took. A row's place is its offset from an
-  // anchor's marker, which xterm.js moves as the buffer scrolls and trims.
+  // One line on the screen: a row now, and what follows it as the piece `draw` writes. How
+  // many bytes that took. A row's place is its offset from an anchor's marker, which
+  // xterm.js moves as the buffer scrolls and trims.
   drawLine(line) {
     if (!("names" in line)) {
-      this.term.write(line.bytes)
-      return line.bytes.length
+      this.piece = {data: line.bytes, at: 0}
+      return 0
     }
     const text = row(line, this.rowCols, this.sizeWords(line.bytes.length))
     const pass = this.pass
@@ -666,9 +678,18 @@ export const Terminal = {
       if (pass !== this.pass) return
       this.placeRow(line)
     })
-    const body = line.open ? opened(line.bytes) : null
-    if (body) this.term.write(body)
-    return text.length + (body ? body.length : 0)
+    if (line.body) this.piece = {data: line.body, at: 0}
+    return text.length
+  },
+
+  // At most `room` of the bytes or the text being written; how much that was.
+  drawPiece(room) {
+    const {data, at} = this.piece
+    const end = at + room
+    const part = typeof data === "string" ? data.slice(at, end) : data.subarray(at, end)
+    this.term.write(part)
+    this.piece = end < data.length ? {data, at: end} : null
+    return part.length
   },
 
   // The row just written, one line above the cursor. The alternate buffer has no markers.
@@ -720,8 +741,10 @@ export const Terminal = {
     ]
   },
 
+  // A line too long to print opens in Raw, which has its bytes.
   toggle(line) {
-    if (!line.open && !opened(line.bytes)) return
+    line.body = line.open ? null : opened(line.bytes)
+    if (!line.open && !line.body) return this.pickView("raw")
     line.open = !line.open
     this.rewrite()
   },
@@ -735,6 +758,7 @@ export const Terminal = {
     this.pass += 1
     this.clearRows()
     this.drawn = 0
+    this.piece = null
     this.term.write(RESET)
     this.draw(() => {
       if (this.rewriting !== place) return
