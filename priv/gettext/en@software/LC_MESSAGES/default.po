@@ -2028,6 +2028,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format

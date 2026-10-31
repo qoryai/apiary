@@ -274,6 +274,25 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   @doc false
+  # destination_names/2 is the titles of the collections `destinations?/2` counts for
+  # `workspace` of the type `domain`, in the order of the destination tick list
+  # (`collections/3`).
+  @spec destination_names(Workspace.t(), module) :: [String.t()]
+  def destination_names(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+    organisation_id
+    |> list_query(domain, :destinations)
+    |> where([c], c.workspace_id == ^workspace_id)
+    |> order_by([c, _k, n],
+      asc: fragment("lower(?)", n.name),
+      asc: n.id,
+      asc: fragment("lower(?)", c.title),
+      asc: c.id
+    )
+    |> select([c], c.title)
+    |> Repo.all()
+  end
+
+  @doc false
   # harness?/1 is whether `workspace` has a saved harness choice, or its organisation
   # shares a harness that the workspace takes.
   @spec harness?(Workspace.t()) :: boolean
@@ -731,6 +750,31 @@ defmodule Apiary.WorkspaceSetup do
 
       {chain, owner_id} ->
         Repo.exists?(workspace_choice(chain, owner_id, workspace))
+    end
+  end
+
+  @doc false
+  # model_name/1 is the model of the choice `model_key?/1` counts for `workspace`, as the
+  # Model step shows it chosen (`Apiary.ModelChoices.shown_model/2`); nil without one.
+  @spec model_name(Workspace.t()) :: String.t() | nil
+  def model_name(%Workspace{organisation_id: organisation_id} = workspace) do
+    query =
+      case ModelChoices.chain_owner(organisation_id) do
+        {_chain, nil} -> nil
+        {"operator", owner_id} -> operator_default(owner_id)
+        {chain, owner_id} -> workspace_choice(chain, owner_id, workspace)
+      end
+
+    with %Ecto.Query{} <- query,
+         {%ModelChoice{model_id: model_id}, %ModelProvider{} = provider} <-
+           query
+           |> join(:inner, [m], p in ModelProvider, on: p.id == m.connection_id)
+           |> select([m, ..., p], {m, p})
+           |> limit(1)
+           |> Repo.one() do
+      ModelChoices.shown_model(provider, model_id)
+    else
+      _none -> nil
     end
   end
 

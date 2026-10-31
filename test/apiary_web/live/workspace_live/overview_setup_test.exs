@@ -239,6 +239,69 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert words(lv, "#overview-set-up-machines .q-su-note") == pool.name
     end
 
+    test "a done step's line shows its value: the destinations, the model, the harness", %{
+      conn: conn,
+      scope: scope
+    } do
+      targets =
+        for ref <- ["web-shop", "api"] do
+          collection = collection_fixture(scope, external_ref: ref)
+
+          {1, _} =
+            Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+              set: [targets: true]
+            )
+
+          collection
+        end
+
+      model_done!(scope)
+      {:ok, stack} = Apiary.Stacks.Sources.choose(scope, :qory)
+
+      # 1 or 2 destinations by their titles, in the order of the step's list; the model
+      # the step shows chosen, the provider's default model for a choice that names none;
+      # the Qory harness by that name.
+      {:ok, lv, _html} = live(conn, overview(scope))
+      shown = words(lv, "#overview-set-up-destinations .q-su-note")
+      assert shown in ["web-shop, api", "api, web-shop"]
+
+      expected =
+        targets
+        |> Enum.map(&{Repo.get!(Node, &1.adapter_id).name, &1.title})
+        |> Enum.sort_by(fn {name, title} -> {String.downcase(name), title} end)
+        |> Enum.map_join(", ", &elem(&1, 1))
+
+      assert shown == expected
+
+      if Apiary.Features.on?(:secrets),
+        do: assert(words(lv, "#overview-set-up-model .q-su-note") == "Claude Opus 5.5")
+
+      assert words(lv, "#overview-set-up-harness .q-su-note") == "Qory harness"
+
+      # From 3 destinations on, their number in the type's words; a harness source by its
+      # repository.
+      third = collection_fixture(scope, external_ref: "docs")
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^third.adapter_id), set: [targets: true])
+
+      git = Apiary.Stacks.Sources.chosen(scope.workspace).git
+
+      {1, _} =
+        Repo.update_all(from(s in Apiary.Stacks.Stack, where: s.id == ^stack.id),
+          set: [
+            choice: :repository,
+            version_kind: :branch,
+            version_name: "main",
+            harness: String.replace(stack.harness, git, "https://code.example.com/acme/harness")
+          ]
+        )
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-destinations .q-su-note") == "3 repositories"
+      assert words(lv, "#overview-set-up-harness .q-su-note") == "acme/harness"
+    end
+
     test "who finishes the set-up is the edition's line, asked for the next step", %{
       scope: scope
     } do

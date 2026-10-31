@@ -32,6 +32,8 @@ defmodule ApiaryWeb.SetUpComponents do
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
   alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
+  alias Apiary.Stacks.Sources
+  alias ApiaryWeb.HarnessComponents
   alias Apiary.Accounts.Scope
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.{Invitation, Organisation, Workspace}
@@ -348,10 +350,12 @@ defmodule ApiaryWeb.SetUpComponents do
   step_note/3 is the line under a step's name in the workspace's overview while the set-up
   is not finished. A done step shows what it set where a value of it is at hand: Name the
   workspace's name, Work sources the integrations whose collections bring work to the
-  workspace's Backlog, by name, the ones the step's done rule counts, and Machines
-  the node pool that runs the workspace's runs. Test run shows what it does, "Starts one
-  run to check the set-up". Every other step, and a step not done, shows its page's heading
-  (`step_heading/2`).
+  workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
+  titles of the collections the step's done rule counts, or their number from 3 on, Model
+  the chosen model as the step shows it, Harness the chosen harness as the step shows it,
+  and Machines the node pool that runs the workspace's runs. Test run shows what it does,
+  "Starts one run to check the set-up". A step not done, and a done step whose value is
+  not at hand, shows its page's heading (`step_heading/2`).
   """
   @spec step_note(atom, boolean, %Workspace{}) :: String.t()
   def step_note(:name, _done, %Workspace{name: name}), do: name
@@ -361,6 +365,30 @@ defmodule ApiaryWeb.SetUpComponents do
     case WorkspaceSetup.source_names(workspace, Domain.for_workspace(workspace)) do
       [] -> step_heading(:sources, workspace)
       names -> Enum.join(names, ", ")
+    end
+  end
+
+  def step_note(:destinations, true, workspace) do
+    case WorkspaceSetup.destination_names(workspace, Domain.for_workspace(workspace)) do
+      [] ->
+        step_heading(:destinations, workspace)
+
+      names when length(names) <= 2 ->
+        Enum.join(names, ", ")
+
+      names ->
+        count = length(names)
+        ngettext("%{number} target", "%{number} targets", count, number: Format.number(count))
+    end
+  end
+
+  def step_note(:model, true, workspace),
+    do: WorkspaceSetup.model_name(workspace) || step_heading(:model, workspace)
+
+  def step_note(:harness, true, workspace) do
+    case HarnessComponents.harness_words(Sources.chosen(workspace)) do
+      "" -> step_heading(:harness, workspace)
+      words -> words
     end
   end
 
