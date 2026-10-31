@@ -38,6 +38,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
+  use ApiaryWeb, :verified_routes
+
   import Ecto.Query, only: [from: 2]
   import Phoenix.Component, only: [sigil_H: 2]
 
@@ -134,7 +136,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: Enum.map(get(status, :outputs) || [], &output/1),
-      escalation: escalation(get(status, :escalation), runs),
+      escalation: escalation(scope, get(status, :escalation), runs),
       approvers: approvers(stage),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: Enum.map(index, &indexed/1),
@@ -258,6 +260,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
+  # The set-up step Harness, where an escalation's fix is on it (`set_up_step: :harness`).
+  defp harness_path(%Scope{organisation: organisation, workspace: workspace}, :harness),
+    do: ~p"/#{organisation}/#{workspace}/set-up/harness"
+
+  defp harness_path(_scope, _step), do: nil
+
   # The run an escalation came from, as the run list numbers it: the run whose page has
   # the failed build's log (`build_run`, `rn_…`), else the run that stopped or escalated,
   # by the registered run of its run of the queue.
@@ -303,9 +311,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  defp escalation(nil, _runs), do: nil
+  defp escalation(_scope, nil, _runs), do: nil
 
-  defp escalation(escalation, runs) do
+  defp escalation(scope, escalation, runs) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
 
@@ -313,7 +321,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       cause: Map.get(@causes, cause, :escalate),
       gaps: lines(get(escalation, :gaps)),
       round: get(escalation, :round),
-      run: escalated_run(escalation, runs)
+      run: escalated_run(escalation, runs),
+      harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
   end
 

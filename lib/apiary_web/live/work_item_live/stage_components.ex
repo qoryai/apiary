@@ -365,6 +365,29 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   ## The escalation card
 
+  attr :line, :string, required: true
+  attr :path, :any, default: nil, doc: "the set-up step Harness, where the fix is on it"
+
+  # A line of an escalation's gaps, escaped; in its fix line, the words "the set-up step
+  # Harness" link to that step where the fix is on it.
+  defp gap_line(assigns) do
+    words = "the set-up step Harness"
+
+    parts =
+      if is_binary(assigns.path), do: String.split(assigns.line, words, parts: 2), else: []
+
+    assigns = assign(assigns, words: words, parts: parts)
+
+    ~H"""
+    <%= case @parts do %>
+      <% [before, rest] -> %>
+        {before}<.link navigate={@path} class="q-link">{@words}</.link>{rest}
+      <% _none -> %>
+        {@line}
+    <% end %>
+    """
+  end
+
   attr :id, :string, required: true
   attr :page, :map, required: true
   attr :number, :integer, required: true
@@ -374,7 +397,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       assign(
         assigns,
         :escalation,
-        assigns.page.escalation || %{cause: :escalate, gaps: [], run: nil}
+        assigns.page.escalation || %{cause: :escalate, gaps: [], run: nil, harness_path: nil}
       )
 
     ~H"""
@@ -384,7 +407,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       </h3>
       <p id={"#{@id}-cause"}>{cause_words(@escalation.cause, @page)}</p>
       <ul :if={@escalation.gaps != []} id={"#{@id}-gaps"} class="list-disc ps-5">
-        <li :for={gap <- @escalation.gaps}>{gap}</li>
+        <li :for={{gap, i} <- Enum.with_index(@escalation.gaps)}>
+          <.gap_line line={gap} path={i == 1 && @escalation[:harness_path]} />
+        </li>
       </ul>
       <p :if={@escalation.run} id={"#{@id}-run"} class="text-xs opacity-70">
         {gettext("From run %{run} · %{workflow}",

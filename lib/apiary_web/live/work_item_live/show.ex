@@ -599,10 +599,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       )
 
   defp refused(:not_live, _flow),
-    do:
-      gettext(
-        "Reload the page. The work item is closed or declined, so its stage takes no action."
-      )
+    do: gettext("Reload the page. A closed or declined work item has no stage actions.")
 
   defp refused(:not_placed, _flow),
     do: gettext("Reload the page. The work item is not in a stage.")

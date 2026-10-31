@@ -14232,12 +14232,12 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page. The work item is closed or declined, so it has no stage to check."
+msgid "Reload the page. A closed or declined work item has no stage actions."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page. The work item is closed or declined, so its stage takes no action."
+msgid "Reload the page. The work item is closed or declined, so it has no stage to check."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex

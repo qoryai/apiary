@@ -796,7 +796,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert work_item |> decisions(:approve) |> Enum.all?(&(&1.stage_id == @explore))
 
       assert notice(view) =~
-               "Reload the page. The work item is closed or declined, so its stage takes no action."
+               "Reload the page. A closed or declined work item has no stage actions."
     end
 
     test "a note over 4,000 characters", %{conn: conn, scope: scope} do
@@ -852,6 +852,100 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       refute html =~ "\\n"
       refute html =~ "<b>image</b>"
+    end
+  end
+
+  describe "an escalation whose fix is on the set-up step Harness" do
+    # A work item escalated at Explore because its run's harness did not resolve, with the
+    # walk's `failure` (nil for none) and the gaps' fix line `fix`.
+    defp harness_escalated!(scope, failure, fix) do
+      work_item = taken_in_fixture(scope)
+      run = newest_run(work_item)
+
+      run =
+        run
+        |> Ecto.Changeset.change(
+          state: :ended,
+          end_cause: :harness_unresolved,
+          result_outcome: :error
+        )
+        |> Repo.update!()
+
+      if failure do
+        Repo.delete_all(
+          from h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id
+        )
+
+        Repo.insert!(%Apiary.Harnesses.RunHarness{
+          dispatch_run_id: run.id,
+          state: :failed,
+          failure: failure
+        })
+      end
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [stage_state: :escalated]
+      )
+
+      work_item = Repo.get!(WorkItem, work_item.id)
+      escalate!(work_item, :run_stopped, "The run's harness did not resolve.\n" <> fix, run)
+      work_item
+    end
+
+    defp harness(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/set-up/harness"
+
+    test "links the words in the fix line, and escapes the rest", %{conn: conn, scope: scope} do
+      work_item =
+        harness_escalated!(
+          scope,
+          "no_harness",
+          "Owners and admins of <b>Main</b> choose a harness on the set-up step Harness."
+        )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+      gaps = "#work-item-stage-escalation-gaps li:nth-child(2)"
+
+      assert has_element?(
+               view,
+               ~s|#{gaps} a[href="#{harness(scope)}"]|,
+               "the set-up step Harness"
+             )
+
+      assert has_element?(view, gaps, "Owners and admins of <b>Main</b> choose a harness on")
+      refute html =~ "<b>Main</b>"
+      refute has_element?(view, "#work-item-stage-escalation-gaps li:nth-child(1) a")
+    end
+
+    test "a fix line without the words shows as it is", %{conn: conn, scope: scope} do
+      work_item = harness_escalated!(scope, "no_harness", "Owners and admins choose a harness.")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-gaps li:nth-child(2)",
+               "Owners and admins choose a harness."
+             )
+
+      refute has_element?(view, "#work-item-stage-escalation-gaps a")
+    end
+
+    test "no link where the fix is not on that step", %{conn: conn, scope: scope} do
+      work_item =
+        harness_escalated!(
+          scope,
+          nil,
+          "Owners and admins choose a harness on the set-up step Harness."
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-gaps li:nth-child(2)",
+               "on the set-up step Harness."
+             )
+
+      refute has_element?(view, "#work-item-stage-escalation-gaps a")
     end
   end
 
