@@ -6335,11 +6335,6 @@ msgctxt "plain"
 msgid "Connect opens the system in this tab. After its steps, it sends you back here."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Connect the account that holds %{source} to this organisation, then run Explore again. No connection of this organisation reaches that harness source."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6431,6 +6426,11 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support: Qory Apiary could not read the targets of the %{adapter} adapter."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -9239,6 +9239,12 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -13533,6 +13539,12 @@ msgstr ""
 msgid "Owners and admins can change these."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Owners and admins of %{organisation} connect an integration that covers %{source} in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{organisation} reaches it."
+msgstr ""
+
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} finish the set-up."
@@ -13547,6 +13559,12 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} install integrations."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Owners and admins of %{org} check the address on the set-up step Harness, or link the repository through a connection. %{host} did not serve %{source} as a git repository over HTTPS."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -14086,12 +14104,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, contact support to have it read from %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -19530,6 +19542,11 @@ msgstr ""
 msgid "Try again"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Try again later: %{host} limits how often Qory Apiary reads from it, and that limit is reached."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Turn failed"
@@ -20410,6 +20427,11 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "Who"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -22789,6 +22811,16 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "this instance"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "this organisation"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "this workspace"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

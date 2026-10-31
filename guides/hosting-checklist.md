@@ -58,6 +58,11 @@ being one. Every variable named here is described in [Install and configure](ins
   release's download links, which its author chooses on GitLab and Codeberg, are still
   followed to any public https host: [Install and configure](install.md#integrations).
 <!-- /feature -->
+<!-- feature: factory -->
+- **Where public harnesses come from.** Qory Apiary reads a public harness repository
+  from its host over HTTPS, from public addresses only. Allow the Qory Apiary server
+  outbound HTTPS to each host your harnesses use, such as `github.com:443`.
+<!-- /feature -->
 - **The proxy's address.** Behind a reverse proxy, set `TRUSTED_PROXIES` to the address
   the proxy's connections come from; unset, every client counts as the proxy, and they
   share its limits on signing in. With `compose.yaml` and a proxy on the same machine,

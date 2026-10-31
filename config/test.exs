@@ -138,6 +138,11 @@ config :apiary, Apiary.Integrations.Fetch,
   resolver: Apiary.FetchStub,
   req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
 
+# A public harness repository is never read over the network in a test: its requests go
+# to `Apiary.PublicGitStub`, which answers with the `Req.Test` stub of
+# `Apiary.Harnesses.PublicGit` a test set (`Apiary.PublicGitServer`), else `404`.
+config :apiary, Apiary.Harnesses.PublicGit, req_options: [plug: Apiary.PublicGitStub]
+
 # Qory Apiary's calls to an adapter resolve its host by the test resolver's rule too
 # (`Apiary.FetchStub`), which a test may replace with a function of the host
 # (`resolver:` in the call's options), and go to the `Req.Test` stub of
