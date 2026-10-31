@@ -72,7 +72,7 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     assert out =~ "<h6>Four</h6>"
   end
 
-  test "shows a text past the bounds, or not UTF-8, as written" do
+  test "is too large past max_bytes, and shows a text past the other bounds, or not UTF-8, as written" do
     assert Markdown.render(String.duplicate("a", Markdown.max_bytes() + 1)) == :too_large
     assert {:as_written, "\uFFFD# a"} = Markdown.render(<<0xFF, "# a">>)
 
