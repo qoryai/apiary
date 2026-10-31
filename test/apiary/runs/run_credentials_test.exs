@@ -694,7 +694,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     test "a system that is no host name names the target's integration", ctx do
-      two = two_integrations!(ctx, %{system: "forge..example.com", path: "acme/shop"})
+      # A stored work item's system keeps the rule (`work_items_target_shape_check`), so
+      # the system is broken in memory, and on the forge's collection, whose check allows it.
+      two = two_integrations!(ctx)
+      set!(Collection, two.forge.id, target_system: "forge..example.com")
+      work_item = %{two.work_item | target_system: "forge..example.com"}
 
       run = %{
         Repo.get!(DispatchRun, two.queued.id)
@@ -702,7 +706,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
           end_cause: :variables_invalid
       }
 
-      assert Apiary.Stages.StopCause.text(run, two.work_item) ==
+      assert Apiary.Stages.StopCause.text(run, work_item) ==
                "The run did not start, because its variable QORY_RUN_SYSTEM, the system forge..example.com of target acme/shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
                  "Owners and admins of #{ctx.scope.organisation.name} check #{two.integration} in Organisation settings › Integrations."
     end
