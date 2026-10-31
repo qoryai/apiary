@@ -13823,7 +13823,7 @@ msgid "Reload the page. The work item is closed or declined, so it has no stage 
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Reload the page. The work item is closed or declined, so its stage takes no action."
 msgstr ""
 
@@ -13833,12 +13833,12 @@ msgid "Reload the page. The work item is not in a stage, so there is nothing to 
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Reload the page. The work item is not in a stage."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Reload the page. The work item is not in this workspace any more."
 msgstr ""
 
