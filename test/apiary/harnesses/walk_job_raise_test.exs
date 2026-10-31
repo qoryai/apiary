@@ -35,6 +35,7 @@ defmodule Apiary.Harnesses.WalkJobRaiseTest do
   test "a write that raises leaves the run waiting, and on the last attempt ends it" do
     %{scope: scope} = sign_up_fixture()
     {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, "explore"}, nil)
+    :ok = Apiary.StagesFixtures.explore_runs!(scope, "explore")
 
     {:ok, _choice} =
       Stacks.put_stack(scope, {:workspace, scope.workspace}, @setting, choice: :repository)

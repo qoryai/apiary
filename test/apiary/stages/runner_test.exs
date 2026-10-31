@@ -278,6 +278,12 @@ defmodule Apiary.Stages.RunnerTest do
       seq = stage([loop([wf("a")]), wf("b")])
       assert queued(Runner.step(seq, pos(0, 0, 3), {:accept, :round_limit})) == {"b", 1, nil, 3}
       assert %{state: :at_gate} = Runner.step(build(), pos(1, 1, 3), {:accept, :round_limit})
+
+      # After the last loop, the gate opens without the checks; a failed one stays shown.
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(build(), pos(1, 1, 3), {:accept, :round_limit}, %{
+                 failed_checks: ["demo"]
+               })
     end
 
     test "accept at the end goes to the gate without the checks" do

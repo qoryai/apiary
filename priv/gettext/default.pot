@@ -10366,7 +10366,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Moved a work item back to an earlier stage, from an escalation"
+msgid "Moved a work item back to an earlier stage to resolve an escalation"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

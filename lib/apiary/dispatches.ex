@@ -529,7 +529,8 @@ defmodule Apiary.Dispatches do
   end
 
   # end_held/4 ends the waiting runs of the work items `work_item_ids`, which the caller
-  # holds `FOR KEY SHARE`, that are not prebuilds, in the workspace `workspace_id`, of
+  # holds `FOR KEY SHARE`, or `FOR UPDATE` with the workflow model on
+  # (`Apiary.Environments.hold_build/2`), that are not prebuilds, in the workspace `workspace_id`, of
   # work items with `target`, `build_failed`, with the outcome `error`, with any stale
   # dispatch of them (`run_ended`), inside the caller's transaction
   # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
@@ -582,7 +583,8 @@ defmodule Apiary.Dispatches do
       end
 
     # Hand-over: with the workflow model, the stage runner acts on each run's end
-    # (`Apiary.Stages.run_ended/1`). It writes the work items, which the caller holds.
+    # (`Apiary.Stages.run_ended/2`). It writes the work items, which the caller holds
+    # `FOR UPDATE`.
     staged =
       if Apiary.Stages.on?(), do: Enum.flat_map(run_ids, &Apiary.Stages.run_ended/1), else: []
 

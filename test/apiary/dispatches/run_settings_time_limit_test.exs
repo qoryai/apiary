@@ -31,6 +31,8 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   # Stores the workspace's stack row for `workflow`: the run's one row with a workflow.
   defp workflow!(%{scope: scope}, workflow) do
     {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, workflow}, @harness)
+    # With the workflow model, Explore's process runs the workflow the page saved.
+    :ok = Apiary.StagesFixtures.explore_runs!(scope, workflow)
   end
 
   # A fresh work item's explore run, queued, its harness walk resolved with `walk`, and
@@ -83,10 +85,14 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _version} = Apiary.Processes.save(scope, scope.workspace, document)
     end
 
-    test "sends the lower of the entry's and the stack's time limit", ctx do
+    test "sends the lower of the entry's and the resolved time limit, by the entry's workflow",
+         ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+      # The stage's run starts explore-a-ticket, so the Workflow page's saved workflow
+      # sets nothing for it.
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 30)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
 
       entry_limits!(ctx, %{"time_limit" => "45m"})
       assert %{"time_limit_minutes" => 45} = settings(claim!(ctx, place))
@@ -95,12 +101,18 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
     end
 
-    test "sends the entry's limit with none from the stack, at least 15 minutes", ctx do
+    test "sends no limit when none resolved, as the entry only lowers one", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
 
       entry_limits!(ctx, %{"time_limit" => "1h30m"})
-      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+      refute Map.has_key?(settings(claim!(ctx, place)), "time_limit_minutes")
+    end
+
+    test "lowers to at least 15 minutes", ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
 
       entry_limits!(ctx, %{"time_limit" => "5m"})
       assert %{"time_limit_minutes" => 15} = settings(claim!(ctx, place))
@@ -245,7 +257,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
     claimed = claim!(ctx, place)
-    assert settings(claimed) == %{"runtime" => @runtime}
+
+    # With the workflow model, Explore's process names the workflow, so the two rows do not
+    # leave it unknown (`Apiary.Stages.run_workflow/1`).
+    if Apiary.Stages.on?(),
+      do: assert(settings(claimed) == %{"runtime" => @runtime, "time_limit_minutes" => 90}),
+      else: assert(settings(claimed) == %{"runtime" => @runtime})
+
     assert claimed.harness == nil
   end
 

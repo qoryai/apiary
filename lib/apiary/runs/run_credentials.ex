@@ -160,13 +160,26 @@ defmodule Apiary.Runs.RunCredentials do
   end
 
   # The run's access level: its harness walk's, `:read` for a prebuild and for a run with
-  # no walk.
+  # no walk. With the workflow model, the lower of the walk's and the stage entry's
+  # (`Apiary.Stages.limits/1`), as the run's documents have it (`Apiary.Dispatches.Handover`).
   defp access(%DispatchRun{step: @prebuild}), do: :read
 
-  defp access(%DispatchRun{id: id}) do
-    Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
-      :read
+  defp access(%DispatchRun{id: id} = dispatch_run) do
+    walk =
+      Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
+        :read
+
+    lowered(walk, dispatch_run)
   end
+
+  defp lowered(:write, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{access: :read} -> :read
+      _none -> :write
+    end
+  end
+
+  defp lowered(access, _dispatch_run), do: access
 
   @doc false
   # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run

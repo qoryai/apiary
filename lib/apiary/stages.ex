@@ -68,6 +68,9 @@ defmodule Apiary.Stages do
 
   # Transition (D1): the workflow whose runs return today's explore v1 result.
   @explore_workflow "explore-a-ticket"
+  # The runs a workflow outside a loop may have in one round of its entry: its first,
+  # and one after each set of answers, as today's Explore has in one take in.
+  @question_runs 3
   @action :"gate.approve"
   @max_note 4000
 
@@ -181,8 +184,11 @@ defmodule Apiary.Stages do
     end
   end
 
-  # run_ended/1 acts on the end of the run of the queue `run`, or its id, inside the
-  # caller's transaction, which holds its work item: when the run is the newest of its work
+  # run_ended/2 acts on the end of the run of the queue `run`, or its id, inside the
+  # caller's transaction, which locked its work item `FOR UPDATE` before the run of the
+  # queue (`hold_work_item/1`, or `Apiary.Dispatches.RunEnd.hold/1`, or
+  # `Apiary.Environments.hold_build/2` for the runs a build held), with `context` what a
+  # claim knew (`StopCause.context/0`): when the run is the newest of its work
   # item's stage, the stage is running, and what the run gave is known. The work items to
   # tell once the transaction commits (`Apiary.Dispatches.broadcast/1`).
   @doc false
@@ -256,9 +262,36 @@ defmodule Apiary.Stages do
 
   def limits(%DispatchRun{}), do: nil
 
+  # run_workflow/1 is the workflow a run of a stage starts, its `workflow`, with the
+  # workflow model on: the name its harness walk, its documents, its time limits and its
+  # model choice are read by. nil for a run the stage runner did not queue, or with the
+  # workflow model off, which keep the workflow the Workflow page saved
+  # (`Apiary.Stacks.workflow/2`).
+  @doc false
+  @spec run_workflow(DispatchRun.t()) :: String.t() | nil
+  def run_workflow(%DispatchRun{stage_id: stage_id, workflow: workflow})
+      when is_binary(stage_id) and is_binary(workflow),
+      do: if(on?(), do: workflow)
+
+  def run_workflow(%DispatchRun{}), do: nil
+
+  # walked_workflow/1 is the workflow the harness walk of `run` resolves: for a run of a
+  # stage, its workflow, nil for explore-a-ticket, the Qory harness's one workflow, which
+  # the machine runs with no workflow named, as a run with none today; `:not_staged` for
+  # a run the stage runner did not queue, or with the workflow model off.
+  @doc false
+  @spec walked_workflow(DispatchRun.t()) :: String.t() | nil | :not_staged
+  def walked_workflow(%DispatchRun{} = run) do
+    case run_workflow(run) do
+      nil -> :not_staged
+      @explore_workflow -> nil
+      workflow -> workflow
+    end
+  end
+
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
   # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`), which passes
-  # Explore's stage id as `expect_stage` (`explore_stage_id/1`). A confirmation
+  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`). A confirmation
   # with changes first stores the person's `proposal` version.
   @doc false
   @spec confirmed(Scope.t(), WorkItem.t(), expect) :: {:ok, WorkItem.t()} | {:error, term}
@@ -283,8 +316,117 @@ defmodule Apiary.Stages do
     end
   end
 
+  # explore_again/3 runs `again`, today's Explore again (`Apiary.WorkItems.Moves`), inside
+  # one transaction. Where the work item's stage is escalated, Explore again resolves the
+  # escalation as another round, so it is the same act as `resolve_escalation/5`: the
+  # scope's person needs `gate.approve` and a place among the stage's approvers, else
+  # nothing runs; the escalation then has the person as `resolved_by`, and the trail a
+  # `gate.approve` entry. Without an open escalation, `again` runs as it is.
+  @doc false
+  @spec explore_again(Scope.t(), WorkItem.t(), (-> {:ok, WorkItem.t()} | {:error, term})) ::
+          {:ok, WorkItem.t()} | {:error, term}
+  def explore_again(%Scope{} = scope, %WorkItem{id: id} = work_item, again) do
+    transact(fn ->
+      case Ecto.UUID.cast(id) do
+        {:ok, uuid} -> explore_again_locked(scope, work_item, lock_open(uuid), again)
+        :error -> again.()
+      end
+    end)
+  end
+
+  defp lock_open(id) do
+    case Repo.get(WorkItem, id) do
+      %WorkItem{} -> open_escalation(lock!(id))
+      nil -> nil
+    end
+  end
+
+  defp explore_again_locked(_scope, _work_item, nil, again), do: again.()
+
+  defp explore_again_locked(scope, work_item, %Escalation{} = escalation, again) do
+    expect = [expect_stage: escalation.stage_id]
+
+    with {:ok, _work_item, _version, _stage} <- hold(scope, work_item, expect),
+         {:ok, work_item} <- again.(),
+         {1, _rows} <-
+           Repo.update_all(
+             from(e in Escalation,
+               where: e.id == ^escalation.id and e.resolution == :another_round
+             ),
+             set: [resolved_by_id: scope.user.id]
+           ),
+         {:ok, _entry} <-
+           audit(scope, work_item, "escalation_another_round", %{
+             "stage_id" => escalation.stage_id,
+             "cause" => Atom.to_string(escalation.cause)
+           }) do
+      {:ok, work_item}
+    else
+      {0, _rows} -> {:ok, Repo.get!(WorkItem, work_item.id)}
+      {:error, _reason} = refused -> refused
+    end
+  end
+
+  # answers_used_up/2 escalates the stage of the work item, `round_limit`, with the
+  # newest run's questions as the gaps, when it waits for answers to a run that was the
+  # last its take in may have, as a work item the migration placed may (the answer to it
+  # is refused `:used_up`, `Apiary.WorkItems.Moves`): `{:ok, work_item}`. `refused`
+  # otherwise.
+  @doc false
+  @spec answers_used_up(WorkItem.t(), {:error, term}) :: {:ok, WorkItem.t()} | {:error, term}
+  def answers_used_up(%WorkItem{id: id}, refused) do
+    transact(fn ->
+      work_item = lock!(id)
+
+      with {:ok, version, stage} <- placed(work_item),
+           :waiting_answers <- work_item.stage_state do
+        run = newest_of_take_in(work_item)
+        questions = Enum.join(List.wrap(((run && run.result) || %{})["questions"]), "\n")
+
+        position =
+          position(work_item) ||
+            %{entry: 0, loop_entry: nil, round: max(work_item.stage_round || 1, 1)}
+
+        outcome = %{
+          state: :escalated,
+          position: position,
+          actions: [{:escalate, :round_limit, questions}]
+        }
+
+        {work_item, _run} = apply_outcome(work_item, version, stage, outcome, run && run.id)
+        tell_now(work_item)
+        {:ok, work_item}
+      else
+        _other -> refused
+      end
+    end)
+  end
+
+  defp newest_of_take_in(work_item) do
+    Repo.one(
+      from d in DispatchRun,
+        where: d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in,
+        order_by: [desc: d.attempt],
+        limit: 1
+    )
+  end
+
+  # confirmed_stage_id/2 is the stage whose proposal a confirmation of the run `attempt`
+  # of the work item's take in confirms: the stage that run ran in, or, for a run with no
+  # stage, the stage that runs explore-a-ticket (`explore_stage_id/1`).
+  @doc false
+  @spec confirmed_stage_id(WorkItem.t(), pos_integer) :: String.t() | nil
+  def confirmed_stage_id(%WorkItem{id: id, take_in: take_in} = work_item, attempt) do
+    Repo.one(
+      from d in DispatchRun,
+        where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt == ^attempt,
+        where: d.step == "explore",
+        select: d.stage_id
+    ) || explore_stage_id(work_item)
+  end
+
   # explore_stage_id/1 is the id of the stage of the work item's process version that runs
-  # explore-a-ticket, which a confirmation of its proposal approves; nil for none.
+  # explore-a-ticket; nil for none.
   @doc false
   @spec explore_stage_id(WorkItem.t()) :: String.t() | nil
   def explore_stage_id(%WorkItem{} = work_item) do
@@ -429,16 +571,23 @@ defmodule Apiary.Stages do
       with {:ok, note} <- note(note),
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
-           {:ok, confirmed?} <- confirm_explore(scope, work_item) do
+           {:ok, confirmed?} <- confirm_explore(scope, work_item, stage) do
         # A confirmation already wrote the act's entry in the audit trail.
         approve_locked(scope, lock!(work_item.id), version, stage, note, not confirmed?)
       end
     end)
   end
 
-  # Today's confirmation, where Explore's proposal waits for it: the gate approves what a
-  # member confirms, so the two are one act.
-  defp confirm_explore(scope, work_item) do
+  # Today's confirmation, where Explore's proposal waits for it at the gate of the stage
+  # that runs explore-a-ticket: the gate approves what a member confirms, so the two are
+  # one act. The gate of any other stage confirms nothing.
+  defp confirm_explore(scope, work_item, stage) do
+    if @explore_workflow in Runner.workflows(stage),
+      do: confirm_today(scope, work_item),
+      else: {:ok, false}
+  end
+
+  defp confirm_today(scope, work_item) do
     case Explore.current(work_item, DateTime.utc_now()) do
       %{status: :confirm, step: %{attempt: attempt}} ->
         case Moves.confirm(scope, work_item, attempt, nil) do
@@ -591,8 +740,8 @@ defmodule Apiary.Stages do
   ## Reading
 
   # status/2 is where the work item stands in its stage, as the work item page draws it;
-  # nil for a work item the runner has not placed. `scope`, when given, decides whether
-  # its person may approve the gate.
+  # nil for a work item the runner has not placed. `scope` decides whether its person may
+  # approve the gate; with none, `approvable?` is false.
   @doc false
   @spec status(WorkItem.t(), Scope.t() | nil) :: map | nil
   def status(%WorkItem{} = work_item, scope \\ nil) do
@@ -847,7 +996,7 @@ defmodule Apiary.Stages do
   defp enter_locked(work_item, version, stage), do: apply_event(work_item, version, stage, :enter)
 
   defp apply_event(work_item, version, stage, event, run_id \\ nil) do
-    facts = facts(work_item, version, stage)
+    facts = work_item |> facts(version, stage) |> Map.put(:last_attempt, last_attempt?(run_id))
     outcome = Runner.step(stage, position(work_item), event, facts)
     apply_outcome(work_item, version, stage, outcome, run_id)
   end
@@ -953,10 +1102,20 @@ defmodule Apiary.Stages do
     struct!(work_item, fields)
   end
 
+  # Whether the run `run_id` is the last its take in may have (`attempt` reached `of`).
+  defp last_attempt?(nil), do: false
+
+  defp last_attempt?(run_id) do
+    Repo.one(from d in DispatchRun, where: d.id == ^run_id, select: d.attempt >= d.of) || false
+  end
+
+  # A run's `of`: in a loop, the attempt plus the rounds left; outside a loop, the runs
+  # its entry may have in one round, as many as a take in of today's Explore
+  # (`@question_runs`), so a workflow may ask questions and run again with the answers.
   defp queue!(work_item, version, stage, spec) do
     rounds_left =
       case Runner.rounds(stage, spec.entry) do
-        nil -> 0
+        nil -> @question_runs - 1 - runs_of_entry(work_item, stage, spec)
         rounds -> rounds - spec.round
       end
 
@@ -972,6 +1131,18 @@ defmodule Apiary.Stages do
         machine_type: spec.machine_type
       }
     })
+  end
+
+  # The runs queued before for the entry of `spec`, in its round, in the take in.
+  defp runs_of_entry(work_item, stage, spec) do
+    Repo.aggregate(
+      from(d in DispatchRun,
+        where: d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in,
+        where: d.stage_id == ^stage["id"] and d.stage_entry == ^spec.entry,
+        where: d.round == ^spec.round
+      ),
+      :count
+    )
   end
 
   defp escalate!(work_item, version, stage, position, cause, gaps, run_id) do
@@ -1193,7 +1364,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp may_approve?(nil, _stage), do: true
+  defp may_approve?(nil, _stage), do: false
 
   defp may_approve?(%Scope{user: user}, stage) do
     case approvers(stage) do
@@ -1584,7 +1755,8 @@ defmodule Apiary.Stages do
         {:ok, nil}
 
       trimmed ->
-        if String.length(trimmed) <= @max_note,
+        # Counted in code points, as the database's `char_length` counts them.
+        if String.valid?(trimmed) and length(String.codepoints(trimmed)) <= @max_note,
           do: {:ok, trimmed},
           else: {:error, {:invalid, :note}}
     end

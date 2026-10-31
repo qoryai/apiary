@@ -255,6 +255,7 @@ defmodule Apiary.StagesTest do
                status.outputs
 
       assert status.gate.approvable?
+      refute Stages.status(work_item).gate.approvable?
 
       assert [
                %{
@@ -409,7 +410,7 @@ defmodule Apiary.StagesTest do
       ])
 
       work_item = take_in!(scope)
-      assert %DispatchRun{loop_entry: nil, of: 1} = newest_run(work_item)
+      assert %DispatchRun{loop_entry: nil, of: 3} = newest_run(work_item)
       work_item = end_run!(work_item, understood_result())
 
       assert %Escalation{cause: :check_failed, gaps: "No mockup was stored in this stage."} =
@@ -741,17 +742,21 @@ defmodule Apiary.StagesTest do
                Repo.get_by(Escalation, work_item_id: work_item.id)
     end
 
-    test "accept counts the loop as passed; a missing proposal then runs another round", %{
+    test "accept counts the loop as passed and opens the gate, the failed check shown", %{
       scope: scope,
       work_item: work_item
     } do
-      assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
+      assert {:ok, %WorkItem{stage_state: :at_gate, stage_round: 1}} =
                Stages.resolve_escalation(scope, work_item, :accept, nil,
                  expect_stage: reload(work_item).stage_id
                )
 
       assert %Escalation{resolution: :accept} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      assert escalation(work_item) == nil
+      assert runs(work_item) |> length() == 1
+      assert [%{type: "proposal", check: :missing}] = Stages.status(work_item).outputs
     end
 
     test "accept at the end of the sequence opens the gate without the checks", %{scope: scope} do
@@ -766,15 +771,7 @@ defmodule Apiary.StagesTest do
       work_item = take_in!(scope) |> end_run!(questions_result())
       assert %Escalation{cause: :round_limit} = escalation(work_item)
 
-      assert {:ok, %WorkItem{stage_state: :escalated, stage_entry: 1}} =
-               Stages.resolve_escalation(scope, work_item, :accept, nil,
-                 expect_stage: reload(work_item).stage_id
-               )
-
-      assert %Escalation{cause: :round_limit, gaps: "No proposal was stored in this stage."} =
-               escalation(work_item)
-
-      assert {:ok, %WorkItem{stage_state: :at_gate}} =
+      assert {:ok, %WorkItem{stage_state: :at_gate, stage_entry: 1}} =
                Stages.resolve_escalation(scope, work_item, :accept, nil,
                  expect_stage: reload(work_item).stage_id
                )
@@ -1034,6 +1031,122 @@ defmodule Apiary.StagesTest do
       end
 
       assert %Escalation{resolution: nil} = escalation(work_item)
+    end
+  end
+
+  describe "the review's rules" do
+    test "approving another stage's gate confirms no proposal; a confirmation there is refused",
+         %{scope: scope} do
+      work_item = explore_gate_fixture(scope)
+
+      {:ok, _moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @explore)
+      assert %{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+
+      assert WorkItems.confirm(scope, reload(work_item), 1) == {:error, :stage_changed}
+      assert Repo.get_by(Confirmation, work_item_id: work_item.id) == nil
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert Repo.get_by(Confirmation, work_item_id: work_item.id) == nil
+
+      assert Repo.all(
+               from e in Entry,
+                 where: e.subject_id == ^work_item.id and e.action == "work_item.confirm",
+                 select: e.id
+             ) == []
+    end
+
+    test "Explore again on an escalated stage needs a listed approver, and records them", %{
+      scope: scope
+    } do
+      member = member_fixture(scope)
+
+      save!(scope, [
+        explore_stage(%{
+          "gate" => %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}}
+        })
+      ])
+
+      work_item = take_in!(scope) |> end_run!(nil)
+      assert reload(work_item).stage_state == :escalated
+
+      assert WorkItems.explore_again(member.scope, work_item, 1) == {:error, :not_approver}
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
+      assert %{stage_state: :running, stage_round: 2} = reload(work_item)
+
+      user_id = scope.user.id
+
+      assert %Escalation{resolution: :another_round, resolved_by_id: ^user_id} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      assert %{"change" => "escalation_another_round", "cause" => "run_stopped"} =
+               Repo.one(
+                 from e in Entry,
+                   where: e.action == "gate.approve" and e.subject_id == ^work_item.id,
+                   select: e.details
+               )
+    end
+
+    test "questions outside a loop get three runs, then escalate round_limit", %{scope: scope} do
+      save!(scope, [explore_stage(%{"sequence" => [%{"workflow" => "explore-a-ticket"}]})])
+      work_item = take_in!(scope)
+      assert [%DispatchRun{attempt: 1, of: 3}] = runs(work_item)
+
+      work_item = end_run!(work_item, questions_result())
+      assert work_item.stage_state == :waiting_answers
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "Main", "2" => "Spring"})
+      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
+
+      work_item = end_run!(reload(work_item), questions_result())
+      assert work_item.stage_state == :waiting_answers
+      {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "Main", "2" => "Spring"})
+      assert %DispatchRun{attempt: 3, of: 3} = newest_run(work_item)
+
+      work_item = end_run!(reload(work_item), questions_result())
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{cause: :round_limit, gaps: "Which basket?\nWhich sale?"} =
+               escalation(work_item)
+    end
+
+    test "an answer to the last run a placed work item may have escalates round_limit", %{
+      scope: scope
+    } do
+      save!(scope, [explore_stage(%{"sequence" => [%{"workflow" => "explore-a-ticket"}]})])
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      # As the migration placed it: waiting for answers to the last run of the take in.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: [of: 1])
+
+      work_item = end_run!(work_item, questions_result())
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :waiting_answers]
+        )
+
+      assert {:ok, %WorkItem{stage_state: :escalated}} =
+               WorkItems.answer(scope, reload(work_item), 1, %{"1" => "Main", "2" => "Spring"})
+
+      assert %Escalation{cause: :round_limit, gaps: "Which basket?\nWhich sale?"} =
+               escalation(work_item)
+    end
+
+    test "a note is measured in code points, as the database measures it", %{scope: scope} do
+      work_item = explore_gate_fixture(scope)
+      # 2,001 letters with a combining accent: 2,001 graphemes, 4,002 code points.
+      long = String.duplicate("e\u0301", 2001)
+
+      assert Stages.approve(scope, work_item, long, expect_stage: @explore) ==
+               {:error, {:invalid, :note}}
+
+      fits = String.duplicate("e\u0301", 2000)
+      assert {:ok, _} = Stages.approve(scope, work_item, fits, expect_stage: @explore)
     end
   end
 end

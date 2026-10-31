@@ -212,6 +212,43 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert [%RunCredential{access: :write}] = entries()
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a stage entry with read access lowers a write walk", ctx do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [%{"workflow" => "explore-a-ticket", "access" => "read"}],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+
+      {_work_item, queued} = queued!(ctx)
+      assert %DispatchRun{stage_id: "st_r79kph11eg"} = Repo.get!(DispatchRun, queued.id)
+
+      case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
+        nil ->
+          Repo.insert!(%RunHarness{
+            dispatch_run_id: queued.id,
+            state: :resolved,
+            origin: :none,
+            access_level: :write
+          })
+
+        walk ->
+          set!(RunHarness, walk.id, access_level: :write)
+      end
+
+      assert {:ok, %{registered: %Run{}}} = claim(ctx)
+
+      # The adapter is asked for the entry's access when the run asks for its value
+      # (`Apiary.Runs.WorkCredential`), so the row is what it reads.
+      assert [%RunCredential{access: :read}] = entries()
+    end
+
     test "fills the target path exactly as the adapter wrote it", ctx do
       ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
       {work_item, _queued} = queued!(ctx)
