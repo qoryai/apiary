@@ -351,7 +351,8 @@ defmodule ApiaryWeb.NodeComponents do
       </.notice>
       <.notice :if={!@instance_admin} kind={:warning}>
         <.rich text={
-          rich_gettext("%{contact_support}. Machines can't reach %{url}, the address in this command.",
+          rich_gettext(
+            "%{contact_support}. Machines can't reach %{url}, the address in this command.",
             contact_support: ApiaryWeb.Support.rich(),
             url: @url
           )

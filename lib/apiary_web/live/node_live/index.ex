@@ -818,9 +818,7 @@ defmodule ApiaryWeb.NodeLive.Index do
                 :if={instance?(node) and node.kind == :gateway}
                 id={"node-#{node.public_id}-level"}
                 text={
-                  gettext(
-                    "Qory Gateway: the gateway Qory Apiary provides to every organisation."
-                  )
+                  gettext("Qory Gateway: the gateway Qory Apiary provides to every organisation.")
                 }
               />
               <.side_words

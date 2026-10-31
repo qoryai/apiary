@@ -430,7 +430,8 @@ defmodule ApiaryWeb.UserLive.Settings do
 
     case Accounts.change_user_email(user, user_params) do
       _changeset when not mail? ->
-        {:noreply, socket |> assign(:mail?, false) |> put_flash(:error, plain_text(no_mail_for_email()))}
+        {:noreply,
+         socket |> assign(:mail?, false) |> put_flash(:error, plain_text(no_mail_for_email()))}
 
       %{valid?: true} = changeset ->
         Accounts.deliver_user_update_email_instructions(
