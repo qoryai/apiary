@@ -27,7 +27,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # The characters a filename may not contain: a path separator, and the control
   # characters, U+0000 among them.
   @refused_in_filename ~r/[\/\\\x{0}-\x{1F}\x{7F}-\x{9F}]/u
-  @refused_in_text ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}]/u
+  @refused_in_text ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u
   @max_note 4000
   @max_gaps 32_000
   @max_files 100
