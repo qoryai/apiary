@@ -16,6 +16,11 @@ const MAX_LABEL = 40
 const MAX_PREVIEW = 1000
 
 const decoder = new TextDecoder()
+const encoder = new TextEncoder()
+
+// A text as a string of its own bytes: a slice of a string keeps the whole string in memory,
+// so a short preview of a long value would keep that value past `MOST_KEPT`.
+const flat = text => decoder.decode(encoder.encode(text))
 
 // The bytes of a stream as lines, each with its line feed. A chunk may end inside a
 // character or inside a line, so lines are found in bytes and only a whole line is decoded;
@@ -93,7 +98,7 @@ export const clean = text => text.replace(/[\t\n\r]+/g, " ").replace(/[\u0000-\u
 
 // A `type` or `subtype`: letters, digits and `_.:-`, at most 40 characters.
 export const label = value =>
-  typeof value === "string" ? value.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, MAX_LABEL) : ""
+  typeof value === "string" ? flat(value.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, MAX_LABEL)) : ""
 
 // What a row shows of an object: its top-level `result`, else the first text in
 // `message.content`.
@@ -118,7 +123,7 @@ export const entry = ({bytes, start}) => {
     bytes,
     open: false,
     names: [label(value.type), label(value.subtype)].filter(Boolean).join(" "),
-    preview: clean(previewText(value).slice(0, MAX_PREVIEW)).trim(),
+    preview: flat(clean(previewText(value).slice(0, MAX_PREVIEW)).trim()),
   }
 }
 
