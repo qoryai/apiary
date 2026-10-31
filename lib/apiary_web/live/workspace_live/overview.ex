@@ -356,7 +356,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
            notes:
              Map.new(
                set_up.steps,
-               &{&1.id, SetUpComponents.step_note(&1.id, &1.done, scope.workspace)}
+               &{&1.id, SetUpComponents.step_note(scope, &1.id, &1.done)}
              ),
            page_title: scope.workspace.name <> " · " <> scope.organisation.name
          )}

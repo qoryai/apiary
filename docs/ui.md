@@ -1287,11 +1287,14 @@ mark and the theme menu.
   setting up Main", each step with its state, a line under its name, and a link to its
   page, and **Continue: Model**, to the first step that is not done
   (`SetUpComponents.workspace_set_up/1`). The line is a done step's value where one is at
-  hand (Name the workspace's name, Work sources the integrations by name, Machines the
-  node pool), "Starts one run to check the set-up" for Test run, else the step's page's
-  heading ("Where does work for Main come from?") (`SetUpComponents.step_note/3`). A
-  person who may not take the next step's action, as its page checks
-  (`SetUpComponents.changes_step?/2`), reads "Main is being set up", "Owners and admins of
+  hand (Name the workspace's name, Work sources the integrations by name, Destinations
+  the repositories by name or, from 3 on, "3 repositories", Model the model as its step
+  shows it chosen, Harness "Qory harness" or the harness repository, Machines the node
+  pool), read for the person as the step's page reads it, "Starts one run to check the
+  set-up" for Test run, else the step's page's heading ("Where does work for Main come
+  from?"), also for a value the person's step page does not show them
+  (`SetUpComponents.step_note/3`). A person who may not take the next step's action, as
+  its page checks (`SetUpComponents.changes_step?/2`), reads "Main is being set up", "Owners and admins of
   Acme finish the set-up.", and the steps with their state, with no **Continue**. The
   organisation's overview shows "Set-up: 3 of 7 steps" under the workspace's name.
 - **The link up** is the first line of the workspace's sidebar on every page of the
