@@ -264,7 +264,9 @@ defmodule Apiary.MixProject do
             Apiary.Secrets.InstanceSecretValue,
             Apiary.Runs.RunCredentialIssue
           ]
-        ]
+        ],
+        # A workspace's process, of `workflow_model`.
+        workflow_model: [modules: [~r/^Apiary\.Processes/]]
       ]
     ]
   end

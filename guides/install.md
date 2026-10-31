@@ -487,6 +487,12 @@ environment variable SMTP_TLS must be always, if_available or never
   test run among them, model providers and model, and workflow. Opt-in. Needs
   `observability`, `security` and `secrets`.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- `workflow_model`: the process of each workspace: its stages in order, each with its
+  workflows and its gate, kept as numbered versions, and trial versions that chosen work
+  items are assigned to. Opt-in. Needs `observability`, `security`, `secrets` and
+  `factory`.
+<!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
 the discovery document leave it out, and the documentation at `/docs` does not describe

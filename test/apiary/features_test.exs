@@ -101,6 +101,23 @@ defmodule Apiary.FeaturesTest do
                {:error, "path_rules needs security, which is left out"}
     end
 
+    test "workflow_model is opt-in and needs factory and what it needs: off unless a list names it" do
+      assert :workflow_model in Features.opt_in()
+      assert Features.needs(:workflow_model) == [:observability, :security, :secrets, :factory]
+      assert :workflow_model in Features.documented()
+
+      for value <- [nil, "", "all", "observability,security,secrets,factory"] do
+        assert {:ok, features} = Features.parse(value)
+        refute :workflow_model in features, inspect(value)
+      end
+
+      assert Features.parse("observability,security,secrets,factory,workflow_model") ==
+               {:ok, [:observability, :security, :secrets, :factory, :workflow_model]}
+
+      assert Features.parse("observability,security,secrets,workflow_model") ==
+               {:error, "workflow_model needs factory, which is left out"}
+    end
+
     test "factory is opt-in and needs observability, security and secrets: off unless a list names it" do
       assert :factory in Features.opt_in()
       assert Features.needs(:factory) == [:observability, :security, :secrets]
@@ -297,13 +314,22 @@ defmodule Apiary.FeaturesTest do
 
     test "a feature that needs a hidden one is not shown, as the scope keeps it", ctx do
       for {named, hidden} <- [
-            {[:secrets], [:secrets, :factory]},
+            {[:secrets], [:secrets, :factory, :workflow_model]},
             {[:path_rules], [:path_rules]},
-            {[:factory], [:factory]},
+            {[:factory], [:factory, :workflow_model]},
             {[:registry], [:registry]},
-            {[:security], [:security, :secrets, :path_rules, :factory, :registry]},
+            {[:security],
+             [:security, :secrets, :path_rules, :factory, :registry, :workflow_model]},
             {[:observability],
-             [:observability, :security, :secrets, :path_rules, :factory, :registry]}
+             [
+               :observability,
+               :security,
+               :secrets,
+               :path_rules,
+               :factory,
+               :registry,
+               :workflow_model
+             ]}
           ] do
         scope = %{ctx.person | hidden: Features.hidden_of(named)}
 
@@ -329,7 +355,7 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:secrets, :security, :secrets]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry])
+                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry, :workflow_model])
                )
     end
 
@@ -341,24 +367,32 @@ defmodule Apiary.FeaturesTest do
       end
 
       assert Features.hidden_of([:secrets]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory]))
+               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory, :workflow_model]))
 
       assert Features.hidden_of([:path_rules]) ==
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
 
       assert Features.hidden_of([:factory]) ==
-               Enum.filter(Features.enabled(), &(&1 == :factory))
+               Enum.filter(Features.enabled(), &(&1 in [:factory, :workflow_model]))
 
       assert Features.hidden_of([:security]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry])
+                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry, :workflow_model])
                )
 
       assert Features.hidden_of([:observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
+                 &(&1 in [
+                     :observability,
+                     :security,
+                     :secrets,
+                     :path_rules,
+                     :factory,
+                     :registry,
+                     :workflow_model
+                   ])
                )
     end
 
@@ -368,21 +402,38 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([part]) == [part]
 
       assert Features.hidden_of([part, :secrets, part]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory])) ++ [part]
+               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory, :workflow_model])) ++
+                 [part]
 
       # A part is hidden with its feature without being named (`visible?/2`), so hiding
       # the feature adds no part.
       assert Features.hidden_of([part, :observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
+                 &(&1 in [
+                     :observability,
+                     :security,
+                     :secrets,
+                     :path_rules,
+                     :factory,
+                     :registry,
+                     :workflow_model
+                   ])
                ) ++
                  [part]
 
       assert Features.hidden_of([:observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
+                 &(&1 in [
+                     :observability,
+                     :security,
+                     :secrets,
+                     :path_rules,
+                     :factory,
+                     :registry,
+                     :workflow_model
+                   ])
                )
     end
 
@@ -395,7 +446,15 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:nodes, :observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
+                 &(&1 in [
+                     :observability,
+                     :security,
+                     :secrets,
+                     :path_rules,
+                     :factory,
+                     :registry,
+                     :workflow_model
+                   ])
                ) ++
                  [:nodes]
     end
@@ -438,6 +497,8 @@ defmodule Apiary.FeaturesTest do
       refute :path_rules in Features.built()
       assert :factory in Features.opt_in()
       refute :factory in Features.built()
+      assert :workflow_model in Features.opt_in()
+      refute :workflow_model in Features.built()
     end
 
     test "registry/1 takes each name once, with needs it has and built or not" do
