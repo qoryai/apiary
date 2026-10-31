@@ -203,10 +203,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
   separator.
 - `files`: 1 to 100 files. A `filename` is 1 to 255 bytes of UTF-8, not `.` or `..`,
   with no `/`, no `\`, no control or format character and no line or paragraph separator,
-  and unique in the version. A `content_type` is `type/subtype`. Qory Apiary does not
-  store it: the stored content type comes from the file's bytes, which the index and
-  the file request return. `content_base64` is the content in standard base64 with
-  padding.
+  and unique in the version. A `content_type` is `type/subtype`. The stored content type
+  comes from the file's bytes, and the index returns it. `content_base64` is the content
+  in standard base64 with padding.
 
 The version is stored for the run's work item, by the run, in the run's stage. Returns
 `201`:
