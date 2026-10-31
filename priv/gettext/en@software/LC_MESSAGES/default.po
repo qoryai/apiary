@@ -3030,11 +3030,6 @@ msgstr ""
 msgid "%{workspace} is being set up"
 msgstr ""
 
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "%{workspace} is this instance's only workspace."
-msgstr ""
-
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}."
@@ -3412,6 +3407,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "A pool for %{workspace}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A pool for %{workspace} takes the runs of %{workspace} alone. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -11563,12 +11563,7 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "No new link for %{email}: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No new link for %{email}: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+msgid "No new link for %{email} now: too many invitations were sent in the last 24 hours. Try again later, or %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -12663,11 +12658,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Only a rule of the workspace can be locked: a lock is what holds it against the targets."
 msgstr "Only a rule of the workspace can be locked: a lock is what holds it against the repositories."
-
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "Only an instance admin checks the Qory Pool and the Qory Gateway."
-msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -15189,6 +15179,11 @@ msgstr ""
 msgid "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs in %{workspace} then wait for this pool."
+msgstr ""
+
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -15243,7 +15238,7 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of this target start in the pool's default image."
-msgstr ""
+msgstr "Runs of this repository start in the pool's default image."
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -17101,7 +17096,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment."
+msgid "The Qory Pool: machines Qory Apiary provides for the runs of every workspace that has no pool."
 msgstr ""
 
 #: lib/apiary_web/components/host_components.ex

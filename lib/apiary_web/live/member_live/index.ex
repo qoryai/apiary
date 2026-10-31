@@ -1198,27 +1198,17 @@ defmodule ApiaryWeb.MemberLive.Index do
     if socket.redirected, do: socket, else: push_patch(socket, to: members_path(socket))
   end
 
-  # A new link refused over the day's invitations, in the words of the refusal of an
-  # invitation, said of the invitation's address.
-  defp no_new_link(%Ecto.Changeset{errors: errors}, invitations, id) do
+  # A new link refused over the day's invitations, said of the invitation's address.
+  defp no_new_link(%Ecto.Changeset{}, invitations, id) do
     email = Enum.find_value(invitations, "", &(&1.id == id && &1.email))
-    {_message, opts} = Keyword.fetch!(errors, :email)
 
-    case opts[:validation] do
-      :invitation_attempts_per_day ->
-        gettext(
-          "No new link for %{email}: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later.",
-          email: email,
-          limit: Format.number(opts[:limit])
-        )
-
-      :invitations_per_day ->
-        gettext(
-          "No new link for %{email}: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later.",
-          email: email,
-          limit: Format.number(opts[:limit])
-        )
-    end
+    plain_text(
+      rich_gettext(
+        "No new link for %{email} now: too many invitations were sent in the last 24 hours. Try again later, or %{contact_support}.",
+        email: email,
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+      )
+    )
   end
 
   # One sentence per level, and one for a member no longer listed.

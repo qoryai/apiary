@@ -16,6 +16,7 @@ defmodule Apiary.InvitationLimitTest do
   alias Apiary.Organisations.Invitation
 
   @limit 3
+  @refused ~r/\Awas not invited: .+ sent as many invitations in the last 24 hours as it may\. Try again later, or contact support\.\z/
 
   setup do
     previous = Application.fetch_env!(:apiary, :invitations_per_day)
@@ -28,12 +29,13 @@ defmodule Apiary.InvitationLimitTest do
     do: Organisations.invite_member(scope, %{"email" => unique_user_email()}, & &1)
 
   defp refused_for_the_day?({:error, %Ecto.Changeset{} = changeset}) do
-    errors_on(changeset).email == [
-      "was not invited: this organisation has made #{@limit} invitations in the last 24 hours, as many as it may. Try again later."
-    ]
+    [message] = errors_on(changeset).email
+    message =~ @refused and refused_limit(changeset) == @limit
   end
 
   defp refused_for_the_day?(_result), do: false
+
+  defp refused_limit(changeset), do: changeset.errors[:email] |> elem(1) |> Keyword.fetch!(:limit)
 
   defp renew(scope, invitation, opts \\ []),
     do: Organisations.renew_invitation(scope, invitation.id, & &1, opts)
@@ -169,9 +171,9 @@ defmodule Apiary.InvitationLimitTest do
     Application.put_env(:apiary, Apiary.Mailer, previous)
     assert {:error, %Ecto.Changeset{} = changeset} = invite(scope)
 
-    assert errors_on(changeset).email == [
-             "was not invited: this organisation has tried to send #{3 * @limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
-           ]
+    assert [message] = errors_on(changeset).email
+    assert message =~ @refused
+    assert refused_limit(changeset) == 3 * @limit
 
     # A day later, both counts start again.
     age_invitations!(scope, 25)
@@ -228,8 +230,7 @@ defmodule Apiary.InvitationLimitTest do
 
     for _ <- 1..2, do: assert({:ok, %Invitation{}} = invite(scope))
     assert {:error, %Ecto.Changeset{} = changeset} = invite(scope)
-    assert [message] = errors_on(changeset).email
-    assert message =~ "has made 2 invitations in the last 24 hours"
+    assert refused_limit(changeset) == 2
 
     # The variable, set, wins over it.
     Application.put_env(:apiary, :invitations_per_day, 3)
@@ -242,8 +243,7 @@ defmodule Apiary.InvitationLimitTest do
 
     for _ <- 1..20, do: assert({:ok, %Invitation{}} = invite(scope))
     assert {:error, %Ecto.Changeset{} = changeset} = invite(scope)
-    assert [message] = errors_on(changeset).email
-    assert message =~ "has made 20 invitations in the last 24 hours"
+    assert refused_limit(changeset) == 20
   end
 
   test "a new link with action: counts, and is refused as one without", %{scope: scope} do

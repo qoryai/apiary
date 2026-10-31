@@ -3437,7 +3437,7 @@ defmodule Apiary.Organisations do
   # invitations; every attempt is counted against a ceiling of #{@attempts_per_invitation}
   # times as many, so an organisation cannot send to addresses that bounce without end.
   # The trail keeps an entry for 30 days at the least, far longer than the window.
-  defp refuse_over_daily_limit(changeset, %Organisation{id: allowance_id}) do
+  defp refuse_over_daily_limit(changeset, %Organisation{id: allowance_id, name: name}) do
     limit = Instance.invitations_per_day()
     attempts_limit = limit * @attempts_per_invitation
 
@@ -3483,8 +3483,9 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or contact support."
           ),
+          organisation: name,
           limit: limit,
           validation: :invitations_per_day
         )
@@ -3495,8 +3496,9 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or contact support."
           ),
+          organisation: name,
           limit: attempts_limit,
           validation: :invitation_attempts_per_day
         )
