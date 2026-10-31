@@ -87,8 +87,9 @@ defmodule Apiary.Artifacts do
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
-  # The access actions of artifacts. Until `Apiary.Access` lists them, `authorize/3`
-  # raises `ArgumentError` on them; the tests register them (`Apiary.ArtifactsAccessStub`).
+  # The access actions of artifacts, of the feature `workflow_model` (`Apiary.Access`):
+  # where the feature is off or hidden from the person, `authorize/3` refuses them as
+  # `{:error, :not_found}`.
   @write :"artifact.write"
   @edit_types :"artifact_type.edit"
 

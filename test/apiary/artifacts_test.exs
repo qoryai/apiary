@@ -1,7 +1,5 @@
 defmodule Apiary.ArtifactsTest do
-  # Not async: the store's root is the application's setting, and the access actions are
-  # registered for the node (`Apiary.ArtifactsAccessStub`) until `Apiary.Access` lists
-  # them.
+  # Not async: the store's root is the application's setting.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -12,8 +10,7 @@ defmodule Apiary.ArtifactsTest do
   alias Apiary.Audit.Entry
 
   @moduletag :tmp_dir
-
-  setup :register_access
+  @moduletag needs: :workflow_model
 
   setup %{tmp_dir: tmp_dir} do
     root = Path.join(tmp_dir, "store")
@@ -26,8 +23,6 @@ defmodule Apiary.ArtifactsTest do
     %{dispatch_run: run} = explore_run_fixture(work_item)
     %{root: root, scope: scope, work_item: work_item, run: run}
   end
-
-  defp register_access(context), do: Apiary.ArtifactsAccessStub.register(context)
 
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
   @gif "GIF89a" <> <<1, 0, 1, 0, 0, 0, 0>>
