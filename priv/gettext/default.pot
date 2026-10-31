@@ -2336,6 +2336,7 @@ msgstr ""
 msgid "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{person}, %{date}"
@@ -2898,6 +2899,11 @@ msgstr ""
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} is this instance's only workspace."
+msgstr ""
+
+#: lib/apiary_web/components/workspace_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3492,6 +3498,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "A workspace type has no members to name. Choose Members."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -6542,6 +6553,7 @@ msgstr ""
 msgid "Default gateway"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Default machine type"
@@ -7075,6 +7087,7 @@ msgstr ""
 msgid "Disables the workspace's allow rule there. Other targets keep it."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Discard changes"
@@ -7243,6 +7256,11 @@ msgstr ""
 msgid "Edit rule · %{title}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Edit stages"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Edit the name and note of %{name}"
@@ -7254,9 +7272,19 @@ msgstr ""
 msgid "Edit the rule for %{host}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Edit the stages of %{type}"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Editing version %{number}, %{status}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Editing version %{number}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -8635,6 +8663,7 @@ msgstr ""
 msgid "Hide Qory's words"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/stages_live/index.ex
@@ -10884,6 +10913,11 @@ msgstr ""
 msgid "New workspace"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "New workspaces of this type start with these stages. Each save makes a new version; workspaces that exist keep their stages."
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -10942,6 +10976,7 @@ msgstr ""
 msgid "No adapter yet"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No change."
@@ -13440,6 +13475,11 @@ msgstr ""
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary default"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, an instance admin checks the version and the enrolment of the adapter."
@@ -14990,6 +15030,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #: lib/apiary_web/live/instance_live/node.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/provider_live/index.ex
@@ -15046,6 +15087,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Saved as version %{number}, a trial. Assign work items to it below."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Saved as version %{number}. New workspaces of this type start with it."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -17025,6 +17071,7 @@ msgstr ""
 msgid "The first run has landed."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The first version."
@@ -17796,6 +17843,11 @@ msgstr ""
 msgid "The stack of %{source} lists no workflow: add one under %{key} in its %{file}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "The stages a new workspace of each type starts with. A change here changes no workspace that exists."
+msgstr ""
+
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgid "The step's output was deleted under the workspace's log retention, so the cause is no longer shown."
@@ -18024,6 +18076,11 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
+msgstr ""
+
+#: lib/apiary_web/components/workspace_components.ex
+#, elixir-autogen, elixir-format
+msgid "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -18972,6 +19029,7 @@ msgstr ""
 msgid "Unpin %{target}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Unsaved changes"
@@ -19102,6 +19160,7 @@ msgstr ""
 msgid "Version"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{number}"
@@ -19115,6 +19174,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{number} is now current. Work items taken in from now on use it."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{number} was saved after you opened this page. Copy your changes, then reload."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -19831,6 +19895,12 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings › %{page}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace types"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

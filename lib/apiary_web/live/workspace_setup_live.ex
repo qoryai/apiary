@@ -315,7 +315,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           do: gettext("New workspace"),
           else: gettext("What will this workspace do?")
         ),
-      limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
+      limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation)),
+      # With `workflow_model`, the stages each type's workspace starts with.
+      previews: if(at_limit, do: %{}, else: SetUpComponents.previews(scope))
     )
   end
 
@@ -1780,7 +1782,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:organisation}
     >
       <:crumb>{gettext("New workspace")}</:crumb>
-      <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
+      <SetUpComponents.kind_cards title={@page_title} limit={@limit} previews={@previews} />
     </Layouts.app>
     """
   end
