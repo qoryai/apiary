@@ -91,13 +91,16 @@ defmodule Apiary.Dispatches.RunEnd do
   # a prebuild (`Apiary.Environments.hold_build/2`), in the order of
   # `Apiary.Dispatches.Slots`: the connections and then the collections of its target
   # that name an `environment_ref` `FOR SHARE`, by id, as a Rebuild holds them; then the
-  # work items in Explore whose runs wait for its build `FOR KEY SHARE`, by id; then its
-  # environment record `FOR UPDATE`, as a release holds it (`Apiary.Dispatches.Release`):
+  # work items in Explore whose runs wait for its build `FOR KEY SHARE`, or `FOR UPDATE`
+  # with the workflow model on, by id; then its environment record `FOR UPDATE`, as a release holds it (`Apiary.Dispatches.Release`):
   # so each of them and a Rebuild take turns at the record, a listing's part that holds a
   # collection `FOR UPDATE` and a close that holds a work item `FOR UPDATE` take turns
-  # with the end before the record, and a claim, which takes no held run and holds the
-  # collections it queues a build of `FOR SHARE` as well, never waits on the end for a
-  # run the end ends. For any other run, its work item
+  # with the end before the record. With the workflow model off, a claim, which takes no
+  # held run and holds the collections it queues a build of `FOR SHARE` as well, never
+  # waits on the end for a run the end ends. With it on, a claim that writes a run of one
+  # of those work items a second time waits for the end at that work item: Postgres
+  # checks the write's foreign key with a `FOR KEY SHARE` lock on it. For any other run,
+  # its work item
   # `FOR KEY SHARE`, which a release and a close hold `FOR UPDATE` before the run of the
   # queue: so the end and either of them take turns at the work item. A run whose folded
   # exit says its image was missing (**An image missing**) holds more, in the order of
@@ -123,8 +126,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # `FOR KEY SHARE` lock on the work item. Taken there alone, after the run of the
   # queue, that lock waits on a release that holds the work item and waits on the run of
   # the queue: a deadlock (40P01). Then the run of the queue is locked `FOR UPDATE`, then
-  # the registered run, then the dispatches are written. `refused/1` holds nothing
-  # first: it writes the run of the queue once.
+  # the registered run, then the dispatches are written. With the workflow model off,
+  # `refused/1` holds nothing first: it writes the run of the queue once. With it on, it
+  # holds the work item `FOR UPDATE` first (`Apiary.Stages.hold_work_item/1`), since the
+  # end writes the work item's place in its stage.
   # Every path that locks a run of the queue together with its dispatches or its
   # registered run locks the run of the queue first (`Apiary.Dispatches.Slots`), so two
   # ends of one run take turns there and the second finds it ended. A projection and an
@@ -196,7 +201,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # run of the queue, inside the caller's transaction, from the run of the queue read
   # without a lock, for its columns that never change. For a prebuild, what
   # `Apiary.Environments.hold_build/2` holds: the collections of its target `FOR SHARE`,
-  # the work items whose runs wait for its build `FOR KEY SHARE`, then its environment
+  # the work items whose runs wait for its build `FOR KEY SHARE` (`FOR UPDATE` with the
+  # workflow model on), then its environment
   # record `FOR UPDATE`, returned as `{:build, record, collections, work_item_ids}`. For
   # any other run, its work item `FOR KEY SHARE`, or `FOR UPDATE` with the workflow model
   # on, and nil returned: an end

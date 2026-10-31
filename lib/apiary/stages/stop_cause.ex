@@ -53,10 +53,16 @@ defmodule Apiary.Stages.StopCause do
 
   # set_up_step/1 is the step of the workspace's set-up whose page has the fix for why
   # `run` stopped, `/:org/:workspace/set-up/<step>`, which the fix line names as "the
-  # set-up step Harness": `:harness` for a harness walk that failed on the workspace's
-  # harness choice; nil otherwise.
+  # set-up step Harness" or "the set-up step Model": `:harness` for a harness walk that
+  # failed on the workspace's harness choice, `:model` for a missing or removed model key;
+  # nil otherwise.
   @doc false
-  @spec set_up_step(DispatchRun.t() | nil) :: :harness | nil
+  @spec set_up_step(DispatchRun.t() | nil) :: :harness | :model | nil
+  def set_up_step(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}),
+    do: :model
+
+  def set_up_step(%DispatchRun{end_cause: :key_gone}), do: :model
+
   def set_up_step(%DispatchRun{end_cause: :harness_unresolved, id: id}) do
     case Repo.get_by(RunHarness, dispatch_run_id: id) do
       %RunHarness{failure: failure} when failure in @harness_step_failures -> :harness
@@ -93,7 +99,7 @@ defmodule Apiary.Stages.StopCause do
   defp lines(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}, n, _ctx),
     do:
       {"The gateway did not start the run, because it had no model key for the run.",
-       "Owners and admins of #{n.workspace} set a model key in Workspace settings › Model."}
+       "Owners and admins of #{n.workspace} add a model key on the set-up step Model."}
 
   defp lines(%DispatchRun{end_cause: :run_refused, end_detail: code}, _n, _ctx),
     do: unknown("The gateway did not start the run.", "refusal", code)
@@ -116,7 +122,7 @@ defmodule Apiary.Stages.StopCause do
   defp lines(%DispatchRun{end_cause: :harness_unresolved} = run, n, _ctx),
     do: harness(Repo.get_by(RunHarness, dispatch_run_id: run.id), n)
 
-  defp lines(%DispatchRun{end_cause: :variables_invalid}, n, _ctx), do: variables(n)
+  defp lines(%DispatchRun{end_cause: :variables_invalid} = run, n, _ctx), do: variables(run, n)
 
   defp lines(%DispatchRun{end_cause: :ticket_gone}, _n, _ctx),
     do:
@@ -141,7 +147,7 @@ defmodule Apiary.Stages.StopCause do
   defp lines(%DispatchRun{end_cause: :key_gone}, n, _ctx),
     do:
       {"The run did not start, because the chosen model provider no longer has the chosen key.",
-       "Owners and admins of #{n.workspace} choose another key in Workspace settings › Model."}
+       "Owners and admins of #{n.workspace} choose another key on the set-up step Model."}
 
   defp lines(%DispatchRun{end_cause: :model_gone}, n, _ctx),
     do:
@@ -150,18 +156,44 @@ defmodule Apiary.Stages.StopCause do
 
   defp lines(%DispatchRun{end_cause: :secrets_not_allowed}, n, ctx), do: secrets(n, ctx)
 
-  defp lines(%DispatchRun{end_cause: :target_access_gone}, n, _ctx),
-    do:
-      {"The run did not start, because #{n.integration} no longer reaches target #{n.target}.",
-       "Owners and admins of #{n.organisation} check #{n.integration} in Organisation settings › Integrations."}
+  defp lines(%DispatchRun{end_cause: :target_access_gone} = run, n, _ctx) do
+    case reach(run, n) do
+      {:path_refused, integration} ->
+        {"The run did not start. #{capitalise(integration)} still reaches target #{n.target}, but the target's path has a character that Qory Apiary does not put in an access rule.",
+         "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
+
+      {_gone, integration} ->
+        {"The run did not start, because #{integration} no longer reaches target #{n.target}.",
+         "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
+
+      nil ->
+        {"The run did not start, because no integration of #{n.organisation} reaches target #{n.target}.",
+         "Owners and admins of #{n.organisation} connect one in Organisation settings › Integrations."}
+    end
+  end
 
   defp lines(%DispatchRun{end_cause: cause}, _n, _ctx),
-    do: unknown("The run ended before it started.", "end cause", cause)
+    do: unknown("The run ended before it started.", "end cause", cause, "instance's")
 
-  defp unknown(first, kind, code),
+  defp unknown(first, kind, code, log \\ "run's"),
     do:
       {"#{first} Qory Apiary has no description for its #{kind} (#{code}).",
-       "The instance admin finds the details in the run's log."}
+       "The instance admin finds the details in the #{log} log."}
+
+  # How the run reached its target, as the claim's work entry did
+  # (`Apiary.Runs.RunCredentials.reach/3`), read when the run ends: the state, and the
+  # integration of the collection the entry comes from, as a noun phrase; nil for no
+  # collection.
+  defp reach(run, %{work_item: work_item}) do
+    target = %{system: work_item.target_system, path: work_item.target_path}
+
+    case Apiary.Runs.RunCredentials.reach(run, work_item, target) do
+      {state, %Node{} = adapter} -> {state, "the integration " <> Apiary.Adapters.title(adapter)}
+      nil -> nil
+    end
+  end
+
+  defp capitalise("the" <> rest), do: "The" <> rest
 
   # A gateway that may not receive the run's secrets: one of its keys was made without
   # stored secrets, or the model key may not be sealed for it.
@@ -180,7 +212,7 @@ defmodule Apiary.Stages.StopCause do
   defp secrets(_n, _ctx),
     do:
       {"The run did not start, because its gateway is not allowed to receive the run's secrets.",
-       "The instance admin finds the gateway in the run's log."}
+       "The instance admin finds the gateway in the instance's log."}
 
   defp gateway_fixer(gateway, n) do
     case Gateways.level(gateway) do
@@ -197,11 +229,21 @@ defmodule Apiary.Stages.StopCause do
 
   # A run variable that breaks its rule, found again from the work item's target as the
   # claim formed it (`Apiary.Dispatches.Handover`).
-  defp variables(n) do
+  defp variables(run, n) do
     case variable_rule(n) do
       :system_invalid ->
+        integration =
+          case reach(run, n) do
+            {_state, integration} -> integration
+            nil -> "the integration that brings in target #{n.target}"
+          end
+
         {"The run did not start, because its variable QORY_RUN_SYSTEM, the system of target #{n.target}, is not a host name of a-z, 0-9, dots and dashes.",
-         "Owners and admins of #{n.organisation} check #{n.integration} in Organisation settings › Integrations."}
+         "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
+
+      nil ->
+        {"The run did not start, because one of its variables breaks its rule.",
+         "The instance admin finds the details in the instance's log."}
 
       _repositories ->
         {"The run did not start, because its variable QORY_RUN_REPOSITORIES breaks its rule: each entry owner/name, all of the target's owner, none twice, and at most 256 bytes together.",
@@ -298,7 +340,7 @@ defmodule Apiary.Stages.StopCause do
   defp harness_reason(code, _walk, _n),
     do:
       {"a failure Qory Apiary has no description for#{if code, do: ", with the code #{code}", else: ""}",
-       "The instance admin finds the details in the run's log."}
+       "The instance admin finds the details in the instance's log."}
 
   defp adapter_name(%RunHarness{failed_adapter: %Node{} = adapter}),
     do: Apiary.Adapters.title(adapter)
@@ -317,17 +359,7 @@ defmodule Apiary.Stages.StopCause do
       workspace_struct: workspace,
       workspace: workspace.name,
       organisation: organisation.name,
-      target: work_item.target_path || "of the work item",
-      integration: integration(work_item)
+      target: work_item.target_path || "of the work item"
     }
   end
-
-  defp integration(%WorkItem{adapter_id: id}) when is_binary(id) do
-    case Repo.get(Node, id) do
-      %Node{kind: :adapter} = adapter -> "the integration " <> Apiary.Adapters.title(adapter)
-      _none -> "the integration that brings in the work item"
-    end
-  end
-
-  defp integration(_work_item), do: "the integration that brings in the work item"
 end

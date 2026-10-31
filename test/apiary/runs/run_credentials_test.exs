@@ -638,4 +638,65 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert entries() == []
     end
   end
+
+  describe "why a run ended, as a stage's escalation shows it" do
+    # A tracker's ticket, from one integration, whose target only a forge's collection,
+    # of another integration, can change: the work entry comes from the forge's.
+    defp two_integrations!(ctx, target \\ @target) do
+      {work_item, queued} = tracker_queued!(ctx)
+      set!(WorkItem, work_item.id, target_system: target.system, target_path: target.path)
+      forge = forge_collection!(ctx, target)
+      tracker = Repo.get!(Node, work_item.adapter_id)
+      forge_adapter = Repo.get!(Node, forge.adapter_id)
+      assert Apiary.Adapters.title(tracker) != Apiary.Adapters.title(forge_adapter)
+
+      %{
+        work_item: Repo.get!(WorkItem, work_item.id),
+        queued: queued,
+        forge: forge,
+        tracker: "the integration " <> Apiary.Adapters.title(tracker),
+        integration: "the integration " <> Apiary.Adapters.title(forge_adapter)
+      }
+    end
+
+    defp text(%{queued: queued, work_item: work_item}),
+      do: Apiary.Stages.StopCause.text(Repo.get!(DispatchRun, queued.id), work_item)
+
+    test "a collection that ended names the target's integration, not the ticket's", ctx do
+      two = two_integrations!(ctx)
+      set!(Collection, two.forge.id, ended_at: DateTime.utc_now(), ended_reason: :not_listed)
+
+      assert claim(ctx) == {:ok, :none}
+      gone!(two.queued)
+      org = ctx.scope.organisation.name
+
+      assert text(two) ==
+               "The run did not start, because #{two.integration} no longer reaches target acme/shop.\n" <>
+                 "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
+
+      refute text(two) =~ two.tracker
+    end
+
+    test "a path the access rules do not take, while the integration still reaches it", ctx do
+      two = two_integrations!(ctx, %{system: "forge.example.com", path: "acme/shop two"})
+
+      assert claim(ctx) == {:ok, :none}
+      gone!(two.queued)
+      org = ctx.scope.organisation.name
+
+      assert text(two) ==
+               "The run did not start. #{String.replace_prefix(two.integration, "the", "The")} still reaches target acme/shop two, but the target's path has a character that Qory Apiary does not put in an access rule.\n" <>
+                 "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
+    end
+
+    test "a system that is no host name names the target's integration", ctx do
+      two = two_integrations!(ctx, %{system: "Not_A_Host", path: "acme/shop"})
+      run = Repo.get!(DispatchRun, two.queued.id)
+      run = %{run | state: :ended, end_cause: :variables_invalid}
+
+      assert Apiary.Stages.StopCause.text(run, two.work_item) ==
+               "The run did not start, because its variable QORY_RUN_SYSTEM, the system of target acme/shop, is not a host name of a-z, 0-9, dots and dashes.\n" <>
+                 "Owners and admins of #{ctx.scope.organisation.name} check #{two.integration} in Organisation settings › Integrations."
+    end
+  end
 end
