@@ -13,8 +13,9 @@
 // after a "+", the new stage is selected, panned to, and its name field in the inspector
 // takes the focus with its text selected. The cards are drawn at zoom 1 from the first
 // stage; the canvas is as tall as the tallest card. Where cards are out of view, the edge
-// fades and a "← n more" or "→ n more" button pans to them. The wheel scrolls the page; a
-// pinch or the zoom buttons zoom. All text reaches React as props and is rendered as text.
+// fades and a "← n more" or "→ n more" button in the top margin pans to them. The wheel
+// scrolls the page; a pinch or the zoom buttons zoom. All text reaches React as props and
+// is rendered as text.
 import {
   createContext,
   createElement as h,
@@ -380,9 +381,10 @@ function Flow({initial, words, push, subscribe, el}) {
         key: `more-${side}`,
         ref: side === "left" ? leftButton : rightButton,
         type: "button",
+        // In the top margin, above the cards, so it covers none of them.
         className: [
-          "btn btn-sm absolute top-1/2 z-10 -translate-y-1/2 border-base-300 bg-base-100 font-normal shadow-sm",
-          side === "left" ? "left-2" : "right-2",
+          "btn btn-xs h-6 min-h-6 border-base-300 bg-base-100 px-2 text-[13px]/none font-normal",
+          side === "left" ? "absolute left-1 top-1 z-10" : "",
         ].join(" "),
         "aria-label": fill(number === 1 ? words[`${side}_label_one`] : words[`${side}_label`], number),
         onClick: () => more(side),
@@ -448,17 +450,21 @@ function Flow({initial, words, push, subscribe, el}) {
       hidden.left > 0 && fade("left"),
       hidden.right > 0 && fade("right"),
       hidden.left > 0 && moreButton("left", hidden.left),
-      hidden.right > 0 && moreButton("right", hidden.right),
-      // In the top margin, above the cards.
+      // In the top margin, above the cards: "→ more", then the zoom buttons.
       h(
         "div",
-        {
-          role: "group",
-          "aria-label": words.controls,
-          className: "absolute right-1 top-1 z-10 flex gap-0.5 rounded-field border border-base-300 bg-base-100",
-        },
-        zoomButton(words.zoom_out, "−", () => flow.zoomOut({duration: 150})),
-        zoomButton(words.zoom_in, "+", () => flow.zoomIn({duration: 150})),
+        {className: "absolute right-1 top-1 z-10 flex items-center gap-1"},
+        hidden.right > 0 && moreButton("right", hidden.right),
+        h(
+          "div",
+          {
+            role: "group",
+            "aria-label": words.controls,
+            className: "flex gap-0.5 rounded-field border border-base-300 bg-base-100",
+          },
+          zoomButton(words.zoom_out, "−", () => flow.zoomOut({duration: 150})),
+          zoomButton(words.zoom_in, "+", () => flow.zoomIn({duration: 150})),
+        ),
       ),
     ),
   )

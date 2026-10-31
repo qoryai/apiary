@@ -172,6 +172,9 @@ test("the cards start at zoom 1, and a pinch or the buttons zoom from 0.75 to 1.
 
 test("the canvas is as tall as the tallest card at its zoom, with the margins", () => {
   assert.equal(MARGIN_TOP + MARGIN_BOTTOM, 56)
+  // The top margin holds the "more" and zoom buttons (24 px, 4 px from the top) above the
+  // cards and the "+" buttons, so they cover none of them.
+  assert.ok(MARGIN_TOP >= 4 + 24 + 4)
   assert.equal(paneHeight(110, 1), 166)
   assert.equal(paneHeight(110, 1.5), 221)
   assert.equal(paneHeight(110, 0.75), 139)

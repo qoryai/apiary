@@ -22,7 +22,8 @@ export const ADD_TOP = 8
 
 // The canvas draws the cards at zoom 1, so their text matches the page's; a pinch or the
 // zoom buttons change it within these bounds. Its height is the tallest card's at that
-// zoom, with a margin above, where the zoom buttons sit, and one below.
+// zoom, with a margin above, where the zoom and "more" buttons sit, so they cover no card,
+// and one below.
 export const ZOOM = {start: 1, min: 0.75, max: 1.5}
 export const MARGIN_TOP = 32
 export const MARGIN_BOTTOM = 24
