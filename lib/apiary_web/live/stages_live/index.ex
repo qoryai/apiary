@@ -29,7 +29,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   alias Apiary.Stacks.{Document, Sources}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{People, SettingsComponents}
-  alias ApiaryWeb.StagesLive.{ArtifactTypes, Canvas, Editor, Inspector, Words}
+  alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, Words}
 
   @edits Editor.events()
 
@@ -57,7 +57,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         snapshot: Processes.declared_snapshot(workspace),
         harness_source: nil,
         declared_error: nil,
-        types: ArtifactTypes.types(workspace),
+        types: Apiary.Artifacts.types(workspace),
         members: members,
         people: Map.new(members, &{&1.user.id, People.short(People.email(&1.user))}),
         work_items: [],
@@ -653,7 +653,9 @@ defmodule ApiaryWeb.StagesLive.Index do
                 {problem_words(problem, @draft)}
                 <.link
                   :if={elem(problem, 0) == :missing_type and @may}
-                  navigate={ArtifactTypes.path(@current_scope)}
+                  navigate={
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/artifact-types"
+                  }
                   class="ml-1 font-medium text-accent underline underline-offset-[3px]"
                 >
                   {gettext("Define it")}

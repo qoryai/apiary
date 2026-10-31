@@ -515,7 +515,7 @@ defmodule Apiary.Stages do
   # before the push takes the work item's lock, so the push checks it again under the lock
   # (`expect_stage`): `{:error, :stage_changed}` when the work item moved in between.
   @doc false
-  @spec add_version(Scope.t(), WorkItem.t(), String.t(), [map], keyword) ::
+  @spec add_version(Scope.t(), WorkItem.t(), term, [map], keyword) ::
           {:ok, map} | {:error, term}
   def add_version(%Scope{} = scope, %WorkItem{id: id}, type, files, opts \\ []) do
     case Repo.get(WorkItem, id) do

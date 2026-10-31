@@ -36,8 +36,10 @@ being one. Every variable named here is described in [Install and configure](ins
   every feature that is on by default. A feature that is off is absent for everybody on
   the instance, so decide before they arrive:
   [Install and configure](install.md#features).
-- **Postgres that is backed up.** The database is the only state. Schedule the dump, and
-  restore one into an empty database once, before it is needed.
+- **Postgres and the artifact store, backed up.** The database and the artifact store
+  (the volume `artifacts`, or the folder `QORY_ARTIFACTS_DIR` is set to) are the state.
+  Schedule the dump and a copy of the store after it, and restore both once, into an
+  empty database and an empty store, before they are needed.
 - **Set the instance up.** Until it is set up, every start logs its set-up link, "Set up
   Qory Apiary at …/setup/<code>.", the same each time; `docker compose logs apiary` shows
   it with `compose.yaml`. Open it as soon as the instance is up, since anyone who reads

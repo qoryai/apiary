@@ -143,6 +143,8 @@ defmodule Apiary.AuditChanges do
       :"secret.seal",
       :"run_credential.issue",
       :"process.edit",
+      :"artifact.write",
+      :"artifact_type.edit",
       :"gate.approve",
       :"workspace_type.edit"
     ] ++ @work_item_moves ++ @work_item_comments
@@ -965,6 +967,22 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
   end
 
+  # A person stores a version of an artifact on a work item of the workspace: the work
+  # item's entry.
+  def make(:"artifact.write", %{scope: scope} = ctx) do
+    work_item = prepare(:"artifact.write", ctx)
+    before = entries()
+    {:ok, _version} = attempt(:"artifact.write", scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  # A custom artifact type added to the workspace: the workspace's entry.
+  def make(:"artifact_type.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, _type} = attempt(:"artifact_type.edit", scope, nil)
+    %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
+  end
+
   # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
   # the limit.
   def make(:"time_limit.edit", %{scope: scope}) do
@@ -1507,6 +1525,8 @@ defmodule Apiary.AuditChanges do
        when action in @work_item_moves or action in @work_item_comments,
        do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
+  defp prepare(:"artifact.write", %{scope: scope}), do: work_item_fixture(scope)
+
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -1711,6 +1731,30 @@ defmodule Apiary.AuditChanges do
     Apiary.Processes.save(scope, scope.workspace, %{
       document
       | "stages" => [%{explore | "name" => "Understand"} | rest]
+    })
+  end
+
+  # The push keeps its file in a store under the system's temporary folder, set for the
+  # push alone and removed after it.
+  defp attempt(:"artifact.write", scope, work_item) do
+    dir = Path.join(System.tmp_dir!(), "apiary-audit-#{System.unique_integer([:positive])}")
+    previous = Application.get_env(:apiary, :artifacts_dir)
+    Application.put_env(:apiary, :artifacts_dir, dir)
+
+    try do
+      Apiary.Artifacts.push({:person, scope}, work_item, "explainer", [
+        %{filename: "notes.md", binary: "# Notes\n\nThe gift card field."}
+      ])
+    after
+      Application.put_env(:apiary, :artifacts_dir, previous)
+      File.rm_rf!(dir)
+    end
+  end
+
+  defp attempt(:"artifact_type.edit", scope, _) do
+    Apiary.Artifacts.create_type(scope, scope.workspace, %{
+      "name" => "demo-findings",
+      "base_view" => "document"
     })
   end
 

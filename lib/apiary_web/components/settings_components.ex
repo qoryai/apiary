@@ -195,6 +195,16 @@ defmodule ApiaryWeb.SettingsComponents do
             path: ~p"/#{organisation}/#{workspace}/settings/workflow"
           }
       end,
+      # The workspace's artifact types, with the `workflow_model` feature, for whoever may
+      # edit them.
+      Access.can?(scope, :"artifact_type.edit", workspace) &&
+        %Entry{
+          section: :main,
+          key: :artifact_types,
+          label: gettext("Artifact types"),
+          icon: "hero-document-duplicate",
+          path: ~p"/#{organisation}/#{workspace}/settings/artifact-types"
+        },
       %Entry{
         section: :main,
         key: :runs,

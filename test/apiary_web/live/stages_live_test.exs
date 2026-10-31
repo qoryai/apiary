@@ -382,6 +382,30 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
+    test "a custom type of the workspace is a type the process may name", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _type} =
+        Apiary.Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "brief",
+          "base_view" => "document"
+        })
+
+      document =
+        Draft.update_stage(
+          Processes.default_document("software"),
+          id_of("Build"),
+          &Draft.add_artifact(&1, "inputs", "brief")
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      refute has_element?(view, ~s(#stages-check [data-problem="missing_type"]))
+    end
+
     test "saves a version, with its changes in the history", %{
       conn: conn,
       path: path,
