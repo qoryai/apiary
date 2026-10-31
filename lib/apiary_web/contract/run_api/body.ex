@@ -15,12 +15,13 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # first member that failed, such as `files[0].filename`. A body over its size is
   # `{:error, :too_large}`.
 
+  alias ApiaryWeb.Contract.RunApi.Boundary
+
   # A push of base64 JSON: at most 32 MiB encoded, about 24 MiB of files decoded. A larger
   # version cannot be pushed through this API, whatever the type's size limit.
   @push_max_bytes 32 * 1024 * 1024
   @verdict_max_bytes 64 * 1024
 
-  @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   # A media type: `type/subtype`, without parameters.
   @content_type ~r/\A[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\z/
   @max_filename_bytes 255
@@ -192,7 +193,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
     end
   end
 
-  defp name?(value), do: is_binary(value) and Regex.match?(@name, value)
+  defp name?(value), do: Boundary.name?(value)
 
   # A filename is one path segment: 1 to 255 bytes of UTF-8, not `.` or `..`, with no
   # path separator and no control character.

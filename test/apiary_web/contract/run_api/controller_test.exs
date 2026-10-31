@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   # The run API (`/v1/runs/<run_id>/...`): a run's reads of its work item and its
   # artifacts and its pushes, through its gateway, against the stage runner
-  # (`Apiary.Stages`) and the stubs of `Apiary.Artifacts`, the declarations and the
-  # feature (`ApiaryWeb.RunApiStubs`). The stubs and the features are the whole node's,
-  # so the module is not async.
+  # (`Apiary.Stages`) and `Apiary.Artifacts`, with its files in a store in a folder of the
+  # test, and the stubs of the declarations and the feature, and a record of each push
+  # (`ApiaryWeb.RunApiStubs`). The stubs and the features are the whole node's, so the
+  # module is not async.
   #
   # A POST is sent with its raw body already kept, as `ApiaryWeb.Contract.RawBody` keeps
   # the body of the run endpoint's POSTs, but in "through the whole endpoint", where
@@ -25,14 +26,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   alias ApiaryWeb.RunApiStubs
 
   @moduletag needs: [:workflow_model, :factory, :secrets]
+  @moduletag :tmp_dir
 
   # Explore, the first stage of the software process (`Apiary.Processes`).
   @explore "st_r79kph11eg"
 
+  # What the format check takes as a PNG, and as an SVG (`Apiary.Artifacts.Format`).
+  @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
+  @svg ~s(<svg xmlns="http://www.w3.org/2000/svg"/>)
+
   setup {Apiary.DataCase, :without_registry}
 
-  setup do
+  setup %{tmp_dir: tmp_dir} do
     :ok = RunApiStubs.install()
+    previous = Application.fetch_env(:apiary, :artifacts_dir)
+    Application.put_env(:apiary, :artifacts_dir, Path.join(tmp_dir, "store"))
+
+    on_exit(fn ->
+      case previous do
+        {:ok, dir} -> Application.put_env(:apiary, :artifacts_dir, dir)
+        :error -> Application.delete_env(:apiary, :artifacts_dir)
+      end
+    end)
+
     %{scope: scope} = sign_up_fixture()
     fixture = sealed_run_fixture(scope)
     dispatch_run = Repo.get!(DispatchRun, fixture.run.dispatch_run_id)
@@ -56,7 +72,34 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     %{scope: scope} = sign_up_fixture()
     fixture = sealed_run_fixture(scope)
     dispatch_run = Repo.get!(DispatchRun, fixture.run.dispatch_run_id)
-    %{run: fixture.run, key: fixture.secrets_key, work_item_id: dispatch_run.work_item_id}
+
+    %{
+      run: fixture.run,
+      key: fixture.secrets_key,
+      dispatch_run: dispatch_run,
+      work_item: Repo.get!(WorkItem, dispatch_run.work_item_id)
+    }
+  end
+
+  # A version stored for `ctx`'s work item by its run, outside the run API.
+  defp store!(ctx, type, files, opts \\ []) do
+    {:ok, version} =
+      Apiary.Artifacts.push({:run, ctx.dispatch_run}, ctx.work_item, type, files, opts)
+
+    version
+  end
+
+  # A custom type of the workspace: `base_view` `file`, which takes any bytes.
+  defp file_type!(ctx, name, size_limit, max_files) do
+    {:ok, type} =
+      Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
+        "name" => name,
+        "base_view" => "file",
+        "size_limit" => size_limit,
+        "max_files" => max_files
+      })
+
+    type
   end
 
   defp read(ctx, path, opts \\ []) do
@@ -272,16 +315,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     test "has the notes, oldest first, each person by name, a failed check by none", ctx do
       place!(ctx)
 
-      {:ok, version} =
-        RunApiStubs.Artifacts.push(
-          {:run, ctx.dispatch_run},
-          ctx.work_item,
-          "screenshot",
-          [
-            file("one.png", "image/png", "png")
-          ],
-          stage_id: @explore
-        )
+      version =
+        store!(ctx, "screenshot", [file("one.png", "image/png", @png)], stage_id: @explore)
 
       first =
         decide!(ctx, :request_changes,
@@ -354,21 +389,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
   describe "GET artifacts" do
     test "is the work item's index, without the files' contents", ctx do
-      assert write(ctx, "/artifacts", push_body("screenshot", [{"one.png", "image/png", "png"}])).status ==
+      assert write(ctx, "/artifacts", push_body("screenshot", [{"one.png", "image/png", @png}])).status ==
                201
 
-      other = other_run()
-
-      RunApiStubs.stored(other.work_item_id, "explainer", [
-        file("theirs.md", "text/markdown", "x")
-      ])
+      store!(other_run(), "explainer", [file("theirs.md", "text/markdown", "x")])
 
       conn = read(ctx, "/artifacts")
       assert signed_answer?(conn)
       body = json_response(conn, 200)
 
-      [version] =
-        Enum.filter(RunApiStubs.pushed(), &(&1.artifact.work_item_id == ctx.work_item.id))
+      [version] = RunApiStubs.pushed()
 
       assert body == %{
                "version" => 1,
@@ -395,8 +425,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                          %{
                            "filename" => "one.png",
                            "content_type" => "image/png",
-                           "size" => 3,
-                           "sha256" => Base.encode16(:crypto.hash(:sha256, "png"), case: :lower)
+                           "size" => byte_size(@png),
+                           "sha256" => Base.encode16(:crypto.hash(:sha256, @png), case: :lower)
                          }
                        ],
                        "approvals" => []
@@ -410,7 +440,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     test "has the approved version by its id, and who approved it", ctx do
       place!(ctx)
 
-      for content <- ["a", "b"] do
+      for content <- [@png <> "a", @png <> "b"] do
         assert write(
                  ctx,
                  "/artifacts",
@@ -444,12 +474,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
   describe "GET artifacts/:version_id/files/:filename" do
     setup ctx do
-      body =
-        push_body("screenshot", [
-          {"one.png", "image/png", "png"},
-          {"page.html", "text/html", "<b>"}
-        ])
-
+      body = push_body("screenshot", [{"one.png", "image/png", @png}])
       assert write(ctx, "/artifacts", body).status == 201
       %{version: List.last(RunApiStubs.pushed()).public_id}
     end
@@ -457,7 +482,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     test "is the file as a download, with nosniff and a sandbox policy", ctx do
       conn = read(ctx, "/artifacts/#{ctx.version}/files/one.png")
       assert signed_answer?(conn)
-      assert response(conn, 200) == "png"
+      assert response(conn, 200) == @png
       assert get_resp_header(conn, "content-type") == ["image/png"]
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
       [policy] = get_resp_header(conn, "content-security-policy")
@@ -469,19 +494,40 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
+    test "serves a Markdown file with the type its bytes show, the charset included", ctx do
+      version = store!(ctx, "explainer", [file("notes.md", "text/plain", "# Notes\n")])
+
+      conn = read(ctx, "/artifacts/#{version.public_id}/files/notes.md")
+      assert response(conn, 200) == "# Notes\n"
+      assert get_resp_header(conn, "content-type") == ["text/markdown; charset=utf-8"]
+    end
+
+    test "stores the type the bytes show, never the content_type of the push", ctx do
+      body = push_body("screenshot", [{"two.png", "image/gif", @png}], %{"name" => "two"})
+      assert write(ctx, "/artifacts", body).status == 201
+
+      version = List.last(RunApiStubs.pushed())
+      assert [%{content_type: "image/png"}] = version.files
+
+      conn = read(ctx, "/artifacts/#{version.public_id}/files/two.png")
+      assert get_resp_header(conn, "content-type") == ["image/png"]
+    end
+
     test "serves HTML and SVG as plain bytes, never inline", ctx do
-      conn = read(ctx, "/artifacts/#{ctx.version}/files/page.html")
+      file_type!(ctx, "page-file", 64, 1)
+      body = push_body("page-file", [{"page.html", "text/html", "<b>"}])
+      assert write(ctx, "/artifacts", body).status == 201
+
+      version = List.last(RunApiStubs.pushed())
+      conn = read(ctx, "/artifacts/#{version.public_id}/files/page.html")
       assert response(conn, 200) == "<b>"
       assert get_resp_header(conn, "content-type") == ["application/octet-stream"]
       assert ["attachment; " <> _] = get_resp_header(conn, "content-disposition")
 
-      svg =
-        RunApiStubs.stored(ctx.work_item.id, "screenshot", [
-          file("a b.svg", "image/svg+xml", "<svg/>")
-        ])
+      svg = store!(ctx, "screenshot", [file("a b.svg", "image/svg+xml", @svg)], name: "svg")
 
       conn = read(ctx, "/artifacts/#{svg.public_id}/files/a%20b.svg")
-      assert response(conn, 200) == "<svg/>"
+      assert response(conn, 200) == @svg
       assert get_resp_header(conn, "content-type") == ["application/octet-stream"]
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
 
@@ -492,12 +538,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
     test "a filename that is not ASCII has one _ per character in its plain name", ctx do
       version =
-        RunApiStubs.stored(ctx.work_item.id, "screenshot", [
-          file("caf\u00e9 \u00fc.png", "image/png", "png")
-        ])
+        store!(ctx, "screenshot", [file("caf\u00e9 \u00fc.png", "image/png", @png)], name: "cafe")
 
       conn = read(ctx, "/artifacts/#{version.public_id}/files/caf%C3%A9%20%C3%BC.png")
-      assert response(conn, 200) == "png"
+      assert response(conn, 200) == @png
 
       assert get_resp_header(conn, "content-disposition") == [
                ~s(attachment; filename="caf___.png"; filename*=UTF-8''caf%C3%A9%20%C3%BC.png)
@@ -508,8 +552,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          ctx do
       other = other_run()
 
-      theirs =
-        RunApiStubs.stored(other.work_item_id, "screenshot", [file("one.png", "image/png", "x")])
+      theirs = store!(other, "screenshot", [file("one.png", "image/png", @png)])
 
       answers =
         for path <- [
@@ -532,7 +575,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
           run_id: other.run.node_run_id
         )
 
-      assert response(conn, 200) == "x"
+      assert response(conn, 200) == @png
     end
 
     test "a filename is compared, never used as a path", ctx do
@@ -553,7 +596,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   describe "POST artifacts" do
     test "stores a version as the run, for its work item", ctx do
       body =
-        push_body("screenshot", [{"one.png", "image/png", "png"}], %{
+        push_body("screenshot", [{"one.png", "image/png", @png}], %{
           "name" => "checkout",
           "note" => "After the fix."
         })
@@ -577,7 +620,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert version.note == "After the fix."
       assert version.opts[:writes] == :any
       assert version.opts[:stage_id] == ctx.dispatch_run.stage_id
-      assert [%{filename: "one.png", content_type: "image/png", content: "png"}] = version.files
+      assert [%{filename: "one.png", content_type: "image/png", content: @png}] = version.files
     end
 
     test "a body the contract refuses is 400 with the member", ctx do
@@ -588,10 +631,13 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {push_body("screenshot", []), "files"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"extra" => 1}), "extra"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"name" => "../x"}), "name"},
+        {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"name" => "Check_out"}), "name"},
+        {push_body("Screenshot", [{"a.png", "image/png", "x"}]), "type"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{
            "note" => "a" <> String.duplicate("\u0301", 4001)
          }), "note"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{"note" => "a\u0085b"}), "note"},
+        {push_body("screenshot", [{"a.png", "image/png", @png}], %{"note" => "a\u202Eb"}), "note"},
         {push_body("screenshot", [{"a.png", "image/png", "x"}], %{
            String.duplicate("k", 65) => 1
          }), "body"},
@@ -610,8 +656,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "a filename with a path or a control character is 400", ctx do
-      for name <- ["..", ".", "../x.png", "a/b.png", "a\\b.png", "a\u0000.png", "a\n.png", ""] do
-        conn = write(ctx, "/artifacts", push_body("screenshot", [{name, "image/png", "x"}]))
+      for name <- [
+            "..",
+            ".",
+            "../x.png",
+            "a/b.png",
+            "a\\b.png",
+            "a\u0000.png",
+            "a\n.png",
+            "a\u202Eb.png",
+            ""
+          ] do
+        conn = write(ctx, "/artifacts", push_body("screenshot", [{name, "image/png", @png}]))
 
         assert json_response(conn, 400) == %{
                  "error" => "invalid_request",
@@ -647,14 +703,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "more files than the type takes is 422 with the type and the limit", ctx do
-      files = for n <- 1..3, do: {"#{n}.png", "image/png", "x"}
+      files = for n <- 1..11, do: {"#{n}.png", "image/png", @png}
       conn = write(ctx, "/artifacts", push_body("screenshot", files))
 
       assert json_response(conn, 422) == %{
                "error" => "too_many_files",
                "type" => "screenshot",
-               "limit" => 2,
-               "message" => "Push at most 2 files in one version of screenshot."
+               "limit" => 10,
+               "message" => "Push at most 10 files in one version of screenshot."
              }
 
       assert RunApiStubs.pushed() == []
@@ -662,10 +718,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
     test "files over the type's size limit together are 422 with the type and the limit",
          ctx do
+      file_type!(ctx, "small-file", 16, 2)
+
       assert write(
                ctx,
                "/artifacts",
-               push_body("screenshot", [{"a.png", "image/png", String.duplicate("x", 16)}])
+               push_body("small-file", [{"a.png", "image/png", String.duplicate("x", 16)}])
              ).status ==
                201
 
@@ -673,15 +731,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         write(
           ctx,
           "/artifacts",
-          push_body("screenshot", [{"a.png", "image/png", String.duplicate("x", 17)}])
+          push_body("small-file", [{"a.png", "image/png", String.duplicate("x", 17)}])
         )
 
       assert json_response(conn, 422) == %{
                "error" => "too_large",
-               "type" => "screenshot",
+               "type" => "small-file",
                "limit" => 16,
                "message" =>
-                 "Shrink the files of one version of screenshot to at most 16 bytes together."
+                 "Shrink the files of one version of small-file to at most 16 bytes together."
              }
 
       assert length(RunApiStubs.pushed()) == 1
@@ -691,7 +749,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         write(
           ctx,
           "/artifacts",
-          push_body("screenshot", [
+          push_body("small-file", [
             {"a.png", "image/png", String.duplicate("x", 8)},
             {"b.png", "image/png", String.duplicate("x", 9)}
           ])
@@ -766,20 +824,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              "Fix a.md to match the format of explainer: " <>
                "the filename of a document ends in .md."
          }},
-        {{:invalid, {:schema, 0}}, 422,
+        {{:invalid, {:schema, 0, %{path: "#/summary", error: "value is not of type string"}}},
+         422,
          %{
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
              "Fix a.md to match the format of explainer: " <>
-               "the file does not match the JSON Schema of explainer."
-         }},
-        {{:invalid, {:schema, 0, %{path: "/summary", error: "expected a string"}}}, 422,
-         %{
-           "error" => "invalid_artifact",
-           "names" => ["files[0]"],
-           "message" =>
-             "Fix a.md to match the format of explainer: at /summary, expected a string."
+               "at #/summary, value is not of type string."
          }},
         {{:invalid, {:unreadable, 0}}, 422,
          %{
@@ -876,7 +928,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.get(:declared) == "capture-demo"
       assert RunApiStubs.pushed() == []
 
-      conn = write(ctx, "/artifacts", push_body("screenshot", [{"a.png", "image/png", "x"}]))
+      conn = write(ctx, "/artifacts", push_body("screenshot", [{"a.png", "image/png", @png}]))
       assert conn.status == 201
       assert [%{opts: opts}] = RunApiStubs.pushed()
       assert opts[:writes] == ["screenshot"]
@@ -884,7 +936,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(
                ctx,
                "/artifacts",
-               push_body("questions", [{"q.json", "application/json", "{}"}])
+               push_body("questions", [
+                 {"q.json", "application/json", ~s({"questions":["Which basket?"]})}
+               ])
              ).status == 201
     end
 
@@ -970,8 +1024,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "error" => "invalid_artifact",
                "names" => ["files[0]"],
                "message" =>
-                 "Fix verdict.json to match the format of verdict: " <>
-                   "the file does not match the JSON Schema of verdict."
+                 "Fix verdict.json to match the format of verdict: at #/verdict, " <>
+                   ~s(value must be one of the enum values: "passed", "changes-requested" or ) <>
+                   ~s("escalate".)
              }
 
       assert RunApiStubs.pushed() == []
@@ -1033,7 +1088,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "a signed push and a signed verdict are stored", ctx do
-      body = Jason.encode!(push_body("screenshot", [{"one.png", "image/png", "png"}]))
+      body = Jason.encode!(push_body("screenshot", [{"one.png", "image/png", @png}]))
       conn = sent(ctx, "/artifacts", body)
       assert signed_answer?(conn)
       assert json_response(conn, 201)["artifact"]["type"] == "screenshot"
@@ -1047,10 +1102,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "a signed push over 64 KiB is read for a gateway's key id", ctx do
-      RunApiStubs.put(:types, %{
-        "explainer" => %{name: "explainer", size_limit: 200_000, max_files: 1}
-      })
-
       content = String.duplicate("x", 100_000)
       body = Jason.encode!(push_body("explainer", [{"a.md", "text/markdown", content}]))
       assert byte_size(body) > RawBody.max_bytes(:unauthenticated)

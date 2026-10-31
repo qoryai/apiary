@@ -186,7 +186,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
       {"filename", get(file, :filename)},
       {"content_type", get(file, :content_type)},
       {"size", get(file, :size)},
-      {"sha256", hex(get(file, :sha256))}
+      {"sha256", get(file, :sha256)}
     ])
   end
 
@@ -288,10 +288,6 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   defp text(value) when is_atom(value), do: Atom.to_string(value)
   defp text(value) when is_binary(value), do: value
   defp text(_value), do: nil
-
-  defp hex(<<raw::binary-size(32)>>), do: Base.encode16(raw, case: :lower)
-  defp hex(value) when is_binary(value), do: value
-  defp hex(_value), do: nil
 
   defp time(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 

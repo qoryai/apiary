@@ -31,6 +31,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # `X-Content-Type-Options: nosniff` and the directive `sandbox` added to its
   # `Content-Security-Policy`, and HTML, SVG, XML and script types as
   # `application/octet-stream`, so no artifact is shown inline from Qory Apiary's origin.
+  # The content type is the stored one, read from the file's bytes at the push
+  # (`Apiary.Artifacts.Format`), with `charset=utf-8` for a text type.
   #
   # Errors are short JSON; nothing logs the body, the signature or the headers. An
   # exception is `503` `unavailable`, logged by its module's name alone.
@@ -45,7 +47,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   # Types a browser could run as a page or a script: served as plain bytes.
   @unsafe_type ~r/html|xml|svg|javascript|ecmascript/i
-  @content_type ~r/\A[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\z/
+  @content_type ~r/\A[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}(; charset=utf-8)?\z/
 
   plug :workflow_model
 
@@ -351,14 +353,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :schema, :unreadable] and is_integer(index),
+       when check in [:format, :extension, :unreadable] and is_integer(index),
        do:
          {:error,
           {:invalid_artifact, "files[#{index}]",
            mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
 
-  # A schema refusal with the first failing JSON pointer and the validator's message, as
-  # `Apiary.Artifacts` gives them: text, written as it is.
+  # A schema refusal, with the JSON pointer of the first failing value and JSV's message
+  # for it, as `Apiary.Artifacts.SchemaError` gives them: text, written as it is.
   defp refused({:invalid, {:schema, index, %{path: path, error: error}}}, push)
        when is_integer(index) do
     filename = Enum.at(push.filenames, index) || "files[#{index}]"
@@ -389,9 +391,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, push)}."
 
   defp takes(:extension, _push), do: "the filename of a document ends in .md"
-
-  defp takes(:schema, push),
-    do: "the file does not match the JSON Schema of #{push.name}"
 
   defp takes(:format, push) do
     case field(push.type, :base_view) do

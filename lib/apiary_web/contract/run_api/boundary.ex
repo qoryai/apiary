@@ -4,21 +4,20 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   # The one place the run API calls the workflow model's modules: `Apiary.Artifacts`,
   # `Apiary.Processes`, `Apiary.Stages` and the feature `workflow_model` of
   # `Apiary.Features`. `Apiary.Artifacts`, `Apiary.Processes` and `Apiary.Features` are
-  # read from the application's configuration at the call, so the run API compiles
-  # before `Apiary.Artifacts` is merged, and a test sets stubs:
+  # read from the application's configuration at the call, so a test sets stubs:
   #
   #     config :apiary, ApiaryWeb.Contract.RunApi.Boundary,
   #       artifacts: Apiary.Artifacts,
   #       processes: Apiary.Processes,
   #       features: Apiary.Features
   #
-  # `Apiary.Stages` is called directly; it reaches artifacts through
-  # `Apiary.Stages.Artifacts`, which a test configures to the same stub.
+  # `Apiary.Stages` is called directly, and it calls `Apiary.Artifacts` with no stub.
   #
   # The names and the return shapes are those of the workflow model's shared API. The
   # columns `workflow`, `stage_id` and `round` of `dispatch_runs` are nil for a run of the
   # queue outside the workflow model.
 
+  alias Apiary.Artifacts.Type
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.WorkItem
 
@@ -40,7 +39,7 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   ## The feature
 
   # on?/0 is whether the instance has the feature `workflow_model`. False where the
-  # features module does not list it yet.
+  # features module does not list it.
   @spec on?() :: boolean
   def on? do
     features = features()
@@ -94,6 +93,11 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   end
 
   ## Artifacts
+
+  # name?/1 is whether `name` follows the rule of an artifact's type and name
+  # (`Apiary.Artifacts.Type.name?/1`).
+  @spec name?(term) :: boolean
+  def name?(name), do: Type.name?(name)
 
   @spec type(struct, String.t()) :: map | nil
   def type(workspace, name), do: artifacts().type(workspace, name)
