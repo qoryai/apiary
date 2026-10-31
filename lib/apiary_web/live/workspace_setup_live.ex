@@ -439,6 +439,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
       who_connects: IntegrationComponents.who_connects(scope, step),
+      connects_line: Edition.connects_line(scope.organisation, step),
       instance_admin: Access.instance_admin?(scope),
       sending: nil,
       done: step_done?(flow, step)
@@ -1835,6 +1836,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
+  # The second sentence of the step's About this step: the edition's, else the core's.
+  defp connects_sentence(nil, organisation),
+    do:
+      gettext("Owners and admins of %{organisation} connect it once for the organisation.",
+        organisation: organisation.name
+      )
+
+  defp connects_sentence(sentence, _organisation), do: sentence
+
   # Connect of Work sources or Destinations, a page of the step: the configured adapters
   # the organisation has not connected, each with its state and Connect, whose install
   # returns to the step, or "Every system is connected."; Back leads to the step.
@@ -1980,7 +1990,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <.no_adapter :if={@adapters == []} step={@step} instance_admin={@instance_admin} />
 
       <p
-        :if={!@may_connect}
+        :if={!@may_connect and is_nil(@connects_line)}
         id="set-up-connect-who-may"
         class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
       >
@@ -2000,17 +2010,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <:context>
         <p :if={@step == :sources} id="set-up-what">
-          {pgettext(
-            "plain",
-            "Bring tickets in from a system such as an issue tracker. Owners and admins of %{organisation} connect it once for the organisation.",
-            organisation: @flow.organisation.name
-          )}
+          {pgettext("plain", "Bring tickets in from a system such as an issue tracker.")}
+          {connects_sentence(@connects_line, @flow.organisation)}
         </p>
         <p :if={@step == :destinations} id="set-up-what">
-          {gettext(
-            "Runs change targets in a system such as a ticket tracker or a document store. Owners and admins of %{organisation} connect it once for the organisation.",
-            organisation: @flow.organisation.name
-          )}
+          {gettext("Runs change targets in a system such as a ticket tracker or a document store.")}
+          {connects_sentence(@connects_line, @flow.organisation)}
         </p>
         <.connect_help
           :if={!@connected and @may_connect and Enum.any?(@unconnected, &(&1.id in @ready))}

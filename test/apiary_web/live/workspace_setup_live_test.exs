@@ -972,6 +972,53 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert steps == guide["connect"]["steps"]
     end
 
+    test "the core has no sentence of its own for the edition's who connects line" do
+      %{organisation: organisation} = sign_up_fixture()
+
+      assert Apiary.Edition.Core.connects_line(organisation, :sources) == nil
+      assert Apiary.Edition.Core.connects_line(organisation, :destinations) == nil
+    end
+
+    test "with no sentence from the edition, the step keeps its line on who may connect", %{
+      conn: conn
+    } do
+      %{organisation: organisation} = sign_up_fixture()
+      member = joined(organisation, :member)
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(member) |> live(~p"/#{organisation}/main/set-up/sources")
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system such as an issue tracker. Owners and admins " <>
+                 "of #{organisation.name} connect it once for the organisation."
+
+      assert has_element?(lv, "#set-up-connect-who-may")
+    end
+
+    test "an edition's sentence replaces the second sentence, and the line on who may connect",
+         %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ConnectsLine)
+      %{organisation: organisation} = sign_up_fixture()
+      member = joined(organisation, :member)
+      conn = log_in_user(conn, member)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/main/set-up/sources")
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system such as an issue tracker. " <>
+                 "Example Operator connects work sources."
+
+      refute has_element?(lv, "#set-up-connect-who-may")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/main/set-up/destinations")
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Runs change repositories in a system such as a forge. " <>
+                 "Example Operator connects destinations."
+
+      refute has_element?(lv, "#set-up-connect-who-may")
+    end
+
     test "shows a member who may not connect who may, with no connect control and no guide", %{
       conn: conn
     } do

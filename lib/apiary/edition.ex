@@ -175,6 +175,16 @@ defmodule Apiary.Edition do
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 
   @doc """
+  The second sentence of About this step on the workspace set-up's steps Work sources and
+  Destinations, on who connects a system for `organisation`; `step` is `:sources` or
+  `:destinations`. Nil for the core's sentence, "Owners and admins of <organisation>
+  connect it once for the organisation." Where it returns a sentence, the step leaves out
+  its line on who may connect (`#set-up-connect-who-may`), so the reader sees one sentence.
+  Translated when the callback runs.
+  """
+  @callback connects_line(%Organisation{}, step :: :sources | :destinations) :: String.t() | nil
+
+  @doc """
   The line New workspace (`/:org/workspaces/new`) shows, in place of the kind cards, where
   `organisation` has as many workspaces as `c:limits/0` allows, and the notice shown when a
   Choose returns that limit's error: why it may have no more. Translated when the callback
@@ -792,6 +802,7 @@ defmodule Apiary.Edition do
     instance_organisation_id: 0,
     first_sign_up_line: 0,
     first_workspace_waiting_line: 1,
+    connects_line: 2,
     workspace_limit_line: 1,
     set_up_finishers_line: 2,
     set_up_steps: 2,

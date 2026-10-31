@@ -499,6 +499,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   The fixer of a stopped
   preparation (`Apiary.Runs.Preparation`) is `:support` in place of `:instance_admin`; the
   diagnostics document keeps the value `instance_admin`.
+  The callback `connects_line/2` of `Apiary.Edition` returns an edition's sentence on who
+  connects a system, for the steps Work sources and Destinations, or nil for the core's.
 - The guides Install and configure and Hosting checklist are only for signed-in instance
   admins: `/docs` leads an instance admin to `/docs/admin`, which has every guide, and
   gives anyone else 404 there. The public documentation leaves them out of its pages,

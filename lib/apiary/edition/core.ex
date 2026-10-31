@@ -86,6 +86,9 @@ defmodule Apiary.Edition.Core do
   def set_up_context(_scope, _step_id), do: nil
 
   @impl true
+  def connects_line(_organisation, _step), do: nil
+
+  @impl true
   def machines_who_may(_scope, _workspace),
     do: gettext("Only owners and admins add a pool and join a machine to it.")
 
