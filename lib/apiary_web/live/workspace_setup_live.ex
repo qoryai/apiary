@@ -29,7 +29,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     workspace's type, "Type: Software factory"; Save and next
   #     renames the workspace (`Apiary.Organisations.update_workspace/2`), refused for a
   #     name whose address is taken, and opens the next step at the new address. For
-  #     anyone else, the name, read only, with Continue;
+  #     anyone else, the name, read only, the line of who may rename it
+  #     (`ApiaryWeb.Access.who_may/3`), as the other steps say who may, and Continue;
   #   * Work sources and Destinations, with the `factory` feature: a card per live grant
   #     of the organisation's connections (`Apiary.WorkspaceSetup.cards/4`,
   #     `ApiaryWeb.IntegrationComponents.grant_card/1`), of the adapters with items for
@@ -2078,6 +2079,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <p id="set-up-type" class="text-[13px]/5 text-muted">
           {gettext("Type: %{type}", type: @flow.domain.type_name())}
         </p>
+        <p id="set-up-who-may" class="text-[13.5px]/5 text-muted">{@who_may_rename}</p>
         <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
       </div>
     </SetUpComponents.frame>
