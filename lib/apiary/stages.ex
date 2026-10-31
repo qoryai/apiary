@@ -45,6 +45,12 @@ defmodule Apiary.Stages do
   # entry in the audit trail, `gate.approve`, with `details.change` `approve`,
   # `request_changes`, `escalation_<resolution>` or `move`.
   #
+  # `add_version/5` stores a version a person adds on the work item, made in its current
+  # stage, then runs that stage's Exists checks again (`version_added/1`). A stage with
+  # no workflow waits at its gate while a required output is missing
+  # (`missing_outputs/1`); `approve/4` refuses it, `{:error, {:outputs_missing, types}}`,
+  # and a gate `none` passes on once every required output exists.
+  #
   # ## What is told
   #
   # `{:stage_changed, public_id}` on the work item's topic (`topic/1`), once the change
@@ -89,6 +95,7 @@ defmodule Apiary.Stages do
           | :unknown_stage
           | :not_live
           | :stage_changed
+          | {:outputs_missing, [String.t()]}
           | {:invalid, :note}
           | term
 
@@ -493,6 +500,54 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # add_version/5 stores a version a person adds on the work item, as the scope's person
+  # (`Apiary.Artifacts.push/5`, `{:person, scope}`), with the `stage_id` of the stage the
+  # work item is in, whatever `opts` gives, then runs that stage's checks again
+  # (`version_added/1`): `{:ok, version}`, or the push's refusal.
+  @doc false
+  @spec add_version(Scope.t(), WorkItem.t(), String.t(), [map], keyword) ::
+          {:ok, map} | {:error, term}
+  def add_version(%Scope{} = scope, %WorkItem{id: id}, type, files, opts \\ []) do
+    case Repo.get(WorkItem, id) do
+      nil ->
+        {:error, :not_found}
+
+      work_item ->
+        opts = Keyword.put(opts, :stage_id, work_item.stage_id)
+
+        with {:ok, version} <- Artifacts.push({:person, scope}, work_item, type, files, opts) do
+          _placed_or_not = version_added(work_item)
+          {:ok, version}
+        end
+    end
+  end
+
+  # version_added/1 runs the Exists checks of the work item's stage again after a person
+  # added a version in it: a stage with no workflow at its gate with a gate `none` passes
+  # on once every required output exists, and a person gate keeps waiting. A stage in any
+  # other state, or with a workflow, is left as it is. `{:error, :not_placed}` for a work
+  # item the runner has not placed.
+  @doc false
+  @spec version_added(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, :not_placed}
+  def version_added(%WorkItem{id: id}) do
+    transact(fn ->
+      work_item = lock!(id)
+
+      case placed(work_item) do
+        {:ok, version, stage} ->
+          if work_item.stage_state == :at_gate and Runner.people?(stage) do
+            {work_item, _run} = apply_event(work_item, version, stage, :version_added)
+            {:ok, work_item}
+          else
+            {:ok, work_item}
+          end
+
+        :not_placed ->
+          {:error, :not_placed}
+      end
+    end)
+  end
+
   # check_workflows/2 reads the workflow names the workspace's harness lists now, as the
   # scope's person, through the harness sources (`Apiary.Stacks.Sources`), stores them as
   # the workspace's snapshot, and starts the work item's stage when it waits for a
@@ -553,7 +608,9 @@ defmodule Apiary.Stages do
   # approve/3 approves the gate of the work item's stage, with the scope's person's
   # `note`: the decision covers the newest version of each output made in the stage, and
   # the work item enters the next stage, or its stage is done after the last. At Explore's
-  # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`).
+  # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`). The gate of a stage
+  # with no workflow is refused while a required output is missing,
+  # `{:error, {:outputs_missing, types}}` (`missing_outputs/1`).
   @doc false
   @spec approve(Scope.t(), WorkItem.t(), String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -562,6 +619,7 @@ defmodule Apiary.Stages do
       with {:ok, note} <- note(note),
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
+           :ok <- outputs_exist(work_item, stage),
            {:ok, confirmed?} <- confirm_explore(scope, work_item, stage) do
         # A confirmation already wrote the act's entry in the audit trail.
         approve_locked(scope, lock!(work_item.id), version, stage, note, not confirmed?)
@@ -732,7 +790,9 @@ defmodule Apiary.Stages do
 
   # status/2 is where the work item stands in its stage, as the work item page draws it;
   # nil for a work item the runner has not placed. `scope` decides whether its person may
-  # approve the gate; with none, `approvable?` is false.
+  # approve the gate; with none, `approvable?` is false. `missing_outputs` is the
+  # required output types whose Exists check fails (`missing_outputs/1`); while it has
+  # one, the gate of a stage with no workflow is not approvable.
   @doc false
   @spec status(WorkItem.t(), Scope.t() | nil) :: map | nil
   def status(%WorkItem{} = work_item, scope \\ nil) do
@@ -743,6 +803,8 @@ defmodule Apiary.Stages do
       artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
+      outputs = outputs(work_item, stage, artifacts)
+      missing = missing(outputs)
 
       %{
         stage: %{id: stage["id"], name: stage["name"]},
@@ -751,14 +813,17 @@ defmodule Apiary.Stages do
         rounds: shown_rounds(stage, work_item.stage_entry),
         state: state,
         gaps: shown_gaps(escalation, work_item, stage, artifacts),
-        outputs: outputs(work_item, stage, artifacts),
+        outputs: outputs,
+        missing_outputs: missing,
         inputs: inputs(work_item, version, stage, artifacts),
         escalation: escalation_map(escalation),
         waiting_workflow: waiting_workflow(work_item, stage),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: approvers(stage),
-          approvable?: state == :at_gate and may_approve?(scope, stage),
+          approvable?:
+            state == :at_gate and may_approve?(scope, stage) and
+              not (Runner.people?(stage) and missing != []),
           approvals: approvals(work_item, stage, artifacts)
         }
       }
@@ -1053,11 +1118,7 @@ defmodule Apiary.Stages do
         ),
       undeclared: undeclared(workspace, declarations),
       declarations: declarations,
-      failed_checks:
-        for(
-          %{required: true, check: :missing, type: type} <- outputs(work_item, stage, artifacts),
-          do: type
-        ),
+      failed_checks: missing(outputs(work_item, stage, artifacts)),
       machine: version.document["machine"]
     }
   end
@@ -1570,6 +1631,31 @@ defmodule Apiary.Stages do
         version: version && %{id: version.public_id, number: version.number},
         check: check
       }
+    end
+  end
+
+  # missing_outputs/1 is the required output types of the work item's stage whose Exists
+  # check fails, in the stage's order; [] for a work item the runner has not placed.
+  @doc false
+  @spec missing_outputs(WorkItem.t()) :: [String.t()]
+  def missing_outputs(%WorkItem{} = work_item) do
+    work_item = Repo.get!(WorkItem, work_item.id)
+
+    case placed(work_item) do
+      {:ok, _version, stage} -> missing(outputs(work_item, stage, Artifacts.list(work_item)))
+      :not_placed -> []
+    end
+  end
+
+  defp missing(outputs), do: for(%{required: true, check: :missing, type: t} <- outputs, do: t)
+
+  # A stage with no workflow is approved only once every required output exists (§ 4).
+  defp outputs_exist(work_item, stage) do
+    with true <- Runner.people?(stage),
+         [_one | _more] = types <- missing(outputs(work_item, stage, Artifacts.list(work_item))) do
+      {:error, {:outputs_missing, types}}
+    else
+      _none -> :ok
     end
   end
 

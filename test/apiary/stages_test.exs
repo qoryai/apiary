@@ -599,6 +599,95 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "a stage with no workflow (§ 4)" do
+    defp people_process!(scope, gate, outputs) do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => true}),
+          "gate" => gate
+        }),
+        stage(@build, "Build", [])
+      ])
+    end
+
+    defp at_shape!(scope) do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      reload(work_item)
+    end
+
+    defp file(name), do: [%{filename: name, content_type: "text/markdown", binary: "# Done"}]
+
+    test "waits at its gate for a missing output; approve is refused until a person adds it",
+         %{scope: scope} do
+      people_process!(scope, %{"kind" => "person", "approvers" => "members"}, [
+        "acceptance-criteria"
+      ])
+
+      work_item = at_shape!(scope)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      refute escalation(work_item)
+      assert Stages.missing_outputs(work_item) == ["acceptance-criteria"]
+
+      assert %{state: :at_gate, missing_outputs: ["acceptance-criteria"], gate: gate} =
+               Stages.status(work_item, scope)
+
+      refute gate.approvable?
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape) ==
+               {:error, {:outputs_missing, ["acceptance-criteria"]}}
+
+      assert [%GateDecision{stage_id: @explore}] = decisions(work_item)
+
+      assert {:ok, version} =
+               Stages.add_version(scope, work_item, "acceptance-criteria", file("ac.md"))
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.missing_outputs(work_item) == []
+      assert %{missing_outputs: [], gate: %{approvable?: true}} = Stages.status(work_item, scope)
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert [_explore, %GateDecision{stage_id: @shape, versions: [covered]}] =
+               decisions(work_item)
+
+      assert covered == version.public_id
+    end
+
+    test "with gate none passes on once a person adds the last required output", %{
+      scope: scope
+    } do
+      people_process!(scope, %{"kind" => "none"}, ["acceptance-criteria", "mockup"])
+      work_item = at_shape!(scope)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      refute escalation(work_item)
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.missing_outputs(work_item) == ["mockup"]
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = reload(work_item)
+    end
+
+    test "a person's version gets the stage_id of the stage the work item is in", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope)
+
+      assert {:ok, %{stage_id: @explore, writer: :person}} =
+               Stages.add_version(scope, work_item, "mockup", file("m.md"), stage_id: @build)
+
+      # A stage with a workflow is left as it is.
+      assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
+      assert [_one] = runs(work_item)
+    end
+  end
+
   describe "inputs and the artifact index" do
     test "the next stage reads the approved version; a newer one is changed after approval", %{
       scope: scope
