@@ -47,7 +47,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       scope: scope,
       work_item: work_item,
       run: run,
-      registered: registered
+      claimed: registered
     })
   end
 
@@ -90,12 +90,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#artifact-header-title", "explainer v2")
       assert has_element?(view, "#artifact-type", "explainer")
       assert has_element?(view, "#artifact-number", "2")
-      short = String.slice(ctx.registered.public_id, 0, 11)
+      short = String.slice(ctx.claimed.public_id, 0, 11)
       run_page = "/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/"
 
       assert has_element?(
                view,
-               ~s(#artifact-writer a[href="#{run_page}#{ctx.registered.public_id}"]),
+               ~s(#artifact-writer a[href="#{run_page}#{ctx.claimed.public_id}"]),
                short
              )
 
@@ -211,7 +211,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
-      short = String.slice(ctx.registered.public_id, 0, 11)
+      short = String.slice(ctx.claimed.public_id, 0, 11)
       assert has_element?(view, "#artifact-writer a", "#{short} · round 2")
       assert has_element?(view, "#artifact-history a.font-mono", "#{short} · round 2")
 
