@@ -362,12 +362,15 @@ defmodule Apiary.Stages.StopCause do
       {"it breaks the harness format",
        "Whoever maintains the harness corrects it where it is kept."}
 
-  # In the words of the Workflow page's line for the same failure.
-  defp harness_reason("not_covered", walk, n),
-    do:
-      {:line,
-       "No integration of #{n.organisation} reaches #{walk.failed_source || "the harness of #{n.workspace}"}. Qory Apiary reads a harness only through an integration.",
-       "Owners and admins of #{n.organisation} connect one in Organisation settings › Integrations."}
+  # Its host serves the source to no one, and no connection reaches it: a public source
+  # is read with no integration, so both are the cause.
+  defp harness_reason("not_covered", walk, n) do
+    source = walk.failed_source || "the harness of #{n.workspace}"
+
+    {:line,
+     "#{source} is not public, or does not exist, and no connection of #{n.organisation} reaches it.",
+     "Owners and admins of #{n.organisation} connect an integration that covers #{source} in Organisation settings › Integrations."}
+  end
 
   defp harness_reason("not_allowed", _walk, n),
     do:

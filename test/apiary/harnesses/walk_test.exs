@@ -2214,10 +2214,10 @@ defmodule Apiary.Harnesses.WalkTest do
       org = ctx.scope.organisation.name
 
       assert cause ==
-               "No integration of #{org} reaches #{@tools}. Qory Apiary reads a harness only through an integration."
+               "#{@tools} is not public, or does not exist, and no connection of #{org} reaches it."
 
       assert fix ==
-               "Owners and admins of #{org} connect one in Organisation settings › Integrations."
+               "Owners and admins of #{org} connect an integration that covers #{@tools} in Organisation settings › Integrations."
     end
 
     test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
