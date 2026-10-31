@@ -32,6 +32,8 @@ defmodule ApiaryWeb.SetUpComponents do
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
   alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
+  alias Apiary.Stacks.Sources
+  alias ApiaryWeb.HarnessComponents
   alias Apiary.Accounts.Scope
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.{Invitation, Organisation, Workspace}
@@ -343,6 +345,96 @@ defmodule ApiaryWeb.SetUpComponents do
     do: gettext("Which machines run the runs in %{workspace}?", workspace: name)
 
   def step_heading(:test, _workspace), do: gettext("Run a test")
+
+  @doc """
+  step_note/3 is the line under a step's name in the workspace's overview while the set-up
+  is not finished. A done step shows what it set where a value of it is at hand: Name the
+  workspace's name, Work sources the integrations whose collections bring work to the
+  workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
+  titles of the collections the step's done rule counts, or their number from 3 on, Model
+  the chosen model as the step shows it, Harness the chosen harness as the step shows it,
+  and Machines the node pool that runs the workspace's runs. Each value is read for the
+  scope's person with the reads of its step's page: Work sources and Destinations only
+  where `adapter.read` allows the tick list, Model only where the person may read the
+  choices of the workspace's chain as the Model step reads them. Test run shows
+  what it does, "Starts one run to check the set-up". A step not done, and a done step
+  whose value the person may not read or is not at hand, shows its page's heading
+  (`step_heading/2`).
+  """
+  @spec step_note(Scope.t(), atom, boolean) :: String.t()
+  def step_note(scope, id, done)
+  def step_note(%Scope{workspace: %Workspace{name: name}}, :name, _done), do: name
+  def step_note(_scope, :test, _done), do: gettext("Starts one run to check the set-up")
+
+  def step_note(%Scope{workspace: workspace} = scope, :sources, true) do
+    case WorkspaceSetup.source_names(scope, Domain.for_workspace(workspace)) do
+      [] -> step_heading(:sources, workspace)
+      names -> Enum.join(names, ", ")
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace} = scope, :destinations, true) do
+    case WorkspaceSetup.destination_names(scope, Domain.for_workspace(workspace)) do
+      [] ->
+        step_heading(:destinations, workspace)
+
+      names when length(names) <= 2 ->
+        Enum.join(names, ", ")
+
+      names ->
+        count = length(names)
+        ngettext("%{number} target", "%{number} targets", count, number: Format.number(count))
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace} = scope, :model, true),
+    do: WorkspaceSetup.model_name(scope) || step_heading(:model, workspace)
+
+  def step_note(%Scope{workspace: workspace}, :harness, true) do
+    case HarnessComponents.harness_words(Sources.chosen(workspace)) do
+      "" -> step_heading(:harness, workspace)
+      words -> words
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace}, :machines, true) do
+    case WorkspaceSetup.machines(workspace) do
+      %{pool: %{name: name}} -> name
+      nil -> step_heading(:machines, workspace)
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace}, id, _done), do: step_heading(id, workspace)
+
+  @doc """
+  changes_step?/2 is whether the person of `scope` may take the action of the set-up step
+  `id` of the scope's workspace, the action its page checks before it shows its form
+  rather than the step read only: Name `workspace.rename`, Work sources and Destinations
+  `collection.assign`, Model `model_choice.write`, Harness `harness.save`, Machines
+  `node.create`, Test run `work_item.take_in`.
+  """
+  @spec changes_step?(Scope.t(), atom) :: boolean
+  def changes_step?(%Scope{organisation: organisation, workspace: workspace} = scope, id) do
+    case id do
+      :name ->
+        Access.can?(scope, :"workspace.rename", workspace)
+
+      list when list in [:sources, :destinations] ->
+        Access.can?(scope, :"collection.assign", organisation)
+
+      :model ->
+        Access.can?(scope, :"model_choice.write", workspace)
+
+      :harness ->
+        Access.can?(scope, :"harness.save", workspace)
+
+      :machines ->
+        Access.can?(scope, :"node.create", workspace)
+
+      :test ->
+        Access.can?(scope, :"work_item.take_in", workspace)
+    end
+  end
 
   @doc """
   flow_title/1 is the line above the indicator's count: "Set up Payments · Software

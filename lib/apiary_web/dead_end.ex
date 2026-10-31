@@ -4,9 +4,9 @@ defmodule ApiaryWeb.DeadEnd do
   person reaches that leads nowhere for them:
 
     * `:workspace`, a workspace address that matches no workspace they reach in the
-      organisation (`ApiaryWeb.UserAuth.fetch_path_scope/2`): "No workspace has this
-      address in One Co. The workspace's name may have changed.", then the organisation's workspaces
-      they reach, as links.
+      organisation (`ApiaryWeb.UserAuth.fetch_path_scope/2`): "You have no workspace at
+      this address in One Co. Its address changes when the workspace is renamed.", then
+      the organisation's workspaces they reach, as links.
     * `:new_workspace`, New workspace (`/:org/workspaces/new`) for a person whom
       `workspace.create` does not allow (`ApiaryWeb.NotFound`'s `page`, rendered by
       `ApiaryWeb.ErrorHTML`): its heading, with no kind cards, and one line. Where the
@@ -96,7 +96,7 @@ defmodule ApiaryWeb.DeadEnd do
     ~H"""
     <p id="dead-end-line" class="text-sm/5 text-muted">
       {gettext(
-        "No workspace has this address in %{organisation}. The workspace's name may have changed.",
+        "You have no workspace at this address in %{organisation}. Its address changes when the workspace is renamed.",
         organisation: @current_scope.organisation.name
       )}
     </p>

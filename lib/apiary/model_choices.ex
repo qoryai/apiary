@@ -338,19 +338,38 @@ defmodule Apiary.ModelChoices do
 
   defp suggested(kind, provider, runtime) do
     described = Map.new(Connections.provider_models(provider), &{&1["id"], &1})
+
+    for %{id: id} = model <- listed(kind, provider, described),
+        do: Map.put(model, :effort, effort_of(described[id], runtime))
+  end
+
+  # The ids and titles of `suggestions/2`, in its order.
+  defp listed(kind, provider, described) do
     default = Connections.default_model(provider)
 
-    models =
-      for %{id: id} = model <- Map.get(@suggestions, kind, []),
-          do: Map.put(model, :effort, effort_of(described[id], runtime))
-
-    case Enum.split_with(models, &(&1.id == default)) do
+    case Enum.split_with(Map.get(@suggestions, kind, []), &(&1.id == default)) do
       {[], rest} when is_binary(default) ->
-        entry = described[default]
-        [%{id: default, title: entry["title"], effort: offered(entry, runtime)} | rest]
+        [%{id: default, title: described[default]["title"]} | rest]
 
       {first, rest} ->
         first ++ rest
+    end
+  end
+
+  @doc false
+  # shown_model/2 is the model `model_id` of the model provider `provider` as the set-up's
+  # Model step shows it chosen: the title of the model among `suggestions/2`, else of the
+  # first of them, the provider's default model, as the step does for a choice that names
+  # no model or one the list does not have; the id for a model with no title. nil for a
+  # provider with no model to suggest.
+  @spec shown_model(Connection.t(), String.t() | nil) :: String.t() | nil
+  def shown_model(%Connection{provider_kind: kind} = provider, model_id) do
+    described = Map.new(Connections.provider_models(provider), &{&1["id"], &1})
+    models = listed(kind, provider, described)
+
+    case Enum.find(models, &(&1.id == model_id)) || List.first(models) do
+      %{id: id, title: title} -> title || id
+      nil -> nil
     end
   end
 

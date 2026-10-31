@@ -174,15 +174,27 @@ defmodule ApiaryWeb.SettingsComponents do
           path: ~p"/#{organisation}/#{workspace}/settings/destinations"
         },
       # The workflow of the workspace's runs, with the `factory` feature, for whoever may
-      # save it.
-      Access.can?(scope, :"harness.save", workspace) &&
-        %Entry{
-          section: :main,
-          key: :workflow,
-          label: gettext("Workflow"),
-          icon: "hero-arrow-path-rounded-square",
-          path: ~p"/#{organisation}/#{workspace}/settings/workflow"
-        },
+      # save it. With `workflow_model`, Stages takes its place, for every member: the
+      # Stages page's Change leads to the harness choice that the Workflow page keeps.
+      if Features.visible?(scope, :workflow_model) do
+        Access.can?(scope, :"work_item.read", workspace) &&
+          %Entry{
+            section: :main,
+            key: :stages,
+            label: gettext("Stages"),
+            icon: "hero-arrow-path-rounded-square",
+            path: ~p"/#{organisation}/#{workspace}/settings/stages"
+          }
+      else
+        Access.can?(scope, :"harness.save", workspace) &&
+          %Entry{
+            section: :main,
+            key: :workflow,
+            label: gettext("Workflow"),
+            icon: "hero-arrow-path-rounded-square",
+            path: ~p"/#{organisation}/#{workspace}/settings/workflow"
+          }
+      end,
       # The workspace's artifact types, with the `workflow_model` feature, for whoever may
       # edit them.
       Access.can?(scope, :"artifact_type.edit", workspace) &&

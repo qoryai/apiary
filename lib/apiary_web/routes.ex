@@ -828,6 +828,9 @@ defmodule ApiaryWeb.Routes do
               live "/settings/artifact-types/new", ArtifactLive.Types, :new
               live "/settings/artifact-types/:type_id/edit", ArtifactLive.Types, :edit
               live "/settings/artifact-types/:type_id/delete", ArtifactLive.Types, :delete
+              # The workspace's stages, with the `factory` feature and the feature
+              # `workflow_model`; the Workflow page links to it.
+              live "/settings/stages", StagesLive.Index, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
