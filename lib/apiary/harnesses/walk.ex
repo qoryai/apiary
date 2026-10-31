@@ -95,7 +95,8 @@ defmodule Apiary.Harnesses.Walk do
   #      source is public;
   #   4. a source a grant of the instance's organisation covers fails `not_allowed`;
   #   5. a `ref` that is a full commit id (40 or 64 lower-case hex digits): no link, and
-  #      the source is not read;
+  #      the source is not read; once the walk has no call left, such a source skips
+  #      rule 3, and its probe, and passes here;
   #   6. any other source fails, one no grant covers or one only other organisations'
   #      grants cover: `not_covered` where the host of rule 3 answered `401`, `403` or
   #      `404`, a repository that is private or missing; else by why the read of rule 3
@@ -764,7 +765,11 @@ defmodule Apiary.Harnesses.Walk do
             {source, location(adapter, grant.grant_ref, resource_ref, shown, [], shown)}
 
           nil ->
-            public = PublicGit.public(source["git"])
+            # With no call left, a source at a full commit id passes by rule 5 unprobed.
+            public =
+              if commit?(source["ref"]) and get(:calls) <= 0,
+                do: :not_probed,
+                else: PublicGit.public(source["git"])
 
             cond do
               # Read from its host with no adapter and no grant, so with no link; the

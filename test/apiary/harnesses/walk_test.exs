@@ -939,8 +939,11 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run], covered: covering(ctx), files: %{})
 
       # The walk sends one request to each source's host, to learn whether the host
-      # serves the source to anyone, and each request counts as a call.
-      assert {:ok, walked} = Walk.run(ctx.input, max_calls: 40)
+      # serves the source to anyone, and each request counts as a call. Once no call is
+      # left, a source at a full commit id passes with no request: the walk passes
+      # within the default 24 calls.
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert Walk.max_calls() == 24
       assert walked.harness_links == []
       hosts = ComposedConfiguration.stack_hosts(walked.pins)
       assert length(hosts) == 33
