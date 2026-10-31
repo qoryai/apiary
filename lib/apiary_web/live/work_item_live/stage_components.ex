@@ -596,8 +596,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <ul :if={column.items != []} class="flex flex-col gap-1">
           <li :for={item <- column.items} id={"#{@id}-item-#{item.id}"}>
             <.link navigate={@path.(item.number)} class="q-link">
-              #{item.number} <.external_text :if={item.title} text={item.title} />
+              #{item.number}
+              <.external_text
+                :if={Apiary.ExternalText.present(item.title)}
+                text={Apiary.ExternalText.present(item.title)}
+              />
             </.link>
+            <.badge :if={item[:test]} class="q-wl-test">{gettext("Test")}</.badge>
           </li>
         </ul>
       </section>

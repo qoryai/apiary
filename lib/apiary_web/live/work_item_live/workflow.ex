@@ -148,6 +148,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       confirm_gate: false,
+      explore: false,
       can_decide: approver?(scope, stage) and Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
     }
@@ -402,9 +403,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # board/1 is the board's columns for the scope's workspace: one for each stage of its
   # current process version, in order, then one for each stage that version removed
   # while a live work item is still in it, marked with the version that has it. A work
-  # item on another version sits in the stage with the same id.
-  @spec board(Scope.t()) :: [map]
-  def board(scope) do
+  # item on another version sits in the stage with the same id. Each column lists its
+  # work items in the list's `sort`.
+  @spec board(Scope.t(), :updated | :created) :: [map]
+  def board(scope, sort \\ :updated) do
     current = Processes.current(scope.workspace)
     versions = Processes.list_versions(scope.workspace)
     stages = Enum.map(get(get(current, :document) || %{}, :stages) || [], &stage_map/1)
@@ -413,7 +415,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     # A work item the process has not placed yet sits in the first stage, where every
     # work item starts.
     rows =
-      for row <- Board.rows(scope),
+      for row <- Board.rows(scope, sort),
           do: if(is_nil(row.stage_id) and first, do: %{row | stage_id: first.id}, else: row)
 
     ids = MapSet.new(stages, & &1.id)

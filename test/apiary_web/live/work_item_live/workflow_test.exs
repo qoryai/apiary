@@ -22,6 +22,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   import Apiary.StagesFixtures
 
   alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.WorkflowFake
@@ -219,7 +220,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, ~s|#work-item-head-stages-#{@explore}[aria-current="step"]|)
       assert has_element?(view, "#work-item-head-stages-#{@release}.q-wi-stage-todo")
       refute has_element?(view, "#work-item-head-stages-explore")
-      refute has_element?(view, "#work-item-step")
+
+      # Explore runs as before the model: today's step card stays beside the stage card.
+      assert has_element?(view, "#work-item-step")
 
       assert has_element?(view, "#work-item-stage-state", "Running")
       assert has_element?(view, "#work-item-stage-round", "Round 1 of 3")
@@ -296,6 +299,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       refute has_element?(view, "#work-item-stage-escalation-move")
       assert html =~ "Run 1 · explore-a-ticket · round 1 · stopped"
+
+      # The escalation card's Run another round runs Explore again: the step card offers no
+      # Run Explore again, and the event does nothing.
+      assert has_element?(view, "#work-item-step")
+      refute has_element?(view, "#work-item-step-again")
+
+      runs = fn ->
+        Repo.aggregate(from(r in DispatchRun, where: r.work_item_id == ^work_item.id), :count)
+      end
+
+      before = runs.()
+      render_hook(view, "explore_again", %{"number" => "#{work_item.number}"})
+      assert runs.() == before
     end
   end
 
@@ -762,6 +778,80 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, list(scope) <> "?q=gift")
       refute has_element?(view, "#work-items-board")
+    end
+
+    test "a work item's number, its title without invisible characters, and the mark Test", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, line} = Apiary.WorkItems.take_in_test(scope, "Hello! Where are you running?")
+      basket = work_item_fixture(scope, %{title: "Basket \u202Eflow"})
+      blank = work_item_fixture(scope, %{title: "\u00A0"})
+
+      {:ok, view, html} = live(conn, list(scope))
+      item = &"#work-items-board-item-#{&1.public_id}"
+
+      refute html =~ "\u202E"
+      assert has_element?(view, item.(basket), "Basket flow")
+      refute has_element?(view, item.(basket) <> " .badge")
+      assert view |> element(item.(blank) <> " a") |> render() =~ ~r/>\s*##{blank.number}\s*<\/a>/
+      assert has_element?(view, item.(line) <> " a", "Hello! Where are you running?")
+      assert has_element?(view, item.(line) <> " .badge", "Test")
+      assert has_element?(view, ~s|#{item.(line)} a[href="#{page(scope, line.number)}"]|)
+    end
+
+    test "each column in the list's sort", %{conn: conn, scope: scope} do
+      older = work_item_fixture(scope, %{title: "Fix the basket total"})
+      newer = work_item_fixture(scope, %{title: "Show the delivery date"})
+      now = DateTime.utc_now()
+
+      for {work_item, created, updated} <- [{older, -60, 0}, {newer, 0, -60}] do
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [inserted_at: DateTime.add(now, created), updated_at: DateTime.add(now, updated)]
+        )
+      end
+
+      order = fn view ->
+        view
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#work-items-board-0 li")
+        |> LazyHTML.attribute("id")
+      end
+
+      ids = &Enum.map(&1, fn work_item -> "work-items-board-item-#{work_item.public_id}" end)
+
+      {:ok, view, _html} = live(conn, list(scope))
+      assert order.(view) == ids.([older, newer])
+
+      {:ok, view, _html} = live(conn, list(scope) <> "?sort=created")
+      assert order.(view) == ids.([newer, older])
+    end
+
+    test "a message of the workspace's work items reads the board again", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = backfilled!(scope, @explore, :running)
+      {:ok, view, _html} = live(conn, list(scope))
+
+      assert has_element?(
+               view,
+               "#work-items-board-0 #work-items-board-item-#{work_item.public_id}"
+             )
+
+      place!(work_item, Processes.current(scope.workspace), @shape, :at_gate)
+
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        Apiary.WorkItems.topic(scope.workspace.id),
+        {:work_items_changed, [work_item.public_id]}
+      )
+
+      assert has_element?(
+               view,
+               "#work-items-board-1 #work-items-board-item-#{work_item.public_id}"
+             )
     end
   end
 end

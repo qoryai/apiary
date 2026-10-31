@@ -2,7 +2,8 @@ defmodule ApiaryWeb.WorkItemLive.Board do
   # The rows of the board under the workflow model (`ApiaryWeb.WorkItemLive.Workflow`):
   # each live work item of the scope's workspace with its process version and its stage
   # (`Apiary.WorkItems.WorkItem`: `process_version_id`, `stage_id` and `stage_state`),
-  # most recently updated first, at most `@max` of them. The page that calls it has
+  # in the list's sort (`:updated`, most recently updated first, or `:created`, newest
+  # first), at most `@max` of them. The page that calls it has
   # checked `work_item.read` on the workspace (`ApiaryWeb.Access`); it reads nothing else.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -17,13 +18,15 @@ defmodule ApiaryWeb.WorkItemLive.Board do
   @max 500
 
   @doc false
-  # rows/1 is the board's work items of the scope's workspace.
-  @spec rows(Scope.t()) :: [map]
-  def rows(%Scope{workspace: %{id: workspace_id}}) do
+  # rows/2 is the board's work items of the scope's workspace, in `sort`.
+  @spec rows(Scope.t(), :updated | :created) :: [map]
+  def rows(%Scope{workspace: %{id: workspace_id}}, sort \\ :updated) do
+    field = if sort == :created, do: :inserted_at, else: :updated_at
+
     Repo.all(
       from w in WorkItem,
         where: w.workspace_id == ^workspace_id and w.state == :exploring,
-        order_by: [desc: w.updated_at, desc: w.public_id],
+        order_by: [desc: field(w, ^field), desc: w.public_id],
         limit: @max,
         select: %{
           id: w.public_id,

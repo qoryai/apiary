@@ -69,6 +69,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @edit_keys ["understanding", "scope_in", "scope_out", "approach"]
   @comment_events Comments.events() -- ["cancel_question"]
   @actions ~w(undo ask_decline decline ask_close close confirm explore_again answer change_proposal confirm_changes)
+  # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
+  # at Explore, its gate included.
+  @explore_statuses [
+    :queued,
+    :running,
+    :questions,
+    :used_up,
+    :no_result,
+    :lost,
+    :cancelled,
+    :confirm
+  ]
+
   @stage_events ~w(stage_approve stage_ask_changes stage_request_changes stage_resolve stage_move stage_check)
   @resolutions %{
     "accept" => :accept,
@@ -148,7 +161,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             check={@stage_check}
           />
           <.step_card
-            :if={!@flow or @flow.confirm_gate}
+            :if={!@flow or @flow.explore}
             work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
@@ -352,7 +365,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: Comments.handle_event(event, params, socket)
 
   def handle_event(event, %{"number" => number} = params, socket) when event in @actions do
-    if number == Integer.to_string(socket.assigns.number),
+    # While the stage runner holds an escalation, Run another round on its card runs
+    # Explore again.
+    held? =
+      event == "explore_again" and
+        escalated?(socket.assigns[:flow], status(socket.assigns[:item]))
+
+    if number == Integer.to_string(socket.assigns.number) and not held?,
       do: act(event, params, socket),
       else: {:noreply, socket}
   end
@@ -634,10 +653,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
          %{} = source <- WorkItems.ticket(scope, row, comments) do
       names = Map.get(WorkItems.ticket_names(scope, [row]), row.id, %{})
       thread = if socket.assigns.tab == :thread, do: thread_entries(scope, row, now), else: []
-      # At Explore's gate the step card's Confirm approves the gate
-      # (`Apiary.WorkItems.confirm/4`), so the stage card offers no second Approve there.
+      # Explore runs as before the workflow model: while the work item is at Explore,
+      # the step card stays beside the stage card, with Undo, the answers, Decline and
+      # Confirm. Its Confirm approves Explore's gate (`Apiary.WorkItems.confirm/4`), so
+      # the stage card offers no second Approve there.
       flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
-      flow = flow && %{flow | confirm_gate: explore.status == :confirm}
+
+      flow =
+        flow &&
+          %{
+            flow
+            | confirm_gate: explore.status == :confirm,
+              explore: explore.status in @explore_statuses
+          }
+
       page = View.page(scope, row, explore, thread, names)
 
       # Take in again is reached from the Backlog only while it shows the ticket: its
@@ -666,7 +695,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         comment_count: WorkItems.count_comments(scope, row),
         can_comment: Comments.can_comment?(scope, row),
         deleting_comment: Comments.still_asking(socket.assigns.deleting_comment, thread),
-        can: can(scope, row, explore.status),
+        can: can(scope, row, explore.status, flow),
         flow: flow,
         artifacts: if(flow, do: Workflow.artifacts(row), else: [])
       )
@@ -696,8 +725,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # reads them.
   defp thread_entries(scope, row, now), do: WorkItems.thread(scope, row, now)
 
-  # What the reader may do here: undo, close, and act at the step it stands at.
-  defp can(scope, row, status) do
+  # What the reader may do here: undo, close, and act at the step it stands at. While the
+  # stage runner holds an escalation, its card offers Run another round and Decline in
+  # place of the step card's Run Explore again and Decline.
+  defp can(scope, row, status, flow) do
     live? = status not in [:declined, :closed, :undone]
 
     action =
@@ -712,9 +743,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     %{
       undo: live? and Access.can?(scope, :"work_item.undo", row),
       close: live? and Access.can?(scope, :"work_item.close", row),
-      act: live? and not is_nil(action) and Access.can?(scope, action, row)
+      act:
+        live? and not is_nil(action) and not escalated?(flow, status) and
+          Access.can?(scope, action, row)
     }
   end
+
+  defp status(%{status: status}), do: status
+  defp status(_item), do: nil
+
+  defp escalated?(%{escalation: %{}}, status)
+       when status in [:no_result, :lost, :cancelled, :used_up],
+       do: true
+
+  defp escalated?(_flow, _status), do: false
 
   defp scope(socket), do: socket.assigns.current_scope
 

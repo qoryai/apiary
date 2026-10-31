@@ -396,7 +396,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     board =
       if params.view == :open and is_nil(params.stage) and is_nil(params.search) and
            not Enum.any?(@filters, &on?(params, &1)) and Workflow.on?(scope),
-         do: Workflow.board(scope)
+         do: Workflow.board(scope, params.sort)
 
     assign(socket,
       board: board,
