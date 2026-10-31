@@ -86,7 +86,10 @@ defmodule ApiaryWeb.WorkflowLive do
         harness_refusal: nil,
         target_edit: nil,
         workspace_stacks: nil,
-        workspace_stacks_of: nil
+        workspace_stacks_of: nil,
+        # With the feature `workflow_model`, the stages replace the workflow choice
+        # (decision D3): the page keeps the harness choice and links to Stages.
+        stages?: ApiaryWeb.StagesLive.Calls.workflow_model?()
       )
       |> assign_harness_form(nil)
       |> load_targets()
@@ -715,11 +718,31 @@ defmodule ApiaryWeb.WorkflowLive do
           />
         </div>
 
-        <p :if={@current} id="workflow-current" class="text-[13px]/[20px]">
+        <div :if={@stages?} id="workflow-stages" class="grid gap-2">
+          <p class="text-[13.5px]/5">
+            {gettext(
+              "Set the stages of %{workspace}, and the workflows each stage runs, on the Stages page.",
+              workspace: @workspace
+            )}
+          </p>
+          <div>
+            <.button
+              id="workflow-stages-link"
+              navigate={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/stages"
+              }
+            >
+              {gettext("Open Stages")}
+            </.button>
+          </div>
+        </div>
+
+        <p :if={@current && !@stages?} id="workflow-current" class="text-[13px]/[20px]">
           {current_words(@current, @workspace)}
         </p>
 
         <.form
+          :if={!@stages?}
           for={@form}
           id="workflow-form"
           phx-change="change"
@@ -795,14 +818,14 @@ defmodule ApiaryWeb.WorkflowLive do
           </SettingsComponents.save>
         </.form>
         <:context>
-          <p id="workflow-what">
+          <p :if={!@stages?} id="workflow-what">
             {pgettext(
               "plain",
               "Runs in %{workspace} use the workflow you choose here, from a harness repository.",
               workspace: @workspace
             )}
           </p>
-          <p id="workflow-list">
+          <p :if={!@stages?} id="workflow-list">
             {pgettext(
               "plain",
               "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it.",
