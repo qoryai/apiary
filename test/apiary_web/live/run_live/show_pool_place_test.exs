@@ -130,11 +130,14 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
       run
     end
 
-    defp with_session(run) do
-      event_fixture(run, 2, "session.started", session_started_data())
+    defp with_session(run, data \\ session_started_data()) do
+      event_fixture(run, 2, "session.started", data)
       {:ok, run} = Projector.project(run)
       run
     end
+
+    defp bare_runtime,
+      do: Map.delete(session_started_data(%{"runtime" => "bash"}), "runtime_version")
 
     test "the runtime unknown, no wall: the host and no wall", ctx do
       run = opened(ctx.run, started_data(%{"host" => @laptop}))
@@ -180,6 +183,38 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
 
       assert ctx.conn |> run_page(ctx.scope, run) |> run_started_words() ==
                "claude 2.1.0, behind a docker wall"
+    end
+
+    test "no version, no host, no wall", %{conn: conn, scope: scope, run: run} do
+      run = run |> opened(Map.delete(started_data(), "host")) |> with_session(bare_runtime())
+
+      assert conn |> run_page(scope, run) |> run_started_words() == "bash, without a wall"
+    end
+
+    test "no version, no host, a wall", %{conn: conn, scope: scope, run: run} do
+      run =
+        run
+        |> opened(started_data(%{"wall" => "docker"}) |> Map.delete("host"))
+        |> with_session(bare_runtime())
+
+      assert conn |> run_page(scope, run) |> run_started_words() == "bash, behind a docker wall"
+    end
+
+    test "no version, a host, no wall", %{conn: conn, scope: scope, run: run} do
+      run = run |> opened(started_data(%{"host" => @laptop})) |> with_session(bare_runtime())
+
+      assert conn |> run_page(scope, run) |> run_started_words() ==
+               "bash on #{@laptop}, without a wall"
+    end
+
+    test "no version, a host, a wall", %{conn: conn, scope: scope, run: run} do
+      run =
+        run
+        |> opened(started_data(%{"host" => @laptop, "wall" => "docker"}))
+        |> with_session(bare_runtime())
+
+      assert conn |> run_page(scope, run) |> run_started_words() ==
+               "bash on #{@laptop}, behind a docker wall"
     end
 
     test "neither the runtime nor the host known: no sentence", ctx do

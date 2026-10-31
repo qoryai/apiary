@@ -1086,14 +1086,10 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # What is not known stays out of the sentence. The runtime comes with the first session and
   # the host is absent from a run with a run key outside a pool. `run.started` has no `wall`
-  # when the run has none, so without a `wall` the run has no wall.
+  # when the run has none, so without a `wall` the run has no wall. A bare runtime has no
+  # version, so `%{runtime}` is the runtime and its version, joined by `runtime_words/1`.
   defp run_started_words(item) do
-    runtime = sent(item.runtime)
-    version = sent(item.runtime_version)
-    host = sent(item.host)
-    wall = sent(item.wall)
-
-    case {runtime, host, wall} do
+    case {runtime_words(item), sent(item.host), sent(item.wall)} do
       {nil, nil, _wall} ->
         nil
 
@@ -1104,30 +1100,30 @@ defmodule ApiaryWeb.RunPageComponents do
         gettext("on %{host}, behind a %{wall} wall", host: host, wall: wall)
 
       {runtime, nil, nil} ->
-        gettext("%{runtime} %{version}, without a wall", runtime: runtime, version: version)
+        gettext("%{runtime}, without a wall", runtime: runtime)
 
       {runtime, nil, wall} ->
-        gettext("%{runtime} %{version}, behind a %{wall} wall",
-          runtime: runtime,
-          version: version,
-          wall: wall
-        )
+        gettext("%{runtime}, behind a %{wall} wall", runtime: runtime, wall: wall)
 
       {runtime, host, nil} ->
-        gettext("%{runtime} %{version} on %{host}, without a wall",
-          runtime: runtime,
-          version: version,
-          host: host
-        )
+        gettext("%{runtime} on %{host}, without a wall", runtime: runtime, host: host)
 
       {runtime, host, wall} ->
-        gettext("%{runtime} %{version} on %{host}, behind a %{wall} wall",
+        gettext("%{runtime} on %{host}, behind a %{wall} wall",
           runtime: runtime,
-          version: version,
           host: host,
           wall: wall
         )
     end
+  end
+
+  defp runtime_words(%{runtime: nil}), do: nil
+
+  defp runtime_words(item) do
+    [item.runtime, item.runtime_version]
+    |> Enum.map(&sent/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
   end
 
   defp hosts_allowed(n),
