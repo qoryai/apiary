@@ -460,7 +460,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert response(conn, 200) == "png"
       assert get_resp_header(conn, "content-type") == ["image/png"]
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
-      assert get_resp_header(conn, "content-security-policy") == ["sandbox"]
+      [policy] = get_resp_header(conn, "content-security-policy")
+      assert String.starts_with?(policy, "default-src 'self'")
+      assert String.ends_with?(policy, "; sandbox")
 
       assert get_resp_header(conn, "content-disposition") == [
                ~s(attachment; filename="one.png"; filename*=UTF-8''one.png)
@@ -772,6 +774,13 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              "Fix a.md to match the format of explainer: " <>
                "the file does not match the JSON Schema of explainer."
          }},
+        {{:invalid, {:schema, 0, %{path: "/summary", error: "expected a string"}}}, 422,
+         %{
+           "error" => "invalid_artifact",
+           "names" => ["files[0]"],
+           "message" =>
+             "Fix a.md to match the format of explainer: at /summary, expected a string."
+         }},
         {{:invalid, {:unreadable, 0}}, 422,
          %{
            "error" => "invalid_artifact",
@@ -973,6 +982,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         ])
 
       assert write(ctx, "/artifacts", body).status == 201
+    end
+
+    test "a pushed verdict artifact with gaps null is 422, as Apiary.Artifacts refuses it",
+         ctx do
+      body =
+        push_body("verdict", [
+          {"verdict.json", "application/json", ~s({"verdict":"passed","gaps":null})}
+        ])
+
+      conn = write(ctx, "/artifacts", body)
+      assert json_response(conn, 422)["error"] == "invalid_artifact"
+      assert RunApiStubs.pushed() == []
     end
 
     test "a body over 64 KiB is 413", ctx do

@@ -164,13 +164,14 @@ defmodule ApiaryWeb.RunApiStubs do
 
     # The format check of the type `verdict`, as `Apiary.Artifacts.Format` makes it with
     # `priv/schemas/artifacts/verdict.schema.json`: one JSON document, `verdict` one of
-    # the three values, `gaps` absent or a text of 1 to 20000 code points, no other
-    # member; else the refusal `Apiary.Artifacts.push/5` returns.
+    # the three values, `gaps` absent or a text of 1 to 20000 code points without the
+    # characters the schema refuses (null is refused), no other member; else the
+    # refusal `Apiary.Artifacts.push/5` returns.
     defp verdict_refusal("verdict", [%{binary: binary}]) do
       case Jason.decode(binary) do
         {:ok, %{"verdict" => verdict} = document}
         when verdict in ["passed", "changes-requested", "escalate"] ->
-          if Map.keys(document) -- ["verdict", "gaps"] == [] and gaps?(document["gaps"]),
+          if Map.keys(document) -- ["verdict", "gaps"] == [] and gaps?(document),
             do: nil,
             else: {:invalid, {:schema, 0}}
 
@@ -184,12 +185,23 @@ defmodule ApiaryWeb.RunApiStubs do
 
     defp verdict_refusal(_type, _files), do: nil
 
-    defp gaps?(nil), do: true
+    # The characters the schema refuses in `gaps`, as
+    # `ApiaryWeb.Contract.RunApi.Body` refuses them.
+    @refused_in_gaps ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
 
-    defp gaps?(gaps) when is_binary(gaps),
-      do: gaps != "" and length(String.codepoints(gaps)) <= 20_000
+    defp gaps?(document) do
+      case Map.fetch(document, "gaps") do
+        :error ->
+          true
 
-    defp gaps?(_gaps), do: false
+        {:ok, gaps} when is_binary(gaps) ->
+          gaps != "" and length(String.codepoints(gaps)) <= 20_000 and
+            not Regex.match?(@refused_in_gaps, gaps)
+
+        {:ok, _not_text} ->
+          false
+      end
+    end
 
     # The work item's artifacts by type and name, versions newest first.
     def list(work_item) do

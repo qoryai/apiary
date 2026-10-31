@@ -28,9 +28,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      not match the type's format among it, `422` `invalid_artifact`.
   #
   # A file is served as a download (`Content-Disposition: attachment`) with
-  # `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`, and HTML,
-  # SVG, XML and script types as `application/octet-stream`, so no artifact is shown
-  # inline from Qory Apiary's origin.
+  # `X-Content-Type-Options: nosniff` and the directive `sandbox` added to its
+  # `Content-Security-Policy`, and HTML, SVG, XML and script types as
+  # `application/octet-stream`, so no artifact is shown inline from Qory Apiary's origin.
   #
   # Errors are short JSON; nothing logs the body, the signature or the headers. An
   # exception is `503` `unavailable`, logged by its module's name alone.
@@ -86,7 +86,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       conn
       |> put_resp_header("content-disposition", disposition(filename))
       |> put_resp_header("x-content-type-options", "nosniff")
-      |> put_resp_header("content-security-policy", "sandbox")
+      |> put_resp_header("content-security-policy", sandboxed(conn))
       |> put_resp_content_type(served_type(field(file, :content_type)), nil)
       |> send_resp(200, content)
     else
@@ -154,6 +154,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   rescue
     exception -> unavailable(conn, exception)
+  end
+
+  # The policy `ApiaryWeb.ContentSecurityPolicy` set for the answer, with the directive
+  # `sandbox` added.
+  defp sandboxed(conn) do
+    case get_resp_header(conn, "content-security-policy") do
+      [policy | _rest] -> policy <> "; sandbox"
+      [] -> "sandbox"
+    end
   end
 
   # The verdict's file, as the schema of the type `verdict` takes it: `gaps` only where
@@ -347,6 +356,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:error,
           {:invalid_artifact, "files[#{index}]",
            mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
+
+  # A schema refusal with the first failing JSON pointer and the validator's message, as
+  # `Apiary.Artifacts` gives them: text, written as it is.
+  defp refused({:invalid, {:schema, index, %{path: path, error: error}}}, push)
+       when is_integer(index) do
+    filename = Enum.at(push.filenames, index) || "files[#{index}]"
+
+    {:error,
+     {:invalid_artifact, "files[#{index}]",
+      "Fix #{filename} to match the format of #{push.name}: at #{path}, #{error}."}}
+  end
 
   defp refused({:invalid, :no_video}, push),
     do:

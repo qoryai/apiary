@@ -167,8 +167,9 @@ Returns `200` with the file's bytes, and these headers:
 - `Content-Disposition: attachment; filename="<name>"; filename*=UTF-8''<name>`, where
   the first name has every character outside `A-Z a-z 0-9 . _ -` replaced by `_`;
 - `X-Content-Type-Options: nosniff`;
-- `Content-Security-Policy: sandbox`, so a browser that opens the file runs no script
-  of it and treats it as a page of no origin;
+- `Content-Security-Policy`: the policy of every answer of Qory Apiary with the
+  directive `sandbox` added, so a browser that opens the file runs no script of it and
+  treats it as a page of no origin;
 - `Content-Type`: the file's content type, or `application/octet-stream` for a type
   with `html`, `xml`, `svg`, `javascript` or `ecmascript` in it, and for a type that is
   not a plain `type/subtype`.
@@ -289,7 +290,10 @@ The messages:
   - "Fix notes.txt to match the format of explainer: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: the file does not match the JSON
-    Schema of verdict."
+    Schema of verdict." Where Qory Apiary has the first member that fails the schema,
+    the part after the colon is "at <path>, <error>.", with the member's JSON pointer
+    and the schema check's text, such as "at /verdict, value is not one of the
+    allowed values."
   - "Push checkout.png again: Qory Apiary could not read it after it was received."
   - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
     video."
