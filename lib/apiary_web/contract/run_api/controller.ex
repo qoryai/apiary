@@ -377,7 +377,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       limit: limit,
       message:
         if(is_integer(limit),
-          do: "The artifact type #{type} takes at most #{limit} files in one version.",
+          do: "The artifact type #{type} takes at most #{file_count(limit)} in one version.",
           else: "The version has more files than the artifact type #{type} takes."
         )
     )
@@ -405,6 +405,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   defp write_error(conn, _error), do: error(conn, 503, "unavailable")
+
+  defp file_count(1), do: "1 file"
+  defp file_count(limit), do: "#{limit} files"
 
   defp named(nil), do: ""
   defp named(workflow), do: " " <> workflow
