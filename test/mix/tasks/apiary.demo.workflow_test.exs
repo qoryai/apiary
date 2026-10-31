@@ -42,24 +42,32 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert Workflow.refusal(:test, false, "apiary_test", %{}) =~ "belongs to the tests"
     end
 
-    test "development fills only an apiary_walk_ database that APIARY_DEV_DATABASE names" do
-      env = %{"APIARY_DEV_DATABASE" => "apiary_walk_preview"}
-      assert Workflow.refusal(:dev, false, "apiary_walk_preview", env) == nil
+    test "development fills only apiary_preview_workflow or an apiary_walk_ database" do
+      for name <- ["apiary_preview_workflow", "apiary_walk_preview"] do
+        assert Workflow.refusal(:dev, false, name, %{"APIARY_DEV_DATABASE" => name}) == nil
+      end
 
-      assert Workflow.refusal(:dev, false, "apiary_walk_preview", %{env | "DATABASE_URL" => ""}) ==
+      env = %{"APIARY_DEV_DATABASE" => "apiary_preview_workflow"}
+
+      assert Workflow.refusal(:dev, false, "apiary_preview_workflow", %{
+               env
+               | "DATABASE_URL" => ""
+             }) ==
                nil
 
       assert Workflow.refusal(
                :dev,
                false,
-               "apiary_walk_preview",
-               Map.put(env, "DATABASE_URL", "ecto://localhost/apiary_walk_preview")
+               "apiary_preview_workflow",
+               Map.put(env, "DATABASE_URL", "ecto://localhost/apiary_preview_workflow")
              ) =~ "DATABASE_URL is set"
 
       assert Workflow.refusal(:dev, false, "apiary_dev", %{}) =~ "APIARY_DEV_DATABASE is not set"
 
-      assert Workflow.refusal(:dev, false, "apiary_dev", %{"APIARY_DEV_DATABASE" => "apiary_dev"}) =~
-               "does not start with apiary_walk_"
+      for name <- ["apiary_dev", "apiary_preview_workflow_2", "apiary_preview_v0"] do
+        assert Workflow.refusal(:dev, false, name, %{"APIARY_DEV_DATABASE" => name}) =~
+                 "#{name} is not apiary_preview_workflow and does not start with apiary_walk_"
+      end
 
       assert Workflow.refusal(:dev, false, "apiary_dev", env) =~ "configured with the database"
     end

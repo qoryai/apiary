@@ -7,14 +7,14 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   synthetic and neutral. A development tool: it stops in production.
 
       unset DATABASE_URL
-      export APIARY_DEV_DATABASE=apiary_walk_preview
+      export APIARY_DEV_DATABASE=apiary_preview_workflow
       export QORY_FEATURES=observability,security,secrets,factory,workflow_model
       mix ecto.create && mix ecto.migrate && mix apiary.demo.workflow
 
   It needs the features `workflow_model` and `factory`, and stops with one line when
-  either is off. It fills only a database whose name starts with `apiary_walk_`, which
-  `APIARY_DEV_DATABASE` sets (`config/dev.exs` reads it), with `DATABASE_URL` unset. In
-  the test environment it runs only under the tests.
+  either is off. It fills only the database `apiary_preview_workflow` or a database whose
+  name starts with `apiary_walk_`, set in `APIARY_DEV_DATABASE` (`config/dev.exs` reads
+  it), with `DATABASE_URL` unset. In the test environment it runs only under the tests.
 
   ## What it makes
 
@@ -96,6 +96,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @organisation "Acme"
   @workspace "Web shop"
   @database_prefix "apiary_walk_"
+  @preview_database "apiary_preview_workflow"
 
   @host "https://tracker.example.com"
   @code_host "git.example.com"
@@ -183,8 +184,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # environment `mix_env`, given whether the tests run (`tests?`) and the shell's
   # variables `env`; nil when it may. The tests fill their partitioned database, and the
   # test environment is refused outside them. Anywhere else only the database that
-  # APIARY_DEV_DATABASE names is filled, a name that starts with `apiary_walk_`, with no
-  # DATABASE_URL to replace it. An empty DATABASE_URL replaces nothing, so it counts as
+  # APIARY_DEV_DATABASE names is filled, `apiary_preview_workflow` or a name that starts
+  # with `apiary_walk_`, with no DATABASE_URL to replace it. An empty DATABASE_URL replaces nothing, so it counts as
   # unset.
   @spec refusal(atom, boolean, String.t() | nil, %{optional(String.t()) => String.t()}) ::
           String.t() | nil
@@ -203,8 +204,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       named in [nil, ""] ->
         refused("APIARY_DEV_DATABASE is not set")
 
-      not String.starts_with?(named, @database_prefix) ->
-        refused("#{named} does not start with #{@database_prefix}")
+      named != @preview_database and not String.starts_with?(named, @database_prefix) ->
+        refused(
+          "#{named} is not #{@preview_database} and does not start with #{@database_prefix}"
+        )
 
       database != named ->
         refused(
@@ -220,11 +223,11 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   defp refused(reason) do
     """
     mix apiary.demo.workflow fills only a preview database: #{reason}.
-    Run it in development, with DATABASE_URL unset and APIARY_DEV_DATABASE set to a
-    database whose name starts with #{@database_prefix}:
+    Run it in development, with DATABASE_URL unset and APIARY_DEV_DATABASE set to
+    #{@preview_database} or to a database whose name starts with #{@database_prefix}:
 
         unset DATABASE_URL
-        export APIARY_DEV_DATABASE=apiary_walk_preview
+        export APIARY_DEV_DATABASE=#{@preview_database}
         mix ecto.create && mix ecto.migrate && mix apiary.demo.workflow
     """
   end
