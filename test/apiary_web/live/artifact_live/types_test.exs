@@ -113,8 +113,13 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
         )
         |> render_submit()
 
-      assert html =~ "Set a size limit above 0 and at most", size
+      assert html =~ "Set a size limit above 0 and at most 1,024 MiB.", size
     end
+
+    html =
+      view |> form("#artifact-type-form", artifact_type: %{base_view: "video"}) |> render_change()
+
+    assert html =~ "All files of one version together. At most 2,048 MiB."
 
     assert Artifacts.type(ctx.scope.workspace, "big-file") == nil
   end

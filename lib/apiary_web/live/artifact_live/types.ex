@@ -220,7 +220,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
           label={gettext("Size limit in MiB")}
           hint={
             gettext("All files of one version together. At most %{size}.",
-              size: size(Type.max_size_limit(@base_view))
+              size: form_size(Type.max_size_limit(@base_view))
             )
           }
         />
@@ -548,7 +548,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp size_rule(base_view),
     do:
       gettext("Set a size limit above 0 and at most %{size}.",
-        size: size(Type.max_size_limit(base_view))
+        size: form_size(Type.max_size_limit(base_view))
       )
 
   defp files_rule(:structured), do: gettext("A structured type has one file.")
@@ -572,6 +572,12 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp base_view_hint(:structured), do: gettext("One JSON document, shown as a table.")
 
   defp size(bytes), do: ApiaryWeb.ArtifactComponents.size(bytes)
+
+  # A size in MiB, the unit the form takes, as its hint and its lines say it: "2,048 MiB".
+  defp form_size(bytes) when rem(bytes, @mib) == 0,
+    do: gettext("%{number} MiB", number: Format.number(div(bytes, @mib)))
+
+  defp form_size(bytes), do: gettext("%{number} MiB", number: mib(bytes))
 
   # A size limit in MiB, as the form shows it: at most four decimals, without trailing
   # zeros.
