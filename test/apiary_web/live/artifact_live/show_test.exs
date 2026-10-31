@@ -172,6 +172,25 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, ~s(a[href="javascript:x"]))
     end
 
+    test "says the table is cut only when values are left out" do
+      shown = fn values ->
+        render_component(&ArtifactComponents.view/1,
+          id: "view",
+          type: %Apiary.Artifacts.Type{name: "bid-set", base_view: :structured},
+          version: %Apiary.Artifacts.Version{
+            files: [%Apiary.Artifacts.ArtifactFile{filename: "a.json"}]
+          },
+          content: %{"a.json" => {:json, values}},
+          path: fn _file -> "/a.json" end
+        )
+      end
+
+      refute shown.(List.duplicate(1, 5000)) =~ "Shown: the first"
+      refute shown.(%{"a" => List.duplicate(1, 4999)}) =~ "Shown: the first"
+      assert shown.(List.duplicate(1, 5001)) =~ "Shown: the first 5,000 values."
+      assert shown.(%{"a" => List.duplicate(1, 5000)}) =~ "Shown: the first 5,000 values."
+    end
+
     test "is read again when a version is pushed to its work item", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))

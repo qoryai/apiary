@@ -391,8 +391,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   defp structured(%{content: :pending} = assigns), do: ~H|<div class="min-h-6"></div>|
 
   defp structured(%{content: {:json, value}} = assigns) do
-    {rows, shown} = rows(value, assigns.change, 0, @max_values)
-    assigns = assign(assigns, rows: rows, cut: shown >= @max_values)
+    {rows, _shown} = rows(value, assigns.change, 0, @max_values)
+    assigns = assign(assigns, rows: rows, cut: values(value, @max_values + 1) > @max_values)
 
     ~H"""
     <div class="grid gap-2">
@@ -481,6 +481,22 @@ defmodule ApiaryWeb.ArtifactComponents do
     {cell, used} = cell(value, false, false, used + 1, used + 1)
     {[%{key: "", value: cell}], used}
   end
+
+  # How many values `rows/4` would show of a JSON value with no bound, counted up to
+  # `limit`: each member or item, nested ones too, and a scalar at the top as one.
+  defp values(value, limit) when is_map(value) or is_list(value), do: count(value, 0, limit)
+  defp values(_scalar, _limit), do: 1
+
+  defp count(value, counted, limit) when is_map(value),
+    do: count(Map.values(value), counted, limit)
+
+  defp count(value, counted, limit) when is_list(value) do
+    Enum.reduce_while(value, counted, fn item, counted ->
+      if counted >= limit, do: {:halt, counted}, else: {:cont, count(item, counted + 1, limit)}
+    end)
+  end
+
+  defp count(_scalar, counted, _limit), do: counted
 
   defp cell(value, _url?, change, used, left) when is_map(value) or is_list(value) do
     {nested, used} = rows(value, change, used, left)
