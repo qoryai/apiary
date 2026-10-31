@@ -1,14 +1,12 @@
 defmodule ApiaryWeb.StagesLiveTest do
   @moduledoc """
   Workspace settings › Stages (`ApiaryWeb.StagesLive.Index`) and the Workflow page's link
-  to it, against the temporary calls of `ApiaryWeb.StagesLive.Calls`: not found while the
-  feature `workflow_model` is off; the canvas and the list of stages; adding, renaming,
+  to it: not found while the feature `workflow_model` is off; the canvas and the list of stages; adding, renaming,
   moving and removing a stage; a stage's sequence, loop, inputs, outputs and gate; the
   placement check; a save, a trial and the history; and a member's page, with no edit
   controls.
 
-  Not async: the feature's switch is the application's environment until piece F adds
-  the feature.
+  Not async: each test sets the instance's features, which are the whole node's.
   """
   use ApiaryWeb.ConnCase, async: false
 
@@ -16,16 +14,30 @@ defmodule ApiaryWeb.StagesLiveTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias ApiaryWeb.StagesLive.{Calls, Draft}
+  alias Apiary.Processes
+  alias Apiary.Repo
+  alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.StagesLive.{Draft, Words}
 
-  @moduletag needs: :factory
+  @moduletag with_features: Apiary.Features.all()
 
   setup :register_and_log_in_user
 
   setup %{scope: scope} do
-    Application.put_env(:apiary, :stages_stub_flag, true)
-    on_exit(fn -> Application.delete_env(:apiary, :stages_stub_flag) end)
     %{path: workspace_path(scope, "/settings/stages")}
+  end
+
+  # The id of the default process's stage `name`.
+  defp id_of(name),
+    do: Enum.find(Processes.default_document("software")["stages"], &(&1["name"] == name))["id"]
+
+  defp card(view, name), do: Enum.find(canvas_view(view)["stages"], &(&1["name"] == name))
+
+  # The status of a request the feature's gate answers, as a response or as an error.
+  defp status(conn, path) do
+    get(conn, path).status
+  rescue
+    _error -> elem(assert_error_sent(:not_found, fn -> get(conn, path) end), 0)
   end
 
   defp names(view) do
@@ -58,13 +70,13 @@ defmodule ApiaryWeb.StagesLiveTest do
   end
 
   describe "the feature" do
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
     test "off: Stages is not found, and the Workflow page keeps its workflow choice", %{
       conn: conn,
       path: path,
       scope: scope
     } do
-      Application.put_env(:apiary, :stages_stub_flag, false)
-      assert_raise ApiaryWeb.Features.NotFound, fn -> live(conn, path) end
+      assert status(conn, path) == 404
 
       {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/workflow"))
       assert has_element?(view, "#workflow-form")
@@ -98,12 +110,12 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       canvas = canvas_view(view)
       assert canvas["editable"]
-      assert canvas["selected"] == "st_explore"
+      assert canvas["selected"] == id_of("Explore")
 
       assert [explore | _] = canvas["stages"]
 
       assert explore == %{
-               "id" => "st_explore",
+               "id" => id_of("Explore"),
                "name" => "Explore",
                "workflows" => ["explore-a-ticket"],
                "loop" => "Loop: at most 3 rounds",
@@ -123,7 +135,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> element("#stages-add") |> render_click()
       assert names(view) == ["Explore", "Shape", "Build", "Verify", "Release", "New stage"]
       id = List.last(ids(view))
-      assert Apiary.PublicId.valid?("st", id)
+      assert id =~ ~r/^st_[0-9a-hjkmnp-tv-z]{10}$/
       assert has_element?(view, "#stage-panel-title", "Edit New stage")
       assert has_element?(view, "#stages-dirty")
 
@@ -138,7 +150,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert names(view) == ~w(Demo Explore Shape Build Verify Release)
 
       # An order that is not the same stages changes nothing.
-      render_hook(view, "reorder", %{"ids" => ["st_explore"]})
+      render_hook(view, "reorder", %{"ids" => [id_of("Explore")]})
       assert names(view) == ~w(Demo Explore Shape Build Verify Release)
 
       view |> element(~s(button[aria-label="Remove Demo"])) |> render_click()
@@ -162,8 +174,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       )
       |> render_change()
 
-      build = Enum.find(canvas_view(view)["stages"], &(&1["id"] == "st_build"))
-      assert build["loop"] == "Loop: at most 10 rounds"
+      assert card(view, "Build")["loop"] == "Loop: at most 10 rounds"
       assert has_element?(view, "#stage-entry-0-machine[value=large]")
 
       assert has_element?(
@@ -178,14 +189,19 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
 
     test "the placement check lists a workflow the harness does not declare and an input no earlier stage outputs",
-         %{conn: conn, path: path} do
+         %{conn: conn, path: path, scope: scope} do
+      # A version saved while the harness declared capture-demo.
+      document =
+        Draft.update_stage(
+          Processes.default_document("software"),
+          id_of("Build"),
+          &Draft.add_entry(&1, "capture-demo", nil)
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+
       {:ok, view, _html} = live(conn, path)
       view |> element(~s(button[aria-label="Edit Build"])) |> render_click()
-      view |> element("#stage-add-entry") |> render_click()
-
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{workflow: "capture-demo"}}})
-      |> render_change()
 
       undeclared =
         "Build uses capture-demo, which the harness no longer declares. Add it to the harness, or choose another workflow for Build."
@@ -193,9 +209,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-panel [data-stage-alert]", undeclared)
       assert has_element?(view, ~s(#stages-check [data-problem="missing_workflow"]), undeclared)
 
-      assert undeclared in Enum.find(canvas_view(view)["stages"], &(&1["id"] == "st_build"))[
-               "alerts"
-             ]
+      assert undeclared in card(view, "Build")["alerts"]
 
       view |> element("#stage-add-inputs") |> render_click()
 
@@ -211,8 +225,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     test "the gate: none, any member, or named members", %{conn: conn, path: path, scope: scope} do
       {:ok, view, _html} = live(conn, path)
 
-      view |> form("#stage-form", stage: %{gate: %{kind: "none"}}) |> render_change()
-      assert hd(canvas_view(view)["stages"])["gate"] == "No gate"
+      assert card(view, "Explore")["gate"] == "Gate: a member approves"
 
       view
       |> form("#stage-form", stage: %{gate: %{kind: "person", approvers: "named"}})
@@ -226,7 +239,11 @@ defmodule ApiaryWeb.StagesLiveTest do
       )
       |> render_change()
 
-      assert hd(canvas_view(view)["stages"])["gate"] == "Gate: 1 named member approves"
+      assert card(view, "Explore")["gate"] == "Gate: 1 named member approves"
+
+      view |> form("#stage-form", stage: %{gate: %{kind: "none"}}) |> render_change()
+      assert card(view, "Explore")["gate"] == "No gate"
+      refute has_element?(view, "#stage-gate-named")
     end
 
     test "saves a version, with its changes in the history", %{conn: conn, path: path} do
@@ -249,7 +266,12 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> form("#stage-form", stage: %{name: " "}) |> render_change()
       view |> element("#stages-save") |> render_click()
 
-      assert has_element?(view, "[data-save-error]", "Give every stage a name.")
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Give every stage a name of 1 to 60 characters."
+             )
+
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
     end
 
@@ -270,6 +292,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> form("#stages-assign-form", assign: %{items: [item.public_id]}) |> render_submit()
       refute has_element?(view, "[data-assign-error]")
 
+      assert has_element?(view, ~s(#stages-assign-form input[value="#{item.public_id}"][checked]))
+      [trial] = for v <- Processes.list_versions(scope.workspace), v.status == :trial, do: v
+      assert Repo.get!(WorkItem, item.id).process_version_id == trial.id
+
       view |> element("#stages-make-current") |> render_click()
       assert has_element?(view, "#stages-notice", "Version 2 is now current.")
       refute has_element?(view, "#stages-trial")
@@ -279,6 +305,14 @@ defmodule ApiaryWeb.StagesLiveTest do
     test "a trial without the work item's stage keeps the work item, and a drop returns to current",
          %{conn: conn, path: path, scope: scope} do
       item = work_item_fixture(scope, %{title: "Web shop checkout"})
+
+      Repo.update_all(WorkItem,
+        set: [
+          stage_id: id_of("Explore"),
+          process_version_id: Processes.current(scope.workspace).id
+        ]
+      )
+
       {:ok, view, _html} = live(conn, path)
 
       view |> element(~s(button[aria-label="Remove Explore"])) |> render_click()
@@ -340,49 +374,40 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "the calls until Apiary.Processes lands" do
-    test "the placement check reports a missing type, and no output nobody writes" do
-      doc = Calls.default_document("software")
-
-      doc =
-        Draft.update_stage(doc, "st_shape", fn s ->
-          s |> Map.put("outputs", [%{"type" => "mockup", "required" => true}])
-        end)
-
-      doc =
-        Draft.update_stage(doc, "st_build", fn s ->
-          Map.put(s, "inputs", [
-            %{"type" => "mockup", "required" => false},
-            %{"type" => "brief", "required" => true}
-          ])
-        end)
-
-      assert Calls.placement_check(
-               doc,
-               ["explore-a-ticket"],
-               Calls.types(%Apiary.Organisations.Workspace{})
-             ) == [
-               {:missing_type, "st_build", "brief"},
-               {:input_not_output, "st_build", "brief"}
-             ]
-    end
-
-    test "the diff names each kind of change" do
-      old = Calls.default_document("software")
+  describe "the words" do
+    test "each change of a version reads in plain words" do
+      old = Processes.default_document("software")
 
       new =
         old
         |> Map.put("machine", "large")
-        |> Draft.update_stage("st_shape", &Map.put(&1, "name", "Plan"))
-        |> Draft.move("st_release", -1)
-        |> Draft.update_stage("st_build", &Draft.add_entry(&1, "explore-a-ticket", nil))
+        |> Draft.update_stage(id_of("Shape"), &Map.put(&1, "name", "Plan"))
+        |> Draft.move(id_of("Release"), -1)
+        |> Draft.update_stage(id_of("Build"), &Draft.add_entry(&1, "explore-a-ticket", nil))
 
-      kinds = for {kind, id, _detail} <- Calls.diff(old, new), do: {kind, id}
+      lines = for change <- Processes.diff(old, new), do: Words.change(change, old, new)
 
-      assert {:machine_changed, nil} in kinds
-      assert {:stage_renamed, "st_shape"} in kinds
-      assert {:stage_moved, "st_release"} in kinds
-      assert {:sequence_changed, "st_build"} in kinds
+      assert "Changed the default machine type from default to large." in lines
+      assert "Renamed the stage Shape to Plan." in lines
+      assert "Changed the sequence of Build." in lines
+      assert Enum.any?(lines, &(&1 =~ ~r/^Moved (Release|Verify) from place \d to place \d\.$/))
+    end
+
+    test "a refused save says which stage and what to do" do
+      doc = Processes.default_document("software")
+
+      assert Words.refusal(%{path: "#/stages/2/name", error: :schema, detail: :pattern}, doc) ==
+               "Give every stage a name of 1 to 60 characters."
+
+      assert Words.refusal(
+               %{path: "#/stages/1/name", error: :duplicate_stage_name, detail: nil},
+               doc
+             ) == "Two stages have the name Shape. Give each stage a different name."
+
+      assert Words.refusal(
+               %{path: "#/stages/0/sequence/0/loop/rounds", error: :schema, detail: :maximum},
+               doc
+             ) =~ "Explore: give every loop 1 to 10 rounds"
     end
   end
 end

@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.StagesLive.Index do
-  # Workspace settings › Stages (`/:org/:workspace/settings/stages`), with the `factory`
-  # feature and the feature `workflow_model` (decision D2): the workspace's process, the
+  # Workspace settings › Stages (`/:org/:workspace/settings/stages`), with the feature
+  # `workflow_model` (decision D2): the workspace's process (`Apiary.Processes`), the
   # stages every work item goes through, edited on a canvas. Not found while
   # `workflow_model` is off. The Workflow page links here (decision D3); the sidebar has no
   # entry of its own, so the page marks Workflow as its section.
@@ -9,38 +9,37 @@ defmodule ApiaryWeb.StagesLive.Index do
   # Flow, through the hook `assets/js/hooks/stages_canvas.js`) sends a selection and an
   # order of stages as events, and every other change comes from the page's buttons and
   # forms, which also do all that the canvas does. Every save goes through
-  # `Apiary.Processes.save/4` (here `ApiaryWeb.StagesLive.Calls`, until piece F lands),
-  # which checks the document.
+  # `Apiary.Processes.save/4`, which checks the document against its schema.
   #
   # Owners and admins (`process.edit`) edit; members read the page with no edit controls.
   @moduledoc false
 
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :factory
+  use ApiaryWeb.Features, :workflow_model
 
-  alias Apiary.Organisations
-  alias Apiary.WorkItems
+  alias Apiary.{Organisations, Processes, WorkItems}
   alias ApiaryWeb.SettingsComponents
-  alias ApiaryWeb.StagesLive.{Calls, Draft, Words}
+  alias ApiaryWeb.StagesLive.{ArtifactTypes, Draft, Words}
 
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
 
-    unless Calls.workflow_model?() and Calls.may_read?(scope),
+    workspace = scope.workspace
+
+    unless Apiary.Access.can?(scope, :"work_item.read", workspace),
       do: raise(ApiaryWeb.Features.NotFound)
 
-    workspace = scope.workspace
-    current = Calls.current(workspace)
+    current = Processes.current(workspace)
 
     socket =
       socket
       |> assign(
         page_title: SettingsComponents.page_title(scope, :workspace, [gettext("Stages")]),
         sections: SettingsComponents.sections(scope, :workspace),
-        may: Calls.may_edit?(scope),
-        declared: Calls.declared_workflows(workspace),
-        types: Calls.types(workspace),
+        may: Apiary.Access.can?(scope, :"process.edit", workspace),
+        declared: Processes.declared_workflows(workspace),
+        types: ArtifactTypes.types(workspace),
         members: Organisations.list_workspace_members(scope),
         work_items: [],
         assign_errors: [],
@@ -59,7 +58,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
     socket
     |> assign(
-      versions: Calls.list_versions(workspace),
+      versions: Processes.list_versions(workspace),
       base: version,
       draft: version.document,
       selected: first_id(version.document)
@@ -73,10 +72,13 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp load_work_items(socket) do
     scope = socket.assigns.current_scope
 
+    # The open work items of the list's first page, each with the version it runs under.
     items =
       if socket.assigns.may do
         for row <- WorkItems.list_work_items(scope).rows,
-            do: %{id: row.id, number: row.number, title: row.title, workspace: scope.workspace}
+            item = WorkItems.get_by_public_id(scope, row.id),
+            item != nil,
+            do: item
       else
         []
       end
@@ -87,7 +89,13 @@ defmodule ApiaryWeb.StagesLive.Index do
   # The check and the canvas follow every change of the draft.
   defp refresh(socket) do
     %{draft: draft, declared: declared, types: types} = socket.assigns
-    problems = Calls.placement_check(draft, declared, types)
+    # Every workflow writes any type until the harness declares `writes` (spec addition 9),
+    # so an output that nothing writes is not listed.
+    problems =
+      draft
+      |> Processes.placement_check(declared, types)
+      |> Enum.reject(&match?({:output_not_written, _id, _type}, &1))
+
     socket = assign(socket, problems: problems)
     push_event(socket, "stages:view", view(socket.assigns))
   end
@@ -121,7 +129,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   @impl true
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
-    if Calls.stage(socket.assigns.draft, id),
+    if Processes.stage(socket.assigns.draft, id),
       do: {:noreply, socket |> assign(selected: id) |> refresh()},
       else: {:noreply, socket}
   end
@@ -145,7 +153,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     socket = edit(socket, &Draft.remove_stage(&1, id))
 
     selected =
-      if Calls.stage(socket.assigns.draft, socket.assigns.selected),
+      if Processes.stage(socket.assigns.draft, socket.assigns.selected),
         do: socket.assigns.selected,
         else: first_id(socket.assigns.draft)
 
@@ -188,7 +196,10 @@ defmodule ApiaryWeb.StagesLive.Index do
     %{current_scope: scope, draft: draft} = socket.assigns
     trial? = params["trial"] == "true"
 
-    case Calls.save(scope, scope.workspace, draft, trial: trial?) do
+    case Processes.save(scope, scope.workspace, draft,
+           trial: trial?,
+           based_on: socket.assigns.base
+         ) do
       {:ok, version} ->
         notice =
           if trial?,
@@ -203,12 +214,12 @@ defmodule ApiaryWeb.StagesLive.Index do
 
         {:noreply, socket |> assign(save_errors: [], notice: notice) |> load(version)}
 
-      {:error, :forbidden} ->
-        {:noreply, assign(socket, save_errors: [Words.refusal(:forbidden, draft)])}
-
-      {:error, errors} ->
+      {:error, errors} when is_list(errors) ->
         {:noreply,
          assign(socket, save_errors: Enum.uniq(Enum.map(errors, &Words.refusal(&1, draft))))}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, save_errors: [Words.refusal(:forbidden, draft)])}
     end
   end
 
@@ -223,15 +234,18 @@ defmodule ApiaryWeb.StagesLive.Index do
         chosen = List.wrap(get_in(params, ["assign", "items"]))
 
         errors =
-          for item <- items, item.id in chosen do
-            case Calls.assign(scope, item, trial) do
+          for item <- items, item.public_id in chosen do
+            case Processes.assign(scope, item, trial) do
               {:ok, _item} -> nil
               {:error, {:missing_stage, stage_id}} -> missing_stage(item, stage_id, trial)
               {:error, _reason} -> Words.refusal(:forbidden, nil)
             end
           end
 
-        {:noreply, assign(socket, assign_errors: Enum.reject(errors, &is_nil/1))}
+        {:noreply,
+         socket
+         |> assign(assign_errors: Enum.reject(errors, &is_nil/1))
+         |> load_work_items()}
     end
   end
 
@@ -239,7 +253,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     scope = socket.assigns.current_scope
 
     with %{} = trial <- trial(socket.assigns.versions),
-         {:ok, version} <- Calls.make_current(scope, trial) do
+         {:ok, version} <- Processes.make_current(scope, trial) do
       notice =
         gettext("Version %{number} is now current. Work items taken in from now on use it.",
           number: version.number
@@ -255,17 +269,31 @@ defmodule ApiaryWeb.StagesLive.Index do
     scope = socket.assigns.current_scope
 
     with %{} = trial <- trial(socket.assigns.versions),
-         {:ok, version} <- Calls.drop_trial(scope, trial) do
+         {:ok, version} <- Processes.drop_trial(scope, trial) do
       notice =
         gettext(
           "Dropped version %{number}. Its work items are back on the current version.",
           number: version.number
         )
 
-      current = Calls.current(scope.workspace)
-      {:noreply, socket |> assign(notice: notice, assign_errors: []) |> load(current)}
+      current = Processes.current(scope.workspace)
+
+      {:noreply,
+       socket |> assign(notice: notice, assign_errors: []) |> load(current) |> load_work_items()}
     else
-      _other -> {:noreply, socket}
+      {:error, {:missing_stage, stage_id}} ->
+        stage = Processes.stage(Processes.current(scope.workspace), stage_id) || %{}
+
+        error =
+          gettext(
+            "The trial was not dropped: a work item of it is in the stage %{stage}, which the current version does not have. Assign that work item to another version first.",
+            stage: stage["name"] || stage_id
+          )
+
+        {:noreply, assign(socket, assign_errors: [error])}
+
+      _other ->
+        {:noreply, socket}
     end
   end
 
@@ -303,7 +331,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp trial(versions), do: Enum.find(versions, &(&1.status == :trial))
 
   defp missing_stage(item, stage_id, trial) do
-    stage = Calls.stage(Calls.current(item.workspace).document, stage_id) || %{"name" => stage_id}
+    stage = Processes.stage(Processes.version_for(item), stage_id) || %{"name" => stage_id}
 
     gettext(
       "Work item %{number}, %{title}, stays on its version: its stage %{stage} is not in version %{version}.",
@@ -320,7 +348,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   def render(assigns) do
     assigns =
       assign(assigns,
-        stage: Calls.stage(assigns.draft, assigns.selected),
+        stage: Processes.stage(assigns.draft, assigns.selected),
         dirty: assigns.draft != assigns.base.document,
         trial: trial(assigns.versions),
         workspace: assigns.current_scope.workspace.name
@@ -529,7 +557,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 {problem_words(problem, @draft)}
                 <.link
                   :if={elem(problem, 0) == :missing_type and @may}
-                  navigate={Calls.artifact_types_path(@current_scope)}
+                  navigate={ArtifactTypes.path(@current_scope)}
                   class="ml-1 font-medium text-accent underline underline-offset-[3px]"
                 >
                   {gettext("Define it")}
@@ -570,8 +598,8 @@ defmodule ApiaryWeb.StagesLive.Index do
                 <input
                   type="checkbox"
                   name="assign[items][]"
-                  value={item.id}
-                  checked={Calls.version_for(item) == @trial.id}
+                  value={item.public_id}
+                  checked={item.process_version_id == @trial.id}
                   class="checkbox checkbox-sm checkbox-primary"
                 />
                 <span>{gettext("Work item %{number}: %{title}",
@@ -969,9 +997,9 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp change_lines(nil, _version), do: [gettext("The first version.")]
 
   defp change_lines(older, version) do
-    case Calls.diff(older.document, version.document) do
+    case Processes.diff(older.document, version.document) do
       [] -> [gettext("No change.")]
-      changes -> Enum.map(changes, &Words.change/1)
+      changes -> Enum.map(changes, &Words.change(&1, older.document, version.document))
     end
   end
 
@@ -984,7 +1012,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp problem_words({:input_not_output, id, type}, doc),
     do: Words.input_not_output(stage_name(doc, id), type)
 
-  defp stage_name(doc, id), do: (Calls.stage(doc, id) || %{})["name"]
+  defp stage_name(doc, id), do: (Processes.stage(doc, id) || %{})["name"]
 
   defp sequence_lines(stage, machine) do
     Enum.flat_map(stage["sequence"], fn

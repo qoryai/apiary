@@ -13,7 +13,7 @@ defmodule ApiaryWeb.StagesLive.Draft do
   @doc false
   def add_stage(doc, name) do
     stage = %{
-      "id" => Apiary.PublicId.generate("st"),
+      "id" => Apiary.Processes.new_stage_id(),
       "name" => name,
       "inputs" => [],
       "sequence" => [],

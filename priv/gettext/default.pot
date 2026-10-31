@@ -2534,12 +2534,17 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "%{stage}: a value is not valid. Check the stage, then save again."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "%{stage}: choose at least one member who approves, or let any member approve."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "%{stage}: give every loop 1 to 10 rounds and at least one workflow, and choose a workflow for every entry."
+msgid "%{stage}: give every loop 1 to 10 rounds and at least one workflow, and keep at most 20 entries in each list."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -8399,7 +8404,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Give every stage a name."
+msgid "Give every stage a name of 1 to 60 characters."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -12027,6 +12032,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing to save: the rule is as it was."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing to save: the stages are the same as in the version you started from."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
@@ -17411,6 +17421,16 @@ msgstr ""
 msgid "The pool's default image."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The process"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The process is too large to save. Remove stages or entries, then save again."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The project's full path, its groups included."
@@ -17815,6 +17835,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The tool answered %{status}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The trial was not dropped: a work item of it is in the stage %{stage}, which the current version does not have. Assign that work item to another version first."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -18678,6 +18703,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Turned on taking a collection's %{items} into the Backlog"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Two stages have the name %{stage}. Give each stage a different name."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -19731,6 +19761,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Write %{source} as an https address, then run Explore again. Qory Apiary fetches harness sources over https only, and %{source} has the form user@host:path."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Write a machine type with letters, digits, dots, hyphens and underscores, starting with a letter or a digit."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

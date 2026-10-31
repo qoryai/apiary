@@ -89,7 +89,7 @@ defmodule ApiaryWeb.WorkflowLive do
         workspace_stacks_of: nil,
         # With the feature `workflow_model`, the stages replace the workflow choice
         # (decision D3): the page keeps the harness choice and links to Stages.
-        stages?: ApiaryWeb.StagesLive.Calls.workflow_model?()
+        stages?: Apiary.Features.visible?(scope, :workflow_model)
       )
       |> assign_harness_form(nil)
       |> load_targets()
