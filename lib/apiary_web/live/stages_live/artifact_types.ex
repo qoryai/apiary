@@ -25,7 +25,9 @@ defmodule ApiaryWeb.StagesLive.ArtifactTypes do
   @doc false
   def types(%Workspace{}), do: for({name, view} <- @standard, do: %{name: name, base_view: view})
 
-  # Not a verified route until piece A adds it.
+  # Temporary until piece A's route lands: the one place that writes the path of the
+  # section `artifact_types`, `/:org/:workspace/settings/artifact-types`. Then it becomes
+  # the verified route `~p"/#{org}/#{workspace}/settings/artifact-types"`.
   @doc false
   def path(%Scope{organisation: organisation, workspace: workspace}),
     do:

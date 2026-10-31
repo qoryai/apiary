@@ -26,6 +26,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     scope = socket.assigns.current_scope
 
     workspace = scope.workspace
+    members = Organisations.list_workspace_members(scope)
 
     unless Apiary.Access.can?(scope, :"work_item.read", workspace),
       do: raise(ApiaryWeb.Features.NotFound)
@@ -40,7 +41,8 @@ defmodule ApiaryWeb.StagesLive.Index do
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         declared: Processes.declared_workflows(workspace),
         types: ArtifactTypes.types(workspace),
-        members: Organisations.list_workspace_members(scope),
+        members: members,
+        people: Map.new(members, &{&1.user.id, &1.user.email}),
         work_items: [],
         assign_errors: [],
         save_errors: [],
@@ -112,7 +114,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             name: stage["name"],
             workflows: Words.workflow_lines(stage),
             loop: Words.loop_line(stage),
-            gate: Words.gate_line(stage),
+            gate: Words.gate_line(stage, assigns.people),
             alerts: alerts(assigns.problems, stage)
           }
         end
@@ -539,6 +541,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             declared={@declared}
             types={@types}
             members={@members}
+            people={@people}
             problems={@problems}
             machine={@draft["machine"]}
           />
@@ -644,7 +647,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                   </span>
                 </p>
                 <ul class="grid gap-0.5 text-[13px]/5 text-muted">
-                  <li :for={line <- change_lines(older, version)}>{line}</li>
+                  <li :for={line <- change_lines(older, version, @people)}>{line}</li>
                 </ul>
               </li>
             </ol>
@@ -660,6 +663,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   attr :declared, :list, required: true
   attr :types, :list, required: true
   attr :members, :list, required: true
+  attr :people, :map, required: true, doc: "each member's name by user id"
   attr :problems, :list, required: true
   attr :machine, :string, required: true
 
@@ -683,7 +687,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         <dd :for={item <- @stage["outputs"]}>{artifact_line(item)}</dd>
         <dd :if={@stage["outputs"] == []}>{gettext("None")}</dd>
         <dt class="font-medium">{gettext("Gate")}</dt>
-        <dd>{Words.gate_line(@stage)}</dd>
+        <dd>{Words.gate_line(@stage, @people)}</dd>
       </dl>
     </section>
     """
@@ -820,6 +824,21 @@ defmodule ApiaryWeb.StagesLive.Index do
                   class="checkbox checkbox-sm checkbox-primary"
                 />
                 {m.user.email}
+              </label>
+              <%!-- A named approver who is no longer a member stays chosen until unticked. --%>
+              <label
+                :for={id <- @stage["gate"]["approvers"]["members"]}
+                :if={not Map.has_key?(@people, id)}
+                class="inline-flex items-center gap-2 text-[13.5px]/5"
+              >
+                <input
+                  type="checkbox"
+                  name="stage[gate][named][]"
+                  value={id}
+                  checked
+                  class="checkbox checkbox-sm checkbox-primary"
+                />
+                {Words.person(@people, id)}
               </label>
             </div>
           </div>
@@ -994,12 +1013,12 @@ defmodule ApiaryWeb.StagesLive.Index do
     for v <- versions, do: {v, Map.get(by_number, v.number - 1)}
   end
 
-  defp change_lines(nil, _version), do: [gettext("The first version.")]
+  defp change_lines(nil, _version, _people), do: [gettext("The first version.")]
 
-  defp change_lines(older, version) do
+  defp change_lines(older, version, people) do
     case Processes.diff(older.document, version.document) do
       [] -> [gettext("No change.")]
-      changes -> Enum.map(changes, &Words.change(&1, older.document, version.document))
+      changes -> Enum.map(changes, &Words.change(&1, older.document, version.document, people))
     end
   end
 

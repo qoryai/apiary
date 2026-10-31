@@ -5336,7 +5336,22 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Changed the gate of %{name}."
+msgid "Changed the gate of %{name}: %{person} approves."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the gate of %{name}: any member approves."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the gate of %{name}: no gate."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the gate of %{name}: one of %{people} approves."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -8264,14 +8279,17 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Gate: %{number} named member approves"
-msgid_plural "Gate: one of %{number} named members approves"
-msgstr[0] ""
-msgstr[1] ""
+msgid "Gate: %{person} approves"
+msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Gate: a member approves"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Gate: one of %{people} approves"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -20449,6 +20467,7 @@ msgid "a connection no rule allows is denied"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "a former member"
 msgstr ""

@@ -239,11 +239,59 @@ defmodule ApiaryWeb.StagesLiveTest do
       )
       |> render_change()
 
-      assert card(view, "Explore")["gate"] == "Gate: 1 named member approves"
+      gate = "Gate: #{scope.user.email} approves"
+      assert card(view, "Explore")["gate"] == gate
+      refute Jason.encode!(canvas_view(view)) =~ scope.user.id
 
       view |> form("#stage-form", stage: %{gate: %{kind: "none"}}) |> render_change()
       assert card(view, "Explore")["gate"] == "No gate"
       refute has_element?(view, "#stage-gate-named")
+    end
+
+    test "a named approver shows by name in the history, never by id", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> form("#stage-form", stage: %{gate: %{kind: "person", approvers: "named"}})
+      |> render_change()
+
+      view
+      |> form("#stage-form",
+        stage: %{gate: %{kind: "person", approvers: "named", named: ["", scope.user.id]}}
+      )
+      |> render_change()
+
+      view |> element("#stages-save") |> render_click()
+
+      history = view |> element("#stages-history") |> render()
+      assert history =~ "Changed the gate of Explore: #{scope.user.email} approves."
+      refute history =~ scope.user.id
+    end
+
+    test "a type the workspace does not have links to the Artifact types section", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      document =
+        Draft.update_stage(
+          Processes.default_document("software"),
+          id_of("Build"),
+          &Draft.add_artifact(&1, "inputs", "brief")
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(
+               view,
+               ~s(#stages-check [data-problem="missing_type"] a[href="#{workspace_path(scope, "/settings/artifact-types")}"]),
+               "Define it"
+             )
     end
 
     test "saves a version, with its changes in the history", %{conn: conn, path: path} do

@@ -21,19 +21,24 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # A stage's gate, with each named approver by name: `people` maps a person's user id,
+  # as the document keeps it, to the name the page shows. The id is never shown.
   @doc false
-  def gate_line(%{"gate" => %{"kind" => "none"}}), do: gettext("No gate")
+  def gate_line(%{"gate" => %{"kind" => "none"}}, _people), do: gettext("No gate")
 
-  def gate_line(%{"gate" => %{"approvers" => %{"members" => named}}}),
-    do:
-      ngettext(
-        "Gate: %{number} named member approves",
-        "Gate: one of %{number} named members approves",
-        length(named),
-        number: length(named)
-      )
+  def gate_line(%{"gate" => %{"approvers" => %{"members" => [id]}}}, people),
+    do: gettext("Gate: %{person} approves", person: person(people, id))
 
-  def gate_line(_stage), do: gettext("Gate: a member approves")
+  def gate_line(%{"gate" => %{"approvers" => %{"members" => ids}}}, people),
+    do: gettext("Gate: one of %{people} approves", people: people(people, ids))
+
+  def gate_line(_stage, _people), do: gettext("Gate: a member approves")
+
+  # The name of the person with the user id `id`, or the words for one who left.
+  @doc false
+  def person(people, id), do: Map.get(people, id) || gettext("a former member")
+
+  defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 
   @doc false
   def workflow_lines(stage) do
@@ -73,16 +78,18 @@ defmodule ApiaryWeb.StagesLive.Words do
   # One change between two versions (`Apiary.Processes.diff/2`), in plain words. A stage's
   # name is the newer document's, else the older one's for a removed stage.
   @doc false
-  def change({:stage_added, _id, %{name: name}}, _older, _newer),
+  def change(change, older, newer, people \\ %{})
+
+  def change({:stage_added, _id, %{name: name}}, _older, _newer, _people),
     do: gettext("Added the stage %{name}.", name: name)
 
-  def change({:stage_removed, _id, %{name: name}}, _older, _newer),
+  def change({:stage_removed, _id, %{name: name}}, _older, _newer, _people),
     do: gettext("Removed the stage %{name}.", name: name)
 
-  def change({:stage_renamed, _id, %{from: from, to: to}}, _older, _newer),
+  def change({:stage_renamed, _id, %{from: from, to: to}}, _older, _newer, _people),
     do: gettext("Renamed the stage %{from} to %{name}.", from: from, name: to)
 
-  def change({:stage_moved, id, %{from: from, to: to}}, _older, newer),
+  def change({:stage_moved, id, %{from: from, to: to}}, _older, newer, _people),
     do:
       gettext("Moved %{name} from place %{from} to place %{to}.",
         name: name(newer, id),
@@ -90,19 +97,40 @@ defmodule ApiaryWeb.StagesLive.Words do
         to: to + 1
       )
 
-  def change({:sequence_changed, id, _detail}, _older, newer),
+  def change({:sequence_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the sequence of %{name}.", name: name(newer, id))
 
-  def change({:inputs_changed, id, _detail}, _older, newer),
+  def change({:inputs_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the inputs of %{name}.", name: name(newer, id))
 
-  def change({:outputs_changed, id, _detail}, _older, newer),
+  def change({:outputs_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the outputs of %{name}.", name: name(newer, id))
 
-  def change({:gate_changed, id, _detail}, _older, newer),
-    do: gettext("Changed the gate of %{name}.", name: name(newer, id))
+  def change({:gate_changed, id, _detail}, _older, newer, people) do
+    name = name(newer, id)
 
-  def change({:machine_changed, _id, %{from: from, to: to}}, _older, _newer),
+    case (Processes.stage(newer, id) || %{})["gate"] do
+      %{"kind" => "none"} ->
+        gettext("Changed the gate of %{name}: no gate.", name: name)
+
+      %{"approvers" => %{"members" => [person]}} ->
+        gettext("Changed the gate of %{name}: %{person} approves.",
+          name: name,
+          person: person(people, person)
+        )
+
+      %{"approvers" => %{"members" => ids}} ->
+        gettext("Changed the gate of %{name}: one of %{people} approves.",
+          name: name,
+          people: people(people, ids)
+        )
+
+      _members ->
+        gettext("Changed the gate of %{name}: any member approves.", name: name)
+    end
+  end
+
+  def change({:machine_changed, _id, %{from: from, to: to}}, _older, _newer, _people),
     do:
       gettext("Changed the default machine type from %{from} to %{to}.",
         from: from || "default",
