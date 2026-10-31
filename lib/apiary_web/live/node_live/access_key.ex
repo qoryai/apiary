@@ -1401,7 +1401,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <div id="code-issued-state" class="grid gap-4" aria-live="polite">
             <%= case @state do %>
               <% :waiting -> %>
-                <NodeComponents.unreachable_server id="code-issued-unreachable" url={@server} />
+                <NodeComponents.unreachable_server
+                  id="code-issued-unreachable"
+                  url={@server}
+                  instance_admin={Apiary.Access.instance_admin?(@current_scope)}
+                />
                 <NodeComponents.through_gateway
                   id="code-issued-gateway"
                   node={@node}

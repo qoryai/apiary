@@ -163,6 +163,21 @@ msgctxt "plain"
 msgid "%{contact_support} to make %{source} available to %{organisation}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} with run %{run}. The machine stopped sending for 10 minutes."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} with work item #%{number}. No machine has taken the test run yet."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. Machines can't reach %{url}, the address in this command."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}: Qory Apiary could not call the %{adapter} adapter."
@@ -172,6 +187,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}: Qory Apiary could not read the targets of the %{adapter} adapter."
 msgstr "%{contact_support}: Qory Apiary could not read the repositories of the %{adapter} adapter."
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: some machines of this pool were not recorded."
+msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
@@ -3611,16 +3631,6 @@ msgstr ""
 msgid "Account menu, %{email}"
 msgstr ""
 
-#: lib/apiary_web/live/user_live/registration.ex
-#, elixir-autogen, elixir-format
-msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
-msgstr ""
-
-#: lib/apiary_web/live/user_live/registration.ex
-#, elixir-autogen, elixir-format
-msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
@@ -6239,24 +6249,9 @@ msgstr ""
 msgid "Contact support at %{address}."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support with run %{run}. The machine stopped sending for 10 minutes."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support with work item #%{number}. No machine has taken the test run yet."
-msgstr ""
-
 #: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: some machines of this pool were not recorded."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -13664,6 +13659,7 @@ msgid "QORY_APIARY_PUBLIC_KEY. The same for every machine connected to this Qory
 msgstr ""
 
 #: lib/apiary_web/activity/actor.ex
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary"
@@ -13829,6 +13825,11 @@ msgstr ""
 msgid "Qory Gateway"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Gateway: the gateway Qory Apiary provides to every organisation."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -13839,6 +13840,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/nodes.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Pool and Qory Gateway"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Pool: machines Qory Apiary provides for the runs of every workspace that has no pool."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15766,7 +15772,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
+msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or %{contact_support} with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -17437,16 +17443,6 @@ msgstr ""
 msgid "The instance admin can read the machine's log."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
-msgstr ""
-
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The integration %{name}"
@@ -18568,11 +18564,6 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This host cannot be named in a policy: a rule takes a host name, not an address of this form."
-msgstr ""
-
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "This instance"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -20667,6 +20658,16 @@ msgstr ""
 msgid "You have not been added to a workspace yet"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You join %{name} by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You join %{name} by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "You join an organisation through an invitation. Ask an owner or an admin of yours to invite %{email}; the email they send brings you straight to their workspace."
@@ -22261,11 +22262,6 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/rules.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace's policy"
-msgstr ""
-
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "this instance"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

@@ -332,20 +332,30 @@ defmodule ApiaryWeb.NodeComponents do
   @doc """
   unreachable_server/1 is the notice a command's page shows when the server's address,
   which the command carries, is a loopback one (`loopback?/1`): no other machine reaches
-  it, and `PUBLIC_URL` sets the one they use. Nothing where the address is any other.
+  it. `PUBLIC_URL` sets the one they use, which an instance admin reads here; anyone else
+  reads to contact support. Nothing where the address is any other.
   """
   attr :id, :string, required: true
   attr :url, :string, required: true, doc: "the server's address, as the command carries it"
+  attr :instance_admin, :boolean, default: false, doc: "whether the reader is an instance admin"
 
   def unreachable_server(assigns) do
     ~H"""
     <div :if={loopback?(@url)} id={@id}>
-      <.notice kind={:warning}>
+      <.notice :if={@instance_admin} kind={:warning}>
         <strong>{gettext("Machines can't reach this address.")}</strong>
         {gettext(
           "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it.",
           url: @url
         )}
+      </.notice>
+      <.notice :if={!@instance_admin} kind={:warning}>
+        <.rich text={
+          rich_gettext("%{contact_support}. Machines can't reach %{url}, the address in this command.",
+            contact_support: ApiaryWeb.Support.rich(),
+            url: @url
+          )
+        } />
       </.notice>
     </div>
     """
@@ -550,7 +560,7 @@ defmodule ApiaryWeb.NodeComponents do
   defp level_key(%Node{workspace_id: nil, organisation_id: id}), do: {:organisation, id}
   defp level_key(%Node{workspace_id: id}), do: {:workspace, id}
 
-  defp level_label(%Node{workspace_id: nil, organisation_id: nil}), do: gettext("This instance")
+  defp level_label(%Node{workspace_id: nil, organisation_id: nil}), do: gettext("Qory Apiary")
   defp level_label(%Node{workspace_id: nil} = gateway), do: organisation_name(gateway)
   defp level_label(%Node{}), do: gettext("This workspace")
 
@@ -823,8 +833,8 @@ defmodule ApiaryWeb.NodeComponents do
         ApiaryWeb.Access.who_may(scope, action, default)
 
   # The instance's gateway has no organisation: the sentences that name a gateway's
-  # organisation say "this instance" for it.
-  defp organisation_name(%Node{organisation_id: nil}), do: gettext("this instance")
+  # organisation say "Qory Apiary" for it.
+  defp organisation_name(%Node{organisation_id: nil}), do: gettext("Qory Apiary")
   defp organisation_name(%Node{organisation: %Organisation{name: name}}), do: name
 
   @doc """
