@@ -3,7 +3,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # as its view shows it (`ApiaryWeb.ArtifactComponents.view/1`). An artifact is untrusted
   # data: a run or a person wrote it, so nothing of it reaches the page as markup.
   #
-  # `render/1` takes the file's text and returns `{:html, safe}` or `{:as_written, text}`:
+  # `render/1` takes the file's text and returns `{:html, safe}`, `{:as_written, text}` or
+  # `:too_large`:
   #
   #   * The text is parsed as GitHub Flavored Markdown: tables, strikethrough, autolinks
   #     and task lists. Raw HTML is never rendered (`unsafe: false`), and its blocks and
@@ -26,15 +27,17 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
   #
-  # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes,
-  # with more table cells than `max_cells/0`, nested deeper than `max_depth/0`, or not
-  # valid UTF-8, is `{:as_written, text}`, which a page interpolates, so HEEx escapes it.
-  # The parse, the walk and the HTML run in another process within `budget/0`
-  # (`Apiary.Kinds.Budget`): a heap of at most 64 MiB, 100,000,000 reductions and 10 s.
-  # Past the budget the text is `{:as_written, text}`. Measured on OTP 29: 384 KiB of
-  # prose with links, emphasis and code fits; 512 KiB of it needs more heap, and so do
-  # 262,144 headings of one letter (about 600 MiB) and 524,288 nested quote marks. A
-  # file over `max_bytes/0` is not read at all (`ApiaryWeb.ArtifactLive.Load.content/2`).
+  # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes is
+  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/3`). Every
+  # other step runs in another process within `budget/0` (`Apiary.Kinds.Budget`): a heap
+  # of at most 64 MiB, 100,000,000 reductions and 10 s. There, a text with more table
+  # cells than `max_cells/0`, nested deeper than `max_depth/0`, or not valid UTF-8 is
+  # converted as written (`Apiary.ExternalText.lines/1`) to `{:as_written, text}`, which
+  # a page interpolates, so HEEx escapes it; any other text is parsed, walked and written
+  # as HTML. A render that passes the budget, in either step, is `:too_large`. Measured on
+  # OTP 29: 384 KiB of prose with links, emphasis and code fits; 512 KiB of it needs more
+  # heap, and so do 262,144 headings of one letter (about 600 MiB), 524,288 nested quote
+  # marks, and the conversion as written of 1 MiB of control characters (over 500 MiB).
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -104,16 +107,19 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @spec max_depth() :: pos_integer
   def max_depth, do: @max_depth
 
-  # render/1 is the document `text` as the view shows it: `{:html, safe}`, or
-  # `{:as_written, text}` for a text `render/1` does not format.
+  # render/1 is the document `text` as the view shows it: `{:html, safe}`;
+  # `{:as_written, text}` for a text `render/1` does not format; or `:too_large` for a
+  # text over `max_bytes/0` bytes or one whose render passes the budget.
   @doc false
-  @spec render(binary) :: {:html, Phoenix.HTML.safe()} | {:as_written, String.t()}
+  @spec render(binary) ::
+          {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | :too_large
+  def render(text) when is_binary(text) and byte_size(text) > @max_bytes, do: :too_large
+
   def render(text) when is_binary(text) do
-    with true <- formattable?(text),
-         {:ok, {:ok, html}} <- budgeted(text) do
-      {:html, Phoenix.HTML.raw(html)}
-    else
-      _not -> {:as_written, Apiary.ExternalText.lines(text)}
+    case budgeted(text) do
+      {:ok, {:html, html}} -> {:html, Phoenix.HTML.raw(html)}
+      {:ok, {:as_written, written}} -> {:as_written, written}
+      {:error, _passed} -> :too_large
     end
   end
 
@@ -125,10 +131,20 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
     Apiary.Kinds.Budget.run(
       fn ->
         Gettext.put_locale(locale)
-        markdown(text)
+        shown(text)
       end,
       @budget
     )
+  end
+
+  # The text as HTML, or as written where it is not formatted; run within the budget.
+  defp shown(text) do
+    with true <- formattable?(text),
+         {:ok, html} <- markdown(text) do
+      {:html, html}
+    else
+      _not -> {:as_written, Apiary.ExternalText.lines(text)}
+    end
   end
 
   # budget/0 is what one render may take (`Apiary.Kinds.Budget`).
@@ -136,8 +152,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @spec budget() :: Apiary.Kinds.Budget.budget()
   def budget, do: @budget
 
-  defp formattable?(text),
-    do: byte_size(text) <= @max_bytes and String.valid?(text) and table_cells(text) <= @max_cells
+  defp formattable?(text), do: String.valid?(text) and table_cells(text) <= @max_cells
 
   # The most cells a table of the text could have: a row is a line, and has as many
   # cells as the line with the most `|` has, plus one. With no `|`, there is no table.

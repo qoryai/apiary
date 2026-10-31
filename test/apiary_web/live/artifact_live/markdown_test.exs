@@ -73,26 +73,45 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
   end
 
   test "shows a text past the bounds, or not UTF-8, as written" do
-    assert {:as_written, _text} = Markdown.render(String.duplicate("a", Markdown.max_bytes() + 1))
-    assert {:as_written, _text} = Markdown.render(<<0xFF, "# a">>)
+    assert Markdown.render(String.duplicate("a", Markdown.max_bytes() + 1)) == :too_large
+    assert {:as_written, "\uFFFD# a"} = Markdown.render(<<0xFF, "# a">>)
 
     deep = String.duplicate(">", Markdown.max_depth() + 5) <> " deep"
     assert {:as_written, _text} = Markdown.render(deep)
   end
 
-  # Each of these texts of 1 MiB makes a parse hold hundreds of MiB. The render runs in a
-  # process whose heap may not pass 64 MiB, so the parse cannot happen there.
-  test "shows a text whose parse needs more than the budget as written" do
-    for text <- [String.duplicate("> ", 524_288), String.duplicate("# a\n", 262_144)] do
-      assert {:as_written, _text} = capped(fn -> Markdown.render(text) end)
+  # Each of these texts of `max_bytes/0` makes a parse, or the conversion as written, hold
+  # far more than 64 MiB. Both run within the budget, in another process, so the page's
+  # process needs little more than the text, and the text is too large to show.
+  test "is too large to show when the render needs more than the budget" do
+    max = Markdown.max_bytes()
+
+    for text <- [
+          String.duplicate("# a\n", div(max, 4)),
+          String.duplicate(<<1>>, max),
+          String.duplicate("\x01\n", div(max, 2))
+        ] do
+      assert capped(fn -> Markdown.render(text) end, 2_097_152) == :too_large
     end
   end
 
-  # A text of 1,048,576 lines is checked for tables in one pass that builds no list of its
-  # lines, so the page's process needs little more than the text.
+  test "is too large to show for 1 MiB of control or invisible characters" do
+    for text <- [
+          String.duplicate(<<1>>, 1_048_576),
+          String.duplicate("\x01\n", 524_288),
+          String.duplicate("\u200B", 349_525)
+        ] do
+      assert capped(fn -> Markdown.render(text) end, 2_097_152) == :too_large
+    end
+  end
+
+  # A text of `max_bytes/0` lines is checked for tables in one pass that builds no list of
+  # its lines, within the budget, so the page's process needs little more than the text.
   test "checks a text of many lines for tables within 16 MiB of heap" do
-    for text <- [String.duplicate("\n", 1_048_576), String.duplicate("|\r\n", 349_525)] do
-      assert {_shown, _text} = capped(fn -> Markdown.render(text) end, 2_097_152)
+    max = Markdown.max_bytes()
+
+    for text <- [String.duplicate("\n", max), String.duplicate("|\r\n", div(max, 3))] do
+      assert capped(fn -> Markdown.render(text) end, 2_097_152)
     end
   end
 

@@ -80,7 +80,8 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   # content/3 is what a view shows of the version's files, by filename: for a document,
   # the file `shown` only, the first file where it is nil or no file's name, as
   # `{:markdown, rendered}`, the file's text as `Markdown.render/1` returns it, for a file
-  # of at most `Markdown.max_bytes/0` bytes, else `:too_large`; for a structured type,
+  # of at most `Markdown.max_bytes/0` bytes whose render stays within the budget, else
+  # `:too_large`; for a structured type,
   # every file as `{:json, value}`, or `:unreadable`. Nothing for other views. The page
   # reads it on its connected mount, and again for each document file the reader opens
   # (`ApiaryWeb.ArtifactLive.Show`): rendering a document costs up to 64 MiB of heap and
@@ -96,7 +97,7 @@ defmodule ApiaryWeb.ArtifactLive.Load do
 
       file ->
         case read(file, Markdown.max_bytes()) do
-          {:ok, text} -> %{file.filename => {:markdown, Markdown.render(text)}}
+          {:ok, text} -> %{file.filename => markdown(text)}
           :error -> %{file.filename => :too_large}
         end
     end
@@ -114,6 +115,13 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   end
 
   def content(_type, _version, _shown), do: %{}
+
+  defp markdown(text) do
+    case Markdown.render(text) do
+      :too_large -> :too_large
+      rendered -> {:markdown, rendered}
+    end
+  end
 
   # The file's bytes, where it has at most `limit` of them.
   defp read(%{size: size}, limit) when size > limit, do: :error
