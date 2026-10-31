@@ -21554,12 +21554,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "on %{host}"
+msgid "on %{host}, behind a %{wall} wall"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "on %{host}, behind a %{wall} wall"
+msgid "on %{host}, without a wall"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

@@ -1086,7 +1086,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # What is not known stays out of the sentence. The runtime comes with the first session and
   # the host is absent from a run with a run key outside a pool. `run.started` has no `wall`
-  # when the run has none, and before a session such a run reads as its host alone.
+  # when the run has none, so without a `wall` the run has no wall.
   defp run_started_words(item) do
     runtime = sent(item.runtime)
     version = sent(item.runtime_version)
@@ -1098,7 +1098,7 @@ defmodule ApiaryWeb.RunPageComponents do
         nil
 
       {nil, host, nil} ->
-        gettext("on %{host}", host: host)
+        gettext("on %{host}, without a wall", host: host)
 
       {nil, host, wall} ->
         gettext("on %{host}, behind a %{wall} wall", host: host, wall: wall)

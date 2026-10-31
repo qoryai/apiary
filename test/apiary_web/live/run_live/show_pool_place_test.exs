@@ -112,11 +112,11 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
   test "the Run started item: a pool's run started on the pool, any other run on its host",
        %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run} do
     lv = run_page(conn, scope, pool_run)
-    assert run_started_words(lv) == "on mac-pool"
+    assert run_started_words(lv) == "on mac-pool, without a wall"
     refute lv |> element("#e-1") |> render() =~ @machine
 
     lv = run_page(conn, scope, local_run)
-    assert run_started_words(lv) == "on #{@laptop}"
+    assert run_started_words(lv) == "on #{@laptop}, without a wall"
   end
 
   describe "the Run started item's sentence leaves out what is not known" do
@@ -136,9 +136,11 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
       run
     end
 
-    test "the runtime unknown: the host alone", %{conn: conn, scope: scope, run: run} do
-      run = opened(run, started_data(%{"host" => @laptop}))
-      assert conn |> run_page(scope, run) |> run_started_words() == "on #{@laptop}"
+    test "the runtime unknown, no wall: the host and no wall", ctx do
+      run = opened(ctx.run, started_data(%{"host" => @laptop}))
+
+      assert ctx.conn |> run_page(ctx.scope, run) |> run_started_words() ==
+               "on #{@laptop}, without a wall"
     end
 
     test "the runtime unknown, a wall known: the host and the wall", ctx do
@@ -303,7 +305,7 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
 
     lv = run_page(conn, scope, pool_run)
     assert has_element?(lv, "#run-meta #run-host", "Qory Pool")
-    assert run_started_words(lv) == "on the Qory Pool"
+    assert run_started_words(lv) == "on the Qory Pool, without a wall"
   end
 
   defp run_started_words(lv) do
