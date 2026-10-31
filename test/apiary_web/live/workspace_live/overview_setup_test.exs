@@ -170,14 +170,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert overview_steps(lv) == expected
 
-      # Under each step's name, its page's heading.
-      assert has_element?(
-               lv,
-               "#overview-set-up-sources .q-su-note",
-               "Where does work for Main come from?"
-             )
+      # Under each step's name: a done step's value, the workspace's name for Name; a
+      # step not done its page's heading; Test run what it does.
+      assert words(lv, "#overview-set-up-name .q-su-note") == "Main"
 
-      assert has_element?(lv, "#overview-set-up-name .q-su-note", "Name this workspace")
+      assert words(lv, "#overview-set-up-sources .q-su-note") ==
+               "Where does work for Main come from?"
+
+      assert words(lv, "#overview-set-up-test .q-su-note") ==
+               "Starts one run to check the set-up"
+
+      refute has_element?(lv, "#overview-set-up-who")
 
       assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
       refute has_element?(lv, "#overview-activity")
@@ -327,8 +330,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
 
+      # The next step, Work sources, checks `collection.assign`, which a member does not
+      # hold: the steps keep their state, and who finishes them replaces Continue.
       {:ok, lv, _html} = live(conn, overview(scope))
-      assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
+      assert words(lv, "#overview-set-up h1") == "Main is being set up"
+
+      assert words(lv, "#overview-set-up-who") ==
+               "Owners and admins of #{scope.organisation.name} finish the set-up."
+
+      refute has_element?(lv, "#overview-set-up-continue")
+      assert {"Name", :done, step_path(scope, :name)} in overview_steps(lv)
 
       {:ok, lv, _html} = live(conn, step_path(scope, :sources))
       assert has_element?(lv, "#set-up-grant-#{grant.public_id}-choose")

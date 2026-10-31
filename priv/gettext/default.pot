@@ -2834,6 +2834,11 @@ msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} is being set up"
+msgstr ""
+
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} is this instance's only workspace."
@@ -12557,6 +12562,11 @@ msgstr ""
 msgid "Owners and admins can change these."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{organisation} finish the set-up."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} install integrations and assign their %{collections} to workspaces."
@@ -15484,6 +15494,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Started setting up an adapter"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Starts one run to check the set-up"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
