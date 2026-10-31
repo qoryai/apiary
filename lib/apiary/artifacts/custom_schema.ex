@@ -24,6 +24,7 @@ defmodule Apiary.Artifacts.CustomSchema do
   @moduledoc false
 
   alias Apiary.Kinds.{Bounds, Budget, CanonicalJSON, PatternMemory, RegexFormat}
+  alias Apiary.Artifacts.SchemaError
   alias Apiary.Kinds.{Schema, SettingsResolver}
 
   @schema_bytes 65_536
@@ -41,7 +42,13 @@ defmodule Apiary.Artifacts.CustomSchema do
   @casts ~w(jsv-cast x-jsv-cast)
 
   @typedoc "Why a schema or a document is refused."
-  @type refusal :: :not_an_object | :too_large | :limits | :unbuildable | :budget | :schema
+  @type refusal ::
+          :not_an_object
+          | :too_large
+          | :limits
+          | :unbuildable
+          | :budget
+          | {:schema, SchemaError.t()}
 
   # check/1 is `:ok` for a JSON Schema a custom type may have, else `{:error, refusal}`:
   # `:not_an_object`, `:too_large` (over 65,536 bytes), `:limits` (over the bounds),
@@ -59,8 +66,10 @@ defmodule Apiary.Artifacts.CustomSchema do
   def check(_schema), do: {:error, :not_an_object}
 
   # validate/2 is `:ok` for `document`, decoded JSON, valid against `schema`, else
-  # `{:error, refusal}`: `:limits` (the document is over the bounds), `:schema` (the
-  # schema refuses it), `:unbuildable` or `:budget`.
+  # `{:error, refusal}`: `:limits` (the document is over the bounds),
+  # `{:schema, detail}` (the schema refuses it; `detail` is its first failing place,
+  # found within the budget, `Apiary.Artifacts.SchemaError`), `:unbuildable` or
+  # `:budget`.
   @doc false
   @spec validate(term, map) :: :ok | {:error, refusal}
   def validate(document, schema) when is_map(schema) do
@@ -108,7 +117,10 @@ defmodule Apiary.Artifacts.CustomSchema do
   end
 
   defp valid(document, root) do
-    if Schema.valid?(document, root), do: :ok, else: {:error, :schema}
+    case JSV.validate(document, root, cast: false) do
+      {:ok, _document} -> :ok
+      {:error, %JSV.ValidationError{} = error} -> {:error, {:schema, SchemaError.first(error)}}
+    end
   catch
     :throw, {RegexFormat, :pattern_bytes} -> {:error, :budget}
   end

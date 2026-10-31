@@ -24,14 +24,15 @@ defmodule Apiary.Artifacts.Format do
   #     (`Apiary.Artifacts.CustomSchema`); `application/json`.
   #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
-  # `:extension` for a document whose filename does not end in `.md`, `:schema` for a
-  # structured document the schema refuses, and `:unreadable` for a file that cannot be
-  # read.
+  # `:extension` for a document whose filename does not end in `.md`,
+  # `{:schema, detail}` for a structured document the schema refuses, `detail` its first
+  # failing place (`Apiary.Artifacts.SchemaError`), and `:unreadable` for a file that
+  # cannot be read.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
 
-  alias Apiary.Artifacts.{CustomSchema, Type}
+  alias Apiary.Artifacts.{CustomSchema, SchemaError, Type}
   alias Apiary.Kinds.{Bounds, Budget, Schema}
 
   @head 64
@@ -81,7 +82,7 @@ defmodule Apiary.Artifacts.Format do
   }
 
   @typedoc "Why a file is refused."
-  @type refusal :: :format | :extension | :schema | :unreadable
+  @type refusal :: :format | :extension | {:schema, SchemaError.t()} | :unreadable
 
   # check/3 is `{:ok, content_type}` for the file at `path`, named `filename`, that the
   # base view of `type` takes, else `{:error, refusal}`.
@@ -262,23 +263,39 @@ defmodule Apiary.Artifacts.Format do
     end
   end
 
+  # The document of a standard type is checked in the caller's process: its bounds, the
+  # schema file's and `@standard_limits`, are checked before JSV reads it.
   defp structured(%Type{standard: true, schema_path: path}, document) when is_list(path) do
     limits = Bounds.file!(path) ++ @standard_limits
 
-    case Schema.validate(document, Schema.file!(path, &code_point_lengths/1), limits) do
-      :ok -> :ok
-      {:error, _summary} -> {:error, :schema}
+    if Bounds.within?(document, limits) do
+      case JSV.validate(document, Schema.file!(path, &code_point_lengths/1), cast: false) do
+        {:ok, _document} -> :ok
+        {:error, %JSV.ValidationError{} = error} -> {:error, {:schema, SchemaError.first(error)}}
+      end
+    else
+      {:error, {:schema, refused(:limits)}}
     end
   end
 
   defp structured(%Type{json_schema: schema}, document) when is_map(schema) do
     case CustomSchema.validate(document, schema) do
       :ok -> :ok
-      {:error, _refusal} -> {:error, :schema}
+      {:error, {:schema, detail}} -> {:error, {:schema, detail}}
+      {:error, refusal} -> {:error, {:schema, refused(refusal)}}
     end
   end
 
-  defp structured(_type, _document), do: {:error, :schema}
+  defp structured(_type, _document), do: {:error, {:schema, refused(:unbuildable)}}
+
+  # Why a document was refused before JSV found a failing place in it, at its root.
+  defp refused(:limits),
+    do: SchemaError.detail("#", "the document has more values, or longer ones, than allowed")
+
+  defp refused(:budget),
+    do: SchemaError.detail("#", "the check of the document took more time or memory than allowed")
+
+  defp refused(_unbuildable), do: SchemaError.detail("#", "the JSON Schema cannot be read")
 
   # JSV counts `minLength` and `maxLength` in graphemes, and a standard type's schema
   # counts code points, as JSON Schema does: each object with an integer `minLength` or

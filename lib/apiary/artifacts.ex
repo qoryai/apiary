@@ -47,7 +47,11 @@ defmodule Apiary.Artifacts do
   #      source read at most 64 KiB past the limit; a path that cannot be read,
   #      `{:invalid, {:unreadable, index}}`;
   #   7. each staged file passes its base view's format check, else
-  #      `{:invalid, {:format | :extension | :schema | :unreadable, index}}`;
+  #      `{:invalid, {:format | :extension | :unreadable, index}}`, or, for a structured
+  #      file its JSON Schema refuses, `{:invalid, {:schema, index, %{path: path,
+  #      error: error}}}`: the JSON pointer of the first failing value, at most 256
+  #      bytes, and the validator's message for it, at most 300 characters, both with
+  #      their control characters replaced (`Apiary.Artifacts.SchemaError`);
   #   8. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`.
   #
@@ -531,6 +535,10 @@ defmodule Apiary.Artifacts do
                size: staged.size,
                sha256: staged.sha256
              }}
+
+          {:error, {:schema, detail}} ->
+            store.discard(staged)
+            {:error, {:invalid, {:schema, index, detail}}}
 
           {:error, reason} ->
             store.discard(staged)

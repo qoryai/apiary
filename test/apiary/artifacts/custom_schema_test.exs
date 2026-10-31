@@ -43,13 +43,14 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
   end
 
   describe "validate/2" do
-    test "is :ok for a document the schema takes, :schema for one it refuses" do
+    test "is :ok for a document the schema takes, its first failing place for one it refuses" do
       assert :ok = CustomSchema.validate(%{"bids" => [%{"keyword" => "gift card"}]}, @bids)
 
-      assert {:error, :schema} =
+      assert {:error, {:schema, %{path: "#/bids/0/keyword", error: _pattern}}} =
                CustomSchema.validate(%{"bids" => [%{"keyword" => "GIFT"}]}, @bids)
 
-      assert {:error, :schema} = CustomSchema.validate(%{}, @bids)
+      assert {:error, {:schema, %{path: "#", error: "property 'bids' is required"}}} =
+               CustomSchema.validate(%{}, @bids)
     end
 
     test "refuses a document over the bounds before JSV reads it" do
@@ -67,7 +68,7 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
                  cast
                )
 
-      assert {:error, :schema} =
+      assert {:error, {:schema, %{path: "#"}}} =
                CustomSchema.validate("a", %{"$ref" => "jsv:module:Elixir.String"})
     end
   end

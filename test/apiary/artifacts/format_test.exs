@@ -195,8 +195,16 @@ defmodule Apiary.Artifacts.FormatTest do
 
   test "a structured document is one JSON value its schema takes", context do
     assert {:ok, "application/json"} = check(context, "verdict", "a", ~s({"verdict":"passed"}))
-    assert {:error, :schema} = check(context, "verdict", "a", ~s({"verdict":"passed","x":1}))
-    assert {:error, :schema} = check(context, "verdict", "a", ~s([1]))
+
+    assert {:error, {:schema, %{path: "#", error: extra}}} =
+             check(context, "verdict", "a", ~s({"verdict":"passed","x":1}))
+
+    assert extra =~ "'x'"
+
+    # A list where the schema file allows none is past the bounds, before JSV reads it.
+    assert {:error, {:schema, %{path: "#", error: "the document has more values" <> _}}} =
+             check(context, "verdict", "a", ~s([1]))
+
     assert {:error, :format} = check(context, "verdict", "a", ~s({"verdict":"passed"} x))
     assert {:error, :format} = check(context, "verdict", "a", <<0xFF>>)
   end
@@ -205,7 +213,9 @@ defmodule Apiary.Artifacts.FormatTest do
     # 501 letters, each with a combining accent: 1002 code points, 501 graphemes.
     title = String.duplicate("e\u0301", 501)
     change = %{"url" => "https://forge.example.com/acme/shop/pull/4", "title" => title}
-    assert {:error, :schema} = check(context, "change", "a", Jason.encode!(change))
+
+    assert {:error, {:schema, %{path: "#/title"}}} =
+             check(context, "change", "a", Jason.encode!(change))
 
     change = %{change | "title" => String.duplicate("e\u0301", 250)}
     assert {:ok, _type} = check(context, "change", "a", Jason.encode!(change))

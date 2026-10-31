@@ -590,7 +590,7 @@ defmodule Apiary.ArtifactsTest do
       assert {:error, {:invalid, :no_video}} =
                push.("demo-video", [file("en.vtt", "WEBVTT\n"), file("de.vtt", "WEBVTT\n")])
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/verdict", error: "value must be" <> _}}}} =
                push.("verdict", [json("v.json", %{"verdict" => "done"})])
 
       assert {:error, {:invalid, {:format, 0}}} = push.("verdict", [file("v.json", "{not json")])
@@ -640,16 +640,20 @@ defmodule Apiary.ArtifactsTest do
             "https://",
             "https://forge.example.com/a b"
           ] do
-        assert {:error, {:invalid, {:schema, 0}}} = push.("change", %{"url" => url}),
+        assert {:error, {:invalid, {:schema, 0, %{path: "#/url"}}}} =
+                 push.("change", %{"url" => url}),
                "#{url} is taken"
       end
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error, {:invalid, {:schema, 0, %{path: "#", error: extra}}}} =
                push.("change", %{"url" => "https://a.example", "extra" => 1})
+
+      assert extra =~ "'extra'"
 
       assert {:ok, _version} = push.("proposal", proposal())
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#", error: "property 'scope' is required"}}}} =
                push.("proposal", Map.delete(proposal(), "scope"))
 
       assert {:ok, _version} =
@@ -658,7 +662,8 @@ defmodule Apiary.ArtifactsTest do
                  "understanding" => "A checkout change."
                })
 
-      assert {:error, {:invalid, {:schema, 0}}} = push.("questions", %{"questions" => []})
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/questions"}}}} =
+               push.("questions", %{"questions" => []})
 
       assert {:ok, _version} =
                push.("verdict", %{
@@ -666,7 +671,7 @@ defmodule Apiary.ArtifactsTest do
                  "gaps" => "The demo has no second card."
                })
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/gaps"}}}} =
                push.("verdict", %{"verdict" => "passed", "gaps" => ""})
     end
 
@@ -685,8 +690,13 @@ defmodule Apiary.ArtifactsTest do
 
       push = &Artifacts.push({:run, run}, context.work_item, "bids", [json("bids.json", &1)])
       assert {:ok, _version} = push.(%{"bids" => [1.5, 2]})
-      assert {:error, {:invalid, {:schema, 0}}} = push.(%{"bids" => ["high"]})
-      assert {:error, {:invalid, {:schema, 0}}} = push.(%{"bids" => Enum.to_list(1..10_001)})
+
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#/bids/0", error: "value is not of type number"}}}} =
+               push.(%{"bids" => ["high"]})
+
+      assert {:error, {:invalid, {:schema, 0, %{path: "#", error: "the document has more" <> _}}}} =
+               push.(%{"bids" => Enum.to_list(1..10_001)})
     end
   end
 
