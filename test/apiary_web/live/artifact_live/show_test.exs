@@ -642,7 +642,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                |> form("#artifact-form", artifact: %{type: "explainer", name: "main", note: ""})
                |> render_submit()
 
-      assert %{stage_id: "st_bbbbbbbbbb", number: 1} = Artifacts.newest(ctx.work_item, "explainer")
+      assert %{stage_id: "st_bbbbbbbbbb", number: 1} =
+               Artifacts.newest(ctx.work_item, "explainer")
     end
 
     test "sets the upload from the chosen type", ctx do

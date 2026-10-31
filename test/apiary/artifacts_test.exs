@@ -859,7 +859,9 @@ defmodule Apiary.ArtifactsTest do
                  "verdict",
                  [
                    json("verdict.json", %{"verdict" => "passed"})
-                 ], expect_stage: "st_aaaaaaaaaa")
+                 ],
+                 expect_stage: "st_aaaaaaaaaa"
+               )
     end
   end
 
