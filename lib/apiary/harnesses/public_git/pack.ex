@@ -13,7 +13,9 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
   #     stream again up to that end;
   #   * a delta: its base's declared size must be the base's size, and its result's
   #     declared size at most `max_object` and what is left of `budget`; each copy stays
-  #     inside the base, and the result stops at its declared size;
+  #     inside the base, and the result stops at its declared size. The result grows as
+  #     one binary, because a list takes more memory for each instruction of one byte
+  #     than the byte: `budget` would not bound it;
   #   * the bases: an offset delta's base starts earlier in the pack, at an object; a
   #     reference delta's base is an object of the pack; a delta whose base is missing,
   #     or that is part of a cycle, fails; at most `max_depth` deltas on one chain
@@ -381,9 +383,8 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
     with {:ok, base_size, delta} <- delta_size(delta),
          true <- base_size == byte_size(base) || {:error, :invalid},
          {:ok, size, ops} <- delta_size(delta),
-         true <- size <= max || {:error, :too_large},
-         {:ok, out} <- ops(ops, base, size, [], 0) do
-      {:ok, IO.iodata_to_binary(out)}
+         true <- size <= max || {:error, :too_large} do
+      ops(ops, base, size, <<>>)
     end
   end
 
@@ -398,30 +399,30 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
 
   defp delta_size(<<>>, _value, _shift), do: {:error, :invalid}
 
-  defp ops(<<>>, _base, size, out, size), do: {:ok, out}
-  defp ops(<<>>, _base, _size, _out, _length), do: {:error, :invalid}
+  defp ops(<<>>, _base, size, out) when byte_size(out) == size, do: {:ok, out}
+  defp ops(<<>>, _base, _size, _out), do: {:error, :invalid}
 
   # A copy from the base: the offset and size bytes its flags list; a size of 0 is
   # 65,536 bytes.
-  defp ops(<<1::1, flags::7, rest::binary>>, base, size, out, length) do
+  defp ops(<<1::1, flags::7, rest::binary>>, base, size, out) do
     with {:ok, offset, rest} <- copy_bytes(rest, flags, 0, 4, 0, 0),
          {:ok, count, rest} <- copy_bytes(rest, flags >>> 4, 0, 3, 0, 0),
          count = if(count == 0, do: 0x10000, else: count),
          true <- offset + count <= byte_size(base),
-         true <- length + count <= size do
-      ops(rest, base, size, [out | binary_part(base, offset, count)], length + count)
+         true <- byte_size(out) + count <= size do
+      ops(rest, base, size, <<out::binary, binary_part(base, offset, count)::binary>>)
     else
       _invalid -> {:error, :invalid}
     end
   end
 
-  defp ops(<<0::1, count::7, rest::binary>>, base, size, out, length)
-       when count > 0 and byte_size(rest) >= count and length + count <= size do
+  defp ops(<<0::1, count::7, rest::binary>>, base, size, out)
+       when count > 0 and byte_size(rest) >= count and byte_size(out) + count <= size do
     <<insert::binary-size(^count), rest::binary>> = rest
-    ops(rest, base, size, [out | insert], length + count)
+    ops(rest, base, size, <<out::binary, insert::binary>>)
   end
 
-  defp ops(_ops, _base, _size, _out, _length), do: {:error, :invalid}
+  defp ops(_ops, _base, _size, _out), do: {:error, :invalid}
 
   # The bytes of a copy's offset or size: for each of `n` flag bits, one byte when set.
   defp copy_bytes(rest, _flags, i, n, _shift, value) when i == n, do: {:ok, value, rest}

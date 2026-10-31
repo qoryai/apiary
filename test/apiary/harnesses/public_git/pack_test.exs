@@ -9,6 +9,23 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
 
   defp read(pack, opts \\ []), do: Pack.read(pack, opts)
 
+  # What Pack.read/1 returns in a process whose heap may not pass `limit` bytes:
+  # `:killed` for one that passes it.
+  defp read_in_heap(pack, limit) do
+    words = div(limit, :erlang.system_info(:wordsize))
+
+    {_pid, monitor} =
+      spawn_monitor(fn ->
+        Process.flag(:max_heap_size, %{size: words, kill: true, error_logger: false})
+        exit({:read, Pack.read(pack)})
+      end)
+
+    receive do
+      {:DOWN, ^monitor, :process, _pid, {:read, result}} -> result
+      {:DOWN, ^monitor, :process, _pid, reason} -> reason
+    end
+  end
+
   describe "objects" do
     test "reads whole objects by their ids" do
       pack = B.pack([{:blob, "hello\n"}, {:tree, ""}, {:commit, "tree x\n"}])
@@ -98,6 +115,28 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
 
       assert {:ok, _} = read(pack, budget: 3 + 300 + 100 * 3 + 2 * 256)
       assert read(pack, budget: 3 + 300 + 2 * 256) == {:error, :too_large}
+    end
+
+    test "a delta of millions of one-byte copies is applied in a bounded heap" do
+      count = 5_500_000
+      delta = B.delta(1, count, []) <> :binary.copy(<<0x90, 0x01>>, count)
+      result = :binary.copy("a", count)
+
+      assert {:ok, %{objects: objects}} =
+               read_in_heap(B.pack([{:blob, "a"}, {:ofs, 0, delta}]), 32 * 1024 * 1024)
+
+      assert objects[B.id(:blob, result)] == {:blob, result}
+    end
+
+    test "a delta of millions of one-byte inserts is applied in a bounded heap" do
+      count = 5_500_000
+      delta = B.delta(1, count, []) <> :binary.copy(<<0x01, ?b>>, count)
+      result = :binary.copy("b", count)
+
+      assert {:ok, %{objects: objects}} =
+               read_in_heap(B.pack([{:blob, "a"}, {:ofs, 0, delta}]), 32 * 1024 * 1024)
+
+      assert objects[B.id(:blob, result)] == {:blob, result}
     end
 
     test "a delta whose result passes its declared size, or falls short of it, is invalid" do
