@@ -1,0 +1,70 @@
+defmodule Apiary.Processes.Version do
+  @moduledoc """
+  A version of a workspace's process (`Apiary.Processes`): its document, as
+  `priv/schemas/process/v1.schema.json` describes it, numbered 1, 2, … within the
+  workspace. Each save makes a new row; nothing changes a row's document after.
+
+  - `status`: `:current`, at most one per workspace, the version work items taken in run
+    under; `:trial`, a version chosen work items run under before it is made current;
+    `:past`, a current version a later one replaced; `:dropped`, a trial that was not
+    made current.
+  - `author_id`: who saved it, nil for the copy of the type's default made with the
+    workspace.
+  - `based_on_id`: the version the save started from, nil for version 1.
+  - `template`: `%{"type" => type, "version" => version}`, the default process the
+    workspace copied as version 1, kept on that version; nil on the others.
+  - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
+  """
+  use Ecto.Schema
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
+  @statuses [:current, :trial, :past, :dropped]
+
+  # Where a work item is in its stage: its sequence runs, the stage waits for a required
+  # input, for answers to a run's questions, or for a workflow the harness no longer
+  # declares; a person must act on an escalation, the gate waits for its approval, or the
+  # stage is done.
+  @stage_states [
+    :running,
+    :waiting_inputs,
+    :waiting_answers,
+    :waiting_workflow,
+    :escalated,
+    :at_gate,
+    :done
+  ]
+
+  @typedoc "A version of a workspace's process."
+  @type t :: %__MODULE__{}
+
+  @typedoc "A version's status."
+  @type status :: :current | :trial | :past | :dropped
+
+  schema "process_versions" do
+    field :public_id, :string
+    field :number, :integer
+    field :status, Ecto.Enum, values: @statuses
+    field :document, :map
+    field :template, :map
+
+    belongs_to :organisation, Apiary.Organisations.Organisation
+    belongs_to :workspace, Apiary.Organisations.Workspace
+    belongs_to :author, Apiary.Accounts.User
+    belongs_to :based_on, __MODULE__
+
+    timestamps(type: :utc_datetime_usec)
+  end
+
+  @doc "statuses/0 is every status a version may have."
+  @spec statuses() :: [status]
+  def statuses, do: @statuses
+
+  @doc """
+  stage_states/0 is every state a work item may be in within its stage, its
+  `stage_state`.
+  """
+  @spec stage_states() :: [atom]
+  def stage_states, do: @stage_states
+end

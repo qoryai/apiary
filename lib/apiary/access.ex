@@ -485,6 +485,32 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @admins
     ),
+    # A workspace's process, its stages and the artifacts its work items keep
+    # (`Apiary.Processes`). An action that no function takes yet says so in `audited`; the
+    # function that takes it makes it audited, with its entry.
+    Action.new(
+      :"process.edit",
+      "save a version of the workspace's process, as a trial or as the current one, make a trial current or drop it, and assign a work item to a version",
+      feature: :workflow_model,
+      roles: @admins
+    ),
+    Action.new(
+      :"gate.approve",
+      "approve a stage's gate on a work item, move a work item past a stage, and act on an escalation; where a stage lists its approvers, only they take it there, which the stage's checks ask besides",
+      feature: :workflow_model,
+      roles: @members,
+      audited: {:not, "no function takes it yet"}
+    ),
+    Action.new(:"artifact.write", "store a version of an artifact on a work item",
+      feature: :workflow_model,
+      roles: @members,
+      audited: {:not, "no function takes it yet"}
+    ),
+    Action.new(:"artifact_type.edit", "add, change or remove the workspace's artifact types",
+      feature: :workflow_model,
+      roles: @admins,
+      audited: {:not, "no function takes it yet"}
+    ),
     # An adapter's key at the server contract, asked of the adapter itself.
     Action.new(
       :"adapter.declare",
