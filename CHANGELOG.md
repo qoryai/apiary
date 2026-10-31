@@ -22,6 +22,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   redirect. A name whose address another workspace or a page of Qory Apiary has is
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
+- An address under an organisation that matches no workspace the person reaches, such as
+  an old address after a rename, shows inside the app's layout, with status 404: “No
+  workspace has this address in Acme. Its name may have changed.”, then the workspaces of
+  Acme the person can open, as links. New workspace for a person who may not create one
+  shows, the same way, who creates workspaces and no kind cards. An organisation the
+  person does not reach still shows the plain “Not Found”.
+- Organisation settings › Workspaces shows each workspace's address, `/acme/payments`,
+  beside its name; with no workspace, it shows “Acme has no workspace in use.” and a link
+  to the overview, in place of the empty list.
 - On every page of a workspace, the sidebar's first line is the organisation's name, a
   link to the organisation's overview.
 - An instance admin can rename the product in Instance settings › General: the browser

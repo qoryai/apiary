@@ -255,7 +255,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     case socket.assigns.live_action do
       :new ->
-        if not creates, do: raise(ApiaryWeb.NotFound)
+        if not creates, do: raise(ApiaryWeb.NotFound, page: :new_workspace)
         {:noreply, assign_cards(socket)}
 
       :step ->

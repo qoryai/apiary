@@ -2235,6 +2235,11 @@ msgstr ""
 msgid "%{organisation} has no work source connected yet."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} has no workspace in use."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} › %{workspace}"
@@ -8215,6 +8220,11 @@ msgstr ""
 msgid "Go to the first page"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#, elixir-autogen, elixir-format
+msgid "Go to the overview"
+msgstr ""
+
 #: lib/apiary_web/live/invitation_live/accept.ex
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
@@ -10524,6 +10534,7 @@ msgstr ""
 msgid "New variable"
 msgstr ""
 
+#: lib/apiary_web/dead_end.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "New workspace"
@@ -11179,6 +11190,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "No workspace"
+msgstr ""
+
+#: lib/apiary_web/dead_end.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace has this address in %{organisation}. Its name may have changed."
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -12166,6 +12182,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners delete the organisation."
+msgstr ""
+
+#: lib/apiary_web/dead_end.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners of %{organisation} create workspaces."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -19130,6 +19151,11 @@ msgstr ""
 msgid "Workspace deleted"
 msgstr ""
 
+#: lib/apiary_web/dead_end.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace not found"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace overview"
@@ -19199,6 +19225,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Workspaces of %{name}"
+msgstr ""
+
+#: lib/apiary_web/dead_end.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces you can open"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
