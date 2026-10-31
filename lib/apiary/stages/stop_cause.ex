@@ -245,7 +245,7 @@ defmodule Apiary.Stages.StopCause do
       # The path has no refused part, so the adapter's apply items made a path out of
       # the grammar, which the check of its description refuses at its start.
       nil ->
-        {"The run did not start, because Qory Apiary could not give it access to target #{path}.",
+        {"The run did not start, because Qory Apiary could not grant the run access to target #{path}.",
          support(n)}
     end
   end

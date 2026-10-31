@@ -733,7 +733,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
       }
 
       assert Apiary.Stages.StopCause.text(run, two.work_item) ==
-               "The run did not start, because Qory Apiary could not give it access to target acme/shop.\n" <>
+               "The run did not start, because Qory Apiary could not grant the run access to target acme/shop.\n" <>
                  "Contact support with work item ##{two.work_item.number}."
 
       assert Apiary.Stages.StopCause.set_up_step(run) == nil
