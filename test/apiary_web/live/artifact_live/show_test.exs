@@ -245,6 +245,22 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert html =~ ~s(href="/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/)
     end
 
+    test "offers a document over 256 KiB as a download, not shown", ctx do
+      assert ApiaryWeb.ArtifactLive.Markdown.max_bytes() == 262_144
+      large = "# Large\n" <> String.duplicate("a", 262_144)
+      version = pushed!(ctx, "explainer", [{"plan.md", large}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert render(view) =~ "This document is too large to show here. Download it to read it."
+      assert has_element?(view, ~s(a[download="plan.md"]))
+      refute has_element?(view, "h3", "Large")
+
+      # At 256 KiB the same document is shown.
+      fits = pushed!(ctx, "explainer", [{"plan.md", binary_part(large, 0, 262_144)}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, fits))
+      assert has_element?(view, "h3", "Large")
+    end
+
     test "renders one document file at a time, the others as the reader opens them", ctx do
       {:ok, _type} =
         Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{

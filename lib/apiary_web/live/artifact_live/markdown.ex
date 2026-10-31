@@ -37,14 +37,17 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # as HTML. A render that passes the budget, in either step, is `:too_large`. Measured on
   # OTP 29: 384 KiB of prose with links, emphasis and code fits; 512 KiB of it needs more
   # heap, and so do 262,144 headings of one letter (about 600 MiB), 524,288 nested quote
-  # marks, and the conversion as written of 1 MiB of control characters (over 500 MiB).
+  # marks, and the conversion as written of 1 MiB of control characters (over 500 MiB); at
+  # 256 KiB, the headings and the control characters still pass it.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
 
-  @max_bytes 1_048_576
+  # 256 KiB: MDEx allocates outside the heap that the budget checks, so one budgeted render
+  # of 1 MiB still raised the VM's peak by 149 to 183 MiB.
+  @max_bytes 262_144
   @max_cells 50_000
   @max_depth 128
 

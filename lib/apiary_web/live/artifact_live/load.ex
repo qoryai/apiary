@@ -123,14 +123,17 @@ defmodule ApiaryWeb.ArtifactLive.Load do
     end
   end
 
-  # The file's bytes, where it has at most `limit` of them.
+  # The file's bytes, where it has at most `limit` of them. The recorded size is checked
+  # first, and no more than `limit` + 1 bytes are read, so a larger file never reaches the
+  # page's process.
   defp read(%{size: size}, limit) when size > limit, do: :error
 
   defp read(file, limit) do
     case Artifacts.open_file(file) do
       {:ok, path} when is_binary(path) ->
-        case File.read(path) do
-          {:ok, bytes} when byte_size(bytes) <= limit -> {:ok, bytes}
+        case File.open(path, [:read, :binary], &IO.binread(&1, limit + 1)) do
+          {:ok, bytes} when is_binary(bytes) and byte_size(bytes) <= limit -> {:ok, bytes}
+          {:ok, :eof} -> {:ok, ""}
           _other -> :error
         end
 
