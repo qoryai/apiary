@@ -14,7 +14,9 @@ The code is in `lib/apiary_web/contract/run_api/`.
 ## Requests
 
 Every path is under `/v1/runs/<run_id>/`, where `<run_id>` is the run's id as the run's
-documents contain it.
+documents contain it. Qory Apiary identifies the run by this run id, under the gateway's
+access key: the gateway sends only the id of a run it serves, and a request for a run
+the key does not serve gets `404` `not_found`.
 
 | Method and path | What it returns |
 |---|---|
@@ -34,6 +36,11 @@ key; a GET also signs `X-Qory-Timestamp`, and a POST signs its raw body. A POST 
 accepts `application/json`, the file request included; any other gets `406`, unsigned.
 Requests spend the run endpoint's bucket of the key's
 rate limit. Every answer to a request that verifies is signed, except a `401`.
+
+Before any check, the body of a POST is read, and each of these is `413`
+`payload_too_large`, unsigned: a `Content-Length` over 32 MiB, before a byte is read; a
+body over 64 KiB whose `X-Qory-Access-Key-Id` is not the key id of an active access key
+of a gateway, after its first 64 KiB; and any body over 32 MiB.
 
 The checks run in this order:
 
@@ -77,7 +84,10 @@ Returns `200` with the work item snapshot:
   "comments": [],
   "comments_omitted": 0,
   "answers": [],
-  "notes": []
+  "notes": [
+    {"kind": "request_changes", "stage_id": "st_...", "by": {"name": "dana"},
+     "note": "Add the empty cart.", "artifact_version_id": "av_...", "at": "..."}
+  ]
 }
 ```
 
@@ -92,7 +102,15 @@ Returns `200` with the work item snapshot:
   in Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
   comments left out first and counted in `comments_omitted`. A test work item has no
   `ticket`.
-- `notes` is an empty list in this version.
+- `notes` contains what people wrote on the work item, oldest first. `kind` is
+  `request_changes`, a request for changes at the gate of the stage `stage_id`, which
+  may point at one version in `artifact_version_id`; `move`, a move of the work item out
+  of the stage `stage_id`; `escalation`, an escalation that a person resolved with a
+  note; or `answer`, an answer to a run's questions, whose `stage_id` is null when the
+  run of the question has no stage. `by` is the person, `note` the text and `at` the
+  time it was written, or for an escalation the time it was resolved.
+- For a work item that is in no stage, `stage` has only `id`, the stage of the run, or
+  null, and `inputs` and `outputs` are empty.
 - `run.workflow` and `run.round` are null for a run that has neither.
 
 Errors: `410` `ticket_gone` when the ticket of a work item is no longer kept; `409`
@@ -110,7 +128,7 @@ Returns `200` with the index:
       "type": "demo-video",
       "name": "main",
       "stage_id": "st_...",
-      "approved_version": 1,
+      "approved_version": "av_...",
       "newest_version": 2,
       "changed_after_approval": true,
       "versions": [
@@ -130,9 +148,14 @@ Returns `200` with the index:
 }
 ```
 
-A version written by a person has `"writer": {"kind": "person", "name": "dana"}`. An
-approval is `{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index
-contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
+`approved_version` is the id of the newest version that a gate approved, or null for
+none; `newest_version` is the number of the newest version. `changed_after_approval` is
+true when the newest version is newer than the approved one and was made in a stage
+other than the work item's stage. A version
+written by a run has the run's id as the run's documents contain it; a version written
+by a person has `"writer": {"kind": "person", "name": "dana"}`. An approval is
+`{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no
+file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 
@@ -185,7 +208,8 @@ The version is stored for the run's work item, by the run, in the run's stage. R
 
 Checks, in order, after the checks of every request:
 
-1. A body over 32 MiB: `413` `payload_too_large`, before the body is decoded.
+1. A body over 32 MiB, or over 64 KiB under a key id that is not an active gateway
+   key's: `413` `payload_too_large`, unsigned, before the signature is checked.
 2. A body that is not this object, or has a member it does not define: `400`
    `invalid_request`, with the first member that failed in `names`, such as
    `files[0].filename`.
@@ -195,9 +219,12 @@ Checks, in order, after the checks of every request:
    `verdict` and `questions`. A workflow whose declaration has no `writes` list, or that
    the harness no longer declares, may write any type the workspace has.
 5. More files than the type's maximum: `422` `too_many_files`.
-6. A file larger than the type's size limit: `422` `too_large`.
+6. Files larger together than the type's size limit, which bounds all files of one
+   version: `422` `too_large`.
 7. A content that is not strict base64: `400` `invalid_request`.
-8. Files that do not match the type's format: `422` `invalid_artifact`.
+8. Files that do not match the type's format: `422` `invalid_artifact`, with the file
+   in `names`, such as `files[0]`, or `files` for a video type's version without a video
+   file.
 
 ## POST verdict
 
@@ -234,8 +261,8 @@ is `400` `invalid_request`.
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
-| `422` | `too_large` | `type`, `limit`, `message` | A file over the type's size limit, in bytes |
-| `422` | `invalid_artifact` | `message` | The files do not match the type's format |
+| `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
+| `422` | `invalid_artifact` | `names`, `message` | The files do not match the type's format |
 | `503` | `unavailable` | | The request could not be completed; try again |
 
 The messages:
@@ -246,5 +273,6 @@ The messages:
 - `type_not_writable`: "Add the artifact type explainer to the writes list of the
   workflow capture-demo, or push a type that the workflow writes."
 - `too_many_files`: "The artifact type screenshot takes at most 2 files in one version."
-- `too_large`: "The artifact type demo-video takes files of at most 16777216 bytes."
+- `too_large`: "The files of one version of the artifact type demo-video take at most
+  16777216 bytes together."
 - `invalid_artifact`: "The files do not match the format of the artifact type."
