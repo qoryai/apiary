@@ -71,6 +71,13 @@ defmodule ApiaryWeb.NoInstanceWordsTest do
       assert html =~ "they were stored under another encryption secret."
       refute html =~ "nstance"
     end
+
+    test "with a support address, the flash has the address after the words", ctx do
+      Application.put_env(:apiary, :support_address, "support@example.com")
+
+      assert change_unreadable_value(ctx.owner_conn, ctx.scope) =~
+               "Contact support at support@example.com."
+    end
   end
 
   describe "Add an integration" do

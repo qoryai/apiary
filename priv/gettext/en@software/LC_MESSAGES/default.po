@@ -142,6 +142,11 @@ msgstr ""
 msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
 msgstr ""
 
+#: lib/apiary_web/components/support.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} at %{address}"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support} for a new password link. Password links work once and for a short time."

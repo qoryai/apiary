@@ -431,7 +431,9 @@ defmodule ApiaryWeb.UserLive.Settings do
     case Accounts.change_user_email(user, user_params) do
       _changeset when not mail? ->
         {:noreply,
-         socket |> assign(:mail?, false) |> put_flash(:error, plain_text(no_mail_for_email()))}
+         socket
+         |> assign(:mail?, false)
+         |> put_flash(:error, plain_text(no_mail_for_email(ApiaryWeb.Support.plain())))}
 
       %{valid?: true} = changeset ->
         Accounts.deliver_user_update_email_instructions(
@@ -550,10 +552,10 @@ defmodule ApiaryWeb.UserLive.Settings do
     end
   end
 
-  defp no_mail_for_email,
+  defp no_mail_for_email(contact_support \\ ApiaryWeb.Support.rich()),
     do:
       rich_gettext("%{contact_support} to change your address. Qory Apiary sends no email yet.",
-        contact_support: ApiaryWeb.Support.rich()
+        contact_support: contact_support
       )
 
   defp preferences_form(changeset, action \\ nil),

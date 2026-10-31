@@ -44,6 +44,16 @@ defmodule ApiaryWeb.SupportTest do
       assert contact(address: nil, mid_sentence: true) == ~s(<span>contact support</span>)
     end
 
+    test "plain/1 has the address after the words, and no link" do
+      assert Support.plain(address: "support@example.com") ==
+               "Contact support at support@example.com"
+
+      assert Support.plain(address: "https://help.example.com", mid_sentence: true) ==
+               "contact support at https://help.example.com"
+
+      assert Support.plain(address: nil) == "Contact support"
+    end
+
     test "takes other words from its inner block" do
       assigns = %{}
 

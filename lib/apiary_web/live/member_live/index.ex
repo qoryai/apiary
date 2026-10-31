@@ -981,7 +981,7 @@ defmodule ApiaryWeb.MemberLive.Index do
                plain_text(
                  rich_gettext(
                    "%{contact_support} for a password link. Qory Apiary sends no email yet.",
-                   contact_support: ApiaryWeb.Support.rich()
+                   contact_support: ApiaryWeb.Support.plain()
                  )
                )
              )
@@ -1206,7 +1206,7 @@ defmodule ApiaryWeb.MemberLive.Index do
       rich_gettext(
         "No new link for %{email} now: too many invitations were sent in the last 24 hours. Try again later, or %{contact_support}.",
         email: email,
-        contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+        contact_support: ApiaryWeb.Support.plain(mid_sentence: true)
       )
     )
   end

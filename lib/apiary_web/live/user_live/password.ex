@@ -180,7 +180,7 @@ defmodule ApiaryWeb.UserLive.Password do
   def refused_line do
     plain_text(
       rich_gettext("%{contact_support}. This account cannot log in at the moment.",
-        contact_support: ApiaryWeb.Support.rich()
+        contact_support: ApiaryWeb.Support.plain()
       )
     )
   end

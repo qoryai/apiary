@@ -3483,9 +3483,10 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or contact support."
+            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
           ),
           organisation: name,
+          contact_support: ApiaryWeb.Support.plain(mid_sentence: true),
           limit: limit,
           validation: :invitations_per_day
         )
@@ -3496,9 +3497,10 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or contact support."
+            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
           ),
           organisation: name,
+          contact_support: ApiaryWeb.Support.plain(mid_sentence: true),
           limit: attempts_limit,
           validation: :invitation_attempts_per_day
         )

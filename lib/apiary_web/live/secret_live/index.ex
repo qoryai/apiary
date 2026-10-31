@@ -2587,7 +2587,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           plain_text(
             rich_gettext(
               "%{contact_support}. The values of this workspace cannot be read: they were stored under another encryption secret.",
-              contact_support: ApiaryWeb.Support.rich()
+              contact_support: ApiaryWeb.Support.plain()
             )
           )
 

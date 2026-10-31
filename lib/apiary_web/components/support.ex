@@ -128,6 +128,30 @@ defmodule ApiaryWeb.Support do
   end
 
   @doc """
+  plain/1 is the words of `rich/1` in plain text, for a sentence that can hold no link: a
+  flash, a data attribute, a changeset error. Where an address is set, the address follows
+  the words. Takes `address:` and `mid_sentence:` as `rich/1` does.
+
+      iex> ApiaryWeb.Support.plain(address: "support@example.com")
+      "Contact support at support@example.com"
+
+      iex> ApiaryWeb.Support.plain(address: nil, mid_sentence: true)
+      "contact support"
+  """
+  @spec plain(keyword) :: String.t()
+  def plain(opts \\ []) when is_list(opts) do
+    words = words(Keyword.get(opts, :mid_sentence, false))
+
+    case address(Keyword.get(opts, :address, :stored)) do
+      nil ->
+        words
+
+      address ->
+        gettext("%{contact_support} at %{address}", contact_support: words, address: address)
+    end
+  end
+
+  @doc """
   stored_line/2 is one line of text that Qory Apiary stored in English, such as the fix
   line of an escalation's stopped run, which the stage runner writes, as rich text: a line
   that starts with "Contact support" has those words as `rich/1` makes them, a link where

@@ -72,6 +72,17 @@ defmodule Apiary.InvitationLimitTest do
            ) == @limit
   end
 
+  test "where a support address is set, the refusal has it after the words", %{scope: scope} do
+    Application.put_env(:apiary, :support_address, "support@example.com")
+    on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+
+    for _ <- 1..@limit, do: assert({:ok, %Invitation{}} = invite(scope))
+
+    {:error, changeset} = invite(scope)
+    [message] = errors_on(changeset).email
+    assert message =~ ~r/Try again later, or contact support at support@example\.com\.\z/
+  end
+
   test "an invitation revoked, accepted or deleted since still counts", %{scope: scope} do
     %{invitation: revoked} = invitation_fixture(scope)
     %{token: token} = invitation_fixture(scope)
