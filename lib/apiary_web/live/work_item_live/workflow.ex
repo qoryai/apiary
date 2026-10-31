@@ -46,7 +46,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.{Access, Features, Processes, Repo, Stages}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.Run
-  alias Apiary.Stages.Escalation
   alias ApiaryWeb.WorkItemLive.Board
 
   @defaults [
@@ -203,22 +202,19 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   # The work item's runs, newest first, each numbered from its first run, with its
   # workflow, its round, and what it gave: its verdict, its questions, or, with neither,
-  # its state; an ended run with neither goes on where its stage started a later round.
+  # its state.
   defp runs(row, index) do
     runs = Stages.runs(row)
     asked = asked(runs, index)
-    stopped = stopped(row, runs)
     count = length(runs)
 
     for {run, i} <- Enum.with_index(runs) do
-      later = Enum.take(runs, i)
-
       %{
         id: run.id,
         number: count - i,
         workflow: run.workflow,
         round: run.round,
-        shows: shows(run, asked, stopped, later)
+        shows: shows(run, asked)
       }
     end
   end
@@ -230,19 +226,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
           version <- Map.get(artifact, :versions, []),
           is_binary(version[:run_id]),
           do: version.run_id
-
-    registered(runs, queued)
-  end
-
-  # The registered runs that ended with no result: the stage escalated each as
-  # `run_stopped`.
-  defp stopped(row, runs) do
-    queued =
-      Repo.all(
-        from e in Escalation,
-          where: e.work_item_id == ^row.id and e.cause == :run_stopped and not is_nil(e.run_id),
-          select: e.run_id
-      )
 
     registered(runs, queued)
   end
@@ -263,28 +246,18 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
-  # What a run shows: its verdict, queued or running, its questions; for an ended run with
-  # neither, "goes on" where it ended with a result and its stage started a later round,
-  # else ended without a verdict, a run that stopped included.
-  defp shows(%{verdict: verdict}, _asked, _stopped, _later) when verdict in [:passed, :failed],
-    do: verdict
+  # What a run shows: its verdict, queued or running, its questions; an ended run with
+  # neither ended without a verdict. `Apiary.Stages.runs/1` gives no end cause, so the page
+  # does not tell a run that ended with a result from one that stopped.
+  defp shows(%{verdict: verdict}, _asked) when verdict in [:passed, :failed], do: verdict
+  defp shows(%{status: :waiting}, _asked), do: :queued
+  defp shows(%{status: status}, _asked) when status in [:claimed, :handed_over], do: :running
 
-  defp shows(%{status: :waiting}, _asked, _stopped, _later), do: :queued
-
-  defp shows(%{status: status}, _asked, _stopped, _later)
-       when status in [:claimed, :handed_over],
-       do: :running
-
-  defp shows(run, asked, stopped, later) do
-    id = run.id
-
-    cond do
-      is_binary(id) and MapSet.member?(asked, id) -> :questions
-      is_binary(id) and MapSet.member?(stopped, id) -> :no_verdict
-      Enum.any?(later, &(&1.stage_id == run.stage_id and &1.round > run.round)) -> :goes_on
-      true -> :no_verdict
-    end
+  defp shows(%{id: id}, asked) when is_binary(id) do
+    if MapSet.member?(asked, id), do: :questions, else: :no_verdict
   end
+
+  defp shows(_run, _asked), do: :no_verdict
 
   # The set-up step Harness, where an escalation's fix is on it (`set_up_step: :harness`).
   defp harness_path(%Scope{organisation: organisation, workspace: workspace}, :harness),

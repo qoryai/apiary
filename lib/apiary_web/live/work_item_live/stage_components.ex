@@ -556,7 +556,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp shows_words(:questions), do: gettext("questions")
   defp shows_words(:queued), do: gettext("queued")
   defp shows_words(:running), do: gettext("running")
-  defp shows_words(:goes_on), do: gettext("no verdict, goes on")
   defp shows_words(:no_verdict), do: gettext("ended without a verdict")
 
   @doc false

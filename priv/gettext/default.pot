@@ -21833,11 +21833,6 @@ msgstr ""
 msgid "no target"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "no verdict, goes on"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "no version yet"
