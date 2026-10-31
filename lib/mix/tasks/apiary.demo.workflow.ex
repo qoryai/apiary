@@ -262,7 +262,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   end
 
   defp trial(workspace),
-    do: Enum.find(Processes.list_versions(workspace), &(to_string(&1.status) == "trial"))
+    do: Enum.find(Processes.list_versions(workspace), &(&1.status == :trial))
 
   # A run's events are projected in the process that posts them while the fill runs, so
   # each run has ended, and its stage has moved, before the next step reads it.
@@ -428,8 +428,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @doc false
   # documents/1 is the process of versions 1, 2 and 3 of `workspace`, from its type's
   # default; trial_document/1 is the trial's, from version 3.
-  def documents(%Workspace{domain: domain}) do
-    v1 = Processes.default_document(domain)
+  def documents(%Workspace{} = workspace) do
+    v1 = Processes.default_document(workspace)
 
     v2 =
       v1
@@ -825,7 +825,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   defp rounds!(_ctx, work_item, _round),
     do: Shell.raise!("#{work_item.title} did not escalate at the round limit")
 
-  defp escalated?(%WorkItem{} = work_item), do: to_string(work_item.stage_state) == "escalated"
+  defp escalated?(%WorkItem{stage_state: state}), do: state == :escalated
 
   defp approve!(%Scope{} = scope, %WorkItem{} = work_item, note) do
     ok!(Stages.approve(scope, current(scope, work_item), note), "an approval")
