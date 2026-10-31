@@ -8,6 +8,7 @@ defmodule Apiary.Features do
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | stored secrets and variables, and the organisation's integrations; opt-in | `security` |
   | `factory` | the work items of a workspace and what they are taken in from; opt-in | `observability`, `security` and `secrets` |
+  | `workflow_model` | changes to the process of each workspace, its stages in order: new versions, and trial versions that chosen work items are assigned to; opt-in | `observability`, `security`, `secrets` and `factory` |
 
   An edition adds more features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, whether it is opt-in, and its parts.
@@ -83,6 +84,11 @@ defmodule Apiary.Features do
   # text marked for it. It needs `secrets`: the model providers' pages, where the model
   # key its runs need is set, are of `secrets` (`ApiaryWeb.ProviderLive.Index`).
   #
+  # `workflow_model` is the process of each workspace (`Apiary.Processes`), opt-in, and the
+  # documentation differs by it. The versions of a workspace's process are kept whether it
+  # is on or off: a workspace is made with its first version, and the actions on the
+  # process are of this feature.
+  #
   # `registry` is the private image registry's tokens and each run's registry credential
   # (`Apiary.Registry`), opt-in. The served documentation is the same with it on or off
   # (`docs: false`): no guide describes it, and the docs of its modules are hidden.
@@ -97,7 +103,13 @@ defmodule Apiary.Features do
       default: false,
       docs: true
     ],
-    registry: [needs: [:security], built: true, default: false, docs: false]
+    registry: [needs: [:security], built: true, default: false, docs: false],
+    workflow_model: [
+      needs: [:observability, :security, :secrets, :factory],
+      built: true,
+      default: false,
+      docs: true
+    ]
   ]
 
   # The parts that belong to no feature, after the features' parts in `parts/0`: the

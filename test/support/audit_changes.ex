@@ -141,7 +141,8 @@ defmodule Apiary.AuditChanges do
       :"target.set_further_repositories",
       :"target.rebuild_environment",
       :"secret.seal",
-      :"run_credential.issue"
+      :"run_credential.issue",
+      :"process.edit"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -932,6 +933,13 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
+  # A save of the workspace's process, a new current version: the workspace's entry.
+  def make(:"process.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, _version} = attempt(:"process.edit", scope, nil)
+    %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
+  end
+
   # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
   # the limit.
   def make(:"time_limit.edit", %{scope: scope}) do
@@ -1648,6 +1656,16 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"model_choice.write", scope, _),
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+
+  defp attempt(:"process.edit", scope, _) do
+    document = Apiary.Processes.default_document("software")
+    [explore | rest] = document["stages"]
+
+    Apiary.Processes.save(scope, scope.workspace, %{
+      document
+      | "stages" => [%{explore | "name" => "Understand"} | rest]
+    })
+  end
 
   defp attempt(:"time_limit.edit", scope, _),
     do: Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
