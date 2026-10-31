@@ -799,6 +799,24 @@ defmodule Apiary.ArtifactsTest do
 
       refute_receive {:artifact_pushed, _work_item_id, _version_id}
     end
+
+    test "each version comes with who made it", %{run: run, scope: scope} = context do
+      {:ok, by_run} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+      {:ok, by_person} = Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
+
+      assert [%Artifact{versions: [person, from_run]}] = Artifacts.list(context.work_item)
+      assert {person.user.id, person.run} == {scope.user.id, nil}
+      assert {from_run.user, from_run.run.id} == {nil, run.id}
+
+      assert Artifacts.get_version!(by_person.public_id).user.id == scope.user.id
+      assert Artifacts.get_version!(by_run.public_id).run.id == run.id
+
+      assert [_newer, %Version{run: %{id: run_id}}] =
+               Artifacts.versions(person.artifact_id |> then(&%Artifact{id: &1}))
+
+      assert run_id == run.id
+      assert Artifacts.newest(context.work_item, "explainer").user.id == scope.user.id
+    end
   end
 
   describe "the rows" do

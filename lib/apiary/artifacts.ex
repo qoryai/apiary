@@ -73,8 +73,10 @@ defmodule Apiary.Artifacts do
   # artifact's versions, newest first, with their files; `newest(work_item, type, name)`
   # the version with the highest number, or nil; `get_version!(id)` a version by its
   # public id (`av_…`), with its artifact and files; `open_file(file)` a file's stored
-  # copy, a path or a stream of its bytes. These read no scope: the caller has read the
-  # work item through `Apiary.Access`.
+  # copy, a path or a stream of its bytes. Each version comes with its `user`, the
+  # person who made it, and its `run`, the run of the queue that made it, where the row
+  # is there. These read no scope: the caller has read the work item through
+  # `Apiary.Access`.
   #
   # `exists?(work_item, stage_id, type)` is the Exists check of a stage's output: whether
   # the work item has a version of `type`, of any name, made in `stage_id`, whose files
@@ -673,7 +675,7 @@ defmodule Apiary.Artifacts do
       from a in Artifact,
         where: a.work_item_id == ^id and a.workspace_id == ^workspace_id,
         order_by: [a.type, a.name],
-        preload: [versions: ^{versions_query(), [files: files_query()]}]
+        preload: [versions: ^{versions_query(), [:user, :run, files: files_query()]}]
     )
   end
 
@@ -683,7 +685,7 @@ defmodule Apiary.Artifacts do
     Repo.all(
       from v in versions_query(),
         where: v.artifact_id == ^id,
-        preload: [files: ^files_query()]
+        preload: [:user, :run, files: ^files_query()]
     )
   end
 
@@ -698,7 +700,7 @@ defmodule Apiary.Artifacts do
             a.name == ^name,
         order_by: [desc: v.number],
         limit: 1,
-        preload: [artifact: a, files: ^files_query()]
+        preload: [:user, :run, artifact: a, files: ^files_query()]
     )
   end
 
@@ -711,7 +713,7 @@ defmodule Apiary.Artifacts do
     Repo.one!(
       from v in Version,
         where: v.public_id == ^id,
-        preload: [:artifact, files: ^files_query()]
+        preload: [:artifact, :user, :run, files: ^files_query()]
     )
   end
 
