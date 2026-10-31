@@ -205,6 +205,10 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # A loop's rounds outside 1 to 10, under the field.
+  @doc false
+  def rounds_refused, do: gettext("Give the loop 1 to 10 rounds.")
+
   # A refusal that means the page was behind the versions: a trial dropped or made current
   # in another tab or by another person, or a version gone.
   @doc false

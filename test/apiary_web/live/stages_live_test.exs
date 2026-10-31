@@ -183,7 +183,16 @@ defmodule ApiaryWeb.StagesLiveTest do
       )
       |> render_change()
 
+      # The form is novalidate: 40 is refused under the field, and the loop keeps 3.
+      assert card(view, "Build")["loop"] == "Loop: at most 3 rounds"
+      assert has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"1" => %{rounds: "10"}}})
+      |> render_change()
+
       assert card(view, "Build")["loop"] == "Loop: at most 10 rounds"
+      refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
       assert has_element?(view, "#stage-entry-0-machine[value=large]")
 
       assert has_element?(
@@ -358,11 +367,11 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> form("#stage-form", stage: %{name: " "}) |> render_change()
       view |> element("#stages-save") |> render_click()
 
-      assert has_element?(
-               view,
-               "[data-save-error]",
-               "Give every stage a name of 1 to 60 characters."
-             )
+      # Next to the name, as the form is novalidate.
+      error = "Give every stage a name of 1 to 60 characters."
+      assert has_element?(view, ~s([data-stage-error="#{id_of("Explore")}"]), error)
+      assert has_element?(view, "#stage-form", error)
+      refute has_element?(view, "[data-save-error]")
 
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
     end

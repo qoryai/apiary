@@ -8447,6 +8447,11 @@ msgstr ""
 msgid "Give every stage a name of 1 to 60 characters."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give the loop 1 to 10 rounds."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Go"

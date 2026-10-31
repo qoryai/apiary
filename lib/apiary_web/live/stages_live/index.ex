@@ -51,6 +51,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         save_errors: [],
         stage_errors: %{},
         save_note: nil,
+        rounds_errors: %{},
         assigned: nil,
         notice: nil
       )
@@ -142,7 +143,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   @impl true
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
     if Processes.stage(socket.assigns.draft, id),
-      do: {:noreply, socket |> assign(selected: id) |> refresh()},
+      do: {:noreply, socket |> assign(selected: id, rounds_errors: %{}) |> refresh()},
       else: {:noreply, socket}
   end
 
@@ -172,8 +173,12 @@ defmodule ApiaryWeb.StagesLive.Index do
     {:noreply, socket |> assign(selected: selected) |> refresh()}
   end
 
-  def handle_event("edit_stage", %{"stage" => params}, socket) when is_map(params),
-    do: {:noreply, edit_selected(socket, &Draft.apply_form(&1, params))}
+  # A loop's rounds outside 1 to 10 keep the rounds the loop had, and show an error under
+  # the field: the form is novalidate, so the browser does not check them.
+  def handle_event("edit_stage", %{"stage" => params}, socket) when is_map(params) do
+    socket = edit_selected(socket, &Draft.apply_form(&1, params))
+    {:noreply, assign(socket, rounds_errors: rounds_errors(params))}
+  end
 
   def handle_event("edit_process", %{"process" => %{"machine" => machine}}, socket),
     do: {:noreply, edit(socket, &Draft.put_machine(&1, machine))}
@@ -339,8 +344,13 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp refused_document(socket, errors) do
     draft = socket.assigns.draft
 
+    # A duplicate, and any error in a stage's name, show next to that name.
     {at_stage, rest} =
-      Enum.split_with(errors, &(&1.error in [:duplicate_stage_id, :duplicate_stage_name]))
+      Enum.split_with(
+        errors,
+        &(&1.error in [:duplicate_stage_id, :duplicate_stage_name] or
+            Regex.match?(~r{^#/stages/\d+/name$}, &1.path))
+      )
 
     {unchanged, rest} = Enum.split_with(rest, &(&1.error == :unchanged))
 
@@ -469,8 +479,21 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp edit(socket, fun),
     do:
       socket
-      |> assign(draft: fun.(socket.assigns.draft), notice: nil, save_note: nil)
+      |> assign(
+        draft: fun.(socket.assigns.draft),
+        notice: nil,
+        save_note: nil,
+        rounds_errors: %{}
+      )
       |> refresh()
+
+  defp rounds_errors(%{"sequence" => %{} = sequence}) do
+    for {i, %{"rounds" => text}} <- sequence, not Draft.rounds?(text), into: %{} do
+      {i, Words.rounds_refused()}
+    end
+  end
+
+  defp rounds_errors(_params), do: %{}
 
   defp edit_selected(%{assigns: %{selected: nil}} = socket, _fun), do: socket
 
@@ -707,6 +730,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             as={:process}
             id="stages-process-form"
             phx-change="edit_process"
+            novalidate
             class="max-w-md"
           >
             <.input
@@ -732,6 +756,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             members={@members}
             people={@people}
             stage_errors={@stage_errors}
+            rounds_errors={@rounds_errors}
             problems={@problems}
             machine={@draft["machine"]}
           />
@@ -779,6 +804,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               as={:assign}
               id="stages-assign-form"
               phx-submit="assign"
+              novalidate
               class="grid gap-2"
             >
               <p :if={@work_items == []} id="stages-no-work-items" class="text-[13px]/5 text-muted">
@@ -859,6 +885,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   attr :members, :list, required: true
   attr :people, :map, required: true, doc: "each member's name by user id"
   attr :stage_errors, :map, default: %{}, doc: "refusals of a save, by stage id"
+  attr :rounds_errors, :map, default: %{}, doc: "refused rounds, by the loop's place"
   attr :problems, :list, required: true
   attr :machine, :string, required: true
 
@@ -899,7 +926,14 @@ defmodule ApiaryWeb.StagesLive.Index do
         {gettext("Edit %{stage}", stage: @stage["name"])}
       </h2>
       <.alerts stage={@stage} problems={@problems} />
-      <.form for={%{}} as={:stage} id="stage-form" phx-change="edit_stage" class="grid gap-5">
+      <.form
+        for={%{}}
+        as={:stage}
+        id="stage-form"
+        phx-change="edit_stage"
+        novalidate
+        class="grid gap-5"
+      >
         <.input
           id="stage-name"
           name="stage[name]"
@@ -929,6 +963,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                     min="1"
                     max="10"
                     value={loop["rounds"]}
+                    errors={List.wrap(@rounds_errors[to_string(i)])}
                     label={gettext("Loop: rounds at most")}
                     class="w-20"
                   />

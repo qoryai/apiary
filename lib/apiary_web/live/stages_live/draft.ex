@@ -195,14 +195,18 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   defp merge_entry(entry, _p), do: entry
 
-  defp rounds(text, previous) when is_binary(text) do
+  defp rounds(text, previous), do: if(rounds?(text), do: String.to_integer(text), else: previous)
+
+  # Whether a loop's rounds, as the form sends them, are a whole number from 1 to 10.
+  @doc false
+  def rounds?(text) when is_binary(text) do
     case Integer.parse(text) do
-      {n, ""} -> min(max(n, 1), 10)
-      _other -> previous
+      {n, ""} -> n in 1..10
+      _other -> false
     end
   end
 
-  defp rounds(_text, previous), do: previous
+  def rounds?(_text), do: false
 
   defp merge_artifacts(list, %{} = params) do
     for {item, i} <- Enum.with_index(list) do
