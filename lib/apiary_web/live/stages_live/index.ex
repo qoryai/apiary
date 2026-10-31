@@ -46,6 +46,8 @@ defmodule ApiaryWeb.StagesLive.Index do
         work_items: [],
         assign_errors: [],
         save_errors: [],
+        stage_errors: %{},
+        save_note: nil,
         notice: nil
       )
       |> load(current)
@@ -63,7 +65,9 @@ defmodule ApiaryWeb.StagesLive.Index do
       versions: Processes.list_versions(workspace),
       base: version,
       draft: version.document,
-      selected: first_id(version.document)
+      selected: first_id(version.document),
+      stage_errors: %{},
+      save_note: nil
     )
     |> refresh()
   end
@@ -217,8 +221,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         {:noreply, socket |> reload() |> assign(save_errors: [Words.trial_exists(trial)])}
 
       {:error, errors} when is_list(errors) ->
-        {:noreply,
-         assign(socket, save_errors: Enum.uniq(Enum.map(errors, &Words.refusal(&1, draft))))}
+        {:noreply, refused_document(socket, errors)}
 
       {:error, reason} ->
         {:noreply, refused(socket, reason)}
@@ -312,6 +315,56 @@ defmodule ApiaryWeb.StagesLive.Index do
     end
   end
 
+  # A document Apiary.Processes.save/4 refused. A duplicate id or name shows next to the
+  # name of the stage it is in (the first such stage is selected), an unchanged document
+  # next to Save, and every other error above the canvas.
+  defp refused_document(socket, errors) do
+    draft = socket.assigns.draft
+
+    {at_stage, rest} =
+      Enum.split_with(errors, &(&1.error in [:duplicate_stage_id, :duplicate_stage_name]))
+
+    {unchanged, rest} = Enum.split_with(rest, &(&1.error == :unchanged))
+
+    stage_errors =
+      Enum.reduce(at_stage, %{}, fn error, acc ->
+        case stage_at(draft, error.path) do
+          nil ->
+            acc
+
+          id ->
+            Map.update(
+              acc,
+              id,
+              [Words.refusal(error, draft)],
+              &(&1 ++ [Words.refusal(error, draft)])
+            )
+        end
+      end)
+
+    first =
+      Enum.find_value(draft["stages"], socket.assigns.selected, fn stage ->
+        Map.has_key?(stage_errors, stage["id"]) && stage["id"]
+      end)
+
+    socket
+    |> assign(
+      stage_errors: stage_errors,
+      save_note: if(unchanged != [], do: Words.refusal(hd(unchanged), draft)),
+      save_errors: rest |> Enum.map(&Words.refusal(&1, draft)) |> Enum.uniq(),
+      selected: first
+    )
+    |> refresh()
+  end
+
+  # The id of the stage at a place such as `#/stages/1/name`.
+  defp stage_at(draft, path) do
+    case Regex.run(~r{^#/stages/(\d+)/}, path) do
+      [_all, index] -> (Enum.at(draft["stages"], String.to_integer(index)) || %{})["id"]
+      nil -> nil
+    end
+  end
+
   # One trial at a time (the canvas edits one): a trial save while the workspace has a
   # trial, made on this page or elsewhere, is refused here, as Apiary.Processes allows several.
   defp save(scope, draft, true, base) do
@@ -364,7 +417,10 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   defp edit(socket, fun),
-    do: socket |> assign(draft: fun.(socket.assigns.draft), notice: nil) |> refresh()
+    do:
+      socket
+      |> assign(draft: fun.(socket.assigns.draft), notice: nil, save_note: nil)
+      |> refresh()
 
   defp edit_selected(%{assigns: %{selected: nil}} = socket, _fun), do: socket
 
@@ -394,6 +450,15 @@ defmodule ApiaryWeb.StagesLive.Index do
     |> Enum.find(&(not MapSet.member?(names, &1)))
   end
 
+  # The workflows the harness declares (`Apiary.Processes.declared_workflows/1`). A
+  # workflow it no longer declares stays shown as the entry's value, and cannot be chosen.
+  defp workflow_options(declared, workflow) do
+    if workflow in declared,
+      do: declared,
+      else: declared ++ [[key: workflow, value: workflow, disabled: true]]
+  end
+
+  # The newest trial: Apiary.Processes allows several, and the page edits one.
   defp trial(versions), do: Enum.find(versions, &(&1.status == :trial))
 
   defp missing_stage(item, stage_id, trial) do
@@ -474,6 +539,9 @@ defmodule ApiaryWeb.StagesLive.Index do
               <.button id="stages-discard" variant="ghost" phx-click="discard" disabled={!@dirty}>
                 {gettext("Discard changes")}
               </.button>
+              <p :if={@save_note} id="stages-save-note" class="self-center text-[13px]/5 text-error">
+                {@save_note}
+              </p>
             </div>
           </div>
           <p
@@ -523,6 +591,13 @@ defmodule ApiaryWeb.StagesLive.Index do
               >
                 <span class="w-6 text-muted tabular-nums">{index + 1}</span>
                 <span class="min-w-0 flex-1 truncate font-medium">{stage["name"]}</span>
+                <span
+                  :for={error <- Map.get(@stage_errors, stage["id"], [])}
+                  class="order-last w-full pl-8 text-[13px]/5 text-error"
+                  data-stage-error={stage["id"]}
+                >
+                  {error}
+                </span>
                 <.button
                   size="xs"
                   phx-click="select"
@@ -606,6 +681,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             types={@types}
             members={@members}
             people={@people}
+            stage_errors={@stage_errors}
             problems={@problems}
             machine={@draft["machine"]}
           />
@@ -728,6 +804,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   attr :types, :list, required: true
   attr :members, :list, required: true
   attr :people, :map, required: true, doc: "each member's name by user id"
+  attr :stage_errors, :map, default: %{}, doc: "refusals of a save, by stage id"
   attr :problems, :list, required: true
   attr :machine, :string, required: true
 
@@ -773,6 +850,7 @@ defmodule ApiaryWeb.StagesLive.Index do
           id="stage-name"
           name="stage[name]"
           value={@stage["name"]}
+          errors={Map.get(@stage_errors, @stage["id"], [])}
           label={gettext("Name")}
           maxlength="60"
           autocomplete="off"
@@ -939,7 +1017,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         type="select"
         value={@entry["workflow"]}
         label={gettext("Workflow")}
-        options={Enum.uniq(@declared ++ [@entry["workflow"]])}
+        options={workflow_options(@declared, @entry["workflow"])}
       />
       <.input
         id={"#{@id}-machine"}

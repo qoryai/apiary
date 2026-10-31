@@ -211,6 +211,10 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert undeclared in card(view, "Build")["alerts"]
 
+      # Shown as the entry's value, and not offered: the harness declares explore-a-ticket.
+      assert has_element?(view, ~s{#stage-sequence option[value="capture-demo"][disabled]})
+      refute has_element?(view, ~s{#stage-sequence option[value="capture-demo"]:not([disabled])})
+
       view |> element("#stage-add-inputs") |> render_click()
 
       assert has_element?(
@@ -321,6 +325,39 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
 
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
+    end
+
+    test "a duplicate name shows next to the name of the stage it is in", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      view |> element(~s(button[aria-label="Edit Shape"])) |> render_click()
+      view |> form("#stage-form", stage: %{name: " explore "}) |> render_change()
+      view |> element("#stage-row-#{id_of("Explore")} button[phx-click=select]") |> render_click()
+
+      view |> element("#stages-save") |> render_click()
+
+      error = "Two stages have the name"
+      assert has_element?(view, ~s([data-stage-error="#{id_of("Shape")}"]), error)
+      refute has_element?(view, ~s([data-stage-error="#{id_of("Explore")}"]))
+      assert has_element?(view, "#stage-form", error)
+      assert has_element?(view, ~s(#stage-name[aria-invalid="true"]))
+      refute has_element?(view, "[data-save-error]")
+      assert has_element?(view, "#stages-version", "Editing version 1, current.")
+    end
+
+    test "an unchanged document shows next to Save", %{conn: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+      render_hook(view, "save", %{"trial" => "false"})
+
+      assert has_element?(
+               view,
+               "#stages-save-note",
+               "Nothing to save: the stages are the same as in the version you started from."
+             )
+
+      refute has_element?(view, "[data-save-error]")
     end
 
     test "saves a trial, assigns a work item to it and makes it current", %{
