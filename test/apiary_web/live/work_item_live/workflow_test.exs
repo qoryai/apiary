@@ -189,7 +189,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = backfilled!(scope, @shape, :at_gate)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      render_hook(view, "stage_approve", %{"number" => "#{work_item.number}", "note" => ""})
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @shape,
+        "note" => ""
+      })
+
       assert decisions(work_item, :approve) == []
     end
 
@@ -228,7 +233,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-round", "Round 1 of 3")
       assert has_element?(view, "#work-item-stage-version", "Process version 1")
       assert has_element?(view, "#work-item-stage-line", "Explore is running.")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · running"
+      assert html =~ "Run 1 · explore-a-ticket · round 1 · queued"
     end
 
     test "waiting for answers: a link to the questions", %{conn: conn, scope: scope} do
@@ -248,7 +253,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                ~s|#work-item-stage-answers[href="#{page(scope, work_item.number)}/explore"]|
              )
 
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · no verdict, goes on"
+      assert html =~ "Run 1 · explore-a-ticket · round 1 · questions"
     end
 
     test "at its gate: today's Confirm, and no second Approve", %{conn: conn, scope: scope} do
@@ -264,7 +269,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert html =~ "Run 1 · explore-a-ticket · round 1 · passed"
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
 
-      render_hook(view, "stage_approve", %{"number" => "#{work_item.number}", "note" => ""})
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @explore,
+        "note" => ""
+      })
+
       assert decisions(work_item, :approve) == []
 
       view |> element("#work-item-step-confirm") |> render_click()
@@ -298,7 +308,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              )
 
       refute has_element?(view, "#work-item-stage-escalation-move")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · stopped"
+      assert html =~ "Run 1 · explore-a-ticket · round 1 · ended without a verdict"
 
       # The escalation card's Run another round runs Explore again: the step card offers no
       # Run Explore again, and the event does nothing.
@@ -374,7 +384,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = shape_gate_fixture(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      render_hook(view, "stage_approve", %{"number" => "#{work_item.number + 1}", "note" => ""})
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number + 1}",
+        "seen" => @shape,
+        "note" => ""
+      })
 
       assert work_item |> decisions(:approve) |> Enum.all?(&(&1.stage_id == @explore))
     end
@@ -409,6 +423,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       render_hook(view, "stage_request_changes", %{
         "number" => "#{work_item.number}",
+        "seen" => @build,
         "version" => "av_other",
         "note" => "Show two gift cards"
       })
@@ -438,7 +453,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "The members this stage lists approve."
              )
 
-      render_hook(view, "stage_approve", %{"number" => "#{work_item.number}", "note" => ""})
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @build,
+        "note" => ""
+      })
+
       assert decisions(work_item, :approve) == []
 
       {:ok, view, _html} =
@@ -465,11 +485,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       render_hook(view, "stage_move", %{
         "number" => "#{work_item.number}",
+        "seen" => @build,
         "stage" => @release,
         "note" => ""
       })
 
       assert decisions(work_item, :move) == []
+
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "Choose a stage before Build to move back to."
+             )
 
       view
       |> form("#work-item-stage-move", %{"stage" => @shape, "note" => "Write the criteria"})
@@ -485,33 +512,39 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-stage-state", "Waits for a workflow")
 
-      WorkflowFake.check_result(work_item, :still_missing)
+      WorkflowFake.check_result(scope.workspace, {:ok, ["review"]})
       view |> form("#work-item-stage-check") |> render_submit()
+      render_async(view)
 
       assert has_element?(
                view,
                "#work-item-stage-check-result",
-               "The harness still does not list implement."
+               "The harness still does not list capture-demo."
              )
 
-      WorkflowFake.check_result(
-        work_item,
-        "The harness could not be read: the stack file is missing."
-      )
+      assert has_element?(view, "#work-item-stage-gap-0", "Build uses capture-demo, which")
 
+      WorkflowFake.check_result(scope.workspace, {:error, {:unreadable, :address}})
       view |> form("#work-item-stage-check") |> render_submit()
+      render_async(view)
 
       assert has_element?(
                view,
                "#work-item-stage-check-result",
-               "The harness could not be read: the stack file is missing."
+               "Correct the address: write it as https://, a host, an optional port and an optional path."
              )
 
       assert has_element?(view, "#work-item-stage-check-go", "Try again")
 
-      WorkflowFake.check_result(work_item, :ok)
+      WorkflowFake.check_result(
+        scope.workspace,
+        {:ok, ["implement", "capture-demo", "fix-demo-findings"]}
+      )
+
       view |> form("#work-item-stage-check") |> render_submit()
-      assert has_element?(view, "#work-item-stage-state", "Running")
+      render_async(view)
+      # The stage leaves its wait for the workflow, and waits for Build's required input.
+      assert has_element?(view, "#work-item-stage-state", "Waits for inputs")
       refute has_element?(view, "#work-item-stage-check")
     end
 
@@ -524,11 +557,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item =
         at_build(scope, :waiting_workflow, approvers: %{"members" => [listed.user.id]})
 
-      WorkflowFake.check_result(work_item, :ok)
+      WorkflowFake.check_result(
+        scope.workspace,
+        {:ok, ["implement", "capture-demo", "fix-demo-findings"]}
+      )
+
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       refute has_element?(view, "#work-item-stage-check")
-      render_hook(view, "stage_check", %{"number" => "#{work_item.number}"})
+      render_hook(view, "stage_check", %{"number" => "#{work_item.number}", "seen" => @build})
+      render_async(view)
       assert Repo.get!(WorkItem, work_item.id).stage_state == :waiting_workflow
     end
   end
@@ -620,12 +658,107 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       render_hook(view, "stage_resolve", %{
         "number" => n,
+        "seen" => @build,
         "how" => "move_back",
         "stage" => @release
       })
 
-      render_hook(view, "stage_resolve", %{"number" => n, "how" => "delete"})
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "Choose a stage before Build to move back to."
+             )
+
+      render_hook(view, "stage_resolve", %{"number" => n, "seen" => @build, "how" => "delete"})
       assert %Escalation{resolution: nil} = escalation(work_item)
+    end
+  end
+
+  describe "an action on a stage the work item left" do
+    test "Approve does nothing and says where the work item moved", %{conn: conn, scope: scope} do
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      place!(work_item, Processes.version_for(work_item), @build, :at_gate)
+      view |> form("#work-item-stage-gate-approve") |> render_submit()
+
+      assert work_item |> decisions(:approve) |> Enum.all?(&(&1.stage_id == @explore))
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @build
+
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "Check the new stage and act again. The work item moved from Shape to Build before your click."
+             )
+    end
+
+    test "a stale Move back does nothing", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :waiting_inputs)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      place!(work_item, Processes.version_for(work_item), @shape, :running)
+
+      view
+      |> form("#work-item-stage-move", %{"stage" => @explore, "note" => "Plan again"})
+      |> render_submit()
+
+      assert decisions(work_item, :move) == []
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "The work item moved from Build to Shape before your click."
+             )
+    end
+
+    test "an open Request changes form closes when the stage changes", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      view |> element("#work-item-stage-gate-ask-changes") |> render_click()
+
+      place!(work_item, Processes.version_for(work_item), @build, :running)
+
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        Stages.topic(work_item),
+        {:stage_changed, work_item.public_id}
+      )
+
+      assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+      refute has_element?(view, "#work-item-stage-gate-changes")
+    end
+  end
+
+  describe "notes" do
+    test "a request for changes and a failed check, for the next run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = shape_gate_fixture(scope)
+      {:ok, _work_item} = Stages.request_changes(scope, work_item, "Split the plan in two", nil)
+
+      Repo.insert!(%Apiary.Stages.Check{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: @shape,
+        round: 1,
+        gaps: "The plan has no test step.",
+        inserted_at: DateTime.utc_now()
+      })
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-notes-h", "Notes for the next run")
+      assert has_element?(view, "#work-item-notes-0", "Changes requested · Shape")
+      assert has_element?(view, "#work-item-notes-0", "Split the plan in two")
+      assert has_element?(view, "#work-item-notes-1", "Failed check · Shape")
+      assert has_element?(view, "#work-item-notes-1", "The plan has no test step.")
     end
   end
 
@@ -658,7 +791,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           set: [stage_id: @build, stage_state: :running]
         )
 
-      topic = WorkflowFake.StageTopic.topic(work_item)
+      topic = Stages.topic(work_item)
       Phoenix.PubSub.broadcast(Apiary.PubSub, topic, {:stage_changed, work_item.public_id})
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
     end
@@ -768,7 +901,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-items-board-5-removed",
-               "From version 2; the current version removed this stage."
+               "From version 2. This stage is not in the current version."
              )
 
       assert has_element?(

@@ -62,7 +62,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   import ApiaryWeb.WorkItemComponents
 
   alias Apiary.{Access, WorkItems}
-  alias ApiaryWeb.UserAuth
+  alias ApiaryWeb.{HarnessComponents, UserAuth}
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
@@ -159,6 +159,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             asking={@stage_asking}
             error={@stage_error}
             check={@stage_check}
+            notice={@stage_notice}
           />
           <.step_card
             :if={!@flow or @flow.explore}
@@ -199,6 +200,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           <% else %>
             <div :if={@flow} id="work-item-flow" class="flex flex-col gap-3">
               <StageComponents.stage_runs runs={@flow.runs} />
+              <StageComponents.stage_notes notes={@flow.notes} />
               <section
                 id="work-item-artifacts"
                 class="q-xp-sec"
@@ -317,7 +319,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            stage_asking: nil,
            stage_error: nil,
-           stage_check: nil
+           stage_check: nil,
+           stage_notice: nil
          )}
     end
   end
@@ -472,31 +475,39 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end)
   end
 
-  # The workflow model's actions, each asked again on the server
-  # (`ApiaryWeb.WorkItemLive.Workflow.decide/4`) with the page as the reader saw it.
+  # The workflow model's actions. Each form sends the stage the reader saw (`seen`); the
+  # page reads the work item again and acts only while it is still in that stage, asked
+  # again on the server (`ApiaryWeb.WorkItemLive.Workflow.decide/4`) with the page as it
+  # is now.
   defp stage_act("stage_ask_changes", _params, socket),
     do: {:noreply, assign(socket, stage_asking: :changes, stage_error: nil)}
 
   defp stage_act("stage_approve", params, socket),
-    do: decided(socket, {:approve, note(params)})
+    do: fresh(socket, params, &decided(&1, &2, {:approve, note(params)}))
 
   defp stage_act("stage_request_changes", params, socket) do
     case note(params) do
-      nil -> {:noreply, assign(socket, stage_asking: :changes, stage_error: :note)}
-      note -> decided(socket, {:request_changes, note, text(params["version"])})
+      nil ->
+        {:noreply, assign(socket, stage_asking: :changes, stage_error: :note)}
+
+      note ->
+        fresh(socket, params, &decided(&1, &2, {:request_changes, note, text(params["version"])}))
     end
   end
 
   defp stage_act("stage_resolve", %{"how" => "move_back"} = params, socket) do
     case text(params["stage"]) do
-      nil -> {:noreply, socket}
-      stage -> decided(socket, {:resolve, {:move_back, stage}, note(params)})
+      nil ->
+        {:noreply, socket}
+
+      stage ->
+        fresh(socket, params, &decided(&1, &2, {:resolve, {:move_back, stage}, note(params)}))
     end
   end
 
   defp stage_act("stage_resolve", params, socket) do
     case Map.fetch(@resolutions, params["how"]) do
-      {:ok, how} -> decided(socket, {:resolve, how, note(params)})
+      {:ok, how} -> fresh(socket, params, &decided(&1, &2, {:resolve, how, note(params)}))
       :error -> {:noreply, socket}
     end
   end
@@ -504,47 +515,153 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp stage_act("stage_move", params, socket) do
     case text(params["stage"]) do
       nil -> {:noreply, socket}
-      stage -> decided(socket, {:move, stage, note(params)})
+      stage -> fresh(socket, params, &decided(&1, &2, {:move, stage, note(params)}))
     end
   end
 
-  # Check again, while the stage waits for a workflow: the stage started, the harness
-  # still does not list the workflow, or the check failed with its message.
-  defp stage_act("stage_check", _params, socket) do
-    %{row: row, flow: flow} = socket.assigns
+  # Check again, while the stage waits for a workflow: the read of the harness calls its
+  # adapter, so it runs outside the page's process (`handle_async/3`).
+  defp stage_act("stage_check", params, socket) do
+    fresh(socket, params, fn socket, _seen ->
+      %{row: row, flow: flow} = socket.assigns
+      scope = scope(socket)
 
-    case Workflow.check(scope(socket), row, flow) do
-      {:ok, _work_item} ->
-        {:noreply, socket |> assign(:stage_check, nil) |> load()}
+      {:noreply,
+       socket
+       |> assign(:stage_check, :checking)
+       |> start_async(:stage_check, fn -> Workflow.check(scope, row, flow) end)}
+    end)
+  end
 
-      {:error, :still_missing} ->
-        workflow = List.first(flow.missing_workflows) || ""
-        {:noreply, socket |> assign(:stage_check, {:still_missing, workflow}) |> load()}
+  # Reads the page again, then calls `fun` with the socket and the stage the reader saw,
+  # where the work item is still in it; otherwise shows where it moved.
+  defp fresh(socket, params, fun) do
+    seen = {socket.assigns.flow, text(params["seen"])}
+    socket = refresh(socket)
 
-      {:error, reason} when reason in [:forbidden, :not_found, :not_approver] ->
-        {:noreply, socket |> assign(:stage_check, nil) |> refresh()}
+    cond do
+      socket.redirected != nil or is_nil(socket.assigns.row) ->
+        {:noreply, socket}
 
-      {:error, reason} ->
-        {:noreply, assign(socket, :stage_check, {:failed, check_message(reason)})}
+      is_nil(elem(seen, 1)) ->
+        {:noreply, socket}
+
+      current_stage(socket) == elem(seen, 1) ->
+        fun.(assign(socket, :stage_notice, nil), seen)
+
+      true ->
+        {:noreply, assign(socket, :stage_notice, moved(seen, socket.assigns.flow))}
     end
   end
 
-  defp decided(socket, action) do
+  defp stage_key(%{stage: %{id: id}}), do: id
+  defp stage_key(_flow), do: nil
+
+  defp current_stage(%{assigns: %{flow: %{stage: %{id: id}}}}), do: id
+  defp current_stage(_socket), do: nil
+
+  defp decided(socket, seen, action) do
     %{row: row, flow: flow} = socket.assigns
 
     case Workflow.decide(scope(socket), row, flow, action) do
       {:ok, _result} ->
         {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> load()}
 
+      {:error, :stage_changed} ->
+        socket = refresh(socket)
+        {:noreply, assign(socket, :stage_notice, moved(seen, socket.assigns.flow))}
+
+      {:error, reason} when reason in [:invalid, :not_earlier] and elem(action, 0) == :move ->
+        {:noreply, assign(socket, :stage_notice, not_earlier(flow))}
+
+      {:error, reason} when reason in [:invalid, :not_earlier] and elem(action, 0) == :resolve ->
+        if match?({:resolve, {:move_back, _id}, _note}, action),
+          do: {:noreply, assign(socket, :stage_notice, not_earlier(flow))},
+          else: {:noreply, refresh(socket)}
+
       _refused ->
         {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> refresh()}
     end
   end
 
-  # What a failed check says: the read's message where it gave one.
-  defp check_message(message) when is_binary(message), do: message
-  defp check_message(%{message: message}) when is_binary(message), do: message
-  defp check_message(_reason), do: gettext("The check of the harness failed.")
+  # Where the work item moved since the reader saw it, by the names of the stages.
+  defp moved({seen_flow, seen_id}, flow) do
+    stage = stage_name(seen_flow, seen_id) || stage_name(flow, seen_id) || seen_id
+
+    case flow do
+      %{stage: %{name: current}} when is_binary(current) ->
+        gettext(
+          "Check the new stage and act again. The work item moved from %{stage} to %{current} before your click.",
+          stage: stage,
+          current: current
+        )
+
+      _none ->
+        gettext(
+          "Check the work item's stage and act again. It moved from %{stage} before your click.",
+          stage: stage
+        )
+    end
+  end
+
+  defp not_earlier(flow),
+    do:
+      gettext("Choose a stage before %{current} to move back to.",
+        current: (flow && flow.stage.name) || ""
+      )
+
+  defp stage_name(%{stages: stages}, id), do: Enum.find_value(stages, &(&1.id == id && &1.name))
+  defp stage_name(_flow, _id), do: nil
+
+  @impl true
+  def handle_async(:stage_check, {:ok, result}, socket) do
+    case result do
+      {:ok, _work_item} ->
+        {:noreply, socket |> assign(:stage_check, nil) |> load()}
+
+      {:error, :still_missing} ->
+        socket = load(assign(socket, :stage_check, nil))
+
+        workflow =
+          (socket.assigns.flow && List.first(socket.assigns.flow.missing_workflows)) || ""
+
+        {:noreply, assign(socket, :stage_check, {:still_missing, workflow})}
+
+      {:error, reason} when reason in [:forbidden, :not_found, :not_approver] ->
+        {:noreply, socket |> assign(:stage_check, nil) |> refresh()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :stage_check, {:failed, check_words(socket, reason)})}
+    end
+  end
+
+  def handle_async(:stage_check, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, :stage_check, {:failed, check_words(socket, :exited)})}
+
+  # Why Check again did not start the stage, each with its fix first: the work item is not
+  # live or not in a stage, or the harness was not read (`Apiary.Stacks.Sources.read/2`).
+  defp check_words(_socket, :not_live),
+    do:
+      gettext(
+        "Reload the page. The work item is closed or declined, so it has no stage to check."
+      )
+
+  defp check_words(_socket, :not_placed),
+    do: gettext("Reload the page. The work item is not in a stage, so there is nothing to check.")
+
+  defp check_words(_socket, :exited),
+    do:
+      gettext(
+        "Try again, and tell an instance admin if it fails again. The check of the harness stopped with an error in Qory Apiary."
+      )
+
+  defp check_words(socket, reason) do
+    scope = scope(socket)
+
+    chosen = Apiary.Stacks.Sources.chosen(scope.workspace)
+    source = Map.put(chosen, :label, chosen.git || "")
+    HarnessComponents.read_words(reason, source, scope.organisation.name)
+  end
 
   # A note as the Stages functions take it: its text, or nil where it is blank.
   defp note(params), do: text(params["note"])
@@ -668,6 +785,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           }
 
       page = View.page(scope, row, explore, thread, names)
+
+      # A form opened in another stage, and its check, close when the stage changes.
+      socket =
+        if stage_key(socket.assigns[:flow]) == stage_key(flow),
+          do: socket,
+          else: assign(socket, stage_asking: nil, stage_error: nil, stage_check: nil)
 
       # Take in again is reached from the Backlog only while it shows the ticket: its
       # record is live, its adapter is not removed, and its Backlog takes it in.

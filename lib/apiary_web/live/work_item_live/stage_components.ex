@@ -95,7 +95,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   attr :check, :any,
     default: nil,
-    doc: "the result of Check again: `{:still_missing, workflow}`, `{:failed, message}`, or nil"
+    doc: "Check again: `:checking`, `{:still_missing, workflow}`, `{:failed, message}`, or nil"
+
+  attr :notice, :string,
+    default: nil,
+    doc: "why the page did not act: the work item moved, or a move back went forward"
 
   def stage_card(assigns) do
     ~H"""
@@ -117,6 +121,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <p :if={@page.version} id={"#{@id}-version"} class="text-xs opacity-70">
         {gettext("Process version %{number}", number: Format.number(@page.version))}
       </p>
+      <p :if={@notice} id={"#{@id}-notice"} class="q-xp-err" role="alert">{@notice}</p>
       <.stage_body
         id={@id}
         page={@page}
@@ -223,6 +228,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     <p :for={{line, i} <- Enum.with_index(@page.gaps)} id={"#{@id}-gap-#{i}"}>{line}</p>
     <form :if={@page.can_decide} id={"#{@id}-check"} phx-submit="stage_check" novalidate>
       <input type="hidden" name="number" value={@number} />
+      <input type="hidden" name="seen" value={@page.stage.id} />
       <%= case @check do %>
         <% {:still_missing, workflow} -> %>
           <p id={"#{@id}-check-result"} class="q-xp-err">
@@ -232,6 +238,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <% {:failed, message} -> %>
           <p id={"#{@id}-check-result"} class="q-xp-err">{message}</p>
           <.button id={"#{@id}-check-go"} type="submit">{gettext("Try again")}</.button>
+        <% :checking -> %>
+          <.button id={"#{@id}-check-go"} type="submit" disabled>
+            {gettext("Checking the harness…")}
+          </.button>
         <% _none -> %>
           <.button id={"#{@id}-check-go"} type="submit">{gettext("Check again")}</.button>
       <% end %>
@@ -300,6 +310,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             class="flex flex-col gap-2"
           >
             <input type="hidden" name="number" value={@number} />
+            <input type="hidden" name="seen" value={@page.stage.id} />
             <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
             <select id={"#{@id}-changes-version"} name="version">
               <option value="">{gettext("The whole stage")}</option>
@@ -323,6 +334,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <% else %>
           <form :if={@page.approvable} novalidate id={"#{@id}-approve"} phx-submit="stage_approve">
             <input type="hidden" name="number" value={@number} />
+            <input type="hidden" name="seen" value={@page.stage.id} />
             <input type="hidden" name="note" value="" />
             <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
               <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve %{stage}",
@@ -388,6 +400,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         class="flex flex-col gap-2"
       >
         <input type="hidden" name="number" value={@number} />
+        <input type="hidden" name="seen" value={@page.stage.id} />
         <.note id={"#{@id}-note"} />
         <p class="text-xs opacity-70">
           {gettext("A note you add goes to the next run as work item data.")}
@@ -446,6 +459,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     ~H"""
     <form novalidate id={@id} phx-submit={@event} class="flex flex-col gap-2">
       <input type="hidden" name="number" value={@number} />
+      <input type="hidden" name="seen" value={@page.stage.id} />
       <label for={"#{@id}-stage"}>{gettext("Move back to")}</label>
       <select id={"#{@id}-stage"} name="stage">
         <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>
@@ -505,20 +519,49 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp run_words(run) do
     gettext("Run %{run} · %{workflow} · round %{round} · %{verdict}",
-      run: Format.number(run.id),
+      run: Format.number(run.number),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
-      verdict: verdict_words(run)
+      verdict: shows_words(run.shows)
     )
   end
 
-  defp verdict_words(%{verdict: :passed}), do: gettext("passed")
-  defp verdict_words(%{verdict: :changes_requested}), do: gettext("changes requested")
-  defp verdict_words(%{verdict: :escalate}), do: gettext("escalated")
+  defp shows_words(:passed), do: gettext("passed")
+  defp shows_words(:failed), do: gettext("did not pass")
+  defp shows_words(:questions), do: gettext("questions")
+  defp shows_words(:queued), do: gettext("queued")
+  defp shows_words(:running), do: gettext("running")
+  defp shows_words(:goes_on), do: gettext("no verdict, goes on")
+  defp shows_words(:no_verdict), do: gettext("ended without a verdict")
 
-  defp verdict_words(%{state: :running}), do: gettext("running")
-  defp verdict_words(%{state: :stopped}), do: gettext("stopped")
-  defp verdict_words(_run), do: gettext("no verdict, goes on")
+  @doc false
+  # stage_notes/1 lists what the work item's next run reads as work item data
+  # (`Apiary.Stages.notes/1`), oldest first: each with its kind and its stage.
+  attr :id, :string, default: "work-item-notes"
+  attr :notes, :list, required: true
+
+  def stage_notes(assigns) do
+    ~H"""
+    <section :if={@notes != []} id={@id} class="q-xp-sec" aria-labelledby={"#{@id}-h"}>
+      <h3 id={"#{@id}-h"}>{gettext("Notes for the next run")}</h3>
+      <ol class="flex flex-col gap-2">
+        <li :for={{note, i} <- Enum.with_index(@notes)} id={"#{@id}-#{i}"}>
+          <p class="text-xs opacity-70">
+            {note_words(note.kind)}{if note.stage, do: " · #{note.stage}"}
+          </p>
+          <p class="whitespace-pre-line">{note.text}</p>
+        </li>
+      </ol>
+    </section>
+    """
+  end
+
+  defp note_words(:request_changes), do: gettext("Changes requested")
+  defp note_words(:move), do: gettext("Moved")
+  defp note_words(:escalation), do: gettext("Escalation resolved")
+  defp note_words(:answer), do: gettext("Answer")
+  defp note_words(:check), do: gettext("Failed check")
+  defp note_words(_kind), do: gettext("Note")
 
   ## Approval marks
 
@@ -586,12 +629,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         class="q-wl-st"
         aria-labelledby={"#{@id}-#{i}-h"}
       >
-        <h2 id={"#{@id}-#{i}-h"} class="q-wl-st-name">{column.name}</h2>
+        <h2 id={"#{@id}-#{i}-h"} class="q-wl-st-name">
+          {column.name || gettext("Removed stage")}
+        </h2>
         <span class="q-wl-st-n">{Format.number(length(column.items))}</span>
-        <span :if={column.version} id={"#{@id}-#{i}-removed"} class="q-wl-st-what">
-          {gettext("From version %{number}; the current version removed this stage.",
-            number: Format.number(column.version)
-          )}
+        <span :if={column.removed} id={"#{@id}-#{i}-removed"} class="q-wl-st-what">
+          <%= if column.version do %>
+            {gettext("From version %{number}. This stage is not in the current version.",
+              number: Format.number(column.version)
+            )}
+          <% else %>
+            {gettext("This stage is not in the current version.")}
+          <% end %>
         </span>
         <ul :if={column.items != []} class="flex flex-col gap-1">
           <li :for={item <- column.items} id={"#{@id}-item-#{item.id}"}>
