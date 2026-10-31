@@ -784,6 +784,23 @@ defmodule Apiary.ArtifactsTest do
     end
   end
 
+  describe "after a push" do
+    test "the work item's workspace hears of the version", %{run: run} = context do
+      work_item = context.work_item
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.WorkItems.topic(work_item.workspace_id))
+
+      {:ok, version} = Artifacts.push({:run, run}, work_item, "explainer", [doc()])
+
+      assert_receive {:artifact_pushed, work_item_id, version_id}
+      assert {work_item_id, version_id} == {work_item.public_id, version.public_id}
+
+      assert {:error, {:invalid, :no_files}} =
+               Artifacts.push({:run, run}, work_item, "explainer", [])
+
+      refute_receive {:artifact_pushed, _work_item_id, _version_id}
+    end
+  end
+
   describe "the rows" do
     test "go with their work item", %{run: run} = context do
       {:ok, _version} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])

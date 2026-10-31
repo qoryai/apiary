@@ -61,6 +61,11 @@ defmodule Apiary.Artifacts do
   # may share). A store with no root, or one that cannot write, is
   # `{:error, :store_unavailable}`.
   #
+  # Once the rows are committed, `{:artifact_pushed, work_item_id, version_id}`, the work
+  # item's public id (`wi_…`) and the version's (`av_…`), goes to the topic of the work
+  # items of the work item's workspace (`Apiary.WorkItems.topic/1`), so its pages show the
+  # version.
+  #
   # ## Reading
   #
   # `list(work_item)` is the work item's artifacts by type and name, each with its
@@ -292,11 +297,28 @@ defmodule Apiary.Artifacts do
          {:ok, staged} <- stage_all(type, files),
          :ok <- complete(type, staged) do
       case commit_all(staged) do
-        {:ok, stored} -> write(writer, work_item, type, fields, stored)
+        {:ok, stored} -> writer |> write(work_item, type, fields, stored) |> broadcast()
         {:error, _reason} = error -> error
       end
     end
   end
+
+  # After the rows are committed, the pages of the work item's workspace hear of the new
+  # version on its work items' topic (`Apiary.WorkItems.topic/1`).
+  defp broadcast({:ok, %Version{artifact: artifact} = version} = pushed) do
+    work_item_id =
+      Repo.one!(from w in WorkItem, where: w.id == ^artifact.work_item_id, select: w.public_id)
+
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      Apiary.WorkItems.topic(artifact.workspace_id),
+      {:artifact_pushed, work_item_id, version.public_id}
+    )
+
+    pushed
+  end
+
+  defp broadcast(refused), do: refused
 
   # The work item as it is now, unlocked: the transaction reads it again under its lock.
   defp current(%WorkItem{id: id}) do
