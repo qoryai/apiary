@@ -3933,6 +3933,11 @@ msgstr ""
 msgid "Adding"
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Address"
+msgstr ""
+
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "Address hidden"
@@ -5485,11 +5490,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the workspace's default mode"
-msgstr ""
-
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "Choose what your first workspace does"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -15346,11 +15346,6 @@ msgstr ""
 msgid "Skipped"
 msgstr ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "Slug"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Smaller text"
@@ -18816,6 +18811,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "What will this workspace do?"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "What will your first workspace do?"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

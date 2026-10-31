@@ -13,7 +13,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 - An organisation with no workspace shows the kind cards on its overview,
-  `/<organisation>`, under “Choose what your first workspace does”, and
+  `/<organisation>`, under “What will your first workspace do?”, and
   `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
   **Choose** on a card creates the workspace at once, named after its kind, such as
   “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its

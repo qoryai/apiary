@@ -6,8 +6,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # the steps with a tick on each one done and the step current (`ApiaryWeb.Layouts.app/1`),
   # so the frame shows no indicator.
   #
-  # **New workspace.** The kind cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), which the
-  # empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Choose creates
+  # **New workspace.** A page of the organisation, in its sidebar: the kind cards
+  # (`ApiaryWeb.SetUpComponents.kind_cards/1`) under "What will this workspace do?", which
+  # the empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Choose creates
   # the workspace at once, named after its type, and opens its Name step
   # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The page is only for a person
   # `workspace.create` allows (`Apiary.Access`); where the organisation has as many
@@ -1737,7 +1738,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   @impl true
   # A step is a page of the workspace, in its sidebar, the step current in the group Set
-  # up; New workspace has no sidebar.
+  # up; New workspace is a page of the organisation, in its sidebar, with no entry current.
   def render(%{view: :flow} = assigns) do
     ~H"""
     <Layouts.app
@@ -1762,11 +1763,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       memberships={@memberships}
       counts={@nav_counts}
       place={:organisation}
-      sidebar={false}
     >
-      <SetUpComponents.frame>
-        <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
-      </SetUpComponents.frame>
+      <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
     </Layouts.app>
     """
   end

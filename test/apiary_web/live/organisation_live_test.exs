@@ -52,6 +52,11 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       refute has_element?(view, "#about-settings")
       refute has_element?(view, "#about a", "Settings")
 
+      # Details: the organisation's address, as Organisation settings shows it.
+      assert has_element?(view, "#about dt", "Address")
+      assert has_element?(view, "#about dd.q-mono", "/#{organisation.slug}")
+      refute has_element?(view, "#about dt", "Slug")
+
       assert has_element?(
                view,
                ~s(.q-sidebar-foot #nav-organisation[href="/#{organisation.slug}/settings"]),

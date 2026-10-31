@@ -718,9 +718,11 @@ defmodule ApiaryWeb.SetUpComponents do
   `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
   type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
   connect, and Choose, which sends the event `choose_kind` with the domain's name as
-  `type`. The empty organisation overview (`ApiaryWeb.OrganisationLive`) and New
-  workspace (`/:org/workspaces/new`) show it, and each takes the event with
-  `choose_kind/3`. With `limit`, that line shows in place of the cards.
+  `type`. The cards are 20rem wide, the page's width on a phone, in a grid that wraps a
+  further card to the next line; Choose sits at the foot of its card. The empty
+  organisation overview (`ApiaryWeb.OrganisationLive`) and New workspace
+  (`/:org/workspaces/new`) show it, and each takes the event with `choose_kind/3`. With
+  `limit`, that line shows in place of the cards.
   """
   attr :id, :string, default: "set-up-cards"
   attr :title, :string, required: true
@@ -747,16 +749,21 @@ defmodule ApiaryWeb.SetUpComponents do
       <.notice :if={@limit} kind={:error}>
         <span id="set-up-limit">{@limit}</span>
       </.notice>
-      <ul :if={!@limit} id={@id} class="grid gap-3">
+      <ul
+        :if={!@limit}
+        id={@id}
+        role="list"
+        class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
+      >
         <li
           :for={{domain, card} <- @cards}
           id={"set-up-card-#{domain.name()}"}
-          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+          class="flex min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4"
         >
           <h2 class="font-semibold">{domain.type_name()}</h2>
           <p class="text-[13.5px]/5">{card.what}</p>
           <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
-          <div class="flex justify-end">
+          <div class="mt-auto pt-1">
             <.button
               id={"set-up-card-#{domain.name()}-choose"}
               variant="primary"

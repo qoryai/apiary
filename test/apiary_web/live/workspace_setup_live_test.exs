@@ -79,6 +79,21 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
   defp choose(lv), do: lv |> element("#set-up-card-software-choose") |> render_click()
 
+  # An edition whose `:organisation_heading` slot is a New workspace button, as an
+  # edition's may be (`ApiaryWeb.Extension`).
+  defmodule HeadingButton do
+    @moduledoc false
+    use Phoenix.Component
+
+    def slot(:organisation_heading, assigns) do
+      ~H"""
+      <a id="edition-new-workspace" href="#">New workspace</a>
+      """
+    end
+
+    def slot(_name, _assigns), do: nil
+  end
+
   describe "the kind cards on the empty organisation overview" do
     test "show an owner the card of Software factory alone, with no steps", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
@@ -87,7 +102,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       assert html =~ ~r{<title[^>]*>\s*Acme Studio}
       assert has_element?(lv, "h1", "Acme Studio")
-      assert has_element?(lv, "h2#set-up-cards-title", "Choose what your first workspace does")
+      assert has_element?(lv, "h2#set-up-cards-title", "What will your first workspace do?")
       refute has_element?(lv, "#set-up-steps")
       # The organisation's people and details, as for any other.
       assert has_element?(lv, "#people")
@@ -107,6 +122,43 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                lv,
                "#set-up-card-software p",
                "You connect: where work comes from, where changes go, a model."
+             )
+    end
+
+    test "show the header's actions only once the organisation has a workspace", %{
+      conn: conn
+    } do
+      :ok = Apiary.Edition.put_test_stub(HeadingButton)
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+      assert has_element?(lv, "#set-up-card-software")
+      refute has_element?(lv, "#edition-new-workspace")
+
+      {:ok, _workspace} =
+        Organisations.create_workspace_of_kind(
+          Organisations.load_scope(Scope.for_user(user), organisation.id),
+          Apiary.Lingo.Domain.Software,
+          :first
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
+      assert has_element?(lv, "#organisation-overview #edition-new-workspace", "New workspace")
+      refute has_element?(lv, "#set-up-cards")
+    end
+
+    test "New workspace shows the same cards, in the organisation's sidebar", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new")
+
+      assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
+      assert has_element?(lv, "#set-up-card-software-choose", "Choose")
+
+      assert has_element?(
+               lv,
+               ~s(#sidebar #nav-organisation_overview[href="/#{organisation.slug}"])
              )
     end
 
@@ -382,6 +434,14 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
           ] do
         {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
         assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
+        # A page of the organisation, in its sidebar, with no entry current.
+        assert has_element?(
+                 lv,
+                 ~s(#sidebar #nav-organisation_overview[href="/#{organisation.slug}"])
+               )
+
+        refute has_element?(lv, "#sidebar [aria-current=page]")
+        refute has_element?(lv, "#set-up")
 
         assert {:error, {:live_redirect, %{to: to}}} = choose(lv)
         assert to == ~p"/#{organisation}/#{slug}/set-up/name"

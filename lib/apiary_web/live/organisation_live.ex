@@ -11,10 +11,12 @@ defmodule ApiaryWeb.OrganisationLive do
   (`ApiaryWeb.SetUpComponents.workspace_set_up/1`).
 
   An organisation with no workspace in use yet shows, in place of its workspaces, the kind
-  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`) to a person `workspace.create` allows
-  there, whose Choose creates the first workspace and opens its Name step, and to anyone
-  else one line on who creates it (`c:Apiary.Edition.first_workspace_waiting_line/1`).
-  The page shows that organisation's people and details as for any other. A member who reaches no workspace yet, where the edition says
+  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), as New workspace shows them, to a
+  person `workspace.create` allows there, whose Choose creates the first workspace and
+  opens its Name step, and to anyone else one line on who creates it
+  (`c:Apiary.Edition.first_workspace_waiting_line/1`). Its header has no actions: the
+  edition's (the `:organisation_heading` slot) show once the organisation has a
+  workspace. The page shows that organisation's people and details as for any other. A member who reaches no workspace yet, where the edition says
   which workspaces their level reaches (`c:Apiary.Edition.reaches_workspace?/3`), is told
   so, and led to the People section of the settings, where the owners and admins are listed. Once they reach
   one while the page is open, the member's scope is loaded again (`ApiaryWeb.UserAuth`),
@@ -47,9 +49,6 @@ defmodule ApiaryWeb.OrganisationLive do
         <div class="q-org-top">
           <.page_header title={@current_scope.organisation.name}>
             <:description>{gettext("The organisation's workspaces and its people.")}</:description>
-            <:actions>
-              <ApiaryWeb.Extension.slot name={:organisation_heading} scope={@current_scope} />
-            </:actions>
           </.page_header>
         </div>
 
@@ -57,7 +56,7 @@ defmodule ApiaryWeb.OrganisationLive do
           <section id="first-workspace" class="q-blk">
             <SetUpComponents.kind_cards
               :if={@creates}
-              title={gettext("Choose what your first workspace does")}
+              title={gettext("What will your first workspace do?")}
               heading="h2"
             />
             <p :if={!@creates} id="first-workspace-waiting" class="text-sm/5 text-muted">
@@ -169,7 +168,8 @@ defmodule ApiaryWeb.OrganisationLive do
   attr :current_scope, :any, required: true
   attr :people, :map, required: true
 
-  # Beside the workspaces: the organisation's people and its details.
+  # Beside the workspaces: the organisation's people and its details, its address the path
+  # of its overview, as Organisation settings shows it.
   defp side(assigns) do
     ~H"""
     <aside class="q-org-side" aria-label={gettext("About the organisation")}>
@@ -225,8 +225,8 @@ defmodule ApiaryWeb.OrganisationLive do
           <h2 id="about-title">{gettext("Details")}</h2>
         </div>
         <dl class="q-kvl">
-          <dt>{gettext("Slug")}</dt>
-          <dd class="q-mono">{@current_scope.organisation.slug}</dd>
+          <dt>{gettext("Address")}</dt>
+          <dd class="q-mono">{~p"/#{@current_scope.organisation}"}</dd>
           <dt>{gettext("Owners")}</dt>
           <dd class="truncate" title={Enum.map_join(@people.owners, ", ", & &1.user.email)}>
             {Enum.map_join(@people.owners, ", ", & &1.user.email)}

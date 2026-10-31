@@ -410,9 +410,10 @@ the new ones
 (`ApiaryWeb.MovedController`).
 
 An organisation's path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
-workspaces the person reaches, what each is doing, and the organisation's people; its
-header's actions are the edition's (the `:organisation_heading` slot), such as a way to add
-a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
+workspaces the person reaches, what each is doing, and the organisation's people and
+details, its address the path `/<org>` as Organisation settings shows it; once the
+organisation has a workspace, its header's actions are the edition's (the
+`:organisation_heading` slot), such as a way to add a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
 
 ## Lists
@@ -1193,15 +1194,16 @@ the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces
 whose Choose creates the workspace, then each step a page of the workspace,
 `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
-sidebar, but for the steps of a workspace that exists, which show the workspace's
-sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
+sidebar, but for the kind cards, which show the organisation's sidebar, and the steps of
+a workspace that exists, which show the workspace's sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
 mark and the theme menu.
 
 - **The kind cards** (`SetUpComponents.kind_cards/1`) come before the workspace set-up:
-  on the organisation's overview (`/<org>`) while it has no workspace, under "Choose what
-  your first workspace does", and on `/<org>/workspaces/new`, under "What will this
+  on the organisation's overview (`/<org>`) while it has no workspace, under "What will
+  your first workspace do?", and on `/<org>/workspaces/new`, under "What will this
   workspace do?". There is one card per type of workspace, "Software factory" the one,
-  each with what you do there, what you connect, and **Choose**. **Choose** creates the
+  each with what you do there, what you connect, and **Choose** at its foot. Each card is
+  20rem wide, or the page's width on a phone, and a further card wraps to the next line. **Choose** creates the
   workspace, named after the type ("Software factory", then "Software factory 2"), and
   opens its step Name. A person who may not create the first workspace sees "An owner of
   Acme creates the first workspace." in place of the cards. The cards show no indicator:
