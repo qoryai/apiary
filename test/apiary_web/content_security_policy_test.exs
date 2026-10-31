@@ -449,6 +449,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
+  # The run API's file request: a version and a filename that no run has.
+  defp value_of("version_id", "/v1/runs/" <> _, _p), do: "av_0000000000000000"
+  defp value_of("filename", "/v1/runs/" <> _, _p), do: "screenshot.png"
   defp value_of("number", _path, p), do: p.work_item_number
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
