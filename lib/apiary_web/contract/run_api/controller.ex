@@ -359,7 +359,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           {:invalid_artifact, "files[#{index}]",
            mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
 
-  # A schema refusal, with the JSON pointer of the first failing value and JSV's message
+  # A failed schema check, with the JSON pointer of the first failing value and JSV's message
   # for it, as `Apiary.Artifacts.SchemaError` returns them: text, written as it is.
   defp refused({:invalid, {:schema, index, %{path: path, error: error}}}, push)
        when is_integer(index) do

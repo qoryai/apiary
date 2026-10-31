@@ -17,7 +17,7 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   # columns `workflow`, `stage_id` and `round` of `dispatch_runs` are nil for a run of the
   # queue outside the workflow model.
 
-  alias Apiary.Artifacts.Type
+  alias Apiary.Artifacts.{Filename, Type}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.WorkItem
 
@@ -98,6 +98,11 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   # (`Apiary.Artifacts.Type.name?/1`).
   @spec name?(term) :: boolean
   def name?(name), do: Type.name?(name)
+
+  # filename?/1 is whether `name` is a filename an artifact's file may have
+  # (`Apiary.Artifacts.Filename.valid?/1`).
+  @spec filename?(term) :: boolean
+  def filename?(name), do: Filename.valid?(name)
 
   @spec type(struct, String.t()) :: map | nil
   def type(workspace, name), do: artifacts().type(workspace, name)

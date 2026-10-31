@@ -24,11 +24,11 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   # A media type: `type/subtype`, without parameters.
   @content_type ~r/\A[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\z/
-  @max_filename_bytes 255
-  # The characters a filename may not contain: a path separator, and the control
-  # characters, U+0000 among them.
-  @refused_in_filename ~r/[\/\\\x{0}-\x{1F}\x{7F}-\x{9F}]/u
-  @refused_in_text ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u
+  # The characters a note may not contain, as `Apiary.Artifacts` checks them: control and
+  # format characters and the line and paragraph separators, but tab, line feed, U+200C and
+  # U+200D. Carriage return passes too: `Apiary.Artifacts` turns it into a line feed
+  # before its check.
+  @refused_in_note ~r/(?![\x{9}\x{A}\x{D}\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
   @max_note 4000
   # The gaps of a verdict, as the schema of the type `verdict` takes them
   # (`priv/schemas/artifacts/verdict.schema.json`): 1 to 20000 code points, with none of
@@ -57,7 +57,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
          :ok <- members(body, ~w(type name note files)),
          {:ok, type} <- required(body, "type", &name?/1),
          {:ok, name} <- optional(body, "name", &name?/1, "main"),
-         {:ok, note} <- optional(body, "note", &text?(&1, @max_note), nil),
+         {:ok, note} <- optional(body, "note", &note?/1, nil),
          {:ok, files} <- files(body["files"]) do
       {:ok, %{type: type, name: name, note: note, files: files}}
     end
@@ -165,7 +165,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
     member = &"files[#{index}].#{&1}"
 
     with :ok <- prefixed(members(file, ~w(filename content_type content_base64)), member),
-         {:ok, filename} <- prefixed(required(file, "filename", &filename?/1), member),
+         {:ok, filename} <- prefixed(required(file, "filename", &Boundary.filename?/1), member),
          {:ok, content_type} <-
            prefixed(required(file, "content_type", &content_type?/1), member),
          {:ok, encoded} <- prefixed(required(file, "content_base64", &is_binary/1), member) do
@@ -195,15 +195,6 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   defp name?(value), do: Boundary.name?(value)
 
-  # A filename is one path segment: 1 to 255 bytes of UTF-8, not `.` or `..`, with no
-  # path separator and no control character.
-  @doc false
-  @spec filename?(term) :: boolean
-  def filename?(value) do
-    is_binary(value) and byte_size(value) in 1..@max_filename_bytes and String.valid?(value) and
-      value not in [".", ".."] and not Regex.match?(@refused_in_filename, value)
-  end
-
   defp content_type?(value), do: is_binary(value) and Regex.match?(@content_type, value)
 
   defp gaps?(value) do
@@ -211,9 +202,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
       code_points(value) <= @max_gaps and not Regex.match?(@refused_in_gaps, value)
   end
 
-  defp text?(value, max) do
-    is_binary(value) and String.valid?(value) and code_points(value) <= max and
-      not Regex.match?(@refused_in_text, value)
+  defp note?(value) do
+    is_binary(value) and String.valid?(value) and code_points(value) <= @max_note and
+      not Regex.match?(@refused_in_note, value)
   end
 
   # The length counted in code points, never graphemes: a letter with any number of

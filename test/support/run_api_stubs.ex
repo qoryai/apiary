@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.RunApiStubs do
   @moduledoc """
   Stubs for the run API's tests (`ApiaryWeb.Contract.RunApi.Boundary`): `Artifacts`, the
-  real `Apiary.Artifacts` with a record of each push and a refusal a test sets;
+  real `Apiary.Artifacts` with a record of each push and an error a test sets;
   `Processes`, a declaration set by the test; and `Features`, the flag `workflow_model`.
   `install/1` sets them in the application's configuration until the test ends, so a
   test that uses them is not async.
@@ -93,7 +93,7 @@ defmodule ApiaryWeb.RunApiStubs do
 
   defmodule Artifacts do
     @moduledoc """
-    `Apiary.Artifacts`, with `push/5` recorded, or refused with the stubs' `:push_error`.
+    `Apiary.Artifacts`, with `push/5` recorded, or returning the stubs' `:push_error` in its place.
     """
     alias ApiaryWeb.RunApiStubs
 

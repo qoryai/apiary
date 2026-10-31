@@ -17,6 +17,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   import Apiary.SealedRunsFixtures
 
   alias Apiary.Repo
+  alias Apiary.Artifacts.ArtifactFile
   alias Apiary.Dispatches.{DispatchRun, Inputs}
   alias Apiary.Runs.Run
   alias Apiary.Stages.{Check, GateDecision}
@@ -536,6 +537,39 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
+    test "a stored type that is not a plain safe type is served as plain bytes", ctx do
+      version = store!(ctx, "screenshot", [file("kept.png", "image/png", @png)], name: "kept")
+      [stored] = version.files
+
+      for type <- [
+            "text/html",
+            "text/html; charset=utf-8",
+            "application/xhtml+xml",
+            "text/javascript; charset=utf-8",
+            "text/plain; boundary=x",
+            "text/plain\r\nX-Evil: 1"
+          ] do
+        {1, _rows} =
+          Repo.update_all(from(f in ArtifactFile, where: f.id == ^stored.id),
+            set: [content_type: type]
+          )
+
+        conn = read(ctx, "/artifacts/#{version.public_id}/files/kept.png")
+        assert get_resp_header(conn, "content-type") == ["application/octet-stream"], type
+      end
+    end
+
+    test "a note with a carriage return, U+200C or U+200D is stored", ctx do
+      body =
+        push_body("screenshot", [{"note.png", "image/png", @png}], %{
+          "name" => "note",
+          "note" => "a\r\nb\u200Cc\u200Dd"
+        })
+
+      assert write(ctx, "/artifacts", body).status == 201
+      assert List.last(RunApiStubs.pushed()).note == "a\nb\u200Cc\u200Dd"
+    end
+
     test "a filename that is not ASCII has one _ per character in its plain name", ctx do
       version =
         store!(ctx, "screenshot", [file("caf\u00e9 \u00fc.png", "image/png", @png)], name: "cafe")
@@ -657,7 +691,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
-    test "a filename with a path or a control character is 400", ctx do
+    test "a filename outside the rule of Apiary.Artifacts.Filename is 400", ctx do
       for name <- [
             "..",
             ".",
@@ -676,6 +710,23 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "names" => ["files[0].filename"]
                },
                inspect(name)
+      end
+
+      # The checks of the body run before those of the type.
+      for {body, member} <- [
+            {push_body("no-such-type", [{"a.png", "image/png", @png}], %{"note" => "a\u202Eb"}),
+             "note"},
+            {push_body("no-such-type", [{"a.png", "image/png", @png}], %{"note" => "a\u2028b"}),
+             "note"},
+            {push_body("no-such-type", [{"a\u202Eb.png", "image/png", @png}]),
+             "files[0].filename"},
+            {push_body("no-such-type", [{"a\u2029b.png", "image/png", @png}]),
+             "files[0].filename"}
+          ] do
+        assert json_response(write(ctx, "/artifacts", body), 400) == %{
+                 "error" => "invalid_request",
+                 "names" => [member]
+               }
       end
 
       long = String.duplicate("a", 256)
