@@ -3,7 +3,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   @moduledoc """
   Fills an empty database with a workspace to walk the workflow model in a browser: the
-  Stages canvas with versions and a trial, and work items in each stage state. All of it
+  Stages canvas with versions and a trial, and work items in five stage states:
+  `running`, `at_gate`, `waiting_inputs`, `waiting_workflow` and `escalated`. All of it
   synthetic and neutral. A development tool: it stops in production.
 
       unset DATABASE_URL
@@ -23,9 +24,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     * **dana@example.com** sets up the instance, so she owns the organisation **Acme**
       and is its instance admin, with the software workspace **Web shop**.
       **ana@example.com** joins as an admin, **max@example.com** as a member.
-    * Dana saves the process until it has versions 1 to 3 (`Apiary.Processes.save/4`):
-      version 2 adds an optional acceptance-criteria output to Shape, makes it a required
-      input of Build, and gives Build a loop of the workflows `capture-demo` and
+    * Version 1 of the process comes from the workspace's creation; Dana saves versions 2
+      and 3 (`Apiary.Processes.save/4`): version 2 adds an optional acceptance-criteria output to Shape, makes it a required
+      input of Build, and adds to Build a loop of the workflows `capture-demo` and
       `fix-demo-findings`, which the harness does not declare; version 3 removes that
       loop again, and adds an optional mockup output to Shape and an optional screenshot
       output to Verify.
@@ -45,8 +46,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         Shape at its gate;
       * Basket badge shows 0 after signing in: Explore and Shape approved by Dana, Build
         waiting for its acceptance-criteria input;
-      * Product images load twice on the listing page: three rounds of questions,
-        answered by Dana, then escalated at the round limit;
+      * Product images load twice on the listing page: three rounds of questions; Dana
+        answers the first two, and the third escalates at the round limit;
       * TypeError in the address form after autofill: a result that fails the explore
         schema, escalated as a run that stopped;
       * Show delivery dates on the product page: Shape at its gate, with an
@@ -148,9 +149,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     if refusal = refusal(Mix.env(), tests?, Repo.config()[:database], System.get_env()),
       do: Mix.raise(refusal)
 
-    Mix.Task.run("app.start")
-    # The query log of a fill is thousands of lines nobody reads.
+    # Set before the app starts: its boot logs the set-up link, with its one-time code, at
+    # info. The query log of a fill is thousands of lines nobody reads.
     Logger.configure(level: :warning)
+    Mix.Task.run("app.start")
 
     for feature <- [:workflow_model, :factory], not Apiary.Features.on?(feature) do
       Mix.raise(
@@ -246,15 +248,17 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   defp instance do
     in_use = Repo.all(from o in Organisation, where: is_nil(o.deletion_marked_at))
 
-    with [%Organisation{} = acme] <- in_use,
-         %User{} <- Accounts.get_user_by_email(elem(@owner, 0)),
-         %Workspace{} = workspace <-
-           Repo.one(
-             from w in Workspace,
-               where: w.organisation_id == ^acme.id and w.name == @workspace,
-               where: is_nil(w.deletion_marked_at)
-           ) do
-      if trial(workspace), do: :filled, else: :unfinished
+    with [%Organisation{name: @organisation} = acme] <- in_use,
+         %User{} <- Accounts.get_user_by_email(elem(@owner, 0)) do
+      workspace =
+        Repo.one(
+          from w in Workspace,
+            where: w.organisation_id == ^acme.id and w.name == @workspace,
+            where: is_nil(w.deletion_marked_at)
+        )
+
+      # A fill that stopped between the set-up and the workspace has Acme without Web shop.
+      if workspace && trial(workspace), do: :filled, else: :unfinished
     else
       [] -> :empty
       _other -> :other
@@ -296,7 +300,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       end
 
     versions!(dana_scope)
-    Shell.info("Process versions 1 to 3, saved by Dana")
+
+    Shell.info(
+      "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"
+    )
 
     tracker!(dana_scope)
     key = pool!(dana_scope)
@@ -415,8 +422,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   ## The process
 
-  # Versions 1 to 3, each saved by Dana. A workspace that has a version from its creation
-  # (author nil) keeps it as version 1, and Dana saves the rest.
+  # Versions 1 to 3: the workspace's creation makes version 1 (author nil), and Dana
+  # saves the rest.
   defp versions!(%Scope{workspace: workspace} = scope) do
     have = length(Processes.list_versions(workspace))
 
@@ -581,8 +588,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     }
   end
 
-  # The scope of the adapter's key as a verified request carries it, after the request is
-  # recorded as a use of the key, as the adapter's requests are.
+  # The scope of the adapter's key, read as `AccessKeys.fetch_for_verification/1` returns
+  # it for a verified request, after a use of the key is recorded, as for each of the
+  # adapter's requests.
   defp key_scope(key) do
     :ok = AccessKeys.touch_delivery(key, %{})
     {:ok, verified} = AccessKeys.fetch_for_verification(key.key_id)
@@ -700,7 +708,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   # The pool the preview's runs are bound to, with a key added by its public key, as
   # Generate a key adds one made in a browser; the private half is dropped. Returns the
-  # key as a verified request carries it, with its workspace and node.
+  # key as `AccessKeys.fetch_for_verification/1` returns it, with its workspace and node.
   defp pool!(%Scope{} = dana) do
     {:ok, pool} =
       Nodes.create_node(dana, %{"kind" => "pool", "name" => @pool, "instance_limit" => 4})
@@ -749,7 +757,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   defp drive!(:round_limit, ctx, work_item), do: rounds!(ctx, work_item, 1)
 
   defp drive!(:run_stopped, ctx, work_item) do
-    # A result the explore schema refuses: a verdict without the members it requires.
+    # A result the explore schema rejects: a verdict without the members it requires.
     record_result!(ctx, work_item, {:text, ~s({"version":1,"verdict":"understood"})})
     current(ctx.dana, work_item)
   end
@@ -863,9 +871,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   ## A run of Explore and its result
 
   # The waiting run of `work_item`'s Explore, handed over to the preview's pool, and its
-  # events posted under the pool's key as a gateway posts them: it starts, gives
+  # events posted under the pool's key as a gateway posts them: it starts, returns
   # `result` and exits. The exit, once projected, ends the run of the queue, which
-  # settles what it gave. Returns the run of the queue.
+  # settles the result. Returns the run of the queue.
   defp record_result!(%{key: key}, %WorkItem{} = work_item, result) do
     dispatch_run =
       Repo.one(
@@ -1010,7 +1018,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       "version" => 1,
       "verdict" => "understood",
       "complexity" => %{"level" => "standard", "reason" => "One page and its tests change."},
-      "understanding" => "The ticket asks for this change: #{title}.",
+      "understanding" => "The ticket is about this change: #{title}.",
       "scope" => %{
         "in" => ["Reproduce it on the staging build", "Change the page and add a test"],
         "out" => ["Other pages of the web shop"]

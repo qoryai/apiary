@@ -107,6 +107,19 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       :ok
     end
 
+    test "stops on a fill that ended between the set-up and the workspace" do
+      {:ok, _set_up} =
+        Apiary.Setup.set_up(
+          Apiary.Setup.code!(),
+          %{"email" => "dana@example.com", "organisation_name" => "Acme"},
+          password: :optional,
+          origin: %{worker: "demo"}
+        )
+
+      error = assert_raise Mix.Error, fn -> Workflow.run([]) end
+      assert error.message =~ "The preview's fill did not finish."
+    end
+
     test "fills an empty instance: people, versions with a trial, and work items in each state" do
       Workflow.run([])
 
@@ -135,8 +148,8 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       dana = scope("dana@example.com")
       max = scope("max@example.com")
 
-      # Versions 1 to 3, the third current, and a trial, each saved by Dana but a first
-      # version made with the workspace; each differs from the one before.
+      # Versions 1 to 3, the third current, and a trial: the first made with the workspace,
+      # the others saved by Dana; each differs from the one before.
       versions = workspace |> Processes.list_versions() |> Enum.sort_by(& &1.number)
       assert Enum.map(versions, & &1.number) == [1, 2, 3, 4]
 
