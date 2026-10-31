@@ -47,20 +47,23 @@ defmodule Apiary.Stages do
   #
   # ## What is told
   #
-  # `{:stage_changed, public_id}` on the work items' topic of the workspace
-  # (`Apiary.WorkItems.topic/1`), once the change commits; on a hand-over inside another
+  # `{:stage_changed, public_id}` on the work item's topic (`topic/1`), once the change
+  # commits; on a hand-over inside another
   # module's transaction, through what that module tells (`Apiary.Dispatches.broadcast/1`),
   # or, for a take in and an answer, at once.
   @moduledoc false
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias Apiary.{Access, Audit, Dispatches, Features, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
-  alias Apiary.Stages.{Artifacts, Escalation, GateDecision, Runner}
+  alias Apiary.Stacks.Sources
+  alias Apiary.Stages.{Artifacts, Check, Declared, Escalation, GateDecision, Runner}
   alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
 
   # Transition (D1): the workflow whose runs return today's explore v1 result.
@@ -89,6 +92,18 @@ defmodule Apiary.Stages do
   @doc false
   @spec on?() :: boolean
   def on?, do: Features.on?(:workflow_model)
+
+  # topic/1 is the PubSub topic of one work item's stage, by the work item or its public
+  # id: `{:stage_changed, public_id}` arrives there, and nothing else.
+  @doc false
+  @spec topic(WorkItem.t() | String.t()) :: String.t()
+  def topic(%WorkItem{public_id: public_id}), do: topic(public_id)
+  def topic(public_id) when is_binary(public_id), do: "stages:work_item:" <> public_id
+
+  # subscribe/1 subscribes the caller to the work item's stage (`topic/1`).
+  @doc false
+  @spec subscribe(WorkItem.t() | String.t()) :: :ok | {:error, term}
+  def subscribe(work_item), do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(work_item))
 
   ## Hand-over points
 
@@ -182,6 +197,55 @@ defmodule Apiary.Stages do
     end
   end
 
+  # claim_ended/1 acts on the end of each run of the queue in `dispatch_run_ids`, which a
+  # claim ended before they started, once the claim committed: each in a transaction that
+  # locks its work item, then the run (`run_ended/1`). A failure is logged, and the run's
+  # work item stays as it was. The work items to tell (`Apiary.Dispatches.broadcast/1`).
+  @doc false
+  @spec claim_ended([Ecto.UUID.t()]) :: [Apiary.Dispatches.Settle.told()]
+  def claim_ended(dispatch_run_ids) when is_list(dispatch_run_ids),
+    do: Enum.flat_map(dispatch_run_ids, &claim_ended_one/1)
+
+  defp claim_ended_one(id) do
+    {:ok, told} =
+      Repo.transact(fn ->
+        :ok = hold_work_item(id)
+        {:ok, run_ended(id)}
+      end)
+
+    told
+  rescue
+    exception ->
+      Logger.error(
+        "a stage could not act on a run's end dispatch_run=#{id} error=#{inspect(exception.__struct__)}"
+      )
+
+      []
+  end
+
+  # limits/1 is the lowered time limit, in seconds, and access level of the run of the
+  # queue `run` (`Apiary.Stages.Runner.limits/3`), read at its claim without a lock, with
+  # the harness's declaration of its workflow as the claim reads it; nil for a run the
+  # stage runner did not queue, or with the workflow model off.
+  @doc false
+  @spec limits(DispatchRun.t()) ::
+          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+  def limits(%DispatchRun{stage_id: stage_id, process_version_id: version_id} = run)
+      when is_binary(stage_id) and is_binary(version_id) do
+    with true <- on?(),
+         %Processes.Version{} = version <- Repo.get(Processes.Version, version_id),
+         %{} = stage <- Processes.stage(version, stage_id) do
+      workspace = Repo.get!(Workspace, run.workspace_id)
+      declaration = run.workflow && Processes.workflow_declaration(workspace, run.workflow)
+      position = %{entry: run.stage_entry, loop_entry: run.loop_entry, round: run.round}
+      Runner.limits(stage, position, declaration)
+    else
+      _none -> nil
+    end
+  end
+
+  def limits(%DispatchRun{}), do: nil
+
   # confirmed/2 approves Explore's gate for the work item whose proposal the scope's
   # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`). A confirmation
   # with changes first stores the person's `proposal` version.
@@ -267,6 +331,63 @@ defmodule Apiary.Stages do
         end
       end
     end)
+  end
+
+  # check_workflows/2 reads the workflow names the workspace's harness lists now, as the
+  # scope's person, through the harness sources (`Apiary.Stacks.Sources`), stores them as
+  # the workspace's snapshot, and starts the work item's stage when it waits for a
+  # workflow the read found: `{:ok, work_item}`; `{:error, :still_missing}` when the
+  # stage still waits; the read's error otherwise. `read` is the read, given only by tests.
+  @doc false
+  @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
+          {:ok, WorkItem.t()} | {:error, term}
+  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &read_declared/2) do
+    with {:ok, id} <- Ecto.UUID.cast(id),
+         {:ok, workspace} <- workspace(scope),
+         %WorkItem{} <- in_workspace(workspace, id) || {:error, :not_found},
+         {:ok, names} <- read.(scope, workspace) do
+      Declared.record(workspace, names)
+      start_found(id)
+    else
+      :error -> {:error, :not_found}
+      {:error, _reason} = refused -> refused
+      other -> {:error, other}
+    end
+  end
+
+  defp start_found(id) do
+    transact(fn ->
+      work_item = lock!(id)
+
+      with {:ok, version, stage} <- placed(work_item) do
+        cond do
+          work_item.stage_state != :waiting_workflow ->
+            {:ok, work_item}
+
+          facts(work_item, version, stage).undeclared != [] ->
+            {:error, :still_missing}
+
+          true ->
+            {work_item, _run} = apply_event(work_item, version, stage, :resume)
+            {:ok, work_item}
+        end
+      end
+    end)
+  end
+
+  # The workflow names the harness the workspace chose lists, read at its pin, or at
+  # `HEAD` with none: of its stack, or of every stack where it names none.
+  defp read_declared(scope, workspace) do
+    chosen = Sources.chosen(workspace)
+
+    with {:ok, source} <- Sources.address(chosen.git || ""),
+         {:ok, stacks} <- Sources.read(scope, %{source | ref: chosen.pin || source.ref}) do
+      {:ok,
+       stacks
+       |> Enum.filter(&(is_nil(chosen.stack) or &1.name == chosen.stack))
+       |> Enum.flat_map(& &1.workflows)
+       |> Enum.uniq()}
+    end
   end
 
   # approve/3 approves the gate of the work item's stage, with the scope's person's
@@ -456,7 +577,7 @@ defmodule Apiary.Stages do
         round: work_item.stage_round,
         rounds: shown_rounds(stage, work_item.stage_entry),
         state: state,
-        gaps: gaps(escalation, work_item, stage, artifacts),
+        gaps: shown_gaps(escalation, work_item, stage, artifacts),
         outputs: outputs(work_item, stage, artifacts),
         inputs: inputs(work_item, version, stage, artifacts),
         escalation: escalation_map(escalation),
@@ -525,9 +646,66 @@ defmodule Apiary.Stages do
     end
   end
 
-  # notes/1 is what people wrote on the work item that its next run reads as work item
-  # data, oldest first: requests for changes, escalations resolved with a note, moves and
-  # the answers to a run's questions.
+  # runs/1 is the work item's runs of stages, newest first: each with the public id of its
+  # registered run (`rn_…`, nil before a claim registers it), its workflow, stage, round,
+  # `of` (the attempts its take in may reach), `status` (the state of the run of the
+  # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
+  # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
+  # started and ended, nil for not yet.
+  @doc false
+  @spec runs(WorkItem.t()) :: [map]
+  def runs(%WorkItem{id: id} = work_item) do
+    verdicts = run_verdicts(work_item)
+
+    Repo.all(
+      from d in DispatchRun,
+        left_join: r in Run,
+        on: r.dispatch_run_id == d.id,
+        where: d.work_item_id == ^id and not is_nil(d.stage_id),
+        order_by: [desc: d.take_in, desc: d.attempt],
+        select: {d, r}
+    )
+    |> Enum.map(fn {dispatch_run, run} ->
+      %{
+        id: run && run.public_id,
+        workflow: dispatch_run.workflow,
+        stage_id: dispatch_run.stage_id,
+        round: dispatch_run.round,
+        of: dispatch_run.of,
+        status: dispatch_run.state,
+        verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]),
+        started_at: run && run.started_at,
+        ended_at: ended_at(dispatch_run, run)
+      }
+    end)
+  end
+
+  defp ended_at(%DispatchRun{state: :ended}, %Run{exited_at: %DateTime{} = at}), do: at
+  defp ended_at(%DispatchRun{state: :ended, updated_at: at}, _run), do: at
+  defp ended_at(_dispatch_run, _run), do: nil
+
+  # The verdict of each run that stored one, by the run's id: the newest of its versions.
+  defp run_verdicts(work_item) do
+    for artifact <- Artifacts.list(work_item),
+        artifact.type == "verdict",
+        version <- Enum.reverse(artifact.versions),
+        is_binary(version.run_id),
+        into: %{} do
+      verdict =
+        case (Artifacts.read_json(version) || %{})["verdict"] do
+          "passed" -> :passed
+          value when value in ["changes-requested", "escalate"] -> :failed
+          _none -> nil
+        end
+
+      {version.run_id, verdict}
+    end
+  end
+
+  # notes/1 is what the work item's next run reads as work item data, oldest first: what
+  # people wrote (requests for changes, escalations resolved with a note, moves and the
+  # answers to a run's questions) and the gaps of failed checks that started a round
+  # (`:check`, with no person).
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id}) do
@@ -559,6 +737,20 @@ defmodule Apiary.Stages do
           }
       )
 
+    checks =
+      Repo.all(
+        from c in Check,
+          where: c.work_item_id == ^id,
+          select: %{
+            kind: :check,
+            stage_id: c.stage_id,
+            user_id: nil,
+            note: c.gaps,
+            artifact_version_id: nil,
+            inserted_at: c.inserted_at
+          }
+      )
+
     answers =
       Repo.all(
         from a in Apiary.WorkItems.Answer,
@@ -578,7 +770,7 @@ defmodule Apiary.Stages do
           }
       )
 
-    Enum.sort_by(decisions ++ escalations ++ answers, & &1.inserted_at, DateTime)
+    Enum.sort_by(decisions ++ escalations ++ checks ++ answers, & &1.inserted_at, DateTime)
   end
 
   # A version of an artifact as the reads give it, with the approvals that cover it.
@@ -640,6 +832,21 @@ defmodule Apiary.Stages do
         :ok = escalate!(work_item, version, stage, position, cause, gaps, run_id)
         {work_item, run}
 
+      {:checks_failed, round, gaps}, {work_item, run} ->
+        %Check{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          stage_id: stage["id"],
+          process_version_id: version.id,
+          round: round,
+          gaps: gaps,
+          inserted_at: DateTime.utc_now()
+        }
+        |> Repo.insert!()
+
+        {work_item, run}
+
       :advance, {work_item, _run} ->
         advance(work_item, version, stage)
     end)
@@ -671,7 +878,7 @@ defmodule Apiary.Stages do
             inputs(work_item, version, stage, artifacts),
           do: type
         ),
-      undeclared: for({name, nil} <- declarations, do: name),
+      undeclared: undeclared(workspace, declarations),
       declarations: declarations,
       failed_checks:
         for(
@@ -680,6 +887,17 @@ defmodule Apiary.Stages do
         ),
       machine: version.document["machine"]
     }
+  end
+
+  # The stage's workflows that hold it back: with a snapshot of the names the workspace's
+  # harness listed, each that is in neither it nor the declarations
+  # (`Apiary.Processes.workflow_declaration/2`: explore-a-ticket and the saved workflow);
+  # with no snapshot, none, and the run starts.
+  defp undeclared(workspace, declarations) do
+    case Declared.snapshot(workspace) do
+      %{names: names} -> for {name, nil} <- declarations, name not in names, do: name
+      nil -> []
+    end
   end
 
   defp position(%WorkItem{stage_entry: entry, loop_entry: loop_entry, stage_round: round})
@@ -852,6 +1070,26 @@ defmodule Apiary.Stages do
   defp verdict("escalate"), do: :escalate
   defp verdict(_none), do: nil
 
+  # Why a run ended before it started, by its end cause (`Apiary.Dispatches.DispatchRun`),
+  # the end of the sentence `stop_cause/1` shows.
+  @unstarted %{
+    build_failed: "the build of the environment for the work item's target failed.",
+    harness_unresolved: "the harness for the run could not be resolved.",
+    variables_invalid: "one of its variables breaks a variable rule in the workspace's settings.",
+    ticket_gone: "the work item's ticket is no longer in Qory Apiary.",
+    inputs_invalid:
+      "a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit.",
+    provider_gone:
+      "the model provider of its model choice is gone, or no longer applies to the workspace.",
+    runtime_unserved: "the chosen model provider no longer serves the chosen runtime.",
+    key_gone: "the chosen model provider no longer has the chosen key.",
+    model_gone:
+      "the model provider has no model for the run, or no longer offers the chosen effort.",
+    secrets_not_allowed: "its gateway is not allowed to receive the run's secrets.",
+    target_access_gone:
+      "the integration that brings in the work item's target no longer reaches it."
+  }
+
   # stop_cause/1 is the cause shown for a run that stopped.
   @doc false
   @spec stop_cause(DispatchRun.t()) :: String.t()
@@ -866,13 +1104,16 @@ defmodule Apiary.Stages do
   def stop_cause(%DispatchRun{end_cause: :lost}),
     do: "The run stopped reporting and was marked lost."
 
+  def stop_cause(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}),
+    do: "The gateway did not start the run, because it had no model key for the run."
+
   def stop_cause(%DispatchRun{end_cause: :run_refused}), do: "The gateway did not start the run."
 
-  def stop_cause(%DispatchRun{end_cause: :build_failed}),
-    do: "The build of the environment for the work item's target failed."
+  def stop_cause(%DispatchRun{end_cause: cause}) when is_map_key(@unstarted, cause),
+    do: "The run did not start, because " <> Map.fetch!(@unstarted, cause)
 
   def stop_cause(%DispatchRun{end_cause: cause}),
-    do: "The run ended before it started (#{cause})."
+    do: "The run ended before it started (end cause #{cause})."
 
   # proposal_document/1 is the `proposal` artifact of an explore v1 result.
   @doc false
@@ -1232,12 +1473,58 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # A stage that waits for a workflow shows why; any other, its gaps.
+  defp shown_gaps(nil, %WorkItem{stage_state: :waiting_workflow} = work_item, stage, artifacts) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+
+    case {waiting_workflow(work_item, stage), Declared.snapshot(workspace)} do
+      {workflow, %{read_at: read_at}} when is_binary(workflow) ->
+        not_listed(stage["name"], workflow, workspace.name, read_at)
+
+      _none ->
+        gaps(nil, work_item, stage, artifacts)
+    end
+  end
+
+  defp shown_gaps(escalation, work_item, stage, artifacts),
+    do: gaps(escalation, work_item, stage, artifacts)
+
+  # not_listed/4 is why a stage waits for a workflow its harness did not list.
+  @doc false
+  @spec not_listed(String.t(), String.t(), String.t(), DateTime.t()) :: String.t()
+  def not_listed(stage, workflow, workspace, %DateTime{} = read_at) do
+    time = Calendar.strftime(read_at, "%Y-%m-%d %H:%M UTC")
+
+    "#{stage} uses #{workflow}, which #{workspace}'s harness did not list at #{time}. " <>
+      "Check again, or choose another workflow for #{stage}."
+  end
+
   defp gaps(%Escalation{gaps: gaps}, _work_item, _stage, _artifacts), do: gaps
 
-  defp gaps(nil, _work_item, stage, artifacts) do
-    case newest_made_in(artifacts, "verdict", stage["id"]) do
-      nil -> nil
-      version -> text((Artifacts.read_json(version) || %{})["gaps"])
+  # With no escalation, the newer of the failed checks that started the round and the
+  # stage's newest verdict.
+  defp gaps(nil, work_item, stage, artifacts) do
+    check =
+      Repo.one(
+        from c in Check,
+          where: c.work_item_id == ^work_item.id and c.stage_id == ^stage["id"],
+          where: c.round == ^(work_item.stage_round || 0),
+          order_by: [desc: c.inserted_at],
+          limit: 1
+      )
+
+    verdict = newest_made_in(artifacts, "verdict", stage["id"])
+
+    cond do
+      check &&
+          (is_nil(verdict) or DateTime.compare(check.inserted_at, verdict.inserted_at) == :gt) ->
+        check.gaps
+
+      verdict ->
+        text((Artifacts.read_json(verdict) || %{})["gaps"])
+
+      true ->
+        nil
     end
   end
 
@@ -1247,7 +1534,10 @@ defmodule Apiary.Stages do
   defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
     workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
 
-    Enum.find(Runner.workflows(stage), &is_nil(Processes.workflow_declaration(workspace, &1)))
+    declarations =
+      Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
+
+    workspace |> undeclared(declarations) |> List.first()
   end
 
   defp waiting_workflow(_work_item, _stage), do: nil
@@ -1295,13 +1585,13 @@ defmodule Apiary.Stages do
   # A hand-over inside a caller's transaction: the caller tells the work item changed once
   # it commits (`{:work_items_changed, ids}`), and this tells its stage changed, before the
   # commit, which a reader of the stage may see before the change.
-  defp tell_now(%WorkItem{workspace_id: workspace_id, public_id: public_id}) do
-    Phoenix.PubSub.broadcast(
-      Apiary.PubSub,
-      Apiary.WorkItems.topic(workspace_id),
-      {:stage_changed, public_id}
-    )
-  end
+  defp tell_now(%WorkItem{public_id: public_id}), do: tell_stage(public_id)
+
+  # tell_stage/1 tells the work item `public_id` that its stage changed, on its topic.
+  @doc false
+  @spec tell_stage(String.t()) :: :ok | {:error, term}
+  def tell_stage(public_id) when is_binary(public_id),
+    do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(public_id), {:stage_changed, public_id})
 
   defp transact(fun) do
     case Repo.transact(fun) do

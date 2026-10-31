@@ -2013,6 +2013,24 @@ defmodule Apiary.Harnesses.WalkTest do
       assert row.failure_adapter_id == ctx.run.adapter.id
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a failed walk escalates the run's stage run_stopped", ctx do
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+      assert :ok = job(run)
+
+      assert %Apiary.WorkItems.WorkItem{stage_state: :escalated} =
+               Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
+
+      assert %Apiary.Stages.Escalation{
+               cause: :run_stopped,
+               gaps:
+                 "The run did not start, because the harness for the run could not be resolved."
+             } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: run.work_item_id)
+    end
+
     test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
          ctx do
       setting(ctx.scope, @setting)

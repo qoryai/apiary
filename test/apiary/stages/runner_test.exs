@@ -201,7 +201,21 @@ defmodule Apiary.Stages.RunnerTest do
           failed_checks: ["demo-video"]
         })
 
-      assert queued(outcome) == {"capture-demo", 1, 0, 2}
+      assert [{:checks_failed, 2, "No demo-video was stored in this stage."} | queue] =
+               outcome.actions
+
+      assert queued(%{outcome | actions: queue}) == {"capture-demo", 1, 0, 2}
+    end
+
+    test "a failure that starts a round waiting for its workflow still keeps the gaps" do
+      outcome =
+        Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :passed, nil}}, %{
+          failed_checks: ["demo-video"],
+          undeclared: ["capture-demo"]
+        })
+
+      assert %{state: :waiting_workflow, position: %{round: 2}} = outcome
+      assert [{:checks_failed, 2, "No demo-video was stored in this stage."}] = outcome.actions
     end
 
     test "a failure at the round limit escalates round_limit at the end" do
@@ -225,7 +239,8 @@ defmodule Apiary.Stages.RunnerTest do
       outcome =
         Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, nil, nil}}, %{failed_checks: ["x"]})
 
-      assert queued(outcome) == {"a", 0, 0, 2}
+      assert [{:checks_failed, 2, _gaps} | queue] = outcome.actions
+      assert queued(%{outcome | actions: queue}) == {"a", 0, 0, 2}
     end
 
     test "passing checks go to a person gate, or pass on with gate none" do
@@ -363,6 +378,26 @@ defmodule Apiary.Stages.RunnerTest do
         Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{time_limit: nil, access: :read}}}).actions
 
       assert spec.access == :read
+    end
+
+    test "limits/3 is the lowered limits of the entry at a position" do
+      seq = build()
+      declaration = %{time_limit: "20m", access: :write}
+
+      seq =
+        put_in(seq, ["sequence"], [
+          wf("implement", %{"time_limit" => "1h"}),
+          loop([wf("capture-demo", %{"access" => "read"}), wf("fix-demo-findings")])
+        ])
+
+      assert Runner.limits(seq, pos(0, nil, 1), declaration) == %{
+               time_limit: 1200,
+               access: :write
+             }
+
+      assert Runner.limits(seq, pos(1, 0, 2), nil) == %{time_limit: nil, access: :read}
+      assert Runner.limits(seq, pos(1, 1, 2), nil) == %{time_limit: nil, access: nil}
+      assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
     end
 
     test "reads durations" do

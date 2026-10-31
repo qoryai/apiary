@@ -51,9 +51,10 @@ defmodule Apiary.Deletion.Tables do
   # and the workspaces they name; an adapter's collections, the
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
-  # item; the decisions at its gates and its escalations before the runs of the queue
-  # they name; the work items and the runs of the queue before the process versions they
-  # run under; a connection's workspaces before the connection, and the connections before the
+  # item, and so are the decisions at its gates and its stages' failed checks; its
+  # escalations before the runs of the queue they name; the work items and the runs of
+  # the queue before the process versions they run under; a connection's workspaces
+  # before the connection, and the connections before the
   # releases, the service definitions and the secrets they name; everything of a
   # workspace before the workspace.
   #
@@ -78,6 +79,7 @@ defmodule Apiary.Deletion.Tables do
     {"dispatches", :workspace},
     {"gate_decisions", :workspace},
     {"escalations", :workspace},
+    {"stage_checks", :workspace},
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
     {"work_item_events", :workspace},
