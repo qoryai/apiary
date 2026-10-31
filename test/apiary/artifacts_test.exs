@@ -785,8 +785,10 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "after a push" do
-    test "the work item's workspace hears of the version", %{run: run} = context do
+    test "the work item's artifacts topic hears of the version", %{run: run} = context do
       work_item = context.work_item
+      assert Artifacts.topic(work_item) == "artifacts:" <> work_item.id
+      :ok = Artifacts.subscribe(context.scope, work_item)
       Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.WorkItems.topic(work_item.workspace_id))
 
       {:ok, version} = Artifacts.push({:run, run}, work_item, "explainer", [doc()])
@@ -794,10 +796,19 @@ defmodule Apiary.ArtifactsTest do
       assert_receive {:artifact_pushed, work_item_id, version_id}
       assert {work_item_id, version_id} == {work_item.public_id, version.public_id}
 
+      # The workspace's work items topic gets no message: its pages do not handle one.
+      refute_receive {:artifact_pushed, _work_item_id, _version_id}
+
       assert {:error, {:invalid, :no_files}} =
                Artifacts.push({:run, run}, work_item, "explainer", [])
 
       refute_receive {:artifact_pushed, _work_item_id, _version_id}
+    end
+
+    test "a person who may not read the work item cannot subscribe", context do
+      outsider = Apiary.AccountsFixtures.user_fixture()
+      scope = %{context.scope | user: outsider}
+      assert {:error, _reason} = Artifacts.subscribe(scope, context.work_item)
     end
 
     test "each version comes with who made it", %{run: run, scope: scope} = context do

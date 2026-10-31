@@ -61,10 +61,12 @@ defmodule Apiary.Artifacts do
   # may share). A store with no root, or one that cannot write, is
   # `{:error, :store_unavailable}`.
   #
-  # Once the rows are committed, `{:artifact_pushed, work_item_id, version_id}`, the work
-  # item's public id (`wi_…`) and the version's (`av_…`), goes to the topic of the work
-  # items of the work item's workspace (`Apiary.WorkItems.topic/1`), so its pages show the
-  # version.
+  # Once the push's transaction commits, `{:artifact_pushed, work_item_id, version_id}`,
+  # the work item's public id (`wi_…`) and the version's (`av_…`), goes to the work item's
+  # artifacts topic (`topic/1`), so its pages show the version. A push called inside an
+  # outer transaction sends the message when its transaction ends, before the outer one
+  # commits: a page that reads at once may not find the version yet, or find none should
+  # the outer transaction roll back.
   #
   # ## Reading
   #
@@ -305,19 +307,34 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # After the rows are committed, the pages of the work item's workspace hear of the new
-  # version on its work items' topic (`Apiary.WorkItems.topic/1`).
-  defp broadcast({:ok, %Version{artifact: artifact} = version} = pushed) do
-    work_item_id =
-      Repo.one!(from w in WorkItem, where: w.id == ^artifact.work_item_id, select: w.public_id)
+  # topic/1 is the PubSub topic of the work item's artifacts (`"artifacts:<work item
+  # id>"`, its internal id): after each push, `{:artifact_pushed, work_item_id,
+  # version_id}`, with the work item's public id (`wi_…`) and the version's (`av_…`). One
+  # topic per work item, so that only its pages get the message.
+  @doc false
+  @spec topic(WorkItem.t()) :: String.t()
+  def topic(%WorkItem{id: id}) when is_binary(id), do: "artifacts:" <> id
 
+  # subscribe/2 subscribes the caller to the work item's artifacts topic (`topic/1`), for
+  # a person who may read the work item (`work_item.read`): `:ok`, or `Apiary.Access`'s
+  # refusal.
+  @doc false
+  @spec subscribe(Scope.t(), WorkItem.t()) :: :ok | {:error, Access.reason()}
+  def subscribe(%Scope{} = scope, %WorkItem{} = work_item) do
+    with :ok <- Access.authorize(scope, :"work_item.read", work_item),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(work_item))
+  end
+
+  # After the push's transaction ends, the work item's pages hear of the new version
+  # (`topic/1`), with the work item's public id as the transaction read it.
+  defp broadcast({:ok, {%Version{} = version, %WorkItem{} = held}}) do
     Phoenix.PubSub.broadcast(
       Apiary.PubSub,
-      Apiary.WorkItems.topic(artifact.workspace_id),
-      {:artifact_pushed, work_item_id, version.public_id}
+      topic(held),
+      {:artifact_pushed, held.public_id, version.public_id}
     )
 
-    pushed
+    {:ok, version}
   end
 
   defp broadcast(refused), do: refused
@@ -559,7 +576,7 @@ defmodule Apiary.Artifacts do
            {:ok, version} <- version(artifact, writer, fields, now),
            :ok <- insert_files(version, stored),
            :ok <- audit_push(writer, held, artifact, version) do
-        {:ok, Repo.preload(%{version | artifact: artifact}, files: files_query())}
+        {:ok, {Repo.preload(%{version | artifact: artifact}, files: files_query()), held}}
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error

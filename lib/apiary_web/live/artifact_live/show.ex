@@ -11,9 +11,9 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # may add a version (`artifact.write`) has Add a version, which opens the add page with
   # the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
   #
-  # **Live.** The page listens on its workspace's work items
-  # (`Apiary.WorkItems.subscribe/1`) and reads the history again on
-  # `{:artifact_pushed, work_item_id, version_id}` for its work item.
+  # **Live.** The page listens on its work item's artifacts topic
+  # (`Apiary.Artifacts.subscribe/2`) and reads the history again on
+  # `{:artifact_pushed, work_item_id, version_id}`.
   #
   # The module reference leaves out this module of the `workflow_model` feature.
   @moduledoc false
@@ -22,7 +22,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   use ApiaryWeb.Features, :workflow_model
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
-  alias Apiary.{Access, Artifacts, WorkItems}
+  alias Apiary.{Access, Artifacts}
   alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.ArtifactLive.Load
 
@@ -151,7 +151,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
     with %{} = work_item <- Load.work_item(scope, number),
          %{} = version <- Load.version(work_item, version_id) do
-      if connected?(socket), do: WorkItems.subscribe(scope)
+      if connected?(socket), do: Artifacts.subscribe(scope, work_item)
       type = Load.type(work_item, version.artifact.type)
 
       {:ok,
@@ -180,7 +180,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   def handle_info({:artifact_pushed, work_item_id, _version_id}, socket) do
     work_item = socket.assigns.work_item
 
-    if work_item_id in [work_item.id, work_item.public_id],
+    if work_item_id == work_item.public_id,
       do: {:noreply, load_history(socket)},
       else: {:noreply, socket}
   end
