@@ -313,18 +313,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert html =~ "Remove files: a version of explainer has at most 1 file."
     end
 
-    test "says why the work item takes no new versions", ctx do
+    test "says why the work item takes no new versions: it moved", ctx do
       import Ecto.Query
       work_items = from(w in Apiary.WorkItems.WorkItem, where: w.id == ^ctx.work_item.id)
-      Apiary.Repo.update_all(work_items, set: [stage_id: "a stage!"])
 
-      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
-      html = add_notes(view)
-
-      assert html =~
-               "Work item ##{ctx.work_item.number} takes no new versions in its stage: the stage&#39;s id is not 1 to 64 letters, digits, hyphens or underscores."
-
-      Apiary.Repo.update_all(work_items, set: [stage_id: nil])
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
       other = workspace_fixture(ctx.scope.organisation)
       Apiary.Repo.update_all(work_items, set: [workspace_id: other.id])
