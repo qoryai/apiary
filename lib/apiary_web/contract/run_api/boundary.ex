@@ -13,8 +13,10 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   #       features: Apiary.Features
   #
   # The names and the return shapes are those of the workflow model's shared API. The
-  # columns `workflow`, `stage_id` and `round` of `dispatch_runs` are read with
-  # `Map.get/2`, nil while a run of the queue has none of them.
+  # columns `workflow`, `stage_id` and `round` of `dispatch_runs` are nil for a run of the
+  # queue outside the workflow model.
+
+  alias Apiary.Dispatches.DispatchRun
 
   @feature :workflow_model
 
@@ -43,23 +45,20 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   end
 
   # route_feature/0 is the feature the run API's routes belong to, as
-  # `ApiaryWeb.Features.Routes` reads it: `workflow_model` where `Apiary.Features` lists
-  # it, else `factory`, whose work items the run API serves. Read from `Apiary.Features`
-  # itself, never from the configured module: the gate in the endpoint reads that one.
+  # `ApiaryWeb.Features.Routes` reads it: `workflow_model`.
   @spec route_feature() :: atom
-  def route_feature,
-    do: if(@feature in Apiary.Features.all(), do: @feature, else: :factory)
+  def route_feature, do: @feature
 
   ## The run's columns of the workflow model
 
-  @spec workflow(struct) :: String.t() | nil
-  def workflow(dispatch_run), do: Map.get(dispatch_run, :workflow)
+  @spec workflow(DispatchRun.t()) :: String.t() | nil
+  def workflow(%DispatchRun{workflow: workflow}), do: workflow
 
-  @spec stage_id(struct) :: String.t() | nil
-  def stage_id(dispatch_run), do: Map.get(dispatch_run, :stage_id)
+  @spec stage_id(DispatchRun.t()) :: String.t() | nil
+  def stage_id(%DispatchRun{stage_id: stage_id}), do: stage_id
 
-  @spec round(struct) :: pos_integer | nil
-  def round(dispatch_run), do: Map.get(dispatch_run, :round)
+  @spec round(DispatchRun.t()) :: pos_integer | nil
+  def round(%DispatchRun{round: round}), do: round
 
   ## Processes
 

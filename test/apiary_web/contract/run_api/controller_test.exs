@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   alias ApiaryWeb.Contract.RunApi.Body
   alias ApiaryWeb.RunApiStubs
 
-  @moduletag needs: [:factory, :secrets]
+  @moduletag needs: [:workflow_model, :factory, :secrets]
 
   setup {Apiary.DataCase, :without_registry}
 
@@ -28,14 +28,19 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     %{scope: scope} = sign_up_fixture()
     fixture = sealed_run_fixture(scope)
     dispatch_run = Repo.get!(DispatchRun, fixture.run.dispatch_run_id)
-    work_item = Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
+
+    work_item =
+      Apiary.WorkItems.WorkItem
+      |> Repo.get!(dispatch_run.work_item_id)
+      |> Repo.preload(:workspace)
 
     %{
       scope: scope,
       run: fixture.run,
       key: fixture.secrets_key,
       dispatch_run: dispatch_run,
-      work_item: work_item
+      work_item: work_item,
+      work_item_workspace: work_item.workspace
     }
   end
 
@@ -108,11 +113,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
-    test "the routes belong to workflow_model where the instance lists it, else to factory" do
-      expected =
-        if :workflow_model in Apiary.Features.all(), do: :workflow_model, else: :factory
-
-      assert ApiaryWeb.Contract.RunApi.Controller.__feature__() == expected
+    test "the routes belong to workflow_model" do
+      assert ApiaryWeb.Contract.RunApi.Controller.__feature__() == :workflow_model
     end
   end
 
@@ -596,6 +598,61 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert json_response(write(ctx, "/verdict", %{"verdict" => "passed"}), 409)["error"] ==
                "run_ended"
+    end
+  end
+
+  describe "the workflow's writes list" do
+    defp set_workflow!(ctx, workflow) do
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [workflow: workflow]
+        )
+    end
+
+    test "a type outside it is 403 type_not_writable, with the workflow's name", ctx do
+      set_workflow!(ctx, "capture-demo")
+      RunApiStubs.put(:declaration, %{name: "capture-demo", writes: ["screenshot"]})
+
+      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 403) == %{
+               "error" => "type_not_writable",
+               "type" => "explainer",
+               "message" =>
+                 "Add the artifact type explainer to the writes list of the workflow " <>
+                   "capture-demo, or push a type that the workflow writes."
+             }
+
+      assert RunApiStubs.get(:declared) == "capture-demo"
+      assert RunApiStubs.pushed() == []
+
+      conn = write(ctx, "/artifacts", push_body("screenshot", [{"a.png", "image/png", "x"}]))
+      assert conn.status == 201
+
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("questions", [{"q.json", "application/json", "{}"}])
+             ).status == 201
+    end
+
+    test "Apiary.Processes's declaration, whose writes list is nil: any type", ctx do
+      RunApiStubs.install([:processes])
+      set_workflow!(ctx, "explore-a-ticket")
+
+      assert %{name: "explore-a-ticket", writes: nil} =
+               Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "explore-a-ticket")
+
+      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      assert conn.status == 201
+
+      # A workflow the harness does not declare: any type too.
+      set_workflow!(ctx, "capture-demo")
+      assert Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "capture-demo") == nil
+      conn = write(ctx, "/artifacts", push_body("explainer", [{"b.md", "text/markdown", "x"}]))
+      assert conn.status == 201
+      assert length(RunApiStubs.pushed()) == 2
     end
   end
 

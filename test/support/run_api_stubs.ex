@@ -19,16 +19,26 @@ defmodule ApiaryWeb.RunApiStubs do
   them, oldest first, and `stored/3` adds one as a push would, for any work item.
   """
 
-  @doc "Sets the stubs in the application's configuration until the test ends."
-  def install do
+  @doc """
+  Sets the stubs in the application's configuration until the test ends, but for the
+  ones named in `real` (`:artifacts`, `:processes`, `:stages` or `:features`), which stay
+  the modules the boundary calls by default.
+  """
+  def install(real \\ []) do
     previous = Application.get_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary)
 
-    Application.put_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary,
-      artifacts: __MODULE__.Artifacts,
-      processes: __MODULE__.Processes,
-      stages: __MODULE__.Stages,
-      features: __MODULE__.Features
-    )
+    stubs =
+      Keyword.drop(
+        [
+          artifacts: __MODULE__.Artifacts,
+          processes: __MODULE__.Processes,
+          stages: __MODULE__.Stages,
+          features: __MODULE__.Features
+        ],
+        real
+      )
+
+    Application.put_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary, stubs)
 
     ExUnit.Callbacks.on_exit(fn ->
       if previous,

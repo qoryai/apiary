@@ -7,10 +7,7 @@ access key of the gateway the run goes through; the run has no access key.
 The run API is part of the feature `workflow_model`, which is off by default. On an
 instance without the feature, a request that verifies gets `404` with the error page,
 signed: the same body and type as a path the router does not know. A request without
-a signature gets the `404` of a path the router does not know where the instance does
-not have the routes' feature: `workflow_model`, or `factory` on an instance whose
-features do not list `workflow_model` yet (`__feature__/0` of
-`ApiaryWeb.Contract.RunApi.Controller`); elsewhere it gets `401`.
+a signature gets the `404` of a path the router does not know.
 
 The code is in `lib/apiary_web/contract/run_api/`.
 
