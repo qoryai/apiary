@@ -18,7 +18,10 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # A person is written by name, as Explore's input writes a person
   # (`Apiary.Dispatches.Inputs.person_name/1`); a run by its run id.
 
-  alias Apiary.Dispatches.Inputs
+  import Ecto.Query, only: [from: 2]
+
+  alias Apiary.Repo
+  alias Apiary.Dispatches.{DispatchRun, Inputs}
   alias Apiary.Lingo.Domain
   alias ApiaryWeb.Contract.RunApi.Boundary
 
@@ -72,7 +75,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
            {"gaps", get(status, :gaps)}
          ] ++
            Enum.filter(inputs.values, fn {key, _value} -> key in @from_explore end) ++
-           [{"notes", Boundary.notes(work_item)}]
+           [{"notes", notes(Boundary.notes(work_item))}]
        )}
     end
   end
@@ -117,13 +120,21 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
 
   @spec index([map]) :: Jason.OrderedObject.t()
   def index(entries) do
+    versions = Enum.flat_map(entries, &(get(&1, :versions) || []))
+    approvals = Enum.flat_map(versions, &(get(&1, :approvals) || []))
+
+    context = %{
+      names: names(Enum.map(versions ++ approvals, &get(&1, :user_id))),
+      runs: run_ids(Enum.map(versions, &get(&1, :run_id)))
+    }
+
     object([
       {"version", @wire_version},
-      {"artifacts", Enum.map(entries, &artifact/1)}
+      {"artifacts", Enum.map(entries, &artifact(&1, context))}
     ])
   end
 
-  defp artifact(entry) do
+  defp artifact(entry, context) do
     object([
       {"type", get(entry, :type)},
       {"name", get(entry, :name)},
@@ -131,7 +142,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
       {"approved_version", get(entry, :approved_version)},
       {"newest_version", newest_number(get(entry, :versions) || [])},
       {"changed_after_approval", get(entry, :changed_after_approval) == true},
-      {"versions", Enum.map(get(entry, :versions) || [], &index_version/1)}
+      {"versions", Enum.map(get(entry, :versions) || [], &index_version(&1, context))}
     ])
   end
 
@@ -142,26 +153,28 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     |> Enum.max(fn -> nil end)
   end
 
-  defp index_version(version) do
+  defp index_version(version, context) do
     object([
-      {"id", get(version, :id)},
+      {"id", version_id(version)},
       {"number", get(version, :number)},
-      {"writer", writer(version)},
+      {"writer", writer(version, context)},
       {"stage_id", get(version, :stage_id)},
       {"note", get(version, :note)},
       {"at", time(get(version, :inserted_at))},
       {"files", Enum.map(get(version, :files) || [], &file/1)},
-      {"approvals", Enum.map(get(version, :approvals) || [], &approval/1)}
+      {"approvals", Enum.map(get(version, :approvals) || [], &approval(&1, context))}
     ])
   end
 
-  defp writer(version) do
+  # A version written by a run has the run's id, as the run's documents contain it; one
+  # written by a person has the person's name.
+  defp writer(version, context) do
     case text(get(version, :writer)) do
       "run" ->
-        object([{"kind", "run"}, {"run_id", get(version, :run_id)}])
+        object([{"kind", "run"}, {"run_id", Map.get(context.runs, get(version, :run_id))}])
 
       "person" ->
-        object([{"kind", "person"}, {"name", Inputs.person_name(get(version, :user_id))}])
+        object([{"kind", "person"}, {"name", name(context, get(version, :user_id))}])
 
       _other ->
         nil
@@ -177,12 +190,54 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  defp approval(approval) do
+  defp approval(approval, context) do
     object([
-      {"by", object([{"name", Inputs.person_name(get(approval, :user_id))}])},
+      {"by", object([{"name", name(context, get(approval, :user_id))}])},
       {"stage_id", get(approval, :stage_id)},
       {"at", time(get(approval, :inserted_at))}
     ])
+  end
+
+  # notes/1 is the notes people left on the work item (`Apiary.Stages.notes/1`), oldest
+  # first: a request for changes, an escalation resolved with a note, a move and an
+  # answer to a run's questions.
+  @spec notes([map]) :: [Jason.OrderedObject.t()]
+  def notes(notes) do
+    context = %{names: names(Enum.map(notes, &get(&1, :user_id)))}
+
+    for note <- notes do
+      object([
+        {"kind", text(get(note, :kind))},
+        {"stage_id", get(note, :stage_id)},
+        {"by", object([{"name", name(context, get(note, :user_id))}])},
+        {"note", get(note, :note)},
+        {"artifact_version_id", get(note, :artifact_version_id)},
+        {"at", time(get(note, :inserted_at))}
+      ])
+    end
+  end
+
+  # The name of each person, read once per id (`Apiary.Dispatches.Inputs.person_name/1`).
+  defp names(user_ids) do
+    user_ids
+    |> Enum.filter(&is_binary/1)
+    |> Enum.uniq()
+    |> Map.new(&{&1, Inputs.person_name(&1)})
+  end
+
+  defp name(context, user_id), do: Map.get(context.names, user_id, Inputs.former_member())
+
+  # The run id of each run of the queue, as the run's documents contain it, by the row's
+  # id, which `Apiary.Artifacts` keeps on a version.
+  defp run_ids(ids) do
+    case ids |> Enum.filter(&is_binary/1) |> Enum.uniq() do
+      [] ->
+        %{}
+
+      ids ->
+        Repo.all(from d in DispatchRun, where: d.id in ^ids, select: {d.id, d.run_id})
+        |> Map.new()
+    end
   end
 
   @spec version(map, String.t(), String.t()) :: Jason.OrderedObject.t()
@@ -201,9 +256,13 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   defp ref(nil), do: nil
 
   defp ref(version) when is_map(version),
-    do: object([{"id", get(version, :id)}, {"number", get(version, :number)}])
+    do: object([{"id", version_id(version)}, {"number", get(version, :number)}])
 
   defp ref(_version), do: nil
+
+  # A version's public id (`av_...`): `public_id` of `Apiary.Artifacts.Version`, or `id`
+  # of the maps `Apiary.Stages` returns.
+  defp version_id(version), do: get(version, :public_id) || get(version, :id)
 
   # A field of a map or a struct by its atom key, or by its name where the map is keyed
   # by strings.

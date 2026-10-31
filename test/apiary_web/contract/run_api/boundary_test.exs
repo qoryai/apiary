@@ -22,6 +22,7 @@ defmodule ApiaryWeb.Contract.RunApi.BoundaryTest do
     assert RunApiStubs.get(:declared) == "capture-demo"
     assert Boundary.writable?(@workspace, "capture-demo", "verdict")
     assert Boundary.writable?(@workspace, "capture-demo", "questions")
+    assert Boundary.writes(@workspace, "capture-demo") == ["demo-video", "screenshot"]
   end
 
   test "a declaration whose writes list is nil: any type" do
@@ -35,15 +36,18 @@ defmodule ApiaryWeb.Contract.RunApi.BoundaryTest do
 
     assert Boundary.writable?(@workspace, "implement", "explainer")
     assert Boundary.writable?(@workspace, "implement", "demo-video")
+    assert Boundary.writes(@workspace, "implement") == :any
   end
 
   test "no declaration, a workflow the harness no longer declares: any type" do
     RunApiStubs.put(:declaration, nil)
     assert Boundary.writable?(@workspace, "capture-demo", "explainer")
+    assert Boundary.writes(@workspace, "capture-demo") == :any
   end
 
   test "a run with no workflow: any type, and no declaration is read" do
     assert Boundary.writable?(@workspace, nil, "explainer")
+    assert Boundary.writes(@workspace, nil) == :any
     assert RunApiStubs.get(:declared) == nil
   end
 

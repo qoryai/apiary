@@ -3,20 +3,24 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   # The one place the run API calls the workflow model's modules: `Apiary.Artifacts`,
   # `Apiary.Processes`, `Apiary.Stages` and the feature `workflow_model` of
-  # `Apiary.Features`. Each module is read from the application's configuration at the
-  # call, so the run API compiles before those modules exist, and a test sets stubs:
+  # `Apiary.Features`. `Apiary.Artifacts`, `Apiary.Processes` and `Apiary.Features` are
+  # read from the application's configuration at the call, so the run API compiles
+  # before `Apiary.Artifacts` is merged, and a test sets stubs:
   #
   #     config :apiary, ApiaryWeb.Contract.RunApi.Boundary,
   #       artifacts: Apiary.Artifacts,
   #       processes: Apiary.Processes,
-  #       stages: Apiary.Stages,
   #       features: Apiary.Features
+  #
+  # `Apiary.Stages` is called directly; it reaches artifacts through
+  # `Apiary.Stages.Artifacts`, which a test configures to the same stub.
   #
   # The names and the return shapes are those of the workflow model's shared API. The
   # columns `workflow`, `stage_id` and `round` of `dispatch_runs` are nil for a run of the
   # queue outside the workflow model.
 
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.WorkItems.WorkItem
 
   @feature :workflow_model
 
@@ -31,7 +35,6 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   defp artifacts, do: module(:artifacts, Apiary.Artifacts)
   defp processes, do: module(:processes, Apiary.Processes)
-  defp stages, do: module(:stages, Apiary.Stages)
   defp features, do: module(:features, Apiary.Features)
 
   ## The feature
@@ -71,9 +74,22 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   def writable?(_workspace, nil, _type), do: true
 
   def writable?(workspace, workflow, type) do
+    case writes(workspace, workflow) do
+      :any -> true
+      writes -> type in writes
+    end
+  end
+
+  # writes/2 is the `writes` option of `Apiary.Artifacts.push/5` for a run of `workflow`:
+  # the declaration's list, or `:any` for a workflow with no name, one the harness does
+  # not declare, or a declaration whose list is nil.
+  @spec writes(struct, String.t() | nil) :: [String.t()] | :any
+  def writes(_workspace, nil), do: :any
+
+  def writes(workspace, workflow) do
     case processes().workflow_declaration(workspace, workflow) do
-      %{writes: writes} when is_list(writes) -> type in writes
-      _any_type -> true
+      %{writes: writes} when is_list(writes) -> writes
+      _any_type -> :any
     end
   end
 
@@ -86,34 +102,26 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   def push(actor, work_item, type, files, opts),
     do: artifacts().push(actor, work_item, type, files, opts)
 
-  @spec list(struct) :: [map]
-  def list(work_item), do: artifacts().list(work_item)
-
-  @spec versions(map) :: [map]
-  def versions(artifact), do: artifacts().versions(artifact)
-
   @spec get_version!(String.t()) :: map
   def get_version!(id), do: artifacts().get_version!(id)
 
   @spec newest(struct, String.t()) :: map | nil
-  def newest(work_item, type), do: artifacts().newest(work_item, type)
+  def newest(work_item, type), do: artifacts().newest(work_item, type, "main")
 
   @spec open_file(map) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}
   def open_file(file), do: artifacts().open_file(file)
 
   ## Stages
 
-  @spec status(struct) :: map
-  def status(work_item), do: stages().status(work_item)
+  @spec status(WorkItem.t()) :: map | nil
+  def status(work_item), do: Apiary.Stages.status(work_item)
 
-  @spec inputs(struct) :: [map]
-  def inputs(work_item), do: stages().inputs(work_item)
+  @spec inputs(WorkItem.t()) :: [map]
+  def inputs(work_item), do: Apiary.Stages.inputs(work_item)
 
-  @spec artifact_index(struct) :: [map]
-  def artifact_index(work_item), do: stages().artifact_index(work_item)
+  @spec artifact_index(WorkItem.t()) :: [map]
+  def artifact_index(work_item), do: Apiary.Stages.artifact_index(work_item)
 
-  # notes/1 is the notes people left for the run's work item. The workflow model's shared
-  # API has no source for them yet, so the list is empty.
-  @spec notes(struct) :: [map]
-  def notes(_work_item), do: []
+  @spec notes(WorkItem.t()) :: [map]
+  def notes(work_item), do: Apiary.Stages.notes(work_item)
 end

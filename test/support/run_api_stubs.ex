@@ -1,10 +1,13 @@
 defmodule ApiaryWeb.RunApiStubs do
   @moduledoc """
-  Stubs of the workflow model's modules the run API calls through
-  `ApiaryWeb.Contract.RunApi.Boundary`: `Features`, `Processes`, `Artifacts` and `Stages`,
-  with the names and return shapes of the workflow model's shared API. `install/0` sets
-  them in the application's configuration until the test ends, so a test that uses them is
-  not async.
+  Stubs for the run API's tests (`ApiaryWeb.Contract.RunApi.Boundary`): `Artifacts`, a
+  stand-in for `Apiary.Artifacts` with the shapes and errors of its `push/5`, `type/2`,
+  `list/1`, `versions/1`, `newest/2`, `get_version!/1` and `open_file/1`, until it is
+  merged; `Processes`, a declaration set by the test; and `Features`, the flag
+  `workflow_model`. `install/1` sets them in the application's configuration until the
+  test ends, so a test that uses them is not async. `Artifacts` is also set as the module
+  `Apiary.Stages.Artifacts` reads, so the stage runner's reads (`Apiary.Stages`) see the
+  same versions.
 
   Their state is the test process's: a request through `Phoenix.ConnTest` runs in that
   process. `put/2` sets a value:
@@ -12,38 +15,47 @@ defmodule ApiaryWeb.RunApiStubs do
     * `:flag`: whether `workflow_model` is on, true unless set;
     * `:declaration`: what `Processes.workflow_declaration/2` returns, nil unless set;
     * `:types`: the artifact types by name, `types/0` unless set;
-    * `:push_error`: an error `Artifacts.push/5` returns in place of a version;
-    * `:status`, `:inputs`: what `Stages.status/1` and `Stages.inputs/1` return.
+    * `:push_error`: an error `Artifacts.push/5` returns in place of a version.
 
-  `Artifacts.push/5` keeps each version, its files' contents among them; `pushed/0` lists
-  them, oldest first, and `stored/3` adds one as a push would, for any work item.
+  `Artifacts.push/5` keeps each version, the files' contents among them, and the options
+  it was given; `pushed/0` lists them, oldest first, and `stored/3` adds one as a push
+  would, for any work item.
   """
+
+  @boundary ApiaryWeb.Contract.RunApi.Boundary
 
   @doc """
   Sets the stubs in the application's configuration until the test ends, but for the
-  ones named in `real` (`:artifacts`, `:processes`, `:stages` or `:features`), which stay
-  the modules the boundary calls by default.
+  ones named in `real` (`:artifacts`, `:processes` or `:features`), which stay the
+  modules the boundary calls by default.
   """
   def install(real \\ []) do
-    previous = Application.get_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary)
+    previous = Application.get_env(:apiary, @boundary)
+    previous_stages = Application.get_env(:apiary, Apiary.Stages.Artifacts)
 
     stubs =
       Keyword.drop(
         [
           artifacts: __MODULE__.Artifacts,
           processes: __MODULE__.Processes,
-          stages: __MODULE__.Stages,
           features: __MODULE__.Features
         ],
         real
       )
 
-    Application.put_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary, stubs)
+    Application.put_env(:apiary, @boundary, stubs)
+
+    unless :artifacts in real,
+      do: Application.put_env(:apiary, Apiary.Stages.Artifacts, __MODULE__.Artifacts)
 
     ExUnit.Callbacks.on_exit(fn ->
       if previous,
-        do: Application.put_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary, previous),
-        else: Application.delete_env(:apiary, ApiaryWeb.Contract.RunApi.Boundary)
+        do: Application.put_env(:apiary, @boundary, previous),
+        else: Application.delete_env(:apiary, @boundary)
+
+      if previous_stages,
+        do: Application.put_env(:apiary, Apiary.Stages.Artifacts, previous_stages),
+        else: Application.delete_env(:apiary, Apiary.Stages.Artifacts)
     end)
 
     :ok
@@ -55,7 +67,10 @@ defmodule ApiaryWeb.RunApiStubs do
   @doc "The stubs' value `key`, or `default`."
   def get(key, default \\ nil), do: Process.get({__MODULE__, key}, default)
 
-  @doc "The artifact types the stubs have unless `:types` is set."
+  @doc """
+  The artifact types the stubs have unless `:types` is set, each with `size_limit`, the
+  bytes of all files of one version together, and `max_files`.
+  """
   def types do
     %{
       "proposal" => %{name: "proposal", base_view: :structured, size_limit: 1000, max_files: 1},
@@ -70,7 +85,11 @@ defmodule ApiaryWeb.RunApiStubs do
   @doc "Every version pushed, oldest first."
   def pushed, do: get(:versions, [])
 
-  @doc "Stores a version of `type` for `work_item_id` with `files`, as a push stores one."
+  @doc """
+  Stores a version of `type` for `work_item_id` with `files`, as a push stores one, in
+  the shape of `Apiary.Artifacts.Version`: `public_id`, `number`, `writer`, `run_id`,
+  `user_id`, `stage_id`, `note`, `inserted_at`, `artifact` and `files`.
+  """
   def stored(work_item_id, type, files, opts \\ []) do
     versions = pushed()
     name = Keyword.get(opts, :name, "main")
@@ -78,30 +97,35 @@ defmodule ApiaryWeb.RunApiStubs do
     number =
       Enum.count(
         versions,
-        &(&1.work_item_id == work_item_id and &1.type == type and &1.name == name)
-      ) +
-        1
+        &(&1.artifact.work_item_id == work_item_id and &1.artifact.type == type and
+            &1.artifact.name == name)
+      ) + 1
+
+    run_id =
+      case Keyword.get(opts, :actor) do
+        {:run, %{id: id}} -> id
+        _other -> nil
+      end
 
     version = %{
-      id: Apiary.PublicId.generate("av"),
+      id: Ecto.UUID.generate(),
+      public_id: Apiary.PublicId.generate("av"),
       number: number,
-      type: type,
-      name: name,
-      work_item_id: work_item_id,
-      actor: Keyword.get(opts, :actor),
+      writer: :run,
+      run_id: run_id,
+      user_id: nil,
       stage_id: Keyword.get(opts, :stage_id),
       note: Keyword.get(opts, :note),
-      writer: :run,
-      run_id: nil,
       inserted_at: DateTime.utc_now(),
-      approvals: [],
+      artifact: %{work_item_id: work_item_id, type: type, name: name},
+      opts: opts,
       files:
         Enum.map(files, fn file ->
           %{
             filename: file.filename,
             content_type: file.content_type,
             size: byte_size(file.binary),
-            sha256: :crypto.hash(:sha256, file.binary),
+            sha256: Base.encode16(:crypto.hash(:sha256, file.binary), case: :lower),
             content: file.binary
           }
         end)
@@ -126,7 +150,7 @@ defmodule ApiaryWeb.RunApiStubs do
   end
 
   defmodule Artifacts do
-    @moduledoc "Artifacts kept in the test process."
+    @moduledoc "Artifacts kept in the test process, in the shapes of `Apiary.Artifacts`."
     alias ApiaryWeb.RunApiStubs
 
     def type(_workspace, name), do: Map.get(RunApiStubs.get(:types, RunApiStubs.types()), name)
@@ -138,61 +162,41 @@ defmodule ApiaryWeb.RunApiStubs do
       end
     end
 
+    # The work item's artifacts by type and name, versions newest first.
     def list(work_item) do
       RunApiStubs.pushed()
-      |> Enum.filter(&(&1.work_item_id == work_item.id))
-      |> Enum.group_by(&{&1.type, &1.name})
+      |> Enum.filter(&(&1.artifact.work_item_id == work_item.id))
+      |> Enum.group_by(&{&1.artifact.type, &1.artifact.name})
+      |> Enum.sort()
       |> Enum.map(fn {{type, name}, versions} ->
-        %{type: type, name: name, versions: versions}
+        %{type: type, name: name, versions: Enum.sort_by(versions, & &1.number, :desc)}
       end)
     end
 
     def versions(artifact), do: artifact.versions
 
     def get_version!(id) do
-      Enum.find(RunApiStubs.pushed(), &(&1.id == id)) || raise Ecto.NoResultsError
+      Enum.find(RunApiStubs.pushed(), &(&1.public_id == id)) ||
+        raise Ecto.NoResultsError, queryable: "artifact_versions"
     end
 
-    def newest(work_item, type) do
+    def newest(work_item, type, name \\ "main") do
       RunApiStubs.pushed()
-      |> Enum.filter(&(&1.work_item_id == work_item.id and &1.type == type))
+      |> Enum.filter(
+        &(&1.artifact.work_item_id == work_item.id and &1.artifact.type == type and
+            &1.artifact.name == name)
+      )
       |> List.last()
     end
 
+    def exists?(work_item, stage_id, type) do
+      Enum.any?(
+        RunApiStubs.pushed(),
+        &(&1.artifact.work_item_id == work_item.id and &1.artifact.type == type and
+            &1.stage_id == stage_id)
+      )
+    end
+
     def open_file(file), do: {:ok, [file.content]}
-  end
-
-  defmodule Stages do
-    @moduledoc "The stage's status, its inputs and the artifact index, from the stubs."
-    alias ApiaryWeb.RunApiStubs
-
-    def status(_work_item) do
-      RunApiStubs.get(:status, %{
-        stage: %{"id" => "st_explore00000", "name" => "Explore"},
-        round: 1,
-        rounds: 3,
-        state: :running,
-        gaps: nil,
-        outputs: [%{type: "proposal", required: true, version: nil, check: :missing}],
-        inputs: [],
-        escalation: nil,
-        gate: %{approvable?: false, approvals: []}
-      })
-    end
-
-    def inputs(_work_item), do: RunApiStubs.get(:inputs, [])
-
-    def artifact_index(work_item) do
-      for artifact <- Artifacts.list(work_item) do
-        %{
-          type: artifact.type,
-          name: artifact.name,
-          stage_id: nil,
-          approved_version: nil,
-          changed_after_approval: false,
-          versions: artifact.versions
-        }
-      end
-    end
   end
 end

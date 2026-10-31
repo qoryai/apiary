@@ -22,8 +22,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have is `422` `unknown_type`; a type
   #      the run's workflow may not write `403` `type_not_writable`; more files than the
-  #      type takes `422` `too_many_files`; a file over the type's size limit `422`
-  #      `too_large`; then a content that is not strict base64 `400` `invalid_request`.
+  #      type takes `422` `too_many_files`; files over the type's size limit together
+  #      `422` `too_large`; then a content that is not strict base64 `400`
+  #      `invalid_request`; then what `Apiary.Artifacts.push/5` returns, the files that do
+  #      not match the type's format among it, `422` `invalid_artifact`.
   #
   # A file is served as a download (`Content-Disposition: attachment`) with
   # `X-Content-Type-Options: nosniff`, and HTML, SVG, XML and script types as
@@ -108,7 +110,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
            Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
              name: push.name,
              stage_id: Boundary.stage_id(run.dispatch_run),
-             note: push.note
+             note: push.note,
+             writes: Boundary.writes(workspace, Boundary.workflow(run.dispatch_run))
            )
            |> pushed(push.type, type, Boundary.workflow(run.dispatch_run)) do
       answer(conn, 201, Wire.version(version, push.type, push.name))
@@ -129,7 +132,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
            Boundary.push({:run, run.dispatch_run}, run.work_item, "verdict", [file],
              name: "main",
              stage_id: Boundary.stage_id(run.dispatch_run),
-             note: nil
+             note: nil,
+             writes: :any
            )
            |> pushed("verdict", nil, Boundary.workflow(run.dispatch_run)) do
       answer(conn, 201, Wire.version(version, "verdict", "main"))
@@ -165,19 +169,21 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   ## Versions and files
 
-  # The version `version_id` among the versions of the work item's artifacts, and only
-  # there: a version of another work item is not found, as an unknown one is.
+  # The version `version_id` (`av_...`), of the run's work item and only there: a version
+  # of another work item is not found, as an unknown or malformed id is.
+  # `Apiary.Artifacts.get_version!/1` checks no work item, so the version's artifact is
+  # compared with the run's work item here.
   defp version(work_item, version_id) do
-    if PublicId.valid?("av", version_id) do
-      found =
-        Enum.find_value(Boundary.list(work_item), fn artifact ->
-          Enum.find(Boundary.versions(artifact), &(field(&1, :id) == version_id))
-        end)
-
-      if found, do: {:ok, found}, else: {:error, :not_found}
+    with true <- PublicId.valid?("av", version_id),
+         version = Boundary.get_version!(version_id),
+         %{work_item_id: work_item_id} when work_item_id == work_item.id <-
+           field(version, :artifact) do
+      {:ok, version}
     else
-      {:error, :not_found}
+      _other -> {:error, :not_found}
     end
+  rescue
+    Ecto.NoResultsError -> {:error, :not_found}
   end
 
   # The file of `version` whose filename is exactly `filename`: the name is compared, never
@@ -189,12 +195,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # The files of a version: as the version has them, or as `Apiary.Artifacts.get_version!/1`
-  # loads them.
+  # The files of a version, which every read of `Apiary.Artifacts` loads.
   defp files(version) do
     case field(version, :files) do
       files when is_list(files) -> files
-      _not_loaded -> field(Boundary.get_version!(field(version, :id)), :files) || []
+      _not_loaded -> []
     end
   end
 
@@ -245,7 +250,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # A download under the file's name: an ASCII fallback, and the name itself encoded as
   # RFC 6266 has it.
   defp disposition(filename) do
-    fallback = String.replace(filename, ~r/[^A-Za-z0-9._-]/, "_")
+    fallback = String.replace(filename, ~r/[^A-Za-z0-9._-]/u, "_")
     encoded = URI.encode(filename, &URI.char_unreserved?/1)
     ~s(attachment; filename="#{fallback}"; filename*=UTF-8''#{encoded})
   end
@@ -268,15 +273,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   # The type's maximum file count and size limit, checked before any content is decoded.
+  # The size limit bounds all files of one version together.
   defp within(type, push) do
     max_files = field(type, :max_files)
     size_limit = field(type, :size_limit)
+    total = push.files |> Enum.map(&Body.decoded_size/1) |> Enum.sum()
 
     cond do
       is_integer(max_files) and length(push.files) > max_files ->
         {:error, {:too_many_files, push.type, max_files}}
 
-      is_integer(size_limit) and Enum.any?(push.files, &(Body.decoded_size(&1) > size_limit)) ->
+      is_integer(size_limit) and total > size_limit ->
         {:error, {:too_large, push.type, size_limit}}
 
       true ->
@@ -285,21 +292,52 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   # What `Apiary.Artifacts.push/5` returns, turned into the run API's errors: the push's
-  # type and the type's limit, never the detail the push returns.
+  # type, the type's limit and the member at fault, never another detail of the push.
   defp pushed({:ok, version}, _name, _type, _workflow), do: {:ok, version}
 
-  defp pushed({:error, {code, _detail}}, name, type, workflow) do
-    case code do
-      :unknown_type -> {:error, {:unknown_type, name}}
-      :not_writable -> {:error, {:not_writable, name, workflow}}
-      :too_many_files -> {:error, {:too_many_files, name, field(type, :max_files)}}
-      :too_large -> {:error, {:too_large, name, field(type, :size_limit)}}
-      :invalid -> {:error, :invalid_artifact}
-      _other -> {:error, :unavailable}
-    end
-  end
-
+  defp pushed({:error, refusal}, name, type, workflow), do: refused(refusal, name, type, workflow)
   defp pushed(_error, _name, _type, _workflow), do: {:error, :unavailable}
+
+  defp refused({:unknown_type, _name}, name, _type, _workflow),
+    do: {:error, {:unknown_type, name}}
+
+  defp refused({:not_writable, _type}, name, _type_row, workflow),
+    do: {:error, {:not_writable, name, workflow}}
+
+  defp refused({:too_many_files, max_files}, name, type, _workflow),
+    do: {:error, {:too_many_files, name, limit(max_files, type, :max_files)}}
+
+  defp refused({:too_large, size_limit}, name, type, _workflow),
+    do: {:error, {:too_large, name, limit(size_limit, type, :size_limit)}}
+
+  defp refused({:invalid, member}, _name, _type, _workflow)
+       when member in [:type, :name, :note],
+       do: {:error, :invalid_request, Atom.to_string(member)}
+
+  defp refused({:invalid, :no_files}, _name, _type, _workflow),
+    do: {:error, :invalid_request, "files"}
+
+  defp refused({:invalid, {:file, index}}, _name, _type, _workflow) when is_integer(index),
+    do: {:error, :invalid_request, "files[#{index}]"}
+
+  defp refused({:invalid, {member, index}}, _name, _type, _workflow)
+       when member in [:filename, :duplicate_filename] and is_integer(index),
+       do: {:error, :invalid_request, "files[#{index}].filename"}
+
+  defp refused({:invalid, {_check, index}}, _name, _type, _workflow) when is_integer(index),
+    do: {:error, {:invalid_artifact, "files[#{index}]"}}
+
+  defp refused({:invalid, :no_video}, _name, _type, _workflow),
+    do: {:error, {:invalid_artifact, "files"}}
+
+  # A run of another work item; the person's refusals never come to a run.
+  defp refused(code, _name, _type, _workflow) when code in [:not_found, :forbidden],
+    do: {:error, :not_found}
+
+  defp refused(_refusal, _name, _type, _workflow), do: {:error, :unavailable}
+
+  defp limit(limit, _type, _key) when is_integer(limit), do: limit
+  defp limit(_limit, type, key), do: field(type, key)
 
   defp write_error(conn, {:error, :not_found}), do: error(conn, 404, "not_found")
 
@@ -351,14 +389,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       limit: limit,
       message:
         if(is_integer(limit),
-          do: "The artifact type #{type} takes files of at most #{limit} bytes.",
-          else: "A file is larger than the artifact type #{type} takes."
+          do:
+            "The files of one version of the artifact type #{type} take at most " <>
+              "#{limit} bytes together.",
+          else: "The files are larger together than the artifact type #{type} takes."
         )
     )
   end
 
-  defp write_error(conn, {:error, :invalid_artifact}) do
+  defp write_error(conn, {:error, {:invalid_artifact, member}}) do
     error(conn, 422, "invalid_artifact",
+      names: [member],
       message: "The files do not match the format of the artifact type."
     )
   end
