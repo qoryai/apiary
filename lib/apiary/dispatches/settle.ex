@@ -59,8 +59,11 @@ defmodule Apiary.Dispatches.Settle do
   # The runs of the queue one sweep settles at most; the rest wait for the next.
   @batch 100
 
-  @typedoc "A work item to tell once the transaction commits."
-  @type told :: {:work_item, Ecto.UUID.t(), String.t()}
+  @typedoc """
+  A work item to tell once the transaction commits, and whether its stage changed
+  (`Apiary.Stages`).
+  """
+  @type told :: {:work_item | :stage_changed, Ecto.UUID.t(), String.t()}
 
   # settle_locked/3 stores what `dispatch_run`, ended `run_ended` and locked by the caller
   # in its transaction, gave, from `run`, its registered run or nil, at `now` (the
@@ -95,9 +98,16 @@ defmodule Apiary.Dispatches.Settle do
   def settle(dispatch_run_id, now \\ Apiary.Dispatches.now()) when is_binary(dispatch_run_id) do
     {:ok, told} =
       Repo.transact(fn ->
+        # Hand-over: with the workflow model, the stage runner acts on what the run gave
+        # (`Apiary.Stages.run_ended/1`), in this transaction. It writes the run's work
+        # item, which is locked first, before the run, in the order every path keeps.
+        stages? = Apiary.Stages.on?()
+        if stages?, do: Apiary.Stages.hold_work_item(dispatch_run_id)
+
         case RunEnd.lock(dispatch_run_id) do
           %DispatchRun{state: :ended, end_cause: :run_ended} = dispatch_run ->
-            {:ok, settle_locked(dispatch_run, registered(dispatch_run.id), now)}
+            told = settle_locked(dispatch_run, registered(dispatch_run.id), now)
+            {:ok, if(stages?, do: told ++ Apiary.Stages.run_ended(dispatch_run.id), else: told)}
 
           _other ->
             {:ok, []}

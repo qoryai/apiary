@@ -308,7 +308,38 @@ defmodule Apiary.Dispatches do
   @spec queue(WorkItem.t(), pos_integer) :: {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
   def queue(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
     in_transaction!("queue/2")
-    id |> lock_work_item!() |> insert_run(take_in, 1, @of)
+
+    # Hand-over: with the workflow model, the take in enters the process's first stage,
+    # and the stage runner queues its first run (`Apiary.Stages.take_in/2`).
+    if Apiary.Stages.on?(),
+      do: Apiary.Stages.take_in(id, take_in),
+      else: id |> lock_work_item!() |> insert_run(take_in, 1, @of)
+  end
+
+  # queue_stage/3 writes a run the stage runner starts (`Apiary.Stages`), inside the
+  # caller's transaction: the next attempt of take in `take_in` of the work item
+  # `work_item_id`, its row locked `FOR UPDATE` first as `queue/2` locks it, with `of` the
+  # attempt and the rounds left in the stage's loop (`rounds_left`), and the run's place in
+  # the work item's process (`stage`: `process_version_id`, `stage_id`, `round`,
+  # `stage_entry`, `loop_entry`, `workflow` and `machine_type`). Every run of the stage
+  # runner is for the step `step/0`.
+  @doc false
+  @spec queue_stage(Ecto.UUID.t(), pos_integer, map) ::
+          {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
+  def queue_stage(work_item_id, take_in, %{rounds_left: rounds_left, stage: stage})
+      when is_binary(work_item_id) and is_integer(take_in) and is_integer(rounds_left) do
+    in_transaction!("queue_stage/3")
+    work_item = lock_work_item!(work_item_id)
+
+    attempt =
+      Repo.one(
+        from r in DispatchRun,
+          where: r.work_item_id == ^work_item_id and r.take_in == ^take_in,
+          select: max(r.attempt)
+      )
+
+    attempt = (attempt || 0) + 1
+    insert_run(work_item, take_in, attempt, attempt + max(rounds_left, 0), false, stage)
   end
 
   # queue_next/2 writes the next run of take in `take_in` of `work_item`, once every run
@@ -339,8 +370,19 @@ defmodule Apiary.Dispatches do
         cond do
           Enum.any?(runs, &(&1.state != :ended)) -> {:error, :running}
           attempt >= of -> {:error, :used_up}
-          true -> insert_run(work_item, take_in, attempt + 1, of)
+          true -> next_run(work_item, take_in, attempt, of)
         end
+    end
+  end
+
+  # Hand-over: with the workflow model, the stage runner queues the next run of a work
+  # item it placed in a stage (`Apiary.Stages.next_run/2`); one it did not place gets the
+  # next run as before.
+  defp next_run(work_item, take_in, attempt, of) do
+    case Apiary.Stages.on?() && Apiary.Stages.next_run(work_item.id, take_in) do
+      {:ok, _run} = queued -> queued
+      {:error, _reason} = refused -> refused
+      _not_placed -> insert_run(work_item, take_in, attempt + 1, of)
     end
   end
 
@@ -366,7 +408,9 @@ defmodule Apiary.Dispatches do
   # A waiting run of take in `take_in` of the locked work item, `attempt` of `of`, for the
   # step `step/0`, in the work item's organisation and workspace, with `image_requeue`,
   # and its harness walk (`Apiary.Harnesses.WalkJob.queue/2`); the workspace is told.
-  defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false) do
+  # `stage` is the run's place in the work item's process, empty for a run the stage
+  # runner did not start.
+  defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false, stage \\ %{}) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
     result =
@@ -375,6 +419,7 @@ defmodule Apiary.Dispatches do
         workspace_id: workspace_id,
         image_requeue: image_requeue
       }
+      |> struct!(stage)
       |> DispatchRun.queue_changeset(%{
         work_item_id: id,
         step: @step,
@@ -546,14 +591,16 @@ defmodule Apiary.Dispatches do
   @doc false
   @spec requeue_for_image(DispatchRun.t()) ::
           {:ok, DispatchRun.t()} | {:error, :not_requeued | Ecto.Changeset.t()}
-  def requeue_for_image(%DispatchRun{
-        image_requeue: false,
-        work_item_id: id,
-        workspace_id: workspace_id,
-        take_in: take_in,
-        attempt: attempt,
-        of: of
-      })
+  def requeue_for_image(
+        %DispatchRun{
+          image_requeue: false,
+          work_item_id: id,
+          workspace_id: workspace_id,
+          take_in: take_in,
+          attempt: attempt,
+          of: of
+        } = dispatch_run
+      )
       when is_binary(id) and is_integer(take_in) do
     in_transaction!("requeue_for_image/1")
 
@@ -584,11 +631,25 @@ defmodule Apiary.Dispatches do
     if work_item.state == :exploring and work_item.workspace_id == workspace_id and
          work_item.take_in == take_in and Enum.all?(runs, &(elem(&1, 0) == :ended)) and
          Enum.max(Enum.map(runs, &elem(&1, 1))) == attempt,
-       do: insert_run(work_item, take_in, attempt + 1, of + 1, true),
+       do: insert_run(work_item, take_in, attempt + 1, of + 1, true, stage_place(dispatch_run)),
        else: {:error, :not_requeued}
   end
 
   def requeue_for_image(%DispatchRun{}), do: {:error, :not_requeued}
+
+  # The place in the work item's process of a run requeued for its image: the same as the
+  # run's, so the stage runner reads the requeued run as the same round.
+  defp stage_place(%DispatchRun{} = run) do
+    Map.take(run, [
+      :process_version_id,
+      :stage_id,
+      :round,
+      :stage_entry,
+      :loop_entry,
+      :workflow,
+      :machine_type
+    ])
+  end
 
   # requeued_for_image?/1 is whether the registered run `run`, of a run of the queue,
   # exited `failed` with the reason `image_missing`, and the next run of its take in was
@@ -1314,6 +1375,15 @@ defmodule Apiary.Dispatches do
   @spec broadcast([Ecto.UUID.t() | Settle.told()]) :: :ok
   def broadcast(told) when is_list(told) do
     {work_items, workspace_ids} = told |> Enum.uniq() |> Enum.split_with(&is_tuple/1)
+
+    # A work item whose stage changed (`Apiary.Stages`) is told so too, on the same topic.
+    for {:stage_changed, workspace_id, public_id} <- work_items do
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        Apiary.WorkItems.topic(workspace_id),
+        {:stage_changed, public_id}
+      )
+    end
 
     for workspace_id <- workspace_ids,
         do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(workspace_id), {__MODULE__, :changed})

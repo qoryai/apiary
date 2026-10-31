@@ -142,7 +142,8 @@ defmodule Apiary.AuditChanges do
       :"target.rebuild_environment",
       :"secret.seal",
       :"run_credential.issue",
-      :"process.edit"
+      :"process.edit",
+      :"gate.approve"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -936,6 +937,14 @@ defmodule Apiary.AuditChanges do
   # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
   # the limit.
   # A save of the workspace's process, a new current version: the workspace's entry.
+  # A member approves Shape's gate on a work item of the workspace, about it.
+  def make(:"gate.approve", %{scope: scope} = ctx) do
+    work_item = prepare(:"gate.approve", ctx)
+    before = entries()
+    {:ok, _work_item} = attempt(:"gate.approve", scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
   def make(:"process.edit", %{scope: scope}) do
     before = entries()
     {:ok, _version} = attempt(:"process.edit", scope, nil)
@@ -1456,6 +1465,9 @@ defmodule Apiary.AuditChanges do
     work_item
   end
 
+  defp prepare(:"gate.approve", %{scope: scope}),
+    do: Apiary.StagesFixtures.shape_gate_fixture(scope)
+
   defp prepare(:"work_item.explore_again", %{scope: scope}) do
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
     Apiary.WorkItemsFixtures.explore_run_fixture(work_item)
@@ -1656,6 +1668,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"model_choice.write", scope, _),
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+
+  defp attempt(:"gate.approve", scope, work_item),
+    do: Apiary.Stages.approve(scope, work_item, nil)
 
   defp attempt(:"process.edit", scope, _) do
     document = Apiary.Processes.default_document("software")

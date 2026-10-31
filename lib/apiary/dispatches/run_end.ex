@@ -227,7 +227,13 @@ defmodule Apiary.Dispatches.RunEnd do
       {_step, _pool_id, _collection_id, work_item_id} when is_binary(work_item_id) ->
         case missing(dispatch_run_id) do
           nil ->
-            :ok = share_work_item(work_item_id)
+            # Hand-over: with the workflow model, the end writes the work item's place in
+            # its stage (`Apiary.Stages.run_ended/1`), so it is locked `FOR UPDATE` here.
+            :ok =
+              if Apiary.Stages.on?(),
+                do: lock_work_item(work_item_id),
+                else: share_work_item(work_item_id)
+
             nil
 
           :unknown ->
@@ -300,11 +306,20 @@ defmodule Apiary.Dispatches.RunEnd do
       changed = end_locked(dispatch_run, cause, now, detail(cause, run))
       built = build_ended(held, dispatch_run, cause, run, now)
       settled = settled(dispatch_run, run, cause, now)
-      changed ++ built ++ settled ++ image_missing(held, dispatch_run, run, cause, now)
+      requeued = image_missing(held, dispatch_run, run, cause, now)
+      changed ++ built ++ settled ++ requeued ++ staged(dispatch_run)
     end
   end
 
   def finish(_dispatch_run, %Run{}, _cause, %DateTime{}, _held), do: []
+
+  # Hand-over: with the workflow model, the stage runner acts on the run's end
+  # (`Apiary.Stages.run_ended/1`), after a requeue for a missing image, which it then reads
+  # as the stage's newest run.
+  defp staged(%DispatchRun{step: @prebuild}), do: []
+
+  defp staged(%DispatchRun{id: id}),
+    do: if(Apiary.Stages.on?(), do: Apiary.Stages.run_ended(id), else: [])
 
   defp settled(dispatch_run, run, :run_ended, now),
     do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: :run_ended}, run, now)
