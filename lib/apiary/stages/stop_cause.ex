@@ -235,7 +235,7 @@ defmodule Apiary.Stages.StopCause do
       # the grammar, which the check of its description refuses at its start.
       nil ->
         {"The run did not start, because the access rules of the adapter #{title} do not take target #{path}.",
-         "The instance admin corrects the access rules of the adapter #{title}, in Instance settings › Adapters."}
+         "The instance admin corrects the access rules in the description of the adapter #{title}, then starts the adapter again."}
     end
   end
 

@@ -2064,7 +2064,13 @@ defmodule Apiary.Harnesses.WalkTest do
       run = queued(ctx)
 
       serve([ctx.run], refuse_resolve: {400, "invalid_request"})
-      assert :ok = job(run)
+      log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = job(run) end)
+
+      # One line in the instance's log, with the run and the failure.
+      assert [line] =
+               log |> String.split("\n") |> Enum.filter(&(&1 =~ "end_cause=harness_unresolved"))
+
+      assert line =~ "failure=adapter_failed run_id=#{run.run_id}"
 
       assert %RunHarness{state: :failed, failure: "adapter_failed", failed_source: nil} =
                Repo.get_by!(RunHarness, dispatch_run_id: run.id)

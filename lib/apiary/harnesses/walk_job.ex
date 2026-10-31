@@ -41,6 +41,8 @@ defmodule Apiary.Harnesses.WalkJob do
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
+  require Logger
+
   @doc false
   # queue/2 writes the row of `run`, a run of the queue just inserted, and its job where
   # it has a workflow, inside the caller's transaction. `target` is the work item's
@@ -100,7 +102,7 @@ defmodule Apiary.Harnesses.WalkJob do
           call_failure: nil
         }
 
-        fail(id, failure, job.attempt)
+        fail(id, Map.put(failure, :error, inspect(exception.__struct__)), job.attempt)
       end
 
       reraise exception, __STACKTRACE__
@@ -241,6 +243,15 @@ defmodule Apiary.Harnesses.WalkJob do
   end
 
   defp end_run(%DispatchRun{state: :waiting} = run, failure, now) do
+    # One line in the instance's log, to which a text of why the run stopped points the
+    # instance admin for a failure it has no description of (`Apiary.Stages.StopCause`).
+    Logger.warning(
+      "a harness walk failed, so its run ended before it started " <>
+        "end_cause=harness_unresolved failure=#{failure.failure} run_id=#{run.run_id} " <>
+        "work_item=#{work_item_public_id(run)} adapter=#{failure[:adapter]}" <>
+        if(failure[:error], do: " error=#{failure[:error]}", else: "")
+    )
+
     {:ok, _run} =
       run
       |> Ecto.Changeset.change(
@@ -276,4 +287,9 @@ defmodule Apiary.Harnesses.WalkJob do
         lock: "FOR UPDATE"
     )
   end
+
+  defp work_item_public_id(%DispatchRun{work_item_id: nil}), do: nil
+
+  defp work_item_public_id(%DispatchRun{work_item_id: id}),
+    do: Repo.one(from w in WorkItem, where: w.id == ^id, select: w.public_id)
 end

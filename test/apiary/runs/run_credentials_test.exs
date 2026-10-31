@@ -736,7 +736,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert Apiary.Stages.StopCause.text(run, two.work_item) ==
                "The run did not start, because the access rules of #{adapter} do not take target acme/shop.\n" <>
-                 "The instance admin corrects the access rules of #{adapter}, in Instance settings › Adapters."
+                 "The instance admin corrects the access rules in the description of #{adapter}, then starts the adapter again."
 
       assert Apiary.Stages.StopCause.set_up_step(run) == nil
     end

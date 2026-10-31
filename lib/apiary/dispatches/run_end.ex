@@ -97,10 +97,14 @@ defmodule Apiary.Dispatches.RunEnd do
   # collection `FOR UPDATE` and a close that holds a work item `FOR UPDATE` take turns
   # with the end before the record. With the workflow model off, a claim, which takes no
   # held run and holds the collections it queues a build of `FOR SHARE` as well, never
-  # waits on the end for a run the end ends. With it on, a claim that writes a run of one
-  # of those work items a second time waits for the end at that work item: Postgres
-  # checks the write's foreign key with a `FOR KEY SHARE` lock on it. For any other run,
-  # its work item
+  # waits on the end for a run the end ends. With it on, a claim waits for the end at one
+  # of those work items once it writes a run of that work item a second time in its
+  # transaction, as its registration and an end at the claim do: Postgres then checks
+  # `dispatch_runs.work_item_id` with a `FOR KEY SHARE` lock on the work item. A claim's
+  # free that sets a lapsed run of that work item back to waiting, then takes it, can so
+  # wait at the work item while the end waits for that run: Postgres aborts one side
+  # (40P01), an aborted claim returns `{:error, :unavailable}`, and its caller retries.
+  # For any other run, its work item
   # `FOR KEY SHARE`, which a release and a close hold `FOR UPDATE` before the run of the
   # queue: so the end and either of them take turns at the work item. A run whose folded
   # exit says its image was missing (**An image missing**) holds more, in the order of

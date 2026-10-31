@@ -844,10 +844,28 @@ defmodule Apiary.Dispatches.Handover do
          }
        }}
     else
-      {:variables, {:error, _rule}} -> {:end, :variables_invalid}
+      {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
     end
+  end
+
+  # A run whose run variables break a rule ends `variables_invalid`, with one line in the
+  # instance's log: the run, its work item, the variable, the rule and the target path,
+  # which is a value of QORY_RUN_REPOSITORIES and of no secret. A text of why the run
+  # stopped points the instance admin to that line (`Apiary.Stages.StopCause`).
+  defp variables_ended(dispatch_run, work_item, target, rule) do
+    variable =
+      if rule == :system_invalid, do: "QORY_RUN_SYSTEM", else: "QORY_RUN_REPOSITORIES"
+
+    Logger.warning(
+      "a claim ended a run before it started, because a run variable breaks its rule " <>
+        "end_cause=variables_invalid run_id=#{dispatch_run.run_id} " <>
+        "work_item=#{work_item && work_item.public_id} variable=#{variable} rule=#{rule} " <>
+        "target_path=#{target && target.path}"
+    )
+
+    {:end, :variables_invalid}
   end
 
   # A prebuild's destinations in the registry, the documents' `image_destination`, then
