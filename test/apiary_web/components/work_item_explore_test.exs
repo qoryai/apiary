@@ -1396,9 +1396,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              },
              "Correct #{harness}, then run Explore again. It breaks the harness format: qory.yaml is not valid YAML."},
             {%{code: "not_covered", source: harness, organisation: "Acme"},
-             "Owners and admins of Acme check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of Acme reaches it."},
+             "Owners and admins of Acme connect an integration that covers #{harness} in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of Acme reaches it."},
             {%{code: "not_covered", source: harness},
-             "Owners and admins of this organisation check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of this organisation reaches it."},
+             "Owners and admins of this organisation connect an integration that covers #{harness} in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of this organisation reaches it."},
             {%{
                code: "too_large",
                source: harness,

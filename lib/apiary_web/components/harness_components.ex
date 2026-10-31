@@ -816,8 +816,8 @@ defmodule ApiaryWeb.HarnessComponents do
     do:
       pgettext(
         "plain",
-        "Owners and admins of %{org} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{org} reaches it.",
-        org: organisation,
+        "Owners and admins of %{organisation} connect an integration that covers %{source} in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{organisation} reaches it.",
+        organisation: organisation,
         source: label(source)
       )
 

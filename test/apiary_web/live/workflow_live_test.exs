@@ -556,7 +556,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#workflow-read-error",
-               "Owners and admins of #{scope.organisation.name} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. https://public.example.org/qory/stack is not public, or does not exist, and no connection of #{scope.organisation.name} reaches it."
+               "Owners and admins of #{scope.organisation.name} connect an integration that covers https://public.example.org/qory/stack in Organisation settings › Integrations. https://public.example.org/qory/stack is not public, or does not exist, and no connection of #{scope.organisation.name} reaches it."
              )
     end
 

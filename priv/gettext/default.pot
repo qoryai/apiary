@@ -12556,6 +12556,12 @@ msgstr ""
 msgid "Owners and admins can change these."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Owners and admins of %{organisation} connect an integration that covers %{source} in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{organisation} reaches it."
+msgstr ""
+
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} finish the set-up."
@@ -12570,12 +12576,6 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} install integrations."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Owners and admins of %{org} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{org} reaches it."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
