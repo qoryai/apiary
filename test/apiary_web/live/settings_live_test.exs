@@ -546,6 +546,14 @@ defmodule ApiaryWeb.SettingsLiveTest do
       secrets? = Apiary.Features.on?(:secrets)
       factory? = Apiary.Features.on?(:factory)
 
+      # With `workflow_model`, Stages takes the place of Workflow.
+      process =
+        cond do
+          Apiary.Features.on?(:workflow_model) -> [stages: base <> "/stages"]
+          factory? -> [workflow: base <> "/workflow"]
+          true -> []
+        end
+
       sections =
         [general: base, people: base <> "/people"] ++
           if(secrets?,
@@ -559,11 +567,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
           if(factory?,
             do: [
               work_sources: base <> "/work-sources",
-              destinations: base <> "/destinations",
-              workflow: base <> "/workflow"
+              destinations: base <> "/destinations"
             ],
             else: []
           ) ++
+          process ++
           [runs: base <> "/runs"]
 
       for {key, path} <- sections do
