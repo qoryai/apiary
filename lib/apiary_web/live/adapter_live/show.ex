@@ -567,6 +567,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
           named={false}
           action={@paths.install}
           ready={@ready}
+          instance_admin={Apiary.Access.instance_admin?(@current_scope)}
           sending={@sending}
         />
 
@@ -613,6 +614,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
               adapter={@adapter}
               action={@paths.install}
               ready={@ready}
+              instance_admin={Apiary.Access.instance_admin?(@current_scope)}
               sending={@sending}
               variant="default"
               size="xs"

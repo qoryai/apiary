@@ -55,8 +55,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # every domain: the integration's code lives there.
   @integration_release_form [
     "Repository",
-    "is not on a forge this instance adds integrations from",
-    "must be a repository's path: this instance adds no integration from an address",
+    "is not on a forge Qory Apiary adds integrations from",
+    "must be a repository's path: Qory Apiary adds no integration from an address",
     "must be a repository's path or an https address of a description.json"
   ]
 

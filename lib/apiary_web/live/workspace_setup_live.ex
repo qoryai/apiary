@@ -397,17 +397,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     role = if step == :sources, do: :items, else: :targets
     may_connect = Access.can?(scope, :"adapter.connect", scope.organisation)
 
-    adapters =
-      for adapter <- Adapters.list_configured(flow.domain),
-          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
-          do: adapter
-
     connecting =
       for {adapter_id, %{state: :pending}} <- AdapterConnections.live_by_adapter(scope),
           into: MapSet.new(),
           do: adapter_id
 
     connected = WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role)
+
+    adapters =
+      IntegrationComponents.offered(
+        scope,
+        for(
+          adapter <- Adapters.list_configured(flow.domain),
+          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
+          do: adapter
+        ),
+        Enum.concat(connected, connecting)
+      )
+
     cards = WorkspaceSetup.cards(scope, flow.domain, step, flow.workspace)
     carded = MapSet.new(cards, & &1.adapter.id)
 
@@ -429,6 +436,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
       who_connects: IntegrationComponents.who_connects(scope, step),
+      instance_admin: Access.instance_admin?(scope),
       sending: nil,
       done: step_done?(flow, step)
     )
@@ -1853,7 +1861,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {pgettext("plain", "Every system is connected.")}
       </p>
 
-      <.no_adapter :if={@adapters == []} step={@step} />
+      <.no_adapter :if={@adapters == []} step={@step} instance_admin={@instance_admin} />
 
       <p
         :if={!@may_connect}
@@ -1961,7 +1969,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {@who_may}
       </p>
 
-      <.no_adapter :if={@adapters == []} step={@step} />
+      <.no_adapter :if={@adapters == []} step={@step} instance_admin={@instance_admin} />
 
       <p
         :if={!@may_connect}
@@ -2982,6 +2990,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         adapter={@adapter}
         action={IntegrationComponents.paths(@current_scope, @adapter).install <> "?" <> URI.encode_query(back: @back)}
         ready={@ready}
+        instance_admin={Access.instance_admin?(@current_scope)}
         sending={@sending}
         label={gettext("Connect")}
       />
@@ -2990,20 +2999,37 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   attr :step, :atom, required: true
+  attr :instance_admin, :boolean, required: true
 
   # The line of a step with no adapter for the workspace's type on the instance.
   defp no_adapter(assigns) do
     ~H"""
     <p id="set-up-no-adapter" class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted">
-      <span :if={@step == :sources}>
+      <span :if={@step == :sources and @instance_admin}>
         {gettext(
           "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
         )}
       </span>
-      <span :if={@step == :destinations}>
+      <span :if={@step == :sources and !@instance_admin}>
+        <.rich text={
+          rich_gettext(
+            "%{contact_support} to add a work source. Qory Apiary offers none for this type yet.",
+            contact_support: ApiaryWeb.Support.rich()
+          )
+        } />
+      </span>
+      <span :if={@step == :destinations and @instance_admin}>
         {gettext(
           "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
         )}
+      </span>
+      <span :if={@step == :destinations and !@instance_admin}>
+        <.rich text={
+          rich_gettext(
+            "%{contact_support} to add a work destination. Qory Apiary offers none for this type yet.",
+            contact_support: ApiaryWeb.Support.rich()
+          )
+        } />
       </span>
     </p>
     """
