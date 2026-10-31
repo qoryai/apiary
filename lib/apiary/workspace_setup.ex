@@ -247,6 +247,21 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   @doc false
+  # source_names/2 is the names of the adapters whose collections `sources?/2` counts for
+  # `workspace` of the type `domain`: on the work-source list, assigned to `workspace`, with
+  # their Backlog on. Each name once, in alphabetical order.
+  @spec source_names(Workspace.t(), module) :: [String.t()]
+  def source_names(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
+    organisation_id
+    |> list_query(domain, :sources)
+    |> where([c], c.workspace_id == ^workspace_id and c.backlog)
+    |> select([_c, _k, n], n.name)
+    |> distinct(true)
+    |> order_by([_c, _k, n], asc: n.name)
+    |> Repo.all()
+  end
+
+  @doc false
   # destinations?/2 is whether a row of the destination tick list of `workspace` of the
   # type `domain` is ticked: a collection of the list (`collections/3`, `:destinations`)
   # assigned to `workspace`.

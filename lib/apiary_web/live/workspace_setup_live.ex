@@ -29,7 +29,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     workspace's type, "Type: Software factory"; Save and next
   #     renames the workspace (`Apiary.Organisations.update_workspace/2`), refused for a
   #     name whose address is taken, and opens the next step at the new address. For
-  #     anyone else, the name, read only, the line of who may rename it
+  #     anyone else, the name, read only, with its address, the line of who may rename it
   #     (`ApiaryWeb.Access.who_may/3`), as the other steps say who may, and Continue;
   #   * Work sources and Destinations, with the `factory` feature: a card per live grant
   #     of the organisation's connections (`Apiary.WorkspaceSetup.cards/4`,
@@ -2068,6 +2068,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <p class="text-[13.5px]/5 font-medium">{gettext("Name")}</p>
           <p id="set-up-name" class="text-[13.5px]/5">{@flow.workspace.name}</p>
         </div>
+        <SettingsComponents.workspace_address
+          id="set-up-address"
+          organisation={@flow.organisation}
+          workspace={@flow.workspace}
+          form={@form}
+        />
         <p id="set-up-type" class="text-[13px]/5 text-muted">
           {gettext("Type: %{type}", type: @flow.domain.type_name())}
         </p>

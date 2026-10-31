@@ -4,9 +4,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   (`Req.Test`): who opens it and where it is in the list; About this step, with the
   paragraphs on the harness; the harness choice and its version; the destinations' Stack
   selects under the choice, their saves and refusals; each kind of source, read when
-  chosen; a refused address; the save, its document, and the setting shown again.
+  chosen; a refused address; the save, its document, and the setting shown again. With
+  the feature `workflow_model`, the page keeps the harness choice, drops the workflow
+  choice and links to Stages.
+
+  Not async: each test sets the instance's features, which are the whole node's. The
+  workflow choice is tested with `workflow_model` off, as an instance without it shows it.
   """
-  use ApiaryWeb.ConnCase, async: true
+  use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
@@ -20,6 +25,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   alias Apiary.Stacks.Sources
 
   @moduletag needs: :factory
+  @moduletag with_features: Apiary.Features.all() -- [:workflow_model]
   @moduletag :capture_log
 
   @harness "https://code.example.com/acme/harness"
@@ -1239,6 +1245,58 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       })
 
       assert Stacks.target_choice(scope.workspace, target_of(destination)) == nil
+    end
+  end
+
+  describe "with workflow_model" do
+    @describetag with_features: Apiary.Features.all()
+
+    test "the workflow choice is gone, with its line and its About paragraphs", %{
+      conn: conn,
+      path: path
+    } do
+      view = open(conn, path)
+
+      refute has_element?(view, "#workflow-form")
+      refute has_element?(view, "#workflow-current")
+      refute has_element?(view, "#workflow-what")
+      refute has_element?(view, "#workflow-list")
+    end
+
+    test "the harness choice stays, with Change and the destinations", %{conn: conn, path: path} do
+      view = open(conn, path)
+
+      assert has_element?(view, "#workflow-harness")
+      view |> element("#workflow-harness-change") |> render_click()
+      assert has_element?(view, "#workflow-harness-form")
+    end
+
+    test "the sidebar's Stages entry takes the place of Workflow", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      view = open(conn, path)
+
+      stages = workspace_path(scope, "/settings/stages")
+      assert has_element?(view, ~s(#settings-tab-stages[href="#{stages}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-workflow")
+    end
+
+    test "the page links to Stages", %{conn: conn, path: path, scope: scope} do
+      view = open(conn, path)
+
+      assert has_element?(
+               view,
+               "#workflow-stages",
+               "Set the stages of #{scope.workspace.name}, and the workflows each stage runs, on the Stages page."
+             )
+
+      assert has_element?(
+               view,
+               ~s(#workflow-stages-link[href="#{workspace_path(scope, "/settings/stages")}"]),
+               "Open Stages"
+             )
     end
   end
 end

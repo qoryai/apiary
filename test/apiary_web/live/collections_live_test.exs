@@ -144,8 +144,11 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
     tabs = for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
 
+    # With `workflow_model`, Stages takes the place of Workflow.
+    last = if Apiary.Features.on?(:workflow_model), do: "stages", else: "workflow"
+
     assert Enum.drop_while(tabs, &(&1 != "model")) |> Enum.take(4) ==
-             ~w(model work_sources destinations workflow)
+             ~w(model work_sources destinations) ++ [last]
 
     {:ok, lv, _html} = live(ctx.conn, ctx.destinations)
     assert has_element?(lv, "#settings-section-title", "Destinations")

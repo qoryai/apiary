@@ -203,12 +203,12 @@ page and an Instance page, the one the person came from (Two levels, below).
 - **Dead ends.** A path under an organisation the person reaches that leads nowhere for
   them is a `404` inside the shell, with the organisation's sidebar
   (`ApiaryWeb.DeadEnd`): a workspace address that matches no workspace they reach,
-  "Workspace not found", "No workspace has this address in Acme. The workspace's name may
-  have changed.", and the workspaces of Acme they reach, as links; New workspace for a
-  person who may not create one, "New workspace" with no kind cards and one line: where
-  the organisation has as many workspaces as the edition allows, the limit's line in an
-  information notice, as the owner sees it there, since nobody creates another; else who
-  creates workspaces.
+  "Workspace not found", "You have no workspace at this address in Acme. Its address
+  changes when the workspace is renamed.", and the workspaces of Acme they reach, as
+  links; New workspace for a person who may not create one, "New workspace" with no kind
+  cards and one line: where the organisation has as many workspaces as the edition allows,
+  the limit's line in an information notice, as the owner sees it there, since nobody
+  creates another; else who creates workspaces.
   A workspace they do not reach gets the same page as an address that matches none. An
   organisation they do not reach is the plain `404`, "Not Found".
 
@@ -1284,9 +1284,15 @@ mark and the theme menu.
   the step's section current; there **Back** and **Save** return to the settings page.
 - **A workspace in set-up** opens at its overview: with the `factory` feature, until its
   test run passes, every link to the workspace leads to the overview, which shows "Finish
-  setting up Main", each step with its state, its page's heading under its name ("Where
-  does work for Main come from?"), and a link to its page, and **Continue:
-  Model**, to the first step that is not done (`SetUpComponents.workspace_set_up/1`). The
+  setting up Main", each step with its state, a line under its name, and a link to its
+  page, and **Continue: Model**, to the first step that is not done
+  (`SetUpComponents.workspace_set_up/1`). The line is a done step's value where one is at
+  hand (Name the workspace's name, Work sources the integrations by name, Machines the
+  node pool), "Starts one run to check the set-up" for Test run, else the step's page's
+  heading ("Where does work for Main come from?") (`SetUpComponents.step_note/3`). A
+  person who may not take the next step's action, as its page checks
+  (`SetUpComponents.changes_step?/2`), reads "Main is being set up", "Owners and admins of
+  Acme finish the set-up.", and the steps with their state, with no **Continue**. The
   organisation's overview shows "Set-up: 3 of 7 steps" under the workspace's name.
 - **The link up** is the first line of the workspace's sidebar on every page of the
   workspace: the organisation's name, with an arrow up, a link to `/<org>`. The
