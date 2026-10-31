@@ -37,27 +37,28 @@ replace the versions and checksums above.
 
 The canvas of Workspace settings › Stages: `@xyflow/react` with React and React DOM.
 Bundled through the separate entry `assets/js/canvas.js`, so only the Stages page
-downloads it. Core has no npm and no `package.json`: esbuild finds `react`, `react-dom`
-and `scheduler` here through its `--alias` arguments in `config/config.exs`, and
-`--define:process.env.NODE_ENV="production"` makes it bundle the production files alone.
-That define changes nothing in `app.js` or `terminal.js`.
+downloads it. Core has no npm and no `package.json`: the `--alias` arguments in
+`config/config.exs` point `react`, `react/jsx-runtime`, `react-dom`, `react-dom/client`
+and `scheduler` straight at the production files below, in dev builds too. The build sets
+no `process.env.NODE_ENV`, so a dev build of `app.js` and `terminal.js` keeps the code that
+runs only in development, such as the live reload in `app.js`.
 
 | File | Package | Version | From the tarball | sha256 of the file |
 |---|---|---|---|---|
 | `flow/xyflow-react/index.js` | `@xyflow/react` | 12.12.0 | `package/dist/umd/index.js` | `c418896c3d0cc63498e724df7ed9698532c58523c04d30ebcd3ff7fa0bf3ecff` |
 | `flow/xyflow-react/style.css` | `@xyflow/react` | 12.12.0 | `package/dist/style.css` | `7ed5ae87a6c9bd664fce1802ce33fbe84faaefe33e21c82be35529df06e0c686` |
 | `flow/xyflow-react/LICENSE` | `@xyflow/react` | 12.12.0 | `package/LICENSE` | `023119ac20fb1c8c9930abe0bcd196989a1960388529a96fc43cebf96f07c9ff` |
-| `flow/react/index.js` | `react` | 19.3.1 | `package/index.js` | `60caffdecbdc5db3bc4ec4e83df9488345ccb271d07533b9210bf5750918d97e` |
-| `flow/react/jsx-runtime.js` | `react` | 19.3.1 | `package/jsx-runtime.js` | `b392951a77d0a2e6a6bd017e49d768481ae5b63c4109c6c31f622cf7b2433edc` |
+| `flow/xyflow-react/LICENSE-zustand` | `zustand` | 4.5.7 | `package/LICENSE` | `c1e6e266563517467b1bf874817d23e426f3149252bd7d42758cd697514b8417` |
+| `flow/xyflow-react/LICENSE-classcat.md` | `classcat` | 5.0.5 | `package/LICENSE.md` | `f101c761d255d0dddc77dd8a9327733b03d381798ec54a1bb718367207b48a8e` |
+| `flow/xyflow-react/LICENSE-d3` | `d3-dispatch` 3.0.1, `d3-drag` 3.0.0, `d3-interpolate` 3.0.1, `d3-selection` 3.0.0, `d3-timer` 3.0.1, `d3-transition` 3.0.1, `d3-zoom` 3.0.0 | | `package/LICENSE`, the same file in all seven | `e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee` |
+| `flow/xyflow-react/LICENSE-d3-color` | `d3-color` | 3.1.0 | `package/LICENSE` | `faa682e3e430941f958d26180458f5934a62f58dac4d70ccdd15608c15d0f884` |
+| `flow/xyflow-react/LICENSE-d3-ease` | `d3-ease` | 3.0.1 | `package/LICENSE` | `b989d9085148d21ff64a75e14462aefa06b2589a55553b07b1460c70081c7d08` |
 | `flow/react/cjs/react.production.js` | `react` | 19.3.1 | `package/cjs/react.production.js` | `0b5529981841afa1b58c76ba85c29bb681ff5f07cd8cde6a10b967d3915b8e1c` |
 | `flow/react/cjs/react-jsx-runtime.production.js` | `react` | 19.3.1 | `package/cjs/react-jsx-runtime.production.js` | `1e46f15002696985e80c61d47aaa30dabb03c954270a690f5f7dfbbacfa9002b` |
 | `flow/react/LICENSE` | `react` | 19.3.1 | `package/LICENSE` | `da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93` |
-| `flow/react-dom/index.js` | `react-dom` | 19.3.1 | `package/index.js` | `ba1a3e33489f868371561777607e3ee5091df0f7ea3f1a10f789d6b86e4c1505` |
-| `flow/react-dom/client.js` | `react-dom` | 19.3.1 | `package/client.js` | `00e348ab3d6bc2eef908345d0bc4e008c95bcfecec060dfda5c4967953761396` |
 | `flow/react-dom/cjs/react-dom.production.js` | `react-dom` | 19.3.1 | `package/cjs/react-dom.production.js` | `7a05d7f7bb2b02aae84018a88d4815a2181eef48d2cb8172d403eaa2b131eefd` |
 | `flow/react-dom/cjs/react-dom-client.production.js` | `react-dom` | 19.3.1 | `package/cjs/react-dom-client.production.js` | `a319b413b7a19ee34422d9a12a8e7afd003c07846716d278ba1a0898e8cb6251` |
 | `flow/react-dom/LICENSE` | `react-dom` | 19.3.1 | `package/LICENSE` | `da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93` |
-| `flow/scheduler/index.js` | `scheduler` | 0.28.0 | `package/index.js` | `145965504d60007bc25486ab930b0367867dcd5d579ccd343c148d69349a7cfb` |
 | `flow/scheduler/cjs/scheduler.production.js` | `scheduler` | 0.28.0 | `package/cjs/scheduler.production.js` | `679adff761d31e9426604f80c0e99be44a3e6f4c6834b0218ecf0312a67c171f` |
 | `flow/scheduler/LICENSE` | `scheduler` | 0.28.0 | `package/LICENSE` | `da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93` |
 
@@ -73,9 +74,13 @@ Tarballs, from the npm registry, each matching the registry's `dist.integrity`:
   (sha256 `302995d590e3c0a11eeb40d1d0f299c1df1800135d599d85cdd5faeb614f32d6`)
 
 Licence: MIT, for all four packages; each folder has the licence file of its package.
-The UMD build of `@xyflow/react` contains the packages it depends on: `@xyflow/system`,
-`zustand` and `classcat` (MIT), and the d3 modules it uses (ISC). The development files that `index.js`, `jsx-runtime.js` and `client.js`
-require when `NODE_ENV` is not `production` are not vendored.
+The UMD build of `@xyflow/react` contains the packages it depends on, and
+`flow/xyflow-react/` has a licence file for each: `@xyflow/system` 0.0.83 (MIT, the same
+text as `LICENSE`), `zustand` and `classcat` (MIT), and nine d3 modules (ISC; `d3-ease`
+also BSD-3-Clause, for its easing functions by Robert Penner). The versions are the newest
+that the ranges in `@xyflow/react` 12.12.0 and `@xyflow/system` 0.0.83 allow, on
+2026-10-31; each tarball matches the registry's `dist.integrity`. The development files
+of React and the package entry files that choose between them are not vendored.
 
 To update: download the four tarballs with `curl`, check each against `dist.integrity`
 in the registry's metadata, copy the files over these, and replace the versions and
