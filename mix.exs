@@ -26,7 +26,8 @@ defmodule Apiary.MixProject do
   def application do
     [
       mod: {Apiary.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      # xmerl: its SAX parser reads an SVG artifact (Apiary.Artifacts.Format).
+      extra_applications: [:logger, :runtime_tools, :xmerl]
     ]
   end
 
