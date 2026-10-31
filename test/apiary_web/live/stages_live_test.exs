@@ -192,13 +192,13 @@ defmodule ApiaryWeb.StagesLiveTest do
                "Qory Apiary stores the machine type in the process. It does not choose the machine that runs the workflow."
              )
 
-      # No workflow, no machine field, no help text on it.
-      view |> element(~s(button[aria-label="Edit Shape"])) |> render_click()
-      refute has_element?(view, "#stage-sequence", "Qory Apiary stores the machine type")
-
       view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
       refute has_element?(view, "#stage-loop-1")
       assert has_element?(view, "#stage-entry-1-workflow")
+
+      # No workflow, no machine field, no help text on it.
+      view |> element(~s(button[aria-label="Edit Shape"])) |> render_click()
+      refute has_element?(view, "#stage-sequence", "Qory Apiary stores the machine type")
     end
 
     test "the placement check lists a workflow the harness does not declare and an input no earlier stage outputs",
