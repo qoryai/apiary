@@ -483,6 +483,28 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "says where a structured file fails its schema, as text", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "verdict"))
+      json = ~s({"verdict":"passed","<i>x</i>":1})
+
+      view
+      |> file_input("#artifact-form", :files, [
+        %{name: "v.json", content: json, type: "application/json"}
+      ])
+      |> render_upload("v.json")
+
+      view
+      |> form("#artifact-form", artifact: %{type: "verdict", name: "main", note: ""})
+      |> render_submit()
+
+      line = view |> element("#artifact-files-error-0") |> render()
+
+      assert line =~ "Fix v.json to match the JSON Schema of verdict: at #,"
+      assert line =~ "&lt;i&gt;x&lt;/i&gt;"
+      refute line =~ "<i>"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
     test "says so when the store cannot keep the files", ctx do
       blocked = Path.join(ctx.tmp_dir, "a-file")
       File.write!(blocked, "")

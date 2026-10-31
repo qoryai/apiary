@@ -413,6 +413,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
       {:too_large, _limit} ->
         assign(socket, :file_errors, [too_large(type)])
 
+      {:invalid, {:schema, index, detail}} ->
+        assign(socket, :file_errors, [schema_line(filename.(index), type, detail)])
+
       {:invalid, {reason, index}} ->
         assign(socket, :file_errors, [file_line(reason, filename.(index), type)])
 
@@ -494,18 +497,21 @@ defmodule ApiaryWeb.ArtifactLive.New do
         filename: filename
       )
 
-  defp file_line(:schema, filename, type),
-    do:
-      gettext("Fix %{filename}: it does not match the JSON Schema of %{type}.",
-        filename: filename,
-        type: type.name
-      )
-
   defp file_line(:format, filename, %Type{base_view: base_view}),
     do: format_line(base_view, filename)
 
   defp file_line(_unreadable, filename, _type),
     do: gettext("Upload %{filename} again.", filename: filename)
+
+  # `path` and `error` come from the file; the page shows them as text.
+  defp schema_line(filename, type, %{path: path, error: error}),
+    do:
+      gettext("Fix %{filename} to match the JSON Schema of %{type}: at %{path}, %{error}.",
+        filename: filename,
+        type: type.name,
+        path: path,
+        error: error
+      )
 
   defp format_line(:document, filename),
     do: gettext("Replace %{filename} with a Markdown file of UTF-8 text.", filename: filename)
