@@ -30,6 +30,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       `fix-demo-findings`, which the harness does not declare; version 3 removes that
       loop again, and adds an optional mockup output to Shape and an optional screenshot
       output to Verify.
+    * A read of Web shop's harness is recorded, which lists only `explore-a-ticket`.
     * The adapter **Tracker** is made and connected for Acme, with the repository
       `acme/web-shop` in Web shop and its tickets; Dana and Max take nine of them in.
       With `workflow_model` on, a take in enters Explore.
@@ -110,6 +111,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @grant_ref "G_acme"
   @pool "preview-pool"
   @forager "0.10.0"
+  @harness_workflows ["explore-a-ticket"]
 
   # The work items, in the order they are taken in: what happens to each, who takes its
   # ticket in, and its ticket: number, title and the line its body opens with.
@@ -300,6 +302,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       end
 
     versions!(dana_scope)
+
+    # A stage waits for a workflow only against a recorded read of the harness: with none,
+    # its run starts.
+    :ok = Processes.record_declared(dana_scope.workspace, @harness_workflows)
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"
