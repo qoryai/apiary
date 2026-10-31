@@ -42,6 +42,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # the comments' assigns, and passes their events to that module; Cancel closes the
   # question showing, the page's or a comment's.
   #
+  # **The workflow model.** Where the reader is shown the feature `workflow_model`
+  # (`ApiaryWeb.WorkItemLive.Workflow`), the header shows the stages of the work item's
+  # process version, the rail the stage card in place of the step card, and the body
+  # the runs and the artifacts above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`).
+  # The page reads them again on `{:stage_changed, id}` for its work item, and does
+  # Approve, Request changes, the escalation actions and Move back through
+  # `Apiary.Stages`, each refused without words as the other actions are. Without the
+  # feature the page is as before it.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -53,12 +62,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   alias Apiary.{Access, WorkItems}
   alias ApiaryWeb.UserAuth
-  alias ApiaryWeb.WorkItemLive.{Comments, View}
+  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
   @edit_keys ["understanding", "scope_in", "scope_out", "approach"]
   @comment_events Comments.events() -- ["cancel_question"]
   @actions ~w(undo ask_decline decline ask_close close confirm explore_again answer change_proposal confirm_changes)
+  @stage_events ~w(stage_approve stage_ask_changes stage_request_changes stage_resolve stage_move)
+  @resolutions %{
+    "accept" => :accept,
+    "another_round" => :another_round,
+    "close" => :close,
+    "decline" => :decline
+  }
 
   @impl true
   def render(assigns) do
@@ -88,7 +104,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             }
             can_close={@can.close}
             can_act={@can.act}
-          />
+          >
+            <:track :if={@flow}>
+              <StageComponents.process_track id="work-item-head-stages" page={@flow} />
+            </:track>
+          </.work_item_header>
           <.uninstalled_notice
             :if={@source.uninstalled}
             integration={@source.integration}
@@ -116,7 +136,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           />
         </:header>
         <:rail :if={@tab != :edit}>
+          <StageComponents.stage_card
+            :if={@flow}
+            page={@flow}
+            number={@number}
+            add_path={&add_path(@current_scope, @number, &1)}
+            answers_path={tab_path(@current_scope, @number, :explore)}
+            asking={@stage_asking}
+          />
           <.step_card
+            :if={!@flow}
             work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
@@ -152,6 +181,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               submits={@edit_submits}
             />
           <% else %>
+            <div :if={@flow} id="work-item-flow" class="flex flex-col gap-3">
+              <StageComponents.stage_runs runs={@flow.runs} />
+              <section
+                id="work-item-artifacts"
+                class="q-xp-sec"
+                aria-labelledby="work-item-artifacts-h"
+              >
+                <h3 id="work-item-artifacts-h">{gettext("Artifacts")}</h3>
+                <StageComponents.approval_marks index={@flow.index} />
+                <Workflow.artifact_list id="work-item-artifact-list" artifacts={@artifacts} />
+              </section>
+            </div>
             <.work_item_tabs
               number={@number}
               current={@tab}
@@ -252,7 +293,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            submits: 0,
            edit_values: %{},
            edit_errors: %{},
-           edit_submits: 0
+           edit_submits: 0,
+           flow: nil,
+           artifacts: [],
+           stage_asking: nil
          )}
     end
   end
@@ -292,7 +336,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   @impl true
   def handle_event("cancel_question", _params, socket),
-    do: {:noreply, assign(socket, asking: nil, deleting_comment: nil)}
+    do: {:noreply, assign(socket, asking: nil, deleting_comment: nil, stage_asking: nil)}
 
   def handle_event(event, params, socket) when event in @comment_events,
     do: Comments.handle_event(event, params, socket)
@@ -300,6 +344,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def handle_event(event, %{"number" => number} = params, socket) when event in @actions do
     if number == Integer.to_string(socket.assigns.number),
       do: act(event, params, socket),
+      else: {:noreply, socket}
+  end
+
+  def handle_event(event, %{"number" => number} = params, socket) when event in @stage_events do
+    if number == Integer.to_string(socket.assigns.number) and socket.assigns.flow,
+      do: stage_act(event, params, socket),
       else: {:noreply, socket}
   end
 
@@ -393,6 +443,59 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end)
   end
 
+  # The workflow model's actions, each asked again on the server
+  # (`ApiaryWeb.WorkItemLive.Workflow.decide/4`) with the page as the reader saw it.
+  defp stage_act("stage_ask_changes", _params, socket),
+    do: {:noreply, assign(socket, :stage_asking, :changes)}
+
+  defp stage_act("stage_approve", params, socket),
+    do: decided(socket, {:approve, note(params)})
+
+  defp stage_act("stage_request_changes", params, socket) do
+    case note(params) do
+      nil -> {:noreply, socket}
+      note -> decided(socket, {:request_changes, note, text(params["version"])})
+    end
+  end
+
+  defp stage_act("stage_resolve", %{"how" => "move_back"} = params, socket) do
+    case text(params["stage"]) do
+      nil -> {:noreply, socket}
+      stage -> decided(socket, {:resolve, {:move_back, stage}, note(params)})
+    end
+  end
+
+  defp stage_act("stage_resolve", params, socket) do
+    case Map.fetch(@resolutions, params["how"]) do
+      {:ok, how} -> decided(socket, {:resolve, how, note(params)})
+      :error -> {:noreply, socket}
+    end
+  end
+
+  defp stage_act("stage_move", params, socket) do
+    case text(params["stage"]) do
+      nil -> {:noreply, socket}
+      stage -> decided(socket, {:move, stage, note(params)})
+    end
+  end
+
+  defp decided(socket, action) do
+    %{row: row, flow: flow} = socket.assigns
+
+    case Workflow.decide(scope(socket), row, flow, action) do
+      {:ok, _result} -> {:noreply, socket |> assign(:stage_asking, nil) |> load()}
+      _refused -> {:noreply, socket |> assign(:stage_asking, nil) |> refresh()}
+    end
+  end
+
+  # A note as the Stages functions take it: its text, or nil where it is blank.
+  defp note(params), do: text(params["note"])
+
+  defp text(value) when is_binary(value),
+    do: if(String.trim(value) == "", do: nil, else: value)
+
+  defp text(_value), do: nil
+
   # The attempt of the latest run as the page read it; with none, nothing to do.
   defp with_attempt(socket, fun) do
     case socket.assigns.item.run do
@@ -455,6 +558,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       else: {:noreply, socket}
   end
 
+  def handle_info({:stage_changed, id}, %{assigns: %{row: %{} = row}} = socket) do
+    if socket.assigns.flow && id in [row.id, row.public_id],
+      do: {:noreply, refresh(socket, &editable/1)},
+      else: {:noreply, socket}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   ## Reads
@@ -480,6 +589,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
          %{} = source <- WorkItems.ticket(scope, row, comments) do
       names = Map.get(WorkItems.ticket_names(scope, [row]), row.id, %{})
       thread = if socket.assigns.tab == :thread, do: thread_entries(scope, row, now), else: []
+      flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
       page = View.page(scope, row, explore, thread, names)
 
       # Take in again is reached from the Backlog only while it shows the ticket: its
@@ -508,7 +618,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         comment_count: WorkItems.count_comments(scope, row),
         can_comment: Comments.can_comment?(scope, row),
         deleting_comment: Comments.still_asking(socket.assigns.deleting_comment, thread),
-        can: can(scope, row, explore.status)
+        can: can(scope, row, explore.status),
+        flow: flow,
+        artifacts: if(flow, do: Workflow.artifacts(row), else: [])
       )
     else
       _gone ->
@@ -569,4 +681,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp tab_path(scope, number, :thread),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/thread"
+
+  # Add's page for an input of `type`: a person's upload of an artifact
+  # (`ApiaryWeb.ArtifactLive`).
+  defp add_path(scope, number, type) do
+    ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}" <>
+      "/artifacts/new?" <> URI.encode_query(type: type)
+  end
 end
