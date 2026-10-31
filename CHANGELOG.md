@@ -479,6 +479,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
+  public harness repository from its host over HTTPS, with no connection and no
+  adapter: a repository the host serves to anyone is public. A harness source that is
+  neither linked nor public fails with “… is not public, or does not exist, and no
+  connection of Acme reaches it.” A repository too large to read, a host out of reach or
+  on a private address, and a host that serves no git repository each fail with a
+  separate line: the fix, then the cause. An instance admin allows the Qory Apiary server outbound HTTPS to
+  each host the harnesses use, such as `github.com:443`.
 <!-- review: Vito accepts these words before the branch is pushed -->
 - The workspace's **Nodes** page is **Machines**, at `/<organisation>/<workspace>/machines`:
   machines and pools first, then the gateways under the heading **Gateways**. On every

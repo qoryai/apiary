@@ -380,7 +380,8 @@ defmodule Apiary.WorkItems.Explore do
 
   # The runs ended `harness_unresolved` with their walk (`harness_walk`), read in one
   # query, and the adapter of each walk that names one (`failed_adapter`), in another only
-  # when one does; the others as they are.
+  # when one does, and every run's organisation and workspace, whose names the failure's
+  # words show; the others as they are.
   defp failed_walks(dispatch_runs) do
     case for(%DispatchRun{end_cause: :harness_unresolved, id: id} <- dispatch_runs, do: id) do
       [] ->
@@ -393,7 +394,7 @@ defmodule Apiary.WorkItems.Explore do
           )
           |> Map.new(&{&1.dispatch_run_id, &1})
 
-        for dispatch_run <- dispatch_runs do
+        for dispatch_run <- Repo.preload(dispatch_runs, [:organisation, :workspace]) do
           case Map.fetch(walks, dispatch_run.id) do
             {:ok, walk} -> %{dispatch_run | harness_walk: walk}
             :error -> dispatch_run
