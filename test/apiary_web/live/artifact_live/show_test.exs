@@ -78,11 +78,13 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       version = pushed!(ctx, "explainer", [{"plan.md", @document}], note: "Second pass")
 
-      {:ok, view, dead} = live(ctx.conn, page(ctx, version))
-      html = render(view)
-
-      # The files are read and rendered once, on the connected mount.
+      # The files are read and rendered once, on the connected mount: the first render,
+      # the one a GET answers, has an empty block.
+      dead = ctx.conn |> get(page(ctx, version)) |> html_response(200)
       refute dead =~ "q-ticket-formatted"
+      assert dead =~ ~s(id="artifact-view-#{version.public_id}-pending")
+
+      {:ok, view, html} = live(ctx.conn, page(ctx, version))
       assert html =~ "q-ticket-formatted"
 
       assert has_element?(view, "#artifact-header-title", "explainer v2")
