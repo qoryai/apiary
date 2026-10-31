@@ -88,6 +88,34 @@ defmodule Apiary.Artifacts.FormatTest do
       larger = head <> String.duplicate(element, count + 1) <> tail
       assert {:error, :format} = check(context, "mockup", "a.svg", larger)
     end
+
+    test "takes 256 attributes on an element and refuses 257, before the parse", context do
+      head = ~s(<svg xmlns="#{@svg_namespace}">)
+      at = fn n -> "<g" <> Enum.map_join(1..n, "", &~s( a#{&1}="1")) <> "/>" end
+
+      assert {:ok, "image/svg+xml"} =
+               check(context, "mockup", "a.svg", head <> at.(256) <> "</svg>")
+
+      assert {:error, :format} = check(context, "mockup", "a.svg", head <> at.(257) <> "</svg>")
+
+      # A `>` in a value does not end the count: only a `<` does.
+      many = "<g" <> Enum.map_join(1..300, "", &~s( a#{&1}=">")) <> "/>"
+      assert {:error, :format} = check(context, "mockup", "a.svg", head <> many <> "</svg>")
+    end
+
+    test "parses the slowest SVG it takes, 512 KiB of elements of 256 attributes, in under 1 s",
+         context do
+      element = "<g" <> Enum.map_join(1..256, "", &~s( attribute-#{&1}="1")) <> "/>"
+      head = ~s(<svg xmlns="#{@svg_namespace}">)
+      tail = "</svg>"
+      count = div(524_288 - byte_size(head) - byte_size(tail), byte_size(element))
+      svg = head <> String.duplicate(element, count) <> tail
+      assert byte_size(svg) > 500_000
+
+      {microseconds, result} = :timer.tc(fn -> check(context, "mockup", "a.svg", svg) end)
+      assert {:ok, "image/svg+xml"} = result
+      assert microseconds < 1_000_000
+    end
   end
 
   describe "a video" do

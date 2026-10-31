@@ -7,7 +7,8 @@ defmodule Apiary.Artifacts.Format do
   #   * document: Markdown, a filename that ends in `.md` (any case) and bytes that are
   #     UTF-8 text with no NUL; `text/markdown; charset=utf-8`.
   #   * image: PNG, JPEG, GIF or WebP by their first bytes; or SVG, at most 512 KiB, UTF-8,
-  #     with no document type declaration (so no entity is declared), that an XML parser
+  #     with no document type declaration (so no entity is declared) and at most 256 `=`
+  #     between two `<` (so no element has more than 256 attributes), that an XML parser
   #     reads to its end with a root element `svg` in the SVG namespace,
   #     `http://www.w3.org/2000/svg`. The parse runs in another process within a budget
   #     (`Apiary.Kinds.Budget`).
@@ -42,6 +43,15 @@ defmodule Apiary.Artifacts.Format do
   # SVG taken, at about half the budget's heap; an SVG whose parse passes the budget is
   # refused as `:format`.
   @svg_budget [reductions: 20_000_000, heap_words: 8_388_608, ms: 30_000]
+
+  # The most attributes an element of an SVG may have. xmerl's parse of one element takes
+  # time quadratic in its attributes: measured on OTP 29 with xmerl 2.2, one element of
+  # 10,922 attributes (109 KB) parses in 514 ms. An attribute's value has no `<` in a
+  # well-formed document, so the attributes of a start tag lie between its `<` and the
+  # next one, and each has a `=`; the count of `=` between two `<` bounds them before the
+  # parse. With 256, the worst SVG of 512 KiB parses in about 0.1 s
+  # (`Apiary.Artifacts.FormatTest`).
+  @svg_attributes 256
   @mp4_brands ~w(isom iso2 iso3 iso4 iso5 iso6 iso8 iso9 mp41 mp42 avc1 dash mmp4) ++
                 ["M4V ", "M4VP"]
 
@@ -152,6 +162,7 @@ defmodule Apiary.Artifacts.Format do
          {:ok, bytes} <- read(path),
          true <- String.valid?(bytes),
          false <- declares_type?(bytes),
+         true <- attributes_within?(bytes),
          {:ok, :svg} <- Budget.run(fn -> svg_root(:binary.copy(bytes)) end, @svg_budget) do
       {:ok, "image/svg+xml"}
     else
@@ -166,6 +177,15 @@ defmodule Apiary.Artifacts.Format do
     lower = String.downcase(bytes)
     String.contains?(lower, "<!doctype") or String.contains?(lower, "<!entity")
   end
+
+  # Whether no stretch of `bytes` between two `<` has more than `@svg_attributes` `=`.
+  defp attributes_within?(bytes), do: attributes_within?(bytes, 0)
+
+  defp attributes_within?(_bytes, count) when count > @svg_attributes, do: false
+  defp attributes_within?(<<"<", rest::binary>>, _count), do: attributes_within?(rest, 0)
+  defp attributes_within?(<<"=", rest::binary>>, count), do: attributes_within?(rest, count + 1)
+  defp attributes_within?(<<_byte, rest::binary>>, count), do: attributes_within?(rest, count)
+  defp attributes_within?(<<>>, _count), do: true
 
   # The root element's namespace and name, read by the SAX parser, which reads the whole
   # document: `:svg` for an SVG root in a well-formed document, anything else otherwise.
