@@ -4603,8 +4603,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   defmodule Worded do
     # An edition whose line on who acts on a pool that is not ready differs from the core's.
-    def machines_who_may(_scope, _workspace, :instance), do: "Harbour Ops checks the pool."
-    def machines_who_may(_scope, _workspace, :workspace), do: "Harbour Ops enrols the pool."
+    def machines_who_may(_scope, _workspace), do: "Harbour Ops enrols the pool."
   end
 
   setup %{conn: conn} do
@@ -4667,6 +4666,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     pool
   end
 
+  # The step as an instance admin reads it, on the workspace of the instance's organisation.
+  defp open_admin(ctx) do
+    %{user: user, organisation: organisation, workspace: workspace} = ctx.admin
+
+    ctx.conn
+    |> log_in_user(user)
+    |> live(~p"/#{organisation}/#{workspace}/set-up/machines")
+    |> elem(1)
+  end
+
   # Nothing on the step writes: no form, no button, no event.
   defp read_only?(lv) do
     html = lv |> element("#set-up-pools") |> render()
@@ -4704,6 +4713,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "About this step shows what a pool does, which pool takes which runs, and when it is ready",
        ctx do
+    _instance_pool = ready_instance!()
     lv = open(ctx)
     workspace = ctx.scope.workspace.name
 
@@ -4714,18 +4724,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
            |> LazyHTML.from_fragment()
            |> LazyHTML.query("#set-up-context p")
            |> LazyHTML.attribute("id") ==
-             ["set-up-what", "set-up-machines-pools", "set-up-machines-why"]
+             ["set-up-what", "set-up-machines-pools", "set-up-machines-join", "set-up-machines-why"]
 
     assert words(lv, "#set-up-context #set-up-what") ==
              "A pool takes the waiting runs of #{workspace} and starts each run on a machine " <>
                "that joined the pool."
 
     assert words(lv, "#set-up-context #set-up-machines-pools") ==
-             "The Qory Pool is the instance's pool, where the instance has one. It takes " <>
-               "the runs of every workspace that has no pool. A pool for #{workspace} takes " <>
-               "the runs of #{workspace} alone: once you add it, the Qory Pool stops taking " <>
-               "them. To join a machine to the pool, get the command and run it on that machine. " <>
-               "Every run gets an isolated environment."
+             "The Qory Pool: machines Qory Apiary provides for the runs of every workspace " <>
+               "that has no pool."
+
+    assert words(lv, "#set-up-context #set-up-machines-join") ==
+             "A pool for #{workspace} takes the runs of #{workspace} alone. To join a machine " <>
+               "to the pool, get the command and run it on that machine. Every run gets an " <>
+               "isolated environment."
 
     assert words(lv, "#set-up-context #set-up-machines-why") ==
              "A pool is ready when a machine has joined it and its runs go through a gateway " <>
@@ -4733,41 +4745,118 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
                "Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
   end
 
-  test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
+  test "the instance's pool not ready, for an instance admin: no pool, no active key, no gateway, no gateway key, then ready",
        ctx do
-    line = "Only an instance admin checks the Qory Pool and the Qory Gateway."
+    check = "Check the Qory Pool and Qory Gateway"
 
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
-    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert words(lv, "#set-up-pool-instance-check") == check
     assert words(lv, "#set-up-skip") == "Skip"
-    assert href(lv, "#set-up-skip") == ctx.test_path
     refute has_element?(lv, "#set-up-continue")
 
     pool = instance_pool_fixture()
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no active key"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert words(lv, "#set-up-pool-instance-check") == check
 
     _pool_key = installed_key_fixture(pool)
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no gateway"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert words(lv, "#set-up-pool-instance-check") == check
     assert has_element?(lv, "#set-up-skip")
 
     gateway = instance_gateway_fixture(name: "instance gateway")
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: the gateway has no active key"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert words(lv, "#set-up-pool-instance-check") == check
+
+    _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
+    lv = open_admin(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
+    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "an owner sees no Qory Pool until it is ready, and only the pool for the workspace", ctx do
+    workspace = ctx.scope.workspace
+
+    no_qory_pool = fn lv ->
+      refute has_element?(lv, "#set-up-pool-instance")
+      refute has_element?(lv, "#set-up-machines-pools")
+      refute render(lv) =~ "Qory Pool"
+      refute render(lv) =~ "instance"
+      assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+      assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
+      assert words(lv, "#set-up-pool-workspace-line") ==
+               "Runs in #{workspace.name} then wait for this pool."
+
+      assert words(lv, "#set-up-pool-add-button") == "Add pool"
+      assert words(lv, "#set-up-skip") == "Skip"
+    end
+
+    no_qory_pool.(open(ctx))
+
+    pool = instance_pool_fixture()
+    no_qory_pool.(open(ctx))
+
+    _pool_key = installed_key_fixture(pool)
+    no_qory_pool.(open(ctx))
+
+    gateway = instance_gateway_fixture(name: "instance gateway")
+    no_qory_pool.(open(ctx))
 
     _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
     lv = open(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
-    refute has_element?(lv, "#set-up-pool-instance-who-may")
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert has_element?(lv, "#set-up-machines-pools")
     assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "an owner who sends the choice of a hidden Qory Pool keeps the pool for the workspace",
+       ctx do
+    lv = open(ctx)
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert has_element?(lv, "#set-up-pool-add-button")
+
+    render_click(lv, "add_pool", %{})
+    assert [%{name: name}] = workspace_pools(ctx.scope.workspace)
+    assert name == WorkspaceSetup.pool_name(ctx.scope.workspace)
+  end
+
+  test "a member sees no Qory Pool until it is ready, and reads who adds a pool", ctx do
+    member = member(ctx.organisation)
+    lv = open(ctx, member)
+
+    refute has_element?(lv, "#set-up-pool-instance")
+    refute has_element?(lv, "#set-up-pools")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    refute render(lv) =~ "Qory Pool"
+
+    assert words(lv, "#set-up-pool-who-may") ==
+             "Only owners and admins add a pool and join a machine to it."
+
+    assert has_element?(lv, "#set-up-skip")
+
+    _instance_pool = ready_instance!()
+    lv = open(ctx, member)
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
+    refute has_element?(lv, "#set-up-pool-who-may")
+    assert read_only?(lv)
+  end
+
+  test "About this step explains the Qory Pool only while it is ready, for an instance admin too",
+       ctx do
+    lv = open_admin(ctx)
+    refute has_element?(lv, "#set-up-machines-pools")
+    assert has_element?(lv, "#set-up-machines-join")
+
+    _instance_pool = ready_instance!()
+    assert has_element?(open_admin(ctx), "#set-up-machines-pools")
   end
 
   test "the instance's pool not ready for its gateway choice: Direct, or a gateway its runs may not go through",
@@ -4777,10 +4866,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     pool = instance_pool_fixture(gateway_choice: :direct)
     _pool_key = installed_key_fixture(pool)
-    lv = open(ctx)
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-state") ==
              "Not ready: the pool is set to Direct, and runs need a gateway"
+    refute has_element?(open(ctx), "#set-up-pool-instance")
 
     # The instance's pool names a gateway of the workspace: its runs go through the
     # instance's gateway alone.
@@ -4788,35 +4878,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     |> Ecto.Changeset.change(gateway_choice: :named, gateway_id: gateway.id)
     |> Repo.update!()
 
-    lv = open(ctx)
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-state") ==
              "Not ready: the pool's runs may not go through the chosen gateway"
 
     assert has_element?(lv, "#set-up-skip")
+    refute has_element?(open(ctx), "#set-up-pool-instance")
   end
 
-  test "an instance admin sees Check the nodes; a member reads who acts", ctx do
-    admin = ctx.admin
-
-    {:ok, lv, _html} =
-      ctx.conn
-      |> log_in_user(admin.user)
-      |> live(~p"/#{admin.organisation}/#{admin.workspace}/set-up/machines")
+  test "an instance admin sees Check the Qory Pool and Qory Gateway", ctx do
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
     assert words(lv, "#set-up-pool-instance-check") == "Check the Qory Pool and Qory Gateway"
     assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/qory-pool-and-gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
-
-    lv = open(ctx, member(ctx.organisation))
-    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
-
-    assert words(lv, "#set-up-pool-instance-who-may") ==
-             "Only an instance admin checks the Qory Pool and the Qory Gateway."
-
-    refute has_element?(lv, "#set-up-pool-instance-check")
-    assert has_element?(lv, "#set-up-skip")
   end
 
   test "a pool of the workspace: not enrolled, an owner gets its page, a member who acts",
@@ -5206,6 +5283,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "a member sends the step's events: nothing is made", ctx do
+    _instance_pool = ready_instance!()
     member = member(ctx.organisation)
     lv = open(ctx, member)
     render_click(lv, "choose_pool", %{"pool" => %{"choice" => "workspace"}})
@@ -5275,7 +5353,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     member = member(ctx.organisation)
 
     lv = open(ctx, member)
-    assert words(lv, "#set-up-pool-instance-who-may") == "Harbour Ops checks the pool."
+    assert words(lv, "#set-up-pool-who-may") == "Harbour Ops enrols the pool."
 
     pool = pool_fixture(ctx.scope)
     lv = open(ctx, member)
@@ -5439,10 +5517,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-pool-#{second.public_id}")
   end
 
-  test "with no pool of the instance, Shared shows not ready for no pool, and no removal is offered",
-       ctx do
+  test "with no pool of the instance, an owner's pool shows alone, with no removal", ctx do
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
+
+    refute has_element?(lv, "#set-up-pool-instance")
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert has_element?(lv, "#set-up-pool-#{pool.public_id}-radio[checked][disabled]")
+
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    render_click(lv, "remove_pool", %{})
+    refute deleted?(pool)
+  end
+
+  test "with no pool of the instance, Shared shows not ready for no pool, for an instance admin, and no removal is offered",
+       ctx do
+    pool = pool_fixture(ctx.admin)
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
