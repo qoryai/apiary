@@ -152,6 +152,10 @@ defmodule Apiary.AccessRows do
       # Asked of the workspace, as a page asks whether to show the button at all: the role
       # alone answers. A comment's author is asked of the comment (`test/apiary/access_test.exs`).
       {:"work_item.comment_delete", yes: @owners ++ [:admin]},
+      {:"process.edit", yes: @owners ++ [:admin]},
+      {:"gate.approve", yes: @owners ++ [:member, :admin]},
+      {:"artifact.write", yes: @owners ++ [:member, :admin]},
+      {:"artifact_type.edit", yes: @owners ++ [:admin]},
       {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_set", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_seal", yes: [:adapter_key, :hidden], on: :adapter},
