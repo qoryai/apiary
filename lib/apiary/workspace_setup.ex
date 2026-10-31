@@ -248,17 +248,22 @@ defmodule Apiary.WorkspaceSetup do
 
   @doc false
   # source_names/2 is the names of the adapters whose collections `sources?/2` counts for
-  # `workspace` of the type `domain`: on the work-source list, assigned to `workspace`, with
-  # their Backlog on. Each name once, in alphabetical order.
-  @spec source_names(Workspace.t(), module) :: [String.t()]
-  def source_names(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
-    organisation_id
-    |> list_query(domain, :sources)
-    |> where([c], c.workspace_id == ^workspace_id and c.backlog)
-    |> select([_c, _k, n], n.name)
-    |> distinct(true)
-    |> order_by([_c, _k, n], asc: n.name)
-    |> Repo.all()
+  # the scope's workspace of the type `domain`: on the work-source list, assigned to the
+  # workspace, with their Backlog on. Each name once, in alphabetical order. `[]` to a
+  # person whom the tick list shows no row (`collections/3`: `adapter.read`).
+  @spec source_names(Scope.t(), module) :: [String.t()]
+  def source_names(%Scope{workspace: %Workspace{id: workspace_id}} = scope, domain) do
+    if Access.can?(scope, :"adapter.read", scope.organisation) do
+      scope.organisation.id
+      |> list_query(domain, :sources)
+      |> where([c], c.workspace_id == ^workspace_id and c.backlog)
+      |> select([_c, _k, n], n.name)
+      |> distinct(true)
+      |> order_by([_c, _k, n], asc: n.name)
+      |> Repo.all()
+    else
+      []
+    end
   end
 
   @doc false
@@ -271,6 +276,29 @@ defmodule Apiary.WorkspaceSetup do
     |> list_query(domain, :destinations)
     |> where([c], c.workspace_id == ^workspace_id)
     |> Repo.exists?()
+  end
+
+  @doc false
+  # destination_names/2 is the titles of the collections `destinations?/2` counts for the
+  # scope's workspace of the type `domain`, in the order of the destination tick list
+  # (`collections/3`). `[]` to a person whom the tick list shows no row (`adapter.read`).
+  @spec destination_names(Scope.t(), module) :: [String.t()]
+  def destination_names(%Scope{workspace: %Workspace{id: workspace_id}} = scope, domain) do
+    if Access.can?(scope, :"adapter.read", scope.organisation) do
+      scope.organisation.id
+      |> list_query(domain, :destinations)
+      |> where([c], c.workspace_id == ^workspace_id)
+      |> order_by([c, _k, n],
+        asc: fragment("lower(?)", n.name),
+        asc: n.id,
+        asc: fragment("lower(?)", c.title),
+        asc: c.id
+      )
+      |> select([c], c.title)
+      |> Repo.all()
+    else
+      []
+    end
   end
 
   @doc false
@@ -733,6 +761,45 @@ defmodule Apiary.WorkspaceSetup do
         Repo.exists?(workspace_choice(chain, owner_id, workspace))
     end
   end
+
+  @doc false
+  # model_name/1 is the model of the choice `model_key?/1` counts for the scope's
+  # workspace, as the Model step shows it chosen (`Apiary.ModelChoices.shown_model/2`), for
+  # a person who may read the choices of that chain as the step reads them
+  # (`Apiary.ModelChoices.list_choices/2`: the features, `connection.read`, and for the
+  # operator's chain `c:Apiary.Edition.operator_chain_writer?/1`); else nil, as without a
+  # choice.
+  @spec model_name(Scope.t()) :: String.t() | nil
+  def model_name(
+        %Scope{workspace: %Workspace{organisation_id: organisation_id} = workspace} = scope
+      ) do
+    query =
+      case ModelChoices.chain_owner(organisation_id) do
+        {_chain, nil} ->
+          nil
+
+        {chain, owner_id} ->
+          if readable_chain?(scope, chain), do: chain_choice(chain, owner_id, workspace)
+      end
+
+    with %Ecto.Query{} <- query,
+         {%ModelChoice{model_id: model_id}, %ModelProvider{} = provider} <-
+           query
+           |> join(:inner, [m], p in ModelProvider, on: p.id == m.connection_id)
+           |> select([m, ..., p], {m, p})
+           |> limit(1)
+           |> Repo.one() do
+      ModelChoices.shown_model(provider, model_id)
+    else
+      _none -> nil
+    end
+  end
+
+  defp readable_chain?(scope, chain),
+    do: match?({:ok, _choices}, ModelChoices.list_choices(scope, chain))
+
+  defp chain_choice("operator", owner_id, _workspace), do: operator_default(owner_id)
+  defp chain_choice(chain, owner_id, workspace), do: workspace_choice(chain, owner_id, workspace)
 
   # The model providers of `chain` of the organisation `owner_id` that have a key.
   defp provider_with_key(chain, owner_id) do

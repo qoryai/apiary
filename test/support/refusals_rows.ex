@@ -532,7 +532,11 @@ defmodule ApiaryWeb.RefusalsRows do
         :"work_item.confirm",
         :"work_item.explore_again",
         :"work_item.comment",
-        :"work_item.comment_delete"
+        :"work_item.comment_delete",
+        :"process.edit",
+        :"gate.approve",
+        :"artifact.write",
+        :"artifact_type.edit"
       ]
     }
   end
