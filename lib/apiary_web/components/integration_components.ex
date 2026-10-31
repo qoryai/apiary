@@ -505,6 +505,31 @@ defmodule ApiaryWeb.IntegrationComponents do
   end
 
   @doc false
+  # who_connects/2 is the line of who may connect the adapters of Work sources or
+  # Destinations (`adapter.connect`), in the edition's words where it has some, as the
+  # set-up's step and Workspace settings say it.
+  @spec who_connects(Scope.t(), :sources | :destinations) :: String.t()
+  def who_connects(scope, :sources),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"adapter.connect",
+        gettext("Only owners and admins of %{organisation} connect work sources.",
+          organisation: scope.organisation.name
+        )
+      )
+
+  def who_connects(scope, :destinations),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"adapter.connect",
+        gettext("Only owners and admins of %{organisation} connect destinations.",
+          organisation: scope.organisation.name
+        )
+      )
+
+  @doc false
   # who_assigns/2 is the line of who may assign the collections of `adapters` to
   # workspaces (`collection.assign`), in the edition's words where it has some, as the
   # tick lists say it (`ApiaryWeb.TickListComponents.load/4`).

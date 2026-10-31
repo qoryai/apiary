@@ -75,8 +75,8 @@ defmodule ApiaryWeb.NodesPartTest do
   describe "hidden from a person" do
     test "every page of the nodes answers not found", %{conn: conn} = ctx do
       routes = node_routes()
-      assert {:get, "/:org/:workspace/nodes"} in routes
-      assert {:get, "/:org/:workspace/nodes/:node_id/access-key"} in routes
+      assert {:get, "/:org/:workspace/machines"} in routes
+      assert {:get, "/:org/:workspace/machines/:node_id/access-key"} in routes
       assert {:get, "/:org/gateways"} in routes
       assert {:get, "/:org/gateways/:node_id"} in routes
 
@@ -91,9 +91,9 @@ defmodule ApiaryWeb.NodesPartTest do
     test "an open Nodes page, node page, Access key tab or Gateways page leaves, and says so",
          %{conn: conn, scope: scope, node: node, gateway: gateway} do
       for path <- [
-            workspace_path(scope, "/nodes"),
-            workspace_path(scope, "/nodes/#{node.public_id}"),
-            workspace_path(scope, "/nodes/#{node.public_id}/access-key"),
+            workspace_path(scope, "/machines"),
+            workspace_path(scope, "/machines/#{node.public_id}"),
+            workspace_path(scope, "/machines/#{node.public_id}/access-key"),
             ~p"/#{scope.organisation}/gateways",
             ~p"/#{scope.organisation}/gateways/#{gateway.public_id}"
           ] do
@@ -116,7 +116,7 @@ defmodule ApiaryWeb.NodesPartTest do
 
     test "an act on an open page, the nodes hidden before it heard so, leaves and says so",
          %{conn: conn, scope: scope} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes/new"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/machines/new"))
       hide([:nodes])
 
       view |> form("#new-node-form", node: %{name: "build-02"}) |> render_submit()
@@ -129,7 +129,9 @@ defmodule ApiaryWeb.NodesPartTest do
 
     test "a node's settings saved, or a key revoked, after the nodes were hidden leaves and says so",
          %{conn: conn, scope: scope, node: node, key: key} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes/#{node.public_id}/settings"))
+      {:ok, view, _html} =
+        live(conn, workspace_path(scope, "/machines/#{node.public_id}/settings"))
+
       hide([:nodes])
       view |> form("#node-form", node: %{name: "build-02"}) |> render_submit()
 
@@ -141,7 +143,7 @@ defmodule ApiaryWeb.NodesPartTest do
       hide([])
 
       path =
-        workspace_path(scope, "/nodes/#{node.public_id}/access-key/keys/#{key.key_id}/revoke")
+        workspace_path(scope, "/machines/#{node.public_id}/access-key/keys/#{key.key_id}/revoke")
 
       {:ok, view, _html} = live(conn, path)
       hide([:nodes])
@@ -156,7 +158,7 @@ defmodule ApiaryWeb.NodesPartTest do
     test "every act asked after the nodes were hidden changes nothing, and the page leaves",
          %{conn: conn, scope: scope, node: node, key: key, code: code, gateway: gateway} do
       instance = instance_fixture(node, instance_id: "i_1")
-      node_page = &workspace_path(scope, "/nodes/#{node.public_id}" <> &1)
+      node_page = &workspace_path(scope, "/machines/#{node.public_id}" <> &1)
       gateway_page = ~p"/#{scope.organisation}/gateways/#{gateway.public_id}"
       tab = node_page.("/access-key")
 
@@ -169,7 +171,7 @@ defmodule ApiaryWeb.NodesPartTest do
         {tab <> "/keys/#{key.key_id}/revoke", :click, "revoke", %{}},
         {tab <> "/codes/#{code.id}/revoke", :click, "revoke_code", %{}},
         {tab <> "/generate", :click, "generate_key", %{}},
-        {workspace_path(scope, "/nodes/new-pool"), :submit, "create",
+        {workspace_path(scope, "/machines/new-pool"), :submit, "create",
          %{"node" => %{"name" => "spot-runners", "kind" => "pool"}}},
         {~p"/#{scope.organisation}/gateways/new", :submit, "create",
          %{"node" => %{"name" => "edge-2"}}}
@@ -205,17 +207,19 @@ defmodule ApiaryWeb.NodesPartTest do
 
     test "a node deleted, or its settings saved, while shown still says the node is gone",
          %{conn: conn, scope: scope, node: node} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes/#{node.public_id}/settings"))
+      {:ok, view, _html} =
+        live(conn, workspace_path(scope, "/machines/#{node.public_id}/settings"))
+
       {:ok, _} = Apiary.Nodes.delete_node(scope, node)
       view |> form("#node-form", node: %{name: "build-02"}) |> render_submit()
 
       {to, flash} = assert_redirect(view)
-      assert to == workspace_path(scope, "/nodes")
-      assert flash["error"] == "This node is gone: it was deleted."
+      assert to == workspace_path(scope, "/machines")
+      assert flash["error"] == "This machine is gone: it was deleted."
     end
 
     test "an open page whose nodes are still shown stays", %{conn: conn, scope: scope} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/machines"))
       hide([:"observability.terminal"])
       send(view.pid, {:membership_changed, :hidden})
 
@@ -234,7 +238,7 @@ defmodule ApiaryWeb.NodesPartTest do
       refute has_element?(view, "#nav-nodes")
       refute has_element?(view, "#new-menu-node")
       refute has_element?(view, "#new-menu-node_pool")
-      refute render(view) =~ workspace_path(scope, "/nodes")
+      refute render(view) =~ workspace_path(scope, "/machines")
 
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}")
       refute has_element?(view, "#nav-gateways")
@@ -242,10 +246,10 @@ defmodule ApiaryWeb.NodesPartTest do
       refute render(view) =~ ~p"/#{scope.organisation}/gateways"
 
       answer = jump(conn, scope)
-      refute "New node" in labels(answer, "Actions")
-      refute "New node pool" in labels(answer, "Actions")
+      refute "New machine" in labels(answer, "Actions")
+      refute "New pool" in labels(answer, "Actions")
       assert "Invite people" in labels(answer, "Actions")
-      refute "Nodes" in labels(answer, "Go to")
+      refute "Machines" in labels(answer, "Go to")
       refute "Gateways" in labels(answer, "Go to")
       assert "Runs" in labels(answer, "Go to")
     end
@@ -257,10 +261,10 @@ defmodule ApiaryWeb.NodesPartTest do
 
       assert render(view) =~ "No runs yet"
 
-      refute render(view) =~ "A machine posts once it is connected to a node."
+      refute render(view) =~ "A machine posts once it is connected."
       refute has_element?(view, "#runs-go-to-nodes")
       refute has_element?(view, "#runs-new-node")
-      refute render(view) =~ workspace_path(scope, "/nodes")
+      refute render(view) =~ workspace_path(scope, "/machines")
     end
 
     test "the Runs list's empty state is the same whether the workspace has a node or none",
@@ -281,11 +285,11 @@ defmodule ApiaryWeb.NodesPartTest do
 
       assert with_node == without
       assert without =~ "No machine has posted a run to this workspace yet."
-      refute without =~ "A machine posts once it is connected to a node."
-      refute without =~ "An owner or admin adds nodes."
+      refute without =~ "A machine posts once it is connected."
+      refute without =~ "An owner or admin adds machines."
       refute without =~ "runs-go-to-nodes"
       refute without =~ "runs-new-node"
-      refute without =~ workspace_path(scope, "/nodes")
+      refute without =~ workspace_path(scope, "/machines")
     end
 
     test "the Runs list's empty state of a workspace with no node hints at no node",
@@ -302,18 +306,18 @@ defmodule ApiaryWeb.NodesPartTest do
       end
 
       # Shown: the owner is told to add a node, a member that an owner or admin adds them.
-      assert empty.(conn) =~ "Add a node, connect a machine to it, and start a run."
-      refute empty.(conn) =~ "An owner or admin adds nodes."
-      assert empty.(member) =~ "Add a node, connect a machine to it, and start a run."
-      assert empty.(member) =~ "An owner or admin adds nodes."
+      assert empty.(conn) =~ "Add a machine, connect it, and start a run."
+      refute empty.(conn) =~ "An owner or admin adds machines."
+      assert empty.(member) =~ "Add a machine, connect it, and start a run."
+      assert empty.(member) =~ "An owner or admin adds machines."
 
       hide([:nodes])
 
       for reader <- [conn, member] do
         page = empty.(reader)
         assert page =~ "No runs yet"
-        refute page =~ "Add a node"
-        refute page =~ "An owner or admin adds nodes."
+        refute page =~ "Add a machine"
+        refute page =~ "An owner or admin adds machines."
       end
     end
   end
@@ -335,7 +339,7 @@ defmodule ApiaryWeb.NodesPartTest do
 
       for reader <- [conn, member] do
         assert empty.(reader) =~
-                 "No runs yet No machine has posted a run to this workspace yet. A machine posts once it is connected to a node."
+                 "No runs yet No machine has posted a run to this workspace yet. A machine posts once it is connected."
       end
 
       hide([:nodes])
@@ -346,7 +350,7 @@ defmodule ApiaryWeb.NodesPartTest do
         assert page =~
                  "No runs yet No machine has posted a run to this workspace yet. Listening for the first run."
 
-        refute page =~ "A machine posts once it is connected to a node."
+        refute page =~ "A machine posts once it is connected."
       end
     end
   end
@@ -355,9 +359,9 @@ defmodule ApiaryWeb.NodesPartTest do
     test "every page opens, and the navigation, New and the palette have them",
          %{conn: conn, scope: scope, node: node, gateway: gateway} do
       for path <- [
-            workspace_path(scope, "/nodes"),
-            workspace_path(scope, "/nodes/#{node.public_id}"),
-            workspace_path(scope, "/nodes/#{node.public_id}/access-key"),
+            workspace_path(scope, "/machines"),
+            workspace_path(scope, "/machines/#{node.public_id}"),
+            workspace_path(scope, "/machines/#{node.public_id}/access-key"),
             ~p"/#{scope.organisation}/gateways",
             ~p"/#{scope.organisation}/gateways/#{gateway.public_id}"
           ] do
@@ -377,8 +381,8 @@ defmodule ApiaryWeb.NodesPartTest do
       assert has_element?(view, "#new-menu-gateway")
 
       answer = jump(conn, scope)
-      assert "New node" in labels(answer, "Actions")
-      assert "Nodes" in labels(answer, "Go to")
+      assert "New machine" in labels(answer, "Actions")
+      assert "Machines" in labels(answer, "Go to")
     end
   end
 end

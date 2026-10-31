@@ -2021,7 +2021,7 @@ defmodule ApiaryWeb.RunComponents do
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Runtime")}</th>
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Host")}</th>
             <th :if={@nodes} scope="col" role="columnheader" class="q-rl-c5">
-              {gettext("Node")}
+              {gettext("Machine or pool")}
             </th>
             <th scope="col" role="columnheader">{gettext("Started")}</th>
             <th scope="col" role="columnheader" class="q-rl-c2 q-num">{gettext("Duration")}</th>
@@ -2314,14 +2314,14 @@ defmodule ApiaryWeb.RunComponents do
           <dd :if={key_label(@scope, @preview.run)} class="font-mono text-[12px]">
             {key_label(@scope, @preview.run)}
           </dd>
-          <dt :if={@preview.run.node_id}>{gettext("Node")}</dt>
+          <dt :if={@preview.run.node_id}>{gettext("Machine or pool")}</dt>
           <dd :if={@preview.run.node_id} id={"#{@id}-node"}>
             <.node_name
               scope={@scope}
               node={Ecto.assoc_loaded?(@preview.run.node) && @preview.run.node}
             />
           </dd>
-          <dt :if={@preview.run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dt :if={@preview.run.node_instance_id}>{gettext("Machine id")}</dt>
           <dd :if={@preview.run.node_instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
             <.external_text text={@preview.run.node_instance_id} />
           </dd>
@@ -2425,7 +2425,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <%= cond do %>
       <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
-        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
+        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/#{@node}"}>
           {ApiaryWeb.NodeComponents.shown_name(@node)}
         </.link>
       <% @node && is_nil(@node.deleted_at) -> %>

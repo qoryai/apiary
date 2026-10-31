@@ -153,7 +153,7 @@ defmodule ApiaryWeb.ChoiceTest do
                %{value: "harness", title: "example-org/harness", mono: :title},
                %{value: "ops", title: "example-org/harness-ops", mono: :title}
              ]},
-            {"Assigned by an instance admin", []},
+            {"Assigned to this organisation", []},
             {"Public address",
              [%{value: "address", title: "Enter an address", subtitle: "Any https address."}]}
           ]
@@ -162,7 +162,7 @@ defmodule ApiaryWeb.ChoiceTest do
       assert LazyHTML.query(doc, "[role=radiogroup]") |> Enum.count() == 1
 
       assert text(doc, "[role=radiogroup] > .q-pick-grp > p.q-pick-group") ==
-               ["Linked repositories", "Assigned by an instance admin", "Public address"]
+               ["Linked repositories", "Assigned to this organisation", "Public address"]
 
       assert LazyHTML.attribute(LazyHTML.query(doc, "p.q-pick-group"), "id") ==
                ["workspace_domain-g0", "workspace_domain-g1", "workspace_domain-g2"]

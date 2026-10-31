@@ -120,7 +120,7 @@ defmodule ApiaryWeb.UserAuthTest do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
 
       conn = UserAuth.log_in_user(conn, user)
-      assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}/nodes"
+      assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}/machines"
     end
 
     test "redirects to the configured path", %{conn: conn, user: user} do
@@ -581,7 +581,7 @@ defmodule ApiaryWeb.UserAuthTest do
       assert last_used(user) == [{organisation.id, ctx.main.id}]
 
       # A live navigation to another workspace's page, with no request of its own.
-      {:ok, _view, _html} = live_redirect(view, to: ~p"/#{organisation}/#{ctx.staging}/nodes")
+      {:ok, _view, _html} = live_redirect(view, to: ~p"/#{organisation}/#{ctx.staging}/machines")
       assert last_used(user) == [{organisation.id, ctx.staging.id}]
 
       # Its organisation's own page opens it, and records nothing.

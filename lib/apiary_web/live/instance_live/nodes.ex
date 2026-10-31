@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.InstanceLive.Nodes do
-  # Instance settings › Nodes, for the instance's admins: the instance's node pool and
-  # gateway (`Apiary.Nodes.Installed`), which run with the instance (`:index`). A page of
+  # Instance settings › Qory Pool and Qory Gateway, for the instance's admins: the
+  # instance's pool and gateway (`Apiary.Nodes.Installed`), which run with the instance (`:index`). A page of
   # the Instance level, with no organisation: its gate asks the instance whether the
   # feature is on (`use ApiaryWeb.Features, instance: :factory`), and anyone but an
   # instance admin is answered as a path that does not exist, as on the Instance's other
@@ -30,7 +30,10 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
 
     {:ok,
      socket
-     |> assign(page_title: SettingsComponents.page_title(scope, :instance, [gettext("Nodes")]))
+     |> assign(
+       page_title:
+         SettingsComponents.page_title(scope, :instance, [gettext("Qory Pool and Qory Gateway")])
+     )
      |> load()}
   end
 
@@ -54,7 +57,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
       place={:instance}
       section={:nodes}
     >
-      <.settings_page section={:nodes} title={gettext("Nodes")} measure="list">
+      <.settings_page section={:nodes} title={gettext("Qory Pool and Qory Gateway")} measure="list">
         <:subtitle>
           {gettext(
             "The Qory Pool and the Qory Gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The Qory Pool takes the runs of every workspace that has no pool. The Qory Gateway serves every organisation."
@@ -64,7 +67,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
         <.table
           :if={@nodes != []}
           id="instance-nodes"
-          label={gettext("Nodes")}
+          label={gettext("Qory Pool and Qory Gateway")}
           rows={@nodes}
           row_id={&"instance-node-#{&1.public_id}"}
         >
@@ -72,7 +75,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
             <span class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <.link
                 id={"instance-node-#{node.public_id}-name"}
-                navigate={~p"/instance/nodes/#{node.public_id}"}
+                navigate={~p"/instance/qory-pool-and-gateway/#{node.public_id}"}
                 class="font-medium hover:underline"
               >
                 {NodeComponents.shown_name(node)}

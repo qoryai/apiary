@@ -1,13 +1,13 @@
 defmodule ApiaryWeb.NodeLive.Show do
   @moduledoc """
-  A node's or a node pool's page, `/:org/:workspace/nodes/:node_id`, where `:node_id` is
+  A node's or a node pool's page, `/:org/:workspace/machines/:node_id`, where `:node_id` is
   the node's public id. A node the workspace does not have, or one that is deleted, is
   not found. Its tabs are Overview, Access key and Settings, the operational side first
   and Settings last, set apart (`docs/ui.md`, Nodes; `ApiaryWeb.NodeComponents.node_tabs/1`).
   Overview and Settings are patches of this LiveView; Access key is
   `ApiaryWeb.NodeLive.AccessKey`'s, a navigation:
 
-  - **Overview** (`/nodes/:node_id`): what the node is doing (`Apiary.Nodes.activity/3`).
+  - **Overview** (`/machines/:node_id`): what the node is doing (`Apiary.Nodes.activity/3`).
     A Node's instance, running or when it was last seen; a pool's running instances,
     "3 of 10"; the starts refused at the instance limit; the sentence that says an
     instance is a claim; and its recent runs (`runs.node_id`, for a reader of the record,
@@ -16,15 +16,15 @@ defmodule ApiaryWeb.NodeLive.Show do
     it, with the way to its Settings. Owners and admins clear a running instance
     (`node.clear_instance`): a text action on a Node's, an item of each row's menu on a
     pool's, either turning that line or row into its confirmation in place, never a
-    dialog, at `/nodes/:node_id/instances/:instance/clear`, `:instance` the id of the
+    dialog, at `/machines/:node_id/instances/:instance/clear`, `:instance` the id of the
     instance's row in `node_instances`, or, for an instance with no row, at
-    `/nodes/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of an open
+    `/machines/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of an open
     run: the page links its newest open run, and the address accepts any open run of that
     instance. Neither address, nor any DOM id, carries the node's instance id.
-  - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
+  - **Settings** (`/machines/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
-    place, at `/nodes/:node_id/settings/delete`.
+    place, at `/machines/:node_id/settings/delete`.
 
   **A gateway's page** has the same tabs. Its Overview leads with the gateway: its URL,
   and whether it is the workspace's default gateway, with Make default for one that is
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           ApiaryWeb.Access.who_may(
             socket.assigns.current_scope,
             :"node.clear_instance",
-            gettext("Only owners and admins clear instances.")
+            gettext("Only owners and admins clear machines.")
           )
         )
         |> push_patch(to: node_path(socket, :overview))
@@ -205,7 +205,7 @@ defmodule ApiaryWeb.NodeLive.Show do
 
       true ->
         socket
-        |> put_flash(:error, gettext("This node has no such instance."))
+        |> put_flash(:error, gettext("That machine is not here."))
         |> push_patch(to: node_path(socket, :overview))
     end
   end
@@ -223,7 +223,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         ApiaryWeb.Access.who_may(
           socket.assigns.current_scope,
           :"node.delete",
-          gettext("Only owners and admins delete nodes.")
+          gettext("Only owners and admins delete machines.")
         )
       )
       |> push_patch(to: node_path(socket, :settings))
@@ -330,7 +330,7 @@ defmodule ApiaryWeb.NodeLive.Show do
          refused(
            socket,
            :"node.delete",
-           gettext("Only owners and admins delete nodes."),
+           gettext("Only owners and admins delete machines."),
            :settings
          )}
     end
@@ -346,7 +346,7 @@ defmodule ApiaryWeb.NodeLive.Show do
          refused(
            socket,
            :"node.delete",
-           gettext("Only owners and admins delete nodes."),
+           gettext("Only owners and admins delete machines."),
            :settings
          )}
   end
@@ -410,7 +410,7 @@ defmodule ApiaryWeb.NodeLive.Show do
            do:
              {:noreply,
               socket
-              |> put_flash(:error, gettext("This node has no such instance."))
+              |> put_flash(:error, gettext("That machine is not here."))
               |> push_patch(to: node_path(socket, :overview))},
            else: {:noreply, gone(socket)}
 
@@ -419,7 +419,7 @@ defmodule ApiaryWeb.NodeLive.Show do
          refused(
            socket,
            :"node.clear_instance",
-           gettext("Only owners and admins clear instances."),
+           gettext("Only owners and admins clear machines."),
            :overview
          )}
     end
@@ -435,7 +435,7 @@ defmodule ApiaryWeb.NodeLive.Show do
          refused(
            socket,
            :"node.clear_instance",
-           gettext("Only owners and admins clear instances."),
+           gettext("Only owners and admins clear machines."),
            :overview
          )}
   end
@@ -463,7 +463,8 @@ defmodule ApiaryWeb.NodeLive.Show do
     do: NodeComponents.in_use_words(socket.assigns.current_scope, blockers)
 
   defp refused_default(socket),
-    do: refused(socket, :"node.edit", gettext("Only owners and admins change nodes."), :overview)
+    do:
+      refused(socket, :"node.edit", gettext("Only owners and admins change machines."), :overview)
 
   # An instance in words: its name, else its id, a text Forager sent, shown as one where
   # it was sent (`shown_id/1`).
@@ -527,7 +528,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       UserAuth.reload_scope(socket)
     else
       socket
-      |> put_flash(:error, gettext("This node is gone: it was deleted."))
+      |> put_flash(:error, gettext("This machine is gone: it was deleted."))
       |> push_navigate(
         to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
       )
@@ -546,7 +547,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       |> put_flash(:error, NodeComponents.limit_refused(scope))
       |> push_patch(to: node_path(socket, :settings))
     else
-      refused(socket, :"node.edit", gettext("Only owners and admins change nodes."), :settings)
+      refused(socket, :"node.edit", gettext("Only owners and admins change machines."), :settings)
     end
   end
 
@@ -606,10 +607,11 @@ defmodule ApiaryWeb.NodeLive.Show do
   # The path where a running instance of the node is asked to be cleared: by the id of its
   # row, or, for one with no row, by its newest open run's public id.
   defp clear_path(scope, node, %{row_id: row_id}) when is_binary(row_id),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/instances/#{row_id}/clear"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/instances/#{row_id}/clear"
 
   defp clear_path(scope, node, %{run_public_id: run_id}),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/runs/#{run_id}/clear-instance"
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/runs/#{run_id}/clear-instance"
 
   ## Render
 
@@ -668,7 +670,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         <:subtitle>
           {if @node.kind == :gateway,
             do: gettext("The gateway's name, its kind and its URL."),
-            else: gettext("The node's name, its kind and how many instances may run at once.")}
+            else: gettext("Its name, its kind and how many machines may run at once.")}
         </:subtitle>
         <.general
           scope={@current_scope}
@@ -721,7 +723,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       <SettingsComponents.part
         :if={@node.kind != :gateway}
         id="node-instances"
-        title={if @node.kind == :pool, do: gettext("Running instances"), else: gettext("Instance")}
+        title={if @node.kind == :pool, do: gettext("Running machines"), else: gettext("Machine")}
         level={:h2}
       >
         <.clear_confirm :if={@clear_at == :part} clearing={@clearing} cancel={@paths.overview} />
@@ -748,12 +750,12 @@ defmodule ApiaryWeb.NodeLive.Show do
         <.table
           :if={@node.kind == :pool && @activity.running != []}
           id="node-running"
-          label={gettext("Running instances")}
+          label={gettext("Running machines")}
           rows={@activity.running}
           row_id={&instance_dom_id/1}
           confirming={@clear_at == :row && clearing_dom_id(@clearing, @activity.running)}
         >
-          <:col :let={instance} label={gettext("Instance")} kind="title">
+          <:col :let={instance} label={gettext("Machine")} kind="title">
             <span class="q-nm">
               <span class="q-cut" title={instance_label(instance)}>
                 <bdi>{instance_label(instance)}</bdi>
@@ -782,7 +784,7 @@ defmodule ApiaryWeb.NodeLive.Show do
                 id={"#{instance_dom_id(instance)}-clear"}
                 patch={clear_path(@scope, @node, instance)}
               >
-                {gettext("Clear instance…")}
+                {gettext("Clear machine…")}
               </.menu_item>
             </.row_menu>
           </:action>
@@ -798,16 +800,19 @@ defmodule ApiaryWeb.NodeLive.Show do
         >
           {cond do
             @node.kind == :pool and NodeComponents.seen_at(@activity) != nil ->
-              gettext("No instance of this pool is running. An instance shows here while it runs.")
+              gettext("No machine of this pool is running. A machine shows here while it runs.")
 
             @node.kind == :pool ->
+              gettext("No machine of this pool has reported yet. A machine shows here while it runs.")
+
+            @node.kind == :gateway ->
               gettext(
-                "No instance of this pool has reported yet. An instance shows here while it runs."
+                "No machine of this gateway has reported yet. It shows here once it runs, running or when it was last seen."
               )
 
             true ->
               gettext(
-                "No instance of this node has reported yet. It shows here once it runs, running or when it was last seen."
+                "This machine has not reported yet. It shows here once it runs, running or when it was last seen."
               )
           end}
         </p>
@@ -816,7 +821,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           id="node-instances-idle"
           class="text-[13px]/5 text-muted"
         >
-          {gettext("None is running. An instance shows here only while it runs; the last was seen")}
+          {gettext("None is running. A machine shows here only while it runs; the last was seen")}
           <.relative_time id="node-instances-idle-seen" at={@activity.last.last_seen_at} />.
         </p>
 
@@ -826,24 +831,19 @@ defmodule ApiaryWeb.NodeLive.Show do
           class="text-[13px]/5 text-muted"
         >
           {ngettext(
-            "%{number} start was refused at the instance limit; the last",
-            "%{number} starts were refused at the instance limit; the last",
+            "%{number} run did not start at the machine limit; the last",
+            "%{number} runs did not start at the machine limit; the last",
             @node.instance_limit_refused,
             number: Format.number(@node.instance_limit_refused)
           )}
           <.relative_time id="node-refused-at" at={@node.instance_limit_refused_at} />.
         </p>
         <p
-          :if={@node.instance_ids_over_bound > 0}
+          :if={@node.kind == :pool && @node.instance_ids_over_bound > 0}
           id="node-over-bound"
           class="text-[13px]/5 text-muted"
         >
-          {ngettext(
-            "%{number} new instance was not recorded: a node records at most 256 new instances a day.",
-            "%{number} new instances were not recorded: a node records at most 256 new instances a day.",
-            @node.instance_ids_over_bound,
-            number: Format.number(@node.instance_ids_over_bound)
-          )}
+          {gettext("Contact support: some machines of this pool were not recorded.")}
         </p>
 
         <p id="node-instance-claim" class="text-[13px]/5 text-faint">
@@ -858,7 +858,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         level={:h2}
       >
         <p :if={@recent && @recent.runs == []} id="node-runs-none" class="text-[13px]/5 text-muted">
-          {gettext("No run of this node is in the record yet.")}
+          {no_runs(@node.kind)}
         </p>
         <.runs_table
           :if={@recent == nil || @recent.runs != []}
@@ -891,7 +891,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           </dd>
           <dt class="text-faint">{gettext("Id")}</dt>
           <dd class="q-mono">{@node.public_id}</dd>
-          <dt :if={@node.kind != :gateway} class="text-faint">{gettext("Instance limit")}</dt>
+          <dt :if={@node.kind != :gateway} class="text-faint">{gettext("Machine limit")}</dt>
           <dd :if={@node.kind != :gateway} id="node-about-limit">{limit_words(@node)}</dd>
           <dt :if={@node.kind != :gateway} class="text-faint">{gettext("Gateway")}</dt>
           <dd :if={@node.kind != :gateway} id="node-about-gateway">
@@ -965,7 +965,7 @@ defmodule ApiaryWeb.NodeLive.Show do
                 gettext("This workspace's default gateway.")
             end}
             <span class="text-muted">
-              {gettext("Runs of nodes and node pools on Default gateway go through the default.")}
+              {gettext("Runs of machines and pools on Default gateway go through the default.")}
             </span>
           </span>
           <span :if={@may_edit and not @node.default_gateway}>
@@ -1077,15 +1077,13 @@ defmodule ApiaryWeb.NodeLive.Show do
         <% end %>
       </p>
       <.clear_confirm :if={@running && @clearing} clearing={@clearing} cancel={@cancel} />
-      <p :if={@running && !@clearing} class="flex flex-wrap items-center gap-3 text-muted">
-        {gettext("A node runs one instance at a time.")}
+      <p :if={@running && !@clearing && @may_clear} class="flex flex-wrap items-center gap-3">
         <.button
-          :if={@may_clear}
           id="node-instance-clear"
           variant="link"
           patch={clear_path(@scope, @node, @running)}
         >
-          {gettext("Clear instance…")}
+          {gettext("Clear machine…")}
         </.button>
       </p>
     </div>
@@ -1104,10 +1102,10 @@ defmodule ApiaryWeb.NodeLive.Show do
       cancel={@cancel}
     >
       {gettext(
-        "Clear this instance if it stopped without saying so. Another instance can then start at once."
+        "Clear this machine if it stopped without reporting that it stopped. Another machine can then start at once."
       )}
       {gettext(
-        "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
+        "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the machine limit again."
       )}
       <:action>
         <.button
@@ -1229,13 +1227,13 @@ defmodule ApiaryWeb.NodeLive.Show do
           field={@form[:instance_limit]}
           type="text"
           inputmode="numeric"
-          label={gettext("Instance limit")}
+          label={gettext("Machine limit")}
           hint={
             if @may_edit and !@may_set_limit,
               do: NodeComponents.limit_refused(@scope),
               else:
                 gettext(
-                  "Empty means no limit. Lowering it stops nothing running now; new instances wait until fewer run."
+                  "Empty means no limit. Lowering it stops nothing running now; new machines wait until fewer run."
                 )
           }
           autocomplete="off"
@@ -1243,8 +1241,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           optional
         />
         <div :if={@node.kind == :node} id="node-limit-field" class="grid gap-1 text-[13px]/5">
-          <span class="font-medium">{gettext("Instance limit")}</span>
-          <span>{gettext("1. A node runs one instance at a time.")}</span>
+          <span class="font-medium">{gettext("Machine limit")}</span>
+          <span>{gettext("1: one machine.")}</span>
         </div>
         <.input
           :if={@node.kind == :gateway}
@@ -1296,38 +1294,38 @@ defmodule ApiaryWeb.NodeLive.Show do
         {cond do
           @node.kind == :gateway and is_nil(@node.workspace_id) ->
             gettext(
-              "It leaves %{organisation}'s gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted.",
+              "It leaves %{organisation}'s gateways, its access keys are revoked and its name is free again. A gateway that machines or pools still point to, or that runs still go through, isn't deleted.",
               organisation: @scope.organisation.name
             )
 
           @node.kind == :gateway ->
             gettext(
-              "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted."
+              "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that machines or pools still point to, or that runs still go through, isn't deleted."
             )
 
           true ->
             gettext(
-              "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
+              "It leaves this workspace's machines, its access keys are revoked and its name is free again. Its runs stay in the record."
             )
         end}
         <:lost>
           {cond do
             @node.kind == :gateway and is_nil(@node.workspace_id) ->
               gettext(
-                "%{name} leaves %{organisation}'s gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone.",
+                "%{name} leaves %{organisation}'s gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While machines or pools point to it, or runs still go through it, it isn't deleted. This cannot be undone.",
                 name: @node.name,
                 organisation: @scope.organisation.name
               )
 
             @node.kind == :gateway ->
               gettext(
-                "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone.",
+                "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While machines or pools point to it, or runs still go through it, it isn't deleted. This cannot be undone.",
                 name: @node.name
               )
 
             true ->
               gettext(
-                "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
+                "%{name} leaves this workspace's machines at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
                 name: @node.name
               )
           end}
@@ -1349,21 +1347,26 @@ defmodule ApiaryWeb.NodeLive.Show do
     """
   end
 
-  defp delete_title(:node), do: gettext("Delete this node")
-  defp delete_title(:pool), do: gettext("Delete this node pool")
+  defp delete_title(:node), do: gettext("Delete this machine")
+  defp delete_title(:pool), do: gettext("Delete this pool")
   defp delete_title(:gateway), do: gettext("Delete this gateway")
 
-  defp delete_button(:node), do: gettext("Delete node…")
-  defp delete_button(:pool), do: gettext("Delete node pool…")
+  defp delete_button(:node), do: gettext("Delete machine…")
+  defp delete_button(:pool), do: gettext("Delete pool…")
   defp delete_button(:gateway), do: gettext("Delete gateway…")
 
-  defp kind_sentence(:node), do: gettext("Node: one permanent machine.")
+  defp no_runs(:node), do: gettext("No run of this machine is in the record yet.")
+  defp no_runs(:pool), do: gettext("No run of this pool is in the record yet.")
+  defp no_runs(:gateway), do: gettext("No run through this gateway is in the record yet.")
+
+  defp kind_sentence(:node),
+    do: gettext("Machine: one computer that stays registered, such as build-01.")
 
   defp kind_sentence(:gateway),
-    do: gettext("Gateway: the runs of nodes and node pools that choose it go through it.")
+    do: gettext("Gateway: the runs of machines and pools that choose it go through it.")
 
   defp kind_sentence(:pool),
-    do: gettext("Node pool: short-lived instances that share one access key.")
+    do: gettext("Pool: one or more machines that use the pool's access key.")
 
   # Who made the node, in a sentence: their first letter, with the address as its tooltip
   # (`ApiaryWeb.CoreComponents.avatar/1`).
@@ -1372,7 +1375,7 @@ defmodule ApiaryWeb.NodeLive.Show do
     ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
-  defp limit_words(%Node{kind: :node}), do: gettext("1, one instance at a time")
+  defp limit_words(%Node{kind: :node}), do: gettext("1: one machine")
   defp limit_words(%Node{instance_limit: nil}), do: gettext("No limit")
   defp limit_words(%Node{instance_limit: limit}), do: Format.number(limit)
 end

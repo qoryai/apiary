@@ -4,7 +4,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
-  import Apiary.NodesFixtures, only: [node_fixture: 1]
+  import Apiary.NodesFixtures, only: [node_fixture: 1, pool_fixture: 2, gateway_fixture: 2]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Audit, Organisations, Repo}
@@ -84,7 +84,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       assert row_ids(view) |> Enum.take(2) == ["entry-#{created.id}", "entry-#{renamed.id}"]
 
-      assert text(view, "#entry-#{created.id}-action") =~ "Added an access key to a node"
+      assert text(view, "#entry-#{created.id}-action") =~ "Added an access key to a machine"
       assert text(view, "#entry-#{created.id}-subject") =~ "build-01"
       assert text(view, "#entry-#{created.id}-change") =~ key.key_id
       assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed the workspace"
@@ -525,14 +525,54 @@ defmodule ApiaryWeb.ActivityLiveTest do
             ~w(node.create node.edit node.delete node.clear_instance access_key.create_code access_key.cancel_code access_key.add access_key.revoke),
           do: refute(action in values, action)
 
-      assert text(view, "#entry-#{created.id}-action") =~ "Created a node"
-      refute render(view) =~ "/nodes/#{node.public_id}"
+      assert text(view, "#entry-#{created.id}-action") =~ "Created a machine"
+      refute render(view) =~ "/machines/#{node.public_id}"
 
       # Shown again, the filter offers them.
       :ok = Apiary.EditionStubs.HidesNamed.put([])
       values = Enum.map(action_options(open(conn, scope)), &elem(&1, 0))
       assert "node.create" in values
       assert "access_key.revoke" in values
+    end
+
+    test "words a machine's, a pool's and a gateway's entries by the kind, and the filter by all three",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+      gateway = gateway_fixture(scope, name: "edge-01")
+      %{access_key: _key} = node_key_fixture(scope, pool, %{label: "runners"})
+      {:ok, _renamed} = Apiary.Nodes.update_node(scope, gateway, %{"name" => "edge-02"})
+      machine = node_fixture(scope)
+      node_key_fixture(scope, machine, %{label: "machine"})
+      {:ok, _deleted} = Apiary.Nodes.delete_node(scope, machine)
+
+      view = open(conn, scope)
+      action = fn entry -> text(view, "#entry-#{entry.id}-action") end
+
+      [pool_made] =
+        entries(scope, %{action: "node.create"}) |> Enum.filter(&(&1.subject_id == pool.id))
+
+      [gateway_made] =
+        entries(scope, %{action: "node.create"}) |> Enum.filter(&(&1.subject_id == gateway.id))
+
+      [_machine_key, key_added] = entries(scope, %{action: "access_key.add"})
+      [revoked] = entries(scope, %{action: "access_key.revoke"})
+      [changed] = entries(scope, %{action: "node.edit"})
+      [deleted] = entries(scope, %{action: "node.delete"})
+
+      assert action.(pool_made) =~ "Created a pool"
+      assert text(view, "#entry-#{pool_made.id}-change") =~ "Pool #{pool.public_id}"
+      assert action.(gateway_made) =~ "Created a gateway"
+      assert text(view, "#entry-#{gateway_made.id}-change") =~ "Gateway #{gateway.public_id}"
+      assert action.(key_added) =~ "Added an access key to a pool"
+      assert action.(changed) =~ "Changed a gateway"
+      assert action.(deleted) =~ "Deleted a machine"
+      assert action.(revoked) =~ "Revoked an access key with its deleted machine"
+      refute render(view) =~ "a node"
+
+      options = Map.new(action_options(view))
+      assert options["node.create"] =~ "Machine, pool or gateway created"
+      assert options["node.edit"] =~ "Machine, pool or gateway changed"
+      assert options["node.delete"] =~ "Machine, pool or gateway deleted"
     end
 
     test "a load that fails says so, and where the reason is", %{conn: conn, scope: scope} do

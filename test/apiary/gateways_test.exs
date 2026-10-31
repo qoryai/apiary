@@ -374,7 +374,7 @@ defmodule Apiary.GatewaysTest do
         assert {:error, changeset} =
                  Nodes.update_node(scope, node, %{gateway_choice: "named", gateway_id: id})
 
-        assert %{gateway_id: ["is not a gateway this node may use"]} = errors_on(changeset)
+        assert %{gateway_id: ["is not a gateway this machine may use"]} = errors_on(changeset)
       end
 
       assert {:error, changeset} = Nodes.update_node(scope, node, %{gateway_choice: "named"})

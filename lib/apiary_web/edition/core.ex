@@ -92,13 +92,13 @@ defmodule ApiaryWeb.Edition.Core do
   def gateway_reach_sentence(:intro, organisation),
     do:
       gettext(
-        "Nodes in any workspace of %{organisation} can use the gateways added here. A workspace can also add gateways that only its nodes use.",
+        "Machines and pools in any workspace of %{organisation} can use the gateways added here. A workspace can also add gateways that only its machines and pools use.",
         organisation: organisation.name
       )
 
   def gateway_reach_sentence(:who_can_use, organisation),
     do:
-      gettext("Nodes in any workspace of %{organisation} can use it.",
+      gettext("Machines and pools in any workspace of %{organisation} can use it.",
         organisation: organisation.name
       )
 
@@ -110,7 +110,8 @@ defmodule ApiaryWeb.Edition.Core do
 
   def gateway_reach_sentence(:empty, organisation),
     do:
-      gettext("Add one so the nodes in %{organisation}'s workspaces can send runs through it.",
+      gettext(
+        "Add one so the machines and pools in %{organisation}'s workspaces can send runs through it.",
         organisation: organisation.name
       )
 
