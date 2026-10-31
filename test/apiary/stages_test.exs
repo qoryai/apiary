@@ -122,8 +122,12 @@ defmodule Apiary.StagesTest do
              } = run
 
       assert run.process_version_id == version.id
+
+      # The work items' topic of the workspace gets only its message, which every Work items
+      # list reads; the stage's change goes on the work item's topic (`Stages.topic/1`).
       public_id = work_item.public_id
-      assert_receive {:stage_changed, ^public_id}
+      assert_receive {:work_items_changed, [^public_id]}
+      refute_received {:stage_changed, _id}
     end
 
     test "with no snapshot of the harness's workflows, starts the run", %{scope: scope} do
@@ -225,6 +229,8 @@ defmodule Apiary.StagesTest do
     } do
       work_item = take_in!(scope)
       Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(scope.workspace.id))
+      :ok = Stages.subscribe(work_item)
+      assert Stages.topic(work_item) == "stages:work_item:" <> work_item.public_id
       work_item = end_run!(work_item, understood_result())
 
       assert work_item.stage_state == :at_gate
@@ -249,8 +255,28 @@ defmodule Apiary.StagesTest do
                status.outputs
 
       assert status.gate.approvable?
+
+      assert [
+               %{
+                 workflow: "explore-a-ticket",
+                 stage_id: @explore,
+                 round: 1,
+                 of: 3,
+                 status: :ended,
+                 verdict: :passed,
+                 ended_at: %DateTime{}
+               } = run
+             ] = Stages.runs(work_item)
+
+      assert Map.keys(run) |> Enum.sort() ==
+               ~w(ended_at id of round stage_id started_at status verdict workflow)a
+
       public_id = work_item.public_id
       assert_receive {:stage_changed, ^public_id}
+      assert_receive {:work_items_changed, [^public_id]}
+
+      # Nothing but `{:work_items_changed, ids}` reaches the work items' topic.
+      refute_received {:stage_changed, _id}
     end
 
     test "questions wait for answers; the answers run the same workflow as round 2", %{

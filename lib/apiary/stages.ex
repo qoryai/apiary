@@ -47,8 +47,8 @@ defmodule Apiary.Stages do
   #
   # ## What is told
   #
-  # `{:stage_changed, public_id}` on the work items' topic of the workspace
-  # (`Apiary.WorkItems.topic/1`), once the change commits; on a hand-over inside another
+  # `{:stage_changed, public_id}` on the work item's topic (`topic/1`), once the change
+  # commits; on a hand-over inside another
   # module's transaction, through what that module tells (`Apiary.Dispatches.broadcast/1`),
   # or, for a take in and an answer, at once.
   @moduledoc false
@@ -92,6 +92,18 @@ defmodule Apiary.Stages do
   @doc false
   @spec on?() :: boolean
   def on?, do: Features.on?(:workflow_model)
+
+  # topic/1 is the PubSub topic of one work item's stage, by the work item or its public
+  # id: `{:stage_changed, public_id}` arrives there, and nothing else.
+  @doc false
+  @spec topic(WorkItem.t() | String.t()) :: String.t()
+  def topic(%WorkItem{public_id: public_id}), do: topic(public_id)
+  def topic(public_id) when is_binary(public_id), do: "stages:work_item:" <> public_id
+
+  # subscribe/1 subscribes the caller to the work item's stage (`topic/1`).
+  @doc false
+  @spec subscribe(WorkItem.t() | String.t()) :: :ok | {:error, term}
+  def subscribe(work_item), do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(work_item))
 
   ## Hand-over points
 
@@ -631,6 +643,62 @@ defmodule Apiary.Stages do
         changed_after_approval: newer? and newest.stage_id != work_item.stage_id,
         versions: versions
       }
+    end
+  end
+
+  # runs/1 is the work item's runs of stages, newest first: each with the public id of its
+  # registered run (`rn_…`, nil before a claim registers it), its workflow, stage, round,
+  # `of` (the attempts its take in may reach), `status` (the state of the run of the
+  # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
+  # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
+  # started and ended, nil for not yet.
+  @doc false
+  @spec runs(WorkItem.t()) :: [map]
+  def runs(%WorkItem{id: id} = work_item) do
+    verdicts = run_verdicts(work_item)
+
+    Repo.all(
+      from d in DispatchRun,
+        left_join: r in Run,
+        on: r.dispatch_run_id == d.id,
+        where: d.work_item_id == ^id and not is_nil(d.stage_id),
+        order_by: [desc: d.take_in, desc: d.attempt],
+        select: {d, r}
+    )
+    |> Enum.map(fn {dispatch_run, run} ->
+      %{
+        id: run && run.public_id,
+        workflow: dispatch_run.workflow,
+        stage_id: dispatch_run.stage_id,
+        round: dispatch_run.round,
+        of: dispatch_run.of,
+        status: dispatch_run.state,
+        verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]),
+        started_at: run && run.started_at,
+        ended_at: ended_at(dispatch_run, run)
+      }
+    end)
+  end
+
+  defp ended_at(%DispatchRun{state: :ended}, %Run{exited_at: %DateTime{} = at}), do: at
+  defp ended_at(%DispatchRun{state: :ended, updated_at: at}, _run), do: at
+  defp ended_at(_dispatch_run, _run), do: nil
+
+  # The verdict of each run that stored one, by the run's id: the newest of its versions.
+  defp run_verdicts(work_item) do
+    for artifact <- Artifacts.list(work_item),
+        artifact.type == "verdict",
+        version <- Enum.reverse(artifact.versions),
+        is_binary(version.run_id),
+        into: %{} do
+      verdict =
+        case (Artifacts.read_json(version) || %{})["verdict"] do
+          "passed" -> :passed
+          value when value in ["changes-requested", "escalate"] -> :failed
+          _none -> nil
+        end
+
+      {version.run_id, verdict}
     end
   end
 
@@ -1517,13 +1585,13 @@ defmodule Apiary.Stages do
   # A hand-over inside a caller's transaction: the caller tells the work item changed once
   # it commits (`{:work_items_changed, ids}`), and this tells its stage changed, before the
   # commit, which a reader of the stage may see before the change.
-  defp tell_now(%WorkItem{workspace_id: workspace_id, public_id: public_id}) do
-    Phoenix.PubSub.broadcast(
-      Apiary.PubSub,
-      Apiary.WorkItems.topic(workspace_id),
-      {:stage_changed, public_id}
-    )
-  end
+  defp tell_now(%WorkItem{public_id: public_id}), do: tell_stage(public_id)
+
+  # tell_stage/1 tells the work item `public_id` that its stage changed, on its topic.
+  @doc false
+  @spec tell_stage(String.t()) :: :ok | {:error, term}
+  def tell_stage(public_id) when is_binary(public_id),
+    do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(public_id), {:stage_changed, public_id})
 
   defp transact(fun) do
     case Repo.transact(fun) do

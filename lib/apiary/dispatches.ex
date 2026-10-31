@@ -1395,15 +1395,10 @@ defmodule Apiary.Dispatches do
     {work_items, workspace_ids} = told |> Enum.uniq() |> Enum.split_with(&is_tuple/1)
 
     # With the workflow model, a work item that changed may have changed its stage
-    # (`Apiary.Stages`): it is told so too, on the same topic.
+    # (`Apiary.Stages`): it is told so too, on its stage's topic (`Apiary.Stages.topic/1`).
     if Apiary.Stages.on?() do
-      for {:work_item, workspace_id, public_id} <- work_items do
-        Phoenix.PubSub.broadcast(
-          Apiary.PubSub,
-          Apiary.WorkItems.topic(workspace_id),
-          {:stage_changed, public_id}
-        )
-      end
+      for {:work_item, _workspace_id, public_id} <- work_items,
+          do: Apiary.Stages.tell_stage(public_id)
     end
 
     for workspace_id <- workspace_ids,

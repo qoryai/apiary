@@ -649,7 +649,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [item_id: nil])
 
-      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.WorkItems.topic(ctx.scope.workspace.id))
+      :ok = Apiary.Stages.subscribe(work_item)
       assert claim(ctx) == {:ok, :none}
 
       assert %WorkItem{stage_state: :escalated} = Repo.get!(WorkItem, work_item.id)
