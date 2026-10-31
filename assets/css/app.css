@@ -5184,12 +5184,12 @@
   .q-outcome-error::before {
     background-color: var(--color-warning);
   }
-  .q-outcome .q-status {
+  .q-outcome-code {
     color: var(--color-base-content);
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
-  .q-outcome .q-status::before {
+  .q-outcome-code::before {
     content: "·";
     margin-right: 5px;
     color: var(--q-faint);

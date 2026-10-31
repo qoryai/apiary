@@ -1199,7 +1199,10 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert [outcome] =
                html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-outcome") |> Enum.to_list()
 
-      assert outcome |> LazyHTML.query(".q-status") |> LazyHTML.text() == "429"
+      assert outcome |> LazyHTML.query(".q-outcome-code") |> LazyHTML.text() == "429"
+      # `.q-status` is a list's status region, which app.css takes out of the flow while it
+      # holds no element: a code with that class prints over "Connected".
+      assert outcome |> LazyHTML.query(".q-status") |> Enum.to_list() == []
       assert text(LazyHTML.to_html(outcome)) =~ ~r/^Connected\s?429$/
 
       assert html =~ "q-outcome-error"

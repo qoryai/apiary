@@ -3442,7 +3442,7 @@ defmodule ApiaryWeb.RunComponents do
     <span :if={@value == "connected" && !@invocation} class={["q-outcome", answer_tone(@status)]}>
       {gettext("Connected")}<span
         :if={@status}
-        class="q-status"
+        class="q-outcome-code"
         title={gettext("The host answered %{status}.", status: @status)}
       >{@status}</span>
     </span>
