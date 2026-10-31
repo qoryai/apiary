@@ -31,13 +31,14 @@ the restart, for example to watch a long migration.
   When there is anything to do, the section has **Migrations**, the tables it touches
   and whether a migration is long, and **Upgrading**, anything whoever runs the instance
   has to do or know.
-- Back up Postgres, then the artifact store. Together they are the instance's state; a
-  `pg_dump` of the database and a copy of the store taken after it are a complete backup.
+- Back up Postgres, then the artifact store: the volume `artifacts` of `compose.yaml`,
+  mounted at `/var/lib/apiary/artifacts`, or the folder `QORY_ARTIFACTS_DIR` is set to.
+  Together they are the instance's state; a `pg_dump` of the database and a copy of the
+  store taken after it are a complete backup. Keep the store across the upgrade.
   `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`, which
   `compose.yaml` keeps in the volume `keys`, are the other three things to keep: without
   `APIARY_ENCRYPTION_SECRET` no access key is trusted, and without `APIARY_SIGNING_SECRET`
   every machine has to be pinned again. [Backup and restore](backup.md) has the commands.
-- Keep the content of artifacts across the upgrade and in backups: the volume `artifacts` of `compose.yaml`, mounted at `/var/lib/apiary/artifacts`, or the folder `QORY_ARTIFACTS_DIR` is set to.
 
 ## How migrations are written
 
