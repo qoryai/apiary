@@ -5,9 +5,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # files, uploaded with LiveView's uploads, and an optional note. `?type=` and `?name=`
   # fill the type and the name, as Add a version on a version's page does.
   #
-  # The upload takes at most 20 files (`Apiary.Artifacts.Type.max_files_limit/0`) of at
-  # most the largest size limit of the workspace's types; the chosen type's most files
-  # and size limit are checked as the reader changes the form, and again by the push.
+  # The upload is set from the chosen type: at most its most files, each of at most its
+  # size limit, and set again when the reader chooses another type while no file is
+  # added (LiveView keeps an upload's settings while it has files). The chosen type's most
+  # files and size limit, for all the files together, are checked as the reader changes
+  # the form, before the push, and again by the push. A file starts to upload only while
+  # all the files fit the chosen type (`ApiaryWeb.ArtifactLive.UploadWriter`), so one Add
+  # version puts at most the type's size limit in the temporary folder.
   # Add version pushes the version as the reader (`Apiary.Artifacts.push/5`, `{:person,
   # scope}`), made in the work item's current stage, and goes to the new version's page.
   # Each refusal of the push is one line that says what to change, under the field it is
@@ -24,7 +28,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   alias Apiary.{Access, Artifacts}
   alias Apiary.Artifacts.Type
   alias ApiaryWeb.ArtifactComponents
-  alias ApiaryWeb.ArtifactLive.Load
+  alias ApiaryWeb.ArtifactLive.{Load, UploadWriter}
 
   @impl true
   def render(assigns) do
@@ -169,12 +173,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
          page_title: gettext("Add a version")
        )
        |> assign_form(%{"type" => type.name, "name" => name, "note" => ""}, [])
-       |> allow_upload(:files,
-         accept: :any,
-         max_entries: Type.max_files_limit(),
-         max_file_size: types |> Enum.map(& &1.size_limit) |> Enum.max(),
-         chunk_size: 256_000
-       )}
+       |> allow_files(type)}
     else
       _not -> raise ApiaryWeb.NotFound
     end
@@ -183,6 +182,39 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp assign_form(socket, params, errors),
     do: assign(socket, :form, to_form(params, as: :artifact, errors: errors))
 
+  # The upload, set from `type`; `upload_type` is the type it was set from.
+  defp allow_files(socket, %Type{} = type) do
+    socket
+    |> assign(:upload_type, type.name)
+    |> allow_upload(:files,
+      accept: :any,
+      max_entries: type.max_files,
+      max_file_size: type.size_limit,
+      chunk_size: 256_000,
+      writer: &writer/3
+    )
+  end
+
+  # The upload set again from the chosen type, where it has no file.
+  defp follow_type(socket) do
+    %{type: type, upload_type: upload_type, uploads: uploads} = socket.assigns
+
+    if type.name != upload_type and uploads.files.entries == [],
+      do: allow_files(socket, type),
+      else: socket
+  end
+
+  # LiveView calls it, in this page's process, as a file starts to upload.
+  defp writer(_name, _entry, socket), do: {UploadWriter, fits: fits?(socket.assigns)}
+
+  # Whether the files added come to at most the chosen type's most files and size limit.
+  defp fits?(%{type: type, uploads: %{files: %{entries: entries}}, file_errors: []}) do
+    length(entries) <= type.max_files and
+      entries |> Enum.map(& &1.client_size) |> Enum.sum() <= type.size_limit
+  end
+
+  defp fits?(_assigns), do: false
+
   @impl true
   def handle_event("validate", %{"artifact" => params}, socket) do
     type = Enum.find(socket.assigns.types, &(&1.name == params["type"])) || socket.assigns.type
@@ -190,12 +222,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
     {:noreply,
      socket
      |> assign(type: type, error: nil)
+     |> follow_type()
      |> assign_form(params, [])
      |> check_files()}
   end
 
   def handle_event("remove", %{"ref" => ref}, socket),
-    do: {:noreply, socket |> cancel_upload(:files, ref) |> check_files()}
+    do: {:noreply, socket |> cancel_upload(:files, ref) |> follow_type() |> check_files()}
 
   def handle_event("save", %{"artifact" => params}, socket) do
     socket = socket |> assign(:error, nil) |> assign_form(params, []) |> check_files()
@@ -261,11 +294,40 @@ defmodule ApiaryWeb.ArtifactLive.New do
         [
           length(entries) > type.max_files && too_many(type),
           size > type.size_limit && too_large(type)
-        ] ++ Enum.map(upload_errors(socket.assigns.uploads.files), &upload_error(&1, type)),
-        &(&1 in [false, nil])
+        ],
+        &(&1 == false)
       )
 
+    errors = errors ++ upload_errors(socket, type, errors)
     assign(socket, :file_errors, Enum.uniq(errors))
+  end
+
+  # LiveView's refusals of the files, by the type the upload was set from. Where the
+  # reader chose another type since, and the files fit it, the line asks for the files
+  # again, so LiveView checks them against the chosen type.
+  defp upload_errors(socket, type, type_errors) do
+    uploads = socket.assigns.uploads.files
+
+    refused =
+      upload_errors(uploads) ++ Enum.flat_map(uploads.entries, &upload_errors(uploads, &1))
+
+    cond do
+      refused == [] ->
+        []
+
+      socket.assigns.upload_type == type.name ->
+        Enum.map(refused, &upload_error(&1, type))
+
+      type_errors == [] ->
+        [
+          gettext("Remove the files and add them again, so they are checked against %{type}.",
+            type: type.name
+          )
+        ]
+
+      true ->
+        []
+    end
   end
 
   defp upload_error(:too_large, type), do: too_large(type)

@@ -203,6 +203,9 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     end
   end
 
+  defp new_page(ctx, type),
+    do: ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=" <> type
+
   describe "adding a version by hand" do
     test "stores the files and goes to the new version's page", ctx do
       {:ok, view, _html} =
@@ -275,6 +278,64 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       html = view |> form("#artifact-form", artifact: %{type: "explainer"}) |> render_change()
       assert html =~ "Remove files: a version of explainer has at most 1 file."
+    end
+
+    test "sets the upload from the chosen type", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      # explainer takes 1 file of at most 1 MiB, so LiveView refuses a larger file before
+      # it uploads a byte.
+      big = String.duplicate("a", 1_048_577)
+      input = file_input(view, "#artifact-form", :files, [%{name: "a.md", content: big}])
+      assert {:error, [[_ref, :too_large]]} = render_upload(input, "a.md")
+    end
+
+    test "sets the upload again when the type changes with no file", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+      view |> form("#artifact-form", artifact: %{type: "mockup"}) |> render_change()
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "a.png", content: @png, type: "image/png"},
+          %{name: "b.png", content: @png, type: "image/png"}
+        ])
+
+      assert render_upload(input, "a.png") =~ "a.png"
+      assert render_upload(input, "b.png") =~ "b.png"
+      refute has_element?(view, "#artifact-files-error-0")
+    end
+
+    test "asks for the files again when the type changes after they are added", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      file_input(view, "#artifact-form", :files, [
+        %{name: "a.png", content: @png, type: "image/png"},
+        %{name: "b.png", content: @png, type: "image/png"}
+      ])
+      |> render_upload("a.png")
+
+      html = view |> form("#artifact-form", artifact: %{type: "mockup"}) |> render_change()
+
+      assert html =~
+               "Remove the files and add them again, so they are checked against mockup."
+    end
+
+    test "uploads no byte of files that come to more than the type's size limit", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "mockup"))
+
+      # mockup takes at most 10 MiB in all: each file fits, the two together do not.
+      half = @png <> String.duplicate("a", 6 * 1_048_576)
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "a.png", content: half, type: "image/png"},
+          %{name: "b.png", content: half, type: "image/png"}
+        ])
+
+      assert {:error, _reason} = render_upload(input, "a.png")
+
+      assert render(view) =~
+               "Remove or shrink files: the files of a version of mockup come to at most"
     end
   end
 
