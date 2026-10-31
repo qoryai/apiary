@@ -57,13 +57,15 @@ defmodule ApiaryWeb.StagesLiveTest do
     |> LazyHTML.attribute("value")
   end
 
-  defp canvas_view(view) do
+  defp canvas_view(view), do: canvas_data(view, "data-view")
+
+  defp canvas_data(view, attribute) do
     [json] =
       view
       |> render()
       |> LazyHTML.from_fragment()
       |> LazyHTML.query("#stages-canvas")
-      |> LazyHTML.attribute("data-view")
+      |> LazyHTML.attribute(attribute)
 
     Jason.decode!(json)
   end
@@ -124,6 +126,15 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert canvas["editable"]
       assert canvas["selected"] == id_of("Explore")
       assert canvas["first"] == "Add a stage before Explore"
+
+      # The canvas fills in the number of cards out of view on each side.
+      words = canvas_data(view, "data-words")
+      assert words["left"] == "← %{count} more"
+      assert words["right"] == "→ %{count} more"
+      assert words["right_label_one"] == "Show 1 more stage on the right"
+      assert words["right_label"] == "Show %{count} more stages on the right"
+      assert words["left_label"] == "Show %{count} more stages on the left"
+      refute Map.has_key?(words, "fit")
 
       assert [explore | _] = canvas["stages"]
 
@@ -643,6 +654,8 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert names(view) == ~w(Explore Shape Build Verify Release)
       refute canvas_view(view)["editable"]
+      # The "more" buttons, for a member too.
+      assert canvas_data(view, "data-words")["right"] == "→ %{count} more"
       assert has_element?(view, "#stage-panel-title", "Explore")
       assert has_element?(view, "#stage-panel", "explore-a-ticket, machine type default")
       assert has_element?(view, "#stages-version", "Version 1, current.")

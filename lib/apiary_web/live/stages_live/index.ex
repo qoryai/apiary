@@ -674,9 +674,9 @@ defmodule ApiaryWeb.StagesLive.Index do
           </.notice>
 
           <%!-- The canvas is the editor: a card selected on it opens in the inspector under it.
-          The canvas takes the column's full width (60rem at most, `.q-settings-main-list`),
-          where five stages fit at a readable zoom; beside it the inspector would leave the
-          canvas less than the 1000 px both need. --%>
+          The canvas takes the column's full width (60rem at most, `.q-settings-main-list`)
+          and draws the cards at zoom 1; beside it the inspector would leave the canvas
+          less than the 1000 px both need. --%>
           <div id="stages-editor" class="grid items-start gap-4">
             <div
               id="stages-canvas"
@@ -686,9 +686,10 @@ defmodule ApiaryWeb.StagesLive.Index do
               data-stylesheet={~p"/assets/js/canvas.css"}
               data-view={Jason.encode!(view(assigns))}
               data-words={Jason.encode!(canvas_words())}
-              class="h-72 min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-200"
+              class="min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-200"
             >
-              <div data-canvas class="h-full w-full"></div>
+              <%!-- The canvas sets its height to the tallest card's, with margins. --%>
+              <div data-canvas class="h-44 w-full"></div>
               <p data-canvas-failed hidden class="p-4 text-[13px]/5 text-muted">
                 {gettext("The canvas did not load. Reload the page to edit the stages.")}
               </p>
@@ -1220,8 +1221,14 @@ defmodule ApiaryWeb.StagesLive.Index do
       no_workflow: gettext("No workflow"),
       zoom_in: gettext("Zoom in"),
       zoom_out: gettext("Zoom out"),
-      fit: gettext("Show every stage"),
-      controls: gettext("Canvas controls")
+      controls: gettext("Canvas controls"),
+      # The canvas fills in each number of cards: the binding keeps "%{count}" in the text.
+      left: gettext("← %{count} more", count: "%{count}"),
+      right: gettext("→ %{count} more", count: "%{count}"),
+      left_label_one: gettext("Show 1 more stage on the left"),
+      left_label: gettext("Show %{count} more stages on the left", count: "%{count}"),
+      right_label_one: gettext("Show 1 more stage on the right"),
+      right_label: gettext("Show %{count} more stages on the right", count: "%{count}")
     }
   end
 

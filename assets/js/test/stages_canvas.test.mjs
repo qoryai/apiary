@@ -1,6 +1,6 @@
 // The Stages canvas's layout and order (assets/js/hooks/stages_canvas.js): the stages in a
 // line joined by arrows, a "+" in each gap and after the last card, loops as groups, text
-// props only, and the order a drag leaves.
+// props only, the order a drag leaves, the canvas's height and the "more" pans.
 // `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
@@ -10,14 +10,22 @@ import {
   ADD_SIZE,
   CARD_GAP,
   CARD_WIDTH,
-  FIT,
+  MARGIN_BOTTOM,
+  MARGIN_TOP,
+  ZOOM,
   cardX,
+  clampX,
   dropX,
   isStage,
   keyMove,
   layout,
   lineWidth,
   orderByDrop,
+  outside,
+  panLeft,
+  panRight,
+  paneHeight,
+  revealX,
   sameOrder,
 } from "../hooks/stages_canvas.js"
 
@@ -157,12 +165,57 @@ test("left and right move a card one place; up and down move nothing", () => {
   assert.equal(keyMove("Enter"), null)
 })
 
-test("five default stages fit a 960 px canvas at zoom 0.75 or more, and never past 1", () => {
-  assert.equal(FIT.maxZoom, 1)
-  assert.equal(FIT.minZoom, 0.75)
+test("the cards start at zoom 1, and a pinch or the buttons zoom from 0.75 to 1.5", () => {
+  assert.deepEqual(ZOOM, {start: 1, min: 0.75, max: 1.5})
   assert.equal(lineWidth(5), CARD_GAP + 5 * (CARD_WIDTH + CARD_GAP))
-  const zoom = (960 - 2) / (lineWidth(5) * (1 + FIT.padding))
-  assert.ok(zoom >= 0.75, `zoom ${zoom}`)
+})
+
+test("the canvas is as tall as the tallest card at its zoom, with the margins", () => {
+  assert.equal(MARGIN_TOP + MARGIN_BOTTOM, 56)
+  assert.equal(paneHeight(110, 1), 166)
+  assert.equal(paneHeight(110, 1.5), 221)
+  assert.equal(paneHeight(110, 0.75), 139)
+})
+
+// Five cards at zoom 1 in a 960 px canvas: the cards start at 44, 264, 484, 704 and 924,
+// so four are whole and Release is cut at the right edge.
+test("whole cards out of view are counted on each side, a cut card with them", () => {
+  assert.deepEqual(outside(5, {x: 0, zoom: 1}, 960), {left: 0, right: 1})
+  assert.deepEqual(outside(5, {x: 0, zoom: 1}, 1200), {left: 0, right: 0})
+  assert.deepEqual(outside(8, {x: 0, zoom: 1}, 960), {left: 0, right: 4})
+  assert.deepEqual(outside(8, {x: -844, zoom: 1}, 960), {left: 4, right: 0})
+  assert.deepEqual(outside(8, {x: -400, zoom: 1}, 960), {left: 2, right: 2})
+  assert.deepEqual(outside(0, {x: 0, zoom: 1}, 960), {left: 0, right: 0})
+})
+
+test("→ more brings the first cut card in first, and ← more the last one in last", () => {
+  // The line ends at the right edge: five cards move only 184 px.
+  assert.equal(panRight(5, {x: 0, zoom: 1}, 960), 960 - lineWidth(5))
+  assert.deepEqual(outside(5, {x: panRight(5, {x: 0, zoom: 1}, 960), zoom: 1}, 960), {left: 1, right: 0})
+  // Eight cards: the fifth card (cut) becomes the first in view, clamped at the line's end.
+  assert.equal(panRight(8, {x: 0, zoom: 1}, 960), -844)
+  assert.equal(panRight(12, {x: 0, zoom: 1}, 960), -(cardX(4) - CARD_GAP))
+  assert.deepEqual(outside(12, {x: -880, zoom: 1}, 960), {left: 4, right: 4})
+  // Back to the start.
+  assert.equal(panLeft(5, {x: -184, zoom: 1}, 960), 0)
+  assert.equal(panLeft(12, {x: -880, zoom: 1}, 960), 0)
+  // Card 8 (index 7) is the last before the left edge; it ends at the right edge after.
+  assert.equal(panLeft(12, {x: -1716, zoom: 1}, 960), 960 - (cardX(7) + CARD_WIDTH + CARD_GAP))
+  // Nothing out of view: no move.
+  assert.equal(panRight(3, {x: 0, zoom: 1}, 960), 0)
+  assert.equal(panLeft(3, {x: 0, zoom: 1}, 960), 0)
+  // At zoom 0.75 the cards are smaller.
+  assert.equal(panRight(8, {x: 0, zoom: 0.75}, 960), 960 - lineWidth(8) * 0.75)
+})
+
+test("a card that takes the focus is panned into view as little as it can", () => {
+  const end = cardX(4) + CARD_WIDTH
+  assert.equal(revealX(cardX(4), end, 5, {x: 0, zoom: 1}, 960), 960 - (end + CARD_GAP / 2))
+  assert.equal(revealX(cardX(1), cardX(1) + CARD_WIDTH, 5, {x: 0, zoom: 1}, 960), 0)
+  assert.equal(revealX(cardX(0), cardX(0) + CARD_WIDTH, 5, {x: -184, zoom: 1}, 960), -(cardX(0) - CARD_GAP / 2))
+  assert.equal(clampX(-500, 5, 1, 960), -184)
+  assert.equal(clampX(40, 5, 1, 960), 0)
+  assert.equal(clampX(-100, 3, 1, 960), 0)
 })
 
 test("each card has a ring on keyboard focus", () => {

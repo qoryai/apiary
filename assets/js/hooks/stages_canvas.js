@@ -20,16 +20,71 @@ export const CARD_GAP = 44
 export const ADD_SIZE = 28
 export const ADD_TOP = 8
 
-// The fitView options: never larger than zoom 1, and never smaller than 0.75, so the text
-// stays readable (five default stages fit 960 px at about 0.8); a longer line is shown
-// from its start and pans, with the selected card kept in view.
-export const FIT = {padding: 0.04, maxZoom: 1, minZoom: 0.75}
+// The canvas draws the cards at zoom 1, so their text matches the page's; a pinch or the
+// zoom buttons change it within these bounds. Its height is the tallest card's at that
+// zoom, with a margin above, where the zoom buttons sit, and one below.
+export const ZOOM = {start: 1, min: 0.75, max: 1.5}
+export const MARGIN_TOP = 32
+export const MARGIN_BOTTOM = 24
+
+// The canvas's height for a tallest card of `tallest` units at `zoom`.
+export const paneHeight = (tallest, zoom) => Math.ceil(tallest * zoom) + MARGIN_TOP + MARGIN_BOTTOM
 
 // The left edge of the card at place `index`: a gap, with its "+", before the first card.
 export const cardX = index => CARD_GAP + index * (CARD_WIDTH + CARD_GAP)
 
 // The width of the line of `count` cards, with a "+" before each card and after the last.
 export const lineWidth = count => CARD_GAP + count * (CARD_WIDTH + CARD_GAP)
+
+// The cards of a line of `count` that are not whole in a canvas `width` px wide at
+// `viewport` ({x, zoom}): `left` before its left edge, `right` past its right edge, each
+// counted as whole cards; a card cut by an edge counts on that side.
+export const outside = (count, {x, zoom}, width) => {
+  let left = 0
+  let right = 0
+  for (let index = 0; index < count; index++) {
+    const start = cardX(index) * zoom + x
+    if (start < -0.5) left++
+    else if (start + CARD_WIDTH * zoom > width + 0.5) right++
+  }
+  return {left, right}
+}
+
+// The viewport's x for `x`, kept so the line neither starts right of the canvas's left edge
+// nor ends left of its right edge.
+export const clampX = (x, count, zoom, width) => Math.min(0, Math.max(x, width - lineWidth(count) * zoom))
+
+// The viewport's x after "→ more": the first card past the right edge becomes the first
+// card in view.
+export const panRight = (count, viewport, width) => {
+  const {x, zoom} = viewport
+  const index = Array.from({length: count}, (_, i) => i).find(
+    i => cardX(i) * zoom + x >= -0.5 && (cardX(i) + CARD_WIDTH) * zoom + x > width + 0.5,
+  )
+  if (index === undefined) return x
+  return clampX(-(cardX(index) - CARD_GAP) * zoom, count, zoom, width)
+}
+
+// The viewport's x after "← more": the last card before the left edge becomes the last
+// card in view.
+export const panLeft = (count, viewport, width) => {
+  const {x, zoom} = viewport
+  let index = -1
+  for (let i = 0; i < count; i++) if (cardX(i) * zoom + x < -0.5) index = i
+  if (index < 0) return x
+  return clampX(width - (cardX(index) + CARD_WIDTH + CARD_GAP) * zoom, count, zoom, width)
+}
+
+// The viewport's x that shows the node from `start` to `end` (in the canvas's units) whole,
+// with half a gap beside it, moving the line as little as it can.
+export const revealX = (start, end, count, viewport, width) => {
+  const {x, zoom} = viewport
+  const pad = CARD_GAP / 2
+  let next = x
+  if (start * zoom + x < 0) next = -(start - pad) * zoom
+  else if (end * zoom + x > width) next = width - (end + pad) * zoom
+  return clampX(next, count, zoom, width)
+}
 
 const text = value => String(value ?? "")
 
