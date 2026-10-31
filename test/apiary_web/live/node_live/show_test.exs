@@ -472,6 +472,28 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-state", "2 running")
     end
 
+    test "a pool past its bound of recorded machines: the line to contact support, no number",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+      refute has_element?(lv, "#node-over-bound")
+
+      Repo.update_all(from(n in Node, where: n.id == ^pool.id),
+        set: [instance_ids_over_bound: 3, instance_ids_over_bound_at: ago(60)]
+      )
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+
+      assert has_element?(
+               lv,
+               "#node-over-bound",
+               "Contact support: some machines here were not recorded."
+             )
+
+      refute has_element?(lv, "#node-over-bound", "3")
+    end
+
     test "a running instance's id and Forager's version: cleaned, in its row and its title",
          %{conn: conn, scope: scope} do
       pool = pool_fixture(scope, name: "spot-runners", instance_limit: 10)

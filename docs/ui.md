@@ -929,7 +929,8 @@ address under `/machines`, with what followed `/nodes` and the query.
   as Forager reports it (running since when,
   its run and Forager version, or when it was last seen) or a pool's running machines on the
   list pattern with "3 of 10 running", the runs that did not start at the machine limit, the
-  machines past the bound of 256 new ones a day, the sentence that each machine there is what
+  line to contact support once machines past the bound of 256 new ones a day went unrecorded,
+  the sentence that each machine there is what
   Forager, run with the key, reports itself as, and its recent runs (`runs.node_id`,
   for a reader of the record) with the way to all of them on the runs list (`?node=`),
   each saying so while nothing has reported, then About (kind, id, machine limit, who

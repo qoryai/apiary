@@ -5972,10 +5972,8 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support: %{number} new machine was not recorded today."
-msgid_plural "Contact support: %{number} new machines were not recorded today."
-msgstr[0] ""
-msgstr[1] ""
+msgid "Contact support: some machines here were not recorded."
+msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
 #: lib/apiary_web/live/workspace_setup_live.ex

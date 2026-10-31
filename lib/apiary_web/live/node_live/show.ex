@@ -843,12 +843,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           id="node-over-bound"
           class="text-[13px]/5 text-muted"
         >
-          {ngettext(
-            "Contact support: %{number} new machine was not recorded today.",
-            "Contact support: %{number} new machines were not recorded today.",
-            @node.instance_ids_over_bound,
-            number: Format.number(@node.instance_ids_over_bound)
-          )}
+          {gettext("Contact support: some machines here were not recorded.")}
         </p>
 
         <p id="node-instance-claim" class="text-[13px]/5 text-faint">
