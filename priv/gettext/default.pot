@@ -5098,7 +5098,7 @@ msgstr ""
 msgid "Cancelling"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Canvas controls"
 msgstr ""
@@ -10652,7 +10652,7 @@ msgstr ""
 msgid "Moved an integration to another version"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Moved the selected stage."
 msgstr ""
@@ -11551,6 +11551,7 @@ msgstr ""
 msgid "No work source is connected to %{workspace}. Connect one to bring its tickets here."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/canvas.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
@@ -13235,12 +13236,12 @@ msgstr ""
 msgid "Press %{take_in}."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Press Enter to open the stage under the canvas."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
 msgstr ""
@@ -15651,12 +15652,12 @@ msgid_plural "Show %{count} earlier comments"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Show %{count} more stages on the left"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Show %{count} more stages on the right"
 msgstr ""
@@ -15668,12 +15669,12 @@ msgid_plural "Show %{number} more"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Show 1 more stage on the left"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Show 1 more stage on the right"
 msgstr ""
@@ -15974,7 +15975,7 @@ msgstr ""
 msgid "Stages"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Stages, in order"
 msgstr ""
@@ -16851,9 +16852,14 @@ msgstr ""
 msgid "The bytes as the runtime wrote them, terminal escapes included, fitted to this box. Nothing here is interpreted; the timeline is where the session is read."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "The canvas did not load. Reload the page to edit the stages."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/canvas.ex
+#, elixir-autogen, elixir-format
+msgid "The canvas did not load. Reload the page to see the stages."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -20540,12 +20546,12 @@ msgstr ""
 msgid "Yours in every organisation you belong to."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Zoom in"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Zoom out"
 msgstr ""
@@ -22122,12 +22128,12 @@ msgstr ""
 msgid "… %{number} more"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "← %{count} more"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "→ %{count} more"
 msgstr ""

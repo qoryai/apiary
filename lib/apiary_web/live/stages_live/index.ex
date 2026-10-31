@@ -29,7 +29,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   alias Apiary.Stacks.{Document, Sources}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{People, SettingsComponents}
-  alias ApiaryWeb.StagesLive.{ArtifactTypes, Draft, Words}
+  alias ApiaryWeb.StagesLive.{ArtifactTypes, Canvas, Draft, Words}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -211,30 +211,26 @@ defmodule ApiaryWeb.StagesLive.Index do
     push_event(socket, "stages:view", view(socket.assigns))
   end
 
-  # What the canvas draws: each stage's name and lines, as text.
+  # The canvas's mode: owners and admins (`process.edit`) edit; members view.
+  defp mode(%{may: true}), do: :edit
+  defp mode(_assigns), do: :view
+
+  # What the canvas draws (`ApiaryWeb.StagesLive.Canvas.view/3`).
   defp view(assigns) do
-    %{
-      editable: assigns.may,
+    Canvas.view(assigns.draft, mode(assigns),
       selected: assigns.selected,
-      first:
-        case assigns.draft["stages"] do
-          [first | _] -> Words.add_before(first["name"])
-          [] -> nil
-        end,
-      stages:
-        for stage <- assigns.draft["stages"] do
-          %{
-            id: stage["id"],
-            name: stage["name"],
-            label: Words.card_label(stage, assigns.people),
-            sequence: Words.card_sequence(stage),
-            gate: Words.gate_line(stage, assigns.people),
-            add: Words.add_after(stage["name"]),
-            alerts:
-              alerts(assigns.problems, stage) ++ Map.get(assigns.stage_errors, stage["id"], [])
-          }
-        end
-    }
+      people: assigns.people,
+      alerts: canvas_alerts(assigns)
+    )
+  end
+
+  # Each stage's alert lines on its card: a workflow the harness does not declare, then a
+  # refused name.
+  defp canvas_alerts(assigns) do
+    Map.new(assigns.draft["stages"], fn stage ->
+      {stage["id"],
+       alerts(assigns.problems, stage) ++ Map.get(assigns.stage_errors, stage["id"], [])}
+    end)
   end
 
   defp alerts(problems, stage) do
@@ -776,26 +772,14 @@ defmodule ApiaryWeb.StagesLive.Index do
           and draws the cards at zoom 1; beside it the inspector would leave the canvas
           less than the 1000 px both need. --%>
           <div id="stages-editor" class="grid items-start gap-4">
-            <div
+            <Canvas.canvas
               id="stages-canvas"
-              phx-hook=".StagesCanvas"
-              phx-update="ignore"
-              data-script={~p"/assets/js/canvas.js"}
-              data-stylesheet={~p"/assets/js/canvas.css"}
-              data-view={Jason.encode!(view(assigns))}
-              data-words={Jason.encode!(canvas_words())}
-              class="min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-200"
-            >
-              <%!-- The canvas sets its height to the tallest card's, with margins. --%>
-              <div data-canvas class="h-44 w-full"></div>
-              <p data-canvas-failed hidden class="p-4 text-[13px]/5 text-muted">
-                {gettext("The canvas did not load. Reload the page to edit the stages.")}
-              </p>
-            </div>
-            <script :type={Phoenix.LiveView.ColocatedHook} name=".StagesCanvas">
-              import {StagesCanvas} from "@/js/hooks/stages_canvas"
-              export default StagesCanvas
-            </script>
+              document={@draft}
+              mode={mode(assigns)}
+              selected={@selected}
+              people={@people}
+              alerts={canvas_alerts(assigns)}
+            />
 
             <.stage_panel
               :if={@stage}
@@ -1306,29 +1290,6 @@ defmodule ApiaryWeb.StagesLive.Index do
       gettext(
         "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
       )
-
-  defp canvas_words do
-    %{
-      label: gettext("Stages, in order"),
-      node:
-        gettext(
-          "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
-        ),
-      node_read: gettext("Press Enter to open the stage under the canvas."),
-      moved: gettext("Moved the selected stage."),
-      no_workflow: gettext("No workflow"),
-      zoom_in: gettext("Zoom in"),
-      zoom_out: gettext("Zoom out"),
-      controls: gettext("Canvas controls"),
-      # The canvas fills in each number of cards: the binding keeps "%{count}" in the text.
-      left: gettext("← %{count} more", count: "%{count}"),
-      right: gettext("→ %{count} more", count: "%{count}"),
-      left_label_one: gettext("Show 1 more stage on the left"),
-      left_label: gettext("Show %{count} more stages on the left", count: "%{count}"),
-      right_label_one: gettext("Show 1 more stage on the right"),
-      right_label: gettext("Show %{count} more stages on the right", count: "%{count}")
-    }
-  end
 
   defp version_line(version, true),
     do:
