@@ -226,6 +226,19 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   defp new_page(ctx, type),
     do: ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=" <> type
 
+  # Adds notes.md as an explainer on an open Add a version page; the page's HTML after.
+  defp add_notes(view) do
+    view
+    |> file_input("#artifact-form", :files, [
+      %{name: "notes.md", content: "# Notes", type: "text/markdown"}
+    ])
+    |> render_upload("notes.md")
+
+    view
+    |> form("#artifact-form", artifact: %{type: "explainer", name: "main", note: ""})
+    |> render_submit()
+  end
+
   describe "adding a version by hand" do
     test "stores the files and goes to the new version's page", ctx do
       {:ok, view, _html} =
@@ -298,6 +311,28 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       html = view |> form("#artifact-form", artifact: %{type: "explainer"}) |> render_change()
       assert html =~ "Remove files: a version of explainer has at most 1 file."
+    end
+
+    test "says why the work item takes no new versions", ctx do
+      import Ecto.Query
+      work_items = from(w in Apiary.WorkItems.WorkItem, where: w.id == ^ctx.work_item.id)
+      Apiary.Repo.update_all(work_items, set: [stage_id: "a stage!"])
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+      html = add_notes(view)
+
+      assert html =~
+               "Work item ##{ctx.work_item.number} takes no new versions in its stage: the stage&#39;s id is not 1 to 64 letters, digits, hyphens or underscores."
+
+      Apiary.Repo.update_all(work_items, set: [stage_id: nil])
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+      other = workspace_fixture(ctx.scope.organisation)
+      Apiary.Repo.update_all(work_items, set: [workspace_id: other.id])
+
+      assert add_notes(view) =~
+               "Work item ##{ctx.work_item.number} is no longer in this workspace, so it takes no new versions."
+
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "sets the upload from the chosen type", ctx do

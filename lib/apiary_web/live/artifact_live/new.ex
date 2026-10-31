@@ -395,12 +395,62 @@ defmodule ApiaryWeb.ArtifactLive.New do
           )
         )
 
-      _gone ->
+      {:invalid, :stage_id} ->
         assign(
           socket,
           :error,
-          gettext("You can no longer add a version to this work item. Open the work item again.")
+          gettext(
+            "Work item #%{number} takes no new versions in its stage: the stage's id is not 1 to 64 letters, digits, hyphens or underscores. Ask an admin to fix the work item's process.",
+            number: socket.assigns.number
+          )
         )
+
+      :forbidden ->
+        assign(socket, :error, role_line())
+
+      _not_found ->
+        assign(socket, :error, not_found_line(socket))
+    end
+  end
+
+  defp role_line,
+    do: gettext("Your role in this workspace no longer lets you add versions.")
+
+  # Why the push found no work item it may write: the push answers `:not_found` for each
+  # of these, so the page asks again.
+  defp not_found_line(socket) do
+    scope = socket.assigns.current_scope
+    number = socket.assigns.number
+
+    cond do
+      not Access.can?(scope, :"work_item.read", scope.workspace) ->
+        gettext(
+          "You can no longer read the work items of this workspace, so you cannot add a version."
+        )
+
+      is_nil(Load.work_item(scope, number)) ->
+        gettext(
+          "Work item #%{number} is no longer in this workspace, so it takes no new versions.",
+          number: number
+        )
+
+      true ->
+        case Access.authorize(scope, :"artifact.write", Load.work_item(scope, number)) do
+          {:error, :forbidden} ->
+            role_line()
+
+          {:error, :not_found} ->
+            gettext(
+              "Artifacts are turned off in this workspace, so work item #%{number} takes no new versions.",
+              number: number
+            )
+
+          :ok ->
+            gettext(
+              "Work item #%{number} changed while the files were sent. Add the version again.",
+              number: number
+            )
+        end
     end
   end
 
