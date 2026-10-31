@@ -36,6 +36,7 @@ the restart, for example to watch a long migration.
   `compose.yaml` keeps in the volume `keys`, are the other three things to keep: without
   `APIARY_ENCRYPTION_SECRET` no access key is trusted, and without `APIARY_SIGNING_SECRET`
   every machine has to be pinned again. [Backup and restore](backup.md) has the commands.
+- Keep the content of artifacts across the upgrade and in backups: the volume `artifacts` of `compose.yaml`, mounted at `/var/lib/apiary/artifacts`, or the folder `QORY_ARTIFACTS_DIR` is set to.
 
 ## How migrations are written
 
