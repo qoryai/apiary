@@ -5918,6 +5918,11 @@ msgstr ""
 msgid "Connections inline"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or got nothing within %{n} s."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/set_up.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -12569,17 +12574,20 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Owners and admins of %{org} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{org} reaches it."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Owners and admins of %{org} check the address on the set-up step Harness, or link the repository through a connection. %{host} did not serve %{source} as a git repository over HTTPS."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise the instance admin installs one. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."
+msgctxt "plain"
+msgid "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise contact support. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -16590,11 +16598,6 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "The instance admin can read the machine's log."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "The instance admin checks that the Qory Apiary server reaches %{host} on port %{port}. Qory Apiary could not connect to %{host}, or got nothing within %{n} s."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex

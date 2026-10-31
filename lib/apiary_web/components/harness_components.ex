@@ -814,7 +814,8 @@ defmodule ApiaryWeb.HarnessComponents do
   # A source no adapter links to the organisation and its host serves to no one.
   defp not_covered_words(source, organisation),
     do:
-      gettext(
+      pgettext(
+        "plain",
         "Owners and admins of %{org} check the address on the set-up step Harness, or connect the repository's account in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{org} reaches it.",
         org: organisation,
         source: label(source)
@@ -860,7 +861,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def public_read_words(:source_unreachable, names),
     do:
       gettext(
-        "The instance admin checks that the Qory Apiary server reaches %{host} on port %{port}. Qory Apiary could not connect to %{host}, or got nothing within %{n} s.",
+        "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or got nothing within %{n} s.",
         host: names.host,
         port: names.port,
         n: names.seconds
@@ -868,15 +869,17 @@ defmodule ApiaryWeb.HarnessComponents do
 
   def public_read_words(:host_not_allowed, names),
     do:
-      gettext(
-        "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise the instance admin installs one. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only.",
+      pgettext(
+        "plain",
+        "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise contact support. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only.",
         org: names.organisation,
         host: names.host
       )
 
   def public_read_words(:fetch_failed, names),
     do:
-      gettext(
+      pgettext(
+        "plain",
         "Owners and admins of %{org} check the address on the set-up step Harness, or link the repository through a connection. %{host} did not serve %{source} as a git repository over HTTPS.",
         org: names.organisation,
         host: names.host,

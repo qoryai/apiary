@@ -182,7 +182,7 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
             ) do
         pack = B.pack([{:blob, blob}, {:ofs, 0, B.delta(byte_size(blob), 0, [])}])
         at = rem(at, byte_size(pack))
-        <<head::binary-size(at), _::8, tail::binary>> = pack
+        <<head::binary-size(^at), _::8, tail::binary>> = pack
         changed = head <> <<byte>> <> tail
 
         for bytes <- [changed, noise, "PACK" <> noise] do

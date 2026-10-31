@@ -1417,7 +1417,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"host" => "code.example.com", "port" => 8443, "seconds" => 10}
                }
              },
-             "The instance admin checks that the Qory Apiary server reaches code.example.com on port 8443. Qory Apiary could not connect to code.example.com, or got nothing within 10 s."},
+             "Contact support: Qory Apiary could not connect to code.example.com on port 8443, or got nothing within 10 s."},
             {%{
                code: "host_not_allowed",
                source: harness,
@@ -1427,7 +1427,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"host" => "code.example.com", "port" => 443}
                }
              },
-             "Owners and admins of Acme link the repository through a connection in Organisation settings › Integrations, if an integration serves code.example.com; otherwise the instance admin installs one. code.example.com resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."},
+             "Owners and admins of Acme link the repository through a connection in Organisation settings › Integrations, if an integration serves code.example.com; otherwise contact support. code.example.com resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."},
             {%{
                code: "fetch_failed",
                source: harness,
