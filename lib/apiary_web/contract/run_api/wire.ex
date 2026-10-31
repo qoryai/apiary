@@ -10,7 +10,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   comments and the answers as Explore's input has them
   #   (`Apiary.Dispatches.Inputs.explore/4`, within its 768 KiB with the oldest comments
   #   left out), then the stage, its inputs, its outputs with each check result, the
-  #   newest verdict with its gaps, the stage's gaps and the notes from people.
+  #   newest verdict with its gaps, the stage's gaps and the work item's notes.
   # - `index/1`: every artifact of the work item with its versions, each version's files,
   #   writer and approvals (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
@@ -198,9 +198,9 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # notes/1 is the notes people left on the work item (`Apiary.Stages.notes/1`), oldest
-  # first: a request for changes, an escalation resolved with a note, a move and an
-  # answer to a run's questions.
+  # notes/1 is the notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
+  # request for changes, an escalation resolved with a note, a move, an answer to a run's
+  # questions and the gaps of failed checks that started a round.
   @spec notes([map]) :: [Jason.OrderedObject.t()]
   def notes(notes) do
     context = %{names: names(Enum.map(notes, &get(&1, :user_id)))}
@@ -209,12 +209,19 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
       object([
         {"kind", text(get(note, :kind))},
         {"stage_id", get(note, :stage_id)},
-        {"by", object([{"name", name(context, get(note, :user_id))}])},
+        {"by", by(note, context)},
         {"note", get(note, :note)},
         {"artifact_version_id", get(note, :artifact_version_id)},
         {"at", time(get(note, :inserted_at))}
       ])
     end
+  end
+
+  # A failed check has no person.
+  defp by(note, context) do
+    if text(get(note, :kind)) == "check",
+      do: nil,
+      else: object([{"name", name(context, get(note, :user_id))}])
   end
 
   # The name of each person, read once per id (`Apiary.Dispatches.Inputs.person_name/1`).

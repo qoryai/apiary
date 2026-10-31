@@ -18,7 +18,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   alias Apiary.Repo
   alias Apiary.Dispatches.{DispatchRun, Inputs}
   alias Apiary.Runs.Run
-  alias Apiary.Stages.GateDecision
+  alias Apiary.Stages.{Check, GateDecision}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.RawBody
   alias ApiaryWeb.Contract.RunApi.Body
@@ -269,7 +269,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert body["outputs"] == []
     end
 
-    test "has the notes people left, oldest first, each person by name", ctx do
+    test "has the notes, oldest first, each person by name, a failed check by none", ctx do
       place!(ctx)
 
       {:ok, version} =
@@ -290,6 +290,19 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         )
 
       second = decide!(ctx, :move, note: "Back to Explore.")
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+
+      check =
+        Repo.insert!(%Check{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          process_version_id: Apiary.Processes.version_for(work_item).id,
+          stage_id: @explore,
+          round: 2,
+          gaps: "proposal: no version of this stage.",
+          inserted_at: DateTime.utc_now()
+        })
 
       body = json_response(read(ctx, "/work-item"), 200)
       name = Inputs.person_name(ctx.scope.user.id)
@@ -310,6 +323,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "note" => "Back to Explore.",
                  "artifact_version_id" => nil,
                  "at" => at(second.inserted_at)
+               },
+               %{
+                 "kind" => "check",
+                 "stage_id" => @explore,
+                 "by" => nil,
+                 "note" => "proposal: no version of this stage.",
+                 "artifact_version_id" => nil,
+                 "at" => at(check.inserted_at)
                }
              ]
     end
@@ -726,7 +747,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "too_many_files",
            "type" => "explainer",
            "limit" => 1,
-           "message" => "The artifact type explainer takes at most 1 files in one version."
+           "message" => "The artifact type explainer takes at most 1 file in one version."
          }},
         {{:invalid, {:format, 0}}, 422,
          %{
