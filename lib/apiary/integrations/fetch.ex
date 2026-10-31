@@ -27,7 +27,7 @@ defmodule Apiary.Integrations.Fetch do
   (`:inet` by default); `:req_options`, merged into the request's.
 
   `request/3` is the same fetch for a public git repository's smart-HTTP requests
-  (`Apiary.Harnesses.PublicGit`), with three differences, each an option: a `POST` with
+  (Apiary.Harnesses.PublicGit), with three differences, each an option: a `POST` with
   a `:body`, the `:headers` the protocol sends in place of `Accept`, and, with
   `any_port: true`, the port the address has, on every hop. It returns the address of
   the last hop and the answer's `Content-Type`, and a failure by its class
