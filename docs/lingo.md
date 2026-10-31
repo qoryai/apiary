@@ -108,8 +108,8 @@ definition in `workspaces.type`, such as `qory.software`, beside its domain.
   reads where they pick a type), and in the form that adds an integration from a
   repository on a forge.
 - **A domain may say a whole sentence in its words** where a word swap would not do. The
-  Explore texts are an example: the msgid "Qory proposed what to do, after %{duration}."
-  reads "Qory proposed how to build it, after %{duration}." in `en@software`. The catalogue test lists these sentences (`@software_sentences` in
+  Explore texts are an example: the msgid "Qory wrote a proposal, after %{duration}."
+  reads "Qory wrote a proposal for how to build it, after %{duration}." in `en@software`. The catalogue test lists these sentences (`@software_sentences` in
   `test/apiary_web/lingo_catalogue_test.exs`), and each must be translated in the
   domain's catalogue.
 
