@@ -373,6 +373,30 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "says so when artifacts are turned off after the page opened", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      previous = Application.get_env(:apiary, :features)
+      Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:workflow_model])
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+      assert add_notes(view) =~
+               "Artifacts are turned off, so work item ##{ctx.work_item.number} takes no new versions."
+    end
+
+    test "says so when the reader can no longer read the work items", ctx do
+      %{user: member, membership: membership} = member_fixture(ctx.scope, :member)
+      conn = log_in_user(build_conn(), member)
+      {:ok, view, _html} = live(conn, new_page(ctx, "explainer"))
+
+      Apiary.Repo.delete!(membership)
+
+      assert add_notes(view) =~
+               "You can no longer read the work items of this workspace, so you cannot add a version."
+
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
     test "says so when the store cannot keep the files", ctx do
       blocked = Path.join(ctx.tmp_dir, "a-file")
       File.write!(blocked, "")
