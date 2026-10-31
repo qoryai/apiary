@@ -228,6 +228,34 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, "#artifact-writer a")
     end
 
+    test "renders one document file at a time, the others as the reader opens them", ctx do
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          name: "demo-findings",
+          base_view: :document,
+          max_files: 3
+        })
+
+      version =
+        pushed!(ctx, "demo-findings", [{"a.md", "# Alpha findings"}, {"b.md", "# Beta findings"}])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      view_id = "#artifact-view-#{version.public_id}"
+
+      assert has_element?(view, "#{view_id}-0 h3", "Alpha findings")
+      refute render(view) =~ "Beta findings"
+      assert has_element?(view, ~s(#{view_id}-documents [aria-current="page"]), "a.md")
+
+      view |> element(~s(#{view_id}-documents button[phx-value-file="b.md"])) |> render_click()
+
+      assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
+      refute render(view) =~ "Alpha findings"
+
+      # A filename of no file of the version changes nothing.
+      render_hook(view, "show-document", %{"file" => "c.md"})
+      assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
+    end
+
     test "is read again when a version is pushed to its work item", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))

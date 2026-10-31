@@ -77,23 +77,32 @@ defmodule ApiaryWeb.ArtifactLive.Load do
     end
   end
 
-  # content/2 is what a view shows of the version's files, by filename: for a document,
+  # content/3 is what a view shows of the version's files, by filename: for a document,
+  # the file `shown` only, the first file where it is nil or no file's name, as
   # `{:markdown, rendered}`, the file's text as `Markdown.render/1` returns it, for a file
   # of at most `Markdown.max_bytes/0` bytes, else `:too_large`; for a structured type,
-  # `{:json, value}`, or `:unreadable`. Nothing for other views. The page reads it once,
-  # on its connected mount (`ApiaryWeb.ArtifactLive.Show`).
+  # every file as `{:json, value}`, or `:unreadable`. Nothing for other views. The page
+  # reads it on its connected mount, and again for each document file the reader opens
+  # (`ApiaryWeb.ArtifactLive.Show`): rendering a document costs up to 64 MiB of heap and
+  # seconds, so a page renders one at a time.
   @doc false
-  @spec content(Type.t(), Version.t()) :: map
-  def content(%Type{base_view: :document}, %Version{files: files}) do
-    Map.new(files, fn file ->
-      case read(file, Markdown.max_bytes()) do
-        {:ok, text} -> {file.filename, {:markdown, Markdown.render(text)}}
-        :error -> {file.filename, :too_large}
-      end
-    end)
+  @spec content(Type.t(), Version.t(), String.t() | nil) :: map
+  def content(type, version, shown \\ nil)
+
+  def content(%Type{base_view: :document}, %Version{files: files}, shown) do
+    case Enum.find(files, &(&1.filename == shown)) || List.first(files) do
+      nil ->
+        %{}
+
+      file ->
+        case read(file, Markdown.max_bytes()) do
+          {:ok, text} -> %{file.filename => {:markdown, Markdown.render(text)}}
+          :error -> %{file.filename => :too_large}
+        end
+    end
   end
 
-  def content(%Type{base_view: :structured}, %Version{files: files}) do
+  def content(%Type{base_view: :structured}, %Version{files: files}, _shown) do
     Map.new(files, fn file ->
       with {:ok, bytes} <- read(file, @max_json),
            {:ok, value} <- Jason.decode(bytes) do
@@ -104,7 +113,7 @@ defmodule ApiaryWeb.ArtifactLive.Load do
     end)
   end
 
-  def content(_type, _version), do: %{}
+  def content(_type, _version, _shown), do: %{}
 
   # The file's bytes, where it has at most `limit` of them.
   defp read(%{size: size}, limit) when size > limit, do: :error

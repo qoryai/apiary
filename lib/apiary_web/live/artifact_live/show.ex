@@ -73,6 +73,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
               type={@type}
               version={@version}
               content={@content}
+              shown={@shown}
               path={&ArtifactComponents.file_path(@current_scope, @number, @version.public_id, &1)}
               script={~p"/assets/js/mermaid.js"}
             />
@@ -164,6 +165,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          number: work_item.number,
          version: version,
          type: type,
+         shown: nil,
          content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),
          note: Apiary.ExternalText.present_lines(version.note),
@@ -178,6 +180,19 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
   defp load_history(socket),
     do: assign(socket, :history, Artifacts.versions(socket.assigns.version.artifact))
+
+  # Another file of a document version: rendered as the reader opens it, in place of the
+  # one shown (`Load.content/3`).
+  @impl true
+  def handle_event("show-document", %{"file" => filename}, socket) do
+    %{type: type, version: version} = socket.assigns
+
+    if type.base_view == :document and Enum.any?(version.files, &(&1.filename == filename)),
+      do:
+        {:noreply,
+         assign(socket, shown: filename, content: Load.content(type, version, filename))},
+      else: {:noreply, socket}
+  end
 
   @impl true
   def handle_info({:artifact_pushed, work_item_id, _version_id}, socket) do

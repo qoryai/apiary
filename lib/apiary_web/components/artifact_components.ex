@@ -292,8 +292,10 @@ defmodule ApiaryWeb.ArtifactComponents do
   @doc """
   view/1 is a version shown by its type's base view:
 
-    * document: each Markdown file rendered (`ApiaryWeb.ArtifactLive.Markdown`), with
-      Mermaid diagrams drawn in the browser (`assets/js/hooks/mermaid.js`);
+    * document: the Markdown file `shown`, the first unless given, rendered
+      (`ApiaryWeb.ArtifactLive.Markdown`), with Mermaid diagrams drawn in the browser
+      (`assets/js/hooks/mermaid.js`); with more than one file, a list of the files above
+      it, each other file a button that sends `show-document` with its filename;
     * image: PNG, JPEG, GIF and WebP inline from the download address; an SVG as a
       download only;
     * video: each MP4 or WebM file with the controls, the version's WebVTT files as its
@@ -312,6 +314,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :type, Type, required: true
   attr :version, Version, required: true
   attr :content, :any, default: %{}
+  attr :shown, :string, default: nil
   attr :path, :any, required: true
   attr :script, :string, default: nil
 
@@ -323,21 +326,50 @@ defmodule ApiaryWeb.ArtifactComponents do
     do: ~H|<div id={"#{@id}-pending"} class="min-h-6"></div>|
 
   def view(%{type: %Type{base_view: :document}} = assigns) do
+    files = assigns.version.files
+    index = Enum.find_index(files, &(&1.filename == assigns.shown)) || 0
+    assigns = assign(assigns, index: index, file: Enum.at(files, index))
+
     ~H"""
-    <div
-      id={@id}
-      class="grid gap-6"
-      phx-hook="Mermaid"
-      phx-update="ignore"
-      data-script={@script}
-      data-alt={gettext("Diagram")}
-      data-source={gettext("Diagram source")}
-      data-failed={gettext("This diagram has an error, so it is shown as written.")}
-    >
-      <section :for={file <- @version.files} class="grid gap-2" aria-label={file.filename}>
-        <p :if={length(@version.files) > 1} class="text-[12.5px] text-muted">{file.filename}</p>
-        <.document text={content(@content, file)} file={file} path={@path} />
-      </section>
+    <div class="grid gap-4">
+      <nav
+        :if={length(@version.files) > 1}
+        id={"#{@id}-documents"}
+        aria-label={gettext("Documents of this version")}
+      >
+        <ul class="flex flex-wrap gap-x-4 gap-y-1 text-[13px]/5">
+          <li :for={{file, at} <- Enum.with_index(@version.files)}>
+            <span :if={at == @index} class="font-medium break-all" aria-current="page">
+              {file.filename}
+            </span>
+            <.button
+              :if={at != @index}
+              type="button"
+              variant="link"
+              phx-click="show-document"
+              phx-value-file={file.filename}
+              class="break-all"
+            >
+              {file.filename}
+            </.button>
+          </li>
+        </ul>
+      </nav>
+      <div
+        :if={@file}
+        id={"#{@id}-#{@index}"}
+        class="grid gap-6"
+        phx-hook="Mermaid"
+        phx-update="ignore"
+        data-script={@script}
+        data-alt={gettext("Diagram")}
+        data-source={gettext("Diagram source")}
+        data-failed={gettext("This diagram has an error, so it is shown as written.")}
+      >
+        <section class="grid gap-2" aria-label={@file.filename}>
+          <.document text={content(@content, @file)} file={@file} path={@path} />
+        </section>
+      </div>
     </div>
     """
   end
