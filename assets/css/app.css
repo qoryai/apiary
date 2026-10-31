@@ -7223,11 +7223,16 @@
     }
   }
   @container (max-width: 640px) {
-    .q-tseg,
+    .q-tseg:not(.q-tview),
     .q-term-sep,
     .q-term-px {
       display: none;
     }
+  }
+
+  /* The note under the box says what Raw shows; Collapsed shows something else. */
+  .q-termbox:has([data-view="collapsed"][aria-pressed="true"]) + .q-term-note {
+    display: none;
   }
 
   .q-term-screen [data-screen] {

@@ -1440,6 +1440,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#terminal-bar [data-fullscreen][hidden]")
       assert has_element?(lv, "#terminal-bar .q-term-hint", "leaves focus")
 
+      # a run on pipes has the two views, Collapsed first, and search says what it shows
+      assert has_element?(lv, ~s(#terminal[data-pty="false"]))
+      assert has_element?(lv, ~s(#terminal-bar [data-view="collapsed"][aria-pressed="true"]))
+      assert has_element?(lv, ~s(#terminal-bar [data-view="raw"][aria-pressed="false"]), "Raw")
+      assert has_element?(lv, "#terminal-bar .q-term-find", "Searching shows the Raw view.")
+
       # the script's words are the server's, in the domain's language
       words =
         lv
@@ -1454,6 +1460,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert words["size"] == "%{size} px"
       assert words["fullScreen"] == "Full screen"
       assert words["leaveFullScreen"] == "Leave full screen"
+      assert words["kilobytes"] == "%{number} kB"
     end
 
     test "a run with a recorded size replays at it: the size on the box, no wrap", %{
@@ -1481,6 +1488,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#terminal [data-wrap]")
       assert has_element?(lv, "#terminal [data-size-fit]")
       assert html =~ "drawn at the columns they were recorded at"
+      # a pseudo-terminal's log is cursor movement: it stays raw, with no choice of view
+      assert has_element?(lv, ~s(#terminal[data-pty="true"]))
+      refute has_element?(lv, "#terminal [data-view]")
+      refute html =~ "Searching shows the Raw view."
 
       {:ok, _lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")

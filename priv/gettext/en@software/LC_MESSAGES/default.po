@@ -1342,6 +1342,7 @@ msgid_plural "%{number} %{items} match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} B"
@@ -1352,6 +1353,7 @@ msgstr ""
 msgid "%{number} GB"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} MB"
@@ -1628,6 +1630,7 @@ msgid_plural "%{number} items to review"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} kB"
@@ -5853,6 +5856,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Collapse sidebar"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Collapsed"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -10232,6 +10240,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "Log view"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "Log, %{number} line"
 msgid_plural "Log, %{number} lines"
 msgstr[0] ""
@@ -13832,6 +13845,11 @@ msgstr ""
 msgid "Rate"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Raw"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Raw log"
@@ -15178,6 +15196,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Search the log"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Search the log. Searching shows the Raw view."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex

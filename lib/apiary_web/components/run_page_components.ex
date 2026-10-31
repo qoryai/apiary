@@ -1472,6 +1472,9 @@ defmodule ApiaryWeb.RunPageComponents do
       notLoaded: gettext("The log could not be loaded."),
       dropped: gettext("The log stream dropped. Reconnecting."),
       size: gettext("%{size} px", size: "%{size}"),
+      bytes: gettext("%{number} B", number: "%{number}"),
+      kilobytes: gettext("%{number} kB", number: "%{number}"),
+      megabytes: gettext("%{number} MB", number: "%{number}"),
       fullScreen: gettext("Full screen"),
       leaveFullScreen: gettext("Leave full screen")
     }
@@ -1492,7 +1495,8 @@ defmodule ApiaryWeb.RunPageComponents do
   box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
-  The bar: the stream, search, follow, wrap (on pipes), the text size (A−, A+ and, at a
+  The bar: the stream, the view (on pipes: Collapsed or Raw, the reader's preference kept
+  in `localStorage`), search, follow, wrap (on pipes), the text size (A−, A+ and, at a
   recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
   download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
   (the browser's, where it has one).
@@ -1510,7 +1514,11 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :rows, :integer, default: nil
 
   def terminal(assigns) do
-    assigns = assign(assigns, sized: is_integer(assigns.cols) and is_integer(assigns.rows))
+    assigns =
+      assign(assigns,
+        sized: is_integer(assigns.cols) and is_integer(assigns.rows),
+        pty: assigns.streams == ["terminal"]
+      )
 
     ~H"""
     <div
@@ -1523,7 +1531,7 @@ defmodule ApiaryWeb.RunPageComponents do
       data-script={@script}
       data-stylesheet={@stylesheet}
       data-live={to_string(@live)}
-      data-pty={to_string(@streams == ["terminal"])}
+      data-pty={to_string(@pty)}
       data-through={@through}
       data-sized={to_string(@sized)}
       data-cols={@sized && @cols}
@@ -1548,9 +1556,19 @@ defmodule ApiaryWeb.RunPageComponents do
             <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
           <% end %>
         </div>
+        <div :if={!@pty} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
+          <button type="button" data-view="collapsed" aria-pressed="true">
+            {gettext("Collapsed")}
+          </button>
+          <button type="button" data-view="raw" aria-pressed="false">{gettext("Raw")}</button>
+        </div>
         <label class="q-term-find">
           <.icon name="hero-magnifying-glass-micro" class="size-4" />
-          <span class="sr-only">{gettext("Search the log")}</span>
+          <span class="sr-only">
+            {if @pty,
+              do: gettext("Search the log"),
+              else: gettext("Search the log. Searching shows the Raw view.")}
+          </span>
           <input
             type="text"
             data-find

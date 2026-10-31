@@ -1767,9 +1767,9 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
 
 `<.terminal>` in `RunPageComponents` is dark in both themes: the recorded output's colours
 are written against a dark ground. It fills the window below the tab bar, never under
-380 px. The `Terminal` hook reads the bytes from the run's log endpoint and hands them to
-xterm.js as `Uint8Array`s, never decoded strings, in slices per frame so a long log does
-not block input. The bytes never cross the LiveView socket: the LiveView sends the foot's
+380 px. The `Terminal` hook reads the bytes from the run's log endpoint and, in the Raw
+view, hands them to xterm.js as `Uint8Array`s, never decoded strings, in slices per frame
+so a long log does not block input, and interprets none of them. The bytes never cross the LiveView socket: the LiveView sends the foot's
 numbers and a signal that the log advanced. xterm.js is vendored under
 `assets/vendor/xterm`, built as a separate bundle and loaded on the hook's first mount, by no
 other page. The screen is `role="log"` with `aria-live="off"`.
@@ -1778,13 +1778,33 @@ other page. The screen is `role="log"` with `aria-live="off"`.
   drawn at those columns and rows, centred only inside the box's darker ground, which
   fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
   to the box, with Wrap.
-- **The bar**: the stream, search (`/`), follow (End), wrap, the **text size** (A−, A+,
+- **Collapsed and Raw.** A run on pipes has a two-button segment, Collapsed by default,
+  the reader's choice kept in `localStorage`. A run on a pseudo-terminal has none: its log
+  is cursor movement, and it stays Raw. Raw is the bytes as they are, with the note under
+  the box; Collapsed has no note. Collapsed cuts the stream into lines in `terminal_lines.js`:
+  a line that starts with `{` and parses to a JSON object is one row of the screen, with a
+  marker, its `type` and `subtype`, a preview (its `result`, else the first text in
+  `message.content`, cut to the row) and its size, as "> result success  API Error: 400 ...
+  1.1 kB"; every other line passes through as its bytes. A click on a row opens it to the
+  object, printed, and a click on the row closes it. xterm.js cannot rewrite a row above
+  the end, so the view keeps its lines and writes the screen again at the same scroll
+  position, as it does when the box's width changes. A log of over 50,000 lines or 256 MiB
+  shows Raw. Rows open by mouse alone; Raw and the link to the log as text are the way to
+  read all of it by keyboard. Download is the same in both views.
+- **Decoded text is not the log's bytes.** JSON escapes control characters, so a decoded
+  value could hold a live escape sequence that the raw line does not. Every decoded value
+  in a row has its C0, C1 and DEL characters removed, a `type` or `subtype` keeps only
+  `[A-Za-z0-9_.:-]`, 40 characters at most, and the printed object has all of them escaped.
+  Nothing of the log touches the DOM outside xterm.js.
+- **The bar**: the stream, the view, search (`/`), follow (End), wrap, the **text size** (A−, A+,
   11 to 18 px, and Fit, the largest size at which a recorded screen's columns fit), a
   reading preference kept in `localStorage`; download; **Focus** (`f` outside a field;
   Escape leaves), a class on the root that folds the shell, the header, the tabs and the
   rail away so the box takes the window; and **Full screen**, the browser's, on the box,
   shown only where the browser has it. A narrow box names its buttons on hover only
-  (a container query), so the bar never wraps.
+  (a container query), so the bar never wraps. Search reads the screen, and a collapsed
+  row hides its words, so typing in it shows Raw, the segment with it, without changing
+  the reader's choice.
 - **No output.** A run with no output says so in the column instead of the box, as an
   empty state.
 
