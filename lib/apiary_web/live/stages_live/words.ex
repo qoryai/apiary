@@ -6,6 +6,8 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText, only: [rich_gettext: 2]
+
   alias Apiary.Processes
 
   # A stage's gate, with each named approver by name: `people` maps a person's user id,
@@ -115,17 +117,18 @@ defmodule ApiaryWeb.StagesLive.Words do
   defp read_time(at), do: ApiaryWeb.Format.time_ago(at, DateTime.utc_now(), case: :inline)
 
   # A read of the harness that failed, with its cause (`words`): the list stays as the
-  # last read left it, with that read's time.
+  # last read left it, with that read's time. Rich text, since the cause can link to
+  # support (`ApiaryWeb.Support`); the page shows it, the canvas does not.
   @doc false
   def read_failed(words, %{read_at: at}),
     do:
-      gettext("Reading the harness failed, so the list is from the read %{time}. %{cause}",
+      rich_gettext("Reading the harness failed, so the list is from the read %{time}. %{cause}",
         time: read_time(at),
         cause: words
       )
 
   def read_failed(words, nil),
-    do: gettext("Reading the harness failed. %{cause}", cause: words)
+    do: rich_gettext("Reading the harness failed. %{cause}", cause: words)
 
   # The label of the "+" before the first stage.
   @doc false

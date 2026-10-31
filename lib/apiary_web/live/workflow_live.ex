@@ -710,7 +710,7 @@ defmodule ApiaryWeb.WorkflowLive do
               disabled={@harness_saving}
             />
             <.notice :if={@harness_refusal} kind={:error}>
-              <span id="workflow-harness-refusal">{@harness_refusal}</span>
+              <span id="workflow-harness-refusal"><.rich text={@harness_refusal} /></span>
             </.notice>
             <div class="flex gap-2">
               <.button
@@ -804,11 +804,13 @@ defmodule ApiaryWeb.WorkflowLive do
             {gettext("Reading the stack of %{source}…", source: @source.label)}
           </p>
           <.notice :if={@read_error} kind={:error}>
-            <span id="workflow-read-error">{HarnessComponents.read_words(
-              @read_error,
-              @source,
-              @organisation
-            )}</span>
+            <span id="workflow-read-error"><.rich text={
+              HarnessComponents.read_words(
+                @read_error,
+                @source,
+                @organisation
+              )
+            } /></span>
           </.notice>
           <.notice :if={@stacks && no_workflow?(@stacks)} kind={:error}>
             <span id="workflow-no-workflow">

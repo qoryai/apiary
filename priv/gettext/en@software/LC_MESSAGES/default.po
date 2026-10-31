@@ -142,6 +142,37 @@ msgstr ""
 msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to correct the address of %{source}: an address is https://, a host, an optional port and an optional path."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to correct the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
+msgstr "%{contact_support} to correct the version of %{source}: a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "%{contact_support} to make %{source} available to %{organisation}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: Qory Apiary could not call the %{adapter} adapter."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: Qory Apiary could not read the targets of the %{adapter} adapter."
+msgstr "%{contact_support}: Qory Apiary could not read the repositories of the %{adapter} adapter."
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} chosen workspace"
@@ -2495,8 +2526,8 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{source} has no version named %{ref}. Contact support to correct the version of this harness source."
-msgstr "%{source} has no branch, tag or commit named %{ref}. Contact support to correct the version of this harness source."
+msgid "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source."
+msgstr "%{source} has no branch, tag or commit named %{ref}. %{contact_support} to correct the version of this harness source."
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
@@ -6157,41 +6188,10 @@ msgstr ""
 msgid "Contact support at %{address}."
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support to correct the address of %{source}: an address is https://, a host, an optional port and an optional path."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support to correct the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
-msgstr "Contact support to correct the version of %{source}: a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Contact support to make %{source} available to %{organisation}."
-msgstr ""
-
 #: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support."
 msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary could not call the %{adapter} adapter."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary could not read the targets of the %{adapter} adapter."
-msgstr "Contact support: Qory Apiary could not read the repositories of the %{adapter} adapter."
 
 #: lib/apiary_web/live/instance_live/set_up.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -13509,12 +13509,12 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, contact support."
+msgid "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, contact support."
+msgid "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -13530,7 +13530,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, contact support."
+msgid "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -13573,7 +13573,7 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, contact support to have it read from %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations."
+msgid "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, %{contact_support} to have it read from %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -16704,13 +16704,13 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, contact support."
+msgid "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "The %{adapter} adapter did not answer within %{count} second. Try again. If it repeats, contact support."
-msgid_plural "The %{adapter} adapter did not answer within %{count} seconds. Try again. If it repeats, contact support."
+msgid "The %{adapter} adapter did not answer within %{count} second. Try again. If it repeats, %{contact_support}."
+msgid_plural "The %{adapter} adapter did not answer within %{count} seconds. Try again. If it repeats, %{contact_support}."
 msgstr[0] ""
 msgstr[1] ""
 

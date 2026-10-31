@@ -10,14 +10,14 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # place, outside the checkout, and the harness choice's repository and its branch, tag or
   # commit, the version's name among them.
   @software_sentences [
-    "%{source} has no version named %{ref}. Contact support to correct the version of this harness source.",
+    "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
     "%{source} has no version named %{ref}. Correct the version.",
     "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
     "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
-    "Contact support to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",

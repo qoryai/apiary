@@ -2294,7 +2294,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     # `:exited`'s words. A stub cannot make the read task raise: each call runs in a task
     # under `Apiary.Adapters.Calls.Supervisor`, and a raise there is an unreachable adapter.
     test "a read whose task exits: try again" do
-      assert ApiaryWeb.HarnessComponents.read_words(:exited, %{label: "acme/harness"}, "Acme") ==
+      assert read_words(:exited, %{label: "acme/harness"}, "Acme") ==
                "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
                  "again. If it repeats, contact support."
     end
@@ -2319,7 +2319,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
          }}
       end
 
-      words = &ApiaryWeb.HarnessComponents.refusal_words(&1, source, "main", "Acme")
+      words = &refusal_words(&1, source, "main", "Acme")
       harness = "Correct the harness in acme/harness: "
 
       # The chosen source's address or folder, before any call: the form rule it breaks.
@@ -2338,7 +2338,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {"path_form", "a%2f",
              "Correct the folder: write a%2f with / and no backslash or percent sign."}
           ] do
-        assert ApiaryWeb.HarnessComponents.refusal_words(
+        assert refusal_words(
                  failure.(:invalid, chosen, %{"rule" => rule, "values" => %{"path" => path}}),
                  %{source | narrowing: %{"path" => path}},
                  "main",
@@ -2377,7 +2377,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(failure.(:credential_in_address, chosen, nil)) ==
                "Correct the address: remove the user name and password from it."
 
-      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+      reads = &read_words(&1, source, "Acme")
 
       # No adapter answered for the source, so both fixes show, each with its condition.
       not_covered =
@@ -2407,7 +2407,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       # An address the person typed is the person's to correct; a connected repository's
       # or an assignment's is not.
-      assert ApiaryWeb.HarnessComponents.read_words(
+      assert read_words(
                {:unreadable, :address},
                Map.put(source, :kind, :address),
                "Acme"
@@ -2428,7 +2428,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Correct the version: a branch, tag or commit name has 1 to 255 letters, digits, " <>
                  "dots, underscores, slashes and hyphens, and no spaces."
 
-      assert ApiaryWeb.HarnessComponents.read_words(
+      assert read_words(
                {:unreadable, :version, "v 9"},
                Map.put(source, :kind, :assigned),
                "Acme"
@@ -2555,7 +2555,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     # not reach through a stub adapter.
     test "a read refused for a stack, a folder, a file or a version: the cause" do
       source = %{label: "acme/harness", git: @harness_git, narrowing: %{"path" => "stacks/web"}}
-      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+      reads = &read_words(&1, source, "Acme")
 
       assert reads.({:no_stack_file, "stacks/web/qory-stack.yaml"}) ==
                "acme/harness has no qory-stack.yaml in the folder stacks/web. Add that file."
@@ -2571,7 +2571,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # A version an instance admin assigned, which no field on the page changes.
       assigned = Map.merge(source, %{kind: :assigned, ref: "v9"})
 
-      assert ApiaryWeb.HarnessComponents.read_words({:no_version, "v9"}, assigned, "Acme") ==
+      assert read_words({:no_version, "v9"}, assigned, "Acme") ==
                "acme/harness has no branch, tag or commit named v9. Contact support to correct " <>
                  "the version of this harness source."
 
@@ -2589,7 +2589,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       walk = %{failure: :adapter_unavailable, call_cause: :late, call: late}
 
-      assert ApiaryWeb.HarnessComponents.refusal_words({:walk, walk}, source, "main", "Acme") ==
+      assert refusal_words({:walk, walk}, source, "main", "Acme") ==
                "Qory Apiary stopped reading acme/harness after 30 seconds, before it read " <>
                  "every file. Try again."
 
@@ -2607,7 +2607,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         {:call, %{adapter: "GitHub", cause: cause, code: code, seconds: nil}}
       end
 
-      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+      reads = &read_words(&1, source, "Acme")
 
       assert reads.({:call, %{adapter: "GitHub", cause: :timeout, code: nil, seconds: 10}}) ==
                "The GitHub adapter did not answer within 10 seconds. Try again. If it repeats, " <>
@@ -2663,7 +2663,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
            call: %{adapter: "GitHub", cause: :too_large, code: nil, seconds: nil}
          }}
 
-      assert ApiaryWeb.HarnessComponents.refusal_words(walk, source, "main", "Acme") ==
+      assert refusal_words(walk, source, "main", "Acme") ==
                "Contact support: Qory Apiary could not call the GitHub adapter."
     end
 
@@ -5325,5 +5325,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-remove")
     refute deleted?(pool)
     assert read_only?(lv)
+  end
+
+  # The words of a failed read or a refused save, as text: a "Contact support" in them is
+  # a link only where a support address is set, and none is here.
+  defp read_words(reason, source, organisation),
+    do:
+      reason
+      |> ApiaryWeb.HarnessComponents.read_words(source, organisation)
+      |> ApiaryWeb.RichText.plain_text()
+
+  defp refusal_words(reason, source, ref, organisation) do
+    case ApiaryWeb.HarnessComponents.refusal_words(reason, source, ref, organisation) do
+      nil -> nil
+      words -> ApiaryWeb.RichText.plain_text(words)
+    end
   end
 end

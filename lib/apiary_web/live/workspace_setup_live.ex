@@ -2318,7 +2318,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
           <.notice :if={@harness_refusal} kind={:error}>
             <span id="set-up-harness-refusal" data-reason={harness_refusal_code(@harness_refusal)}>
-              {elem(@harness_refusal, 1)}
+              <.rich text={elem(@harness_refusal, 1)} />
             </span>
           </.notice>
         </.form>

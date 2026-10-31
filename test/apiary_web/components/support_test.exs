@@ -151,4 +151,79 @@ defmodule ApiaryWeb.SupportTest do
                ~s(Contact support with run <span class="font-mono text-[12px]">r-42</span>.)
     end
   end
+
+  describe "the harness read and save texts" do
+    setup do
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+      :ok
+    end
+
+    @source %{label: "acme/harness", kind: :assigned}
+    @call %{adapter: "GitHub", code: nil, seconds: 10}
+
+    # Every text of `ApiaryWeb.HarnessComponents` that sends the reader to support.
+    defp support_texts do
+      reads =
+        [
+          {:unreadable, :address},
+          {:unreadable, :path, "../x"},
+          {:unreadable, :version, "v 9"},
+          {:no_version, "v9"},
+          :exited,
+          :not_covered
+        ] ++
+          for(
+            cause <- [:timeout, :unreachable, :no_address, :unauthorized, :invalid_answer],
+            do: {:call, Map.put(@call, :cause, cause)}
+          )
+
+      Enum.map(reads, &ApiaryWeb.HarnessComponents.read_words(&1, @source, "Acme")) ++
+        [
+          ApiaryWeb.HarnessComponents.refusal_words(
+            {:walk, %{failure: :not_allowed}},
+            @source,
+            "main",
+            "Acme"
+          ),
+          ApiaryWeb.StagesLive.Words.read_failed(
+            ApiaryWeb.HarnessComponents.read_words(:exited, @source, "Acme"),
+            nil
+          )
+        ]
+    end
+
+    defp shown_text(text) do
+      assigns = %{text: text}
+      html(~H"<.rich text={@text} />")
+    end
+
+    test "link Contact support where an address is set, with the words unchanged" do
+      Application.put_env(:apiary, :support_address, nil)
+      plain = support_texts()
+
+      Application.put_env(:apiary, :support_address, "support@example.com")
+      linked = support_texts()
+
+      assert length(linked) == 13
+
+      for {text, words} <- Enum.zip(linked, plain) do
+        shown = shown_text(text)
+
+        assert shown =~
+                 ~r{<a href="mailto:support@example.com" class="q-link">[Cc]ontact support</a>}
+
+        assert plain_text(text) == plain_text(words)
+      end
+    end
+
+    test "show Contact support as plain text where none is" do
+      Application.put_env(:apiary, :support_address, nil)
+
+      for text <- support_texts() do
+        shown = shown_text(text)
+        refute shown =~ "<a "
+        assert shown =~ ~r/[Cc]ontact support/
+      end
+    end
+  end
 end

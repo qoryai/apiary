@@ -721,7 +721,7 @@ defmodule ApiaryWeb.StagesLive.Index do
           <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
             <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot)}</p>
             <p :if={@declared_error} id="stages-workflows-error" class="text-error">
-              {Words.read_failed(@declared_error, @snapshot)}
+              <.rich text={Words.read_failed(@declared_error, @snapshot)} />
             </p>
           </div>
           <div id="stages-version" class="flex flex-wrap items-center gap-x-4 gap-y-2">
