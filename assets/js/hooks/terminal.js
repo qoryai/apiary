@@ -34,7 +34,7 @@
 //
 // xterm.js is vendored (assets/vendor/xterm) and built as its own bundle; it is loaded
 // on the first mount of this hook and by no other page.
-import {LineBuffer, entry, opened, row, rowAt, size as sizeOf} from "./terminal_lines"
+import {Anchors, LineBuffer, entry, opened, row, rowAt, rowLine, size as sizeOf} from "./terminal_lines"
 import {singleKeys} from "./shortcuts"
 
 const LIMIT = 2000
@@ -49,8 +49,7 @@ const SIZE_KEY = "qory:terminal-size"
 const VIEW_KEY = "qory:terminal-view"
 const SCROLLBACK = 100000
 // Past this many bytes or lines of a log, the Collapsed view stops keeping them and shows
-// Raw: the lines are held here, and xterm.js walks every marker each time a full scrollback
-// drops a line.
+// Raw: the lines are held here.
 const MOST_KEPT = 256 * 1024 * 1024
 const MOST_LINES = SCROLLBACK / 2
 // How long a resize of the box settles before Collapsed writes its rows at the new width.
@@ -438,7 +437,9 @@ export const Terminal = {
     if (cols !== this.term.cols || size.rows !== this.term.rows) this.term.resize(cols, size.rows)
     // What the reader sees of a row: an unwrapped screen is wider than the box.
     this.seenCols = Math.min(cols, size.cols)
-    if (this.view === "collapsed" && this.rows.length && this.seenCols !== this.rowCols) {
+    // A new width of the screen reflows it, and a row's offset from its anchor with it.
+    const moved = this.seenCols !== this.rowCols || cols !== this.drawnCols
+    if (this.view === "collapsed" && this.rows.length && moved) {
       clearTimeout(this.resizing)
       this.resizing = setTimeout(() => this.rewrite(), RESIZE_MS)
     }
@@ -535,10 +536,16 @@ export const Terminal = {
     this.lines = new LineBuffer()
     this.entries = []
     this.drawn = 0
-    this.rows = []
+    this.clearRows()
     this.pass = (this.pass || 0) + 1
     this.kept = 0
     this.rewriting = null
+  },
+
+  clearRows() {
+    if (this.anchors) this.anchors.clear()
+    this.anchors = new Anchors()
+    this.rows = []
   },
 
   async pull() {
@@ -636,6 +643,7 @@ export const Terminal = {
   draw(then) {
     if (this.dead) return
     this.rowCols = this.seenCols || this.term.cols
+    this.drawnCols = this.term.cols
     let budget = SLICE
     while (this.drawn < this.entries.length && budget > 0) {
       budget -= this.drawLine(this.entries[this.drawn])
@@ -645,8 +653,8 @@ export const Terminal = {
     else this.term.write("", then)
   },
 
-  // One line on the screen; how many bytes that took. A row's place is found by its
-  // marker, which xterm.js moves as the buffer scrolls, reflows and trims.
+  // One line on the screen; how many bytes that took. A row's place is its offset from an
+  // anchor's marker, which xterm.js moves as the buffer scrolls and trims.
   drawLine(line) {
     if (!("names" in line)) {
       this.term.write(line.bytes)
@@ -656,12 +664,20 @@ export const Terminal = {
     const pass = this.pass
     this.term.write(text, () => {
       if (pass !== this.pass) return
-      const marker = this.term.registerMarker(-1)
-      if (marker) this.rows.push({marker, line})
+      this.placeRow(line)
     })
     const body = line.open ? opened(line.bytes) : null
     if (body) this.term.write(body)
     return text.length + (body ? body.length : 0)
+  },
+
+  // The row just written, one line above the cursor. The alternate buffer has no markers.
+  placeRow(line) {
+    const buffer = this.term.buffer.active
+    if (buffer.type !== "normal") return
+    const y = buffer.baseY + buffer.cursorY - 1
+    const place = this.anchors.place(y, () => this.term.registerMarker(-1))
+    if (place) this.rows.push({...place, line})
   },
 
   sizeWords(bytes) {
@@ -682,10 +698,10 @@ export const Terminal = {
     this.draw(() => {})
   },
 
-  // The index of the row at `y` in the buffer, or of the last one before it. A marker
+  // The index of the row at `y` in the buffer, or of the last one before it. A row
   // trimmed from the scrollback is on line -1, so the order holds.
   rowIndex(y, exact) {
-    return rowAt(this.rows, y, exact, ({marker}) => marker.line)
+    return rowAt(this.rows, y, exact, rowLine)
   },
 
   // A collapsed row is a link to itself: the whole row, no underline. `bufferLine` counts
@@ -717,7 +733,7 @@ export const Terminal = {
     const place = this.rewriting || this.place()
     this.rewriting = place
     this.pass += 1
-    this.rows = []
+    this.clearRows()
     this.drawn = 0
     this.term.write(RESET)
     this.draw(() => {
@@ -725,7 +741,7 @@ export const Terminal = {
       this.rewriting = null
       if (place.end) return this.term.scrollToBottom()
       const anchor = place.line && this.rows.find(({line}) => line === place.line)
-      this.term.scrollToLine(anchor ? anchor.marker.line + place.below : place.top)
+      this.term.scrollToLine(anchor ? rowLine(anchor) + place.below : place.top)
     })
   },
 
@@ -733,12 +749,12 @@ export const Terminal = {
   place() {
     const {viewportY: top, baseY} = this.term.buffer.active
     const index = this.rowIndex(top, false)
-    const found = index >= 0 && this.rows[index].marker.line >= 0 ? this.rows[index] : null
+    const found = index >= 0 && rowLine(this.rows[index]) >= 0 ? this.rows[index] : null
     return {
       end: this.following || top >= baseY,
       top,
       line: found && found.line,
-      below: found ? top - found.marker.line : 0,
+      below: found ? top - rowLine(found) : 0,
     }
   },
 

@@ -176,6 +176,51 @@ export const opened = bytes => {
   }
 }
 
+// How many rows share one marker. xterm.js calls every marker's listener each time a full
+// scrollback drops a line, so a marker per row freezes the tab.
+export const ANCHOR_ROWS = 1000
+
+// The places of rows in xterm.js's buffer. One marker in `ANCHOR_ROWS` rows moves with the
+// buffer, and a row is its offset from that marker. Each anchor has its distance from the
+// one before (`at`), so a row whose marker the scrollback dropped is found from a later one.
+export class Anchors {
+  constructor() {
+    this.all = []
+  }
+
+  // The anchor and offset of a new row on line `y`, or null. `mark` makes a marker on `y`.
+  place(y, mark) {
+    const last = this.all[this.all.length - 1]
+    if (last && last.rows < ANCHOR_ROWS && last.marker.line >= 0) {
+      last.rows += 1
+      return {anchor: last, offset: y - last.marker.line}
+    }
+    const marker = mark()
+    if (!marker) return null
+    const anchor = {marker, at: 0, next: null, rows: 1}
+    if (last && last.marker.line >= 0) {
+      anchor.at = last.at + marker.line - last.marker.line
+      last.next = anchor
+    }
+    this.all.push(anchor)
+    return {anchor, offset: 0}
+  }
+
+  clear() {
+    for (const {marker} of this.all) marker.dispose()
+    this.all = []
+  }
+}
+
+// A row's line in the buffer, or -1 when the scrollback dropped it.
+export const rowLine = ({anchor, offset}) => {
+  if (anchor.marker.line >= 0) return anchor.marker.line + offset
+  for (let next = anchor.next; next; next = next.next) {
+    if (next.marker.line >= 0) return Math.max(next.marker.line - (next.at - anchor.at) + offset, -1)
+  }
+  return -1
+}
+
 // The index in `rows`, ordered by `lineOf`, of the row on `line` (`exact`), or of the last
 // row at or before it; -1 for none.
 export const rowAt = (rows, line, exact = false, lineOf = row => row.line) => {

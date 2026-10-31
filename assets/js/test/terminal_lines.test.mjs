@@ -5,7 +5,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {LineBuffer, clean, entry, label, opened, row, rowAt, size} from "../hooks/terminal_lines.js"
+import {ANCHOR_ROWS, Anchors, LineBuffer, clean, entry, label, opened, row, rowAt, rowLine, size} from "../hooks/terminal_lines.js"
 
 const encode = text => new TextEncoder().encode(text)
 const decode = bytes => new TextDecoder().decode(bytes)
@@ -163,6 +163,78 @@ test("a row is found by its line in the buffer", () => {
   assert.equal(rowAt(rows, 1, true), -1)
   assert.equal(rowAt(rows, 40), 2)
   assert.equal(rowAt([], 4), -1)
+})
+
+// A buffer as far as markers see it: lines scroll out of the top.
+const buffer = () => {
+  const markers = []
+  return {
+    markers,
+    mark: y => () => {
+      const marker = {line: y, dispose: () => (marker.line = -1)}
+      markers.push(marker)
+      return marker
+    },
+    trim: amount => {
+      for (const marker of markers) marker.line = marker.line >= amount ? marker.line - amount : -1
+    },
+  }
+}
+
+test("rows share one marker in a thousand", () => {
+  const screen = buffer()
+  const anchors = new Anchors()
+  const rows = []
+  for (let y = 0; y < ANCHOR_ROWS * 3 + 1; y += 1) rows.push(anchors.place(y * 2, screen.mark(y * 2)))
+  assert.equal(screen.markers.length, 4)
+  assert.equal(rowLine(rows[0]), 0)
+  assert.equal(rowLine(rows[999]), 1998)
+  assert.equal(rowLine(rows[1000]), 2000)
+  assert.equal(rowLine(rows[3000]), 6000)
+})
+
+test("rows move with the buffer as it trims", () => {
+  const screen = buffer()
+  const anchors = new Anchors()
+  const rows = []
+  for (let y = 0; y < 2500; y += 1) rows.push(anchors.place(y, screen.mark(y)))
+  screen.trim(1500)
+  assert.equal(rowLine(rows[2499]), 999)
+  assert.equal(rowAt(rows, 999, true, rowLine), 2499)
+})
+
+test("a row whose marker was trimmed is found from a later marker", () => {
+  const screen = buffer()
+  const anchors = new Anchors()
+  const rows = []
+  for (let y = 0; y < 2500; y += 1) rows.push(anchors.place(y, screen.mark(y)))
+  screen.trim(10)
+  assert.equal(screen.markers[0].line, -1)
+  assert.equal(rowLine(rows[9]), -1)
+  assert.equal(rowLine(rows[10]), 0)
+  assert.equal(rowLine(rows[999]), 989)
+  assert.equal(rowAt(rows, 0, true, rowLine), 10)
+})
+
+test("a row with no marker left is on no line, and the next row starts a new anchor", () => {
+  const screen = buffer()
+  const anchors = new Anchors()
+  const first = anchors.place(0, screen.mark(0))
+  screen.trim(5)
+  assert.equal(rowLine(first), -1)
+  const second = anchors.place(7, screen.mark(7))
+  assert.equal(second.offset, 0)
+  assert.equal(rowLine(second), 7)
+  assert.equal(rowLine(first), -1)
+})
+
+test("clearing the anchors disposes every marker", () => {
+  const screen = buffer()
+  const anchors = new Anchors()
+  anchors.place(3, screen.mark(3))
+  anchors.clear()
+  assert.equal(screen.markers[0].line, -1)
+  assert.deepEqual(anchors.all, [])
 })
 
 test("a 5 MiB log of JSON lines is split in slices of a frame's budget", () => {
