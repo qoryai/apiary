@@ -793,7 +793,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-workflows-error",
-               "This read of the harness failed, so the list is from the last read."
+               "Reading the harness failed, so the list is from the read just now."
              )
     end
 
@@ -854,6 +854,19 @@ defmodule ApiaryWeb.StagesLiveTest do
                view,
                "#stages-workflows-list",
                "Workflows the harness listed just now: review."
+             )
+    end
+
+    test "a read that listed no workflows says so, with its time", %{scope: scope, path: path} do
+      :ok = Processes.record_declared(scope.workspace, [])
+      %{user: user} = member_fixture(scope)
+
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "The harness listed no workflows just now."
              )
     end
 

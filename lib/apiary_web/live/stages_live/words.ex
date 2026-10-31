@@ -98,27 +98,34 @@ defmodule ApiaryWeb.StagesLive.Words do
   # with the time of that read; before the first read, the workflows a stage may take
   # (`declared`, `Apiary.Processes.declared_workflows/1`).
   @doc false
+  def workflows_line(_declared, %{names: [], read_at: at}),
+    do: gettext("The harness listed no workflows %{time}.", time: read_time(at))
+
   def workflows_line(_declared, %{names: names, read_at: at}),
     do:
       gettext("Workflows the harness listed %{time}: %{names}.",
-        time: ApiaryWeb.Format.time_ago(at, DateTime.utc_now(), case: :inline),
+        time: read_time(at),
         names: Enum.join(names, ", ")
       )
 
   def workflows_line(declared, nil),
-    do: gettext("Workflows: %{names}.", names: Enum.join(declared, ", "))
+    do: gettext("Workflows a stage can run: %{names}.", names: Enum.join(declared, ", "))
+
+  # The time of a read in a sentence: "just now", "5 minutes ago", "yesterday, 17:20".
+  defp read_time(at), do: ApiaryWeb.Format.time_ago(at, DateTime.utc_now(), case: :inline)
 
   # A read of the harness that failed, with its cause (`words`): the list stays as the
-  # last read left it.
+  # last read left it, with that read's time.
   @doc false
-  def read_failed(words, %{read_at: _at}),
+  def read_failed(words, %{read_at: at}),
     do:
-      gettext("This read of the harness failed, so the list is from the last read. %{cause}",
+      gettext("Reading the harness failed, so the list is from the read %{time}. %{cause}",
+        time: read_time(at),
         cause: words
       )
 
   def read_failed(words, nil),
-    do: gettext("This read of the harness failed. %{cause}", cause: words)
+    do: gettext("Reading the harness failed. %{cause}", cause: words)
 
   # The label of the "+" before the first stage.
   @doc false

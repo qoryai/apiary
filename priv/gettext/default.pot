@@ -13790,6 +13790,16 @@ msgstr ""
 msgid "Read the log as text"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Reading the harness failed, so the list is from the read %{time}. %{cause}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Reading the harness failed. %{cause}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reading the record"
@@ -17029,6 +17039,11 @@ msgstr ""
 msgid "The harness is not read yet"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The harness listed no workflows %{time}."
+msgstr ""
+
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The harness source %{source}"
@@ -18328,16 +18343,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This prebuild ran under Qory Apiary's default policy, because this workspace had no policy version when the run started."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "This read of the harness failed, so the list is from the last read. %{cause}"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "This read of the harness failed. %{cause}"
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -19715,12 +19720,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Workflows the harness listed %{time}: %{names}."
+msgid "Workflows a stage can run: %{names}."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Workflows: %{names}."
+msgid "Workflows the harness listed %{time}: %{names}."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
