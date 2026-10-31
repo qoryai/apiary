@@ -31,7 +31,8 @@ the restart, for example to watch a long migration.
   When there is anything to do, the section has **Migrations**, the tables it touches
   and whether a migration is long, and **Upgrading**, anything whoever runs the instance
   has to do or know.
-- Back up Postgres. It is the only state; a `pg_dump` of the database is a complete backup.
+- Back up Postgres, then the artifact store. Together they are the instance's state; a
+  `pg_dump` of the database and a copy of the store taken after it are a complete backup.
   `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`, which
   `compose.yaml` keeps in the volume `keys`, are the other three things to keep: without
   `APIARY_ENCRYPTION_SECRET` no access key is trusted, and without `APIARY_SIGNING_SECRET`
