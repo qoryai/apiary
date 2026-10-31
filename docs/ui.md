@@ -1624,8 +1624,10 @@ not fill fails until it is filled there.
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, scrolling
 separately) sits beside it on every tab, Terminal too; below 1280 px Details is a button
-under the header. The terminal takes the whole window through Focus (The terminal,
-below). The top bar's breadcrumb ends with Runs, a link to the list,
+under the header. The Timeline tab's content, Prepare machine included, stops at 72rem,
+left aligned, so a row's time stays near it; the Details rail, the header and the tabs stay
+where they are, and Network access and Terminal keep the column's whole width. The terminal
+takes the whole window through Focus (The terminal, below). The top bar's breadcrumb ends with Runs, a link to the list,
 and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
@@ -1696,6 +1698,14 @@ id".
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
+- **The time columns.** From 1280 px the Timeline has two fixed, right-aligned columns in
+  tabular numbers, so Prepare machine's rows, the run's rows and the connection rows line
+  up: a preparation row's start time and duration, and a run item's offset and number. A
+  tool's duration stays left of the columns. A small faint legend labels them, at the right
+  above Prepare machine's rows ("Started", "Took") and above the run's ("Since run start",
+  "Event"). A faint band
+  covers the row under the pointer, so the eye can follow it to the time. Below 1280 px a
+  row sets out its times without columns or a legend.
 - **Prepare machine** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
   from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
   content while a pending run has no event. One row per step, in the order the steps ran:
@@ -1704,8 +1714,13 @@ id".
   redemption of the run's code) for a run a pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
-  duration, and opens on a click: a step to its output, the last 64 KiB as plain text,
-  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
+  duration; while the run is alive, a running row has the word Running, a mark that pulses
+  (still under `prefers-reduced-motion`), and in place of its duration a clock that ticks in
+  the browser (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for
+  Machine started before the starter's `dispatched`, from the claim. A run's exit closes a
+  step without an exit as Cancelled; on a lost run such a step keeps the word Running, with
+  no clock and no pulse. Each row opens on a click: a step to its output, the last 64 KiB as
+  plain text, for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
   sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
   for anyone else. With no machine log recorded, an instance admin reads "No machine log
@@ -1720,7 +1735,11 @@ id".
   it, as the header shows the cause: for the instance's pool, "An instance admin finds
   the cause in the machine log of the Machine started step."; for any other pool, that
   its admins read why in the pool's log on its host. The section's duration runs from its first row to
-  the session's start, or to the failed row's end.
+  the session's start, or to the failed row's end. While the preparation of a live run goes
+  on, a row running or the machine started with no step yet, the heading has the time so
+  far, ticking from its first row. The page reads the preparation again at each flush, and at
+  each quiet tick (5 s) while Machine started is running: `dispatched` and the redemption
+  of the run's code reach no run's topic.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's
@@ -1775,9 +1794,9 @@ id".
 
 `<.terminal>` in `RunPageComponents` is dark in both themes: the recorded output's colours
 are written against a dark ground. It fills the window below the tab bar, never under
-380 px. The `Terminal` hook reads the bytes from the run's log endpoint and hands them to
-xterm.js as `Uint8Array`s, never decoded strings, in slices per frame so a long log does
-not block input. The bytes never cross the LiveView socket: the LiveView sends the foot's
+380 px. The `Terminal` hook reads the bytes from the run's log endpoint and, in the Raw
+view, hands them to xterm.js as `Uint8Array`s, never decoded strings, in slices per frame
+so a long log does not block input, and interprets none of them. The bytes never cross the LiveView socket: the LiveView sends the foot's
 numbers and a signal that the log advanced. xterm.js is vendored under
 `assets/vendor/xterm`, built as a separate bundle and loaded on the hook's first mount, by no
 other page. The screen is `role="log"` with `aria-live="off"`.
@@ -1786,13 +1805,33 @@ other page. The screen is `role="log"` with `aria-live="off"`.
   drawn at those columns and rows, centred only inside the box's darker ground, which
   fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
   to the box, with Wrap.
-- **The bar**: the stream, search (`/`), follow (End), wrap, the **text size** (A−, A+,
+- **Collapsed and Raw.** A run on pipes has a two-button segment, Collapsed by default,
+  the reader's choice kept in `localStorage`. A run on a pseudo-terminal has none: its log
+  is cursor movement, and it stays Raw. Raw is the bytes as they are, with the note under
+  the box; Collapsed has no note. Collapsed cuts the stream into lines in `terminal_lines.js`:
+  a line of up to 16 MiB that starts with `{` and parses to a JSON object is one row of the
+  screen, with a marker, its `type` and `subtype`, a preview (its `result`, else the first text in
+  `message.content`, cut to the row) and its size, as "> result success  API Error: 400 ...
+  1.1 kB"; every other line passes through as its bytes. A click on a row opens it to the
+  object, printed, and a click on the row closes it; a row over 1 MiB, as a line or printed,
+  shows Raw instead. xterm.js cannot rewrite a row above the end, so the view keeps its lines and writes the screen again at the same scroll
+  position, as it does when the box's width changes. A log of over 50,000 lines or 256 MiB
+  shows Raw. Rows open by mouse alone; Raw and the link to the log as text are the way to
+  read all of it by keyboard. Download is the same in both views.
+- **Decoded text is not the log's bytes.** JSON escapes control characters, so a decoded
+  value can contain a live escape sequence that the raw line does not. Every decoded value
+  in a row has its C0, C1 and DEL characters removed, a `type` or `subtype` keeps only
+  `[A-Za-z0-9_.:-]`, 40 characters at most, and the printed object has all of them escaped.
+  Nothing of the log touches the DOM outside xterm.js.
+- **The bar**: the stream, the view, search (`/`), follow (End), wrap, the **text size** (A−, A+,
   11 to 18 px, and Fit, the largest size at which a recorded screen's columns fit), a
   reading preference kept in `localStorage`; download; **Focus** (`f` outside a field;
   Escape leaves), a class on the root that folds the shell, the header, the tabs and the
   rail away so the box takes the window; and **Full screen**, the browser's, on the box,
   shown only where the browser has it. A narrow box names its buttons on hover only
-  (a container query), so the bar never wraps.
+  (a container query), so the bar never wraps. Search reads the screen, and a collapsed
+  row hides its words, so typing in it shows Raw, the segment with it, without changing
+  the reader's choice.
 - **No output.** A run with no output says so in the column instead of the box, as an
   empty state.
 

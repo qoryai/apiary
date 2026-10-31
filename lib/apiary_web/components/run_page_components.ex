@@ -40,6 +40,7 @@ defmodule ApiaryWeb.RunPageComponents do
       tool_mark: 1,
       duration: 1,
       offset: 1,
+      time_legend: 1,
       middle: 2,
       subject_name: 1,
       subject_tip: 1
@@ -420,10 +421,12 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
+  attr :legend, :boolean, default: false, doc: "whether a row is there for the legend to label"
 
   def timeline(assigns) do
     ~H"""
     <div class="grid">
+      <.time_legend :if={@legend} first={gettext("Since run start")} second={gettext("Event")} />
       <button
         :if={@earlier > 0}
         id={"#{@id}-earlier"}
@@ -1081,20 +1084,46 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # What is not known stays out of the sentence. The runtime comes with the first session and
+  # the host is absent from a run with a run key outside a pool. `run.started` has no `wall`
+  # when the run has none, so without a `wall` the run has no wall. A bare runtime has no
+  # version, so `%{runtime}` is the runtime and its version, joined by `runtime_words/1`.
   defp run_started_words(item) do
-    bindings = [
-      runtime: sent(item.runtime) || gettext("n/a"),
-      version: sent(item.runtime_version),
-      host: sent(item.host) || gettext("n/a")
-    ]
+    case {runtime_words(item), sent(item.host), sent(item.wall)} do
+      {nil, nil, _wall} ->
+        nil
 
-    if item.wall,
-      do:
-        gettext(
-          "%{runtime} %{version} on %{host}, behind a %{wall} wall",
-          [wall: sent(item.wall)] ++ bindings
-        ),
-      else: gettext("%{runtime} %{version} on %{host}, without a wall", bindings)
+      {nil, host, nil} ->
+        gettext("on %{host}, without a wall", host: host)
+
+      {nil, host, wall} ->
+        gettext("on %{host}, behind a %{wall} wall", host: host, wall: wall)
+
+      {runtime, nil, nil} ->
+        gettext("%{runtime}, without a wall", runtime: runtime)
+
+      {runtime, nil, wall} ->
+        gettext("%{runtime}, behind a %{wall} wall", runtime: runtime, wall: wall)
+
+      {runtime, host, nil} ->
+        gettext("%{runtime} on %{host}, without a wall", runtime: runtime, host: host)
+
+      {runtime, host, wall} ->
+        gettext("%{runtime} on %{host}, behind a %{wall} wall",
+          runtime: runtime,
+          host: host,
+          wall: wall
+        )
+    end
+  end
+
+  defp runtime_words(%{runtime: nil}), do: nil
+
+  defp runtime_words(item) do
+    [item.runtime, item.runtime_version]
+    |> Enum.map(&sent/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
   end
 
   defp hosts_allowed(n),
@@ -1232,14 +1261,17 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <span class="q-t">
       {render_slot(@inner_block)}
-      <.offset at={@item.time} from={@started_at} class="q-t-at" />
-      <span :if={@in_summary} class="q-q" data-permalink data-href={@seq_path.(@item.sequence)}>#{pad(
-        @item.sequence
-      )}</span>
+      <.offset at={@item.time} from={@started_at} class="q-t-at q-tc1" />
+      <span
+        :if={@in_summary}
+        class="q-q q-tc2"
+        data-permalink
+        data-href={@seq_path.(@item.sequence)}
+      >#{pad(@item.sequence)}</span>
       <.link
         :if={!@in_summary}
         patch={@seq_path.(@item.sequence)}
-        class="q-q"
+        class="q-q q-tc2"
         tabindex="-1"
         data-permalink
       >#{pad(@item.sequence)}</.link>
@@ -1472,6 +1504,9 @@ defmodule ApiaryWeb.RunPageComponents do
       notLoaded: gettext("The log could not be loaded."),
       dropped: gettext("The log stream dropped. Reconnecting."),
       size: gettext("%{size} px", size: "%{size}"),
+      bytes: gettext("%{number} B", number: "%{number}"),
+      kilobytes: gettext("%{number} kB", number: "%{number}"),
+      megabytes: gettext("%{number} MB", number: "%{number}"),
       fullScreen: gettext("Full screen"),
       leaveFullScreen: gettext("Leave full screen")
     }
@@ -1492,7 +1527,8 @@ defmodule ApiaryWeb.RunPageComponents do
   box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
-  The bar: the stream, search, follow, wrap (on pipes), the text size (A−, A+ and, at a
+  The bar: the stream, the view (on pipes: Collapsed or Raw, the reader's preference kept
+  in `localStorage`), search, follow, wrap (on pipes), the text size (A−, A+ and, at a
   recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
   download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
   (the browser's, where it has one).
@@ -1510,7 +1546,11 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :rows, :integer, default: nil
 
   def terminal(assigns) do
-    assigns = assign(assigns, sized: is_integer(assigns.cols) and is_integer(assigns.rows))
+    assigns =
+      assign(assigns,
+        sized: is_integer(assigns.cols) and is_integer(assigns.rows),
+        pty: assigns.streams == ["terminal"]
+      )
 
     ~H"""
     <div
@@ -1523,7 +1563,7 @@ defmodule ApiaryWeb.RunPageComponents do
       data-script={@script}
       data-stylesheet={@stylesheet}
       data-live={to_string(@live)}
-      data-pty={to_string(@streams == ["terminal"])}
+      data-pty={to_string(@pty)}
       data-through={@through}
       data-sized={to_string(@sized)}
       data-cols={@sized && @cols}
@@ -1548,9 +1588,19 @@ defmodule ApiaryWeb.RunPageComponents do
             <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
           <% end %>
         </div>
+        <div :if={!@pty} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
+          <button type="button" data-view="collapsed" aria-pressed="true">
+            {gettext("Collapsed")}
+          </button>
+          <button type="button" data-view="raw" aria-pressed="false">{gettext("Raw")}</button>
+        </div>
         <label class="q-term-find">
           <.icon name="hero-magnifying-glass-micro" class="size-4" />
-          <span class="sr-only">{gettext("Search the log")}</span>
+          <span class="sr-only">
+            {if @pty,
+              do: gettext("Search the log"),
+              else: gettext("Search the log. Searching shows the Raw view.")}
+          </span>
           <input
             type="text"
             data-find

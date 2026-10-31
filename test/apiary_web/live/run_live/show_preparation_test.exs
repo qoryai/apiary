@@ -107,6 +107,24 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine-cause")
     end
 
+    test "the time columns: a legend over each list, every row with both cells", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-timeline.q-run-tl")
+      assert has_element?(lv, "#prepare-machine > .q-tlegend .q-tc1", "Started")
+      assert has_element?(lv, "#prepare-machine > .q-tlegend .q-tc2", "Took")
+      assert has_element?(lv, "#run-timeline .q-tlegend .q-tc1", "Since run start")
+      assert has_element?(lv, "#run-timeline .q-tlegend .q-tc2", "Event")
+
+      # Session started has no duration: its second cell stays, so its time keeps its column.
+      assert has_element?(lv, "#prepare-machine-session .q-t > .q-tc1 time")
+      assert has_element?(lv, "#prepare-machine-session .q-t > .q-tc2")
+      assert has_element?(lv, "#timeline .q-t > .q-t-at.q-tc1")
+      assert has_element?(lv, "#timeline .q-t > .q-q.q-tc2")
+    end
+
     test "a failed step is open, with its output and its cause line", ctx do
       %{run: run} = claimed_run(ctx.scope)
       run = project!(run, steps(true))
@@ -224,6 +242,157 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#prepare-machine-requested")
       assert has_element?(lv, "#prepare-machine-started")
       refute has_element?(lv, "#prepare-machine-session")
+    end
+
+    test "a machine before `dispatched` ticks from the claim, and the page reads it", ctx do
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+
+      {:ok, _queued} =
+        Apiary.Repo.transact(fn ->
+          Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
+        end)
+
+      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      claimed_at = DateTime.to_iso8601(dispatch.claimed_at)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      row = lv |> element("#prepare-machine-started summary") |> render()
+      assert row =~ "Running"
+      assert row =~ "q-prep-pulse"
+      refute has_element?(lv, "#prepare-machine-started .q-tc1 time")
+
+      assert has_element?(
+               lv,
+               ~s(#prepare-machine-started-clock[phx-hook="Ticker"][data-tick="duration"][data-since="#{claimed_at}"])
+             )
+
+      assert has_element?(lv, ~s(#prepare-machine-total[data-since="#{claimed_at}"]))
+      assert lv |> element(".q-prep-hd") |> render() =~ "so far"
+
+      # `dispatched` reaches no run's topic: the quiet tick reads it.
+      :ok = Dispatches.dispatched(key, dispatch.public_id, %{external: nil})
+      send(lv.pid, :quiet_tick)
+      assert has_element?(lv, "#prepare-machine-started .q-tc1 time")
+      assert lv |> element("#prepare-machine-started summary") |> render() =~ "Running"
+
+      started_at = Apiary.Repo.get!(Apiary.Dispatches.Dispatch, dispatch.id).dispatched_at
+
+      assert has_element?(
+               lv,
+               ~s(#prepare-machine-started-clock[data-since="#{DateTime.to_iso8601(started_at)}"])
+             )
+
+      # Neither does the redemption of the run's code.
+      attrs = gateway_run_attrs(DateTime.utc_now())
+
+      run
+      |> Ecto.Changeset.change(attrs)
+      |> Ecto.Changeset.change(
+        run_code_public_key: :binary.copy(<<1>>, 32),
+        backstop_at: DateTime.add(attrs.attached_at, 3600, :second)
+      )
+      |> Apiary.Repo.update!()
+
+      send(lv.pid, :quiet_tick)
+      row = lv |> element("#prepare-machine-started summary") |> render()
+      refute row =~ "Running"
+      refute has_element?(lv, "#prepare-machine-started-clock")
+    end
+
+    test "a running step ticks from its start, and the heading counts so far", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+      started = DateTime.utc_now()
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"},
+           time: started}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      row = lv |> element("#prepare-machine-step-1 summary") |> render()
+
+      assert row =~ "Running"
+      assert row =~ "q-prep-pulse"
+      assert has_element?(lv, "#prepare-machine-step-1-clock[data-tick='duration']")
+      assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
+
+      # A step's exit reaches the page as an event: its duration, no clock.
+      events_fixture(run, [
+        {3, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 72_000}}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+      row = lv |> element("#prepare-machine-step-1 summary") |> render()
+      assert row =~ "1 m 12 s"
+      refute has_element?(lv, "#prepare-machine-step-1-clock")
+      refute row =~ "q-prep-pulse"
+    end
+
+    test "a lost run's step stays running, with no clock and no pulse", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}}
+        ])
+
+      run = run |> Ecto.Changeset.change(state: "lost") |> Apiary.Repo.update!()
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
+      refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "q-prep-pulse"
+      refute has_element?(lv, "#prepare-machine time[data-tick]")
+    end
+
+    test "nothing ticks once the run has ended, a step left open included", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+          {3, "run.step_started", %{"step" => 2, "name" => "join session 1", "kind" => "join"}},
+          {4, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}},
+          {5, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      # The run's exit closes a step without an exit as cancelled.
+      assert has_element?(lv, "#prepare-machine-step-1[data-state='cancelled']")
+      refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "Running"
+      refute has_element?(lv, "#prepare-machine-step-1-clock")
+      refute has_element?(lv, "#prepare-machine time[data-tick]")
+      assert lv |> element("#prepare-machine-step-2 summary") |> render() =~ "48 s"
+    end
+
+    test "a live run with no session event counts nothing past its last step", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"},
+           time: DateTime.utc_now()},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000},
+           time: DateTime.utc_now()}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      refute has_element?(lv, "#prepare-machine time[data-tick]")
     end
 
     test "a run with no dispatch and no step has no section", ctx do
