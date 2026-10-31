@@ -224,7 +224,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       # The list is built with no read, so a repository with no stack is listed too.
       assert has_element?(view, "#workflow_source-g0 ~ label .q-pick-t.mono", "acme/app")
 
-      assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
+      assert has_element?(view, "#workflow_source-g1", "Assigned to this organisation")
 
       assert has_element?(
                view,
@@ -265,7 +265,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = open(conn, path)
 
       assert has_element?(view, "#workflow_source-g0", "Linked repositories")
-      assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
+      assert has_element?(view, "#workflow_source-g1", "Assigned to this organisation")
       refute has_element?(view, "#workflow_source-g1 ~ label")
     end
 
@@ -430,8 +430,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#workflow-read-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       files = Map.put(@files, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
       serve_calls([adapter], covered: covered, files: files)
@@ -449,8 +448,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id})
 
       assert words(view, "#workflow-read-error") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
-                 "internal for acme/harness. An instance admin checks the adapter's log."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       files = Map.delete(@files, {"R_harness", "stacks/triage/qory-stack.yaml"})
       serve_calls([adapter], covered: covered, files: files)
@@ -569,7 +568,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow_workflow[disabled]")
     end
 
-    test "that no linked repository or assignment covers, and that is not public, says so", %{
+    test "that no integration reaches, and that is not public, says so", %{
       conn: conn,
       scope: scope,
       path: path
@@ -581,7 +580,12 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#workflow-read-error",
-               "Link https://public.example.org/qory/stack to #{scope.organisation.name}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
+               "Qory Apiary reached no adapter that reads https://public.example.org/qory/stack, " <>
+                 "and no integration of #{scope.organisation.name} covers it. If " <>
+                 "https://public.example.org/qory/stack is public, contact support to have it " <>
+                 "read from public.example.org. If it is private, owners and admins of " <>
+                 "#{scope.organisation.name} connect an integration that covers it in " <>
+                 "Organisation settings › Integrations."
              )
     end
 
@@ -704,10 +708,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> render_change()
 
       assert words(view, "#harness-source-unplaced-#{adapter.adapter.public_id}-no_address") ==
-               "Qory Apiary cannot read the repositories of the " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} adapter: the adapter has no call " <>
-                 "address. An instance admin sets the call address. The Qory harness needs no " <>
-                 "call address."
+               "Contact support: Qory Apiary could not read the repositories of the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       refute has_element?(view, "#harness-source-none")
       refute render(view) =~ adapter.host
@@ -952,8 +954,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#harness-stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       files = %{{"R_harness", "qory.yaml"} => "exports: [triage\n"}
       serve_calls([adapter], covered: covered, files: files)

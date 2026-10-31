@@ -2254,9 +2254,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "Link acme/harness to #{ctx.organisation.name}, or ask an instance admin to " <>
-                 "assign it: Qory Apiary reads a harness repository that is not public only " <>
-                 "through a linked repository or an assignment."
+               "Qory Apiary reached no adapter that reads acme/harness, and no integration of " <>
+                 "#{ctx.organisation.name} covers it. If acme/harness is public, contact " <>
+                 "support to have it read from code.example.com. If it is private, owners and " <>
+                 "admins of #{ctx.organisation.name} connect an integration that covers it in " <>
+                 "Organisation settings › Integrations."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2271,8 +2273,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#harness-stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2294,8 +2295,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     # under `Apiary.Adapters.Calls.Supervisor`, and a raise there is an unreachable adapter.
     test "a read whose task exits: try again" do
       assert ApiaryWeb.HarnessComponents.read_words(:exited, %{label: "acme/harness"}, "Acme") ==
-               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. " <>
-                 "Try again. If it repeats, tell an instance admin."
+               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
+                 "again. If it repeats, contact support."
     end
 
     # The walk's failures of a save, as `Apiary.Harnesses.Walk.pin_base/3` returns them.
@@ -2378,17 +2379,63 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
 
-      assert reads.({:unreadable, :address}) ==
+      # No adapter answered for the source, so both fixes show, each with its condition.
+      not_covered =
+        "Qory Apiary reached no adapter that reads acme/harness, and no integration of Acme " <>
+          "covers it. If acme/harness is public, contact support to have it read from " <>
+          "code.example.com. If it is private, owners and admins of Acme connect an " <>
+          "integration that covers it in Organisation settings › Integrations."
+
+      assert reads.(:not_covered) == not_covered
+      assert words.(failure.(:not_covered, chosen, nil)) == not_covered
+
+      assert words.(failure.(:not_allowed, chosen, nil)) ==
+               "Contact support to make acme/harness available to Acme."
+
+      # A module the chosen stack lists, at another address: the walk failed on that
+      # module, so the words name it and its host, not the chosen source.
+      tools = "https://github.example.com/example-org/tools"
+
+      assert words.(failure.(:not_allowed, tools, nil)) ==
+               "Contact support to make #{tools} available to Acme."
+
+      assert words.(failure.(:not_covered, tools, nil)) ==
+               "Qory Apiary reached no adapter that reads #{tools}, and no integration of Acme " <>
+                 "covers it. If #{tools} is public, contact support to have it read from " <>
+                 "github.example.com. If it is private, owners and admins of Acme connect an " <>
+                 "integration that covers it in Organisation settings › Integrations."
+
+      # An address the person typed is the person's to correct; a connected repository's
+      # or an assignment's is not.
+      assert ApiaryWeb.HarnessComponents.read_words(
+               {:unreadable, :address},
+               Map.put(source, :kind, :address),
+               "Acme"
+             ) ==
                "Correct the address: write it as https://, a host, an optional port and an " <>
                  "optional path."
 
+      assert reads.({:unreadable, :address}) ==
+               "Contact support to correct the address of acme/harness: an address is " <>
+                 "https://, a host, an optional port and an optional path."
+
+      # A folder comes from an assignment alone.
       assert reads.({:unreadable, :path, "../x/qory-stack.yaml"}) ==
-               "Correct the folder: a folder is a relative path with no empty, . or .. part, " <>
-                 "at most 1,024 characters long."
+               "Contact support to correct the folder of acme/harness: a folder is a relative " <>
+                 "path with no empty, . or .. part, at most 1,024 characters long."
 
       assert reads.({:unreadable, :version, "v 9"}) ==
                "Correct the version: a branch, tag or commit name has 1 to 255 letters, digits, " <>
                  "dots, underscores, slashes and hyphens, and no spaces."
+
+      assert ApiaryWeb.HarnessComponents.read_words(
+               {:unreadable, :version, "v 9"},
+               Map.put(source, :kind, :assigned),
+               "Acme"
+             ) ==
+               "Contact support to correct the version of acme/harness: a branch, tag or " <>
+                 "commit name has 1 to 255 letters, digits, dots, underscores, slashes and " <>
+                 "hyphens, and no spaces."
 
       # A module's address, folder or ref, which the harness document lists.
       assert words.(
@@ -2468,8 +2515,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                harness <> "it has no harness file and no harness is set."
 
       assert words.(failure.(:walk_error, nil, nil)) ==
-               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. " <>
-                 "Try again. If it repeats, tell an instance admin."
+               "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
+                 "again. If it repeats, contact support."
 
       # A stack the chosen source does not export, or has no stack file for; a module's.
       assert words.(
@@ -2525,7 +2572,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assigned = Map.merge(source, %{kind: :assigned, ref: "v9"})
 
       assert ApiaryWeb.HarnessComponents.read_words({:no_version, "v9"}, assigned, "Acme") ==
-               "acme/harness has no branch, tag or commit named v9. An instance admin corrects " <>
+               "acme/harness has no branch, tag or commit named v9. Contact support to correct " <>
                  "the version of this harness source."
 
       # A read at HEAD of a repository with no commit.
@@ -2564,68 +2611,43 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert reads.({:call, %{adapter: "GitHub", cause: :timeout, code: nil, seconds: 10}}) ==
                "The GitHub adapter did not answer within 10 seconds. Try again. If it repeats, " <>
-                 "an instance admin checks that the adapter is running."
+                 "contact support."
 
       for {cause, code, line} <- [
-            {:no_address, nil,
-             "Qory Apiary does not call the GitHub adapter: the adapter has no call address. " <>
-               "An instance admin sets the call address. The Qory harness needs no call " <>
-               "address."},
+            {:no_address, nil, "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:unauthorized, nil,
              "The GitHub adapter did not accept the call from Qory Apiary. Try again. If it " <>
-               "repeats, an instance admin checks the adapter's enrolment and that both " <>
-               "machines' clocks are right."},
+               "repeats, contact support."},
             {:refused, "unsupported_contract_version",
-             "The GitHub adapter does not implement the contract revision of the call. An " <>
-               "instance admin upgrades the adapter."},
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:refused, "invalid_request",
-             "The GitHub adapter did not accept the call as valid under the contract. An " <>
-               "instance admin checks that the adapter and Qory Apiary implement the same " <>
-               "contract revision."},
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
             {:refused, "source_unavailable",
              "The GitHub adapter could not read acme/harness. Try again."},
             {:invalid_answer, nil,
              "Qory Apiary did not accept the answer of the GitHub adapter. Try again. If it " <>
-               "repeats, an instance admin checks the version and the enrolment of the adapter."},
-            {:too_large, nil,
-             "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
-               "KiB. Tell an instance admin."}
+               "repeats, contact support."},
+            {:too_large, nil, "Contact support: Qory Apiary could not call the GitHub adapter."}
           ] do
         assert reads.(call.(cause, code)) == line
       end
 
       for {refusal, line} <- [
             {{:address, :link_local},
-             "Qory Apiary does not call the GitHub adapter: the adapter's call address leads " <>
-               "to a link-local address. An instance admin sets the adapter's call address. " <>
-               "The Qory harness needs no call address."},
-            {:form,
-             "Qory Apiary does not call the GitHub adapter: the adapter's call address is not " <>
-               "an https address at the adapter's host. An instance admin corrects the call " <>
-               "address. The Qory harness needs no call address."},
-            {:public_host,
-             "Qory Apiary does not call the GitHub adapter: the instance's public address " <>
-               "(PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory " <>
-               "harness needs no call address."}
+             "Contact support: Qory Apiary could not call the GitHub adapter."},
+            {:form, "Contact support: Qory Apiary could not call the GitHub adapter."},
+            {:public_host, "Contact support: Qory Apiary could not call the GitHub adapter."}
           ] do
         not_allowed = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
         assert reads.({:call, Map.put(not_allowed, :refusal, refusal)}) == line
       end
 
-      for {kind, words} <- [
-            metadata: "a cloud metadata address",
-            unspecified: "the unspecified address",
-            multicast: "a multicast address",
-            broadcast: "a broadcast address",
-            reserved: "a reserved address",
-            loopback: "a loopback address written as an IPv6 address"
-          ] do
+      # The kind of the address is in the call's log line, not on the page.
+      for kind <- [:metadata, :unspecified, :multicast, :broadcast, :reserved, :loopback] do
         call = %{adapter: "GitHub", cause: :not_allowed, code: nil, seconds: nil}
 
         assert reads.({:call, Map.put(call, :refusal, {:address, kind})}) ==
-                 "Qory Apiary does not call the GitHub adapter: the adapter's call address " <>
-                   "leads to #{words}. An instance admin sets the adapter's call address. The " <>
-                   "Qory harness needs no call address."
+                 "Contact support: Qory Apiary could not call the GitHub adapter."
       end
 
       # A save's walk at a call that failed has the same words.
@@ -2642,8 +2664,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
          }}
 
       assert ApiaryWeb.HarnessComponents.refusal_words(walk, source, "main", "Acme") ==
-               "Qory Apiary did not send the call to the GitHub adapter: the call was over 256 " <>
-                 "KiB. Tell an instance admin."
+               "Contact support: Qory Apiary could not call the GitHub adapter."
     end
 
     test "a save whose walk cannot reach the adapter or reads a file that is not valid: the cause, and nothing saved",
@@ -2659,8 +2680,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#set-up-harness-refusal") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       files =
         Map.put(@one_export, {"R_harness", "stacks/triage/qory-stack.yaml"}, "modules: [core\n")
@@ -2687,8 +2707,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#set-up-harness-refusal") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
-                 "internal for acme/harness. An instance admin checks the adapter's log."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
@@ -2701,8 +2721,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "The #{Apiary.Adapters.title(adapter.adapter)} adapter returned the error " <>
-                 "internal for acme/harness. An instance admin checks the adapter's log."
+               "Contact support: Qory Apiary could not call the " <>
+                 "#{Apiary.Adapters.title(adapter.adapter)} adapter."
 
       serve_harness(adapter, %{{"R_harness", "harness.yaml"} => "exports: 7\n"})
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -2748,13 +2768,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for {call_url, instance_id, cause, line} <- [
             {nil, nil, "no_address",
-             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter " <>
-               "has no call address. An instance admin sets the call address. The Qory " <>
-               "harness needs no call address."},
+             "Contact support: Qory Apiary could not read the repositories of the #{title} " <>
+               "adapter."},
             {"https://code-host.example.org/calls/", "instance-1", "not_placed",
-             "Qory Apiary cannot read the repositories of the #{title} adapter: the adapter's " <>
-               "call address is not an https address at the adapter's host. An instance admin " <>
-               "corrects the call address. The Qory harness needs no call address."}
+             "Contact support: Qory Apiary could not read the repositories of the #{title} " <>
+               "adapter."}
           ] do
         {1, _} =
           Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.adapter.id),
@@ -2795,10 +2813,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for node <- [adapter.adapter, other.adapter] do
         assert words(lv, "#harness-source-unplaced-#{node.public_id}-no_address") ==
-                 "Qory Apiary cannot read the repositories of the " <>
-                   "#{Apiary.Adapters.title(node)} adapter: the adapter has no call address. " <>
-                   "An instance admin sets the call address. The Qory harness needs no call " <>
-                   "address."
+                 "Contact support: Qory Apiary could not read the repositories of the " <>
+                   "#{Apiary.Adapters.title(node)} adapter."
       end
     end
 
@@ -2823,9 +2839,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                |> LazyHTML.text()
                |> String.split()
                |> Enum.join(" ") ==
-                 "Qory Apiary cannot read the repositories of the #{adapter} adapter: the " <>
-                   "instance's public address (PUBLIC_URL) has no host name. An instance admin " <>
-                   "sets PUBLIC_URL. The Qory harness needs no call address."
+                 "Contact support: Qory Apiary could not read the repositories of the #{adapter} " <>
+                   "adapter."
       end
 
       refute html =~ "harness-source-none"
@@ -3024,8 +3039,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#target_stack_stack-error") ==
                "Qory Apiary could not connect to the #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "adapter. Try again. If it repeats, an instance admin checks that the adapter " <>
-                 "is running."
+                 "adapter. Try again. If it repeats, contact support."
 
       assert has_element?(lv, "#harness-target-save[disabled]")
     end
@@ -3158,8 +3172,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       render_async(lv, 2_000)
 
       assert words(lv, "#harness-target-read-error") ==
-               "example-org/team-harness has no branch, tag or commit named v9. An instance " <>
-                 "admin corrects the version of this harness source."
+               "example-org/team-harness has no branch, tag or commit named v9. Contact support " <>
+                 "to correct the version of this harness source."
 
       refute has_element?(lv, "#target_stack_ref")
     end

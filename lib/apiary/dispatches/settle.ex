@@ -37,8 +37,10 @@ defmodule Apiary.Dispatches.Settle do
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the registered
-  # run and its result event with no lock. Nothing else is locked: no work item, counter,
-  # environment record or feed counter.
+  # run and its result event with no lock. Nothing else is locked: no counter,
+  # environment record or feed counter, and no work item with the workflow model off.
+  # With it on, the work item is locked `FOR UPDATE` before the run of the queue, since
+  # the stage runner writes it (`Apiary.Stages.hold_work_item/1`, `run_ended/2`).
   #
   # **What is told.** Each write is told once its transaction commits, on the topic of
   # the work items of the work item's workspace (`Apiary.WorkItems.topic/1`),
@@ -95,9 +97,17 @@ defmodule Apiary.Dispatches.Settle do
   def settle(dispatch_run_id, now \\ Apiary.Dispatches.now()) when is_binary(dispatch_run_id) do
     {:ok, told} =
       Repo.transact(fn ->
+        # Hand-over: with the workflow model, the stage runner acts on what the run gave
+        # (`Apiary.Stages.run_ended/1`), in this transaction. It writes the run's work
+        # item, which is locked first, before the run, in the order every path keeps.
+        stages? = Apiary.Stages.on?()
+        if stages?, do: Apiary.Stages.hold_work_item(dispatch_run_id)
+
         case RunEnd.lock(dispatch_run_id) do
           %DispatchRun{state: :ended, end_cause: :run_ended} = dispatch_run ->
-            {:ok, settle_locked(dispatch_run, registered(dispatch_run.id), now)}
+            told = settle_locked(dispatch_run, registered(dispatch_run.id), now)
+            staged = if stages?, do: Apiary.Stages.run_ended(dispatch_run.id), else: []
+            {:ok, told ++ Enum.reject(staged, &(&1 in told))}
 
           _other ->
             {:ok, []}
