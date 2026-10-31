@@ -49,7 +49,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     "/integrations/:connection_id" =>
       "a redirect or a line of text, never a page: it leads a person of the connection's " <>
         "organisation to the integration's page, and raises not found for anyone else " <>
-        "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)"
+        "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)",
+    "/:org/:workspace/work/:number/artifacts/:version_id/files/:filename" =>
+      "a file of an artifact, never a page: served as an attachment under a sandbox " <>
+        "policy instead of the console's " <>
+        "(`test/apiary_web/controllers/artifact_file_controller_test.exs` holds it)"
   }
 
   # Routes that answer 404 to anyone here, each with the reason.
@@ -440,15 +444,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("key_id", "/:org/gateways/" <> _, p), do: p.gateway_key_id
   defp value_of("code_id", "/:org/gateways/" <> _, p), do: p.gateway_code_id
   # The instance's pool's pages, and its key's.
-  defp value_of("node_id", "/instance/nodes/" <> _, p), do: p.instance_node_id
-  defp value_of("key_id", "/instance/nodes/" <> _, p), do: p.instance_key_id
+  defp value_of("node_id", "/instance/qory-pool-and-gateway/" <> _, p), do: p.instance_node_id
+  defp value_of("key_id", "/instance/qory-pool-and-gateway/" <> _, p), do: p.instance_key_id
   defp value_of("node_id", _path, p), do: p.node_id
   # An adapter's key and waiting code, on its Access key tab.
   defp value_of("key_id", "/instance/adapters/" <> _, p), do: p.adapter_key_id
   defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
+  defp value_of("type", "/instance/workspace-types/" <> _, p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
+  defp value_of("version_id", _path, p), do: p.version_id
+  defp value_of("type_id", "/:org/:workspace/settings/artifact-types/" <> _, p), do: p.type_id
   defp value_of("number", _path, p), do: p.work_item_number
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
@@ -501,9 +508,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     end
   end
 
-  defp value_of("rest", path, _p) do
+  defp value_of("rest", path, p) do
     cond do
       String.starts_with?(path, "/:org/members/") -> "invite"
+      path == "/:org/:workspace/nodes/*rest" -> p.node_id
+      path == "/instance/nodes/*rest" -> p.instance_node_id
       String.contains?(path, "/policy/targets/") -> "history"
       true -> nil
     end
@@ -571,6 +580,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       gateway_key_id: gateway_key.key_id,
       gateway_code_id: gateway_code.id,
       instance: "i_1",
+      # Instance settings › Workspace types: the software type's stages.
+      workspace_type: "qory.software",
       key_id: key.key_id,
       code_id: code.id,
       run_id: run.public_id,
@@ -584,10 +595,46 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       component_stories: component_stories
     }
 
+    factory = factory_params(scope)
+
     base
     |> Map.merge(security_params(scope))
-    |> Map.merge(factory_params(scope))
+    |> Map.merge(factory)
     |> Map.merge(secrets_params(scope))
+    |> Map.merge(workflow_params(scope, factory.work_item_number))
+  end
+
+  # A custom artifact type, and a version of an artifact on the work item, for their
+  # pages, with the `workflow_model` feature. The version's file is kept in a store under
+  # the system's temporary folder, set for the test and removed after it.
+  defp workflow_params(scope, number) do
+    if Features.on?(:workflow_model) do
+      {:ok, type} =
+        Apiary.Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-findings",
+          "base_view" => "document"
+        })
+
+      work_item = Apiary.WorkItems.get_by_number(scope, number)
+      %{dispatch_run: run} = Apiary.WorkItemsFixtures.explore_run_fixture(work_item)
+      dir = Path.join(System.tmp_dir!(), "apiary-csp-#{System.unique_integer([:positive])}")
+      previous = Application.get_env(:apiary, :artifacts_dir)
+      Application.put_env(:apiary, :artifacts_dir, dir)
+
+      on_exit(fn ->
+        Application.put_env(:apiary, :artifacts_dir, previous)
+        File.rm_rf!(dir)
+      end)
+
+      {:ok, version} =
+        Apiary.Artifacts.push({:run, run}, work_item, "explainer", [
+          %{filename: "notes.md", binary: "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"}
+        ])
+
+      %{type_id: type.public_id, version_id: version.public_id}
+    else
+      %{type_id: "at_0000000000000000", version_id: "av_0000000000000000"}
+    end
   end
 
   # The storybook's stories, and those of them that are a component's. The storybook is
@@ -626,7 +673,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       %{access_key: adapter_key} = enrolled_key_fixture(admin, adapter)
       {:ok, adapter_code, _code} = Apiary.Adapters.create_code(admin, adapter)
 
-      # The instance's pool, with a key, for Instance settings › Nodes.
+      # The instance's pool, with a key, for Instance settings › Qory Pool and Qory Gateway.
       pool = instance_pool_fixture(%{installed_as: "pool"})
       %{access_key: pool_key} = installed_key_fixture(pool)
 

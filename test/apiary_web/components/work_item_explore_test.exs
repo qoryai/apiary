@@ -704,7 +704,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-wait-h") == "Explore is queued."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts run 1 of 3 when the workspace's pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
 
       assert count(html, ".q-xp-frame") == 0
     end
@@ -725,7 +725,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Explore is queued again, with your answers."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Run 2 of 3 starts when the workspace's node pool takes it. It reads the ticket, the code and these answers, from the start."
+               "Run 2 of 3 starts when the workspace's pool takes it. It reads the ticket, the code and these answers, from the start."
 
       assert text(html, "#work-item-explore-read-h") == "The answers run 2 reads"
 
@@ -1395,8 +1395,58 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                }
              },
              "Correct #{harness}, then run Explore again. It breaks the harness format: qory.yaml is not valid YAML."},
+            {%{code: "not_covered", source: harness, organisation: "Acme"},
+             "Owners and admins of Acme connect an integration that covers #{harness} in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of Acme reaches it."},
             {%{code: "not_covered", source: harness},
-             "Connect the account that holds #{harness} to this organisation, then run Explore again. No connection of this organisation reaches that harness source."},
+             "Owners and admins of this organisation connect an integration that covers #{harness} in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of this organisation reaches it."},
+            {%{
+               code: "too_large",
+               source: harness,
+               workspace: "Main",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Whoever maintains #{harness} makes it smaller, or owners and admins of Main choose another harness on the set-up step Harness. #{harness} is larger than Qory Apiary reads."},
+            {%{
+               code: "source_unreachable",
+               source: harness,
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 8443, "seconds" => 10}
+               }
+             },
+             "Contact support: Qory Apiary did not receive #{harness} from code.example.com on port 8443 within 10 s."},
+            {%{
+               code: "rate_limited",
+               source: harness,
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Try again later: code.example.com limits how often Qory Apiary reads from it, and that limit is reached."},
+            {%{
+               code: "host_not_allowed",
+               source: harness,
+               organisation: "Acme",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "If an integration serves code.example.com, owners and admins of Acme link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. code.example.com resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."},
+            {%{
+               code: "fetch_failed",
+               source: harness,
+               organisation: "Acme",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Owners and admins of Acme check the address on the set-up step Harness, or link the repository through a connection. code.example.com did not serve #{harness} as a git repository over HTTPS."},
             {%{code: "not_allowed"},
              "Ask the owner of #{setting} to assign it to this organisation, then run Explore again. Another owner keeps that harness source and has not assigned it here."},
             {%{code: "scp_form", source: "code.example.com:acme/harness"},
@@ -2117,7 +2167,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       queued = work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}})
 
       assert text(tab(queued, item_noun: @bug), "#work-item-explore-wait p:last-child") ==
-               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts run 1 of 3 when the workspace's pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
 
       asked =
         work_item(%{

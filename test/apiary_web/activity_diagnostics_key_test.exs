@@ -28,8 +28,10 @@ defmodule ApiaryWeb.ActivityDiagnosticsKeyTest do
     assert shown(:"access_key.revoke", Map.put(diagnostics, "reason", "revoked")) ==
              "Revoked a diagnostics key"
 
-    assert shown(:"access_key.create_code", nil) == "Made a command to connect a node"
-    assert shown(:"access_key.add", node) == "Added an access key to a node"
+    assert shown(:"access_key.create_code", nil) ==
+             "Made a command to connect a machine, pool or gateway"
+
+    assert shown(:"access_key.add", node) == "Added an access key to a machine"
 
     assert shown(:"access_key.revoke", Map.put(node, "reason", "revoked")) ==
              "Revoked an access key"

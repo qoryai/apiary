@@ -31,7 +31,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
   itself on the section's page (`Acme / Main / Runs`, `Acme / Main / Overview`,
   `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
-  target, a node, a run) is the page itself on its first tab and a link
+  target, a machine, a run) is the page itself on its first tab and a link
   to it on the others; on a page of a level's settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows
@@ -93,7 +93,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   reader may take. Every word of it comes from the server; words Forager reported are written
   as text.
 - **New** offers only what the reader may do where the page is
-  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New node and New node pool,
+  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New machine and New pool,
   then, on every page, Invite people; before the core's, whatever the edition
   offers there (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or
   the organisation as its place says. **The account menu** holds who they are, their email
@@ -104,7 +104,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   `:instance` after the theme. Nothing in it is about Qory Apiary itself, and so not the
   Instance level: Instance settings is the Qory Apiary menu's (below).
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a named
-  `<nav>`: a workspace's Overview, then Record (Runs, Targets, Nodes) and Guard
+  `<nav>`: a workspace's Overview, then Record (Runs, Targets, Machines) and Guard
   (Network access, then Policy, which carries the policy's mode word alone, how many
   targets override the mode in its title; without `security` Network access alone, the record
   of it), then the targets the person pinned (`counts.pins`, the first seven in the
@@ -160,8 +160,8 @@ page and an Instance page, the one the person came from (Two levels, below).
   second column, and Runs, Network access and Targets never get one. A person's
   page and an Instance page keep the sidebar the person came from, the workspace the session
   remembers; with no workspace, the person's sidebar is their sections alone. A thing's
-  page, a target, a node or a run, keeps its tabs (`PageComponents.page_tabs/1`), and a
-  node's Settings tab lists its few sections in the page.
+  page, a target, a machine or a run, keeps its tabs (`PageComponents.page_tabs/1`), and a
+  machine's Settings tab lists its few sections in the page.
 - **Narrowing.** On Runs and on Network access narrowed to one target, the sidebar's Runs
   and Network access carry the target (`Layouts.app/1`'s `narrowed`, built with
   `ApiaryWeb.Narrowing.carried/2`): its id in the address, named by its path, and its
@@ -198,7 +198,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
   description and at most one primary and one default action, or, where the page makes
-  two peer kinds (Nodes: New node and New node pool), two default actions and no
+  two peer kinds (Machines: New machine and New pool), two default actions and no
   primary. Card titles are `<h2>`.
 - **Dead ends.** A path under an organisation the person reaches that leads nowhere for
   them is a `404` inside the shell, with the organisation's sidebar
@@ -218,7 +218,7 @@ Nothing opens over a page but **Search or jump to**, the palette (above), the on
 the console keeps. Every other act happens on a page, in place:
 
 - **A form is a page** of its section at a separate path, never a dialog over a list:
-  Invite people, New node, a policy's New rule and Edit rule,
+  Invite people, New machine, a policy's New rule and Edit rule,
   an export. Its
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
@@ -257,7 +257,7 @@ the console keeps. Every other act happens on a page, in place:
 
 Configuration is not navigation: what is set up once and changed rarely lives in the
 settings. There are five kinds, on the model of GitHub's repository, organisation and
-personal settings: a workspace's, an organisation's, a node's, a person's and the
+personal settings: a workspace's, an organisation's, a machine's, a person's and the
 instance's. Each is a separate place, reached from its scope, that lists its sections
 and no other kind's: no "Elsewhere", no link across. A navigation item never
 replaces the navigation it is in.
@@ -269,7 +269,7 @@ replaces the navigation it is in.
   beside each name; no suspended membership, which reaches nothing),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
   logs; `/settings/retention`, its path before, sends on with its query). A workspace's
-  keys are its nodes' (Nodes, below): `/settings/keys` and `/:org/:workspace/keys`,
+  keys are its machines' and pools' (Machines, below): `/settings/keys` and `/:org/:workspace/keys`,
   the paths of the Access keys page that was removed, are unknown paths, 404.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Organisation
@@ -310,9 +310,9 @@ replaces the navigation it is in.
   Invite people and, for whoever manages members, the workspace People's Manage people
   lead there too, since membership is the organisation's; nothing else in a workspace
   does.
-- **A node's** (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's
-  page (Nodes, below): General (name, kind, a pool's instance limit, and its danger zone).
-  The page's header is the node's, so the section list and the section sit under the
+- **A machine's** (`/:org/:workspace/machines/:node_id/settings`), the last tab of the
+  machine's page (Machines, below): General (name, kind, a pool's machine limit, and its
+  danger zone). The page's header is the machine's, so the section list and the section sit under the
   tabs without a separate heading (`SettingsComponents.layout/1`, `kind={:node}`,
   given its `sections`): the list is in the page, never a second column.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
@@ -399,14 +399,14 @@ title, one muted sentence of what it does and what cannot be undone, and at the 
 default button in the error colour, Delete organisation…, Delete workspace… or Delete
 account…. No box, and never an entry of a list. **Its confirmation is inline, never a
 dialog**: the button is a patch to the act's path, `/:org/settings/danger`,
-`/:org/:workspace/settings/danger`, `/users/settings/delete` and a node's
-`/nodes/:node_id/settings/delete` (the older `/…/settings/delete` paths open the same),
+`/:org/:workspace/settings/danger`, `/users/settings/delete` and a machine's
+`/machines/:node_id/settings/delete` (the older `/…/settings/delete` paths open the same),
 and there the line expands in place under its sentence
 (`SettingsComponents.deletion_confirm/1`), set apart by a rule in the error colour at its
 left: what is lost, the field asked to confirm where there is one (the slug, or for the
 account its email), then the question, Delete Acme?, with its red button, Yes, delete,
 disabled until the field matches, and Cancel beside it (`<.inline_confirm>`). The field
-takes the focus, or Cancel where there is none to type (a node's); the line's button
+takes the focus, or Cancel where there is none to type (a machine's); the line's button
 then folds it (`aria-expanded`), and Cancel and Escape, a patch back to the page, give
 that button the focus back. Where the act is not there, the line says why in place of the
 button: the instance's organisation, the organisation's only workspace; where
@@ -584,9 +584,9 @@ The policy pages confirm in place, never over the page:
 **The export** (`…/policy/versions/:n/export`, and a target's
 `…/tg_…/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
 with Version n and Export and is the one way back, with no separate trail on the page; the
-title "Export for a node without a server" and what is exported (an h2 under a target's
+title "Export for a machine without a server" and what is exported (an h2 under a target's
 title), the policy file with Download and Copy, the command for the
-node and the Forager file's egress section, each with Copy, the notes, and Done back to the
+machine and the Forager file's egress section, each with Copy, the notes, and Done back to the
 Document tab (a target's Document view), the version in force under the card. Only the
 version in force is exported; another version's path sends on to it.
 
@@ -605,11 +605,11 @@ version in force is exported; another version's path sends on to it.
   screen reader hears what a view, a filter or a search left; an empty list says its
   empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
+  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
   case (a run's id, title or target; a destination's host or path). A run's id is the start
-  of its `rn_` id, four characters after `rn_` at least, or of the node's run id, four
+  of its `rn_` id, four characters after `rn_` at least, or of the run id on the machine, four
   hexadecimal characters at least; a run page's address finds that run. `state:` takes a
   state or a family (`state:completed`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
@@ -769,9 +769,9 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
   says what it does: the policy's mode and version, the targets with target rules
   (Review), retention (Change, to Workspace settings › Runs).
-- A workspace no run has reached is one box: the steps from a node to the first run, and a
+- A workspace no run has reached is one box: the steps from a machine to the first run, and a
   panel beside them. Step 2 is "Connect it" ("Run one command on the machine, or generate
-  a key for a CI or another system."). While it is current, it names the newest node or
+  a key for a CI or another system."). While it is current, it names the newest machine or
   pool with no active key, its name linking to that one's Access key tab. At step 1 the
   panel explains "Two ways to connect a machine", Generate a key in the browser's line ending "… this
   page shows the key's secret once, and you copy it into that system."; at step 2 it asks
@@ -781,12 +781,12 @@ what needs the reader, then what their agents did, and never grows with the data
   command there makes the command in place, as on the tab: the panel shows the real
   command with Copy, "It works once, until 14:32. This is the only time it is shown." and
   "Waiting for build-01 to run it.", with the notice when the server's address is a
-  loopback one. For a node whose choice leads to a gateway, the tab's notice "Runs of
+  loopback one. For a machine or pool whose choice leads to a gateway, the tab's notice "Runs of
   build-01 go through the gateway edge-01, at https://edge.example.com." (with "edge-01
   has no active access key, so it isn't connected." while it holds none) shows above the
   command, which carries `--via` and the gateway's URL, and the line on a private
-  certificate authority under it, as on the command's page. Generate a key opens the node's Generate a key page. A member reads who
-  connects it, and Go to nodes. At step 3 the panel reads "Listening for the first run.
+  certificate authority under it, as on the command's page. Generate a key opens the machine's Generate a key page. A member reads who
+  connects it, and Go to Machines. At step 3 the panel reads "Listening for the first run.
   build-01 verified 2 min ago." alone. No placeholder command shows anywhere.
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
@@ -857,57 +857,62 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 - **Pins** are per person (`target_pins`): the ★ of a row and of the header, and the
   sidebar's Pinned group.
 
-## Nodes
+## Machines
 
-A workspace's nodes and node pools are where its runs run (`ApiaryWeb.NodeLive.Index`,
-`…Show`; the reads and changes are `Apiary.Nodes`'s). A **node** is one permanent machine,
-which runs one instance at a time; a **node pool** is a fleet of short-lived instances,
-which run up to its instance limit, or any number without one. A **gateway**, the third
-kind, is an address the runs of its nodes and pools may go through, as each chooses
-(`Apiary.Gateways`); its key enrols the gateway and registers no run. The kind is chosen when one is made and never changes. A node is
-named in a path by its public id, `nd_…` for a node, `np_…` for a pool and `ng_…` for a
-gateway. Nodes is an entry of the workspace's sidebar, in Record after
-Targets (`#nav-nodes`, for a reader of `node.read`); the list, a node's page and the New
-node forms pass `nav={:nodes}`, so it is the current entry on all of them.
+A workspace's machines and pools are where its runs run (`ApiaryWeb.NodeLive.Index`,
+`…Show`; the reads and changes are `Apiary.Nodes`'s). A **machine** is one computer that stays registered, such
+as `build-01`; a **pool** is one or more machines that use the pool's access key, which
+run up to its machine limit, or any number without one. A
+**gateway**, the third kind, is a machine that runs go through: an address the runs of its
+machines and pools may go through, as each chooses
+(`Apiary.Gateways`); its key enrols the gateway and registers no run. The kind is chosen when one is made and never changes. Each is
+named in a path by its public id, `nd_…` for a machine, `np_…` for a pool and `ng_…` for a
+gateway. Machines is an entry of the workspace's sidebar, in Record after
+Targets (`#nav-nodes`, for a reader of `node.read`); the list, the page of a machine, pool
+or gateway and the New forms pass `nav={:nodes}`, so it is the current entry on all of
+them. The old addresses under `/:org/:workspace/nodes` redirect, `301`, to the same
+address under `/machines`, with what followed `/nodes` and the query.
 
-- **A node's state** is never Online or Offline (`ApiaryWeb.NodeComponents.node_state/1`).
-  An instance is **running** while it has a run alive by the lost-run check's rule
-  (`Apiary.Runs.Liveness.alive/2`): running means "not yet lost". A Node says
+- **The state** of a machine, pool or gateway is never Online or Offline (`ApiaryWeb.NodeComponents.node_state/1`).
+  A machine is **running** while it has a run alive by the lost-run check's rule
+  (`Apiary.Runs.Liveness.alive/2`): running means "not yet lost". A machine shows
   "Running"; a pool says "3 of 10 running", or "3 running" without a limit; one that runs
-  nothing says "Last seen" and a time that ticks, or "Never seen" until an instance of it
-  reports. Once a pool's instances are pruned, a day after they were last seen, "Last
-  seen" is when one of its keys, revoked ones too, was last used; "Never seen" is for a
-  node with no instance and no key ever used.
-- **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
-  above): one line a node, its name the title with its public id beside it in `q-side`,
+  nothing says "Last seen" and a time that ticks, or "Never seen" until a machine of it
+  reports. Once a pool's machines are pruned, a day after they were last seen, "Last
+  seen" is when one of its keys, revoked ones too, was last used; "Never seen" is for one
+  with no machine and no key ever used.
+- **The list** (`/:org/:workspace/machines`, width `list`) is on the list pattern (Lists,
+  above): machines and pools first, then the heading Gateways with the workspace's
+  gateways, the organisation's gateways and the Qory Gateway; one line each, its name the title with its public id beside it in `q-side`,
   and the state word Default beside the workspace's default gateway, its kind in words
-  only for a pool ("Pool") and a gateway ("Gateway"; a node, the usual kind, says
+  only for a pool ("Pool") and a gateway ("Gateway"; a machine, the usual kind, shows
   nothing), its state, and from `md` the Forager version it last reported. Under a pool's line, its
-  running instances as indented lines (name, id in `q-side`, "Running since", its run),
-  ten at most, then "and 12 more", which leads to the pool's page; an instance shows only
-  while it runs, and a Node has none, its one instance being its line. The views are
+  running machines as indented lines (name, id in `q-side`, "Running since", its run),
+  ten at most, then "and 12 more", which leads to the pool's page; a pool's machine shows only
+  while it runs, and a machine added alone has no such lines, its line being the machine. The views are
   All, Running and Not running (`?view=running`, `?view=idle`), counted under the search
-  and the kind; one search, `?q=`, words of a name or an id, and the Filter menu's Kind
-  (`?kind=node`, `?kind=pool`, `?kind=gateway`), each a token under the bar; Sort by Name
+  and the kind; one search, `?q=`, words of a name or an id ("Find a machine, pool or gateway by its name
+  or id"), and the Filter menu's Kind, Machine, Pool and Gateway (`?kind=node`,
+  `?kind=pool`, `?kind=gateway`), each a token under the bar; Sort by Name
   or Last seen (`?sort=seen`: running first, never seen last). Owners and admins have
-  **New node**, **New node pool** and **New gateway**, side by side and alike, in the
-  header; with no node of any kind yet, the empty state offers the first two, and tells a
-  member that an owner or admin adds nodes.
-- **New node and New node pool** are pages of the Nodes section at separate paths,
-  `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
+  **New machine**, **New pool** and **New gateway**, side by side and alike, in the
+  header; with none of any kind yet, the empty state, "No machines yet", offers the first
+  two, and tells a member that an owner or admin adds machines.
+- **New machine and New pool** are pages of the Machines section at separate paths,
+  `/machines/new` and `/machines/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
-  `Nodes / New node` (Nodes a link back to the list), the page's heading
+  `Machines / New machine` (Machines a link back to the list), the page's heading
   (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
   "You can't change the kind later"; then the form, a name (it takes the focus), and for a
-  pool its instance limit (a whole number up to 10,000, or empty for none), left out for
+  pool its machine limit (a whole number up to 10,000, or empty for none), left out for
   one who may not set it (`node.set_limit`), whose pool is made with a limit of 1, and its
   foot,
-  Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). Once the
-  workspace has a gateway, a node's and a pool's form ask its **Gateway** too, a select
+  Add machine or Add pool with Cancel back to the list (`page_form_foot/1`). Once the
+  workspace has a gateway, a machine's and a pool's form ask its **Gateway** too, a select
   (`NodeComponents.gateway_field/1`): Default gateway, offered only while a default
   resolves for the workspace, and then the one the form starts on; Direct, which it
   starts on otherwise; and each gateway by name; under it, which gateway the default is.
-  **New gateway** (`/nodes/new-gateway`) is the same page with a name and a URL, its
+  **New gateway** (`/machines/new-gateway`) is the same page with a name and a URL, its
   hint saying where the URL points (the machine that runs qory gateway), what a URL may
   be, and that the gateway's Settings change it later (`NodeComponents.url_hint(:new)`;
   the Settings field's hint, `url_hint(:settings)`, leaves that last sentence out), and
@@ -915,44 +920,45 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   error under its field, in core's words (a URL's, or a gateway's, such as "has no
   default gateway"); adding one opens its page on Access key with a
   flash, where its machine gets its key.
-- **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
+- **The page of a machine or pool** (`/machines/:node_id`) has a header (its name and public id, then
   one muted line: its kind, its state and who made it when) and its tabs, the operational
   side first and Settings last, set apart at the bar's right end
   (`NodeComponents.node_tabs/1`, on `PageComponents.page_tabs/1`). Overview and Settings
   are patches of the one LiveView; Access key, between them, is a separate LiveView
-  (`/nodes/:node_id/access-key`, `ApiaryWeb.NodeLive.AccessKey`). **Overview**: a Node's
-  instance (running since when,
-  its run and Forager version, or when it was last seen) or a pool's running instances on the
-  list pattern with "3 of 10 running", the starts refused at the instance limit, the
-  instances past the bound of 256 new ones a day, the sentence that an instance is what
-  Forager, run with the node's key, reports itself as, and its recent runs (`runs.node_id`,
+  (`/machines/:node_id/access-key`, `ApiaryWeb.NodeLive.AccessKey`). **Overview**: a machine
+  as Forager reports it (running since when,
+  its run and Forager version, or when it was last seen) or a pool's running machines on the
+  list pattern with "3 of 10 running", the runs that did not start at the machine limit, the
+  pool's line to contact support once machines past the bound of 256 new ones a day went
+  unrecorded, the sentence that each machine there is what
+  Forager, run with the key, reports itself as, and its recent runs (`runs.node_id`,
   for a reader of the record) with the way to all of them on the runs list (`?node=`),
-  each saying so while nothing has reported, then About (kind, id, instance limit, who
-  made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`), its few
-  sections listed in the page, never as a second column (Settings, A node's): General,
-  whose pool's limit is disabled, with "You can't change the instance limit." under it,
-  for one who changes the node but may not set its limit (`node.set_limit`), and whose
-  danger zone's Delete node… (Delete node pool… for a pool) expands its
-  confirmation in place (Settings, The danger zone) at `/nodes/:node_id/settings/delete`:
+  each saying so while nothing has reported, then About (kind, id, machine limit, who
+  made it), which leads to Settings; and **Settings** (`/machines/:node_id/settings`), its few
+  sections listed in the page, never as a second column (Settings, A machine's): General,
+  whose pool's limit is disabled, with "You can't change the machine limit." under it,
+  for one who changes the machine or pool but may not set its limit (`node.set_limit`), and
+  whose danger zone's Delete machine… (Delete pool… for a pool) expands its
+  confirmation in place (Settings, The danger zone) at `/machines/:node_id/settings/delete`:
   what is lost, then Delete build-01? with Yes, delete and Cancel, no field to type, Cancel
   taking the focus.
-  Deleting a node takes it out of the list, frees its name and keeps its runs in the
-  record. A node the workspace does not have, or a deleted one, is not found. A node's and
-  a pool's About has a Gateway row: Direct; Default gateway, then the gateway it is now
-  (a link to its page, with its URL); or the gateway it names. Its Settings' General
-  chooses it, as the forms do, once the workspace has a gateway or the node is not
-  direct.
+  Deleting a machine or pool takes it out of the list, frees its name and keeps its runs in
+  the record. One the workspace does not have, or a deleted one, is not found. A machine's
+  and a pool's About has a Gateway row: Direct; Default gateway, then the gateway it is now
+  (a link to its page, with its URL); or the gateway it is set to. Its Settings' General
+  chooses it, as the forms do, once the workspace has a gateway or the machine or pool
+  is not direct.
 - **A gateway's page** has the same header, with a Default badge beside the public id of
   the workspace's default, and the same tabs. Its Overview leads with Gateway: its URL
   with Copy, and Default, "This workspace's default gateway." or "Not the default.", with
   Make default (`Apiary.Nodes.make_default_gateway/2`, `node.edit`) for one that is not,
   which moves the mark at once with a flash; then its recent runs and About, without
-  instances or an instance limit. Its Settings' General changes its name and its URL.
-  Delete gateway… is confirmed in place as a node's is, with a gateway's sentence;
-  a gateway that nodes still point to, or that runs still go through
+  running machines or a machine limit. Its Settings' General changes its name and its URL.
+  Delete gateway… is confirmed in place as a machine's is, with a gateway's sentence;
+  a gateway that machines or pools still point to, or that runs still go through
   (`{:gateway_in_use, …}`), is not deleted: the confirmation folds, and under the line an
-  error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
-  build-01, spot-runners. Point them to another gateway or to direct, then delete it.",
+  error notice says why (`NodeComponents.in_use_words/2`): "Machines and pools use this
+  gateway: build-01, spot-runners. Point them to another gateway or to direct, then delete it.",
   and for runs going through it, where the refusal names any, "Runs are going through
   this gateway: … Delete it once they end.", or both in one notice. It names the first
   five of this workspace, then "and 3 more", which counts those of other workspaces too,
@@ -962,48 +968,48 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   (`NodeComponents.organisation_gateways?/0`, from `c:Apiary.Edition.limits/0`); with one,
   the Gateways entry of the organisation's sidebar (`#nav-gateways`, after Audit log, for
   a reader of `node.read`) and New gateway in the New menu are not there, and the paths
-  are not found. The list, on the list pattern, says under its heading whose nodes can use
-  them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:intro`), then a row a gateway:
+  are not found. The list, on the list pattern, says under its heading whose machines and
+  pools can use them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:intro`), then a row a gateway:
   its name and public id, its URL from `sm`, Default beside the organisation's default,
   and Connected, Yes or No by whether it holds an active key. Owners and admins have **New
   gateway** (`/gateways/new`), a form page as a workspace's New gateway is, which opens the
   gateway's Access key tab. A gateway's page is a workspace gateway's page under
   `/:org/gateways/:node_id`, with its Access key and Settings tabs, the breadcrumb and the
   sidebar's current entry Gateways (`nav={:gateways}`). Its Overview adds who can use it
-  (`:who_can_use`) and who uses it now, "Nodes in Acme › Main, Acme › Build use it now."
-  or "No node uses it now." (`NodeComponents.using_words/2`), naming only the workspaces
+  (`:who_can_use`) and who uses it now, "Machines and pools in Acme › Main, Acme › Build use it
+  now." or "No machine or pool uses it now." (`NodeComponents.using_words/2`), naming only the workspaces
   the reader reaches, then "and 2 more workspaces"; the organisation's default reads
   `:default_row`. Its deletion is confirmed in place, naming the organisation, and a refusal names
-  the nodes and runs of the workspaces the reader reaches and counts the rest
+  the machines, pools and runs of the workspaces the reader reaches and counts the rest
   (`NodeComponents.in_use_words/3`).
-- **A workspace's Nodes and an organisation's gateways.** Nodes lists the organisation's
-  gateways beside the workspace's, each with "Set for Acme" (`#node-<id>-level`), linked
-  to its page, and Default beside the gateway the workspace's default resolves to. A
-  gateway of another organisation that serves the workspace is no row of it. A node's
+- **A workspace's Machines and an organisation's gateways.** Machines lists the
+  organisation's gateways under the heading Gateways, after the workspace's, each with
+  "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway the workspace's default resolves to. A
+  gateway of another organisation that serves the workspace is no row of it. A machine's or pool's
   Gateway select groups the gateways by level where there is more than one, "This
-  workspace" first, then the node's organisation, then each organisation that serves it,
+  workspace" first, then its organisation, then each organisation that serves it,
   named, in the order their defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
-  whose default it is. Where a node uses a gateway of another organisation, its About,
+  whose default it is. Where a machine or pool uses a gateway of another organisation, its About,
   its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
   to its page under that organisation's Gateways only where the reader reads it there
-  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the nodes is the core's sentence unless
+  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the machines is the core's sentence unless
   the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
-  instance limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
-  `node.set_limit`, "You can't change the instance limit." when it gives none.
-- **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
-  (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the command's page, Key
-  for a node and a key's Forager file, an info notice: "Runs of build-01 go through the
+  machine limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
+  `node.set_limit`, "You can't change the machine limit." when it gives none.
+- **Access key**, a tab of a machine, pool or gateway. A machine or a pool whose choice
+  leads to a gateway (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the
+  command's page, Key for a machine and a key's Forager file, an info notice: "Runs of build-01 go through the
   gateway edge-01, at https://edge.example.com.", and, while the gateway holds no active
   key, "edge-01 has no active access key, so it isn't connected."; one on Default gateway
   while no gateway is the default reads "No gateway is the default now."; a direct one
   reads none (`NodeComponents.through_gateway/1`). The command and the Forager file point
   at Qory Apiary, through that gateway: the command carries `--via` and the gateway's URL,
-  and the Forager file a `via` line (`Apiary.AccessKeys.via_lines/1`); a direct node, a
+  and the Forager file a `via` line (`Apiary.AccessKeys.via_lines/1`); a direct machine or pool, a
   gateway, and one on Default gateway while no gateway is the default see neither. A gateway's Access key tab has the same
-  layout, worded for a gateway: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
+  layout, worded for a gateway: its key enrols the gateway and registers no run. While it has no active key, owners and admins read
   "How do you want to connect build-01?", "build-01 connects to Qory Apiary with a key.
   Choose one of two ways to give it one." (a pool's: "spot-runners connects to Qory Apiary
-  with a key; its instances share one. Choose one of two ways to give it one."), and
+  with a key; its machines share one. Choose one of two ways to give it one."), and
   two options of equal weight, side by side from `md`, stacked below it, of one height
   (`items-stretch`), each its icon and title, "Choose it when …" in the body colour, what
   happens in two muted sentences, then the same four facts in the same rows (a `dl` of two
@@ -1021,7 +1027,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   secret once, with everything else the machine needs, for you to set where build-01
   runs.", Key made "In this browser", Secret "Shown to you once, for the machine's or the
   CI's secret store", By hand "The key's ID, its secret, Qory Apiary's public key and
-  address", Needs "This page open over HTTPS", then Generate a key. A node lists the
+  address", Needs "This page open over HTTPS", then Generate a key. A machine lists the
   command first, its button primary; a pool lists Generate a key in the browser first. A
   member reads, under "Connect build-01", "build-01 has no key yet, so it isn't connected
   to Qory Apiary. An owner or admin connects it." A command not yet run shows
@@ -1034,21 +1040,21 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
   a command by D, …" or "Generated in a browser by …", D being the person's letter),
   Secret (where the key's secret is), Last used ("Not yet" while unused) and Fingerprint,
-  and an active key's **Forager file**, for everyone who reads the node, and Revoke…,
+  and an active key's **Forager file**, for everyone who reads the machine or pool, and Revoke…,
   confirmed in place. A key whose record doesn't match its integrity code says so on its
   card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add
   it either way and then revoke the old one, and offers the two ways as compact rows, in
-  the same order, each its title and its "Choose it when …" line, with its button. At two keys, the most a node or a pool holds, it has no
-  buttons, only "build-01 holds two keys, the most a node can. Revoke the one it no longer
-  uses to add another." A member sees the keys and none of the actions. At the foot, once
-  the node holds an active key, **Configure a machine** (`#node-configure`), for everyone,
+  the same order, each its title and its "Choose it when …" line, with its button. At two keys, the most a machine or a pool has, it has no
+  buttons, only "build-01 has two keys, the most a machine can have. Revoke the one it no
+  longer uses to add another." A member sees the keys and none of the actions. At the foot, once
+  it has an active key, **Configure a machine** (`#node-configure`), for everyone,
   at the limit too, at most 46rem wide: "A machine connected with the command needs
   nothing more: qory saved all of this on it. Don't set these again there; qory refuses a
   key ID or a public key set twice." and "With a generated key, set these where the
-  machine runs qory.", then four numbered steps (`q-steps`): 1 "Point the node at Qory Apiary." ("In the Forager
+  machine runs qory.", then four numbered steps (`q-steps`): 1 "Point the machine at Qory Apiary." ("In the Forager
   file. It is required: without it, qory ignores the three variables below.",
-  `forager.yaml` with Copy lines; a node pool's "Point the node pool at Qory Apiary.", a
-  gateway's "Point the gateway at Qory Apiary."; behind a gateway "Point the node at Qory
+  `forager.yaml` with Copy lines; a pool's "Point the pool at Qory Apiary.", a
+  gateway's "Point the gateway at Qory Apiary."; behind a gateway "Point the machine at Qory
   Apiary, through edge-01.", the text adding "via sends every request to Qory Apiary through edge-01.",
   and a pool's "A starter that reaches Qory Apiary directly can leave via out.", the
   lines ending `via:` / `url: https://edge.example.com`), 2 "Set Qory Apiary's public
@@ -1060,12 +1066,12 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   store." ("QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is
   never shown here. If it is lost, generate a new key and revoke the old one.", text
   alone, never a value or a Copy).
-- **Connect build-01 with a command** (`/nodes/:node_id/access-key/new-code`, owners and
+- **Connect build-01 with a command** (`/machines/:node_id/access-key/new-code`, owners and
   admins; its crumb is Command) is where Get the command leads. The click makes the
   enrolment code at once, with defaults: no label hint, so
   qory names the key after the machine's host name; there is no form. The page shows the
   whole command, `qory access-key enrol https://apiary.example.com` and the code, wrapped,
-  with one Copy command. For a node or pool whose choice leads to a gateway, the command
+  with one Copy command. For a machine or pool whose choice leads to a gateway, the command
   carries `--via` and the gateway's URL before the server's address (`qory access-key
   enrol --via https://edge.example.com https://apiary.example.com` and the code), the
   description reads "The command connects build-01 by itself, through the gateway
@@ -1074,7 +1080,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   the machine.", and a line under the command reads "If edge-01's certificate is signed
   by a private certificate authority, add --via-ca-file and that authority's PEM file."
   (`NodeComponents.via_ca_line/1`). An address in the command with a character a shell
-  acts on is single-quoted (`NodeComponents.shell_word/1`). For a node or pool that has or had a key, the command carries
+  acts on is single-quoted (`NodeComponents.shell_word/1`). For a machine or pool that has or had a key, the command carries
   `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code,
   `--replace` before `--via` when both),
   shown and copied alike, with the line "It moves build-01 to a new key. The old key keeps
@@ -1090,13 +1096,13 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   (`ApiaryWeb.Endpoint.url/0`, from `PUBLIC_URL`) is a loopback one, such as
   `http://localhost:4100`, a notice says "Machines can't reach this address. … Set
   PUBLIC_URL to the address machines use, and the command will carry it."
-- **Generate a key for build-01** (`/nodes/:node_id/access-key/generate`, owners and
+- **Generate a key for build-01** (`/machines/:node_id/access-key/generate`, owners and
   admins; at the key limit it goes back to the tab with "build-01 holds two keys already.
   Revoke one before you add another.") is a form page: "This browser makes a key for
   build-01. You see its secret once, to copy into your CI's secret store, or the settings
   of the system that runs it; Qory Apiary receives only the public half. The key's ID stays on
   the Access key tab." (a pool's ends its first part "… or the settings of whatever runs
-  the instances"), then one field, Name of the key, filled in with the node's name (then
+  the machines"), then one field, Name of the key, filled in with its name (then
   `-2` when a key has that name), its hint "Shown on the Access key tab, so you can tell
   its keys apart.", and Generate key ("Generating") with Cancel.
   The browser makes the Ed25519
@@ -1110,7 +1116,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   key tab, revoke it, then generate another." Anything sent beyond the name and the public
   key, a name holding a secret, or a public key that does not decode as one, goes back to
   the tab with "The key wasn't added. Try again.", and nothing is added.
-- **Key for build-01** (`/nodes/:node_id/access-key/keys/:key_id/generated`) is what
+- **Key for build-01** (`/machines/:node_id/access-key/keys/:key_id/generated`) is what
   Generate key leads to, with no flash: "Do these where build-01 runs. Only the secret
   can't be seen again.", the notice "**The secret is shown once.** …", then four numbered
   steps, each value with Copy. 1 "Store the secret." ("In the secret store of the system
@@ -1118,11 +1124,11 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   shown once"), 2 "Set the key's ID." ("It stays on the Access key tab.",
   `QORY_ACCESS_KEY_ID`), 3 "Set Qory Apiary's public key." ("The same for every machine
   connected to this Qory Apiary. It stays on the Access key tab.",
-  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point the node at Qory Apiary."
+  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point the machine at Qory Apiary."
   ("In the Forager file. It is required: without it, qory ignores the three variables.", the
   three lines `gateway:`, `server:` and `url: https://apiary.example.com` with Copy
   lines; behind a gateway as Configure a machine's first step says). The server's address and public key are the instance's, the same for every
-  organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
+  organisation, workspace and machine; the key comes from `APIARY_SIGNING_SECRET`. Then Done
   back to the tab ("Once you leave this page, the secret is not shown again."). The secret
   is the browser's alone: the server renders its place empty, and the page that made the
   key fills it. Opened again, the page has no notice, no Copy for the secret and no line
@@ -1136,7 +1142,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   active key the reader made in a browser while they
   may add keys; another key's address goes to its Forager file, a revoked one's back to the
   tab.
-- **Forager file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/forager-file`, an
+- **Forager file for build-01** (`/machines/:node_id/access-key/keys/:key_id/forager-file`, an
   active key's alone; a revoked one goes back to the tab with "build-01 is revoked.") is a
   page, not a dialog, which an active key's card opens with **Forager file**: "The Forager
   file's lines for this key. Nothing here is secret." (a generated key's: "What build-01 needs,
@@ -1153,34 +1159,35 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   revoke this one."), 2 "Set the key's ID."
   (`QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key."
   (`QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every machine
-  connected to this Qory Apiary."), 4 "Point the node at Qory Apiary." (`gateway:` /
-  `server:` / `url:` with Copy lines; behind a gateway "Point the node at Qory Apiary,
+  connected to this Qory Apiary."), 4 "Point the machine at Qory Apiary." (`gateway:` /
+  `server:` / `url:` with Copy lines; behind a gateway "Point the machine at Qory Apiary,
   through edge-01.", "via sends every request to Qory Apiary through edge-01." and a
   pool's sentence above it, the lines ending `via:` / `url:`). A command key's lines
   behind a gateway end with `via:` and its `url`, marked `# the gateway edge-01`. Done
   goes back to the
   tab, the focus on the link.
-- **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
-  Node's running instance and an item of each row's ⋯ menu on a pool's; at
-  `/nodes/:node_id/instances/:instance/clear` (the id of the instance's row in
-  `node_instances`), or, for an instance with no row, at
-  `/nodes/:node_id/runs/:run_id/clear-instance` (an open run's `rn_` id: the page links
-  its newest open run, and the address accepts any open run of that instance), never
-  the node's instance id, that line, or that row in
+- **Clear machine** (owners and admins, `node.clear_instance`) is a text action on a
+  running machine and an item of each row's ⋯ menu on a pool's; at
+  `/machines/:node_id/instances/:instance/clear` (the id of the machine's row in
+  `node_instances`), or, for a machine with no row, at
+  `/machines/:node_id/runs/:run_id/clear-instance` (an open run's `rn_` id: the page links
+  its newest open run, and the address accepts any open run of that machine), never
+  the machine id Forager reports, that line, or that row in
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
-  build-01? Clear this instance if it stopped without saying so. Another instance can then
-  start at once." with Yes, clear and Cancel; an instance that does not run now confirms at
-  the top of the instances. Its open runs are marked lost, which is not final: a heartbeat
+  build-01? Clear this machine if it stopped without reporting that it stopped. Another machine can then
+  start at once." with Yes, clear and Cancel; a machine that does not run now confirms at
+  the top of the running machines. Its open runs are marked lost, which is not final: a heartbeat
   that counts within three intervals of its arrival brings a run back.
 - **Live**: the list and the page read again on `{:nodes_touched, workspace_id}`
-  (`Apiary.Nodes.topic/1`) and on a `{:run_changed, run}` of a run on a node, at most
-  every 250 ms, and every 15 seconds, since an instance stops running without an event.
-- **Where a run ran**: the run page's details say Node (linked, or "(deleted)") and
-  Instance (its name and id) beside Key, and so does the runs list's preview, each only
-  when the run names one; the runs list takes `node:` (a public id, or the name of a node
-  in use) and has a Node column from 1300 px (`q-rl-c5`) where the workspace has nodes.
-- **Members** read the list and every tab, without New node, New node pool, Clear
-  instance or the danger zone; Settings shows its fields disabled under one line that
+  (`Apiary.Nodes.topic/1`) and on a `{:run_changed, run}` of a run on a machine or pool, at most
+  every 250 ms, and every 15 seconds, since a machine stops running without an event.
+- **Where a run ran**: the run page's details show Machine or pool (linked, or "(deleted)")
+  and Machine id (its name and id) beside Key, and so does the runs list's preview, each only
+  when the run has one; the runs list takes `machine:`, and `node:` as before (a public id,
+  or the name of a machine or pool in use), and has a Machine or pool column from 1300 px
+  (`q-rl-c5`) where the workspace has machines or pools.
+- **Members** read the list and every tab, without New machine, New pool, Clear
+  machine or the danger zone; Settings shows its fields disabled under one line that
   says only owners and admins change them, and the deletion's or the clearing's path
   sends them back with why.
 
@@ -1289,7 +1296,7 @@ mark and the theme menu.
   (`SetUpComponents.workspace_set_up/1`). The line is a done step's value where one is at
   hand (Name the workspace's name, Work sources the integrations by name, Destinations
   the repositories by name or, from 3 on, "3 repositories", Model the model as its step
-  shows it chosen, Harness "Qory harness" or the harness repository, Machines the node
+  shows it chosen, Harness "Qory harness" or the harness repository, Machines the
   pool), read for the person as the step's page reads it, "Starts one run to check the
   set-up" for Test run, else the step's page's heading ("Where does work for Main come
   from?"), also for a value the person's step page does not show them
@@ -1315,7 +1322,7 @@ needs becomes a component, or an attribute of one, not a copy.
 
 - **`ApiaryWeb.PageComponents`**: `page_header/1`, a page's title (its one `<h1>`,
   `tabindex="-1"`), one line of what it is for and its actions; `page_tabs/1`, a thing's
-  tabs (a target's, a node's, a run's), links, Settings, where the thing has it, last and
+  tabs (a target's, a machine's, a run's), links, Settings, where the thing has it, last and
   set apart at the bar's right end, and a settings section's
   (`place="section"`, in the flow, wrapping); `settings_page/1`, a page of a level's
   settings, whose sections the frame lists (Two levels, under The shell); `page_form/1` with
@@ -1625,12 +1632,13 @@ and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's targe
 page draws no other breadcrumb.
 
 A run's address, `/:org/:workspace/runs/:run_id`, carries the id Qory Apiary gives the
-run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the node's run id,
+run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the run id on the machine,
 or any other value, is not found, and nothing redirects it. The header, Details and Copy
 run id give the whole `rn_` id; lists, titles and the breadcrumb give `rn_` and its first
-eight characters. Details' Record shows the node's run id on the next row, "Node's run id",
-and the search finds a run by either id. Details and the runs list's preview show the
-instance id the run's node claimed, when it claimed one, under "Node's instance id".
+eight characters. Details' Record shows the run id on the machine on the next row, "Run id on the
+machine", and the search finds a run by either id. Details and the runs list's preview
+show the instance id Forager claimed for the run, when it claimed one, under "Machine
+id".
 
 - **The header** is the title (the one the run gave in its `about`, else "Run" and the
   run's whole id, `Run rn_7k3m9q2xd4h8vbn1`) alone; then, when the run names a kind or subjects, one
@@ -1703,7 +1711,7 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   content while a pending run has no event. One row per step, in the order the steps ran:
   Machine requested (the claim, with the pool and the machine type, "pool default" while
   the claim answer has none) and Machine started (from the starter's `dispatched` to the
-  redemption of the run's code) for a run a node pool claimed; then the run's steps, each
+  redemption of the run's code) for a run a pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
   duration; while the run is alive, a running row has the word Running, a mark that pulses
@@ -1753,7 +1761,7 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,
   shown as given with spaces for underscores: "no longer needed".
-  A run a node pool's claim registered whose machine never started it reads its cause in
+  A run a pool's claim registered whose machine never started it reads its cause in
   the meta line, the rail and the preview: "No machine was made: <the starter's reason>."
   when the starter released its dispatch, "The pool did not start a machine within 10
   minutes." when the dispatch's lease lapsed, "The machine stopped before it started the
@@ -1779,7 +1787,7 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
   when a quiet run is heard again. A state stored under an older name is said as its new
   state.
-- **A run through a gateway** looks as any run: its Node is the node that registered it,
+- **A run through a gateway** looks as any run: its Machine or pool is the machine or pool that registered it,
   and its Host the machine the runtime ran on.
 
 ## The terminal

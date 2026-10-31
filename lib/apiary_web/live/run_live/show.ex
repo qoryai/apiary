@@ -981,11 +981,11 @@ defmodule ApiaryWeb.RunLive.Show do
               {na()}
             <% end %>
           </dd>
-          <dt :if={@run.node_id}>{gettext("Node")}</dt>
+          <dt :if={@run.node_id}>{gettext("Machine or pool")}</dt>
           <dd :if={@run.node_id} id="run-node">
             <.node_name scope={@scope} node={Ecto.assoc_loaded?(@run.node) && @run.node} />
           </dd>
-          <dt :if={@run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dt :if={@run.node_instance_id}>{gettext("Machine id")}</dt>
           <dd :if={@run.node_instance_id} id="run-instance">
             <span :if={@instance && @instance.name}>{@instance.name}</span>
             <span class={["font-mono", @instance && @instance.name && "q-rail-sub"]}>
@@ -1072,7 +1072,7 @@ defmodule ApiaryWeb.RunLive.Show do
               label={gettext("Copy the run id")}
             />
           </dd>
-          <dt>{gettext("Node's run id")}</dt>
+          <dt>{gettext("Run id on the machine")}</dt>
           <dd id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
           <dt>{gettext("Events")}</dt>
           <dd>
