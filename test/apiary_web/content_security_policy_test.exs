@@ -464,6 +464,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("section", _path, _p), do: "runs"
   # Each step of a workspace's set-up; the chooser opens the owner's grant in Work sources.
   defp value_of("step", "/:org/:workspace/set-up/:step/choose", _p), do: "sources"
+  # The Connect page of Work sources. Work sources and Destinations, the steps with a
+  # Connect page, are steps of the feature `factory`: without it, no step has one.
+  defp value_of("step", "/:org/:workspace/set-up/:step/connect", _p),
+    do: if(Features.on?(:factory), do: "sources", else: [])
 
   # Name, the step every workspace has, whatever the features.
   defp value_of("step", "/:org/:workspace/set-up/:step", _p), do: "name"
