@@ -228,6 +228,23 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, "#artifact-writer a")
     end
 
+    test "names the run without a link for a reader who may not read runs", ctx do
+      pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      [%{versions: [version]}] = Artifacts.list(ctx.work_item)
+      short = String.slice(ctx.claimed.public_id, 0, 11)
+
+      # A person of another organisation may not read this workspace's runs (`run.read`).
+      %{scope: stranger} = sign_up_fixture()
+      stranger = %{stranger | workspace: ctx.scope.workspace}
+
+      html = render_component(&ArtifactComponents.made_by/1, version: version, scope: stranger)
+      assert html =~ short
+      refute html =~ "href="
+
+      html = render_component(&ArtifactComponents.made_by/1, version: version, scope: ctx.scope)
+      assert html =~ ~s(href="/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/)
+    end
+
     test "renders one document file at a time, the others as the reader opens them", ctx do
       {:ok, _type} =
         Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{

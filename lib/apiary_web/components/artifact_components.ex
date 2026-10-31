@@ -234,8 +234,8 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   @doc """
   made_by/1 is who made a version (`writer/1`); for a run, a link to the run's page where
-  `scope` is given, a run is registered, and the run pages are shown (the feature
-  `observability`), as an Activity line links a run.
+  `scope` is given, a run is registered, and the reader may read the workspace's runs
+  (`run.read`, `Apiary.Access.can?/3`); else its words.
   """
   attr :version, Version, required: true
   attr :scope, :any, default: nil
@@ -244,7 +244,12 @@ defmodule ApiaryWeb.ArtifactComponents do
         %{version: %Version{writer: :run, run: %{run: %Run{public_id: id}}}, scope: %{}} = assigns
       )
       when is_binary(id) do
-    assigns = assign(assigns, :link?, Apiary.Features.visible?(assigns.scope, :observability))
+    assigns =
+      assign(
+        assigns,
+        :link?,
+        Apiary.Access.can?(assigns.scope, :"run.read", assigns.scope.workspace)
+      )
 
     ~H"""
     <span :if={!@link?} class="font-mono">{writer(@version)}</span>
