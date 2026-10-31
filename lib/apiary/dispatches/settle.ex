@@ -95,9 +95,17 @@ defmodule Apiary.Dispatches.Settle do
   def settle(dispatch_run_id, now \\ Apiary.Dispatches.now()) when is_binary(dispatch_run_id) do
     {:ok, told} =
       Repo.transact(fn ->
+        # Hand-over: with the workflow model, the stage runner acts on what the run gave
+        # (`Apiary.Stages.run_ended/1`), in this transaction. It writes the run's work
+        # item, which is locked first, before the run, in the order every path keeps.
+        stages? = Apiary.Stages.on?()
+        if stages?, do: Apiary.Stages.hold_work_item(dispatch_run_id)
+
         case RunEnd.lock(dispatch_run_id) do
           %DispatchRun{state: :ended, end_cause: :run_ended} = dispatch_run ->
-            {:ok, settle_locked(dispatch_run, registered(dispatch_run.id), now)}
+            told = settle_locked(dispatch_run, registered(dispatch_run.id), now)
+            staged = if stages?, do: Apiary.Stages.run_ended(dispatch_run.id), else: []
+            {:ok, told ++ Enum.reject(staged, &(&1 in told))}
 
           _other ->
             {:ok, []}

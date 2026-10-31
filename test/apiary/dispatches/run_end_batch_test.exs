@@ -38,7 +38,8 @@ defmodule Apiary.Dispatches.RunEndBatchTest do
 
     log =
       capture_log(fn ->
-        assert RunEnd.lose(past) == [scope.workspace.id]
+        # With the workflow model, the lost run's work item is told too: its stage escalated.
+        assert Enum.filter(RunEnd.lose(past), &is_binary/1) == [scope.workspace.id]
       end)
 
     assert log =~ "run end failed dispatch_run=#{failing.dispatch_run.id} error=Postgrex.Error"
