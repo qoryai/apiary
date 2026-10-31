@@ -287,6 +287,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert html =~ "Document. At most 1 file, 1 MiB in all."
 
+      # The file picker: a button and a place to drop files, the input itself hidden.
+      assert has_element?(view, "#artifact-drop[phx-drop-target] input.sr-only[type=file]")
+      assert has_element?(view, "#artifact-drop label.btn", "Choose a file")
+
       input =
         file_input(view, "#artifact-form", :files, [
           %{name: "notes.md", content: "# Notes", type: "text/markdown"}

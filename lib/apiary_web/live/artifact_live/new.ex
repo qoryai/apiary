@@ -85,7 +85,23 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
           <fieldset class="fieldset" id="artifact-files-field">
             <label for={@uploads.files.ref} class="text-[13px]/[18px] font-medium">{gettext("Files")}</label>
-            <.live_file_input upload={@uploads.files} class="file-input file-input-sm w-full" />
+            <div
+              id="artifact-drop"
+              phx-drop-target={@uploads.files.ref}
+              class="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-box border border-dashed border-line-strong px-4 py-3.5"
+            >
+              <.live_file_input upload={@uploads.files} class="peer sr-only" />
+              <label
+                for={@uploads.files.ref}
+                class="btn btn-sm cursor-pointer peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2"
+              >
+                <.icon name="hero-arrow-up-tray-micro" class="size-4" />
+                {ngettext("Choose a file", "Choose files", @type.max_files)}
+              </label>
+              <span class="text-[12.5px]/5 text-muted">
+                {ngettext("or drop it here", "or drop them here", @type.max_files)}
+              </span>
+            </div>
             <ul
               :if={@uploads.files.entries != []}
               id="artifact-uploads"
