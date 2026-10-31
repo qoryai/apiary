@@ -513,6 +513,29 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
              ]
     end
 
+    test "gives the general line and logs the cause, with nothing of the files", ctx do
+      changeset =
+        %Apiary.Artifacts.ArtifactFile{}
+        |> Ecto.Changeset.change(filename: "notes.md")
+        |> Ecto.Changeset.add_error(:filename, "is taken")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert ApiaryWeb.ArtifactLive.New.general_line(
+                   ctx.work_item,
+                   "explainer",
+                   {:error, changeset}
+                 ) == "Add the version again. If it fails again, contact support."
+        end)
+
+      assert log =~
+               "A push from Add a version failed: " <>
+                 "{:error, changeset of Apiary.Artifacts.ArtifactFile, errors on filename}; " <>
+                 "work item #{ctx.work_item.public_id}, type explainer"
+
+      refute log =~ "notes.md"
+    end
+
     test "says so when the store cannot keep the files", ctx do
       blocked = Path.join(ctx.tmp_dir, "a-file")
       File.write!(blocked, "")

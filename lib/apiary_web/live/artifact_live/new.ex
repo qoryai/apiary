@@ -434,7 +434,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
         assign(socket, :error, access_line(socket, params, access))
 
       other ->
-        assign(socket, :error, general_lines(socket, params, other))
+        assign(socket, :error, general_line(socket.assigns.work_item, params["type"], other))
     end
   end
 
@@ -451,11 +451,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
       )
     ]
 
-  # The line for a refusal the page finds no cause of. The cause goes to the server log
+  # general_line/3 is the line for a refusal the page finds no cause of, for a push of
+  # `type_name` to `work_item`. The cause goes to the server log
   # (`Apiary.Artifacts.log_refusal/3`).
-  defp general_lines(socket, params, refusal) do
-    Artifacts.log_refusal(socket.assigns.work_item, params["type"], refusal)
-
+  @doc false
+  @spec general_line(Apiary.WorkItems.WorkItem.t(), term, term) :: String.t()
+  def general_line(work_item, type_name, refusal) do
+    Artifacts.log_refusal(work_item, type_name, refusal)
     gettext("Add the version again. If it fails again, contact support.")
   end
 
@@ -486,7 +488,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
         role_lines(scope)
 
       true ->
-        general_lines(socket, params, refusal)
+        general_line(socket.assigns.work_item, params["type"], refusal)
     end
   end
 
