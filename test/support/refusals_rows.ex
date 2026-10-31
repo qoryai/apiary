@@ -452,7 +452,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # or an adapter's changes (`test/apiary/adapters_test.exs`), or the harness documents
   # and the instance's assignments of harness sources (`test/apiary/stacks_test.exs`,
   # `test/apiary/harnesses_test.exs`), or yet the changes of the work items and of what an
-  # adapter reports, whose pages are not built.
+  # adapter reports, whose pages are not built, or a workspace type's default process,
+  # whose page is not built either (`test/apiary/processes/type_templates_test.exs`).
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
@@ -534,7 +535,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"process.edit",
         :"gate.approve",
         :"artifact.write",
-        :"artifact_type.edit"
+        :"artifact_type.edit",
+        :"workspace_type.edit"
       ]
     }
   end

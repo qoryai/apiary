@@ -51,6 +51,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       assert rows("qory.nothing") == []
     end
 
+    @tag needs: :workflow_model
     test "adds a later release's default while no instance admin has saved" do
       assert %{number: 1, release: 1} = TypeTemplates.newest(@type_key)
 
