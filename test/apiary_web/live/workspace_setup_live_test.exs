@@ -2325,6 +2325,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(failure.(:not_allowed, chosen, nil)) ==
                "Contact support to make acme/harness available to Acme."
 
+      # A module the chosen stack lists, at another address: the walk failed on that
+      # module, so the words name it and its host, not the chosen source.
+      tools = "https://github.example.com/example-org/tools"
+
+      assert words.(failure.(:not_allowed, tools, nil)) ==
+               "Contact support to make #{tools} available to Acme."
+
+      assert words.(failure.(:not_covered, tools, nil)) ==
+               "Qory Apiary reached no adapter that reads #{tools}, and no integration of Acme " <>
+                 "covers it. If #{tools} is public, contact support to have it read from " <>
+                 "github.example.com. If it is private, owners and admins of Acme connect an " <>
+                 "integration that covers it in Organisation settings › Integrations."
+
       # An address the person typed is the person's to correct; a connected repository's
       # or an assignment's is not.
       assert ApiaryWeb.HarnessComponents.read_words(

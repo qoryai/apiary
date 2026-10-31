@@ -1213,11 +1213,11 @@ defmodule ApiaryWeb.HarnessComponents do
   def refusal_words({:limited, seconds}, source, _ref, _organisation),
     do: limited_words(seconds, source)
 
-  def refusal_words({:walk, %{failure: :not_covered}}, source, _ref, organisation),
-    do: not_covered_words(source, organisation)
+  def refusal_words({:walk, %{failure: :not_covered} = failure}, source, _ref, organisation),
+    do: not_covered_words(failed_source(failure, source), organisation)
 
-  def refusal_words({:walk, %{failure: :not_allowed}}, source, _ref, organisation),
-    do: not_allowed_words(source, organisation)
+  def refusal_words({:walk, %{failure: :not_allowed} = failure}, source, _ref, organisation),
+    do: not_allowed_words(failed_source(failure, source), organisation)
 
   def refusal_words({:walk, failure}, source, ref, _organisation),
     do: ref_words(failure, source, ref) || walk_words(failure, source)
@@ -1422,6 +1422,14 @@ defmodule ApiaryWeb.HarnessComponents do
     do: shown == Document.shown(git)
 
   defp chosen_source?(_failure, _source), do: false
+
+  # The source the walk's `failure` is about: the chosen `source`, else the address of a
+  # module the chosen stack lists, shown as the walk shows it.
+  defp failed_source(%{source: shown} = failure, source) when is_binary(shown) do
+    if chosen_source?(failure, source), do: source, else: %{label: shown, git: shown}
+  end
+
+  defp failed_source(_failure, source), do: source
 
   # The words of a walk's `failure` about `ref` of `source`, the version the person gave:
   # the read found no version of that name; it is no version a read takes; or it breaks
