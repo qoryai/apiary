@@ -5920,7 +5920,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or got nothing within %{n} s."
+msgid "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or received no data within %{n} s."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -8504,6 +8504,12 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -12582,12 +12588,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Owners and admins of %{org} check the address on the set-up step Harness, or link the repository through a connection. %{host} did not serve %{source} as a git repository over HTTPS."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise contact support. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -18984,7 +18984,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads: over 4 MiB of folders, or a harness file over 256 KiB."
+msgid "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

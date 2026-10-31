@@ -1408,7 +1408,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"host" => "code.example.com", "port" => 443}
                }
              },
-             "Whoever maintains #{harness} makes it smaller, or owners and admins of Main choose another harness on the set-up step Harness. #{harness} is larger than Qory Apiary reads: over 4 MiB of folders, or a harness file over 256 KiB."},
+             "Whoever maintains #{harness} makes it smaller, or owners and admins of Main choose another harness on the set-up step Harness. #{harness} is larger than Qory Apiary reads."},
             {%{
                code: "source_unreachable",
                source: harness,
@@ -1417,7 +1417,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"host" => "code.example.com", "port" => 8443, "seconds" => 10}
                }
              },
-             "Contact support: Qory Apiary could not connect to code.example.com on port 8443, or got nothing within 10 s."},
+             "Contact support: Qory Apiary could not connect to code.example.com on port 8443, or received no data within 10 s."},
             {%{
                code: "host_not_allowed",
                source: harness,
@@ -1427,7 +1427,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"host" => "code.example.com", "port" => 443}
                }
              },
-             "Owners and admins of Acme link the repository through a connection in Organisation settings › Integrations, if an integration serves code.example.com; otherwise contact support. code.example.com resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only."},
+             "If an integration serves code.example.com, owners and admins of Acme link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. code.example.com resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."},
             {%{
                code: "fetch_failed",
                source: harness,

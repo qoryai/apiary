@@ -853,7 +853,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def public_read_words(:too_large, names),
     do:
       gettext(
-        "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads: over 4 MiB of folders, or a harness file over 256 KiB.",
+        "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads.",
         source: names.source,
         ws: names.workspace
       )
@@ -861,7 +861,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def public_read_words(:source_unreachable, names),
     do:
       gettext(
-        "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or got nothing within %{n} s.",
+        "Contact support: Qory Apiary could not connect to %{host} on port %{port}, or received no data within %{n} s.",
         host: names.host,
         port: names.port,
         n: names.seconds
@@ -871,7 +871,7 @@ defmodule ApiaryWeb.HarnessComponents do
     do:
       pgettext(
         "plain",
-        "Owners and admins of %{org} link the repository through a connection in Organisation settings › Integrations, if an integration serves %{host}; otherwise contact support. %{host} resolves to a private, loopback or link-local address; Qory Apiary reads public repositories from public addresses only.",
+        "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only.",
         org: names.organisation,
         host: names.host
       )
