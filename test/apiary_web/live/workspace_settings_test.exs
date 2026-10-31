@@ -25,7 +25,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       assert has_element?(lv, "#settings-tabs #settings-tab-general[aria-current=page]")
       refute has_element?(lv, "#main #settings-tabs")
       assert has_element?(lv, "#workspace-name #workspace-type dt", "Type")
-      assert has_element?(lv, "#workspace-type-value", "Software workspace")
+      assert has_element?(lv, "#workspace-type-value", "Software factory")
 
       assert has_element?(
                lv,
@@ -44,9 +44,9 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       refute has_element?(lv, "#workspace-form #workspace-type")
     end
 
-    test "names a workspace of another domain by that domain's label and line",
+    test "names a workspace of another domain by that domain's name and line",
          %{conn: conn, scope: scope} do
-      for {domain, label, line} <- [{"example", "Example workspace", "For the tests only."}] do
+      for {domain, label, line} <- [{"example", "Example", "For the tests only."}] do
         Apiary.Repo.update_all(
           from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
           set: [domain: domain]
@@ -65,7 +65,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
     test "says it to a member too, who changes nothing", %{scope: scope} do
       {:ok, lv, _html} = live(member_conn(scope, :member), settings_path(scope))
 
-      assert has_element?(lv, "#workspace-type-value", "Software workspace")
+      assert has_element?(lv, "#workspace-type-value", "Software factory")
       assert has_element?(lv, "input#workspace_name[disabled]")
     end
 
@@ -82,7 +82,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
         {:ok, lv, _html} = live(conn, path)
         assert has_element?(lv, "#settings-tab-general[aria-current=page]")
         assert has_element?(lv, "#settings-section-general #delete-workspace-form")
-        assert has_element?(lv, "#workspace-type-value", "Software workspace")
+        assert has_element?(lv, "#workspace-type-value", "Software factory")
       end
     end
   end

@@ -849,7 +849,7 @@ defmodule ApiaryWeb.UserAuth do
           nil ->
             conn
             |> put_resp_content_type("text/html")
-            |> send_resp(404, ApiaryWeb.ErrorHTML.render("404.html", %{}))
+            |> send_resp(404, not_found(conn, scope, organisation_slug, params["workspace"]))
             |> halt()
 
           membership ->
@@ -864,6 +864,29 @@ defmodule ApiaryWeb.UserAuth do
   # Whether the request is for a page, a LiveView's first render, rather than the palette,
   # a run's log or a redirect.
   defp page?(conn), do: Map.has_key?(conn.private, :phoenix_live_view)
+
+  # The `404` of a path the person cannot open: for a page of a workspace in an
+  # organisation they reach, that page inside the app's layout, with the organisation's
+  # workspaces they reach (`ApiaryWeb.DeadEnd`); else the plain page, which lists nothing.
+  defp not_found(conn, scope, organisation_slug, workspace_slug) do
+    document =
+      with true <- is_binary(workspace_slug) and page?(conn),
+           {:ok, organisation_scope} <-
+             Organisations.resolve_scope(scope, organisation_slug, nil,
+               last_workspace: get_session(conn, @last_workspace)
+             ) do
+        ApiaryWeb.DeadEnd.document(
+          Map.put(conn.assigns, :current_scope, organisation_scope),
+          :workspace
+        )
+      else
+        _no_page -> nil
+      end
+
+    if document,
+      do: Phoenix.HTML.Safe.to_iodata(document),
+      else: ApiaryWeb.ErrorHTML.render("404.html", %{})
+  end
 
   # Written only when it changes, so that a page and the log reads of its terminal do not
   # each send the session cookie again.

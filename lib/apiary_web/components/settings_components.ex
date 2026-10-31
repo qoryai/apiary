@@ -607,8 +607,8 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   workspace_list/1 is the Workspaces section's list: each workspace of `workspaces`, the
-  organisation's in use, one row on the row spec, its name the title with its slug beside
-  it, its targets where the page counted them (`targets`), when it was created, and its ⋯
+  organisation's in use, one row on the row spec, its name the title with its address
+  beside it, `/acme/payments`, its targets where the page counted them (`targets`), when it was created, and its ⋯
   menu, the edition's items (the `:workspace_actions`
   slot) then Delete…, for a reader who may delete a workspace (`may_delete`), which leads
   to the deletion's path, by `patch` from the
@@ -616,7 +616,9 @@ defmodule ApiaryWeb.SettingsComponents do
   there the workspace's row (`confirming`) is the deletion's confirmation in place of its
   cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then,
   for that reader, the note under the list, what a deletion does, or why the only
-  workspace can't be deleted alone. A ⋯ menu with no item is not shown.
+  workspace can't be deleted alone. A ⋯ menu with no item is not shown. With no workspace
+  in use, one line in place of the list and its note: the organisation has none, and a
+  link to its overview, where the kind cards create the first.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
@@ -653,7 +655,16 @@ defmodule ApiaryWeb.SettingsComponents do
       )
 
     ~H"""
+    <p :if={@workspaces == []} id="workspaces-empty" class="text-[13.5px]/5 text-muted">
+      {gettext("%{organisation} has no workspace yet.",
+        organisation: @scope.organisation.name
+      )}
+      <.link navigate={~p"/#{@scope.organisation}"} class="q-link">
+        {gettext("Go to the overview")}
+      </.link>
+    </p>
     <.table
+      :if={@workspaces != []}
       id="workspaces"
       label={gettext("Workspaces")}
       rows={@workspaces}
@@ -669,7 +680,9 @@ defmodule ApiaryWeb.SettingsComponents do
           >
             {workspace.name}
           </.link>
-          <span class="q-side q-mono" title={workspace.slug}>{workspace.slug}</span>
+          <span class="q-side q-mono" title={~p"/#{@scope.organisation}/#{workspace}"}>
+            {~p"/#{@scope.organisation}/#{workspace}"}
+          </span>
         </span>
       </:col>
       <:col :let={workspace} :if={@targets} label={gettext("Targets")} kind="num" from="sm">
@@ -721,7 +734,11 @@ defmodule ApiaryWeb.SettingsComponents do
         </.deletion_confirm>
       </:confirm>
     </.table>
-    <p :if={@may_delete} id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
+    <p
+      :if={@may_delete and @workspaces != []}
+      id="workspaces-note"
+      class="text-[12.5px]/[18px] text-faint"
+    >
       {if length(@workspaces) > 1,
         do:
           gettext(

@@ -141,9 +141,9 @@ defmodule Apiary.Organisations.Organisation do
         "Choose another name. Another organisation has the address %{address}."
       )
 
-  @doc "The error of a name whose address is a page of Qory Apiary."
+  @doc "The error of a name whose address Qory Apiary keeps."
   def page_address,
-    do: dgettext_noop("errors", "Choose another name. %{address} is a page of Qory Apiary.")
+    do: dgettext_noop("errors", "Choose another name. Qory Apiary keeps the address %{address}.")
 
   defp taken_slug, do: dgettext_noop("errors", "is already the slug of another organisation")
 

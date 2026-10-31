@@ -320,6 +320,31 @@ defmodule ApiaryWeb.SetUpComponents do
   def step_label(:test), do: gettext("Test run")
 
   @doc """
+  step_heading/2 is the heading of the flow's step `id` for `workspace`, a question such as
+  "Where does work for Payments come from?": the step's page shows it as its title, and
+  the workspace's overview under the step's name while the set-up is not finished.
+  """
+  @spec step_heading(atom, %Workspace{}) :: String.t()
+  def step_heading(:name, _workspace), do: gettext("Name this workspace")
+
+  def step_heading(:sources, %Workspace{name: name}),
+    do: gettext("Where does work for %{workspace} come from?", workspace: name)
+
+  def step_heading(:destinations, %Workspace{name: name}),
+    do: gettext("Which targets may runs in %{workspace} change?", workspace: name)
+
+  def step_heading(:model, %Workspace{name: name}),
+    do: gettext("Which model do runs in %{workspace} use?", workspace: name)
+
+  def step_heading(:harness, %Workspace{name: name}),
+    do: gettext("Which harness do runs in %{workspace} use?", workspace: name)
+
+  def step_heading(:machines, %Workspace{name: name}),
+    do: gettext("Which machines run the runs in %{workspace}?", workspace: name)
+
+  def step_heading(:test, _workspace), do: gettext("Run a test")
+
+  @doc """
   flow_title/1 is the line above the indicator's count: "Set up Payments · Software
   factory", or "Set up a new Software factory" before the workspace exists.
   """
@@ -718,9 +743,12 @@ defmodule ApiaryWeb.SetUpComponents do
   `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
   type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
   connect, and Choose, which sends the event `choose_kind` with the domain's name as
-  `type`. The empty organisation overview (`ApiaryWeb.OrganisationLive`) and New
-  workspace (`/:org/workspaces/new`) show it, and each takes the event with
-  `choose_kind/3`. With `limit`, that line shows in place of the cards.
+  `type`. The cards are 20rem wide, or the column's width where the column is narrower,
+  in a grid that wraps a further card to the next line; Choose is at the foot of its
+  card. A card's title is one heading level below `heading`. The empty
+  organisation overview (`ApiaryWeb.OrganisationLive`) and New workspace
+  (`/:org/workspaces/new`) show it, and each takes the event with `choose_kind/3`. With
+  `limit`, that line shows in an information notice in place of the cards.
   """
   attr :id, :string, default: "set-up-cards"
   attr :title, :string, required: true
@@ -729,34 +757,48 @@ defmodule ApiaryWeb.SetUpComponents do
 
   def kind_cards(assigns) do
     assigns =
-      assign(
-        assigns,
+      assigns
+      |> assign(
         :cards,
         for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
       )
+      |> assign(:card_heading, if(assigns.heading == "h1", do: "h2", else: "h3"))
 
     ~H"""
     <div class="grid gap-4">
       <.dynamic_tag
         tag_name={@heading}
         id={"#{@id}-title"}
-        class="text-2xl/8 font-semibold tracking-[-0.025em]"
+        class={[
+          "font-semibold",
+          if(@heading == "h1",
+            do: "text-2xl/8 tracking-[-0.025em]",
+            else: "text-lg/7 tracking-[-0.015em]"
+          )
+        ]}
       >
         {@title}
       </.dynamic_tag>
-      <.notice :if={@limit} kind={:error}>
+      <.notice :if={@limit} kind={:info}>
         <span id="set-up-limit">{@limit}</span>
       </.notice>
-      <ul :if={!@limit} id={@id} class="grid gap-3">
+      <ul
+        :if={!@limit}
+        id={@id}
+        role="list"
+        class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
+      >
         <li
           :for={{domain, card} <- @cards}
           id={"set-up-card-#{domain.name()}"}
-          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
+          class="flex min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4"
         >
-          <h2 class="font-semibold">{domain.type_name()}</h2>
+          <.dynamic_tag tag_name={@card_heading} class="font-semibold">
+            {domain.type_name()}
+          </.dynamic_tag>
           <p class="text-[13.5px]/5">{card.what}</p>
           <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
-          <div class="flex justify-end">
+          <div class="mt-auto pt-1">
             <.button
               id={"set-up-card-#{domain.name()}-choose"}
               variant="primary"
@@ -793,7 +835,8 @@ defmodule ApiaryWeb.SetUpComponents do
   organisation overview), and opens its first set-up step, Name. A type with no card
   changes nothing. Where someone else created the organisation's first workspace a moment
   before, or the person may no longer create one, the organisation's overview opens
-  again; where the organisation may have no more, the page says so.
+  again; where the organisation may have no more, the page shows the reason in an
+  information notice (`limit_line/1`), not an error.
   """
   @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
           Phoenix.LiveView.Socket.t()
@@ -813,7 +856,8 @@ defmodule ApiaryWeb.SetUpComponents do
             )
 
           {:error, :limit} ->
-            Phoenix.LiveView.put_flash(socket, :error, limit_line(organisation))
+            # Reaching the edition's limit is no error: the flash shows the reason, as information.
+            Phoenix.LiveView.put_flash(socket, :info, limit_line(organisation))
 
           {:error, reason} when reason in [:exists, :forbidden, :not_found] ->
             Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
@@ -824,10 +868,26 @@ defmodule ApiaryWeb.SetUpComponents do
     end
   end
 
-  @doc "limit_line/1 is the line of an organisation that may have no more workspaces."
+  @doc """
+  limit_line/1 is the line of an organisation that has as many workspaces as the edition
+  allows, the edition's (`c:Apiary.Edition.workspace_limit_line/1`).
+  """
   @spec limit_line(%Organisation{}) :: String.t()
-  def limit_line(%Organisation{name: name}),
-    do: gettext("%{organisation} may have no more workspaces.", organisation: name)
+  def limit_line(%Organisation{} = organisation),
+    do: Apiary.Edition.workspace_limit_line(organisation)
+
+  @doc """
+  at_limit?/1 is whether the scope's organisation has as many workspaces in use as the
+  edition allows (`c:Apiary.Edition.limits/0`): then nobody creates another, whatever
+  their level.
+  """
+  @spec at_limit?(Scope.t()) :: boolean
+  def at_limit?(%Scope{} = scope) do
+    case Apiary.Edition.limits().workspaces do
+      :unlimited -> false
+      limit -> length(Organisations.list_workspaces(scope)) >= limit
+    end
+  end
 
   attr :id, :string, required: true
   attr :title, :string, required: true, doc: "where the steps happen, such as \"On GitHub\""
