@@ -14,7 +14,7 @@ defmodule Apiary.SupportAddress do
   2. else the address an instance admin saved in Instance settings › General (`stored/0`);
   3. else none, nil.
 
-  `source/0` says where it comes from.
+  `source/0` returns where it comes from.
 
   **Where it is kept.** `instance_settings.support_address`, the instance's row
   (`Apiary.SupportAddress.Row`); `NULL`, or no row, is none saved. Each node keeps a copy
@@ -25,9 +25,10 @@ defmodule Apiary.SupportAddress do
   **Saving** (`save/2`) is an instance admin's (`Apiary.Access.instance_admin?/1`), with no
   recent sign-in, as the product's name is. A change is an `instance.support_save` entry
   in the trail of the instance's organisation, by the admin, about the organisation, with
-  the address before and after: an https address as it is, an email address as `"email"`,
-  since the trail keeps no email address, and nil for none. Where `SUPPORT_ADDRESS` is set, the saved
-  address is not shown and not changed: the page shows the variable's, read only.
+  the address before and after: an https address without its query string or fragment, an
+  email address as `"email"`, since the audit entry contains no email address, and nil
+  for none. Where `SUPPORT_ADDRESS` is set, the saved address is not shown and not
+  changed: the page shows the variable's, read only.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -44,9 +45,11 @@ defmodule Apiary.SupportAddress do
   @max_url 2048
   @max_email 254
 
-  # An email address: one `@`, a dot in the domain, no spaces, commas, colons or
-  # semicolons, so `mailto:` typed in front is refused.
-  @email ~r/^[^@,;:\s]+@[^@,;:\s]+\.[^@,;:\s]+$/
+  # An email address: letters, digits, dots, underscores, plus signs and hyphens before
+  # the `@`; letters, digits and hyphens in each part of the domain, with at least one
+  # dot. Nothing else, so the `mailto:` link takes no `?`, `%`, `"`, `<` or `>`, and no
+  # header or body with them.
+  @email ~r/^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/
 
   @invalid_message dgettext_noop(
                      "errors",
@@ -59,7 +62,7 @@ defmodule Apiary.SupportAddress do
   @typedoc "Where the address comes from: the server's environment, a save, or none."
   @type source :: :env | :saved | :none
 
-  @doc "invalid_message/0 is the field's error for an address that `parse/1` refuses."
+  @doc "invalid_message/0 is the field's error for an address `parse/1` returns an error for."
   @spec invalid_message() :: String.t()
   def invalid_message, do: @invalid_message
 
@@ -196,7 +199,7 @@ defmodule Apiary.SupportAddress do
   variable is not set or is blank, so the address saved in Instance settings › General
   applies. It reads no saved address, since it runs before the database is reached. It
   returns the variable's address, or nil. Called at boot; raises on a value `parse/1`
-  refuses, so the instance does not start.
+  returns an error for, so the instance does not start.
   """
   @spec boot!() :: address | nil
   def boot! do
@@ -228,8 +231,8 @@ defmodule Apiary.SupportAddress do
   save/2 saves the address `attrs` gives, `"support_address"`, for the instance admin of
   `scope`: trimmed; empty is none, and "Contact support" shows as plain text. A change is
   an `instance.support_save` entry in the trail of the instance's organisation, by the
-  admin, about the organisation, with the address before and after, as the module's
-  documentation says; a save of the same address writes nothing. Once committed, every
+  admin, about the organisation, with the address before and after, as described in the
+  module's documentation; a save of the same address writes nothing. Once committed, every
   node's cache reads it again.
 
   Returns `{:ok, address}`, nil for none; `{:error, changeset}`; `{:error, :env}` where
@@ -275,9 +278,10 @@ defmodule Apiary.SupportAddress do
       else: {:ok, current}
   end
 
-  # The trail's entry of a change of address; the same address has none. It keeps an
-  # https address as it is, and an email address only as "email", as the trail keeps no
-  # email address (the mail settings' entry keeps no sender's address either).
+  # The trail's entry of a change of address; the same address has none. The audit entry
+  # contains an https address without its query string or fragment, and an email address
+  # only as "email": it contains no email address, as the mail settings' entry contains
+  # no sender's address.
   defp record(scope, organisation, current, row) do
     case Audit.changed(
            %{support_address: current.support_address},
@@ -306,7 +310,10 @@ defmodule Apiary.SupportAddress do
   end
 
   defp kept(nil), do: nil
-  defp kept("https://" <> _rest = url), do: url
+
+  defp kept("https://" <> _rest = url),
+    do: url |> URI.parse() |> Map.merge(%{query: nil, fragment: nil}) |> URI.to_string()
+
   defp kept(_email), do: "email"
 
   # The instance's organisation, whose trail holds the entry; its owners are the

@@ -72,6 +72,15 @@ defmodule Apiary.SupportAddressTest do
             "support@@example.com",
             "javascript:alert(1)",
             "mailto:support@example.com",
+            "a@b.c?cc=evil%40x.com",
+            "a@b.c?subject=hi&body=x",
+            "a@b.c?bcc=e%40x.com%0D%0AX",
+            "support%40x@example.com",
+            ~s("support"@example.com),
+            "<support@example.com>",
+            "support@example.com>",
+            "Support <support@example.com>",
+            "support@exa_mple.com",
             "https://" <> String.duplicate("a", 2050) <> ".example.com"
           ] do
         assert {:error, reason} = SupportAddress.parse(value), value
@@ -148,6 +157,14 @@ defmodule Apiary.SupportAddressTest do
 
       assert {emptied.before, emptied.after} ==
                {%{"support_address" => "https://help.example.com"}, %{"support_address" => nil}}
+
+      # An https address is kept without its query string or fragment.
+      assert {:ok, "https://help.example.com/contact?from=app#form"} =
+               save(scope, "https://help.example.com/contact?from=app#form")
+
+      assert [_, _, _, _, queried] = entries()
+
+      assert queried.after == %{"support_address" => "https://help.example.com/contact"}
     end
 
     test "is not saved by anyone but an instance admin" do

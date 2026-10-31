@@ -744,7 +744,8 @@ address, “Contact support” shows as plain text, with no link and no address 
 Configuration** show it read only. Each change on General is an entry in the activity of
 the instance's organisation.
 
-A value of `SUPPORT_ADDRESS` it does not accept stops the boot:
+A value of `SUPPORT_ADDRESS` that is neither an https address nor an email address stops
+the boot:
 
 ```text
 Set SUPPORT_ADDRESS to an https address or an email address, or leave it unset: it is neither an https address nor an email address. For example:

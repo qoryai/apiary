@@ -66,7 +66,8 @@ defmodule Apiary.Audit do
   settings (`Apiary.InstanceConfig.save/3`) is an `instance.configure` there, by the
   instance admin, with the values before and after. Saving the support address
   (`Apiary.SupportAddress.save/2`) is an `instance.support_save` there, by the instance
-  admin, with the address before and after, an email address only as `"email"`. A new
+  admin, with the address before and after: an https address without its query string or
+  fragment, an email address only as `"email"`. A new
   organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
