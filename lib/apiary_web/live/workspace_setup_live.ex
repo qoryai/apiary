@@ -292,19 +292,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # grant yet.
   defp has_connection?(%{cards: cards, waiting: waiting}), do: cards != [] or waiting != []
 
-  # Who connects the adapters of the step, for a person `adapter.connect` does not allow.
-  defp who_connects(:sources, scope),
-    do:
-      gettext("Only owners and admins of %{organisation} connect work sources.",
-        organisation: scope.organisation.name
-      )
-
-  defp who_connects(:destinations, scope),
-    do:
-      gettext("Only owners and admins of %{organisation} connect destinations.",
-        organisation: scope.organisation.name
-      )
-
   # Connect's words, on the step's button, as the title of its page and in the
   # breadcrumb: "Connect a source" while the step has no connection, else "Connect
   # another source".
@@ -436,8 +423,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       may: Access.can?(scope, :"collection.assign", scope.organisation),
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
-      who_connects:
-        ApiaryWeb.Access.who_may(scope, :"adapter.connect", who_connects(step, scope)),
+      who_connects: IntegrationComponents.who_connects(scope, step),
       sending: nil,
       done: step_done?(flow, step)
     )

@@ -391,7 +391,12 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     refute has_element?(page, "#work-sources-adapter-#{other.public_id}")
 
     assert words(page, "#work-sources-connect-who-may") ==
-             "Only owners and admins change the integrations of the organisation."
+             "Only owners and admins of #{ctx.organisation.name} connect work sources."
+
+    {:ok, destinations, _html} = live(conn, ctx.destinations)
+
+    assert words(destinations, "#destinations-connect-who-may") ==
+             "Only owners and admins of #{ctx.organisation.name} connect destinations."
 
     # An install sent anyway starts nothing.
     render_click(page, "install", %{"integration" => other.public_id})

@@ -114,12 +114,7 @@ defmodule ApiaryWeb.CollectionsLive do
       may: Access.can?(scope, :"collection.assign", scope.organisation),
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
-      who_connects:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"adapter.connect",
-          gettext("Only owners and admins change the integrations of the organisation.")
-        )
+      who_connects: IntegrationComponents.who_connects(scope, list)
     )
   end
 

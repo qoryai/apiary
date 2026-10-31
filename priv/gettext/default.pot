@@ -12498,7 +12498,6 @@ msgid "Only owners and admins change the Backlog switches."
 msgstr ""
 
 #: lib/apiary_web/components/tick_list_components.ex
-#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change the integrations of the organisation."
@@ -12562,12 +12561,12 @@ msgstr ""
 msgid "Only owners and admins of %{organisation} assign %{collections}."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of %{organisation} connect destinations."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of %{organisation} connect work sources."
 msgstr ""

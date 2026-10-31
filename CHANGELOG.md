@@ -241,7 +241,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **› Destinations**, “Which repositories may runs in Main change?”, show the same cards
   as the set-up's steps, with **Connect a source** or **Connect a destination** for
   owners and admins, which reads **Connect another …** once the page has a card or a
-  **Connected** line. **Choose** opens the same chooser in the workspace's settings, at
+  **Connected** line. Anyone else reads the step's line, such as “Only owners and admins
+  of Acme connect work sources.” **Choose** opens the same chooser in the workspace's settings, at
   `/acme/main/settings/choose?step=sources&grant=<id>`. Its **Save** and **Back** return
   to the settings page. **Connect** and **Change access** return to the set-up's step of
   the workspace. Under **Only selected**, ticking a work source assigns it to the
