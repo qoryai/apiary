@@ -3,8 +3,12 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in.
   With the `factory` feature, while the workspace's set-up is not finished, the page shows
   the set-up instead (`ApiaryWeb.SetUpComponents.workspace_set_up/1`): "Finish setting up
-  Payments", each step of the set-up with its state and a link to its page, and Continue,
-  to the first step that is not done. Once the test run passed, it
+  Payments", each step of the set-up with its state, a line under its name
+  (`ApiaryWeb.SetUpComponents.step_note/3`), such as the workspace's name for Name or
+  "Where does work for Payments come from?" for Work sources not done, and a link to its
+  page, and Continue, to the first step that is not done. A person who may not take that
+  step's action (`ApiaryWeb.SetUpComponents.changes_step?/2`) reads "Payments is being set
+  up" and who finishes the set-up, with no Continue. Once the test run passed, it
   answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
@@ -114,7 +118,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       width="read"
     >
       <:crumb>{gettext("Overview")}</:crumb>
-      <.set_up_list workspace={@current_scope.workspace} set_up={@set_up} />
+      <.set_up_list
+        workspace={@current_scope.workspace}
+        set_up={@set_up}
+        notes={@notes}
+        continues={@continues}
+        finishers={@finishers}
+      />
     </Layouts.app>
     """
   end
@@ -263,15 +273,27 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   attr :workspace, :any, required: true
   attr :set_up, :map, required: true
+  attr :continues, :boolean, required: true
+  attr :finishers, :string, required: true, doc: "who finishes the set-up, for `continues` false"
+  attr :notes, :map, required: true, doc: "each step's line, by its id"
 
   # The set-up while it is not finished: each step with its state, done, the next or to
-  # come, and a link to its page; then Continue, to the next.
+  # come, its line under its name (`SetUpComponents.step_note/3`), and a link to its page;
+  # then Continue, to the next, for a person who may take its action (`continues`); for
+  # anyone else, who finishes the set-up in place of Continue.
   defp set_up_list(assigns) do
     ~H"""
     <section id="overview-set-up" class="grid gap-5" aria-labelledby="overview-set-up-h">
-      <h1 id="overview-set-up-h" class="text-2xl/8 font-semibold tracking-[-0.025em]">
-        {gettext("Finish setting up %{workspace}", workspace: @workspace.name)}
-      </h1>
+      <div class="grid gap-1">
+        <h1 id="overview-set-up-h" class="text-2xl/8 font-semibold tracking-[-0.025em]">
+          {if @continues,
+            do: gettext("Finish setting up %{workspace}", workspace: @workspace.name),
+            else: gettext("%{workspace} is being set up", workspace: @workspace.name)}
+        </h1>
+        <p :if={!@continues} id="overview-set-up-who" class="text-[13.5px]/5 text-muted">
+          {@finishers}
+        </p>
+      </div>
       <ol id="overview-set-up-steps" class="q-su-list rounded-box border border-line p-2">
         <li :for={step <- @set_up.steps}>
           <.link
@@ -286,11 +308,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             <span class="q-su-text">
               <span class="q-su-nm">{step.label}</span>
               <span :if={step.done} class="sr-only">{gettext(", done")}</span>
+              <small class="q-su-note">
+                {@notes[step.id]}
+              </small>
             </span>
           </.link>
         </li>
       </ol>
-      <div>
+      <div :if={@continues}>
         <.button
           id="overview-set-up-continue"
           variant="primary"
@@ -322,6 +347,17 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         {:ok,
          assign(socket,
            set_up: set_up,
+           # Continue and its heading for a person who may take the next step's action, as
+           # its page checks; for anyone else, the steps read only and who finishes them.
+           continues: SetUpComponents.changes_step?(scope, set_up.next.id),
+           # Who finishes the set-up, the edition's line for the next step.
+           finishers: Apiary.Edition.set_up_finishers_line(scope, set_up.next.id),
+           # Each step's line, read once here rather than on every render.
+           notes:
+             Map.new(
+               set_up.steps,
+               &{&1.id, SetUpComponents.step_note(scope, &1.id, &1.done)}
+             ),
            page_title: scope.workspace.name <> " · " <> scope.organisation.name
          )}
     end

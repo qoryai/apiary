@@ -91,8 +91,8 @@ follow:
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
    mail set in `.env`, the page has no **Mail** step, and you see the page only when the
    instance has an adapter.
-2. The overview of your organisation, at `http://localhost:4100/acme`. Under **Choose
-   what your first workspace does**, it shows the card **Software factory**, whose words
+2. The overview of your organisation, at `http://localhost:4100/acme`. Under **What will
+   your first workspace do?**, it shows the card **Software factory**, whose words
    this guide uses: select **Choose**. It creates the workspace *Software factory*, at
    `http://localhost:4100/acme/software-factory`, and opens its step **Name**. Type the
    name `Main`, which this guide uses, and select **Save and next**. The workspace's

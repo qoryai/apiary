@@ -52,14 +52,98 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       refute has_element?(view, "#about-settings")
       refute has_element?(view, "#about a", "Settings")
 
+      # Details: the organisation's address, as Organisation settings shows it.
+      assert has_element?(view, "#about dt", "Address")
+      assert has_element?(view, "#about dd.q-mono", "/#{organisation.slug}")
+      refute has_element?(view, "#about dt", "Slug")
+
       assert has_element?(
                view,
                ~s(.q-sidebar-foot #nav-organisation[href="/#{organisation.slug}/settings"]),
                "Organisation settings"
              )
 
-      # The workspaces' facts land off the first paint.
-      assert render_async(view) =~ "none alive"
+      # The workspaces' facts land off the first paint: no run yet, said once.
+      assert render_async(view) =~ "No run yet"
+      refute has_element?(view, "#workspaces .q-spark")
+      refute render(view) =~ "0 runs"
+
+      assert has_element?(
+               view,
+               ".q-band-hint",
+               "Runs and denied network connections in the last 14 days"
+             )
+    end
+
+    test "Details has no Owners row for an organisation without an owner", %{conn: conn} do
+      %{organisation: organisation, user: owner, scope: scope} = sign_up_fixture()
+      %{user: admin} = member_fixture(scope, :admin)
+      require Ecto.Query
+
+      {1, _rows} =
+        Apiary.Repo.update_all(
+          Ecto.Query.from(m in Apiary.Organisations.Membership,
+            where: m.organisation_id == ^organisation.id and m.user_id == ^owner.id
+          ),
+          set: [level: :admin]
+        )
+
+      {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/#{organisation}")
+      assert has_element?(view, "#about dt", "Address")
+      refute has_element?(view, "#about dt", "Owners")
+    end
+
+    test "each workspace's line says each of its figures once", %{conn: conn} do
+      %{user: user, scope: scope, organisation: organisation} = sign_up_fixture()
+      recent = workspace_fixture(organisation, "Recent")
+      older = workspace_fixture(organisation, "Older")
+      now = DateTime.utc_now()
+
+      for {workspace, days_ago, state} <- [
+            {recent, 1, "completed"},
+            {recent, 0, "running"},
+            {older, 30, "completed"}
+          ] do
+        Apiary.RunEventsFixtures.run_fixture(%{scope | workspace: workspace}, %{
+          state: state,
+          started_at: DateTime.add(now, -days_ago, :day)
+        })
+      end
+
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}")
+      render_async(view)
+
+      text = fn workspace ->
+        view
+        |> element("#workspace-#{workspace.id}")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.split()
+        |> Enum.join(" ")
+      end
+
+      # Runs in the 14 days: the days' shape, named, their count and the last run.
+      assert text.(recent) =~ "1 run in progress"
+      assert text.(recent) =~ "2 runs"
+
+      assert has_element?(
+               view,
+               ~s(#workspace-#{recent.id} svg.q-spark[role=img][aria-label="Runs per day in the last 14 days"])
+             )
+
+      # Runs before the 14 days alone: no shape, the count of the 14 days and the last run.
+      assert text.(older) =~ "No run in progress"
+      assert text.(older) =~ "0 runs"
+      refute has_element?(view, "#workspace-#{older.id} .q-spark")
+      refute text.(older) =~ "No run yet"
+
+      # No run ever: "No run yet" alone.
+      main = text.(scope.workspace)
+      assert main =~ "No run yet"
+      refute main =~ "in progress"
+      refute main =~ "0 runs"
+      refute has_element?(view, "#workspace-#{scope.workspace.id} .q-spark")
     end
 
     test "the root sends on to the workspace opened last while it is reached, else the first",

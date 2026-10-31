@@ -92,8 +92,9 @@ card's title is the domain's name (`c:Apiary.Lingo.Domain.type_name/0`): "Softwa
 factory", the one card. **Choose** on a card creates the workspace, named after the type. The Type field of an edition's form
 (`ApiaryWeb.WorkspaceComponents.type_field/1`) shows each domain's name and line
 (`type_line/0`): "Software factory", "For work on code. Each ticket needs a
-repository." The workspace's settings show its label and line
-(`c:Apiary.Lingo.Domain.label/0`, `description/0`): "Software workspace".
+repository." The workspace's settings show its name and line
+(`c:Apiary.Lingo.Domain.type_name/0`, `description/0`): "Software factory", as its kind
+card and its Name step do.
 `Apiary.Lingo.Domain.choices/0` lists the domains in the order a form offers them.
 Each domain is a workspace type with a definition (`c:Apiary.Lingo.Domain.definition/0`,
 `Apiary.Lingo.Domain.Definition`), and a workspace stores the key of its type's

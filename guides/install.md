@@ -799,7 +799,7 @@ Two pages come after the set-up link's page:
    last step, each sign-in of an instance admin opens this page first. Where the page has
    no step, the set-up link's page leads to the organisation's overview.
 2. **The organisation's overview**, at `/<organisation>`, creates the organisation's
-   workspace. Under **Choose what your first workspace does**, it shows one card for each
+   workspace. Under **What will your first workspace do?**, it shows one card for each
    type of workspace: **Software factory**, where agents change code in your
    repositories. Select **Choose** on the card. It creates the workspace, named after the
    type: *Software factory*, at `/acme/software-factory` for an organisation named

@@ -23,6 +23,29 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
   setup :register_and_log_in_user
 
+  # An edition whose line of who finishes the set-up names the next step it is asked for.
+  defmodule Finishers do
+    @moduledoc false
+    def set_up_finishers_line(_scope, step_id), do: "The operator finishes #{step_id}."
+  end
+
+  # An edition whose chain of model choices is the operator's, kept in the organisation
+  # itself, which no person of the organisation writes.
+  defmodule OperatorModels do
+    @moduledoc false
+    def model_choice_chain(_organisation_id), do: "operator"
+    def operator_chain_organisation(organisation_id), do: organisation_id
+    def operator_chain_writer?(_scope), do: false
+  end
+
+  # `OperatorModels`, whose chain every person of the organisation writes.
+  defmodule OperatorModelsWritten do
+    @moduledoc false
+    defdelegate model_choice_chain(organisation_id), to: OperatorModels
+    defdelegate operator_chain_organisation(organisation_id), to: OperatorModels
+    def operator_chain_writer?(_scope), do: true
+  end
+
   setup do
     Application.put_env(:apiary, ApiaryWeb.WorkspaceLive.Overview,
       coalesce: 0,
@@ -170,6 +193,18 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert overview_steps(lv) == expected
 
+      # Under each step's name: a done step's value, the workspace's name for Name; a
+      # step not done its page's heading; Test run what it does.
+      assert words(lv, "#overview-set-up-name .q-su-note") == "Main"
+
+      assert words(lv, "#overview-set-up-sources .q-su-note") ==
+               "Where does work for Main come from?"
+
+      assert words(lv, "#overview-set-up-test .q-su-note") ==
+               "Starts one run to check the set-up"
+
+      refute has_element?(lv, "#overview-set-up-who")
+
       assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
       refute has_element?(lv, "#overview-activity")
       refute has_element?(lv, "#onboarding")
@@ -193,6 +228,168 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert continue(conn, scope) == {"Continue: Machines", step_path(scope, :machines)}
 
       _pool = ready_instance!()
+      assert continue(conn, scope) == {"Continue: Test run", step_path(scope, :test)}
+    end
+
+    test "a done step's line shows its value: the integrations that bring work, the pool", %{
+      conn: conn,
+      scope: scope
+    } do
+      source = collection_fixture(scope)
+      # Another integration's collection of the workspace, with its Backlog off: it brings
+      # no work, so Work sources does not name it.
+      other = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(c in Apiary.Adapters.Collection, where: c.id == ^other.id),
+          set: [backlog: false]
+        )
+
+      pool = ready_instance!()
+      source_name = Repo.get!(Node, source.adapter_id).name
+      other_name = Repo.get!(Node, other.adapter_id).name
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-sources .q-su-note") == source_name
+      refute words(lv, "#overview-set-up-sources .q-su-note") =~ other_name
+      assert words(lv, "#overview-set-up-machines .q-su-note") == pool.name
+    end
+
+    test "a done step's line shows its value: the destinations, the model, the harness", %{
+      conn: conn,
+      scope: scope
+    } do
+      targets =
+        for ref <- ["web-shop", "api"] do
+          collection = collection_fixture(scope, external_ref: ref)
+
+          {1, _} =
+            Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+              set: [targets: true]
+            )
+
+          collection
+        end
+
+      model_done!(scope)
+      {:ok, stack} = Apiary.Stacks.Sources.choose(scope, :qory)
+
+      # 1 or 2 destinations by their titles, in the order of the step's list; the model
+      # the step shows chosen, the provider's default model for a choice that names none;
+      # the Qory harness by that name.
+      {:ok, lv, _html} = live(conn, overview(scope))
+      shown = words(lv, "#overview-set-up-destinations .q-su-note")
+      assert shown in ["web-shop, api", "api, web-shop"]
+
+      expected =
+        targets
+        |> Enum.map(&{Repo.get!(Node, &1.adapter_id).name, &1.title})
+        |> Enum.sort_by(fn {name, title} -> {String.downcase(name), title} end)
+        |> Enum.map_join(", ", &elem(&1, 1))
+
+      assert shown == expected
+
+      if Apiary.Features.on?(:secrets),
+        do: assert(words(lv, "#overview-set-up-model .q-su-note") == "Claude Opus 5.5")
+
+      assert words(lv, "#overview-set-up-harness .q-su-note") == "Qory harness"
+
+      # From 3 destinations on, their number in the type's words; a harness source by its
+      # repository.
+      third = collection_fixture(scope, external_ref: "docs")
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^third.adapter_id), set: [targets: true])
+
+      git = Apiary.Stacks.Sources.chosen(scope.workspace).git
+
+      {1, _} =
+        Repo.update_all(from(s in Apiary.Stacks.Stack, where: s.id == ^stack.id),
+          set: [
+            choice: :repository,
+            version_kind: :branch,
+            version_name: "main",
+            harness: String.replace(stack.harness, git, "https://code.example.com/acme/harness")
+          ]
+        )
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-destinations .q-su-note") == "3 repositories"
+      assert words(lv, "#overview-set-up-harness .q-su-note") == "acme/harness"
+    end
+
+    test "a done step's value the person's step page does not show them reads as its question",
+         %{conn: conn, scope: scope} do
+      # The operator's default choice, of the operator's provider with a key: on the
+      # operator's chain, the Model step is done.
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-overview-2"}]
+        })
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+
+      {1, _} =
+        Repo.update_all(from(c in Apiary.Connections.Connection, where: c.id == ^provider.id),
+          set: [chain: "operator"]
+        )
+
+      {1, _} =
+        Repo.update_all(
+          from(m in Apiary.ModelChoices.ModelChoice,
+            where: m.organisation_id == ^scope.organisation.id
+          ),
+          set: [chain: "operator"]
+        )
+
+      :ok = Apiary.Edition.put_test_stub(OperatorModels)
+      assert Apiary.WorkspaceSetup.model_key?(scope.workspace)
+
+      # A person who may not read the operator's chain, as their Model step reads it.
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-model .q-su-note") == "Which model do runs in Main use?"
+
+      # A person who writes it reads the model.
+      :ok = Apiary.Edition.put_test_stub(OperatorModelsWritten)
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-model .q-su-note") == "Claude Opus 5.5"
+    end
+
+    test "who finishes the set-up is the edition's line, asked for the next step", %{
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Finishers)
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-who") == "The operator finishes sources."
+      refute has_element?(lv, "#overview-set-up-continue")
+    end
+
+    test "a member whose next step is Test run, which they may start, is offered Continue", %{
+      scope: scope
+    } do
+      collection = collection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
+
+      if Apiary.Features.on?(:secrets), do: model_done!(scope)
+      {:ok, _stack} = Apiary.Stacks.Sources.choose(scope, :qory)
+      _pool = ready_instance!()
+
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up h1") == "Finish setting up Main"
+      refute has_element?(lv, "#overview-set-up-who")
       assert continue(conn, scope) == {"Continue: Test run", step_path(scope, :test)}
     end
 
@@ -318,8 +515,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
 
+      # The next step, Work sources, checks `collection.assign`, which a member does not
+      # hold: the steps keep their state, and who finishes them replaces Continue.
       {:ok, lv, _html} = live(conn, overview(scope))
-      assert words(lv, "#overview-set-up-continue") == "Continue: Work sources"
+      assert words(lv, "#overview-set-up h1") == "Main is being set up"
+
+      assert words(lv, "#overview-set-up-who") ==
+               "Owners and admins of #{scope.organisation.name} finish the set-up."
+
+      refute has_element?(lv, "#overview-set-up-continue")
+      assert {"Name", :done, step_path(scope, :name)} in overview_steps(lv)
 
       {:ok, lv, _html} = live(conn, step_path(scope, :sources))
       assert has_element?(lv, "#set-up-grant-#{grant.public_id}-choose")

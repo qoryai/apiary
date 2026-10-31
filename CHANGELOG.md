@@ -13,15 +13,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 - An organisation with no workspace shows the kind cards on its overview,
-  `/<organisation>`, under “Choose what your first workspace does”, and
+  `/<organisation>`, under “What will your first workspace do?”, and
   `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
   **Choose** on a card creates the workspace at once, named after its kind, such as
   “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its
   step **Name**. A workspace's address follows its name: a rename, on **Name** or in
   Workspace settings, changes it, and links to the old address stop working, with no
-  redirect. A name whose address another workspace or a page of Qory Apiary has is
+  redirect. A name whose address another workspace has, or Qory Apiary keeps, is
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
+- An address under an organisation that matches no workspace the person reaches, such as
+  an old address after a rename, shows inside the app's layout, with status 404: “You
+  have no workspace at this address in Acme. Its address changes when the workspace is
+  renamed.”, then the workspaces of Acme the person can open, as links. New workspace for
+  a person who may not create one shows, the same way and with no kind cards, the
+  Community limit's line where the organisation has its one workspace, else who creates
+  workspaces. An organisation the person does not reach still shows the plain “Not
+  Found”.
+- Organisation settings › Workspaces shows each workspace's address, `/acme/payments`,
+  beside its name; with no workspace, it shows “Acme has no workspace yet.” and a link
+  to the overview, in place of the empty list.
 - On every page of a workspace, the sidebar's first line is the organisation's name, a
   link to the organisation's overview.
 - An instance admin can rename the product in Instance settings › General: the browser
@@ -125,14 +136,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An edition can change the set-up's steps and their notes, and, for a person who waits
   for the first workspace, the line on the organisation's overview, “An owner of Acme
   creates the first workspace.” in the core, through the callbacks `set_up_steps/2` and
-  `first_workspace_waiting_line/1` of `Apiary.Edition`. The core keeps its steps.
+  `first_workspace_waiting_line/1` of `Apiary.Edition`, and the line of New workspace
+  where the organisation has as many workspaces as the edition allows, through
+  `workspace_limit_line/1`. The core keeps its steps.
 - The kind cards show a card for each workspace type, with what you do in that kind of
   workspace, what you connect, and **Choose**. This release has one type, **Software
   factory**: “Agents change code in your repositories. You connect: where work comes
   from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
   adds a workspace where the edition allows another. Where the organisation has as many
-  workspaces as the edition allows, that page shows “Acme may have no more workspaces.”
-  in place of the cards. Only owners see the cards: anyone else reads who creates the
+  workspaces as the edition allows, that page is headed “New workspace” and shows, in an
+  information notice in place of the cards, “Qory Apiary Community allows one workspace
+  per organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates the
   first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
   workspace stores the type it was made from.
 <!-- feature: factory -->
@@ -367,8 +381,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   done. The workspace's sidebar starts with “Set up · 3 of 7” and a link to each step, the
   page's step current, above its other pages. The organisation's list of workspaces shows
   “Set-up: 3 of 7 steps” under the workspace's name. A person who may not act on a step
-  reads who may. Once the test run has passed, the Overview, the sidebar and the
-  organisation's list show no set-up. The workspace's other pages, such as **Backlog** and
+  reads who may; on the Overview, “Main is being set up” and “Owners and admins of Acme
+  finish the set-up.”, with no **Continue**. Under each step's name, a done step shows its
+  value, such as the workspace's name, and Test run “Starts one run to check the
+  set-up”. Once the test run has passed, the Overview, the sidebar and the organisation's
+  list show no set-up. The workspace's other pages, such as **Backlog** and
   **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** lists the organisation's model providers,
   and **New model provider** adds one with its key, and an address for a provider that
@@ -456,7 +473,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Organisation settings › General changes it, the page opens at the new address, and
   links to the old one stop working, with no redirect. A sign-up, the set-up link's page
   and the release command's claim make the address from the name too. A name whose
-  address another organisation or a page of Qory Apiary has is refused there, never
+  address another organisation has, or Qory Apiary keeps, is refused there, never
   numbered: “Choose another name. Another organisation has the address /acme.” The audit
   log records the old and the new name and address of a rename.
 - A name of an organisation or a workspace with no letter or digit from A to Z or 0 to 9,
@@ -474,8 +491,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
 - The organisation slug `integrations` is reserved as well: a sign-up or a rename to the
-  name Integrations is refused with “Choose another name. /integrations is a page of Qory
-  Apiary.”
+  name Integrations is refused with “Choose another name. Qory Apiary keeps the address
+  /integrations.”
 - An account's email address, at sign-up and when it is changed, and an invitation's
   address refuse a control or format character (a right-to-left override, a zero-width
   space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160

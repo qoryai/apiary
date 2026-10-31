@@ -395,8 +395,12 @@ defmodule ApiaryWeb.HarnessComponents do
     )
   end
 
-  defp harness_words(%{choice: :qory}), do: gettext("Qory harness")
-  defp harness_words(%{git: git}), do: repository(git)
+  @doc false
+  # harness_words/1 is the harness of a stack as `chosen_line/1` shows it: the Qory harness
+  # by that name, a harness source by its repository.
+  @spec harness_words(map) :: String.t()
+  def harness_words(%{choice: :qory}), do: gettext("Qory harness")
+  def harness_words(%{git: git}), do: repository(git)
 
   # A version as a page shows it: a branch or a tag by its name, a commit by its first 7
   # characters, the Qory harness's newest as "Always the latest version", a named one by

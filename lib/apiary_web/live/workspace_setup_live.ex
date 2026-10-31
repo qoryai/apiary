@@ -6,13 +6,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # the steps with a tick on each one done and the step current (`ApiaryWeb.Layouts.app/1`),
   # so the frame shows no indicator.
   #
-  # **New workspace.** The kind cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), which the
-  # empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Choose creates
+  # **New workspace.** A page of the organisation, in its sidebar: the kind cards
+  # (`ApiaryWeb.SetUpComponents.kind_cards/1`) under "What will this workspace do?", which
+  # the empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Choose creates
   # the workspace at once, named after its type, and opens its Name step
   # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The page is only for a person
   # `workspace.create` allows (`Apiary.Access`); where the organisation has as many
-  # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page shows that
-  # line in place of the cards.
+  # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page is headed
+  # "New workspace" and shows the edition's line on why
+  # (`c:Apiary.Edition.workspace_limit_line/1`) in an information notice, in place of the
+  # cards.
   #
   # **The flow.** A step is named by its id in the path (`Apiary.WorkspaceSetup.flow/0`);
   # a step the person does not see, or no step's id, is a path that does not exist. The
@@ -22,10 +25,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #
   #   * Name: for a person `workspace.rename` allows, the Name field, the workspace's
   #     address under it, which follows the name, and once the name typed gives another,
-  #     what breaks (`ApiaryWeb.SettingsComponents.workspace_address/1`); Save and next
+  #     what breaks (`ApiaryWeb.SettingsComponents.workspace_address/1`), then the
+  #     workspace's type, "Type: Software factory"; Save and next
   #     renames the workspace (`Apiary.Organisations.update_workspace/2`), refused for a
   #     name whose address is taken, and opens the next step at the new address. For
-  #     anyone else, the name, read only, with Continue;
+  #     anyone else, the name, read only, with its address, the line of who may rename it
+  #     (`ApiaryWeb.Access.who_may/3`), as the other steps say who may, and Continue;
   #   * Work sources and Destinations, with the `factory` feature: a card per live grant
   #     of the organisation's connections (`Apiary.WorkspaceSetup.cards/4`,
   #     `ApiaryWeb.IntegrationComponents.grant_card/1`), of the adapters with items for
@@ -250,7 +255,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     case socket.assigns.live_action do
       :new ->
-        if not creates, do: raise(ApiaryWeb.NotFound)
+        if not creates, do: raise(ApiaryWeb.NotFound, page: :new_workspace)
         {:noreply, assign_cards(socket)}
 
       :step ->
@@ -267,22 +272,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # of an organisation that has as many workspaces as the edition allows.
   defp assign_cards(socket) do
     scope = socket.assigns.current_scope
+    at_limit = SetUpComponents.at_limit?(scope)
 
     assign(socket,
       view: :cards,
       flow: nil,
       step: nil,
-      page_title: gettext("What will this workspace do?"),
-      limit: if(at_limit?(scope), do: SetUpComponents.limit_line(scope.organisation))
+      # At the limit the page shows no question: its title is New workspace, and the
+      # line shows why the organisation may have no more.
+      page_title:
+        if(at_limit,
+          do: gettext("New workspace"),
+          else: gettext("What will this workspace do?")
+        ),
+      limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
-  end
-
-  # Whether the organisation has as many workspaces in use as the edition allows.
-  defp at_limit?(scope) do
-    case Edition.limits().workspaces do
-      :unlimited -> false
-      limit -> length(Organisations.list_workspaces(scope)) >= limit
-    end
   end
 
   ## The flow
@@ -315,7 +319,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       title: SetUpComponents.flow_title(flow),
       page_path: page_path(flow),
       next_path: next && next.path,
-      page_title: heading(step, flow),
+      page_title: SetUpComponents.step_heading(step, flow.workspace),
       refusal: nil
     )
     |> assign_progress()
@@ -344,28 +348,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp reload(socket), do: socket
-
-  defp heading(:name, _flow), do: gettext("Name this workspace")
-
-  defp heading(:sources, flow),
-    do: gettext("Where does work for %{workspace} come from?", workspace: flow.workspace.name)
-
-  defp heading(:destinations, flow),
-    do:
-      gettext("Which targets may runs in %{workspace} change?",
-        workspace: flow.workspace.name
-      )
-
-  defp heading(:model, flow),
-    do: gettext("Which model do runs in %{workspace} use?", workspace: flow.workspace.name)
-
-  defp heading(:harness, flow),
-    do: gettext("Which harness do runs in %{workspace} use?", workspace: flow.workspace.name)
-
-  defp heading(:machines, flow),
-    do: gettext("Which machines run the runs in %{workspace}?", workspace: flow.workspace.name)
-
-  defp heading(:test, _flow), do: gettext("Run a test")
 
   ## Each step's data
 
@@ -1737,7 +1719,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   @impl true
   # A step is a page of the workspace, in its sidebar, the step current in the group Set
-  # up; New workspace has no sidebar.
+  # up; New workspace is a page of the organisation, in its sidebar, with no entry current.
   def render(%{view: :flow} = assigns) do
     ~H"""
     <Layouts.app
@@ -1762,11 +1744,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       memberships={@memberships}
       counts={@nav_counts}
       place={:organisation}
-      sidebar={false}
     >
-      <SetUpComponents.frame>
-        <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
-      </SetUpComponents.frame>
+      <:crumb>{gettext("New workspace")}</:crumb>
+      <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
     </Layouts.app>
     """
   end
@@ -2073,10 +2053,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           form={@form}
         />
         <p id="set-up-type" class="text-[13px]/5 text-muted">
-          {gettext("%{type} · %{organisation}",
-            type: @flow.domain.type_name(),
-            organisation: @flow.organisation.name
-          )}
+          {gettext("Type: %{type}", type: @flow.domain.type_name())}
         </p>
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={@page_path} />
@@ -2091,12 +2068,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <p class="text-[13.5px]/5 font-medium">{gettext("Name")}</p>
           <p id="set-up-name" class="text-[13.5px]/5">{@flow.workspace.name}</p>
         </div>
+        <SettingsComponents.workspace_address
+          id="set-up-address"
+          organisation={@flow.organisation}
+          workspace={@flow.workspace}
+          form={@form}
+        />
         <p id="set-up-type" class="text-[13px]/5 text-muted">
-          {gettext("%{type} · %{organisation}",
-            type: @flow.domain.type_name(),
-            organisation: @flow.organisation.name
-          )}
+          {gettext("Type: %{type}", type: @flow.domain.type_name())}
         </p>
+        <p id="set-up-who-may" class="text-[13.5px]/5 text-muted">{@who_may_rename}</p>
         <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
       </div>
     </SetUpComponents.frame>

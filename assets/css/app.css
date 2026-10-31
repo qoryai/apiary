@@ -10354,7 +10354,7 @@
   }
   .q-wr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 90px 172px 84px 110px;
+    grid-template-columns: minmax(0, 1fr) 136px 172px 84px 110px;
     align-items: center;
     gap: 12px;
     min-height: 48px;
@@ -10433,7 +10433,7 @@
   }
   @container (max-width: 760px) {
     .q-wr {
-      grid-template-columns: minmax(0, 1fr) 90px 110px;
+      grid-template-columns: minmax(0, 1fr) 136px 110px;
     }
     .q-wr-sp,
     .q-wr-den {

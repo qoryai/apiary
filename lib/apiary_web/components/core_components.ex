@@ -2215,6 +2215,11 @@ defmodule ApiaryWeb.CoreComponents do
   attr :values, :list, required: true
   attr :class, :any, default: nil
 
+  attr :label, :string,
+    default: nil,
+    doc:
+      "what the bars count, its accessible name and hover title; none hides it from screen readers"
+
   def sparkline(assigns) do
     max = Enum.max([1 | assigns.values])
     count = max(length(assigns.values), 1)
@@ -2234,8 +2239,11 @@ defmodule ApiaryWeb.CoreComponents do
       class={["q-spark", @class]}
       viewBox={"0 0 #{@width} 18"}
       preserveAspectRatio="none"
-      aria-hidden="true"
+      role={@label && "img"}
+      aria-label={@label}
+      aria-hidden={is_nil(@label) && "true"}
     >
+      <title :if={@label}>{@label}</title>
       <rect
         :for={bar <- @bars}
         x={bar.x}

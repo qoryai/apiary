@@ -208,13 +208,13 @@ defmodule ApiaryWeb.SetupLiveTest do
       refute Setup.set_up?()
     end
 
-    test "refuses a name whose address is a page of Qory Apiary, on the name",
+    test "refuses a name whose address Qory Apiary keeps, on the name",
          %{conn: conn, code: code} do
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
       email = unique_user_email()
 
       for {name, message} <- [
-            {"Users", "Choose another name. /users is a page of Qory Apiary."},
+            {"Users", "Choose another name. Qory Apiary keeps the address /users."},
             {"株式会社",
              "Choose a name with at least one letter or digit from A to Z or 0 to 9. " <>
                "The address is made from those characters."}

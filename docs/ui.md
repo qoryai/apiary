@@ -200,6 +200,17 @@ page and an Instance page, the one the person came from (Two levels, below).
   description and at most one primary and one default action, or, where the page makes
   two peer kinds (Nodes: New node and New node pool), two default actions and no
   primary. Card titles are `<h2>`.
+- **Dead ends.** A path under an organisation the person reaches that leads nowhere for
+  them is a `404` inside the shell, with the organisation's sidebar
+  (`ApiaryWeb.DeadEnd`): a workspace address that matches no workspace they reach,
+  "Workspace not found", "You have no workspace at this address in Acme. Its address
+  changes when the workspace is renamed.", and the workspaces of Acme they reach, as
+  links; New workspace for a person who may not create one, "New workspace" with no kind
+  cards and one line: where the organisation has as many workspaces as the edition allows,
+  the limit's line in an information notice, as the owner sees it there, since nobody
+  creates another; else who creates workspaces.
+  A workspace they do not reach gets the same page as an address that matches none. An
+  organisation they do not reach is the plain `404`, "Not Found".
 
 ## No modals
 
@@ -285,10 +296,13 @@ replaces the navigation it is in.
   the account's password), Workspaces
   (whoever may rename or delete a workspace, `Apiary.Organisations.lists_workspaces?/1`,
   owners and admins in the core; Delete… and the note under the list only for whoever
-  may delete one; each with its targets, `Apiary.Targets.count_by_workspace/1`;
+  may delete one; each with its address beside its name, `/acme/payments`, and its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
-  `:workspaces_heading` slot), and the edition's sections
+  `:workspaces_heading` slot; with no workspace in use, one line, "Acme has no workspace
+  yet.", and a link to the overview, which shows the kind cards to whoever may create
+  the first workspace and who creates it to anyone else), and the
+  edition's sections
   (`ApiaryWeb.Edition.settings_tabs/1`). The audit log is not a section of them: it is a
   page of the organisation's sidebar, beside its overview (`/:org/audit-log`,
   `ApiaryWeb.ActivityLive`; `/:org/settings/audit-log` and `/:org/activity`, its paths
@@ -410,9 +424,10 @@ the new ones
 (`ApiaryWeb.MovedController`).
 
 An organisation's path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
-workspaces the person reaches, what each is doing, and the organisation's people; its
-header's actions are the edition's (the `:organisation_heading` slot), such as a way to add
-a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
+workspaces the person reaches, what each is doing, and the organisation's people and
+details, its address the path `/<org>` as Organisation settings shows it; once the
+organisation has a workspace, its header's actions are the edition's (the
+`:organisation_heading` slot), such as a way to add a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
 
 ## Lists
@@ -776,7 +791,14 @@ what needs the reader, then what their agents did, and never grows with the data
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
-settings, which the sidebar's foot, Organisation settings, leads to on the same page.
+settings, which the sidebar's foot, Organisation settings, leads to on the same page. A
+workspace's line shows how many of its runs are in progress, pending or running ("No run
+in progress", "2 runs in progress"), the runs per day as small bars, named "Runs per day
+in the last 14 days", the count of runs, the denied network connections, and when its
+last run started; the band's hint, "Runs and denied network connections in the last 14
+days", covers the run and denied counts. Each figure shows once: a workspace that never
+had a run shows "No run yet" alone, and one whose runs all started before the 14 days
+shows "0 runs" and its last run, with no bars.
 
 ## Targets
 
@@ -1193,18 +1215,23 @@ the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces
 whose Choose creates the workspace, then each step a page of the workspace,
 `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
-sidebar, but for the steps of a workspace that exists, which show the workspace's
-sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
+sidebar, but for the kind cards, which show the organisation's sidebar, and the steps of
+a workspace that exists, which show the workspace's sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
 mark and the theme menu.
 
 - **The kind cards** (`SetUpComponents.kind_cards/1`) come before the workspace set-up:
-  on the organisation's overview (`/<org>`) while it has no workspace, under "Choose what
-  your first workspace does", and on `/<org>/workspaces/new`, under "What will this
+  on the organisation's overview (`/<org>`) while it has no workspace, under "What will
+  your first workspace do?", and on `/<org>/workspaces/new`, under "What will this
   workspace do?". There is one card per type of workspace, "Software factory" the one,
-  each with what you do there, what you connect, and **Choose**. **Choose** creates the
-  workspace, named after the type ("Software factory", then "Software factory 2"), and
+  each with what you do there, what you connect, and **Choose** at its foot. Each card is
+  20rem wide, or the column's width where the column is narrower, and a further card
+  wraps to the next line. **Choose** creates the workspace, named after the type ("Software factory", then "Software factory 2"), and
   opens its step Name. A person who may not create the first workspace sees "An owner of
-  Acme creates the first workspace." in place of the cards. The cards show no indicator:
+  Acme creates the first workspace." in place of the cards. Where the organisation has as
+  many workspaces as the edition allows, New workspace is headed "New workspace", with no
+  question, and shows the edition's line in an information notice in place of the cards:
+  "Qory Apiary Community allows one workspace per organisation, and Acme has it." The
+  cards show no indicator:
   the count starts at the step Name, in the sidebar's group Set up.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
@@ -1241,9 +1268,9 @@ mark and the theme menu.
   no Cancel, since there is nowhere to go back to but the step before. A step opened
   again shows what was saved there and can be changed. The step Name has the workspace's
   name in a field, with its address under it as text, which follows the name; once the
-  name typed gives another address, a warning says which address stops working. **Save
-  and next** renames the workspace. A person who may not rename it sees the name, read
-  only, with **Continue**. The type can't change.
+  name typed gives another address, a warning says which address stops working; under
+  it, "Type: Software factory". **Save and next** renames the workspace. A person who may
+  not rename it sees the name, read only, with **Continue**. The type can't change.
 - **The chooser** (`IntegrationComponents.chooser/1`), with the `factory` feature, is a
   separate page of the workspace's set-up, the step current in the group Set up:
   `/<org>/<workspace>/set-up/<sources|destinations>/choose?grant=<id>`, opened
@@ -1257,8 +1284,18 @@ mark and the theme menu.
   the step's section current; there **Back** and **Save** return to the settings page.
 - **A workspace in set-up** opens at its overview: with the `factory` feature, until its
   test run passes, every link to the workspace leads to the overview, which shows "Finish
-  setting up Main", each step with its state and a link to its page, and **Continue:
-  Model**, to the first step that is not done (`SetUpComponents.workspace_set_up/1`). The
+  setting up Main", each step with its state, a line under its name, and a link to its
+  page, and **Continue: Model**, to the first step that is not done
+  (`SetUpComponents.workspace_set_up/1`). The line is a done step's value where one is at
+  hand (Name the workspace's name, Work sources the integrations by name, Destinations
+  the repositories by name or, from 3 on, "3 repositories", Model the model as its step
+  shows it chosen, Harness "Qory harness" or the harness repository, Machines the node
+  pool), read for the person as the step's page reads it, "Starts one run to check the
+  set-up" for Test run, else the step's page's heading ("Where does work for Main come
+  from?"), also for a value the person's step page does not show them
+  (`SetUpComponents.step_note/3`). A person who may not take the next step's action, as
+  its page checks (`SetUpComponents.changes_step?/2`), reads "Main is being set up", "Owners and admins of
+  Acme finish the set-up.", and the steps with their state, with no **Continue**. The
   organisation's overview shows "Set-up: 3 of 7 steps" under the workspace's name.
 - **The link up** is the first line of the workspace's sidebar on every page of the
   workspace: the organisation's name, with an arrow up, a link to `/<org>`. The

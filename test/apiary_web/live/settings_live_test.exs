@@ -709,6 +709,13 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
         for workspace <- [owner.workspace, staging] do
           assert has_element?(lv, "#workspace-#{workspace.id}", workspace.name)
+          # Its address beside its name, as the overview's Details shows the organisation's.
+          assert has_element?(
+                   lv,
+                   "#workspace-#{workspace.id} .q-side",
+                   "/#{org.slug}/#{workspace.slug}"
+                 )
+
           assert has_element?(lv, "#workspace-#{workspace.id}-delete", "Delete…")
         end
 
@@ -733,6 +740,23 @@ defmodule ApiaryWeb.SettingsLiveTest do
                live(conn, ~p"/#{org}/settings/workspaces")
 
       assert flash["error"] == "Only owners and admins open the list of workspaces."
+    end
+
+    test "with no workspace in use, one line and a link to the overview", %{conn: conn} do
+      {:ok, %{user: user, organisation: org}} =
+        Organisations.sign_up_user(
+          %{email: Apiary.AccountsFixtures.unique_user_email(), organisation_name: "Empty Co"},
+          nil,
+          open: true,
+          workspace: false
+        )
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{org}/settings/workspaces")
+
+      assert has_element?(lv, "#workspaces-empty", "Empty Co has no workspace yet.")
+      assert has_element?(lv, ~s(#workspaces-empty a[href="/#{org.slug}"]), "Go to the overview")
+      refute has_element?(lv, "#workspaces")
+      refute has_element?(lv, "#workspaces-note")
     end
 
     test "nobody without a scope lists them" do
