@@ -641,13 +641,13 @@ defmodule ApiaryWeb.WorkflowLive do
       counts={@nav_counts}
       nav={:settings}
       sections={@sections}
-      section={:workflow}
+      section={if @stages?, do: :stages, else: :workflow}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        current={:workflow}
+        current={if @stages?, do: :stages, else: :workflow}
         title={gettext("Workflow")}
       >
         <div id="workflow-harness" class="grid gap-3">

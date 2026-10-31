@@ -1243,6 +1243,18 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow-harness-form")
     end
 
+    test "the sidebar's Stages entry takes the place of Workflow", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      view = open(conn, path)
+
+      stages = workspace_path(scope, "/settings/stages")
+      assert has_element?(view, ~s(#settings-tab-stages[href="#{stages}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-workflow")
+    end
+
     test "the page links to Stages", %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
