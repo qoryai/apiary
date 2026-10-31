@@ -343,6 +343,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   # next to Save, and every other error above the canvas.
   defp refused_document(socket, errors) do
     draft = socket.assigns.draft
+    errors = most_specific(errors)
 
     # A duplicate, and any error in a stage's name, show next to that name.
     {at_stage, rest} =
@@ -383,6 +384,15 @@ defmodule ApiaryWeb.StagesLive.Index do
       selected: first
     )
     |> refresh()
+  end
+
+  # JSV also reports each place above a wrong value (`#`, `#/stages`, `#/stages/0` for a
+  # wrong `#/stages/0/name`), which says no more than "a value is not valid"; only the
+  # deepest error of each place is shown.
+  defp most_specific(errors) do
+    Enum.reject(errors, fn error ->
+      Enum.any?(errors, &String.starts_with?(&1.path, error.path <> "/"))
+    end)
   end
 
   # The id of the stage at a place such as `#/stages/1/name`.
