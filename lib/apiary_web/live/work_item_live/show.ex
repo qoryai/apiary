@@ -46,8 +46,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`ApiaryWeb.WorkItemLive.Workflow`), the header shows the stages of the work item's
   # process version, the rail the stage card in place of the step card, and the body
   # the runs and the artifacts above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`).
-  # The page reads them again on `{:stage_changed, id}` and `{:artifact_pushed, …}` on the
-  # work item's topics (`ApiaryWeb.WorkItemLive.Workflow.subscribe/1`), and does
+  # The page reads them again on `{:stage_changed, id}` and `{:artifact_pushed, …, …}` on the
+  # work item's topics (`ApiaryWeb.WorkItemLive.Workflow.subscribe/2`), and does
   # Approve, Request changes, the escalation actions and Move back through
   # `Apiary.Stages`, each refused without words as the other actions are. The head's
   # status follows the stage and its state, as Explore's words do at Explore; a work item
@@ -63,8 +63,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   import ApiaryWeb.WorkItemComponents
 
-  alias Apiary.{Access, WorkItems}
-  alias ApiaryWeb.{HarnessComponents, UserAuth}
+  alias Apiary.{Access, Artifacts, WorkItems}
+  alias ApiaryWeb.{ArtifactComponents, HarnessComponents, UserAuth}
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
@@ -211,7 +211,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               >
                 <h3 id="work-item-artifacts-h">{gettext("Artifacts")}</h3>
                 <StageComponents.approval_marks index={@flow.index} />
-                <Workflow.artifact_list id="work-item-artifact-list" artifacts={@artifacts} />
+                <ArtifactComponents.list
+                  id="work-item-artifact-list"
+                  artifacts={@artifacts}
+                  scope={@current_scope}
+                  number={@number}
+                  add={@flow.can_add}
+                />
               </section>
             </div>
             <.work_item_tabs
@@ -298,7 +304,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       row ->
         if connected?(socket) do
           WorkItems.subscribe(scope)
-          if Workflow.on?(scope), do: Workflow.subscribe(row)
+          if Workflow.on?(scope), do: Workflow.subscribe(scope, row)
         end
 
         {:ok,
@@ -523,22 +529,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Check again, while the stage waits for a workflow: the read of the harness calls its
-  # adapter, so it runs outside the page's process (`handle_async/3`). A found workflow
-  # starts the stage's run, and a work item that ended keeps its stage state, so the check
-  # runs only on one that has not ended; `fresh/3` has read the page again by then.
+  # adapter, so it runs outside the page's process (`handle_async/3`). The stage runner
+  # checks under the work item's lock that it has not ended (`:not_live`).
   defp stage_act("stage_check", params, socket) do
     fresh(socket, params, fn socket, _seen ->
       %{row: row, flow: flow} = socket.assigns
       scope = scope(socket)
 
-      if flow.ended do
-        {:noreply, socket}
-      else
-        {:noreply,
-         socket
-         |> assign(:stage_check, :checking)
-         |> start_async(:stage_check, fn -> Workflow.check(scope, row, flow) end)}
-      end
+      {:noreply,
+       socket
+       |> assign(:stage_check, :checking)
+       |> start_async(:stage_check, fn -> Workflow.check(scope, row, flow) end)}
     end)
   end
 
@@ -598,6 +599,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Why the stage runner did not act, each with its fix first.
   defp refused(:not_earlier, flow), do: not_earlier(flow)
+
+  defp refused({:outputs_missing, types}, flow) do
+    gettext("Add %{outputs} before you approve %{stage}.",
+      outputs: StageComponents.outputs_words(types),
+      stage: flow.stage.name
+    )
+  end
 
   defp refused(:not_approver, flow),
     do: gettext("Ask an approver of %{stage} to act on it.", stage: flow.stage.name)
@@ -783,7 +791,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       else: {:noreply, socket}
   end
 
-  def handle_info({:artifact_pushed, _pushed}, socket) do
+  def handle_info({:artifact_pushed, _work_item_id, _version_id}, socket) do
     if socket.assigns.flow,
       do: {:noreply, refresh(socket, &editable/1)},
       else: {:noreply, socket}
@@ -865,7 +873,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         deleting_comment: Comments.still_asking(socket.assigns.deleting_comment, thread),
         can: can(scope, row, explore.status, flow),
         flow: flow,
-        artifacts: if(flow, do: Workflow.artifacts(row), else: [])
+        artifacts: if(flow, do: Artifacts.list(row), else: [])
       )
     else
       _gone ->
@@ -954,8 +962,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Add's page for an input of `type`: a person's upload of an artifact
   # (`ApiaryWeb.ArtifactLive`).
-  defp add_path(scope, number, type) do
-    ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}" <>
-      "/artifacts/new?" <> URI.encode_query(type: type)
-  end
+  defp add_path(scope, number, type),
+    do: ArtifactComponents.new_path(scope, number) <> "?" <> URI.encode_query(type: type)
 end

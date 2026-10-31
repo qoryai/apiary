@@ -3849,6 +3849,11 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add %{outputs} before you approve %{stage}."
+msgstr ""
+
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add %{provider} again in %{place}: its description changed after it was added."

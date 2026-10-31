@@ -4,23 +4,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `Apiary.Processes` and `Apiary.Artifacts`, and the plain maps the stage parts draw
   # (`ApiaryWeb.WorkItemLive.StageComponents`).
   #
-  # **The artifacts.** Transition, until piece A lands: the artifacts (`artifacts`,
-  # `Apiary.Artifacts`) and their plain list (`artifact_components`,
-  # `ApiaryWeb.ArtifactComponents`) are read from the application's environment
-  # (`config :apiary, ApiaryWeb.WorkItemLive.Workflow, artifacts: …`), with the shared
-  # contract's module as the default, through a variable, so the page compiles before
-  # they land; the tests put fakes there (`ApiaryWeb.WorkflowFake`). While a module is
-  # not loaded, the page lists no artifact.
-  #
   # **Check again.** `check/3` calls `Apiary.Stages.check_workflows/2`, which reads the
   # harness through its adapter. A test puts the read in the environment
   # (`harness_read`, a function of the scope and the workspace) in place of the adapter.
   #
-  # **The work item's topics.** `subscribe/1` subscribes to the stage runner's topic of
-  # the work item (`Apiary.Stages.subscribe/1`), where `{:stage_changed, id}` arrives.
-  # Transition, until piece A lands: `{:artifact_pushed, …}` arrives on
-  # `Apiary.Artifacts.topic/1`, read from the same environment (`artifact_topic`), and the
-  # page subscribes only where that module has `topic/1`.
+  # **The work item's topics.** `subscribe/2` subscribes to the stage runner's topic of the
+  # work item (`Apiary.Stages.subscribe/1`), where `{:stage_changed, id}` arrives, and to
+  # its artifacts' (`Apiary.Artifacts.subscribe/2`), where `{:artifact_pushed, work_item_id,
+  # version_id}` arrives.
   #
   # **The runs.** `Apiary.Stages.runs/1`, numbered from the work item's first run. A run
   # whose `questions` artifact has a version shows as questions: the versions carry the
@@ -41,18 +32,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   use ApiaryWeb, :verified_routes
 
   import Ecto.Query, only: [from: 2]
-  import Phoenix.Component, only: [sigil_H: 2]
 
-  alias Apiary.{Access, Features, Processes, Repo, Stages}
+  alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.Run
   alias ApiaryWeb.WorkItemLive.Board
-
-  @defaults [
-    artifacts: Apiary.Artifacts,
-    artifact_components: ApiaryWeb.ArtifactComponents,
-    artifact_topic: Apiary.Artifacts
-  ]
 
   @states Apiary.Processes.Version.stage_states()
   @checks [:passed, :missing, :not_checked]
@@ -64,15 +48,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   }
 
   @doc false
-  # module/1 is the module the pages call for `key`, one of the keys of `@defaults`.
-  @spec module(atom) :: module
-  def module(key) do
-    :apiary
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(key, Keyword.fetch!(@defaults, key))
-  end
-
-  @doc false
   # on?/1 is whether the reader of `scope` is shown the workflow model: the instance has
   # the feature `workflow_model`, and the scope does not hide it.
   @spec on?(Scope.t()) :: boolean
@@ -81,16 +56,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   ## The work item page
 
   @doc false
-  # subscribe/1 subscribes the calling process to the topics of `row` that tell a change of
-  # its stage or a pushed artifact, where those functions exist.
-  @spec subscribe(struct) :: :ok
-  def subscribe(row) do
+  # subscribe/2 subscribes the calling process to the topics of `row` that tell a change of
+  # its stage or a pushed artifact.
+  @spec subscribe(Scope.t(), struct) :: :ok | {:error, term}
+  def subscribe(scope, row) do
     :ok = Stages.subscribe(row)
-    topics = module(:artifact_topic)
-
-    if Code.ensure_loaded?(topics) and function_exported?(topics, :topic, 1),
-      do: Phoenix.PubSub.subscribe(Apiary.PubSub, topics.topic(row)),
-      else: :ok
+    Artifacts.subscribe(scope, row)
   end
 
   @doc false
@@ -142,6 +113,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       index: Enum.map(index, &indexed/1),
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
+      missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
       explore: false,
       at_explore: stage.id == Stages.explore_stage_id(row),
@@ -149,25 +121,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       can_decide: approver?(scope, stage) and Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
     }
-  end
-
-  @doc false
-  # artifacts/1 is every artifact of `row`, as `Apiary.Artifacts.list/1` gives them; none
-  # while that module is not loaded.
-  @spec artifacts(struct) :: list
-  def artifacts(row) do
-    artifacts = module(:artifacts)
-    if Code.ensure_loaded?(artifacts), do: artifacts.list(row), else: []
-  end
-
-  @doc false
-  # artifact_list/1 draws the plain list of artifacts, `ApiaryWeb.ArtifactComponents.list/1`;
-  # nothing while that module is not loaded.
-  @spec artifact_list(map) :: Phoenix.LiveView.Rendered.t()
-  def artifact_list(assigns) do
-    components = module(:artifact_components)
-
-    if Code.ensure_loaded?(components), do: components.list(assigns), else: ~H""
   end
 
   # The stages of the version, each with whether it is done, the current one or to come.

@@ -196,29 +196,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       assign(
         assigns,
         :missing,
-        Enum.filter(assigns.page.inputs, &(&1.required and is_nil(&1.version)))
+        for(%{required: true, version: nil, type: type} <- assigns.page.inputs, do: type)
       )
 
     ~H"""
-    <p id={"#{@id}-line"}>
-      {gettext("%{stage} needs %{inputs}",
-        stage: @page.stage.name,
-        inputs: @missing |> Enum.map(&type_words(&1.type)) |> words_list()
-      )}
-    </p>
-    <ul id={"#{@id}-inputs"} class="flex flex-col gap-1">
-      <li :for={input <- @missing} id={"#{@id}-input-#{input.type}"} class="flex items-center gap-2">
-        <span class="q-grow">{type_words(input.type)}</span>
-        <.button
-          :if={@page.can_add}
-          id={"#{@id}-add-#{input.type}"}
-          navigate={@add_path.(input.type)}
-          aria-label={gettext("Add %{type}", type: type_words(input.type))}
-        >
-          <.icon name="hero-plus-micro" class="size-3.5" />{gettext("Add")}
-        </.button>
-      </li>
-    </ul>
+    <.needs id={@id} page={@page} types={@missing} add_path={@add_path} />
     <.move_back
       :if={@page.can_decide and @page.earlier != []}
       id={"#{@id}-move"}
@@ -279,7 +261,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp stage_body(%{page: %{state: :at_gate}} = assigns) do
     ~H"""
-    <.gate_card id={"#{@id}-gate"} page={@page} number={@number} asking={@asking} error={@error} />
+    <.gate_card
+      id={"#{@id}-gate"}
+      page={@page}
+      number={@number}
+      add_path={@add_path}
+      asking={@asking}
+      error={@error}
+    />
     """
   end
 
@@ -293,7 +282,38 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   attr :id, :string, required: true
   attr :page, :map, required: true
+  attr :types, :list, required: true
+  attr :add_path, :any, required: true
+
+  # What the stage needs, and an Add for each type for a person who may add it.
+  defp needs(assigns) do
+    ~H"""
+    <p id={"#{@id}-line"}>
+      {gettext("%{stage} needs %{inputs}",
+        stage: @page.stage.name,
+        inputs: outputs_words(@types)
+      )}
+    </p>
+    <ul id={"#{@id}-inputs"} class="flex flex-col gap-1">
+      <li :for={type <- @types} id={"#{@id}-input-#{type}"} class="flex items-center gap-2">
+        <span class="q-grow">{type_words(type)}</span>
+        <.button
+          :if={@page.can_add}
+          id={"#{@id}-add-#{type}"}
+          navigate={@add_path.(type)}
+          aria-label={gettext("Add %{type}", type: type_words(type))}
+        >
+          <.icon name="hero-plus-micro" class="size-3.5" />{gettext("Add")}
+        </.button>
+      </li>
+    </ul>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :page, :map, required: true
   attr :number, :integer, required: true
+  attr :add_path, :any, required: true
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
 
@@ -315,6 +335,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
         </li>
       </ul>
+      <.needs
+        :if={@page.missing_outputs != []}
+        id={@id}
+        page={@page}
+        types={@page.missing_outputs}
+        add_path={@add_path}
+      />
       <p id={"#{@id}-approvers"} class="text-xs opacity-70">
         <%= case @page.approvers do %>
           <% :members -> %>
@@ -725,6 +752,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp version_words(type, number),
     do: gettext("%{type} v%{number}", type: type_words(type), number: Format.number(number))
+
+  @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
+  def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()
 
   defp words_list([]), do: ""
   defp words_list([one]), do: one
