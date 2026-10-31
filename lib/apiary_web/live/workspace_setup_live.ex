@@ -1813,7 +1813,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       />
 
       <p :if={@adapters != [] and @unconnected == []} id="set-up-all-connected">
-        {gettext("Every system is connected.")}
+        {pgettext("plain", "Every system is connected.")}
       </p>
 
       <.no_adapter :if={@adapters == []} step={@step} />
@@ -2889,7 +2889,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp connect_help(assigns) do
     ~H"""
     <p id="set-up-connect-help">
-      {gettext("Connect opens the system in this tab. After its steps, it sends you back here.")}
+      {pgettext(
+        "plain",
+        "Connect opens the system in this tab. After its steps, it sends you back here."
+      )}
     </p>
     <SetUpComponents.outside
       :for={{adapter, guide} <- guides(@unconnected, @ready)}
