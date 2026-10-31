@@ -4154,6 +4154,11 @@ msgstr ""
 msgid "Added an integration"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added artifact type %{type}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #, elixir-autogen, elixir-format
 msgid "Added by"
@@ -4167,6 +4172,16 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Added the stage %{name}."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added version %{number} of %{type}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added version %{number} of %{type} %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4800,10 +4815,20 @@ msgstr ""
 msgid "Arguments"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Artifact type changed"
+msgstr ""
+
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Artifact types"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Artifact version added"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -7131,6 +7156,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Deleted an invitation that had been expired for 30 days"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted artifact type %{type}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15746,6 +15776,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Save variable"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved artifact type %{type}"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex

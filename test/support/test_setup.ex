@@ -49,6 +49,9 @@ defmodule Apiary.TestSetup do
     message arrive in milliseconds on an idle machine and not within the default 100 ms
     under a full, parallel suite: `render_async` and `assert_receive` wait up to five
     seconds (`assert_receive_timeout: 5_000`), and return as soon as there is something.
+  - **The artifact store.** A folder of this test run under the system's temporary
+    folder, so runs on other partitions share nothing with it, removed when the suite
+    ends. A test that reads the store sets a folder of the test instead.
   - **The instance.** It is set up, committed before the sandbox takes over: a sign-up in
     a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`,
     which asks the configured edition whether it is set up, and sets it up through it).
@@ -91,10 +94,17 @@ defmodule Apiary.TestSetup do
     |> Keyword.put(:exclude, exclude(off))
     |> ExUnit.start()
 
+    artifact_store!()
     Apiary.OrganisationsFixtures.ensure_instance_organisation!()
     _types = Apiary.Processes.TypeTemplates.list()
 
     Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)
+  end
+
+  defp artifact_store! do
+    dir = Path.join(System.tmp_dir!(), "apiary-test-artifacts-#{System.pid()}")
+    Application.put_env(:apiary, :artifacts_dir, dir)
+    ExUnit.after_suite(fn _result -> File.rm_rf(dir) end)
   end
 
   @doc """

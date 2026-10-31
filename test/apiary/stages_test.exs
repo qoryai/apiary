@@ -3,14 +3,15 @@ defmodule Apiary.StagesTest do
   # first stage and queues explore-a-ticket through today's dispatch; a run's end through
   # its settle maps today's explore result into artifacts (D1); the gate, the escalations,
   # moves, and what the work item page reads.
-  use Apiary.DataCase, async: true
+  # Not async: a test sets the store adapter, the application's setting.
+  use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub, WorkItems}
+  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Stages.{Escalation, GateDecision}
@@ -21,6 +22,7 @@ defmodule Apiary.StagesTest do
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @build "st_6ns22c4pav"
+  @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -39,7 +41,7 @@ defmodule Apiary.StagesTest do
           order_by: [r.take_in, r.attempt]
       )
 
-  defp artifacts(work_item), do: StagesArtifactsStub.list(work_item)
+  defp artifacts(work_item), do: Artifacts.list(work_item)
 
   defp versions(work_item, type) do
     for a <- artifacts(work_item), a.type == type, v <- a.versions, do: v
@@ -76,6 +78,8 @@ defmodule Apiary.StagesTest do
       extra
     )
   end
+
+  defp a_proposal, do: Stages.proposal_document(understood_result())
 
   defp explore_stage(extra \\ %{}) do
     stage(
@@ -209,7 +213,7 @@ defmodule Apiary.StagesTest do
                Stages.inputs(work_item)
 
       {:ok, _version} =
-        StagesArtifactsStub.push(
+        Artifacts.push(
           {:person, scope},
           work_item,
           "acceptance-criteria",
@@ -590,7 +594,7 @@ defmodule Apiary.StagesTest do
       assert Stages.status(work_item).state == :done
 
       {:ok, _version} =
-        Stages.Artifacts.push_json({:person, scope}, work_item, "proposal", %{"a" => 1},
+        Stages.Artifacts.push_json({:person, scope}, work_item, "proposal", a_proposal(),
           stage_id: @explore
         )
 
@@ -618,6 +622,7 @@ defmodule Apiary.StagesTest do
     end
 
     defp file(name), do: [%{filename: name, content_type: "text/markdown", binary: "# Done"}]
+    defp png(name), do: [%{filename: name, content_type: "image/png", binary: @png}]
 
     test "waits at its gate for a missing output; approve is refused until a person adds it",
          %{scope: scope} do
@@ -670,7 +675,7 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
       assert Stages.missing_outputs(work_item) == ["mockup"]
 
-      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", png("m.png"))
       assert %WorkItem{stage_id: @build, stage_state: :at_gate} = reload(work_item)
     end
 
@@ -679,8 +684,8 @@ defmodule Apiary.StagesTest do
     } do
       work_item = take_in!(scope)
 
-      assert {:ok, %{stage_id: @explore, expect_stage: @explore, writer: :person}} =
-               Stages.add_version(scope, work_item, "mockup", file("m.md"), stage_id: @build)
+      assert {:ok, %{stage_id: @explore, writer: :person}} =
+               Stages.add_version(scope, work_item, "mockup", png("m.png"), stage_id: @build)
 
       # A stage with a workflow is left as it is.
       assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
@@ -705,7 +710,7 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_state: :waiting_inputs} = reload(work_item)
       assert runs(work_item) == []
 
-      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", png("m.png"))
       assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
       assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
     end
@@ -713,29 +718,30 @@ defmodule Apiary.StagesTest do
     test "a stage change during the push stores nothing and leaves the stage as it is", %{
       scope: scope
     } do
-      save!(scope, [
-        explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
-      ])
+      input = %{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]}
+      save!(scope, [explore_stage(input), stage(@shape, "Shape", [], input)])
 
       work_item = take_in!(scope)
 
-      # The input exists and nothing acted on it, so a call to version_added/1 starts the stage.
+      # The input exists and nothing acted on it, so a call to version_added/1 starts the
+      # stage the work item moves to.
       {:ok, _version} =
-        StagesArtifactsStub.push(
-          {:person, scope},
-          work_item,
-          "acceptance-criteria",
-          file("a.md"),
+        Artifacts.push({:person, scope}, work_item, "acceptance-criteria", file("a.md"),
           stage_id: @explore
         )
 
-      :ok = StagesArtifactsStub.move_during_push(work_item, @shape)
+      ArtifactStoreHook.on_commit(fn ->
+        {1, _rows} =
+          Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+            set: [stage_id: @shape]
+          )
+      end)
 
-      assert Stages.add_version(scope, work_item, "mockup", file("m.md")) ==
+      assert Stages.add_version(scope, work_item, "mockup", png("m.png")) ==
                {:error, :stage_changed}
 
       assert versions(work_item, "mockup") == []
-      assert %WorkItem{stage_id: @explore, stage_state: :waiting_inputs} = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :waiting_inputs} = reload(work_item)
       assert runs(work_item) == []
     end
 
@@ -771,7 +777,7 @@ defmodule Apiary.StagesTest do
       {:ok, _closed} = Moves.close(scope, work_item)
       run_count = length(runs(work_item))
 
-      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", png("m.png"))
 
       assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
                reload(work_item)
@@ -838,7 +844,7 @@ defmodule Apiary.StagesTest do
           {:run, newest_run(work_item)},
           work_item,
           "proposal",
-          %{"b" => 2},
+          a_proposal(),
           stage_id: @explore
         )
 
