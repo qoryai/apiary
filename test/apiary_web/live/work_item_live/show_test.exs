@@ -362,7 +362,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
         assert has_element?(view, "#work-item-explore-none p", body)
         refute html =~ "ended with an error"
-        refute html =~ "The run's last result was an error"
+        refute html =~ "The run&#39;s last result was an error"
 
         {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
         refute html =~ "ended with an error"

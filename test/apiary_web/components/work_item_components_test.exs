@@ -414,7 +414,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["88"]
       assert text(html, "#work-item-step-decline-cancel") == "Cancel"
       assert count(html, "#work-item-step-confirm") == 0
-      refute html =~ "Confirm Qory's proposal"
+      refute html =~ "Confirm Qory&#39;s proposal"
     end
 
     test "without the right to act: whose turn it is, no Confirm, no Decline, no question" do
@@ -425,7 +425,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                  "Next, Priya confirms Qory's proposal or declines the work item."
 
         assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
-        refute html =~ "Confirm Qory's proposal"
+        refute html =~ "Confirm Qory&#39;s proposal"
         assert count(html, "button") == 0
         assert count(html, "[role=group]") == 0
         refute html =~ "Decline work item"

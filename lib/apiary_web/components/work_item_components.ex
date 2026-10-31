@@ -2774,9 +2774,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp no_result_words(%{state: :lost}),
     do:
       {"hero-signal-slash-micro", gettext("The run was lost."),
-       gettext(
-         "Qory Apiary marked the run lost before it sent an exit or outcome. There is nothing to show or confirm."
-       )}
+       gettext("Qory Apiary has no result from the run. There is nothing to show or confirm.")}
 
   defp no_result_words(%{state: :cancelled}),
     do:

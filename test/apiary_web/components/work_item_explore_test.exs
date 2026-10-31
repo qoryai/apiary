@@ -459,7 +459,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert attr(html, "#work-item-step-decline-go", "phx-click") == ["decline"]
       assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["94"]
-      refute html =~ "Answer Qory's"
+      refute html =~ "Answer Qory&#39;s"
     end
   end
 
@@ -1196,7 +1196,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "The run's result did not pass Qory's check.",
              "Qory accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so Qory does not show it."},
             {:lost, %{state: :lost, outcome: nil}, "Lost", "The run was lost.",
-             "Qory Apiary marked the run lost before it sent an exit or outcome. There is nothing to show or confirm."},
+             "Qory Apiary has no result from the run. There is nothing to show or confirm."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
              "The run was cancelled.", "There is nothing to show or confirm."}
           ] do
@@ -1279,7 +1279,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         for html <- [html, earlier, taken] do
           refute html =~ "ended with an error"
-          refute html =~ "The run's last result was an error"
+          refute html =~ "The run&#39;s last result was an error"
         end
       end
     end
