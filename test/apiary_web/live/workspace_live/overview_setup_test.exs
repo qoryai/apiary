@@ -29,6 +29,23 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
     def set_up_finishers_line(_scope, step_id), do: "The operator finishes #{step_id}."
   end
 
+  # An edition whose chain of model choices is the operator's, kept in the organisation
+  # itself, which no person of the organisation writes.
+  defmodule OperatorModels do
+    @moduledoc false
+    def model_choice_chain(_organisation_id), do: "operator"
+    def operator_chain_organisation(organisation_id), do: organisation_id
+    def operator_chain_writer?(_scope), do: false
+  end
+
+  # `OperatorModels`, whose chain every person of the organisation writes.
+  defmodule OperatorModelsWritten do
+    @moduledoc false
+    defdelegate model_choice_chain(organisation_id), to: OperatorModels
+    defdelegate operator_chain_organisation(organisation_id), to: OperatorModels
+    def operator_chain_writer?(_scope), do: true
+  end
+
   setup do
     Application.put_env(:apiary, ApiaryWeb.WorkspaceLive.Overview,
       coalesce: 0,
@@ -300,6 +317,45 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       {:ok, lv, _html} = live(conn, overview(scope))
       assert words(lv, "#overview-set-up-destinations .q-su-note") == "3 repositories"
       assert words(lv, "#overview-set-up-harness .q-su-note") == "acme/harness"
+    end
+
+    test "a done step's value the person's step page does not show them reads as its question",
+         %{conn: conn, scope: scope} do
+      # The operator's default choice, of the operator's provider with a key: on the
+      # operator's chain, the Model step is done.
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-overview-2"}]
+        })
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+
+      {1, _} =
+        Repo.update_all(from(c in Apiary.Connections.Connection, where: c.id == ^provider.id),
+          set: [chain: "operator"]
+        )
+
+      {1, _} =
+        Repo.update_all(
+          from(m in Apiary.ModelChoices.ModelChoice,
+            where: m.organisation_id == ^scope.organisation.id
+          ),
+          set: [chain: "operator"]
+        )
+
+      :ok = Apiary.Edition.put_test_stub(OperatorModels)
+      assert Apiary.WorkspaceSetup.model_key?(scope.workspace)
+
+      # A person who may not read the operator's chain, as their Model step reads it.
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-model .q-su-note") == "Which model do runs in Main use?"
+
+      # A person who writes it reads the model.
+      :ok = Apiary.Edition.put_test_stub(OperatorModelsWritten)
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-model .q-su-note") == "Claude Opus 5.5"
     end
 
     test "who finishes the set-up is the edition's line, asked for the next step", %{

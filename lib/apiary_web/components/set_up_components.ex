@@ -353,23 +353,28 @@ defmodule ApiaryWeb.SetUpComponents do
   workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
   titles of the collections the step's done rule counts, or their number from 3 on, Model
   the chosen model as the step shows it, Harness the chosen harness as the step shows it,
-  and Machines the node pool that runs the workspace's runs. Test run shows what it does,
-  "Starts one run to check the set-up". A step not done, and a done step whose value is
-  not at hand, shows its page's heading (`step_heading/2`).
+  and Machines the node pool that runs the workspace's runs. Each value is read for the
+  scope's person with the reads of its step's page: Work sources and Destinations only
+  where `adapter.read` allows the tick list, Model only where the person may read the
+  choices of the workspace's chain as the Model step reads them. Test run shows
+  what it does, "Starts one run to check the set-up". A step not done, and a done step
+  whose value the person may not read or is not at hand, shows its page's heading
+  (`step_heading/2`).
   """
-  @spec step_note(atom, boolean, %Workspace{}) :: String.t()
-  def step_note(:name, _done, %Workspace{name: name}), do: name
-  def step_note(:test, _done, _workspace), do: gettext("Starts one run to check the set-up")
+  @spec step_note(Scope.t(), atom, boolean) :: String.t()
+  def step_note(scope, id, done)
+  def step_note(%Scope{workspace: %Workspace{name: name}}, :name, _done), do: name
+  def step_note(_scope, :test, _done), do: gettext("Starts one run to check the set-up")
 
-  def step_note(:sources, true, workspace) do
-    case WorkspaceSetup.source_names(workspace, Domain.for_workspace(workspace)) do
+  def step_note(%Scope{workspace: workspace} = scope, :sources, true) do
+    case WorkspaceSetup.source_names(scope, Domain.for_workspace(workspace)) do
       [] -> step_heading(:sources, workspace)
       names -> Enum.join(names, ", ")
     end
   end
 
-  def step_note(:destinations, true, workspace) do
-    case WorkspaceSetup.destination_names(workspace, Domain.for_workspace(workspace)) do
+  def step_note(%Scope{workspace: workspace} = scope, :destinations, true) do
+    case WorkspaceSetup.destination_names(scope, Domain.for_workspace(workspace)) do
       [] ->
         step_heading(:destinations, workspace)
 
@@ -382,24 +387,24 @@ defmodule ApiaryWeb.SetUpComponents do
     end
   end
 
-  def step_note(:model, true, workspace),
-    do: WorkspaceSetup.model_name(workspace) || step_heading(:model, workspace)
+  def step_note(%Scope{workspace: workspace} = scope, :model, true),
+    do: WorkspaceSetup.model_name(scope) || step_heading(:model, workspace)
 
-  def step_note(:harness, true, workspace) do
+  def step_note(%Scope{workspace: workspace}, :harness, true) do
     case HarnessComponents.harness_words(Sources.chosen(workspace)) do
       "" -> step_heading(:harness, workspace)
       words -> words
     end
   end
 
-  def step_note(:machines, true, workspace) do
+  def step_note(%Scope{workspace: workspace}, :machines, true) do
     case WorkspaceSetup.machines(workspace) do
       %{pool: %{name: name}} -> name
       nil -> step_heading(:machines, workspace)
     end
   end
 
-  def step_note(id, _done, workspace), do: step_heading(id, workspace)
+  def step_note(%Scope{workspace: workspace}, id, _done), do: step_heading(id, workspace)
 
   @doc """
   changes_step?/2 is whether the person of `scope` may take the action of the set-up step
