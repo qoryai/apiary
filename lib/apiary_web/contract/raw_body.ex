@@ -23,7 +23,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   code is looked at, as the contract's reference receiver does.
 
   A run's push and verdict, `POST /v1/runs/<run_id>/artifacts` and
-  `POST /v1/runs/<run_id>/verdict`, carry files as base64, so they take up to
+  `POST /v1/runs/<run_id>/verdict`, contain files as base64, so they take up to
   `max_bytes(:run_api)`, 32 MiB. To keep what an unauthenticated sender can make the
   server hold small there too, such a body is answered `413` at once when its
   `Content-Length` is over 32 MiB, and its first `max_bytes(:unauthenticated)`, 64 KiB,
