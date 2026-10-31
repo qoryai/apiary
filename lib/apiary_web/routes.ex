@@ -233,6 +233,19 @@ defmodule ApiaryWeb.Routes do
         post "/secrets", SecretsController, :create
       end
 
+      # The run API, a run's reads and writes of its work item and its artifacts through
+      # its gateway, with the feature `workflow_model` (`ApiaryWeb.Contract.RunApi.Controller`,
+      # docs/contract/run-api.md).
+      scope "/v1/runs/:run_id", ApiaryWeb.Contract.RunApi do
+        pipe_through :contract_registration
+
+        get "/work-item", Controller, :work_item
+        get "/artifacts", Controller, :index
+        get "/artifacts/:version_id/files/:filename", Controller, :file
+        post "/artifacts", Controller, :push
+        post "/verdict", Controller, :verdict
+      end
+
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_diagnostics
 
