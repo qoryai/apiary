@@ -89,10 +89,16 @@ defmodule Apiary.Processes.TypeTemplates do
   no type has. The first read of a type inserts its version 1 (§ Versions).
   """
   @spec newest(String.t()) :: TypeTemplate.t() | nil
-  def newest(type) when is_binary(type) do
+  def newest(type) when is_binary(type), do: newest(type, nil)
+
+  @doc false
+  # newest/1, with the release's default at the version `release` (nil: the release's,
+  # `Apiary.Processes.default_version/1`): the tests' seam for a later release's default.
+  @spec newest(String.t(), pos_integer | nil) :: TypeTemplate.t() | nil
+  def newest(type, release) when is_binary(type) do
     case domain(type) do
       nil -> nil
-      domain -> type |> ensure(domain) |> Repo.preload(:author)
+      domain -> type |> ensure(domain, release) |> Repo.preload(:author)
     end
   end
 
@@ -182,7 +188,7 @@ defmodule Apiary.Processes.TypeTemplates do
       with :ok <- authorize(scope),
            {:ok, domain} <- known(type),
            :ok <- lock(type),
-           %TypeTemplate{} = newest <- ensure(type, domain),
+           %TypeTemplate{} = newest <- ensure(type, domain, nil),
            :ok <- fresh(newest, based_on),
            :ok <- validate(document),
            :ok <- changed(newest, document),
@@ -291,8 +297,8 @@ defmodule Apiary.Processes.TypeTemplates do
 
   # The type's newest row, after the insert of the release's default where the type has
   # none, or where its newest row copies an older default of the release's.
-  defp ensure(type, domain) do
-    release = Processes.default_version(domain)
+  defp ensure(type, domain, release) do
+    release = release || Processes.default_version(domain)
 
     case newest_row(type) do
       %TypeTemplate{release: older} = row when is_nil(older) or older >= release -> row

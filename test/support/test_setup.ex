@@ -52,6 +52,11 @@ defmodule Apiary.TestSetup do
   - **The instance.** It is set up, committed before the sandbox takes over: a sign-up in
     a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`,
     which asks the configured edition whether it is set up, and sets it up through it).
+  - **The workspace types' default processes.** Each type's version 1 is inserted,
+    committed before the sandbox takes over (`Apiary.Processes.TypeTemplates.list/0`), so
+    a test that creates a workspace reads it and inserts nothing. An insert inside a
+    test's sandbox would keep the type's lock until the test ends, and every other test
+    that creates a workspace of that type would wait for it.
   - **The sandbox**, in the manual mode: each test checks out its own connection
     (`Apiary.DataCase.setup_sandbox/1`).
 
@@ -87,6 +92,7 @@ defmodule Apiary.TestSetup do
     |> ExUnit.start()
 
     Apiary.OrganisationsFixtures.ensure_instance_organisation!()
+    _types = Apiary.Processes.TypeTemplates.list()
 
     Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)
   end
