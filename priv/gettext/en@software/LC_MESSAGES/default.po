@@ -2439,6 +2439,16 @@ msgstr ""
 msgid "%{runtime} %{version} on %{host}, without a wall"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runtime} %{version}, behind a %{wall} wall"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runtime} %{version}, without a wall"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{run} · %{count} run, %{state}"
@@ -21540,6 +21550,16 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "on %{date}"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "on %{host}"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "on %{host}, behind a %{wall} wall"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

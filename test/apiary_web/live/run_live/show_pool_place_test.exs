@@ -112,11 +112,81 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
   test "the Run started item: a pool's run started on the pool, any other run on its host",
        %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run} do
     lv = run_page(conn, scope, pool_run)
-    assert lv |> element("#e-1 .q-s") |> render() =~ "on mac-pool, without a wall"
+    assert run_started_words(lv) == "on mac-pool"
     refute lv |> element("#e-1") |> render() =~ @machine
 
     lv = run_page(conn, scope, local_run)
-    assert lv |> element("#e-1 .q-s") |> render() =~ "on #{@laptop}, without a wall"
+    assert run_started_words(lv) == "on #{@laptop}"
+  end
+
+  describe "the Run started item's sentence leaves out what is not known" do
+    setup %{scope: scope, local_key: key} do
+      %{run: run_fixture(scope, %{state: "running", access_key_id: key.id})}
+    end
+
+    defp opened(run, data) do
+      event_fixture(run, 1, "run.started", data)
+      {:ok, run} = Projector.project(run)
+      run
+    end
+
+    defp with_session(run) do
+      event_fixture(run, 2, "session.started", session_started_data())
+      {:ok, run} = Projector.project(run)
+      run
+    end
+
+    test "the runtime unknown: the host alone", %{conn: conn, scope: scope, run: run} do
+      run = opened(run, started_data(%{"host" => @laptop}))
+      assert conn |> run_page(scope, run) |> run_started_words() == "on #{@laptop}"
+    end
+
+    test "the runtime unknown, a wall known: the host and the wall", ctx do
+      run = opened(ctx.run, started_data(%{"host" => @laptop, "wall" => "docker"}))
+
+      assert ctx.conn |> run_page(ctx.scope, run) |> run_started_words() ==
+               "on #{@laptop}, behind a docker wall"
+    end
+
+    test "the runtime known, with a wall", %{conn: conn, scope: scope, run: run} do
+      run =
+        run |> opened(started_data(%{"host" => @laptop, "wall" => "docker"})) |> with_session()
+
+      assert conn |> run_page(scope, run) |> run_started_words() ==
+               "claude 2.1.0 on #{@laptop}, behind a docker wall"
+    end
+
+    test "the runtime known, no wall", %{conn: conn, scope: scope, run: run} do
+      run = run |> opened(started_data(%{"host" => @laptop})) |> with_session()
+
+      assert conn |> run_page(scope, run) |> run_started_words() ==
+               "claude 2.1.0 on #{@laptop}, without a wall"
+    end
+
+    test "the runtime known, the host unknown", %{conn: conn, scope: scope, run: run} do
+      run = run |> opened(Map.delete(started_data(), "host")) |> with_session()
+
+      assert conn |> run_page(scope, run) |> run_started_words() ==
+               "claude 2.1.0, without a wall"
+    end
+
+    test "the runtime known, a wall known, the host unknown", ctx do
+      run =
+        ctx.run
+        |> opened(started_data(%{"wall" => "docker"}) |> Map.delete("host"))
+        |> with_session()
+
+      assert ctx.conn |> run_page(ctx.scope, run) |> run_started_words() ==
+               "claude 2.1.0, behind a docker wall"
+    end
+
+    test "neither the runtime nor the host known: no sentence", ctx do
+      run = opened(ctx.run, Map.delete(started_data(), "host"))
+      lv = run_page(ctx.conn, ctx.scope, run)
+
+      assert run_started_words(lv) == ""
+      refute lv |> element("#e-1") |> render() =~ "n/a"
+    end
   end
 
   test "the Details tab's Host row: a pool's run shows the pool's name, any other run its host",
@@ -233,7 +303,17 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
 
     lv = run_page(conn, scope, pool_run)
     assert has_element?(lv, "#run-meta #run-host", "Qory Pool")
-    assert lv |> element("#e-1 .q-s") |> render() =~ "on the Qory Pool, without a wall"
+    assert run_started_words(lv) == "on the Qory Pool"
+  end
+
+  defp run_started_words(lv) do
+    lv
+    |> element("#e-1 .q-s")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")
   end
 
   defp remap(hosts, key), do: %{key => hosts[key.id]}

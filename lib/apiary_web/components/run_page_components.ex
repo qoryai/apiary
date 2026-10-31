@@ -1084,20 +1084,50 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # What is not known stays out of the sentence. The runtime comes with the first session and
+  # the host is absent from a run with a run key outside a pool. `run.started` has no `wall`
+  # when the run has none, and before a session such a run reads as its host alone.
   defp run_started_words(item) do
-    bindings = [
-      runtime: sent(item.runtime) || gettext("n/a"),
-      version: sent(item.runtime_version),
-      host: sent(item.host) || gettext("n/a")
-    ]
+    runtime = sent(item.runtime)
+    version = sent(item.runtime_version)
+    host = sent(item.host)
+    wall = sent(item.wall)
 
-    if item.wall,
-      do:
-        gettext(
-          "%{runtime} %{version} on %{host}, behind a %{wall} wall",
-          [wall: sent(item.wall)] ++ bindings
-        ),
-      else: gettext("%{runtime} %{version} on %{host}, without a wall", bindings)
+    case {runtime, host, wall} do
+      {nil, nil, _wall} ->
+        nil
+
+      {nil, host, nil} ->
+        gettext("on %{host}", host: host)
+
+      {nil, host, wall} ->
+        gettext("on %{host}, behind a %{wall} wall", host: host, wall: wall)
+
+      {runtime, nil, nil} ->
+        gettext("%{runtime} %{version}, without a wall", runtime: runtime, version: version)
+
+      {runtime, nil, wall} ->
+        gettext("%{runtime} %{version}, behind a %{wall} wall",
+          runtime: runtime,
+          version: version,
+          wall: wall
+        )
+
+      {runtime, host, nil} ->
+        gettext("%{runtime} %{version} on %{host}, without a wall",
+          runtime: runtime,
+          version: version,
+          host: host
+        )
+
+      {runtime, host, wall} ->
+        gettext("%{runtime} %{version} on %{host}, behind a %{wall} wall",
+          runtime: runtime,
+          version: version,
+          host: host,
+          wall: wall
+        )
+    end
   end
 
   defp hosts_allowed(n),
