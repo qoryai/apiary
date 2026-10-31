@@ -733,13 +733,139 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "a refused action" do
+    defp notice(view), do: view |> element("#work-item-stage-notice") |> render()
+
+    defp hook(view, work_item, event, params),
+      do: render_hook(view, event, Map.merge(%{"number" => "#{work_item.number}"}, params))
+
+    test "Approve while the stage runs: the stage changed", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :running)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      hook(view, work_item, "stage_approve", %{"seen" => @build, "note" => ""})
+      assert decisions(work_item, :approve) == []
+      assert notice(view) =~ "Check the stage and act again. Build changed before your click."
+    end
+
+    test "an escalation action with no escalation: the stage changed", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_build(scope, :at_gate)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      hook(view, work_item, "stage_resolve", %{"seen" => @build, "how" => "accept", "note" => ""})
+      assert notice(view) =~ "Check the stage and act again. Build changed before your click."
+    end
+
+    test "a person the stage does not list", %{conn: conn, scope: scope} do
+      listed = member_fixture(scope, :member)
+      work_item = at_build(scope, :at_gate, approvers: %{"members" => [listed.user.id]})
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      hook(view, work_item, "stage_approve", %{"seen" => @build, "note" => ""})
+      assert decisions(work_item, :approve) == []
+      assert notice(view) =~ "Ask an approver of Build to act on it."
+    end
+
+    test "a stage the version does not have", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :waiting_inputs)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      hook(view, work_item, "stage_move", %{
+        "seen" => @build,
+        "stage" => "st_unknown000",
+        "note" => ""
+      })
+
+      assert notice(view) =~
+               "Choose a stage from the list. The stage you sent is not in the work item&#39;s process version."
+    end
+
+    test "a work item closed before the click", %{conn: conn, scope: scope} do
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [state: :closed, closed_at: DateTime.utc_now()]
+      )
+
+      hook(view, work_item, "stage_approve", %{"seen" => @shape, "note" => ""})
+
+      assert work_item |> decisions(:approve) |> Enum.all?(&(&1.stage_id == @explore))
+
+      assert notice(view) =~
+               "Reload the page. The work item is closed or declined, so its stage takes no action."
+    end
+
+    test "a note over 4,000 characters", %{conn: conn, scope: scope} do
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      hook(view, work_item, "stage_request_changes", %{
+        "seen" => @shape,
+        "note" => String.duplicate("a", 4001)
+      })
+
+      assert decisions(work_item, :request_changes) == []
+      assert notice(view) =~ "Shorten the note to 4,000 characters or fewer."
+    end
+
+    test "a work item no longer in the workspace", %{conn: conn, scope: scope} do
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      other = workspace_fixture(scope.organisation, "Platform")
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: other.id]
+      )
+
+      hook(view, work_item, "stage_approve", %{"seen" => @shape, "note" => ""})
+      assert_redirect(view)
+    end
+  end
+
+  describe "an escalation's gaps" do
+    test "two lines, without a raw line break or markup", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :escalated, round: 3)
+
+      escalate!(
+        work_item,
+        :run_stopped,
+        "The build of the environment failed.\nAn instance admin fixes the <b>image</b>."
+      )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-gaps li:nth-child(1)",
+               "The build of the environment failed."
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-gaps li:nth-child(2)",
+               "An instance admin fixes the <b>image</b>."
+             )
+
+      refute html =~ "\\n"
+      refute html =~ "<b>image</b>"
+    end
+  end
+
   describe "notes" do
     test "a request for changes and a failed check, for the next run", %{
       conn: conn,
       scope: scope
     } do
       work_item = shape_gate_fixture(scope)
-      {:ok, _work_item} = Stages.request_changes(scope, work_item, "Split the plan in two", nil)
+
+      {:ok, _work_item} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
 
       Repo.insert!(%Apiary.Stages.Check{
         organisation_id: work_item.organisation_id,
@@ -825,7 +951,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
 
-      {:ok, _work_item} = Stages.approve(scope, work_item, nil)
+      {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
     end
   end

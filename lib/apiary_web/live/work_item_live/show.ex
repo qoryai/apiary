@@ -567,28 +567,68 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       {:ok, _result} ->
         {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> load()}
 
-      {:error, :stage_changed} ->
+      {:error, reason} when reason in [:stage_changed, :not_at_gate, :not_escalated] ->
         socket = refresh(socket)
-        {:noreply, assign(socket, :stage_notice, moved(seen, socket.assigns.flow))}
 
-      {:error, reason} when reason in [:invalid, :not_earlier] and elem(action, 0) == :move ->
-        {:noreply, assign(socket, :stage_notice, not_earlier(flow))}
+        if socket.redirected,
+          do: {:noreply, socket},
+          else: {:noreply, assign(socket, :stage_notice, moved(seen, socket.assigns.flow))}
 
-      {:error, reason} when reason in [:invalid, :not_earlier] and elem(action, 0) == :resolve ->
-        if match?({:resolve, {:move_back, _id}, _note}, action),
-          do: {:noreply, assign(socket, :stage_notice, not_earlier(flow))},
-          else: {:noreply, refresh(socket)}
-
-      _refused ->
+      {:error, reason} when reason in [:forbidden, :confirm_gate, :invalid] ->
         {:noreply, socket |> assign(stage_asking: nil, stage_error: nil) |> refresh()}
+
+      {:error, reason} ->
+        socket = refresh(socket)
+
+        if socket.redirected,
+          do: {:noreply, socket},
+          else: {:noreply, assign(socket, :stage_notice, refused(reason, flow))}
     end
   end
+
+  # Why the stage runner did not act, each with its fix first.
+  defp refused(:not_earlier, flow), do: not_earlier(flow)
+
+  defp refused(:not_approver, flow),
+    do: gettext("Ask an approver of %{stage} to act on it.", stage: flow.stage.name)
+
+  defp refused(:unknown_stage, _flow),
+    do:
+      gettext(
+        "Choose a stage from the list. The stage you sent is not in the work item's process version."
+      )
+
+  defp refused(:not_live, _flow),
+    do:
+      gettext(
+        "Reload the page. The work item is closed or declined, so its stage takes no action."
+      )
+
+  defp refused(:not_placed, _flow),
+    do: gettext("Reload the page. The work item is not in a stage.")
+
+  defp refused(:not_found, _flow),
+    do: gettext("Reload the page. The work item is not in this workspace any more.")
+
+  defp refused({:invalid, :note}, _flow),
+    do: gettext("Shorten the note to 4,000 characters or fewer.")
+
+  defp refused(_reason, _flow),
+    do:
+      gettext(
+        "Reload the page and act again, and tell an instance admin if it fails again. Qory Apiary could not act on the stage."
+      )
 
   # Where the work item moved since the reader saw it, by the names of the stages.
   defp moved({seen_flow, seen_id}, flow) do
     stage = stage_name(seen_flow, seen_id) || stage_name(flow, seen_id) || seen_id
 
     case flow do
+      %{stage: %{id: ^seen_id, name: current}} ->
+        gettext("Check the stage and act again. %{stage} changed before your click.",
+          stage: current
+        )
+
       %{stage: %{name: current}} when is_binary(current) ->
         gettext(
           "Check the new stage and act again. The work item moved from %{stage} to %{current} before your click.",

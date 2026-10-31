@@ -4653,6 +4653,11 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an approver of %{stage} to act on it."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB."
@@ -5478,6 +5483,11 @@ msgstr ""
 msgid "Check the settings, then send the test link again. The send failed at %{time}."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Check the stage and act again. %{stage} changed before your click."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Check the username and password, and that the relay allows this server's IP address, then send the test link again. The log-in to the relay failed at %{time}."
@@ -5559,6 +5569,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a stage before %{current} to move back to."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a stage from the list. The stage you sent is not in the work item's process version."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -13792,6 +13807,11 @@ msgstr ""
 msgid "Released on"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page and act again, and tell an instance admin if it fails again. Qory Apiary could not act on the stage."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reload the page, then copy again. This run, or your access to its log, is gone."
@@ -13804,7 +13824,22 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Reload the page. The work item is closed or declined, so its stage takes no action."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Reload the page. The work item is not in a stage, so there is nothing to check."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page. The work item is not in a stage."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page. The work item is not in this workspace any more."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -15471,6 +15506,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the note to 4,000 characters or fewer."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

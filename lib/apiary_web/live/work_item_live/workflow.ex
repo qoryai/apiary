@@ -108,6 +108,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp page(scope, row, status) do
     version = Processes.version_for(row)
     index = Stages.artifact_index(row)
+    runs = runs(row, index)
     document = get(version, :document) || %{}
     all = Enum.map(get(document, :stages) || [], &stage_map/1)
     current_id = id_of(get(status, :stage))
@@ -129,11 +130,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       round: get(status, :round),
       rounds: get(status, :rounds),
       gaps: lines(get(status, :gaps)),
-      runs: runs(row, index),
+      runs: runs,
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: Enum.map(get(status, :outputs) || [], &output/1),
-      escalation: escalation(get(status, :escalation)),
+      escalation: escalation(get(status, :escalation), runs),
       approvers: approvers(stage),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: Enum.map(index, &indexed/1),
@@ -209,6 +210,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       later = Enum.take(runs, i)
 
       %{
+        id: run.id,
         number: count - i,
         workflow: run.workflow,
         round: run.round,
@@ -256,6 +258,22 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
+  # The run an escalation came from, as the run list numbers it: the run whose page has
+  # the failed build's log (`build_run`, `rn_…`), else the run that stopped or escalated,
+  # by the registered run of its run of the queue.
+  defp escalated_run(escalation, runs) do
+    queued = get(get(escalation, :run), :id)
+
+    id =
+      get(escalation, :build_run) ||
+        (queued &&
+           Repo.one(
+             from r in Run, where: r.dispatch_run_id == ^queued, select: r.public_id, limit: 1
+           ))
+
+    Enum.find(runs, &(is_binary(id) and &1.id == id))
+  end
+
   # A note the next run reads, with the name of its stage in the version.
   defp note(note, stages) do
     %{
@@ -285,19 +303,17 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  defp escalation(nil), do: nil
+  defp escalation(nil, _runs), do: nil
 
-  defp escalation(escalation) do
+  defp escalation(escalation, runs) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
-
-    run = get(escalation, :run)
 
     %{
       cause: Map.get(@causes, cause, :escalate),
       gaps: lines(get(escalation, :gaps)),
       round: get(escalation, :round),
-      run: run && %{number: get(run, :attempt), workflow: get(run, :workflow)}
+      run: escalated_run(escalation, runs)
     }
   end
 
@@ -347,14 +363,16 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `page` is the page as the reader saw it, for the stage and the earlier stages.
   @spec decide(Scope.t(), struct, map, tuple) :: {:ok, term} | {:error, term}
   def decide(scope, row, page, action) do
+    expect = [expect_stage: page.stage.id]
+
     with :ok <- Access.authorize(scope, :"gate.approve", row),
-         true <- approver?(scope, page.stage) || {:error, :forbidden},
+         true <- approver?(scope, page.stage) || {:error, :not_approver},
          {:ok, action} <- checked(action, page) do
       case action do
-        {:approve, note} -> Stages.approve(scope, row, note)
-        {:request_changes, note, av} -> Stages.request_changes(scope, row, note, av)
-        {:resolve, how, note} -> Stages.resolve_escalation(scope, row, how, note)
-        {:move, stage_id, note} -> Stages.move(scope, row, stage_id, note)
+        {:approve, note} -> Stages.approve(scope, row, note, expect)
+        {:request_changes, note, av} -> Stages.request_changes(scope, row, note, av, expect)
+        {:resolve, how, note} -> Stages.resolve_escalation(scope, row, how, note, expect)
+        {:move, stage_id, note} -> Stages.move(scope, row, stage_id, note, expect)
       end
     end
   end
@@ -369,11 +387,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
 
-  defp checked({:resolve, {:move_back, id}, _note} = action, page),
-    do: if(earlier?(page, id), do: {:ok, action}, else: {:error, :invalid})
-
-  defp checked({:move, id, _note} = action, page),
-    do: if(earlier?(page, id), do: {:ok, action}, else: {:error, :invalid})
+  defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
+  defp checked({:move, id, _note} = action, page), do: back(action, id, page)
 
   defp checked({:request_changes, _note, nil} = action, _page), do: {:ok, action}
 
@@ -386,7 +401,15 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp checked(action, _page), do: {:ok, action}
 
-  defp earlier?(page, id), do: Enum.any?(page.earlier, &(&1.id == id))
+  # A move back: to an earlier stage of the version, `:not_earlier` for a later one, and
+  # `:unknown_stage` for a stage the version does not have.
+  defp back(action, id, page) do
+    cond do
+      Enum.any?(page.earlier, &(&1.id == id)) -> {:ok, action}
+      Enum.any?(page.stages, &(&1.id == id)) -> {:error, :not_earlier}
+      true -> {:error, :unknown_stage}
+    end
+  end
 
   @doc false
   # check/3 reads again whether the harness lists the workflows of the work item's stage
