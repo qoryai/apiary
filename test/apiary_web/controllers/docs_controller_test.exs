@@ -5,7 +5,6 @@ defmodule ApiaryWeb.DocsControllerTest do
   import Phoenix.LiveViewTest, only: [live: 2]
 
   @moduletag :tmp_dir
-  @moduletag :feature_sets
 
   setup %{tmp_dir: tmp_dir} do
     Application.put_env(:apiary, :docs_root, tmp_dir)
@@ -130,6 +129,7 @@ defmodule ApiaryWeb.DocsControllerTest do
       assert html =~ "The documentation is not built"
     end
 
+    @tag :feature_sets
     test "/docs/admin leads an instance admin to /docs, which says so", %{conn: conn} do
       {conn, _scope} = admin_conn(conn)
       assert redirected_to(get(conn, "/docs/admin")) == "/docs"
@@ -181,6 +181,8 @@ defmodule ApiaryWeb.DocsControllerTest do
   end
 
   describe "the guides for instance admins" do
+    @describetag :feature_sets
+
     # A public tree and an admins' tree for the instance's features, as `mix docs` builds
     # them: the admins' tree alone has install.html.
     setup %{tmp_dir: tmp_dir} do
