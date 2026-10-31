@@ -1,32 +1,3 @@
-defmodule ApiaryWeb.ArtifactLive.ShowTest.MovingStore do
-  # The volume store, with `{:apiary, :on_commit}`, a function, called once at the first
-  # commit: the moment between the page's read of the stage and the push's lock.
-  @behaviour Apiary.Artifacts.Store
-
-  alias Apiary.Artifacts.Store.Volume
-
-  @impl true
-  defdelegate stage(source, limit), to: Volume
-  @impl true
-  defdelegate discard(staged), to: Volume
-  @impl true
-  defdelegate open(store_key), to: Volume
-
-  @impl true
-  def commit(staged) do
-    case Application.get_env(:apiary, :on_commit) do
-      nil ->
-        :ok
-
-      on_commit ->
-        Application.delete_env(:apiary, :on_commit)
-        on_commit.()
-    end
-
-    Volume.commit(staged)
-  end
-end
-
 defmodule ApiaryWeb.ArtifactLive.ShowTest do
   # A version's page (`ApiaryWeb.ArtifactLive.Show`), the page that adds a version by
   # hand (`ApiaryWeb.ArtifactLive.New`) and the plain list (`ApiaryWeb.ArtifactComponents.list/1`):
@@ -39,13 +10,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
+  import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Artifacts
-  alias Apiary.Artifacts.Store
+  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
-  alias ApiaryWeb.ArtifactLive.ShowTest
 
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
@@ -384,7 +354,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
   defp in_stage(work_item, stage_id) do
     {1, _rows} =
-      Apiary.Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
         set: [stage_id: stage_id]
       )
   end
@@ -614,17 +584,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       in_stage(ctx.work_item, "st_aaaaaaaaaa")
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
-      previous = Application.get_env(:apiary, Store)
-      Application.put_env(:apiary, Store, adapter: ShowTest.MovingStore)
-      Application.put_env(:apiary, :on_commit, fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
-
-      on_exit(fn ->
-        Application.delete_env(:apiary, :on_commit)
-
-        if previous,
-          do: Application.put_env(:apiary, Store, previous),
-          else: Application.delete_env(:apiary, Store)
-      end)
+      ArtifactStoreHook.on_commit(fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
 
       html = add_notes(view)
 
@@ -643,6 +603,50 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert %{stage_id: "st_bbbbbbbbbb", number: 1} =
                Artifacts.newest(ctx.work_item, "explainer")
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "starts a stage that waits for the version as an input", ctx do
+      criteria = %{"type" => "acceptance-criteria", "required" => true}
+
+      {:ok, _process} =
+        Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => "st_r79kph11eg",
+              "name" => "Explore",
+              "inputs" => [criteria],
+              "sequence" => [
+                %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+              ],
+              "outputs" => [%{"type" => "proposal", "required" => true}],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      work_item = taken_in_fixture(ctx.scope)
+      assert work_item.stage_state == :waiting_inputs
+
+      {:ok, view, _html} =
+        live(ctx.conn, ArtifactComponents.new_path(ctx.scope, work_item.number))
+
+      view
+      |> file_input("#artifact-form", :files, [
+        %{name: "criteria.md", content: "- The sale price", type: "text/markdown"}
+      ])
+      |> render_upload("criteria.md")
+
+      assert {:error, {:live_redirect, _to}} =
+               view
+               |> form("#artifact-form",
+                 artifact: %{type: "acceptance-criteria", name: "main", note: ""}
+               )
+               |> render_submit()
+
+      assert %{stage_state: :running} = Repo.get!(WorkItem, work_item.id)
     end
 
     test "sets the upload from the chosen type", ctx do

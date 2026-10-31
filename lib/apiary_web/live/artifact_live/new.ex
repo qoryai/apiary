@@ -13,10 +13,11 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # every file has a size of 0 or more and all the sizes fit the chosen type
   # (`ApiaryWeb.ArtifactLive.UploadWriter`), so one Add version puts at most the type's
   # size limit in the temporary folder.
-  # Add version pushes the version as the reader (`Apiary.Artifacts.push/5`, `{:person,
-  # scope}`), made in the stage the work item is in at Add version, read again then, and
-  # goes to the new version's page. A move to another stage while the push stores the
-  # files refuses it (`:stage_changed`), and the next Add version reads the new stage.
+  # Add version stores the version as the reader through the stage runner
+  # (`Apiary.Stages.add_version/5`), which reads the work item's stage then and acts on
+  # that stage, and goes to the new version's page. A move to another stage while the
+  # files are stored refuses it (`:stage_changed`), and the next Add version reads the
+  # new stage.
   # Each refusal of the push is one line that says what to change, under the field it is
   # about; the uploaded files stay, so the reader changes only what the line says.
   #
@@ -28,7 +29,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   on_mount {ApiaryWeb.Access, :"work_item.read"}
   on_mount {ApiaryWeb.Access, :"artifact.write"}
 
-  alias Apiary.{Access, Artifacts}
+  alias Apiary.{Access, Artifacts, Stages}
   alias Apiary.Artifacts.Type
   alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.ArtifactLive.{Load, UploadWriter}
@@ -270,20 +271,14 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp push(socket, params) do
     scope = socket.assigns.current_scope
 
-    # The stage as it is now; the push refuses a move after this read. A work item the
-    # reader no longer finds keeps the mount's, and the push's refusal gets its line.
-    work_item = Load.work_item(scope, socket.assigns.number) || socket.assigns.work_item
-
     files =
       consume_uploaded_entries(socket, :files, fn %{path: path}, entry ->
         {:postpone, %{filename: entry.client_name, content_type: entry.client_type, path: path}}
       end)
 
     result =
-      Artifacts.push({:person, scope}, work_item, params["type"], files,
+      Stages.add_version(scope, socket.assigns.work_item, params["type"], files,
         name: blank_to_main(params["name"]),
-        stage_id: work_item.stage_id,
-        expect_stage: work_item.stage_id,
         note: params["note"]
       )
 
