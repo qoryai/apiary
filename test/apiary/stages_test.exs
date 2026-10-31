@@ -350,6 +350,36 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "failed checks in a loop" do
+    test "start the next round with their gaps, which status, notes and the escalation show",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "outputs" => [
+            %{"type" => "proposal", "required" => true},
+            %{"type" => "mockup", "required" => true}
+          ]
+        })
+      ])
+
+      gaps = "No mockup was stored in this stage."
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
+      assert %DispatchRun{round: 2} = newest_run(work_item)
+      assert %{gaps: ^gaps, escalation: nil} = Stages.status(work_item)
+
+      assert [%{kind: :check, stage_id: @explore, user_id: nil, note: ^gaps}] =
+               Stages.notes(work_item)
+
+      work_item = work_item |> end_run!(understood_result()) |> end_run!(understood_result())
+
+      assert %Escalation{cause: :round_limit, gaps: ^gaps} = escalation(work_item)
+      assert %{gaps: ^gaps} = Stages.status(work_item)
+      assert [%{kind: :check}, %{kind: :check}] = Stages.notes(work_item)
+    end
+  end
+
   describe "Explore's gate" do
     test "a confirmation approves the gate with the proposal version; Shape starts at its gate",
          %{scope: scope} do

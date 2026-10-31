@@ -642,6 +642,28 @@ defmodule Apiary.Dispatches.HandoverTest do
       ended!(ctx, queued, :ticket_gone)
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, escalates its work item's stage run_stopped", ctx do
+      {work_item, _queued} = queued!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [item_id: nil])
+
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.WorkItems.topic(ctx.scope.workspace.id))
+      assert claim(ctx) == {:ok, :none}
+
+      assert %WorkItem{stage_state: :escalated} = Repo.get!(WorkItem, work_item.id)
+
+      assert %Apiary.Stages.Escalation{
+               cause: :run_stopped,
+               gaps:
+                 "The run did not start, because the work item's ticket is no longer in Qory Apiary."
+             } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: work_item.id)
+
+      public_id = work_item.public_id
+      assert_receive {:stage_changed, ^public_id}
+    end
+
     test "whose input breaks the contract's rules ends inputs_invalid", ctx do
       {work_item, queued} = queued!(ctx)
 

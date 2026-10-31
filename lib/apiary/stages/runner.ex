@@ -30,7 +30,8 @@ defmodule Apiary.Stages.Runner do
   #   * At the end of the sequence the Exists checks run. When every required output
   #     passes, a person gate waits (`:at_gate`) and a gate `none` passes on (`:advance`).
   #     On a failure, a stage with a loop starts another round of its last loop, with the
-  #     failed checks as the gaps, and the round counts; at the limit it escalates,
+  #     failed checks as the gaps of that round (`{:checks_failed, round, gaps}`), and the
+  #     round counts; at the limit it escalates,
   #     `round_limit`. A stage with no loop escalates, `check_failed`.
   #   * Request changes runs the sequence again from its first loop, round 1, or from its
   #     start when it has no loop.
@@ -112,7 +113,11 @@ defmodule Apiary.Stages.Runner do
         }
 
   @typedoc "An action for `Apiary.Stages` to apply."
-  @type action :: {:queue, run_spec} | {:escalate, cause, String.t() | nil} | :advance
+  @type action ::
+          {:queue, run_spec}
+          | {:escalate, cause, String.t() | nil}
+          | {:checks_failed, pos_integer, String.t()}
+          | :advance
 
   @typedoc "The stage's next state, its position and the actions to apply."
   @type outcome :: %{state: state, position: position, actions: [action]}
@@ -210,13 +215,13 @@ defmodule Apiary.Stages.Runner do
       %{state: :waiting_workflow, position: position, actions: []}
     else
       declaration = Map.get(Map.get(facts, :declarations, %{}), workflow)
+      %{time_limit: time_limit, access: access} = lowered(entry, declaration)
 
       spec = %{
         workflow: workflow,
         machine_type: entry["machine"] || Map.get(facts, :machine) || "default",
-        time_limit:
-          lower_time(seconds(entry["time_limit"]), seconds(declared(declaration, :time_limit))),
-        access: lower_access(entry["access"], declared(declaration, :access)),
+        time_limit: time_limit,
+        access: access,
         entry: position.entry,
         loop_entry: position.loop_entry,
         round: position.round
@@ -224,6 +229,28 @@ defmodule Apiary.Stages.Runner do
 
       %{state: :running, position: position, actions: [{:queue, spec}]}
     end
+  end
+
+  # limits/3 is the time limit, in seconds, and the access level of a run of the entry at
+  # `position` of `stage`, given the harness's declaration of its workflow (nil for
+  # none): the lower of the entry's and the declaration's (addition 10). nil where the
+  # position has no workflow entry.
+  @doc false
+  @spec limits(map, position, map | nil) ::
+          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+  def limits(stage, position, declaration) do
+    case entry_at(stage, position) do
+      %{"workflow" => _name} = entry -> lowered(entry, declaration)
+      _none -> nil
+    end
+  end
+
+  defp lowered(entry, declaration) do
+    %{
+      time_limit:
+        lower_time(seconds(entry["time_limit"]), seconds(declared(declaration, :time_limit))),
+      access: lower_access(entry["access"], declared(declaration, :access))
+    }
   end
 
   ## A run's end
@@ -281,9 +308,13 @@ defmodule Apiary.Stages.Runner do
             escalate(:check_failed, gaps, position)
 
           index ->
-            if position.round >= rounds(stage, index),
-              do: escalate(:round_limit, gaps, position),
-              else: start(stage, %{entry: index, loop_entry: 0, round: position.round + 1}, facts)
+            if position.round >= rounds(stage, index) do
+              escalate(:round_limit, gaps, position)
+            else
+              round = position.round + 1
+              outcome = start(stage, %{entry: index, loop_entry: 0, round: round}, facts)
+              %{outcome | actions: [{:checks_failed, round, gaps} | outcome.actions]}
+            end
         end
     end
   end
