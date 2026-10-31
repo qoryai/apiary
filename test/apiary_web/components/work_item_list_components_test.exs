@@ -296,8 +296,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert text(html, ".q-wl-tk") == "G #1204"
       assert attr(html, ".q-wl-tk .q-bl-tile", "aria-label") == ["GitHub"]
       assert attr(html, ".q-wl-tk span[title]", "title") == ["#1204"]
-      assert text(html, ".q-wl-nx") == "Waits for you to confirm"
-      assert text(html, ".q-wl-sub") == "#88 · Waits for you to confirm"
+      assert text(html, ".q-wl-nx") == "You confirm next"
+      assert text(html, ".q-wl-sub") == "#88 · You confirm next"
       assert count(html, ".q-wl-row-hot") == 1
       assert attr(html, ".q-wl-own", "title") == []
       assert attr(html, ".q-wl-own", "aria-label") == ["Owner: dana@example.com"]
@@ -325,9 +325,9 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     test "every status, with its you form" do
       for {overrides, words} <- [
             {%{status: :queued}, "Explore is queued"},
-            {%{status: :running}, "Qory is exploring"},
-            {%{status: :confirm}, "Waits for you to confirm"},
-            {%{status: :confirm, owner: @priya}, "Waits for Priya to confirm"},
+            {%{status: :running}, "Explore is running"},
+            {%{status: :confirm}, "You confirm next"},
+            {%{status: :confirm, owner: @priya}, "Priya confirms next"},
             {%{status: :shape}, "Ready for Shape"},
             {%{status: :declined, ended_by: @priya}, "Declined by Priya"},
             {%{status: :declined, ended_by: @dana}, "Declined by you"},
@@ -338,7 +338,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
         assert text(html, ".q-wl-nx") == words
 
         assert count(html, ".q-wl-row-hot") ==
-                 if(words == "Waits for you to confirm", do: 1, else: 0)
+                 if(words == "You confirm next", do: 1, else: 0)
       end
     end
 
@@ -346,7 +346,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       run = %{id: "rn_01aa47c9", attempt: 2, of: 3}
 
       for {status, words, acts, others} <- [
-            {:questions, "Waits for answers", "wait", "wait_other"},
+            {:questions, "Needs answers", "wait", "wait_other"},
             {:used_up, "Explore used its 3 runs", "wait", "wait_other"},
             {:no_result, "Explore ended without a result", "err", "err"},
             {:lost, "Explore's run was lost", "err", "err"},
