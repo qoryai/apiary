@@ -1440,7 +1440,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#terminal-bar [data-fullscreen][hidden]")
       assert has_element?(lv, "#terminal-bar .q-term-hint", "leaves focus")
 
-      # a run on pipes has the two views, Collapsed first, and search says what it shows
+      # a run on pipes has the two views, Collapsed first, and search's label shows what it switches to
       assert has_element?(lv, ~s(#terminal[data-pty="false"]))
       assert has_element?(lv, ~s(#terminal-bar [data-view="collapsed"][aria-pressed="true"]))
       assert has_element?(lv, ~s(#terminal-bar [data-view="raw"][aria-pressed="false"]), "Raw")

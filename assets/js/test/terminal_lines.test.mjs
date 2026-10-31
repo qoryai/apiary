@@ -13,7 +13,7 @@ const lineOf = text => new LineBuffer().push(encode(`${text}\n`))[0]
 
 const words = {bytes: "%{number} B", kilobytes: "%{number} kB", megabytes: "%{number} MB"}
 const number = (n, digits) => n.toFixed(digits)
-// A row without the sequences the view adds, which hold its only ESC, and its line ending.
+// A row without the sequences the view adds, which contain its only ESC, and its line ending.
 const visible = text => text.replace(/\x1b\]8;;\x1b\\/g, "").replace(/\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r\n$/, "")
 
 test("a chunk that ends inside a line keeps the line whole", () => {
@@ -47,7 +47,7 @@ test("what follows a flushed partial line is no line's start", () => {
   assert.equal(entry(after).names, "system")
 })
 
-test("a held line that starts with a brace is said to hold an object", () => {
+test("a held line that starts with a brace can become an object's row", () => {
   const lines = new LineBuffer()
   lines.push(encode('{"type"'))
   assert.equal(lines.holdsObject(), true)

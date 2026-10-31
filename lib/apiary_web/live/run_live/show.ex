@@ -2890,8 +2890,9 @@ defmodule ApiaryWeb.RunLive.Show do
   defp refresh_preparation(socket), do: assign_preparation(socket)
 
   # The starter's `dispatched` and the redemption of the run's code write the dispatch and
-  # the run's row and tell no run's topic, so a page opened on a machine that is starting
-  # reads them at each quiet tick. A step's start reaches it as an event, through `flush/1`.
+  # the run's row and publish nothing on a run's topic, so a page opened on a machine that
+  # is starting reads them at each quiet tick. A step's start reaches it as an event,
+  # through `flush/1`.
   defp read_machine_start(
          %{assigns: %{preparation_settled: false, preparation: %{machine: %{started: started}}}} =
            socket

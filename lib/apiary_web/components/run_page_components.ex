@@ -421,7 +421,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
-  attr :legend, :boolean, default: false, doc: "whether a row is there to name the columns of"
+  attr :legend, :boolean, default: false, doc: "whether a row is there for the legend to label"
 
   def timeline(assigns) do
     ~H"""

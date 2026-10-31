@@ -1693,8 +1693,9 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
 - **The time columns.** From 1280 px the Timeline has two fixed, right-aligned columns in
   tabular numbers, so Prepare machine's rows, the run's rows and the connection rows line
   up: a preparation row's start time and duration, and a run item's offset and number. A
-  tool's duration stays left of the columns. A small faint legend labels them, at the right above Prepare machine's rows
-  ("Started", "Took") and above the run's ("Since run start", "Event"). A faint band
+  tool's duration stays left of the columns. A small faint legend labels them, at the right
+  above Prepare machine's rows ("Started", "Took") and above the run's ("Since run start",
+  "Event"). A faint band
   covers the row under the pointer, so the eye can follow it to the time. Below 1280 px a
   row sets out its times without columns or a legend.
 - **Prepare machine** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,

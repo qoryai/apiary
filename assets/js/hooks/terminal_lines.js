@@ -18,8 +18,8 @@ const MAX_PREVIEW = 1000
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
 
-// A text as a string of its own bytes: a slice of a string keeps the whole string in memory,
-// so a short preview of a long value would keep that value past `MOST_KEPT`.
+// A text as a new string: a slice keeps the whole string it came from in memory, so a short
+// preview of a long value would keep that value past `MOST_KEPT`.
 const flat = text => decoder.decode(encoder.encode(text))
 
 // The bytes of a stream as lines, each with its line feed. A chunk may end inside a
