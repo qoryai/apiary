@@ -81,6 +81,7 @@ defmodule Apiary.Harnesses.PublicGit do
       or a `502`, `503` or `504`;
     * `:rate_limited`: the host answered `429`, a limit of how often it is read;
     * `:late`: the session's budget gave no time for another request;
+    * `:no_calls`: the session's budget counted no request left;
     * `:too_large`: an answer, a file or the inflated packs over a limit;
     * `:failed`: the host did not serve a git repository by the protocol;
     * `:version_not_found`: a ref the host does not list, or a commit it does not have;
@@ -92,13 +93,17 @@ defmodule Apiary.Harnesses.PublicGit do
           | {:unreachable, pos_integer}
           | :rate_limited
           | :late
+          | :no_calls
           | :too_large
           | :failed
           | :version_not_found
           | :not_text
 
-  @typedoc "Each request's time: `{:ok, milliseconds}`, or `{:error, :late}` for none left."
-  @type budget :: (-> {:ok, pos_integer} | {:error, :late})
+  @typedoc """
+  Each request's time: `{:ok, milliseconds}`, `{:error, :late}` for no time left, or
+  `{:error, :no_calls}` for no request left.
+  """
+  @type budget :: (-> {:ok, pos_integer} | {:error, :late | :no_calls})
 
   @doc false
   # file_bytes/0 is the most bytes of a file a read takes.

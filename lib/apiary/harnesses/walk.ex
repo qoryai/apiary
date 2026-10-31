@@ -95,8 +95,9 @@ defmodule Apiary.Harnesses.Walk do
   #      source is public;
   #   4. a source a grant of the instance's organisation covers fails `not_allowed`;
   #   5. a `ref` that is a full commit id (40 or 64 lower-case hex digits): no link, and
-  #      the source is not read; once the walk has no call left, such a source skips
-  #      rule 3, and its probe, and passes here;
+  #      the source is not read; once the walk has no public request left, such a source
+  #      passes here with no probe of rule 3, and one that rule 3 passed is pinned at its
+  #      `ref`, with no read;
   #   6. any other source fails, one no grant covers or one only other organisations'
   #      grants cover: `not_covered` where the host of rule 3 answered `401`, `403` or
   #      `404`, a repository that is private or missing; else by why the read of rule 3
@@ -150,9 +151,10 @@ defmodule Apiary.Harnesses.Walk do
   #
   # ## Limits
   #
-  # At most 60 seconds and 24 calls per walk; each request to a public repository's host
-  # counts as a call, and has at most 10 seconds. A call that times out or reaches no
-  # one, or a walk out of time, is `{:retry, failure}`, for the job to try again. A refusal is
+  # At most 60 seconds, 24 calls to adapters and 24 requests to public repositories'
+  # hosts per walk, counted apart, so a harness's public sources do not take the calls of
+  # its links; a request has at most 10 seconds. A call that times out or reaches no one,
+  # or a walk out of time, is `{:retry, failure}`, for the job to try again. A refusal is
   # final: `grant_unknown`, `resource_not_covered` and `resource_not_public` fail
   # `not_covered`; `version_not_found` and `document_not_text` fail `invalid`; any other
   # failure of a call fails `adapter_failed`, with the call's failure.
@@ -261,14 +263,16 @@ defmodule Apiary.Harnesses.Walk do
   def max_links, do: @max_links
 
   @doc false
-  # max_calls/0 is the most calls one walk makes.
+  # max_calls/0 is the most calls to adapters one walk makes, and the most requests to
+  # public repositories' hosts.
   @spec max_calls() :: pos_integer
   def max_calls, do: @max_calls
 
   @doc false
-  # run/2 walks `input`'s harness (the moduledoc). `opts`: `time_limit` and `max_calls`,
-  # and `call_opts`, merged into each call's options. `{:ok, walked}`, `{:failed,
-  # failure}`, or `{:retry, failure}` for a call that timed out or reached no one.
+  # run/2 walks `input`'s harness (the moduledoc). `opts`: `time_limit`, `max_calls`,
+  # `max_public_calls`, and `call_opts`, merged into each call's options. `{:ok, walked}`,
+  # `{:failed, failure}`, or `{:retry, failure}` for a call that timed out or reached no
+  # one.
   @spec run(input, keyword) :: {:ok, walked} | {:failed, failure} | {:retry, failure}
   def run(%{} = input, opts \\ []), do: within(opts, input.workflow, fn -> walk(input) end)
 
@@ -299,6 +303,7 @@ defmodule Apiary.Harnesses.Walk do
       deadline: now() + time_limit,
       time_limit: time_limit,
       calls: Keyword.get(opts, :max_calls, @max_calls),
+      public_calls: Keyword.get(opts, :max_public_calls, @max_calls),
       call_opts: Keyword.get(opts, :call_opts, []),
       hidden: false,
       label: nil,
@@ -768,11 +773,9 @@ defmodule Apiary.Harnesses.Walk do
             {source, location(adapter, grant.grant_ref, resource_ref, shown, [], shown)}
 
           nil ->
-            # With no call left, a source at a full commit id passes by rule 5 unprobed.
-            public =
-              if commit?(source["ref"]) and get(:calls) <= 0,
-                do: :not_probed,
-                else: PublicGit.public(source["git"])
+            # With no public request left, a source at a full commit id passes by rule 5
+            # unprobed.
+            public = PublicGit.public(source["git"])
 
             cond do
               # Read from its host with no adapter and no grant, so with no link; the
@@ -889,8 +892,28 @@ defmodule Apiary.Harnesses.Walk do
 
   # The version of a remote source's repository: its pin, or its root `harness.yaml`
   # read once at its `ref`, through its link or from its host; for a source with no link
-  # that is not public, its `ref`, a full commit id.
+  # that is not public, its `ref`, a full commit id. So too for a public source at a full
+  # commit id once the walk has no public request left (rule 5).
   defp pin(%{"git" => git, "ref" => ref}, %{adapter: nil}), do: put_pin(git, ref, ref)
+
+  defp pin(%{"git" => git, "ref" => ref}, %{adapter: :public} = location) do
+    unless Map.has_key?(get(:pins), {git, ref}) do
+      case public_read(location, ["harness.yaml"], ref) do
+        {:ok, _content, version} ->
+          put_pin(git, ref, version)
+
+        {:error, :no_calls} ->
+          if commit?(ref),
+            do: put_pin(git, ref, ref),
+            else: public_failed(:no_calls, git, location.source, ref)
+
+        {:error, cause} ->
+          public_failed(cause, git, location.source, ref)
+      end
+    end
+
+    :ok
+  end
 
   defp pin(%{"git" => git, "ref" => ref}, location) do
     unless Map.has_key?(get(:pins), {git, ref}) do
@@ -1003,13 +1026,14 @@ defmodule Apiary.Harnesses.Walk do
   # resolved_at}`. A public source's location is read from its host
   # (`Apiary.Harnesses.PublicGit`), with its address as its resource.
   defp read(%{adapter: :public} = location, parts, at) do
-    path = Enum.join(location.prefix ++ parts, "/")
-
-    case PublicGit.read(location.resource_ref, at, path) do
+    case public_read(location, parts, at) do
       {:ok, content, version} -> {content, version}
       {:error, cause} -> public_failed(cause, location.resource_ref, location.source, at)
     end
   end
+
+  defp public_read(location, parts, at),
+    do: PublicGit.read(location.resource_ref, at, Enum.join(location.prefix ++ parts, "/"))
 
   defp read(location, parts, at) do
     path = Enum.join(location.prefix ++ parts, "/")
@@ -1081,31 +1105,35 @@ defmodule Apiary.Harnesses.Walk do
     )
   end
 
-  # The time of a request to a public repository's host, counted as a call
-  # (`Apiary.Harnesses.PublicGit`): one more than `max_calls/0` fails `invalid`, as a
-  # call's; `{:error, :late}` for a walk out of time.
+  # The time of a request to a public repository's host (`Apiary.Harnesses.PublicGit`),
+  # counted apart from the adapters' calls: `{:error, :no_calls}` after `max_calls/0` of
+  # them, `{:error, :late}` for a walk out of time.
   defp public_budget do
     state = Process.get(__MODULE__)
     left = state.deadline - now()
 
     cond do
-      state.calls <= 0 ->
-        fail(:invalid, state.label, rule("calls", n: @max_calls))
+      state.public_calls <= 0 ->
+        {:error, :no_calls}
 
       left <= 0 ->
         {:error, :late}
 
       true ->
-        put(:calls, state.calls - 1)
+        put(:public_calls, state.public_calls - 1)
         {:ok, min(left, Keyword.get(state.call_opts, :total, @call_total))}
     end
   end
 
   # A read of the public repository `git`, shown as `source`, that failed at `at`: a ref
-  # the host does not list and a file that is not text break the walk's rules; a
-  # repository its host serves to no one is not covered; a host not reached in time, or a
-  # walk out of time, is tried again; a host's rate limit (`429`) and any other cause
-  # fail with the host and port.
+  # the host does not list and a file that is not text break the walk's rules, as does
+  # a read with no public request left, under the harness's label; a repository its host
+  # serves to no one is not covered; a host not reached in time, or a walk out of time,
+  # is tried again; a host's rate limit (`429`) and any other cause fail with the host
+  # and port.
+  defp public_failed(:no_calls, _git, _source, _at),
+    do: fail(:invalid, get(:label), rule("calls", n: @max_calls))
+
   defp public_failed(:version_not_found, _git, source, at),
     do: fail(:invalid, source, rule("version", ref: at))
 

@@ -939,9 +939,9 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run], covered: covering(ctx), files: %{})
 
       # The walk sends one request to each source's host, to learn whether the host
-      # serves the source to anyone, and each request counts as a call. Once no call is
-      # left, a source at a full commit id passes with no request: the walk passes
-      # within the default 24 calls.
+      # serves the source to anyone, and counts each one. Once no public request is left,
+      # a source at a full commit id passes with no request: the walk passes within the
+      # default 24 requests.
       assert {:ok, walked} = Walk.run(ctx.input)
       assert Walk.max_calls() == 24
       assert walked.harness_links == []
@@ -1304,6 +1304,94 @@ defmodule Apiary.Harnesses.WalkTest do
       PublicGitServer.serve(%{})
       assert {:failed, %{failure: :not_covered, source: @public}} = Walk.run(ctx.input)
       assert git_requests() == [{"GET", "public.example.org", "/qory/stack/info/refs"}]
+    end
+
+    test "probes of 30 unlinked modules at commits leave the calls of a linked base", ctx do
+      modules =
+        Enum.map_join(
+          1..30,
+          "",
+          &"  - source: {git: \"https://h#{&1}.example.org/public/m\", ref: \"#{@commit}\"}\n"
+        )
+
+      setting(ctx.scope, @setting <> "modules:\n" <> modules)
+      PublicGitServer.serve(%{})
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+
+      assert %{"git" => @harness, "ref" => "v1", "at" => "c-R_harness"} in walked.pins
+      assert %{"git" => @tools, "ref" => "v2", "at" => "c-R_tools"} in walked.pins
+      assert length(walked.pins) == 32
+      assert [%{"resources" => ["R_harness", "R_tools"]}] = walked.harness_links
+      assert length(git_requests()) == Walk.max_calls()
+    end
+
+    test "10 public modules at commits are pinned with no failure, beside a linked, read base",
+         ctx do
+      gits = for n <- 1..10, do: "https://h#{n}.example.org/public/m"
+      commits = public!(Map.new(gits, &{&1, %{"harness.yaml" => "name: m\n"}}))
+
+      modules =
+        Enum.map_join(gits, "", &"  - source: {git: \"#{&1}\", ref: \"#{commits[&1]}\"}\n")
+
+      setting(ctx.scope, @setting <> "modules:\n" <> modules)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert %{"git" => @harness, "ref" => "v1", "at" => "c-R_harness"} in walked.pins
+
+      for git <- gits do
+        assert %{"git" => git, "ref" => commits[git], "at" => commits[git]} in walked.pins
+      end
+
+      assert length(git_requests()) <= Walk.max_calls()
+    end
+
+    test "with no public request left, a public source at a commit is pinned at it unread, and one at a branch fails the calls rule",
+         ctx do
+      %{@public => commit} = public!(%{@public => @public_files})
+      files = Map.put(@base_files, {"R_harness", "stacks/web/qory-stack.yaml"}, "modules: []\n")
+      serve([ctx.run], covered: covering(ctx), files: files)
+
+      # One request is the probe; the read that pins the module has none left.
+      module = fn ref -> "modules:\n  - source: {git: \"#{@public}\", ref: #{ref}}\n" end
+
+      setting(ctx.scope, @setting <> module.("\"#{commit}\""))
+
+      assert {:ok, walked} = Walk.run(ctx.input, max_public_calls: 1)
+      assert %{"git" => @public, "ref" => commit, "at" => commit} in walked.pins
+      assert walked.harness_links |> Enum.flat_map(& &1["resources"]) == ["R_harness"]
+
+      setting(ctx.scope, @setting <> module.("main"))
+
+      assert {:failed, %{failure: :invalid, rule: %{"rule" => "calls", "values" => %{"n" => 24}}}} =
+               Walk.run(ctx.input, max_public_calls: 1)
+
+      assert {:failed, %{failure: :invalid, rule: %{"rule" => "calls"}}} =
+               Walk.run(ctx.input, max_public_calls: 0)
+    end
+
+    test "the adapters' calls and the public requests count apart", ctx do
+      setting(ctx.scope, @setting)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert {:ok, _walked} = Walk.run(ctx.input, max_public_calls: 0)
+
+      assert {:failed, %{failure: :invalid, rule: %{"rule" => "calls"}}} =
+               Walk.run(ctx.input, max_calls: 1)
     end
 
     test "a host that asks for a sign-in serves no public repository: not_covered", ctx do
