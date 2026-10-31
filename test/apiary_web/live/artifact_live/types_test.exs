@@ -119,6 +119,22 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     assert Artifacts.type(ctx.scope.workspace, "big-file") == nil
   end
 
+  test "shows the line for a number too long to read", ctx do
+    {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "/new"))
+    digits = String.duplicate("9", 4_000_000)
+
+    html =
+      view
+      |> form("#artifact-type-form",
+        artifact_type: %{name: "big-file", base_view: "file", size_mib: digits, max_files: digits}
+      )
+      |> render_submit()
+
+    assert html =~ "Set a size limit above 0 and at most"
+    assert html =~ "Set most files to a whole number from 1 to 20."
+    assert Artifacts.type(ctx.scope.workspace, "big-file") == nil
+  end
+
   test "edits a custom type's limits and schema", ctx do
     type =
       custom!(ctx.scope, %{

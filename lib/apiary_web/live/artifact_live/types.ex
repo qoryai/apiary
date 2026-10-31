@@ -29,6 +29,10 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   # (`Apiary.Artifacts.Type.max_size_limit/1`), so the size rule's line says the limit.
   @most_mib 1_048_576
 
+  # The longest number the form reads, in bytes: a longer one is refused before it is
+  # parsed, as `Integer.parse/1` raises `SystemLimitError` on millions of digits.
+  @number_bytes 32
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -513,7 +517,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
 
   # A size in MiB, from above 0 to `@most_mib`: a larger number, such as `1e308`, would
   # overflow the bytes, and no base view takes it.
-  defp parse_mib(text) when is_binary(text) do
+  defp parse_mib(text) when is_binary(text) and byte_size(text) <= @number_bytes do
     case Float.parse(String.trim(text)) do
       {mib, ""} when mib > 0 and mib <= @most_mib -> max(round(mib * @mib), 1)
       _not -> :error
@@ -522,7 +526,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
 
   defp parse_mib(_text), do: :error
 
-  defp parse_integer(text) when is_binary(text) do
+  defp parse_integer(text) when is_binary(text) and byte_size(text) <= @number_bytes do
     case Integer.parse(String.trim(text)) do
       {n, ""} -> n
       _not -> :error
