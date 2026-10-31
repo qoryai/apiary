@@ -19,7 +19,8 @@ defmodule Apiary.Artifacts do
   #
   # `push(actor, work_item, type, files, opts)` stores a new version of the work item's
   # artifact of `type` and `opts[:name]`, `main` unless given, made in the stage
-  # `opts[:stage_id]`, with the writer's `opts[:note]`. `actor` is `{:run, run}`, a run of
+  # `opts[:stage_id]`, with the writer's `opts[:note]`. `opts[:expect_stage]`, where given,
+  # is the stage the caller read, nil for no stage. `actor` is `{:run, run}`, a run of
   # the queue (`Apiary.Dispatches.DispatchRun`) of that work item, or `{:person, scope}`,
   # a person who may `artifact.write` the work item (`Apiary.Access`), whose push writes
   # its entry in the audit trail. A run writes only the types in `opts[:writes]`, any type
@@ -60,9 +61,11 @@ defmodule Apiary.Artifacts do
   # in, else `{:error, :not_found}`; the artifact found or made; the next number, one
   # more than the highest; the version and its files. The lock makes the transactions of
   # pushes to one work item run one after the other, so the numbers of an artifact are
-  # 1, 2, … with no gap. A refusal, or a failure of the transaction, writes no row; a
-  # file kept in the store before it stays there (a content address that a later version
-  # may share). A store with no root, or one that cannot write, is
+  # 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in another stage is
+  # `{:error, :stage_changed}`, and no row, audit entry or message is written; without
+  # it, the stage is not compared. A refusal, or a failure of the transaction, writes no
+  # row; a file kept in the store before it stays there (a content address that a later
+  # version may share). A store with no root, or one that cannot write, is
   # `{:error, :store_unavailable}`.
   #
   # Once the push's transaction commits, `{:artifact_pushed, work_item_id, version_id}`,
@@ -298,7 +301,7 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec push(actor, WorkItem.t(), term, [file], keyword) ::
           {:ok, Version.t()}
-          | {:error, refusal | :not_found | :forbidden | :store_unavailable}
+          | {:error, refusal | :not_found | :forbidden | :store_unavailable | :stage_changed}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item),
@@ -440,12 +443,13 @@ defmodule Apiary.Artifacts do
     name = Keyword.get(opts, :name, "main")
     stage_id = Keyword.get(opts, :stage_id)
     note = normal_note(Keyword.get(opts, :note))
+    expect_stage = Keyword.fetch(opts, :expect_stage)
 
     cond do
       not Type.name?(name) -> {:error, {:invalid, :name}}
       not stage_id?(stage_id) -> {:error, {:invalid, :stage_id}}
       not note?(note) -> {:error, {:invalid, :note}}
-      true -> {:ok, %{name: name, stage_id: stage_id, note: note}}
+      true -> {:ok, %{name: name, stage_id: stage_id, note: note, expect_stage: expect_stage}}
     end
   end
 
@@ -623,6 +627,7 @@ defmodule Apiary.Artifacts do
       now = DateTime.utc_now()
 
       with %WorkItem{} = held <- held_work_item(work_item),
+           :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
            {:ok, version} <- version(artifact, writer, fields, now),
@@ -645,6 +650,12 @@ defmodule Apiary.Artifacts do
         lock: "FOR UPDATE"
     )
   end
+
+  # The held work item's stage against `opts[:expect_stage]`, as `Keyword.fetch/2` read it:
+  # nil is a value, a work item with no stage, and `:error` is an option not given.
+  defp stage_kept(_held, :error), do: :ok
+  defp stage_kept(%WorkItem{stage_id: stage_id}, {:ok, stage_id}), do: :ok
+  defp stage_kept(_held, {:ok, _other}), do: {:error, :stage_changed}
 
   # A custom type locked `FOR SHARE` until the push commits, so a deletion of the type,
   # which locks it `FOR UPDATE` before it counts the artifacts of its name, runs before or

@@ -4052,6 +4052,11 @@ msgstr ""
 msgid "Add the version again. If it fails again, contact support."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Add the version again: work item #%{number} moved to another stage while the files uploaded."
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Add type"

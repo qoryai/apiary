@@ -1,3 +1,32 @@
+defmodule ApiaryWeb.ArtifactLive.ShowTest.MovingStore do
+  # The volume store, with `{:apiary, :on_commit}`, a function, called once at the first
+  # commit: the moment between the page's read of the stage and the push's lock.
+  @behaviour Apiary.Artifacts.Store
+
+  alias Apiary.Artifacts.Store.Volume
+
+  @impl true
+  defdelegate stage(source, limit), to: Volume
+  @impl true
+  defdelegate discard(staged), to: Volume
+  @impl true
+  defdelegate open(store_key), to: Volume
+
+  @impl true
+  def commit(staged) do
+    case Application.get_env(:apiary, :on_commit) do
+      nil ->
+        :ok
+
+      on_commit ->
+        Application.delete_env(:apiary, :on_commit)
+        on_commit.()
+    end
+
+    Volume.commit(staged)
+  end
+end
+
 defmodule ApiaryWeb.ArtifactLive.ShowTest do
   # A version's page (`ApiaryWeb.ArtifactLive.Show`), the page that adds a version by
   # hand (`ApiaryWeb.ArtifactLive.New`) and the plain list (`ApiaryWeb.ArtifactComponents.list/1`):
@@ -7,12 +36,16 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   # Not async: the store's root is the application's setting.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
   alias Apiary.Artifacts
+  alias Apiary.Artifacts.Store
+  alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
+  alias ApiaryWeb.ArtifactLive.ShowTest
 
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
@@ -349,6 +382,13 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   defp new_page(ctx, type),
     do: ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=" <> type
 
+  defp in_stage(work_item, stage_id) do
+    {1, _rows} =
+      Apiary.Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [stage_id: stage_id]
+      )
+  end
+
   # Adds notes.md as an explainer on an open Add a version page; the page's HTML after.
   defp add_notes(view) do
     view
@@ -558,6 +598,51 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       refute log =~ "notes.md"
       refute log =~ "# Notes"
+    end
+
+    test "stores the version in the stage the work item moved to before Add version", ctx do
+      in_stage(ctx.work_item, "st_aaaaaaaaaa")
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+      in_stage(ctx.work_item, "st_bbbbbbbbbb")
+
+      assert {:error, {:live_redirect, _to}} = add_notes(view)
+      assert %{stage_id: "st_bbbbbbbbbb"} = Artifacts.newest(ctx.work_item, "explainer")
+    end
+
+    test "says so when the work item moves while the push stores the files; the next try stores it",
+         ctx do
+      in_stage(ctx.work_item, "st_aaaaaaaaaa")
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      previous = Application.get_env(:apiary, Store)
+      Application.put_env(:apiary, Store, adapter: ShowTest.MovingStore)
+      Application.put_env(:apiary, :on_commit, fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
+
+      on_exit(fn ->
+        Application.delete_env(:apiary, :on_commit)
+
+        if previous,
+          do: Application.put_env(:apiary, Store, previous),
+          else: Application.delete_env(:apiary, Store)
+      end)
+
+      html = add_notes(view)
+
+      assert html =~
+               "Add the version again: work item ##{ctx.work_item.number} moved to another " <>
+                 "stage while the files uploaded."
+
+      assert Artifacts.list(ctx.work_item) == []
+
+      # The file stays uploaded, so a second Add version needs nothing more.
+      assert html =~ "notes.md"
+
+      assert {:error, {:live_redirect, _to}} =
+               view
+               |> form("#artifact-form", artifact: %{type: "explainer", name: "main", note: ""})
+               |> render_submit()
+
+      assert %{stage_id: "st_bbbbbbbbbb", number: 1} = Artifacts.newest(ctx.work_item, "explainer")
     end
 
     test "sets the upload from the chosen type", ctx do

@@ -14,7 +14,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # (`ApiaryWeb.ArtifactLive.UploadWriter`), so one Add version puts at most the type's
   # size limit in the temporary folder.
   # Add version pushes the version as the reader (`Apiary.Artifacts.push/5`, `{:person,
-  # scope}`), made in the work item's current stage, and goes to the new version's page.
+  # scope}`), made in the stage the work item is in at Add version, read again then, and
+  # goes to the new version's page. A move to another stage while the push stores the
+  # files refuses it (`:stage_changed`), and the next Add version reads the new stage.
   # Each refusal of the push is one line that says what to change, under the field it is
   # about; the uploaded files stay, so the reader changes only what the line says.
   #
@@ -267,7 +269,10 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # push succeeds, so a refused push keeps them for the next try.
   defp push(socket, params) do
     scope = socket.assigns.current_scope
-    work_item = socket.assigns.work_item
+
+    # The stage as it is now; the push refuses a move after this read. A work item the
+    # reader no longer finds keeps the mount's, and the push's refusal gets its line.
+    work_item = Load.work_item(scope, socket.assigns.number) || socket.assigns.work_item
 
     files =
       consume_uploaded_entries(socket, :files, fn %{path: path}, entry ->
@@ -277,7 +282,8 @@ defmodule ApiaryWeb.ArtifactLive.New do
     result =
       Artifacts.push({:person, scope}, work_item, params["type"], files,
         name: blank_to_main(params["name"]),
-        stage_id: Map.get(work_item, :stage_id),
+        stage_id: work_item.stage_id,
+        expect_stage: work_item.stage_id,
         note: params["note"]
       )
 
@@ -428,6 +434,16 @@ defmodule ApiaryWeb.ArtifactLive.New do
           socket,
           :error,
           gettext("Store the files again. If it fails again, contact support.")
+        )
+
+      :stage_changed ->
+        assign(
+          socket,
+          :error,
+          gettext(
+            "Add the version again: work item #%{number} moved to another stage while the files uploaded.",
+            number: socket.assigns.number
+          )
         )
 
       access when access in [:forbidden, :not_found] ->

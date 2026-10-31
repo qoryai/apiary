@@ -8,6 +8,7 @@ defmodule Apiary.ArtifactsTest do
   alias Apiary.Artifacts
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Store, Type, Version}
   alias Apiary.Audit.Entry
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
@@ -780,6 +781,85 @@ defmodule Apiary.ArtifactsTest do
                  [file("a.png", @png)],
                  writes: []
                )
+    end
+  end
+
+  describe "push/5 with expect_stage" do
+    setup %{work_item: work_item} do
+      %{work_item: in_stage(work_item, "st_bbbbbbbbbb")}
+    end
+
+    defp in_stage(work_item, stage_id) do
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: stage_id]
+        )
+
+      Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "refuses a work item in another stage, with no row and no message",
+         %{scope: scope, work_item: work_item, root: root} do
+      :ok = Artifacts.subscribe(scope, work_item)
+
+      assert {:error, :stage_changed} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 stage_id: "st_aaaaaaaaaa",
+                 expect_stage: "st_aaaaaaaaaa"
+               )
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+      assert count(ArtifactFile) == 0
+      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+      refute_received {:artifact_pushed, _work_item_id, _version_id}
+
+      # The transaction refuses after the store keeps the bytes, as every refusal there
+      # does, and nothing deletes them.
+      assert [_kept] = stored_paths(root)
+    end
+
+    test "stores the version in the same stage", %{scope: scope, work_item: work_item} do
+      assert {:ok, %Version{stage_id: "st_bbbbbbbbbb"}} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 stage_id: "st_bbbbbbbbbb",
+                 expect_stage: "st_bbbbbbbbbb"
+               )
+    end
+
+    test "compares nothing where the option is left out",
+         %{scope: scope, work_item: work_item} do
+      assert {:ok, %Version{stage_id: "st_aaaaaaaaaa"}} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 stage_id: "st_aaaaaaaaaa"
+               )
+    end
+
+    test "reads nil as a work item with no stage", %{scope: scope, work_item: work_item} do
+      assert {:error, :stage_changed} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 expect_stage: nil
+               )
+
+      assert {:ok, %Version{stage_id: nil}} =
+               Artifacts.push(
+                 {:person, scope},
+                 in_stage(work_item, nil),
+                 "explainer",
+                 [doc()],
+                 expect_stage: nil
+               )
+    end
+
+    test "refuses a run's push too", %{work_item: work_item, run: run} do
+      assert {:error, :stage_changed} =
+               Artifacts.push(
+                 {:run, run},
+                 work_item,
+                 "verdict",
+                 [
+                   json("verdict.json", %{"verdict" => "passed"})
+                 ], expect_stage: "st_aaaaaaaaaa")
     end
   end
 
