@@ -935,8 +935,6 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
-  # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
-  # the limit.
   # A save of the workspace's process, a new current version: the workspace's entry.
   def make(:"process.edit", %{scope: scope}) do
     before = entries()
@@ -960,6 +958,8 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
   end
 
+  # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
+  # the limit.
   def make(:"time_limit.edit", %{scope: scope}) do
     before = entries()
     {:ok, limit} = Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
