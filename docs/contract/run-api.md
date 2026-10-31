@@ -102,15 +102,18 @@ Returns `200` with the work item snapshot:
   in Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
   comments left out first and counted in `comments_omitted`. A test work item has no
   `ticket`.
-- `notes` contains what people wrote on the work item, oldest first. `kind` is
-  `request_changes`, a request for changes at the gate of the stage `stage_id`, which
-  may point at one version in `artifact_version_id`; `move`, a move of the work item out
-  of the stage `stage_id`; `escalation`, an escalation that a person resolved with a
-  note; or `answer`, an answer to a run's questions, whose `stage_id` is null when the
-  run of the question has no stage. `by` is the person, `note` the text and `at` the
-  time it was written, or for an escalation the time it was resolved.
-- For a work item that is in no stage, `stage` has only `id`, the stage of the run, or
-  null, and `inputs` and `outputs` are empty.
+- `notes` contains what people wrote on the work item and the gaps of failed checks,
+  oldest first. `kind` is `request_changes`, a request for changes at the gate of the
+  stage `stage_id`, which may point at one version in `artifact_version_id`; `move`, a
+  move of the work item out of the stage `stage_id`; `escalation`, an escalation that a
+  person resolved with a note; `answer`, an answer to a run's questions, whose
+  `stage_id` is null when the run of the question has no stage; or `check`, the Exists
+  checks of the stage `stage_id` that failed and started another round, with one line
+  per missing output type in `note`. `by` is the person, null for `check`; `note` is the
+  text; `at` is the time it was written, or for an escalation the time it was resolved.
+- For a work item that is in no stage, `stage` has all five members: `id` is the stage
+  id of the run, or null when the run has none, and `name`, `round`, `rounds` and
+  `state` are null; `inputs` and `outputs` are empty lists.
 - `run.workflow` and `run.round` are null for a run that has neither.
 
 Errors: `410` `ticket_gone` when the ticket of a work item is no longer kept; `409`
@@ -208,21 +211,19 @@ The version is stored for the run's work item, by the run, in the run's stage. R
 
 Checks, in order, after the checks of every request:
 
-1. A body over 32 MiB, or over 64 KiB under a key id that is not an active gateway
-   key's: `413` `payload_too_large`, unsigned, before the signature is checked.
-2. A body that is not this object, or has a member it does not define: `400`
+1. A body that is not this object, or has a member it does not define: `400`
    `invalid_request`, with the first member that failed in `names`, such as
    `files[0].filename`.
-3. A type the workspace does not have: `422` `unknown_type`.
-4. A type the run's workflow may not write: `403` `type_not_writable`. A workflow may
+2. A type the workspace does not have: `422` `unknown_type`.
+3. A type the run's workflow may not write: `403` `type_not_writable`. A workflow may
    write the types in the `writes` list of its declaration in the stack, and always
    `verdict` and `questions`. A workflow whose declaration has no `writes` list, or that
    the harness no longer declares, may write any type the workspace has.
-5. More files than the type's maximum: `422` `too_many_files`.
-6. Files larger together than the type's size limit, which bounds all files of one
+4. More files than the type's maximum: `422` `too_many_files`.
+5. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
-7. A content that is not strict base64: `400` `invalid_request`.
-8. Files that do not match the type's format: `422` `invalid_artifact`, with the file
+6. A content that is not strict base64: `400` `invalid_request`.
+7. Files that do not match the type's format: `422` `invalid_artifact`, with the file
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
    file.
 
