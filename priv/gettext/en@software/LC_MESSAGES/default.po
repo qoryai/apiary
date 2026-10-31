@@ -19944,6 +19944,11 @@ msgstr ""
 msgid "Workspace settings › %{page}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace type changed"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format

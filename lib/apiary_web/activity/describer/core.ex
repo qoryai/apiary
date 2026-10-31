@@ -96,6 +96,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"run_credential.issue"), do: gettext("Run access sent or refused")
   def label(:"gate.approve"), do: gettext("Work item stage decided")
   def label(:"process.edit"), do: gettext("Process changed")
+  def label(:"workspace_type.edit"), do: gettext("Workspace type changed")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -174,11 +175,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"run_credential.issue"
         ]
 
-      # Of the actions on a workspace's process, a stage's decisions on a work item and the
-      # changes to the process have labels; the artifacts' actions have none yet, so the
-      # filter offers only the first two, and the others' entries show as any change.
+      # Of the actions on a workspace's process, a stage's decisions on a work item, the
+      # changes to the process and to a workspace type's default have labels; the
+      # artifacts' actions have none yet, so the filter offers only those three, and the
+      # others' entries show as any change.
       :workflow_model ->
-        action in [:"gate.approve", :"process.edit"]
+        action in [:"gate.approve", :"process.edit", :"workspace_type.edit"]
 
       shown_as when shown_as in [:secrets, :nodes] ->
         Features.visible?(scope, shown_as)
@@ -585,6 +587,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"process.edit", %{"change" => change, "number" => number}, _actor)
        when is_integer(number),
        do: said_process(change, number)
+
+  defp said(:"workspace_type.edit", _details, _actor), do: label(:"workspace_type.edit")
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
