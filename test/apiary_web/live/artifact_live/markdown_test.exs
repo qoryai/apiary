@@ -88,14 +88,30 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     end
   end
 
-  # The value of `fun`, run in a process whose heap may have at most 64 MiB.
-  defp capped(fun) do
+  # A text of 1,048,576 lines is checked for tables in one pass that builds no list of its
+  # lines, so the page's process needs little more than the text.
+  test "checks a text of many lines for tables within 16 MiB of heap" do
+    for text <- [String.duplicate("\n", 1_048_576), String.duplicate("|\r\n", 349_525)] do
+      assert {_shown, _text} = capped(fn -> Markdown.render(text) end, 2_097_152)
+    end
+  end
+
+  test "counts the cells of the line with the most |" do
+    assert {:as_written, _text} =
+             Markdown.render(String.duplicate("| a |\n", div(Markdown.max_cells(), 2)))
+
+    assert {:html, _html} = Markdown.render("| a | b |\r|---|---|\r\n| 1 | 2 |")
+  end
+
+  # The value of `fun`, run in a process whose heap may have at most `words` words, 64 MiB
+  # unless given.
+  defp capped(fun, words \\ 8_388_608) do
     parent = self()
 
     {pid, ref} =
       :erlang.spawn_opt(fn -> send(parent, {self(), fun.()}) end, [
         :monitor,
-        {:max_heap_size, %{size: 8_388_608, kill: true, error_logger: false}}
+        {:max_heap_size, %{size: words, kill: true, error_logger: false}}
       ])
 
     receive do

@@ -139,16 +139,27 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   defp formattable?(text),
     do: byte_size(text) <= @max_bytes and String.valid?(text) and table_cells(text) <= @max_cells
 
-  # The most cells a table of the text could have: a row is a line, and has its header's
-  # cells, one more than the `|` of the header's line. With no `|`, there is no table.
+  # The most cells a table of the text could have: a row is a line, and has as many
+  # cells as the line with the most `|` has, plus one. With no `|`, there is no table.
+  # One pass over the bytes that builds no list: the text runs in the page's process,
+  # outside the budget, and a list of its lines would take more memory than the text.
   defp table_cells(text) do
-    lines = String.split(text, ["\r\n", "\r", "\n"])
-
-    case lines |> Enum.map(&length(:binary.matches(&1, "|"))) |> Enum.max() do
-      0 -> 0
-      pipes -> (pipes + 1) * length(lines)
+    case scan(text, 0, 0, 1) do
+      {0, _lines} -> 0
+      {pipes, lines} -> (pipes + 1) * lines
     end
   end
+
+  # The most `|` on one line, and the lines, by `\r\n`, `\r` or `\n`.
+  defp scan(<<"\r\n", rest::binary>>, here, most, lines),
+    do: scan(rest, 0, max(here, most), lines + 1)
+
+  defp scan(<<byte, rest::binary>>, here, most, lines) when byte in [?\r, ?\n],
+    do: scan(rest, 0, max(here, most), lines + 1)
+
+  defp scan(<<?|, rest::binary>>, here, most, lines), do: scan(rest, here + 1, most, lines)
+  defp scan(<<_byte, rest::binary>>, here, most, lines), do: scan(rest, here, most, lines)
+  defp scan(<<>>, here, most, lines), do: {max(here, most), lines}
 
   defp markdown(text) do
     document = MDEx.parse_document!(text, @parse_options)
