@@ -775,7 +775,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def read_words({:unreadable, :address}, source, _organisation),
     do:
       gettext(
-        "The instance admin corrects the address of %{source}: write it as https://, a host, an optional port and an optional path.",
+        "Contact support to correct the address of %{source}: an address is https://, a host, an optional port and an optional path.",
         source: label(source)
       )
 
@@ -783,7 +783,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def read_words({:unreadable, :path, _path}, source, _organisation),
     do:
       gettext(
-        "An instance admin corrects the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long.",
+        "Contact support to correct the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long.",
         source: label(source)
       )
 
@@ -791,7 +791,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def read_words({:unreadable, :version, _ref}, %{kind: :assigned} = source, _organisation),
     do:
       gettext(
-        "An instance admin corrects the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+        "Contact support to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
         source: label(source)
       )
 
@@ -816,7 +816,7 @@ defmodule ApiaryWeb.HarnessComponents do
     do:
       pgettext(
         "plain",
-        "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, the instance admin installs an adapter for %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations.",
+        "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, contact support to have it read from %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations.",
         source: label(source),
         organisation: organisation,
         host: host(source)
@@ -828,7 +828,7 @@ defmodule ApiaryWeb.HarnessComponents do
     do:
       pgettext(
         "plain",
-        "An instance admin assigns %{source} to %{organisation}. An integration of the instance covers %{source}, and Qory Apiary reads it for %{organisation} only through an assignment.",
+        "Contact support to make %{source} available to %{organisation}.",
         source: label(source),
         organisation: organisation
       )

@@ -549,8 +549,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                "#workflow-read-error",
                "Qory Apiary reached no adapter that reads https://public.example.org/qory/stack, " <>
                  "and no integration of #{scope.organisation.name} covers it. If " <>
-                 "https://public.example.org/qory/stack is public, the instance admin installs an " <>
-                 "adapter for public.example.org. If it is private, owners and admins of " <>
+                 "https://public.example.org/qory/stack is public, contact support to have it " <>
+                 "read from public.example.org. If it is private, owners and admins of " <>
                  "#{scope.organisation.name} connect an integration that covers it in " <>
                  "Organisation settings › Integrations."
              )

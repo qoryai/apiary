@@ -2188,8 +2188,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#harness-stack-error") ==
                "Qory Apiary reached no adapter that reads acme/harness, and no integration of " <>
-                 "#{ctx.organisation.name} covers it. If acme/harness is public, the instance " <>
-                 "admin installs an adapter for code.example.com. If it is private, owners and " <>
+                 "#{ctx.organisation.name} covers it. If acme/harness is public, contact " <>
+                 "support to have it read from code.example.com. If it is private, owners and " <>
                  "admins of #{ctx.organisation.name} connect an integration that covers it in " <>
                  "Organisation settings › Integrations."
 
@@ -2316,7 +2316,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # No adapter answered for the source, so both fixes show, each with its condition.
       not_covered =
         "Qory Apiary reached no adapter that reads acme/harness, and no integration of Acme " <>
-          "covers it. If acme/harness is public, the instance admin installs an adapter for " <>
+          "covers it. If acme/harness is public, contact support to have it read from " <>
           "code.example.com. If it is private, owners and admins of Acme connect an " <>
           "integration that covers it in Organisation settings › Integrations."
 
@@ -2324,9 +2324,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(failure.(:not_covered, chosen, nil)) == not_covered
 
       assert words.(failure.(:not_allowed, chosen, nil)) ==
-               "An instance admin assigns acme/harness to Acme. An integration of the instance " <>
-                 "covers acme/harness, and Qory Apiary reads it for Acme only through an " <>
-                 "assignment."
+               "Contact support to make acme/harness available to Acme."
 
       # An address the person typed is the person's to correct; a connected repository's
       # or an assignment's is not.
@@ -2339,12 +2337,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "optional path."
 
       assert reads.({:unreadable, :address}) ==
-               "The instance admin corrects the address of acme/harness: write it as https://, " <>
-                 "a host, an optional port and an optional path."
+               "Contact support to correct the address of acme/harness: an address is " <>
+                 "https://, a host, an optional port and an optional path."
 
       # A folder comes from an assignment alone.
       assert reads.({:unreadable, :path, "../x/qory-stack.yaml"}) ==
-               "An instance admin corrects the folder of acme/harness: a folder is a relative " <>
+               "Contact support to correct the folder of acme/harness: a folder is a relative " <>
                  "path with no empty, . or .. part, at most 1,024 characters long."
 
       assert reads.({:unreadable, :version, "v 9"}) ==
@@ -2356,7 +2354,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                Map.put(source, :kind, :assigned),
                "Acme"
              ) ==
-               "An instance admin corrects the version of acme/harness: a branch, tag or " <>
+               "Contact support to correct the version of acme/harness: a branch, tag or " <>
                  "commit name has 1 to 255 letters, digits, dots, underscores, slashes and " <>
                  "hyphens, and no spaces."
 
