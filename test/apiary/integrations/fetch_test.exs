@@ -208,4 +208,96 @@ defmodule Apiary.Integrations.FetchTest do
     log = capture_log(fn -> get("https://private.example.com/description.json", ok("{}")) end)
     assert log =~ "https://private.example.com/description.json"
   end
+
+  describe "request/3" do
+    # Sends `method` to `url` through a plug that records the request and answers by
+    # `answer`.
+    defp request(method, url, answer, opts \\ []) do
+      test = self()
+
+      plug = fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test, {:sent, conn.method, conn.host, conn.port, conn.req_headers, body})
+        answer.(conn)
+      end
+
+      Fetch.request(method, url, Keyword.merge([req_options: [plug: plug]], opts))
+    end
+
+    test "posts the body with the headers given, and returns the last hop and the content type" do
+      answer = fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/x-git-upload-pack-result", nil)
+        |> Plug.Conn.send_resp(200, "0000")
+      end
+
+      assert {:ok, %{body: "0000", url: url, content_type: type}} =
+               request(:post, @url, answer,
+                 body: "0014command=ls-refs\n",
+                 headers: [{"git-protocol", "version=2"}],
+                 user_agent: "git/2.0 (test)"
+               )
+
+      assert url == @url
+      assert type == "application/x-git-upload-pack-result"
+      assert_received {:sent, "POST", "203.0.113.10", 443, headers, "0014command=ls-refs\n"}
+      headers = Map.new(headers)
+      assert headers["git-protocol"] == "version=2"
+      assert headers["user-agent"] == "git/2.0 (test)"
+      refute Map.has_key?(headers, "accept")
+      refute Map.has_key?(headers, "authorization")
+    end
+
+    test "takes the address's port with any_port, and only then" do
+      url = "https://git.example.com:8443/a/b/info/refs"
+
+      assert {:ok, %{url: ^url}} = request(:get, url, ok("x"), any_port: true)
+      assert_received {:sent, "GET", _address, 8443, headers, ""}
+      assert Map.new(headers)["host"] == "git.example.com:8443"
+
+      capture_log(fn -> assert request(:get, url, ok("x")) == {:error, :failed} end)
+    end
+
+    test "returns each failure by its class" do
+      capture_log(fn ->
+        assert request(:get, "https://private.example.com/x", ok("x")) == {:error, :not_allowed}
+        assert request(:get, "https://nowhere.example.com/x", ok("x")) == {:error, :unreachable}
+
+        for status <- [401, 403, 404] do
+          assert request(:get, @url, &Plug.Conn.send_resp(&1, status, "")) ==
+                   {:error, :not_found}
+        end
+
+        for status <- [502, 503, 504] do
+          assert request(:get, @url, &Plug.Conn.send_resp(&1, status, "")) ==
+                   {:error, :unreachable}
+        end
+
+        assert request(:get, @url, &Plug.Conn.send_resp(&1, 500, "")) == {:error, :failed}
+
+        assert request(:get, @url, ok(String.duplicate("a", 11)), max_bytes: 10) ==
+                 {:error, :too_large}
+      end)
+    end
+
+    test "a 404 writes no log line; other failures do, with the URL" do
+      assert capture_log(fn ->
+               request(:get, @url, &Plug.Conn.send_resp(&1, 404, ""))
+             end) == ""
+
+      log = capture_log(fn -> request(:get, @url, &Plug.Conn.send_resp(&1, 500, "")) end)
+      assert log =~ "a public git request failed"
+      assert log =~ @url
+    end
+
+    test "with max_redirects 0, a redirect is not followed" do
+      capture_log(fn ->
+        assert request(:post, @url, redirect("https://github.com/elsewhere"), max_redirects: 0) ==
+                 {:error, :failed}
+      end)
+
+      assert_received {:sent, "POST", _, _, _, _}
+      refute_received {:sent, _, _, _, _, _}
+    end
+  end
 end
