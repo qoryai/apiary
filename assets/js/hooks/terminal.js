@@ -384,6 +384,7 @@ export const Terminal = {
     this.viewButtons.forEach(button =>
       button.addEventListener("click", () => {
         storeView(button.dataset.view)
+        this.searching = false
         this.pickView(button.dataset.view)
       }),
     )
