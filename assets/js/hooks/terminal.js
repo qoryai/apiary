@@ -746,14 +746,14 @@ export const Terminal = {
     line.body = line.open ? null : opened(line.bytes)
     if (!line.open && !line.body) return this.pickView("raw")
     line.open = !line.open
-    this.rewrite()
+    this.rewrite(this.around(line))
   },
 
-  // Every line again, at the row width of now, and the reader back where they were. The
-  // row at the top of the screen anchors the place, as what is above it may have grown.
-  rewrite() {
+  // Every line again, at the row width of now, and the reader back at `wanted`, by default
+  // where they are. A row anchors the place, as what is above it may have grown.
+  rewrite(wanted) {
     if (this.view !== "collapsed" || this.dead) return
-    const place = this.rewriting || this.place()
+    const place = this.rewriting || wanted || this.place()
     this.rewriting = place
     this.pass += 1
     this.clearRows()
@@ -765,11 +765,25 @@ export const Terminal = {
       this.rewriting = null
       if (place.end) return this.term.scrollToBottom()
       const anchor = place.line && this.rows.find(({line}) => line === place.line)
-      this.term.scrollToLine(anchor ? rowLine(anchor) + place.below : place.top)
+      const {baseY} = this.term.buffer.active
+      const top = anchor ? rowLine(anchor) + place.below : place.top
+      const line = Math.max(0, Math.min(top, baseY))
+      // Following would take the row off the screen.
+      if (this.following && line < baseY) this.follow(false)
+      this.term.scrollToLine(line)
     })
   },
 
-  // Where the reader is: at the end, or at a line, by the row at or above the screen's top.
+  // Where a clicked row is: the same place on the screen after it opens or closes.
+  around(line) {
+    const clicked = this.rows.find(row => row.line === line)
+    if (!clicked) return undefined
+    const {viewportY: top} = this.term.buffer.active
+    return {end: false, top, line, below: top - rowLine(clicked)}
+  },
+
+  // Where the reader is, for a new width: at the end, or at a line, by the row at or above
+  // the screen's top.
   place() {
     const {viewportY: top, baseY} = this.term.buffer.active
     const index = this.rowIndex(top, false)
