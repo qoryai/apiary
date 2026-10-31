@@ -8,7 +8,9 @@ defmodule Apiary.Integrations.Fetch do
       private, loopback, link-local or cloud metadata address, for any host, with no
       setting to allow one. The request then connects to the first of them, by address,
       with the host name kept for the `Host` header, SNI and the certificate's check, so a
-      second lookup cannot send it elsewhere.
+      second lookup cannot send it elsewhere. Each request opens one connection and
+      closes it when the request ends, on an answer, an error or the time running out
+      (Apiary.Integrations.Fetch.Connection); no connection pool is kept.
     * **Every hop.** A redirect is followed by hand, and its target passes the same
       checks: https, port 443 (any port with `any_port: true`), an exact host name that
       is not a refused one, resolved and pinned again. At most `max_redirects` hops (5).
@@ -229,7 +231,6 @@ defmodule Apiary.Integrations.Fetch do
   defp lookup(host, resolver) when is_atom(resolver), do: resolver.resolve(host)
 
   defp send_request(method, uri, address, deadline, opts) do
-    remaining = deadline - System.monotonic_time(:millisecond)
     max_bytes = Keyword.get(opts, :max_bytes, @max_bytes)
     host = uri.host
 
@@ -242,25 +243,31 @@ defmodule Apiary.Integrations.Fetch do
         {"user-agent", Keyword.get(opts, :user_agent, "qory-apiary")}
       ] ++ Keyword.get(opts, :headers, [{"accept", "*/*"}])
 
+    # One connection for this request alone, to the checked address
+    # (`Apiary.Integrations.Fetch.Connection`), closed when the request ends. A test's
+    # `plug` in `req_options` takes the connection's place.
     options =
       [
         url: %{uri | host: Address.ntoa(address)},
         method: method,
         headers: headers,
+        adapter: __MODULE__.Connection,
         redirect: false,
         retry: false,
         decode_body: false,
         compressed: false,
         raw: true,
-        inet6: tuple_size(address) == 8,
-        receive_timeout: max(remaining, 1),
-        connect_options: [hostname: host, timeout: max(remaining, 1)],
         into: collect(max_bytes)
       ]
       |> body(method, opts)
       |> Keyword.merge(Keyword.get(opts, :req_options, []))
 
-    case Req.request(options) do
+    request =
+      options
+      |> Req.new()
+      |> Req.Request.put_private(:fetch_connection, {address, host, deadline})
+
+    case Req.request(request) do
       {:ok, response} -> {:ok, response}
       {:error, exception} -> {:error, {:transport, Exception.message(exception)}}
     end
