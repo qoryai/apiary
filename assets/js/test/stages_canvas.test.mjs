@@ -5,7 +5,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {CARD_GAP, CARD_WIDTH, layout, orderByX, sameOrder} from "../hooks/stages_canvas.js"
+import {CARD_GAP, CARD_WIDTH, FIT, keyMove, layout, orderByDrop, sameOrder} from "../hooks/stages_canvas.js"
 
 const view = {
   editable: true,
@@ -54,10 +54,32 @@ test("no view draws nothing", () => {
   assert.deepEqual(layout(undefined), {nodes: [], edges: []})
 })
 
-test("a card dragged past another changes the order", () => {
-  const nodes = layout(view).nodes.map(n => (n.id === "st_a" ? {...n, position: {x: 300, y: 40}} : n))
-  const order = orderByX(nodes)
-  assert.deepEqual(order, ["st_b", "st_a", "st_c"])
-  assert.equal(sameOrder(order, ["st_a", "st_b", "st_c"]), false)
+test("a card dropped with the pointer on another card takes that card's place", () => {
+  const ids = ["st_a", "st_b", "st_c", "st_d"]
+  const slot = n => n * (CARD_WIDTH + CARD_GAP) + CARD_WIDTH / 2
+  // Across two cards: from the first place to the third.
+  assert.deepEqual(orderByDrop(ids, "st_a", slot(2)), ["st_b", "st_c", "st_a", "st_d"])
+  assert.deepEqual(orderByDrop(ids, "st_d", slot(0)), ["st_d", "st_a", "st_b", "st_c"])
+  assert.deepEqual(orderByDrop(ids, "st_b", slot(1)), ids)
+  // Beyond either end: the first or the last place.
+  assert.deepEqual(orderByDrop(ids, "st_b", -500), ["st_b", "st_a", "st_c", "st_d"])
+  assert.deepEqual(orderByDrop(ids, "st_a", 5000), ["st_b", "st_c", "st_d", "st_a"])
+  assert.equal(sameOrder(orderByDrop(ids, "st_a", slot(2)), ids), false)
   assert.equal(sameOrder(["st_a"], ["st_a"]), true)
+})
+
+test("left and right move a card one place; up and down move nothing", () => {
+  assert.equal(keyMove("ArrowLeft"), "-1")
+  assert.equal(keyMove("ArrowRight"), "1")
+  assert.equal(keyMove("ArrowUp"), null)
+  assert.equal(keyMove("Enter"), null)
+})
+
+test("five default stages fit about 800 px at zoom 1, and fitView never zooms past 1", () => {
+  assert.ok(5 * CARD_WIDTH + 4 * CARD_GAP <= 800 / (1 + 2 * FIT.padding))
+  assert.equal(FIT.maxZoom, 1)
+})
+
+test("each card has a ring on keyboard focus", () => {
+  for (const node of layout(view).nodes) assert.match(node.className, /focus-visible:!outline-primary/)
 })

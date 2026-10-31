@@ -11,9 +11,13 @@
 //
 // Names and lines reach React as text props only; nothing here writes markup.
 
-// The width of a stage card and the gap after it, in the canvas's units.
-export const CARD_WIDTH = 220
-export const CARD_GAP = 60
+// The width of a stage card and the gap after it, in the canvas's units. Five cards, the
+// default process, fit a canvas about 800 px wide at zoom 1, the most fitView zooms in.
+export const CARD_WIDTH = 136
+export const CARD_GAP = 20
+
+// The fitView options: little padding, and never larger than zoom 1.
+export const FIT = {padding: 0.02, maxZoom: 1}
 
 // The nodes and edges React Flow draws for `view`: the stages in a line, left to right,
 // each joined to the next by an arrow.
@@ -25,6 +29,9 @@ export const layout = view => {
     position: {x: index * (CARD_WIDTH + CARD_GAP), y: 0},
     selected: stage.id === view.selected,
     draggable: view.editable === true,
+    // A ring on keyboard focus: React Flow's stylesheet draws none for a custom node.
+    className:
+      "rounded-box focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-primary",
     ariaLabel: String(stage.name ?? ""),
     data: {
       name: String(stage.name ?? ""),
@@ -44,8 +51,19 @@ export const layout = view => {
   return {nodes, edges}
 }
 
-// The stage ids ordered by where their cards are now, left to right.
-export const orderByX = nodes => [...nodes].sort((a, b) => a.position.x - b.position.x).map(n => n.id)
+// The stage ids after the card `id` is dropped with the pointer at `x`, in the canvas's
+// units: the card takes the place of the slot under the pointer, the first or the last
+// one beyond either end.
+export const orderByDrop = (ids, id, x) => {
+  const rest = ids.filter(other => other !== id)
+  if (rest.length === ids.length) return ids
+  const slot = Math.floor((x + CARD_GAP / 2) / (CARD_WIDTH + CARD_GAP))
+  const at = Math.min(Math.max(slot, 0), ids.length - 1)
+  return [...rest.slice(0, at), id, ...rest.slice(at)]
+}
+
+// The arrow key's move of a card: one place earlier ("-1") or later ("1"), or nil.
+export const keyMove = key => ({ArrowLeft: "-1", ArrowRight: "1"})[key] ?? null
 
 // Whether two orders differ.
 export const sameOrder = (a, b) => a.length === b.length && a.every((id, i) => id === b[i])

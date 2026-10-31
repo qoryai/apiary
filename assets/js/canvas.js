@@ -6,8 +6,9 @@
 //
 // The canvas draws the view the page sends and sends back two events: "select", with a
 // stage id, and "reorder", with every stage id in the new order, after a card is dragged.
-// The arrow keys move a selected card one place earlier or later ("move"). All text
-// reaches React as props and is rendered as text.
+// The left and right arrow keys move the focused card one place earlier or later ("move"),
+// and the focus stays on it. The wheel scrolls the page; a pinch or the buttons zoom. All
+// text reaches React as props and is rendered as text.
 import {createElement as h, memo, useCallback, useEffect, useRef, useState} from "react"
 import {createRoot} from "react-dom/client"
 import {
@@ -21,7 +22,7 @@ import {
   useReactFlow,
 } from "../vendor/flow/xyflow-react/index.js"
 import "../vendor/flow/xyflow-react/style.css"
-import {CARD_WIDTH, layout, orderByX, sameOrder} from "./hooks/stages_canvas"
+import {CARD_WIDTH, FIT, keyMove, layout, orderByDrop, sameOrder} from "./hooks/stages_canvas"
 
 const line = (text, key, className) => h("p", {key, className}, text)
 
@@ -30,14 +31,14 @@ const StageCard = memo(({data, selected}) =>
     "div",
     {
       className: [
-        "grid gap-1 rounded-box border bg-base-100 p-3 text-left text-[12.5px]/[18px] shadow-sm",
+        "grid gap-1 rounded-box border bg-base-100 p-2.5 text-left text-[13px]/[18px] shadow-sm",
         selected ? "border-primary ring-2 ring-primary" : "border-base-300",
       ].join(" "),
       style: {width: CARD_WIDTH},
     },
     h(Handle, {type: "target", position: Position.Left, isConnectable: false, className: "!opacity-0"}),
-    line(data.name, "name", "truncate text-[13.5px]/5 font-semibold text-base-content"),
-    ...data.workflows.map((name, i) => line(name, `w${i}`, "truncate font-mono text-[12px]/[18px]")),
+    line(data.name, "name", "truncate text-[14px]/5 font-semibold text-base-content"),
+    ...data.workflows.map((name, i) => line(name, `w${i}`, "break-all font-mono text-[12.5px]/[18px]")),
     line(data.loop, "loop", "text-muted"),
     line(data.gate, "gate", "text-muted"),
     ...data.alerts.map((text, i) => line(text, `a${i}`, "text-error")),
@@ -50,13 +51,14 @@ const nodeTypes = {stage: StageCard}
 const theme = () =>
   (document.documentElement.dataset.theme || "").includes("dark") ? "dark" : "light"
 
-function Flow({initial, words, push, subscribe}) {
+function Flow({initial, words, push, subscribe, el}) {
   const [view, setView] = useState(initial)
   const [nodes, setNodes] = useState(() => layout(initial).nodes)
   const viewRef = useRef(initial)
   const nodesRef = useRef(nodes)
   nodesRef.current = nodes
-  const dragging = useRef(false)
+  // The card the arrow keys moved, to focus again once the page sends the new order.
+  const focusId = useRef(null)
   const flow = useReactFlow()
   const count = (view.stages || []).length
 
@@ -72,43 +74,48 @@ function Flow({initial, words, push, subscribe}) {
 
   // Every stage in view when the number of stages changes.
   useEffect(() => {
-    const frame = requestAnimationFrame(() => flow.fitView({padding: 0.15, maxZoom: 1}))
+    const frame = requestAnimationFrame(() => flow.fitView(FIT))
     return () => cancelAnimationFrame(frame)
   }, [count, flow])
 
+  // The moved card keeps the focus after the page redraws the stages in the new order.
+  useEffect(() => {
+    const id = focusId.current
+    if (!id) return
+    const card = el.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`)
+    if (card && document.activeElement !== card) card.focus()
+    if (card) focusId.current = null
+  }, [view, el])
+
   const snapBack = useCallback(() => setNodes(layout(viewRef.current).nodes), [])
 
-  const onNodesChange = useCallback(
-    changes => {
-      setNodes(current => applyNodeChanges(changes, current))
-      if (dragging.current || !viewRef.current.editable) return
-      // A move that is not a drag is an arrow key: one place earlier or later.
-      const moved = changes.find(c => c.type === "position" && c.position && !c.dragging)
-      if (!moved) return
-      const home = layout(viewRef.current).nodes.find(n => n.id === moved.id)
-      if (!home) return
-      const dx = moved.position.x - home.position.x
-      if (dx !== 0) push("move", {id: moved.id, by: dx < 0 ? "-1" : "1"})
-      snapBack()
-    },
-    [push, snapBack],
-  )
+  const onNodesChange = useCallback(changes => setNodes(current => applyNodeChanges(changes, current)), [])
 
-  const onNodeDragStart = useCallback(() => {
-    dragging.current = true
-  }, [])
-
+  // The slot under the pointer when the card is dropped.
   const onNodeDragStop = useCallback(
-    (_event, _node, dragged) => {
-      dragging.current = false
-      const at = new Map(dragged.map(n => [n.id, n.position]))
-      const current = nodesRef.current.map(n => ({...n, position: at.get(n.id) || n.position}))
-      const order = orderByX(current)
+    (event, node) => {
       const before = (viewRef.current.stages || []).map(s => String(s.id))
+      const {x} = flow.screenToFlowPosition({x: event.clientX, y: event.clientY})
+      const order = orderByDrop(before, node.id, x)
       if (!sameOrder(order, before)) push("reorder", {ids: order})
       snapBack()
     },
-    [push, snapBack],
+    [flow, push, snapBack],
+  )
+
+  // The arrow keys on a card, before React Flow's handler, which moves it by pixels.
+  const onKeyDownCapture = useCallback(
+    event => {
+      const card = event.target.closest?.(".react-flow__node")
+      if (!card || !viewRef.current.editable || !event.key.startsWith("Arrow")) return
+      event.preventDefault()
+      event.stopPropagation()
+      const by = keyMove(event.key)
+      if (!by) return
+      focusId.current = card.dataset.id
+      push("move", {id: card.dataset.id, by})
+    },
+    [push],
   )
 
   const onSelectionChange = useCallback(
@@ -124,13 +131,15 @@ function Flow({initial, words, push, subscribe}) {
   const edges = layout(view).edges.map(edge => ({...edge, markerEnd: {type: MarkerType.ArrowClosed}}))
 
   return h(
+    "div",
+    {className: "h-full w-full", onKeyDownCapture},
+    h(
     ReactFlow,
     {
       nodes,
       edges,
       nodeTypes,
       onNodesChange,
-      onNodeDragStart,
       onNodeDragStop,
       onSelectionChange,
       nodesDraggable: view.editable === true,
@@ -141,9 +150,13 @@ function Flow({initial, words, push, subscribe}) {
       selectionKeyCode: null,
       multiSelectionKeyCode: null,
       zoomOnDoubleClick: false,
+      // The wheel scrolls the page; a pinch and the buttons zoom.
+      zoomOnScroll: false,
+      preventScrolling: false,
       minZoom: 0.3,
       maxZoom: 1.5,
       fitView: true,
+      fitViewOptions: FIT,
       colorMode: theme(),
       "aria-label": words.label,
       ariaLabelConfig: {
@@ -156,7 +169,8 @@ function Flow({initial, words, push, subscribe}) {
         "controls.fitView.ariaLabel": words.fit,
       },
     },
-    h(Controls, {showInteractive: false, position: "bottom-right"}),
+    h(Controls, {showInteractive: false, position: "bottom-left", orientation: "horizontal"}),
+    ),
   )
 }
 
@@ -170,7 +184,7 @@ const mount = (el, {view, words, push}) => {
     return () => listeners.delete(fn)
   }
   const root = createRoot(el)
-  root.render(h(ReactFlowProvider, null, h(Flow, {initial: view, words, push, subscribe})))
+  root.render(h(ReactFlowProvider, null, h(Flow, {initial: view, words, push, subscribe, el})))
   return {
     update: next => {
       latest = next
