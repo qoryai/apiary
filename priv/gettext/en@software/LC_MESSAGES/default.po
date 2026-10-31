@@ -15904,11 +15904,6 @@ msgstr "Repositories that set %{name}"
 msgid "Targets · Policy"
 msgstr "Repositories · Policy"
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Tell an instance admin: the address of %{source} is not https://, a host, an optional port and an optional path, so Qory Apiary does not read it."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Terminal"
@@ -16602,6 +16597,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "The instance admin can read the machine's log."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The instance admin corrects the address of %{source}: write it as https://, a host, an optional port and an optional path."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex

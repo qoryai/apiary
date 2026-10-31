@@ -2339,8 +2339,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "optional path."
 
       assert reads.({:unreadable, :address}) ==
-               "Tell an instance admin: the address of acme/harness is not https://, a host, " <>
-                 "an optional port and an optional path, so Qory Apiary does not read it."
+               "The instance admin corrects the address of acme/harness: write it as https://, " <>
+                 "a host, an optional port and an optional path."
 
       # A folder comes from an assignment alone.
       assert reads.({:unreadable, :path, "../x/qory-stack.yaml"}) ==

@@ -775,7 +775,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def read_words({:unreadable, :address}, source, _organisation),
     do:
       gettext(
-        "Tell an instance admin: the address of %{source} is not https://, a host, an optional port and an optional path, so Qory Apiary does not read it.",
+        "The instance admin corrects the address of %{source}: write it as https://, a host, an optional port and an optional path.",
         source: label(source)
       )
 
