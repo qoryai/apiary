@@ -506,6 +506,13 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "tells a reader whose level no longer lets them add versions who changes it", ctx do
+      assert ApiaryWeb.ArtifactLive.New.role_lines(ctx.scope) == [
+               "Your level no longer lets you add versions.",
+               "Owners of #{ctx.scope.organisation.name} change your level in Organisation settings › People if you need to."
+             ]
+    end
+
     test "says so when the store cannot keep the files", ctx do
       blocked = Path.join(ctx.tmp_dir, "a-file")
       File.write!(blocked, "")

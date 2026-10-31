@@ -438,11 +438,15 @@ defmodule ApiaryWeb.ArtifactLive.New do
     end
   end
 
-  defp role_lines(scope),
+  # role_lines/1 is the lines for a reader whose level no longer lets them add a version:
+  # only an owner changes a level (`member.change_level`).
+  @doc false
+  @spec role_lines(Apiary.Accounts.Scope.t()) :: [String.t()]
+  def role_lines(scope),
     do: [
       gettext("Your level no longer lets you add versions."),
       gettext(
-        "Owners and admins of %{org} change your level in Organisation settings › People if you need to.",
+        "Owners of %{org} change your level in Organisation settings › People if you need to.",
         org: scope.organisation.name
       )
     ]

@@ -13302,7 +13302,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Owners and admins of %{org} change your level in Organisation settings › People if you need to."
+msgid "Owners of %{org} change your level in Organisation settings › People if you need to."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
