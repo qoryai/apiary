@@ -835,8 +835,8 @@ defmodule ApiaryWeb.SetUpComponents do
   organisation overview), and opens its first set-up step, Name. A type with no card
   changes nothing. Where someone else created the organisation's first workspace a moment
   before, or the person may no longer create one, the organisation's overview opens
-  again; where the organisation may have no more, the page says why in an information
-  notice (`limit_line/1`), not an error.
+  again; where the organisation may have no more, the page shows the reason in an
+  information notice (`limit_line/1`), not an error.
   """
   @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
           Phoenix.LiveView.Socket.t()
@@ -856,7 +856,7 @@ defmodule ApiaryWeb.SetUpComponents do
             )
 
           {:error, :limit} ->
-            # Reaching the edition's limit is no error: the line says why, as information.
+            # Reaching the edition's limit is no error: the flash shows the reason, as information.
             Phoenix.LiveView.put_flash(socket, :info, limit_line(organisation))
 
           {:error, reason} when reason in [:exists, :forbidden, :not_found] ->

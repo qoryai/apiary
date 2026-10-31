@@ -71,7 +71,7 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another name. Qory Apiary keeps %{address} for its pages."
+msgid "Choose another name. Qory Apiary keeps the address %{address}."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -405,7 +405,7 @@ msgstr ""
 
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
-msgid "is kept by Qory Apiary for its pages"
+msgid "is kept by Qory Apiary"
 msgstr ""
 
 #: lib/apiary/variables.ex

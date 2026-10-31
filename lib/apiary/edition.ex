@@ -175,15 +175,16 @@ defmodule Apiary.Edition do
 
   @doc """
   The line the organisation's overview (`/:org`) shows, in place of the kind cards, to a
-  person who may not create `organisation`'s first workspace: who does. Translated when it
-  is asked.
+  person who may not create `organisation`'s first workspace: who does. Translated when the
+  callback runs.
   """
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 
   @doc """
   The line New workspace (`/:org/workspaces/new`) shows, in place of the kind cards, where
-  `organisation` has as many workspaces as `c:limits/0` allows, and the notice of a Choose
-  refused for that limit: why it may have no more. Translated when it is asked.
+  `organisation` has as many workspaces as `c:limits/0` allows, and the notice shown when a
+  Choose returns that limit's error: why it may have no more. Translated when the callback
+  runs.
   """
   @callback workspace_limit_line(%Organisation{}) :: String.t()
 

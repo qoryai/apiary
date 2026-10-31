@@ -674,8 +674,8 @@ defmodule Apiary.OrganisationsTest do
             # Marked for deletion, it is not said to be.
             {marked.name <> "!",
              "Choose another name. Another organisation has the address /#{marked.slug}."},
-            {"Settings", "Choose another name. Qory Apiary keeps /settings for its pages."},
-            {"Users", "Choose another name. Qory Apiary keeps /users for its pages."},
+            {"Settings", "Choose another name. Qory Apiary keeps the address /settings."},
+            {"Users", "Choose another name. Qory Apiary keeps the address /users."},
             # No letter or digit from A to Z or 0 to 9: no address to give it.
             {"株式会社", @no_letters},
             {"Ωμέγα", @no_letters}
@@ -784,7 +784,7 @@ defmodule Apiary.OrganisationsTest do
             {"OLD",
              "Choose another name. A workspace marked for deletion still has the address /#{org}/old."},
             {"Audit log",
-             "Choose another name. Qory Apiary keeps /#{org}/audit-log for its pages."},
+             "Choose another name. Qory Apiary keeps the address /#{org}/audit-log."},
             {"株式会社", @no_letters}
           ] do
         assert {:error, changeset} = Organisations.update_workspace(scope, %{"name" => name})
@@ -1050,7 +1050,7 @@ defmodule Apiary.OrganisationsTest do
       assert Organisations.suggest_workspace_slug(scope, "Data") == "data"
     end
 
-    test "a name whose address Qory Apiary keeps for its pages is refused, never numbered" do
+    test "a name whose address Qory Apiary keeps is refused, never numbered" do
       %{scope: scope} = sign_up_fixture()
       scope = mark_only_workspace(scope)
       org = scope.organisation.slug
@@ -1061,7 +1061,7 @@ defmodule Apiary.OrganisationsTest do
         assert {:error, changeset} =
                  Organisations.create_workspace(scope, %{"domain" => "software", "name" => name})
 
-        assert %{name: ["Choose another name. Qory Apiary keeps /#{org}/#{slug} for its pages."]} ==
+        assert %{name: ["Choose another name. Qory Apiary keeps the address /#{org}/#{slug}."]} ==
                  errors_on(changeset)
       end
 

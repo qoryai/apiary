@@ -5,8 +5,8 @@ defmodule ApiaryWeb.NotFound do
   *forbidden*: a slug does not tell whether it exists.
 
   With `page`, a page under an organisation the caller reaches, the `404` is that page
-  inside the app's layout (`ApiaryWeb.DeadEnd`), such as `:new_workspace` for New workspace
-  refused to a person who may not create one.
+  inside the app's layout (`ApiaryWeb.DeadEnd`), such as `:new_workspace`, which New
+  workspace raises for a person who may not create one.
   """
   defexception message: "not found", plug_status: 404, page: nil
 end

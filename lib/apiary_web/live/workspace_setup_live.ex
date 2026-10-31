@@ -278,8 +278,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       view: :cards,
       flow: nil,
       step: nil,
-      # At the limit the page asks no question: its title is New workspace, and the
-      # line says why the organisation may have no more.
+      # At the limit the page shows no question: its title is New workspace, and the
+      # line shows why the organisation may have no more.
       page_title:
         if(at_limit,
           do: gettext("New workspace"),

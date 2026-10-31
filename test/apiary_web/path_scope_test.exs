@@ -44,12 +44,13 @@ defmodule ApiaryWeb.PathScopeTest do
   defp not_found?(conn, path), do: conn |> get(path) |> response(404) == "Not Found"
 
   # A page under an organisation the user reaches whose workspace slug matches none they
-  # reach: a 404 inside the app's layout (`ApiaryWeb.DeadEnd`); a path that is not a page,
-  # such as a run's log, gets the plain 404.
-  defp dead_end?(conn, path, page) do
-    body = conn |> get(path) |> response(404)
+  # reach: a 404 inside the app's layout (`ApiaryWeb.DeadEnd`). The plain 404 where the
+  # same page of the user's workspace is one too: a path that is not a page, such as a run's
+  # log with no run, and a page whose feature is off (`ApiaryWeb.Features.Routes`).
+  defp dead_end?(conn, scope, page) do
+    body = conn |> get("/#{scope.organisation.slug}/no-such-workspace#{page}") |> response(404)
 
-    if String.ends_with?(page, "/log"),
+    if get(conn, workspace_path(scope, page)).status == 404,
       do: body == "Not Found",
       else: body =~ ~s(id="dead-end-line")
   end
@@ -74,7 +75,7 @@ defmodule ApiaryWeb.PathScopeTest do
   } do
     for page <- @pages do
       assert not_found?(conn, "/no-such-organisation/main#{page}"), page
-      assert dead_end?(conn, "/#{scope.organisation.slug}/no-such-workspace#{page}", page), page
+      assert dead_end?(conn, scope, page), page
     end
   end
 
