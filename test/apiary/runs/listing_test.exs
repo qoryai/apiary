@@ -356,6 +356,16 @@ defmodule Apiary.Runs.ListingTest do
       assert f.page == 1
     end
 
+    test "machine: keeps a machine's or a pool's runs, and node:, its older word, still does" do
+      {f, []} = query("machine:build-01")
+      assert f.node == "build-01"
+      assert Filters.to_params(f) == %{"node" => "build-01"}
+
+      {f, []} = query("node:spot-runners")
+      assert f.node == "spot-runners"
+      assert [%{key: :node, value: "spot-runners"}] = Filters.tokens(f)
+    end
+
     test "a qualifier replaces its filter and keeps the others; the free text is what is typed now" do
       {f, []} = query("state:running", %{"state" => "failed", "host" => "a", "q" => "old"})
       assert f.states == ["running"]

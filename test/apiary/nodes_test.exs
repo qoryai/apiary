@@ -126,7 +126,9 @@ defmodule Apiary.NodesTest do
       node = node_fixture(scope, name: "build-01")
 
       assert {:error, changeset} = Nodes.create_node(scope, %{kind: "pool", name: "build-01"})
-      assert %{name: ["is already the name of a node in this workspace"]} = errors(changeset)
+
+      assert %{name: ["is already the name of a machine, pool or gateway in this workspace"]} =
+               errors(changeset)
 
       # Another workspace of the organisation may have its own.
       other = %{scope | workspace: workspace_fixture(scope.organisation)}

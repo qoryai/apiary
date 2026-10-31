@@ -5,12 +5,13 @@ defmodule ApiaryWeb.RunLive.Index do
   long, and its denials. It is narrowed as every list is (docs/ui.md, Lists): the views as
   tabs (every run, alive, ended badly, with denials, each counted under the other filters),
   one query field whose filters show as tokens, one Filter menu (target, state,
-  runtime, host, node, when it started, denials), and Sort (newest, oldest, longest,
-  most denials). From 1280 px a rail beside the list holds the targets with their runs,
+  runtime, host, machine or pool, when it started, denials), and Sort (newest, oldest,
+  longest, most denials). From 1280 px a rail beside the list holds the targets with their runs,
   pinned first; choosing one is the target filter. The list has no time range until the
   reader sets one. Pages of 25, 50 or 100, "1–50 of 3,137", and Jump to date. The query's
-  `node:` (a node's public id, or the name of one in use) keeps a node's runs, which a
-  node's page links to; where the workspace has nodes, a Node column joins from 1300 px.
+  `machine:` (a machine's or a pool's public id, or the name of one in use; `node:`, its
+  older word, still reads) keeps its runs, which its page links to; where the workspace
+  has machines or pools, a Machine or pool column joins from 1300 px.
 
   Every filter, the order, the page size and the page are query parameters, read through
   `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten. What the
@@ -199,7 +200,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 key={name}
                 label={label}
                 icon={icon}
-                qualifier={name}
+                qualifier={qualifier(String.to_existing_atom(name))}
                 value={shown(text_param(@filters, name))}
               >
                 <.filter_options
@@ -465,42 +466,42 @@ defmodule ApiaryWeb.RunLive.Index do
 
         <div :if={!@load_error && first_run?(@listing, @filters)} class="grid gap-4">
           <.empty_state :if={!@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
-            {gettext(
-              "A run appears here when a machine connected to a node of this workspace starts one."
-            )}
+            {gettext("A run appears here when a machine or pool of this workspace starts one.")}
             <%= if @nodes_shown do %>
-              {gettext("Add a node, connect a machine to it, and start a run.")}
-              <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
+              {gettext("Add a machine, connect it, and start a run.")}
+              <p :if={!@may_add_node}>{gettext("An owner or admin adds machines.")}</p>
             <% end %>
             <:actions :if={@may_add_node or @may_read_nodes}>
               <.button
                 :if={@may_add_node}
                 id="runs-new-node"
                 variant="primary"
-                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes/new"}
+                navigate={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/machines/new"
+                }
               >
-                {gettext("New node")}
+                {gettext("New machine")}
               </.button>
               <.button
                 :if={!@may_add_node and @may_read_nodes}
                 id="runs-go-to-nodes"
-                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/machines"}
               >
-                {gettext("Go to nodes")}
+                {gettext("Go to Machines")}
               </.button>
             </:actions>
           </.empty_state>
           <.empty_state :if={@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
             <%= if @nodes_shown do %>
-              {gettext("A machine posts once it is connected to a node.")}
+              {gettext("A machine posts once it is connected.")}
             <% end %>
             <:actions :if={@may_read_nodes}>
               <.button
                 id="runs-go-to-nodes"
-                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/machines"}
               >
-                {gettext("Go to nodes")}
+                {gettext("Go to Machines")}
               </.button>
             </:actions>
           </.empty_state>
@@ -558,7 +559,7 @@ defmodule ApiaryWeb.RunLive.Index do
             node_name: if(node, do: ApiaryWeb.NodeComponents.in_text(node), else: value),
             page:
               node && Access.can?(scope, :"node.read", node) &&
-                ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}",
+                ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node.public_id}",
             policy: nil,
             shared_alone: false,
             all: page_path(scope, Filters.put(filters, node: nil))
@@ -1433,6 +1434,9 @@ defmodule ApiaryWeb.RunLive.Index do
     do: scope |> tokens(filters, narrowing) |> List.last()
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
+  # The filter of a machine or a pool is typed `machine:`; `node:`, its older word, still
+  # reads (`Apiary.Runs.Filters`).
+  defp qualifier(:node), do: "machine"
   defp qualifier(key), do: Atom.to_string(key)
 
   # The Target section's options in the one notation of a target: its system before its
@@ -1454,7 +1458,7 @@ defmodule ApiaryWeb.RunLive.Index do
     [
       {"runtime", gettext("Runtime"), "hero-cpu-chip"},
       {"host", gettext("Host"), "hero-server-stack"},
-      {"node", gettext("Node"), "hero-server"}
+      {"node", gettext("Machine or pool"), "hero-server"}
     ]
   end
 

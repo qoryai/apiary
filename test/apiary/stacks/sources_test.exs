@@ -17,6 +17,7 @@ defmodule Apiary.Stacks.SourcesTest do
   alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Sources, Stack}
+  alias Apiary.PublicGitServer
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -72,10 +73,23 @@ defmodule Apiary.Stacks.SourcesTest do
     instance_scope
   end
 
-  # The public reads among `calls`, in order: `{resource_ref, path, at}`.
-  defp public_reads(calls) do
-    for {"read-public", call} <- calls,
-        do: {call["resource_ref"], call["path"], call["at"]}
+  # A public repository on its host at `git` (`Apiary.PublicGitServer`) with `files`, a
+  # map of path to content, and one more file whose name no other test's has, so no
+  # commit of another test is in the cache: its commit.
+  defp public!(git, files, opts \\ []) do
+    unique = %{".test-#{System.unique_integer([:positive])}" => ""}
+    repo = PublicGitServer.repository!(Map.merge(files, unique), opts)
+    PublicGitServer.serve(%{git => repo.dir})
+    repo.commit
+  end
+
+  # The requests to public hosts so far, `{method, host, path}`.
+  defp git_requests do
+    receive do
+      {:git_request, method, host, path, _headers} -> [{method, host, path} | git_requests()]
+    after
+      0 -> []
+    end
   end
 
   defp assignment(organisation_id, source, by) do
@@ -255,9 +269,17 @@ defmodule Apiary.Stacks.SourcesTest do
                  "acme/harness"
                ]
 
-        assert Sources.unplaced(ctx.scope) == [
-                 %{id: other.adapter.public_id, adapter: title, cause: cause}
-               ]
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert Sources.unplaced(ctx.scope) == [
+                     %{id: other.adapter.public_id, adapter: title, cause: cause}
+                   ]
+          end)
+
+        # The page shows only that support is needed; the cause is in the log.
+        assert log =~
+                 "an adapter's call address is not called " <>
+                   "adapter=#{other.adapter.public_id} cause=#{cause}"
       end
 
       # An instance whose public address has no host calls no adapter: each adapter with
@@ -364,21 +386,19 @@ defmodule Apiary.Stacks.SourcesTest do
              }
     end
 
-    test "a public one is read at its ref as public, with no grant", ctx do
-      covered = Map.put(ctx.covered, ctx.adapter.adapter.id, %{@public => {:public, "P_pub"}})
-      files = %{{"P_pub", "qory-stack.yaml"} => @stack <> @workflows}
-      serve_calls([ctx.adapter], covered: covered, files: files)
+    test "a public one is read at its ref from its host, with no grant", ctx do
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
+      public!(@public, %{"qory-stack.yaml" => @stack <> @workflows}, tags: ["v1"])
       assignment(ctx.scope.organisation.id, %{"git" => @public, "ref" => "v1"}, ctx.scope)
       [source] = Sources.assigned(ctx.scope)
 
       assert {:ok, [%{base: %{"git" => @public, "ref" => "v1"}, workflows: ["fix", "triage"]}]} =
                Sources.read(ctx.scope, source)
 
-      calls = calls()
-      assert [] = for({"read", _call} <- calls, do: :read)
-      assert [_ | _] = public = for({"read-public", call} <- calls, do: call)
-      assert Enum.all?(public, &(&1["resource_ref"] == "P_pub" and &1["at"] in ["v1", "c-P_pub"]))
-      refute Enum.any?(public, &Map.has_key?(&1, "grant_ref"))
+      assert [] = for({"read", _call} <- calls(), do: :read)
+
+      assert [{"GET", "code.example.com", "/example-org/public-harness/info/refs"} | _] =
+               git_requests()
     end
 
     test "one is found past an adapter whose calls fail", ctx do
@@ -423,18 +443,17 @@ defmodule Apiary.Stacks.SourcesTest do
       end
     end
 
-    test "a public one is read at HEAD as public, and a run's walk reads a choice that extends it",
+    test "a public one is read at HEAD from its host, and a run's walk reads a choice that extends it",
          ctx do
-      covered = %{ctx.adapter.adapter.id => %{@public => {:public, "P_pub"}}}
-      files = %{{"P_pub", "qory-stack.yaml"} => @stack <> @workflows}
-      serve_calls([ctx.adapter], covered: covered, files: files)
+      serve_calls([ctx.adapter], covered: %{})
+      commit = public!(@public, %{"qory-stack.yaml" => @stack <> @workflows})
       {:ok, source} = Sources.address(@public)
 
       assert {:ok, [%{name: nil, base: base, workflows: ["fix", "triage"]}]} =
                Sources.read(ctx.scope, source)
 
       assert base == %{"git" => @public, "ref" => "HEAD"}
-      assert [{"P_pub", "harness.yaml", "HEAD"} | _] = public_reads(calls())
+      assert [{"GET", "code.example.com", _path} | _] = git_requests()
 
       assert {:ok, stored} = Sources.save(ctx.scope, base, "triage")
 
@@ -452,44 +471,68 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert {:ok, walked} = Walk.run(input)
       assert walked.harness_links == []
-      assert walked.pins == [%{"git" => @public, "ref" => "HEAD", "at" => "c-P_pub"}]
+      assert walked.pins == [%{"git" => @public, "ref" => "HEAD", "at" => commit}]
     end
 
-    test "a source a grant covers that the rule does not allow is read as public, at its public_ref",
+    test "a source a grant covers that the rule does not allow is read from its host, when public",
          ctx do
       instance = call_adapter_fixture()
       instance_scope = instance_admin_scope()
       {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
       live_grant_fixture(instance_scope.organisation.id, instance.adapter, connection, "G_i")
 
-      covered = %{instance.adapter.id => %{@team => {"G_i", "R_team", {:public, "P_team"}}}}
-      files = %{{"P_team", "qory-stack.yaml"} => @stack <> "workflows:\n  review: {}\n"}
-      serve_calls([ctx.adapter, instance], covered: covered, files: files)
+      covered = %{instance.adapter.id => %{@team => {"G_i", "R_team"}}}
+      serve_calls([ctx.adapter, instance], covered: covered, files: @files)
+      public!(@team, %{"qory-stack.yaml" => @stack <> "workflows:\n  review: {}\n"})
       {:ok, source} = Sources.address(@team)
 
       assert {:ok, [%{workflows: ["review"]}]} = Sources.read(ctx.scope, source)
-
-      calls = calls()
-      assert [] = for({"read", _call} <- calls, do: :read)
-      assert [_ | _] = reads = public_reads(calls)
-      assert Enum.all?(reads, fn {resource_ref, _path, _at} -> resource_ref == "P_team" end)
+      assert [] = for({"read", _call} <- calls(), do: :read)
     end
 
-    test "a link at a later adapter comes before a public result at an earlier one", ctx do
-      first = call_adapter_fixture(%{name: "a-public-#{System.unique_integer([:positive])}"})
-      assert first.adapter.name < ctx.adapter.adapter.name
-
-      covered =
-        Map.put(ctx.covered, first.adapter.id, %{@harness => {:public, "P_harness"}})
-
-      serve_calls([ctx.adapter, first], covered: covered, files: @files)
+    test "a linked source is read through its link, never from its host", ctx do
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
+      public!(@harness, %{"qory-stack.yaml" => @stack <> "workflows:\n  other: {}\n"})
       {:ok, source} = Sources.address(@harness)
 
       assert {:ok, [%{name: "triage"}]} = Sources.read(ctx.scope, source)
+      assert [_ | _] = for({"read", %{"grant_ref" => "G_acme"}} <- calls(), do: :read)
+      assert git_requests() == []
+    end
 
-      calls = calls()
-      assert public_reads(calls) == []
-      assert [_ | _] = for({"read", %{"grant_ref" => "G_acme"}} <- calls, do: :read)
+    test "a public read that fails is a fetch failure, with its code and the host's rule",
+         ctx do
+      serve_calls([ctx.adapter], covered: %{})
+
+      for {git, code, seconds} <- [
+            {"https://private.example.org/acme/harness", :host_not_allowed, nil},
+            {"https://nowhere.example.org/acme/harness", :source_unreachable, 10}
+          ] do
+        {:ok, source} = Sources.address(git)
+        host = URI.parse(git).host
+        values = %{"host" => host, "port" => 443}
+        values = if seconds, do: Map.put(values, "seconds", seconds), else: values
+
+        assert Sources.read(ctx.scope, source) ==
+                 {:error, {:fetch, code, %{"rule" => "fetch", "values" => values}}}
+      end
+
+      PublicGitServer.serve(%{},
+        answer: fn conn -> Plug.Conn.send_resp(conn, 200, "<html></html>") end
+      )
+
+      {:ok, source} = Sources.address(@public)
+
+      assert {:error, {:fetch, :fetch_failed, %{"values" => %{"host" => "code.example.com"}}}} =
+               Sources.read(ctx.scope, source)
+
+      PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 429, "") end)
+      {:ok, source} = Sources.address(@public <> "/other")
+
+      assert Sources.read(ctx.scope, source) ==
+               {:error,
+                {:fetch, :rate_limited,
+                 %{"rule" => "fetch", "values" => %{"host" => "code.example.com", "port" => 443}}}}
     end
 
     test "a person reads sources at most 10 times a minute", ctx do

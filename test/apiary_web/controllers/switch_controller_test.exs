@@ -102,21 +102,21 @@ defmodule ApiaryWeb.SwitchControllerTest do
     {"targets", "/targets", "/targets"},
     {"targets", "/targets/tg_0123456789abcdef", "/targets"},
     {"targets", "/targets/tg_0123456789abcdef/policy/history", "/targets"},
-    {"nodes", "/nodes", "/nodes"},
-    {"nodes", "/nodes/new", "/nodes/new"},
-    {"nodes", "/nodes/new-pool", "/nodes/new-pool"},
-    {"nodes", "/nodes/nd_1", "/nodes"},
-    {"nodes", "/nodes/nd_1/instances/c-1/clear", "/nodes"},
-    {"nodes", "/nodes/nd_1/runs/run-1/clear-instance", "/nodes"},
-    {"nodes", "/nodes/nd_1/settings", "/nodes"},
-    {"nodes", "/nodes/nd_1/settings/delete", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key/generate", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key/new-code", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key/keys/ak_1/revoke", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key/keys/ak_1/forager-file", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key/keys/ak_1/generated", "/nodes"},
-    {"nodes", "/nodes/nd_1/access-key/codes/c-1/revoke", "/nodes"},
+    {"nodes", "/machines", "/machines"},
+    {"nodes", "/machines/new", "/machines/new"},
+    {"nodes", "/machines/new-pool", "/machines/new-pool"},
+    {"nodes", "/machines/nd_1", "/machines"},
+    {"nodes", "/machines/nd_1/instances/c-1/clear", "/machines"},
+    {"nodes", "/machines/nd_1/runs/run-1/clear-instance", "/machines"},
+    {"nodes", "/machines/nd_1/settings", "/machines"},
+    {"nodes", "/machines/nd_1/settings/delete", "/machines"},
+    {"nodes", "/machines/nd_1/access-key", "/machines"},
+    {"nodes", "/machines/nd_1/access-key/generate", "/machines"},
+    {"nodes", "/machines/nd_1/access-key/new-code", "/machines"},
+    {"nodes", "/machines/nd_1/access-key/keys/ak_1/revoke", "/machines"},
+    {"nodes", "/machines/nd_1/access-key/keys/ak_1/forager-file", "/machines"},
+    {"nodes", "/machines/nd_1/access-key/keys/ak_1/generated", "/machines"},
+    {"nodes", "/machines/nd_1/access-key/codes/c-1/revoke", "/machines"},
     {"policy", "/policy", "/policy"},
     {"policy", "/policy/targets", "/policy/targets"},
     {"policy", "/policy/history", "/policy/history"},
@@ -212,12 +212,15 @@ defmodule ApiaryWeb.SwitchControllerTest do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
 
       :ok = Apiary.EditionStubs.HidesNamed.put([])
-      assert switch(conn, place, "runs", "/nodes/new") == workspace_path(place, "/nodes/new")
-      assert switch(conn, place, "nodes", "/nodes/nd_1") == workspace_path(place, "/nodes")
+
+      assert switch(conn, place, "runs", "/machines/new") ==
+               workspace_path(place, "/machines/new")
+
+      assert switch(conn, place, "nodes", "/machines/nd_1") == workspace_path(place, "/machines")
 
       :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
 
-      for page <- ["/nodes", "/nodes/new", "/nodes/nd_1", "/nodes/nd_1/access-key"] do
+      for page <- ["/machines", "/machines/new", "/machines/nd_1", "/machines/nd_1/access-key"] do
         assert switch(conn, place, "runs", page) == workspace_path(place, "/runs"), page
         assert switch(conn, place, "nodes", page) == workspace_path(place), page
       end
@@ -366,13 +369,13 @@ defmodule ApiaryWeb.SwitchControllerTest do
                at.(alpha, "/runs")
 
       # A page of the workspace used last, in a session of its own.
-      {:ok, _view, _html} = live(conn, at.(beta, "/nodes"))
+      {:ok, _view, _html} = live(conn, at.(beta, "/machines"))
 
       fresh = log_in_user(build_conn(), user)
       assert organisation_switch(fresh, organisation, "runs", "/runs") == at.(beta, "/runs")
 
-      assert organisation_switch(fresh, organisation, "nodes", "/nodes/nd_1/settings") ==
-               at.(beta, "/nodes")
+      assert organisation_switch(fresh, organisation, "nodes", "/machines/nd_1/settings") ==
+               at.(beta, "/machines")
 
       # The organisation's own page opens the same workspace.
       conn = get(fresh, ~p"/#{organisation}")

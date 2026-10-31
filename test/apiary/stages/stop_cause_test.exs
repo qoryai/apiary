@@ -21,6 +21,7 @@ defmodule Apiary.Stages.StopCauseTest do
       id: Ecto.UUID.generate(),
       workspace_id: workspace.id,
       organisation_id: organisation.id,
+      number: 12,
       target_system: "git.example.com",
       target_path: "acme/web-shop"
     }
@@ -29,7 +30,18 @@ defmodule Apiary.Stages.StopCauseTest do
   end
 
   defp text(cause, work_item, fields \\ [], context \\ %{}) do
-    run = struct(%DispatchRun{id: Ecto.UUID.generate(), state: :ended, end_cause: cause}, fields)
+    run =
+      struct(
+        %DispatchRun{
+          id: Ecto.UUID.generate(),
+          workspace_id: work_item.workspace_id,
+          organisation_id: work_item.organisation_id,
+          state: :ended,
+          end_cause: cause
+        },
+        fields
+      )
+
     StopCause.text(run, work_item, context)
   end
 
@@ -37,7 +49,7 @@ defmodule Apiary.Stages.StopCauseTest do
        %{work_item: work_item, ws: ws} do
     assert text(:key_gone, work_item) ==
              "The run did not start, because the chosen model provider no longer has the chosen key.\n" <>
-               "Owners and admins of #{ws} choose another key in Workspace settings › Model."
+               "Owners and admins of #{ws} choose another key on the set-up step Model."
 
     assert text(:provider_gone, work_item) ==
              "The run did not start, because the model provider of its model choice was removed, or no longer applies to #{ws}.\n" <>
@@ -53,7 +65,7 @@ defmodule Apiary.Stages.StopCauseTest do
   test "a missing model key", %{work_item: work_item, ws: ws} do
     assert text(:run_refused, work_item, end_detail: "model_key_missing") ==
              "The gateway did not start the run, because it had no model key for the run.\n" <>
-               "Owners and admins of #{ws} set a model key in Workspace settings › Model."
+               "Owners and admins of #{ws} add a model key on the set-up step Model."
   end
 
   test "a ticket that is gone, and an input that breaks its rule", %{work_item: work_item} do
@@ -77,13 +89,28 @@ defmodule Apiary.Stages.StopCauseTest do
     work_item = %{work_item | target_system: "Not_A_Host"}
 
     assert text(:variables_invalid, work_item) ==
-             "The run did not start, because its variable QORY_RUN_SYSTEM, the system of target acme/web-shop, is not a host name of a-z, 0-9, dots and dashes.\n" <>
-               "Owners and admins of #{org} check the integration that brings in the work item in Organisation settings › Integrations."
+             "The run did not start, because its variable QORY_RUN_SYSTEM, the system Not_A_Host of target acme/web-shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
+               "Owners and admins of #{org} check the integration that brings in target acme/web-shop in Organisation settings › Integrations."
 
     work_item = %{work_item | target_system: "git.example.com", target_path: "-acme/web-shop"}
 
     assert text(:variables_invalid, work_item) =~
              "its variable QORY_RUN_REPOSITORIES breaks its rule"
+
+    # No variable breaks its rule when the text is written: no variable is named.
+    work_item = %{work_item | target_path: "acme/web-shop"}
+
+    assert text(:variables_invalid, work_item) ==
+             "The run did not start, because one of its variables breaks its rule.\n" <>
+               "Contact support with work item #12."
+  end
+
+  test "a missing or removed model key links the set-up step Model", %{work_item: work_item} do
+    run = %DispatchRun{state: :ended, end_cause: :run_refused, end_detail: "model_key_missing"}
+    assert StopCause.set_up_step(run) == :model
+    assert StopCause.set_up_step(%DispatchRun{end_cause: :key_gone}) == :model
+    assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
+    assert text(:key_gone, work_item) =~ "on the set-up step Model."
   end
 
   test "a gateway without stored secrets names the gateway and who adds a key, by its level",
@@ -91,9 +118,12 @@ defmodule Apiary.Stages.StopCauseTest do
     keys = [%{allow_secrets: false}]
     instance = %Node{kind: :gateway, name: "edge-1"}
 
-    assert text(:secrets_not_allowed, work_item, [], %{gateway: instance, keys: keys}) ==
-             "The run did not start, because gateway edge-1 is not allowed to receive the run's secrets.\n" <>
-               "The instance admin adds an access key for edge-1 with stored secrets allowed, on Instance settings › Nodes › edge-1 › Access key."
+    # The instance's gateway is not named: the person sees neither it nor its keys.
+    for keys <- [keys, [%{allow_secrets: true}]] do
+      assert text(:secrets_not_allowed, work_item, [], %{gateway: instance, keys: keys}) ==
+               "The run did not start, because its gateway is not allowed to receive the run's secrets.\n" <>
+                 "Contact support with work item #12."
+    end
 
     organisation = %{instance | organisation_id: work_item.organisation_id}
 
@@ -103,28 +133,35 @@ defmodule Apiary.Stages.StopCauseTest do
     workspace = %{organisation | workspace_id: work_item.workspace_id}
 
     assert text(:secrets_not_allowed, work_item, [], %{gateway: workspace, keys: keys}) =~
-             "\nOwners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Nodes › edge-1 › Access key."
+             "\nOwners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Machines › edge-1 › Access key."
 
     assert text(:secrets_not_allowed, work_item, [], %{
-             gateway: instance,
+             gateway: organisation,
              keys: [%{allow_secrets: true}]
            }) =~ "may not be sent to gateway edge-1"
   end
 
-  test "an integration that no longer reaches the target", %{work_item: work_item, org: org} do
+  test "a target no collection of the workspace reaches any more", %{
+    work_item: work_item,
+    org: org
+  } do
     assert text(:target_access_gone, work_item) ==
-             "The run did not start, because the integration that brings in the work item no longer reaches target acme/web-shop.\n" <>
-               "Owners and admins of #{org} check the integration that brings in the work item in Organisation settings › Integrations."
+             "The run did not start, because no integration of #{org} reaches target acme/web-shop.\n" <>
+               "Owners and admins of #{org} connect one in Organisation settings › Integrations."
   end
 
   test "a harness with no walk row, and an unknown cause, show the code with a description",
        %{work_item: work_item} do
     assert text(:harness_unresolved, work_item) =~
-             ~r/\AQory Apiary could not read the harness of .+ \(a failure Qory Apiary has no description for\)\.\nThe instance admin finds the details in the run's log\.\z/
+             ~r/\AQory Apiary could not read the harness of .+ \(a failure Qory Apiary has no description for\)\.\nContact support with work item #12\.\z/
 
     assert text(:collection_ended, work_item) ==
              "The run ended before it started. Qory Apiary has no description for its end cause (collection_ended).\n" <>
-               "The instance admin finds the details in the run's log."
+               "Contact support with work item #12."
+
+    assert text(:run_refused, work_item, end_detail: "machine_busy") ==
+             "The gateway did not start the run. Qory Apiary has no description for its refusal (machine_busy).\n" <>
+               "Contact support with work item #12."
   end
 
   describe "a harness walk that failed" do
@@ -157,17 +194,29 @@ defmodule Apiary.Stages.StopCauseTest do
 
       {run, _work_item} = walk_failed(scope, "invalid", "https://code.example.com/team/stacks")
       assert StopCause.set_up_step(run) == nil
-      assert StopCause.set_up_step(%DispatchRun{end_cause: :key_gone}) == nil
+      assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
     end
 
-    test "with no integration that reaches it, in the Workflow page's words" do
+    test "with no source shown, the line starts with a capital and the fix does not" do
       %{scope: scope} = sign_up_fixture()
       org = scope.organisation.name
-      {run, work_item} = walk_failed(scope, "not_covered", "https://code.example.com/team/stacks")
+      ws = scope.workspace.name
+      {run, work_item} = walk_failed(scope, "not_covered", nil)
 
       assert StopCause.text(run, work_item) ==
-               "No integration of #{org} reaches https://code.example.com/team/stacks. Qory Apiary reads a harness only through an integration.\n" <>
-                 "Owners and admins of #{org} connect one in Organisation settings › Integrations."
+               "The harness of #{ws} is not public, or does not exist, and no connection of #{org} reaches it.\n" <>
+                 "Owners and admins of #{org} connect an integration that covers the harness of #{ws} in Organisation settings › Integrations."
+    end
+
+    test "with a source that is not public and no connection that reaches it" do
+      %{scope: scope} = sign_up_fixture()
+      org = scope.organisation.name
+      source = "https://code.example.com/team/stacks"
+      {run, work_item} = walk_failed(scope, "not_covered", source)
+
+      assert StopCause.text(run, work_item) ==
+               "#{source} is not public, or does not exist, and no connection of #{org} reaches it.\n" <>
+                 "Owners and admins of #{org} connect an integration that covers #{source} in Organisation settings › Integrations."
     end
   end
 end

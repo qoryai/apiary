@@ -145,7 +145,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
       NodeComponents.managed_by(
         scope,
         :"node.create",
-        gettext("Only owners and admins add nodes.")
+        gettext("Only owners and admins add gateways.")
       )
 
   defp assign_form(socket, changeset), do: assign(socket, :form, to_form(changeset, as: :node))
@@ -176,7 +176,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
       >
         <:description>
           {gettext(
-            "The address that runs go through when their node or node pool in a workspace of %{organisation} is set to this gateway.",
+            "The address that runs go through when their machine or pool in a workspace of %{organisation} is set to this gateway.",
             organisation: @current_scope.organisation.name
           )}
         </:description>

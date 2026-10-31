@@ -305,7 +305,7 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 **Allow** and **Deny** on a tool invocation's row act on its host and path, like on any
 row: the rules decide what reaches a tool, and the tool decides what the request does.
 
-## Export for a node without a server
+## Export for a machine without a server
 
 A machine that reports to no server can be given the same policy as files. **Export**, on
 the policy page and on a version's page, `/:org/:workspace/policy/versions/:n/export` and

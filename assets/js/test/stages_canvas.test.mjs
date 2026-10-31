@@ -224,3 +224,16 @@ test("a card that takes the focus is panned into view as little as it can", () =
 test("each card has a ring on keyboard focus", () => {
   for (const node of stages(view)) assert.match(node.className, /focus-visible:!outline-primary/)
 })
+
+test("a canvas whose cards open nothing draws cards a click does not select", () => {
+  assert.ok(stages(view).every(node => node.selectable === true))
+  const preview = {...view, editable: false, selectable: false}
+  assert.ok(stages(preview).every(node => node.selectable === false))
+  // Tab stops on no card of the preview (React Flow gives a node that is not focusable no
+  // tabindex), and on each card of the Stages page; each card stays a labelled group.
+  assert.ok(stages(preview).every(node => node.focusable === false))
+  assert.ok(stages(view).every(node => node.focusable === true))
+  assert.ok([...stages(view), ...stages(preview)].every(n => n.ariaRole === "group" && n.ariaLabel))
+  // View only: no "+" either.
+  assert.equal(layout(preview).nodes.filter(node => node.type === "add").length, 0)
+})

@@ -13,8 +13,9 @@ defmodule Apiary.Harnesses.WalkJob do
   # writes the result on the row, the row held `FOR UPDATE`. A walk that failed ends the
   # run before it starts, `harness_unresolved` (`fail/3`); a claim takes no run whose walk
   # has not resolved (`Apiary.Dispatches.waiting_query/1`). A walk that timed out or
-  # reached no adapter is tried again after 10 seconds, then after 30; after the third
-  # attempt it fails `adapter_unavailable`. A refusal is not tried again. A job that
+  # reached no adapter, or no public repository's host, is tried again after 10 seconds,
+  # then after 30; after the third attempt it fails `adapter_unavailable`, or
+  # `source_unreachable` for a host. A refusal is not tried again. A job that
   # raises is tried again, and on its last attempt it fails `walk_error` before it raises,
   # so its run ends and does not wait for ever. Run twice, the second finds the row no
   # longer pending and does nothing.
@@ -40,6 +41,8 @@ defmodule Apiary.Harnesses.WalkJob do
   alias Apiary.Harnesses.{Builtin, RunHarness, Walk}
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
+
+  require Logger
 
   @doc false
   # queue/2 writes the row of `run`, a run of the queue just inserted, and its job where
@@ -100,7 +103,7 @@ defmodule Apiary.Harnesses.WalkJob do
           call_failure: nil
         }
 
-        fail(id, failure, job.attempt)
+        fail(id, Map.put(failure, :error, inspect(exception.__struct__)), job.attempt)
       end
 
       reraise exception, __STACKTRACE__
@@ -241,6 +244,15 @@ defmodule Apiary.Harnesses.WalkJob do
   end
 
   defp end_run(%DispatchRun{state: :waiting} = run, failure, now) do
+    # One line in the instance's log, to which a text of why the run stopped points the
+    # instance admin for a failure it has no description of (`Apiary.Stages.StopCause`).
+    Logger.warning(
+      "a harness walk failed, so its run ended before it started " <>
+        "end_cause=harness_unresolved failure=#{failure.failure} run_id=#{run.run_id} " <>
+        "work_item=#{work_item_public_id(run)} adapter=#{failure[:adapter]}" <>
+        if(failure[:error], do: " error=#{failure[:error]}", else: "")
+    )
+
     {:ok, _run} =
       run
       |> Ecto.Changeset.change(
@@ -276,4 +288,9 @@ defmodule Apiary.Harnesses.WalkJob do
         lock: "FOR UPDATE"
     )
   end
+
+  defp work_item_public_id(%DispatchRun{work_item_id: nil}), do: nil
+
+  defp work_item_public_id(%DispatchRun{work_item_id: id}),
+    do: Repo.one(from w in WorkItem, where: w.id == ^id, select: w.public_id)
 end

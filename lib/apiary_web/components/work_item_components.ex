@@ -87,6 +87,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias Apiary.ExternalText
   alias Apiary.Harnesses.Walk
   alias ApiaryWeb.BacklogComponents
+  alias ApiaryWeb.HarnessComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
 
@@ -105,6 +106,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     :target_access_gone,
     :build_failed
   ]
+  # The walk's failure codes that `ApiaryWeb.HarnessComponents.public_read_words/2` words.
+  @public_read_codes %{
+    "not_covered" => :not_covered,
+    "too_large" => :too_large,
+    "source_unreachable" => :source_unreachable,
+    "host_not_allowed" => :host_not_allowed,
+    "rate_limited" => :rate_limited,
+    "fetch_failed" => :fetch_failed
+  }
+
   # The values a save check's message has (`Apiary.Stacks.Document`), by their name in a
   # failed walk's rule.
   @rule_values %{
@@ -2158,7 +2169,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, _whose} when assigns.test ->
           {gettext("Explore is queued."),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. The agent answers the line in it.",
+             "Run %{attempt} of %{of} starts when the workspace's pool takes it. The agent answers the line in it.",
              attempt: attempt,
              of: of
            )}
@@ -2173,7 +2184,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, :none} ->
           {gettext("Explore is queued."),
            gettext(
-             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
+             "Qory starts run %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2182,7 +2193,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, whose} ->
           {queued_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
+             "Run %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2903,7 +2914,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # walk's failure code (`Apiary.Harnesses.Walk`). nil for a call to an adapter that
   # failed, which the adapter's line words (`adapter_failure_words/1`). A source is
   # shown as the walk wrote it, or as the workspace's harness setting where the walk
-  # wrote none: a harness choice's document, or a hidden harness.
+  # wrote none: a harness choice's document, or a hidden harness. A source no connection
+  # reaches, and a failed read of a public repository, have the Harness step's words
+  # (`ApiaryWeb.HarnessComponents.public_read_words/2`).
   defp harness_failure_words(%{code: code} = failure) do
     source = failure.source || gettext("the workspace's harness setting")
 
@@ -2920,10 +2933,15 @@ defmodule ApiaryWeb.WorkItemComponents do
           rule: harness_rule_words(failure.rule)
         )
 
-      "not_covered" ->
-        gettext(
-          "Connect the account that holds %{source} to this organisation, then run Explore again. No connection of this organisation reaches that harness source.",
-          source: source
+      code when is_map_key(@public_read_codes, code) ->
+        HarnessComponents.public_read_words(
+          Map.fetch!(@public_read_codes, code),
+          HarnessComponents.fetch_names(
+            failure.rule,
+            source,
+            failure[:organisation] || gettext("this organisation"),
+            failure[:workspace] || gettext("this workspace")
+          )
         )
 
       "not_allowed" ->

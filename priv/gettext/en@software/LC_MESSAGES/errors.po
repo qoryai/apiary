@@ -372,7 +372,7 @@ msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "is already the label of a key of this node"
+msgid "is already the label of a key of this machine"
 msgstr ""
 
 #: lib/apiary/nodes/node.ex
@@ -382,7 +382,7 @@ msgstr ""
 
 #: lib/apiary/nodes/node.ex
 #, elixir-autogen, elixir-format
-msgid "is already the name of a node in this workspace"
+msgid "is already the name of a machine, pool or gateway in this workspace"
 msgstr ""
 
 #: lib/apiary/secrets/secret.ex
@@ -422,7 +422,7 @@ msgstr ""
 
 #: lib/apiary/nodes.ex
 #, elixir-autogen, elixir-format
-msgid "is not a gateway this node may use"
+msgid "is not a gateway this machine may use"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex

@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.InstanceLive.Node do
-  # The page of the instance's node pool or gateway in Instance settings › Nodes, for the
-  # instance's admins, by the node's public id. A page of the Instance level, with no
+  # The page of the instance's pool or gateway in Instance settings › Qory Pool and Qory
+  # Gateway, for the instance's admins, by the node's public id. A page of the Instance level, with no
   # organisation: its gate asks the instance whether the feature is on (`use
   # ApiaryWeb.Features, instance: :factory`), and anyone but an instance admin is answered
   # as a path that does not exist, as on the Instance's other pages.
@@ -60,10 +60,10 @@ defmodule ApiaryWeb.InstanceLive.Node do
   @doc false
   # The paths of the node's page: its tabs and the list.
   def paths(%Node{public_id: public_id}) do
-    overview = ~p"/instance/nodes/#{public_id}"
+    overview = ~p"/instance/qory-pool-and-gateway/#{public_id}"
 
     %{
-      list: ~p"/instance/nodes",
+      list: ~p"/instance/qory-pool-and-gateway",
       overview: overview,
       access_key: overview <> "/keys",
       settings: overview <> "/settings"
@@ -97,7 +97,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
   @impl true
   def handle_params(%{"node_id" => public_id}, _uri, %{assigns: %{node: node}} = socket)
       when public_id != node.public_id,
-      do: {:noreply, push_navigate(socket, to: ~p"/instance/nodes/#{public_id}")}
+      do: {:noreply, push_navigate(socket, to: ~p"/instance/qory-pool-and-gateway/#{public_id}")}
 
   def handle_params(params, _uri, socket) do
     {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> titled()}
@@ -133,7 +133,11 @@ defmodule ApiaryWeb.InstanceLive.Node do
     assign(
       socket,
       :page_title,
-      SettingsComponents.page_title(scope, :instance, parts ++ [gettext("Nodes")])
+      SettingsComponents.page_title(
+        scope,
+        :instance,
+        parts ++ [gettext("Qory Pool and Qory Gateway")]
+      )
     )
   end
 
@@ -267,7 +271,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
       <SettingsComponents.part
         :if={@node.kind == :pool}
         id="node-instances"
-        title={gettext("Running instances")}
+        title={gettext("Running machines")}
         level={:h2}
       >
         <p :if={@activity.running != []} id="node-instances-count" class="text-[13px]/5 text-muted">
@@ -277,11 +281,11 @@ defmodule ApiaryWeb.InstanceLive.Node do
         <.table
           :if={@activity.running != []}
           id="node-running"
-          label={gettext("Running instances")}
+          label={gettext("Running machines")}
           rows={@activity.running}
           row_id={&"instance-#{&1.instance_id}"}
         >
-          <:col :let={instance} label={gettext("Instance")} kind="title">
+          <:col :let={instance} label={gettext("Machine")} kind="title">
             <span class="q-nm">
               <span class="q-cut" title={instance_label(instance)}>
                 <bdi>{instance_label(instance)}</bdi>
@@ -306,11 +310,9 @@ defmodule ApiaryWeb.InstanceLive.Node do
 
         <p :if={@activity.running == []} id="node-instances-none" class="text-[13px]/5 text-muted">
           {if NodeComponents.seen_at(@activity) != nil,
-            do: gettext("No instance of this pool is running. An instance shows here while it runs."),
+            do: gettext("No machine of this pool is running. A machine shows here while it runs."),
             else:
-              gettext(
-                "No instance of this pool has reported yet. An instance shows here while it runs."
-              )}
+              gettext("No machine of this pool has reported yet. A machine shows here while it runs.")}
         </p>
       </SettingsComponents.part>
 
@@ -320,7 +322,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
           <dd id="node-about-kind">{kind_sentence(@node.kind)}</dd>
           <dt class="text-faint">{gettext("Id")}</dt>
           <dd class="q-mono">{@node.public_id}</dd>
-          <dt :if={@node.kind == :pool} class="text-faint">{gettext("Instance limit")}</dt>
+          <dt :if={@node.kind == :pool} class="text-faint">{gettext("Machine limit")}</dt>
           <dd :if={@node.kind == :pool} id="node-about-limit">{limit_words(@node)}</dd>
           <dt :if={@node.kind == :gateway} class="text-faint">{gettext("URL")}</dt>
           <dd :if={@node.kind == :gateway} id="node-about-url" class="q-mono">{@node.url}</dd>
@@ -351,11 +353,11 @@ defmodule ApiaryWeb.InstanceLive.Node do
       <p id="node-access-key-intro" class="max-w-[80ch] text-[13px]/5 text-muted">
         <%= if @declared do %>
           {gettext(
-            "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
+            "Qory Apiary writes this machine's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the machine's code file, and the machine enrols with it when it reads the file."
           )}
         <% else %>
           {gettext(
-            "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
+            "This instance has no setting for this machine, so Qory Apiary writes no new code after a revoke."
           )}
         <% end %>
       </p>
@@ -446,10 +448,10 @@ defmodule ApiaryWeb.InstanceLive.Node do
           field={@form[:instance_limit]}
           type="text"
           inputmode="numeric"
-          label={gettext("Instance limit")}
+          label={gettext("Machine limit")}
           hint={
             gettext(
-              "Empty means no limit. Lowering it stops nothing running now; new instances wait until fewer run."
+              "Empty means no limit. Lowering it stops nothing running now; new machines wait until fewer run."
             )
           }
           autocomplete="off"
@@ -469,10 +471,10 @@ defmodule ApiaryWeb.InstanceLive.Node do
     do: instance.name || Apiary.ExternalText.sent(instance.instance_id)
 
   defp kind_sentence(:pool),
-    do: gettext("Node pool: short-lived instances that share one access key.")
+    do: gettext("Pool: one or more machines that use the pool's access key.")
 
   defp kind_sentence(:gateway),
-    do: gettext("Gateway: the runs of nodes and node pools that choose it go through it.")
+    do: gettext("Gateway: the runs of machines and pools that choose it go through it.")
 
   defp limit_words(%Node{instance_limit: nil}), do: gettext("No limit")
   defp limit_words(%Node{instance_limit: limit}), do: Format.number(limit)

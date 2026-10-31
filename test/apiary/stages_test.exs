@@ -3,14 +3,15 @@ defmodule Apiary.StagesTest do
   # first stage and queues explore-a-ticket through today's dispatch; a run's end through
   # its settle maps today's explore result into artifacts (D1); the gate, the escalations,
   # moves, and what the work item page reads.
-  use Apiary.DataCase, async: true
+  # Not async: a test sets the store adapter, the application's setting.
+  use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Processes, Repo, Stages, StagesArtifactsStub, WorkItems}
+  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Stages.{Escalation, GateDecision}
@@ -21,6 +22,7 @@ defmodule Apiary.StagesTest do
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @build "st_6ns22c4pav"
+  @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -39,7 +41,7 @@ defmodule Apiary.StagesTest do
           order_by: [r.take_in, r.attempt]
       )
 
-  defp artifacts(work_item), do: StagesArtifactsStub.list(work_item)
+  defp artifacts(work_item), do: Artifacts.list(work_item)
 
   defp versions(work_item, type) do
     for a <- artifacts(work_item), a.type == type, v <- a.versions, do: v
@@ -76,6 +78,8 @@ defmodule Apiary.StagesTest do
       extra
     )
   end
+
+  defp a_proposal, do: Stages.proposal_document(understood_result())
 
   defp explore_stage(extra \\ %{}) do
     stage(
@@ -209,7 +213,7 @@ defmodule Apiary.StagesTest do
                Stages.inputs(work_item)
 
       {:ok, _version} =
-        StagesArtifactsStub.push(
+        Artifacts.push(
           {:person, scope},
           work_item,
           "acceptance-criteria",
@@ -590,12 +594,220 @@ defmodule Apiary.StagesTest do
       assert Stages.status(work_item).state == :done
 
       {:ok, _version} =
-        Stages.Artifacts.push_json({:person, scope}, work_item, "proposal", %{"a" => 1},
+        Stages.Artifacts.push_json({:person, scope}, work_item, "proposal", a_proposal(),
           stage_id: @explore
         )
 
       assert %{state: :at_gate, gate: %{approvals: [%{versions: [%{number: 1, newer?: true}]}]}} =
                Stages.status(work_item)
+    end
+  end
+
+  describe "a stage with no workflow (§ 4)" do
+    defp people_process!(scope, gate, outputs) do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => true}),
+          "gate" => gate
+        }),
+        stage(@build, "Build", [])
+      ])
+    end
+
+    defp at_shape!(scope) do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      reload(work_item)
+    end
+
+    defp file(name), do: [%{filename: name, content_type: "text/markdown", binary: "# Done"}]
+    defp png(name), do: [%{filename: name, content_type: "image/png", binary: @png}]
+
+    test "waits at its gate for a missing output; approve is refused until a person adds it",
+         %{scope: scope} do
+      people_process!(scope, %{"kind" => "person", "approvers" => "members"}, [
+        "acceptance-criteria"
+      ])
+
+      work_item = at_shape!(scope)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      refute escalation(work_item)
+      assert Stages.missing_outputs(work_item) == ["acceptance-criteria"]
+
+      assert %{state: :at_gate, missing_outputs: ["acceptance-criteria"], gate: gate} =
+               Stages.status(work_item, scope)
+
+      refute gate.approvable?
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape) ==
+               {:error, {:outputs_missing, ["acceptance-criteria"]}}
+
+      assert [%GateDecision{stage_id: @explore}] = decisions(work_item)
+
+      assert {:ok, version} =
+               Stages.add_version(scope, work_item, "acceptance-criteria", file("ac.md"))
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.missing_outputs(work_item) == []
+      assert %{missing_outputs: [], gate: %{approvable?: true}} = Stages.status(work_item, scope)
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert [_explore, %GateDecision{stage_id: @shape, versions: [covered]}] =
+               decisions(work_item)
+
+      assert covered == version.public_id
+    end
+
+    test "with gate none passes on once a person adds the last required output", %{
+      scope: scope
+    } do
+      people_process!(scope, %{"kind" => "none"}, ["acceptance-criteria", "mockup"])
+      work_item = at_shape!(scope)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      refute escalation(work_item)
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.missing_outputs(work_item) == ["mockup"]
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", png("m.png"))
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = reload(work_item)
+    end
+
+    test "a person's version gets the stage_id of the stage the work item is in", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope)
+
+      assert {:ok, %{stage_id: @explore, writer: :person}} =
+               Stages.add_version(scope, work_item, "mockup", png("m.png"), stage_id: @build)
+
+      # A stage with a workflow is left as it is.
+      assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
+      assert [_one] = runs(work_item)
+    end
+
+    test "a person's version starts a stage that waits for inputs once the last one exists",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "inputs" => [
+            %{"type" => "acceptance-criteria", "required" => true},
+            %{"type" => "mockup", "required" => true}
+          ]
+        })
+      ])
+
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_inputs
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+      assert %WorkItem{stage_state: :waiting_inputs} = reload(work_item)
+      assert runs(work_item) == []
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", png("m.png"))
+      assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
+      assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
+    end
+
+    test "a stage change during the push stores nothing and leaves the stage as it is", %{
+      scope: scope
+    } do
+      input = %{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]}
+      save!(scope, [explore_stage(input), stage(@shape, "Shape", [], input)])
+
+      work_item = take_in!(scope)
+
+      # The input exists and nothing acted on it, so a call to version_added/1 starts the
+      # stage the work item moves to.
+      {:ok, _version} =
+        Artifacts.push({:person, scope}, work_item, "acceptance-criteria", file("a.md"),
+          stage_id: @explore
+        )
+
+      ArtifactStoreHook.on_commit(fn ->
+        {1, _rows} =
+          Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+            set: [stage_id: @shape]
+          )
+      end)
+
+      assert Stages.add_version(scope, work_item, "mockup", png("m.png")) ==
+               {:error, :stage_changed}
+
+      assert versions(work_item, "mockup") == []
+      assert %WorkItem{stage_id: @shape, stage_state: :waiting_inputs} = reload(work_item)
+      assert runs(work_item) == []
+    end
+
+    test "a person's version leaves a closed work item waiting for inputs as it is", %{
+      scope: scope
+    } do
+      save!(scope, [
+        explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
+      ])
+
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_inputs
+      {:ok, _closed} = Moves.close(scope, work_item)
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+
+      assert %WorkItem{state: :closed, stage_state: :waiting_inputs} = reload(work_item)
+      assert runs(work_item) == []
+    end
+
+    test "a person's version leaves a closed work item at a gate none as it is", %{scope: scope} do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "mockup", "required" => true}],
+          "gate" => %{"kind" => "none"}
+        }),
+        stage(@build, "Build", [%{"workflow" => "explore-a-ticket"}])
+      ])
+
+      work_item = at_shape!(scope)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      {:ok, _closed} = Moves.close(scope, work_item)
+      run_count = length(runs(work_item))
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", png("m.png"))
+
+      assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
+               reload(work_item)
+
+      assert length(runs(work_item)) == run_count
+    end
+  end
+
+  describe "a work item the runner has not placed" do
+    setup %{scope: scope} do
+      work_item = take_in!(scope)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [stage_id: nil, stage_state: nil]
+      )
+
+      %{work_item: reload(work_item)}
+    end
+
+    test "resume returns not_placed", %{work_item: work_item} do
+      assert Stages.resume(work_item) == {:error, :not_placed}
+    end
+
+    test "check_workflows returns not_placed", %{scope: scope, work_item: work_item} do
+      assert Stages.check_workflows(scope, work_item, fn _scope, _workspace -> {:ok, []} end) ==
+               {:error, :not_placed}
+    end
+
+    test "version_added returns not_placed", %{work_item: work_item} do
+      assert Stages.version_added(work_item) == {:error, :not_placed}
     end
   end
 
@@ -632,7 +844,7 @@ defmodule Apiary.StagesTest do
           {:run, newest_run(work_item)},
           work_item,
           "proposal",
-          %{"b" => 2},
+          a_proposal(),
           stage_id: @explore
         )
 
@@ -1147,6 +1359,59 @@ defmodule Apiary.StagesTest do
 
       fits = String.duplicate("e\u0301", 2000)
       assert {:ok, _} = Stages.approve(scope, work_item, fits, expect_stage: @explore)
+    end
+  end
+
+  describe "a work item that is not live" do
+    defp closed_waiting_workflow!(scope) do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_workflow
+      {:ok, _closed} = Moves.close(scope, work_item)
+      work_item
+    end
+
+    test "check_workflows returns not_live and queues no run", %{scope: scope} do
+      work_item = closed_waiting_workflow!(scope)
+      read = fn _scope, _workspace -> {:ok, ["review", "capture-demo"]} end
+
+      assert Stages.check_workflows(scope, work_item, read) == {:error, :not_live}
+
+      assert %WorkItem{state: :closed, stage_state: :waiting_workflow} = reload(work_item)
+      assert runs(work_item) == []
+    end
+
+    test "resume leaves a stage waiting for a workflow as it is", %{scope: scope} do
+      work_item = closed_waiting_workflow!(scope)
+      :ok = Processes.record_declared(scope.workspace, ["review", "capture-demo"])
+
+      assert {:ok, %WorkItem{state: :closed, stage_state: :waiting_workflow}} =
+               Stages.resume(work_item)
+
+      assert runs(work_item) == []
+    end
+
+    test "enter returns not_live and leaves the stage as it is", %{scope: scope} do
+      people_process!(scope, %{"kind" => "person", "approvers" => "members"}, ["mockup"])
+      work_item = at_shape!(scope)
+      {:ok, _closed} = Moves.close(scope, work_item)
+
+      assert Stages.enter(work_item, @build, :moved) == {:error, :not_live}
+
+      assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
+               reload(work_item)
+    end
+
+    test "answers_used_up returns the refusal and opens no escalation", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      assert work_item.stage_state == :waiting_answers
+      {:ok, _closed} = Moves.close(scope, work_item)
+
+      assert Stages.answers_used_up(work_item, {:error, :used_up}) == {:error, :used_up}
+
+      assert %WorkItem{state: :closed, stage_state: :waiting_answers} = reload(work_item)
+      refute escalation(work_item)
     end
   end
 end

@@ -258,12 +258,18 @@ defmodule ApiaryWeb.HarnessTargets do
   end
 
   @doc false
-  # refused/4 is a save of `choice` refused for `reason`, other than `:forbidden`: why,
-  # under the destination, in the words of `ApiaryWeb.HarnessComponents.refusal_words/4`;
+  # refused/5 is a save of `choice` refused for `reason`, other than `:forbidden`: why,
+  # under the destination, in the words of `ApiaryWeb.HarnessComponents.refusal_words/5`;
   # else "Nothing was changed. Try again." in a flash.
-  @spec refused(Phoenix.LiveView.Socket.t(), term, term, String.t()) ::
+  @spec refused(Phoenix.LiveView.Socket.t(), term, term, String.t(), String.t()) ::
           Phoenix.LiveView.Socket.t()
-  def refused(%{assigns: %{target_edit: %{} = edit}} = socket, choice, reason, organisation) do
+  def refused(
+        %{assigns: %{target_edit: %{} = edit}} = socket,
+        choice,
+        reason,
+        organisation,
+        workspace
+      ) do
     {source, ref} =
       case choice do
         {:workspace, _stack} ->
@@ -274,13 +280,13 @@ defmodule ApiaryWeb.HarnessTargets do
           HarnessComponents.refused(choice)
       end
 
-    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
+    case HarnessComponents.refusal_words(reason, source, ref, organisation, workspace) do
       nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
       words -> assign(socket, :target_edit, %{edit | refusal: words})
     end
   end
 
-  def refused(socket, _choice, _reason, _organisation),
+  def refused(socket, _choice, _reason, _organisation, _workspace),
     do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
 
   # The edit of `target`: its form of a stack of another repository where `open`, else a
