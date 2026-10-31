@@ -522,7 +522,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp timeline_tab(assigns) do
     ~H"""
-    <div id="run-timeline" class="grid gap-4" phx-hook="LiveEnd" data-live={to_string(alive?(@run))}>
+    <div
+      id="run-timeline"
+      class="q-run-tl grid gap-4"
+      phx-hook="LiveEnd"
+      data-live={to_string(alive?(@run))}
+    >
       <div class="q-tl-bar" role="group" aria-label={gettext("Lanes")}>
         <.lane
           :for={lane <- lane_chips(@index, @lane)}
@@ -608,6 +613,7 @@ defmodule ApiaryWeb.RunLive.Show do
         earlier={@earlier}
         later={max(@later - @new_count, 0)}
         security={@security}
+        legend={@index.items != []}
       />
 
       <.live_end

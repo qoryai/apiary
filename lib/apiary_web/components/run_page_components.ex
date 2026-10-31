@@ -40,6 +40,7 @@ defmodule ApiaryWeb.RunPageComponents do
       tool_mark: 1,
       duration: 1,
       offset: 1,
+      time_legend: 1,
       middle: 2,
       subject_name: 1,
       subject_tip: 1
@@ -420,10 +421,12 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
+  attr :legend, :boolean, default: false, doc: "whether a row is there to name the columns of"
 
   def timeline(assigns) do
     ~H"""
     <div class="grid">
+      <.time_legend :if={@legend} first={gettext("Since run start")} second={gettext("Event")} />
       <button
         :if={@earlier > 0}
         id={"#{@id}-earlier"}
@@ -1232,14 +1235,17 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <span class="q-t">
       {render_slot(@inner_block)}
-      <.offset at={@item.time} from={@started_at} class="q-t-at" />
-      <span :if={@in_summary} class="q-q" data-permalink data-href={@seq_path.(@item.sequence)}>#{pad(
-        @item.sequence
-      )}</span>
+      <.offset at={@item.time} from={@started_at} class="q-t-at q-tc1" />
+      <span
+        :if={@in_summary}
+        class="q-q q-tc2"
+        data-permalink
+        data-href={@seq_path.(@item.sequence)}
+      >#{pad(@item.sequence)}</span>
       <.link
         :if={!@in_summary}
         patch={@seq_path.(@item.sequence)}
-        class="q-q"
+        class="q-q q-tc2"
         tabindex="-1"
         data-permalink
       >#{pad(@item.sequence)}</.link>

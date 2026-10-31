@@ -7528,6 +7528,11 @@ msgstr ""
 msgid "Environment"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Event"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -15930,6 +15935,11 @@ msgctxt "complexity"
 msgid "Simple"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Since run start"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Single keys such as / to search, [ to fold the sidebar and the run timeline's letters. Off, only shortcuts with ⌘ or Ctrl work, such as ⌘K and Ctrl+K to search. Kept on this browser."
@@ -16064,6 +16074,7 @@ msgstr ""
 msgid "Start an organisation. You set up its first workspace next."
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -18750,6 +18761,11 @@ msgstr ""
 #: lib/apiary_web/attempt_limits.ex
 #, elixir-autogen, elixir-format
 msgid "Too many attempts. Try again in a few minutes."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Took"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

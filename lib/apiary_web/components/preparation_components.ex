@@ -20,7 +20,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
   import ApiaryWeb.CoreComponents, only: [icon: 1]
   import ApiaryWeb.ExternalText, only: [external_text: 1]
-  import ApiaryWeb.RunComponents, only: [duration: 1]
+  import ApiaryWeb.RunComponents, only: [duration: 1, time_legend: 1]
 
   alias Apiary.ExternalText
   alias Apiary.Runs.Preparation
@@ -81,6 +81,7 @@ defmodule ApiaryWeb.PreparationComponents do
           class="q-prep-total"
         />
       </div>
+      <.time_legend first={gettext("Started")} second={gettext("Took")} />
       <ol class="q-prep-steps">
         <li :if={@preparation.machine}>
           <.row
@@ -151,7 +152,8 @@ defmodule ApiaryWeb.PreparationComponents do
             <.state_mark state="succeeded" />
             <span class="q-k">{gettext("Session started")}</span>
             <span class="q-t">
-              <.clock at={@preparation.session_started_at} />
+              <span class="q-tc1 q-prep-cell"><.clock at={@preparation.session_started_at} /></span>
+              <span class="q-tc2 q-prep-cell"></span>
             </span>
           </div>
         </li>
@@ -188,15 +190,17 @@ defmodule ApiaryWeb.PreparationComponents do
         <span :if={!@sent} class="q-k q-prep-name">{@name}</span>
         <span class="q-t">
           <span :if={@state == "running"} class="q-running">{gettext("Running")}</span>
-          <.clock :if={@at} at={@at} />
-          <.duration :if={@duration_ms} ms={@duration_ms} class="q-d" />
-          <.duration
-            :if={@ticking and @since != nil}
-            id={"#{@id}-clock"}
-            elapsed_seconds={0}
-            elapsed_at={@since}
-            class="q-d"
-          />
+          <span class="q-tc1 q-prep-cell"><.clock :if={@at} at={@at} /></span>
+          <span class="q-tc2 q-prep-cell">
+            <.duration :if={@duration_ms} ms={@duration_ms} class="q-d" />
+            <.duration
+              :if={@ticking and @since != nil}
+              id={"#{@id}-clock"}
+              elapsed_seconds={0}
+              elapsed_at={@since}
+              class="q-d"
+            />
+          </span>
         </span>
       </summary>
       <div class={["q-xb", @state == "failed" && "q-xb-bad"]}>

@@ -107,6 +107,24 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine-cause")
     end
 
+    test "the time columns: a legend over each list, every row with both cells", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-timeline.q-run-tl")
+      assert has_element?(lv, "#prepare-machine > .q-tlegend .q-tc1", "Started")
+      assert has_element?(lv, "#prepare-machine > .q-tlegend .q-tc2", "Took")
+      assert has_element?(lv, "#run-timeline .q-tlegend .q-tc1", "Since run start")
+      assert has_element?(lv, "#run-timeline .q-tlegend .q-tc2", "Event")
+
+      # Session started has no duration: its second cell stays, so its time keeps its column.
+      assert has_element?(lv, "#prepare-machine-session .q-t > .q-tc1 time")
+      assert has_element?(lv, "#prepare-machine-session .q-t > .q-tc2")
+      assert has_element?(lv, "#timeline .q-t > .q-t-at.q-tc1")
+      assert has_element?(lv, "#timeline .q-t > .q-q.q-tc2")
+    end
+
     test "a failed step is open, with its output and its cause line", ctx do
       %{run: run} = claimed_run(ctx.scope)
       run = project!(run, steps(true))

@@ -1617,8 +1617,10 @@ not fill fails until it is filled there.
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, scrolling
 separately) sits beside it on every tab, Terminal too; below 1280 px Details is a button
-under the header. The terminal takes the whole window through Focus (The terminal,
-below). The top bar's breadcrumb ends with Runs, a link to the list,
+under the header. The Timeline tab's content, Prepare machine included, stops at 72rem,
+left aligned, so a row's time stays near it; the Details rail, the header and the tabs stay
+where they are, and Network access and Terminal keep the column's whole width. The terminal
+takes the whole window through Focus (The terminal, below). The top bar's breadcrumb ends with Runs, a link to the list,
 and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
@@ -1688,6 +1690,13 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
+- **The time columns.** From 1280 px every right-hand time of the Timeline sits in two
+  fixed, right-aligned columns in tabular numbers, so Prepare machine's rows, the run's rows
+  and the connection rows line up: the time, then the second value, a row's duration or an
+  item's number. A small faint legend names them, at the right above Prepare machine's rows
+  ("Started", "Took") and above the run's ("Since run start", "Event"). A faint band
+  covers the row under the pointer, so the eye can follow it to the time. Below 1280 px a
+  row sets out its times without columns or a legend.
 - **Prepare machine** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
   from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
   content while a pending run has no event. One row per step, in the order the steps ran:
