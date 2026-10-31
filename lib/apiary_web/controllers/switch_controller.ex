@@ -54,7 +54,8 @@ defmodule ApiaryWeb.SwitchController do
     "/settings/delete" => "/settings",
     # A step of the set-up lands on the overview, which lists the other workspace's steps.
     "/set-up/:step" => "",
-    "/set-up/:step/choose" => ""
+    "/set-up/:step/choose" => "",
+    "/set-up/:step/connect" => ""
   }
 
   def show(conn, %{"section" => section} = params) do
