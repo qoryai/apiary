@@ -22,6 +22,9 @@ defmodule Apiary.Stages.StopCause do
 
   @prebuild "prebuild"
 
+  # The walk failures whose fix is on the set-up step Harness.
+  @harness_step_failures ~w(no_harness scp_form credential_in_address too_many)
+
   @typedoc "What a claim knew when it ended a run: its gateway and the gateway's keys."
   @type context :: %{optional(:gateway) => Node.t(), optional(:keys) => [map]}
 
@@ -47,6 +50,21 @@ defmodule Apiary.Stages.StopCause do
     {cause, fix} = lines(run, names(work_item), context)
     cause <> "\n" <> fix
   end
+
+  # set_up_step/1 is the step of the workspace's set-up whose page has the fix for why
+  # `run` stopped, `/:org/:workspace/set-up/<step>`, which the fix line names as "the
+  # set-up step Harness": `:harness` for a harness walk that failed on the workspace's
+  # harness choice; nil otherwise.
+  @doc false
+  @spec set_up_step(DispatchRun.t() | nil) :: :harness | nil
+  def set_up_step(%DispatchRun{end_cause: :harness_unresolved, id: id}) do
+    case Repo.get_by(RunHarness, dispatch_run_id: id) do
+      %RunHarness{failure: failure} when failure in @harness_step_failures -> :harness
+      _other -> nil
+    end
+  end
+
+  def set_up_step(_run), do: nil
 
   # build_run/1 is the public id of the newest registered run that built the environment
   # of the work item's target, whose page has the build's log; nil for none.
@@ -219,8 +237,11 @@ defmodule Apiary.Stages.StopCause do
   defp harness(%RunHarness{} = walk, n) do
     walk = Repo.preload(walk, :failed_adapter)
     source = walk.failed_source || "of #{n.workspace}"
-    {reason, fix} = harness_reason(walk.failure, walk, n)
-    {"Qory Apiary could not read the harness #{source} (#{reason}).", fix}
+
+    case harness_reason(walk.failure, walk, n) do
+      {:line, cause, fix} -> {cause, fix}
+      {reason, fix} -> {"Qory Apiary could not read the harness #{source} (#{reason}).", fix}
+    end
   end
 
   defp harness(nil, n), do: harness(%RunHarness{failure: nil}, n)
@@ -228,17 +249,19 @@ defmodule Apiary.Stages.StopCause do
   defp harness_reason("no_harness", _walk, n),
     do:
       {"the target has no harness file, and the workspace sets no harness",
-       "Owners and admins of #{n.workspace} choose a harness in Workspace settings › Workflow."}
+       "Owners and admins of #{n.workspace} choose a harness on the set-up step Harness."}
 
   defp harness_reason("invalid", _walk, _n),
     do:
       {"it breaks the harness format",
        "Whoever maintains the harness corrects it where it is kept."}
 
-  defp harness_reason("not_covered", _walk, n),
+  # In the words of the Workflow page's line for the same failure.
+  defp harness_reason("not_covered", walk, n),
     do:
-      {"no connection of #{n.organisation} reaches it",
-       "Owners and admins of #{n.organisation} connect the account that holds it, in Organisation settings › Integrations."}
+      {:line,
+       "No integration of #{n.organisation} reaches #{walk.failed_source || "the harness of #{n.workspace}"}. Qory Apiary reads a harness only through an integration.",
+       "Owners and admins of #{n.organisation} connect one in Organisation settings › Integrations."}
 
   defp harness_reason("not_allowed", _walk, n),
     do:
@@ -248,22 +271,22 @@ defmodule Apiary.Stages.StopCause do
   defp harness_reason("scp_form", _walk, n),
     do:
       {"its address has the form user@host:path, and Qory Apiary fetches harness sources over https only",
-       "Owners and admins of #{n.workspace} write it as an https address in Workspace settings › Workflow."}
+       "Owners and admins of #{n.workspace} write it as an https address on the set-up step Harness."}
 
   defp harness_reason("credential_in_address", _walk, n),
     do:
       {"its address contains a user name or a password",
-       "Owners and admins of #{n.workspace} remove them from the address in Workspace settings › Workflow."}
+       "Owners and admins of #{n.workspace} remove them from the address on the set-up step Harness."}
 
   defp harness_reason("too_many", _walk, n),
     do:
       {"it takes harness sources from more than #{Walk.max_links()} accounts",
-       "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, in Workspace settings › Workflow."}
+       "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, on the set-up step Harness."}
 
   defp harness_reason("adapter_unavailable", walk, _n) do
     adapter = adapter_name(walk)
 
-    {"the adapter #{adapter} did not answer three times",
+    {"three calls to the adapter #{adapter} failed",
      "The instance admin checks #{adapter} in Instance settings › Adapters."}
   end
 

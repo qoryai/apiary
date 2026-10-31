@@ -48,8 +48,8 @@ defmodule ApiaryWeb.ActivityStagesTest do
     assert said.("escalation_move_back") ==
              "Moved a work item back to an earlier stage to resolve an escalation"
 
-    assert said.("escalation_close") == "Closed a work item, from an escalation"
-    assert said.("escalation_decline") == "Declined a work item, from an escalation"
+    assert said.("escalation_close") == "Closed a work item to resolve an escalation"
+    assert said.("escalation_decline") == "Declined a work item to resolve an escalation"
   end
 
   test "the sentences of the process's changes" do

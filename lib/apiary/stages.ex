@@ -63,7 +63,7 @@ defmodule Apiary.Stages do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
-  alias Apiary.Stages.{Artifacts, Check, Declared, Escalation, GateDecision, Runner, StopCause}
+  alias Apiary.Stages.{Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
   alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
 
   # Transition (D1): the workflow whose runs return today's explore v1 result.
@@ -506,7 +506,7 @@ defmodule Apiary.Stages do
          {:ok, workspace} <- workspace(scope),
          %WorkItem{} <- in_workspace(workspace, id) || {:error, :not_found},
          {:ok, names} <- read.(scope, workspace) do
-      Declared.record(workspace, names)
+      :ok = Processes.record_declared(workspace, names)
       start_found(id)
     else
       :error -> {:error, :not_found}
@@ -1067,7 +1067,7 @@ defmodule Apiary.Stages do
   # (`Apiary.Processes.workflow_declaration/2`: explore-a-ticket and the saved workflow);
   # with no snapshot, none, and the run starts.
   defp undeclared(workspace, declarations) do
-    case Declared.snapshot(workspace) do
+    case Processes.declared_snapshot(workspace) do
       %{names: names} -> for {name, nil} <- declarations, name not in names, do: name
       nil -> []
     end
@@ -1520,6 +1520,7 @@ defmodule Apiary.Stages do
       round: escalation.round,
       run: run && %{id: run.id, attempt: run.attempt, workflow: run.workflow},
       build_run: build_run(run, escalation),
+      set_up_step: StopCause.set_up_step(run),
       inserted_at: escalation.inserted_at
     }
   end
@@ -1656,7 +1657,7 @@ defmodule Apiary.Stages do
   defp shown_gaps(nil, %WorkItem{stage_state: :waiting_workflow} = work_item, stage, artifacts) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    case {waiting_workflow(work_item, stage), Declared.snapshot(workspace)} do
+    case {waiting_workflow(work_item, stage), Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
         not_listed(stage["name"], workflow, workspace.name, read_at)
 

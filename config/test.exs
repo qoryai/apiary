@@ -165,8 +165,3 @@ config :apiary, Apiary.Registry.InstanceName, enabled: false
 # Transition: the stage runner reaches a work item's artifacts through a stand-in until
 # `Apiary.Artifacts` is merged (`Apiary.Stages.Artifacts`, `Apiary.StagesArtifactsStub`).
 config :apiary, Apiary.Stages.Artifacts, Apiary.StagesArtifactsStub
-
-# Transition: the stage runner reads and writes the snapshot of a harness's workflow names
-# through a stand-in until `Apiary.Processes` has it (`Apiary.Stages.Declared`,
-# `Apiary.StagesDeclaredStub`).
-config :apiary, Apiary.Stages.Declared, Apiary.StagesDeclaredStub
