@@ -187,7 +187,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                "Address: /#{organisation.slug}/software-factory It follows the name."
 
       refute has_element?(lv, "#set-up-form input[name='workspace[slug]']")
-      assert words(lv, "#set-up-type") == "Software factory · Acme Studio"
+      assert words(lv, "#set-up-type") == "Type: Software factory"
       assert has_element?(lv, "#set-up-form button", "Save and next")
       refute has_element?(lv, "#set-up-steps")
 
@@ -377,7 +377,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       assert has_element?(lv, "h1", "Name this workspace")
       assert words(lv, "#set-up-name") == "Main"
-      assert words(lv, "#set-up-type") == "Software factory · #{organisation.name}"
+      assert words(lv, "#set-up-type") == "Type: Software factory"
       refute has_element?(lv, "#set-up-form")
       # A page of the workspace: its sidebar lists the steps, and the frame has no indicator.
       assert has_element?(lv, "#sidebar #nav-up")
@@ -434,7 +434,11 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
           ] do
         {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
         assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
-        # A page of the organisation, in its sidebar, with no entry current.
+        # A page of the organisation, in its sidebar, with no entry current, and its
+        # breadcrumb: the organisation, a link to its overview, then New workspace.
+        assert has_element?(lv, "#breadcrumb [aria-current=page]", "New workspace")
+        assert has_element?(lv, ~s(#breadcrumb a[href="/#{organisation.slug}"]))
+
         assert has_element?(
                  lv,
                  ~s(#sidebar #nav-organisation_overview[href="/#{organisation.slug}"])

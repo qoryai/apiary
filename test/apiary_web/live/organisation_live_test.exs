@@ -64,7 +64,8 @@ defmodule ApiaryWeb.OrganisationLiveTest do
              )
 
       # The workspaces' facts land off the first paint.
-      assert render_async(view) =~ "none alive"
+      assert render_async(view) =~ "No run alive"
+      assert has_element?(view, ".q-band-hint", "Runs and denied attempts in the last 14 days")
     end
 
     test "the root sends on to the workspace opened last while it is reached, else the first",

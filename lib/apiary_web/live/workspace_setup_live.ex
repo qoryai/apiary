@@ -23,7 +23,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #
   #   * Name: for a person `workspace.rename` allows, the Name field, the workspace's
   #     address under it, which follows the name, and once the name typed gives another,
-  #     what breaks (`ApiaryWeb.SettingsComponents.workspace_address/1`); Save and next
+  #     what breaks (`ApiaryWeb.SettingsComponents.workspace_address/1`), then the
+  #     workspace's type, "Type: Software factory"; Save and next
   #     renames the workspace (`Apiary.Organisations.update_workspace/2`), refused for a
   #     name whose address is taken, and opens the next step at the new address. For
   #     anyone else, the name, read only, with Continue;
@@ -316,7 +317,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       title: SetUpComponents.flow_title(flow),
       page_path: page_path(flow),
       next_path: next && next.path,
-      page_title: heading(step, flow),
+      page_title: SetUpComponents.step_heading(step, flow.workspace),
       refusal: nil
     )
     |> assign_progress()
@@ -345,28 +346,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp reload(socket), do: socket
-
-  defp heading(:name, _flow), do: gettext("Name this workspace")
-
-  defp heading(:sources, flow),
-    do: gettext("Where does work for %{workspace} come from?", workspace: flow.workspace.name)
-
-  defp heading(:destinations, flow),
-    do:
-      gettext("Which targets may runs in %{workspace} change?",
-        workspace: flow.workspace.name
-      )
-
-  defp heading(:model, flow),
-    do: gettext("Which model do runs in %{workspace} use?", workspace: flow.workspace.name)
-
-  defp heading(:harness, flow),
-    do: gettext("Which harness do runs in %{workspace} use?", workspace: flow.workspace.name)
-
-  defp heading(:machines, flow),
-    do: gettext("Which machines run the runs in %{workspace}?", workspace: flow.workspace.name)
-
-  defp heading(:test, _flow), do: gettext("Run a test")
 
   ## Each step's data
 
@@ -1764,6 +1743,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       counts={@nav_counts}
       place={:organisation}
     >
+      <:crumb>{gettext("New workspace")}</:crumb>
       <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
     </Layouts.app>
     """
@@ -2071,10 +2051,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           form={@form}
         />
         <p id="set-up-type" class="text-[13px]/5 text-muted">
-          {gettext("%{type} · %{organisation}",
-            type: @flow.domain.type_name(),
-            organisation: @flow.organisation.name
-          )}
+          {gettext("Type: %{type}", type: @flow.domain.type_name())}
         </p>
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={@page_path} />
@@ -2090,10 +2067,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <p id="set-up-name" class="text-[13.5px]/5">{@flow.workspace.name}</p>
         </div>
         <p id="set-up-type" class="text-[13px]/5 text-muted">
-          {gettext("%{type} · %{organisation}",
-            type: @flow.domain.type_name(),
-            organisation: @flow.organisation.name
-          )}
+          {gettext("Type: %{type}", type: @flow.domain.type_name())}
         </p>
         <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
       </div>

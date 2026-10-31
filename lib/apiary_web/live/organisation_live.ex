@@ -126,8 +126,9 @@ defmodule ApiaryWeb.OrganisationLive do
           <section class="q-blk" aria-labelledby="workspaces-title">
             <div class="q-band">
               <h2 id="workspaces-title">{gettext("Workspaces")}</h2>
-              <span class="q-band-n">{Format.number(length(@workspaces))}</span>
-              <span class="q-band-hint">{gettext("14 days")}</span>
+              <span class="q-band-hint">
+                {gettext("Runs and denied attempts in the last 14 days")}
+              </span>
             </div>
             <ul id="workspaces" class="q-rows">
               <li :for={workspace <- Enum.take(@workspaces, @shown)} id={"workspace-#{workspace.id}"}>
@@ -252,8 +253,9 @@ defmodule ApiaryWeb.OrganisationLive do
   attr :mode, :string, default: nil
 
   # A workspace, one line: its name (the title), how many targets and its policy's mode in
-  # faint words, how many steps of its set-up are done while it is not finished, what is
-  # alive, its runs a day with their count, its denied attempts and its last run.
+  # faint words, how many steps of its set-up are done while it is not finished, how many
+  # runs are alive (pending or running), its runs a day with their count, its denied
+  # attempts and its last run. The band above says the runs and denials are of 14 days.
   defp workspace_row(assigns) do
     ~H"""
     <.link
@@ -277,8 +279,11 @@ defmodule ApiaryWeb.OrganisationLive do
       <%= if @facts do %>
         <span class={["q-wr-al", @facts.alive == 0 && "q-none-alive"]}>
           {if @facts.alive == 0,
-            do: gettext("none alive"),
-            else: gettext("%{number} alive", number: Format.number(@facts.alive))}
+            do: gettext("No run alive"),
+            else:
+              ngettext("%{number} run alive", "%{number} runs alive", @facts.alive,
+                number: Format.number(@facts.alive)
+              )}
         </span>
         <span class="q-wr-sp">
           <.sparkline values={@facts.days} />

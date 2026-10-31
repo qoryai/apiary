@@ -3,7 +3,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in.
   With the `factory` feature, while the workspace's set-up is not finished, the page shows
   the set-up instead (`ApiaryWeb.SetUpComponents.workspace_set_up/1`): "Finish setting up
-  Payments", each step of the set-up with its state and a link to its page, and Continue,
+  Payments", each step of the set-up with its state, its page's heading under its name,
+  such as "Where does work for Payments come from?", and a link to its page, and Continue,
   to the first step that is not done. Once the test run passed, it
   answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
@@ -265,7 +266,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   attr :set_up, :map, required: true
 
   # The set-up while it is not finished: each step with its state, done, the next or to
-  # come, and a link to its page; then Continue, to the next.
+  # come, its page's heading under its name (`SetUpComponents.step_heading/2`), and a
+  # link to its page; then Continue, to the next.
   defp set_up_list(assigns) do
     ~H"""
     <section id="overview-set-up" class="grid gap-5" aria-labelledby="overview-set-up-h">
@@ -286,6 +288,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             <span class="q-su-text">
               <span class="q-su-nm">{step.label}</span>
               <span :if={step.done} class="sr-only">{gettext(", done")}</span>
+              <small class="q-su-note">{SetUpComponents.step_heading(step.id, @workspace)}</small>
             </span>
           </.link>
         </li>

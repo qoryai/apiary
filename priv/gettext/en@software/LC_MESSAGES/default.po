@@ -1364,13 +1364,6 @@ msgid_plural "%{number} admins"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} alive"
-msgid_plural "%{number} alive"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -1924,6 +1917,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} run"
 msgid_plural "%{number} runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run alive"
+msgid_plural "%{number} runs alive"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2655,11 +2655,6 @@ msgstr ""
 msgid "%{tool} failed: %{summary}"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{type} · %{organisation}"
-msgstr ""
-
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
@@ -2928,11 +2923,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "1. A node runs one instance at a time."
-msgstr ""
-
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "14 days"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
@@ -10363,7 +10353,7 @@ msgstr ""
 msgid "Name the release of a program: its description is fetched, and you add it from there."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Name this workspace"
 msgstr ""
@@ -10537,6 +10527,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New variable"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "New workspace"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -10954,6 +10949,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No rules yet"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "No run alive"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -14157,7 +14157,7 @@ msgstr ""
 msgid "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run a test"
 msgstr ""
@@ -14330,6 +14330,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs a page"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs and denied attempts in the last 14 days"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -18232,6 +18237,11 @@ msgstr ""
 msgid "Type your email, %{email}, to confirm"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Type: %{type}"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
@@ -18848,7 +18858,7 @@ msgstr ""
 msgid "When the server offers it"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Where does work for %{workspace} come from?"
 msgstr ""
@@ -18888,23 +18898,23 @@ msgstr ""
 msgid "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Which harness do runs in %{workspace} use?"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Which machines run the runs in %{workspace}?"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Which model do runs in %{workspace} use?"
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/collections_live.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which targets may runs in %{workspace} change?"
 msgstr "Which repositories may runs in %{workspace} change?"
@@ -20684,11 +20694,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "none"
-msgstr ""
-
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "none alive"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex

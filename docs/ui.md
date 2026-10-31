@@ -777,7 +777,10 @@ what needs the reader, then what their agents did, and never grows with the data
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
-settings, which the sidebar's foot, Organisation settings, leads to on the same page.
+settings, which the sidebar's foot, Organisation settings, leads to on the same page. A
+workspace's line says how many of its runs are alive ("No run alive", "2 runs alive"),
+and the band above the lines says its other figures count "Runs and denied attempts in
+the last 14 days".
 
 ## Targets
 
@@ -1243,9 +1246,9 @@ mark and the theme menu.
   no Cancel, since there is nowhere to go back to but the step before. A step opened
   again shows what was saved there and can be changed. The step Name has the workspace's
   name in a field, with its address under it as text, which follows the name; once the
-  name typed gives another address, a warning says which address stops working. **Save
-  and next** renames the workspace. A person who may not rename it sees the name, read
-  only, with **Continue**. The type can't change.
+  name typed gives another address, a warning says which address stops working; under
+  it, "Type: Software factory". **Save and next** renames the workspace. A person who may
+  not rename it sees the name, read only, with **Continue**. The type can't change.
 - **The chooser** (`IntegrationComponents.chooser/1`), with the `factory` feature, is a
   separate page of the workspace's set-up, the step current in the group Set up:
   `/<org>/<workspace>/set-up/<sources|destinations>/choose?grant=<id>`, opened
@@ -1259,7 +1262,8 @@ mark and the theme menu.
   the step's section current; there **Back** and **Save** return to the settings page.
 - **A workspace in set-up** opens at its overview: with the `factory` feature, until its
   test run passes, every link to the workspace leads to the overview, which shows "Finish
-  setting up Main", each step with its state and a link to its page, and **Continue:
+  setting up Main", each step with its state, its page's heading under its name ("Where
+  does work for Main come from?"), and a link to its page, and **Continue:
   Model**, to the first step that is not done (`SetUpComponents.workspace_set_up/1`). The
   organisation's overview shows "Set-up: 3 of 7 steps" under the workspace's name.
 - **The link up** is the first line of the workspace's sidebar on every page of the

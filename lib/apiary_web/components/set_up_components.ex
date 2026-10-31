@@ -320,6 +320,31 @@ defmodule ApiaryWeb.SetUpComponents do
   def step_label(:test), do: gettext("Test run")
 
   @doc """
+  step_heading/2 is the heading of the flow's step `id` for `workspace`, a question such as
+  "Where does work for Payments come from?": the step's page shows it as its title, and
+  the workspace's overview under the step's name while the set-up is not finished.
+  """
+  @spec step_heading(atom, %Workspace{}) :: String.t()
+  def step_heading(:name, _workspace), do: gettext("Name this workspace")
+
+  def step_heading(:sources, %Workspace{name: name}),
+    do: gettext("Where does work for %{workspace} come from?", workspace: name)
+
+  def step_heading(:destinations, %Workspace{name: name}),
+    do: gettext("Which targets may runs in %{workspace} change?", workspace: name)
+
+  def step_heading(:model, %Workspace{name: name}),
+    do: gettext("Which model do runs in %{workspace} use?", workspace: name)
+
+  def step_heading(:harness, %Workspace{name: name}),
+    do: gettext("Which harness do runs in %{workspace} use?", workspace: name)
+
+  def step_heading(:machines, %Workspace{name: name}),
+    do: gettext("Which machines run the runs in %{workspace}?", workspace: name)
+
+  def step_heading(:test, _workspace), do: gettext("Run a test")
+
+  @doc """
   flow_title/1 is the line above the indicator's count: "Set up Payments · Software
   factory", or "Set up a new Software factory" before the workspace exists.
   """
