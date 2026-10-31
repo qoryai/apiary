@@ -172,6 +172,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"run_credential.issue"
         ]
 
+      # The actions on a workspace's process have no labels yet, so the filter offers none
+      # of them, and their entries show as any change.
+      :workflow_model ->
+        false
+
       shown_as when shown_as in [:secrets, :nodes] ->
         Features.visible?(scope, shown_as)
 
