@@ -143,6 +143,26 @@ defmodule Apiary.Artifacts.FormatTest do
         assert {:error, :format} = check(context, "demo-video", "a.mp4", bytes)
       end
     end
+
+    test "takes WebVTT captions in a file whose name ends in .vtt", context do
+      captions = "WEBVTT\n\n00:00.000 --> 00:02.000\nThe gift card field.\n"
+      vtt = "text/vtt; charset=utf-8"
+
+      assert {:ok, ^vtt} = check(context, "demo-video", "en.vtt", captions)
+      assert {:ok, ^vtt} = check(context, "demo-video", "EN.VTT", "\uFEFFWEBVTT - English\n")
+      assert {:ok, ^vtt} = check(context, "demo-video", "en.vtt", "WEBVTT")
+
+      for {filename, bytes} <- [
+            {"en.txt", captions},
+            {"en.vtt", "WEBVTTX\n"},
+            {"en.vtt", "1\n00:00.000 --> 00:02.000\n"},
+            {"en.vtt", "WEBVTT\n" <> <<0>>},
+            {"en.vtt", "WEBVTT\n" <> <<0xFF>>}
+          ] do
+        assert {:error, :format} = check(context, "demo-video", filename, bytes),
+               "expected #{inspect(bytes)} as #{filename} to be refused"
+      end
+    end
   end
 
   describe "a document" do
@@ -227,6 +247,8 @@ defmodule Apiary.Artifacts.FormatTest do
       assert Format.stored?(:document, ["text/markdown; charset=utf-8"])
       assert Format.stored?(:image, ["image/png", "image/svg+xml"])
       assert Format.stored?(:video, ["video/webm"])
+      assert Format.stored?(:video, ["video/mp4", "text/vtt; charset=utf-8"])
+      refute Format.stored?(:video, ["text/vtt; charset=utf-8"])
       assert Format.stored?(:file, ["application/octet-stream"])
       assert Format.stored?(:structured, ["application/json"])
 

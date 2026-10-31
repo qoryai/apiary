@@ -58,7 +58,7 @@ defmodule Apiary.Artifacts.Type do
     {"decision-record", :document, @mib, 1, nil},
     {"mockup", :image, 10 * @mib, 10, nil},
     {"screenshot", :image, 10 * @mib, 10, nil},
-    {"demo-video", :video, 200 * @mib, 1, nil},
+    {"demo-video", :video, 200 * @mib, 5, nil},
     {"change", :structured, 64 * 1024, 1, :change},
     {"proposal", :structured, 256 * 1024, 1, :proposal},
     {"questions", :structured, 64 * 1024, 1, :questions},

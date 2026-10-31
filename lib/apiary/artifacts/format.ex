@@ -13,7 +13,11 @@ defmodule Apiary.Artifacts.Format do
   #     `http://www.w3.org/2000/svg`. The parse runs in another process within a budget
   #     (`Apiary.Kinds.Budget`).
   #   * video: MP4, an `ftyp` box first with an MP4 brand, or WebM, an EBML header whose
-  #     document type is `webm`.
+  #     document type is `webm`; or WebVTT captions beside them, a filename that ends in
+  #     `.vtt` (any case) and at most 4 MiB of UTF-8 text with no NUL whose first line
+  #     starts with `WEBVTT`, after a byte order mark where it has one,
+  #     `text/vtt; charset=utf-8`. A version of a video type has at least one MP4 or
+  #     WebM file (`Apiary.Artifacts.push/5`, `video?/1`).
   #   * file: any bytes; `application/octet-stream`.
   #   * structured: one JSON document valid against the type's JSON Schema: a standard
   #     type's file under `priv/schemas/artifacts/`, a custom type's in its row
@@ -64,12 +68,15 @@ defmodule Apiary.Artifacts.Format do
 
   @markdown "text/markdown; charset=utf-8"
   @json "application/json"
+  @vtt "text/vtt; charset=utf-8"
+  @videos ~w(video/mp4 video/webm)
+  @vtt_bytes 4_194_304
 
   # The content types `check/3` returns, by base view; a file view takes any.
   @content_types %{
     document: [@markdown],
     image: ~w(image/png image/jpeg image/gif image/webp image/svg+xml),
-    video: ~w(video/mp4 video/webm),
+    video: [@vtt | @videos],
     structured: [@json]
   }
 
@@ -103,10 +110,10 @@ defmodule Apiary.Artifacts.Format do
     end
   end
 
-  def check(%Type{base_view: :video}, _filename, path) do
+  def check(%Type{base_view: :video}, filename, path) do
     with {:ok, head} <- head(path) do
       case video(head) do
-        nil -> {:error, :format}
+        nil -> captions(filename, path)
         content_type -> {:ok, content_type}
       end
     end
@@ -132,10 +139,20 @@ defmodule Apiary.Artifacts.Format do
   def stored?(:structured, [content_type]), do: content_type == @json
   def stored?(:structured, _content_types), do: false
 
+  def stored?(:video, content_types) do
+    video?(content_types) and Enum.all?(content_types, &(&1 in [@vtt | @videos]))
+  end
+
   def stored?(base_view, content_types) when is_list(content_types) do
     taken = Map.fetch!(@content_types, base_view)
     Enum.all?(content_types, &(&1 in taken))
   end
+
+  # video?/1 is whether the content types of a version's files have an MP4 or WebM
+  # video among them, as a version of a video type must.
+  @doc false
+  @spec video?([String.t()]) :: boolean
+  def video?(content_types), do: Enum.any?(content_types, &(&1 in @videos))
 
   defp image(<<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, _rest::binary>>), do: "image/png"
   defp image(<<0xFF, 0xD8, 0xFF, _rest::binary>>), do: "image/jpeg"
@@ -154,6 +171,27 @@ defmodule Apiary.Artifacts.Format do
   end
 
   defp video(_head), do: nil
+
+  # WebVTT captions: `.vtt`, at most `@vtt_bytes`, UTF-8 with no NUL, and `WEBVTT` first,
+  # then the line's end, a space or a tab.
+  defp captions(filename, path) do
+    with true <- String.downcase(Path.extname(filename)) == ".vtt" || {:error, :format},
+         {:ok, %File.Stat{size: size}} <- stat(path),
+         true <- size <= @vtt_bytes || {:error, :format},
+         {:ok, bytes} <- read(path),
+         true <- webvtt?(bytes) || {:error, :format} do
+      {:ok, @vtt}
+    end
+  end
+
+  defp webvtt?(<<0xEF, 0xBB, 0xBF, rest::binary>>), do: webvtt?(rest)
+
+  defp webvtt?(<<"WEBVTT", rest::binary>> = bytes) do
+    String.valid?(bytes) and not String.contains?(bytes, <<0>>) and
+      (rest == "" or binary_part(rest, 0, 1) in [" ", "\t", "\n", "\r"])
+  end
+
+  defp webvtt?(_bytes), do: false
 
   ## SVG
 

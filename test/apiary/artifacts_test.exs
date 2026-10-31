@@ -576,6 +576,9 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:error, {:invalid, {:format, 0}}} = push.("demo-video", [file("demo.mp4", @png)])
 
+      assert {:error, {:invalid, :no_video}} =
+               push.("demo-video", [file("en.vtt", "WEBVTT\n"), file("de.vtt", "WEBVTT\n")])
+
       assert {:error, {:invalid, {:schema, 0}}} =
                push.("verdict", [json("v.json", %{"verdict" => "done"})])
 
@@ -600,6 +603,10 @@ defmodule Apiary.ArtifactsTest do
 
       assert push.("demo-video", [file("demo.mp4", @mp4)]) == ["video/mp4"]
       assert push.("demo-video", [file("demo.webm", @webm, "video/mp4")]) == ["video/webm"]
+
+      assert push.("demo-video", [file("demo.mp4", @mp4), file("en.vtt", "WEBVTT\n")]) ==
+               ["video/mp4", "text/vtt; charset=utf-8"]
+
       assert push.("proposal", [json("proposal.json", proposal())]) == ["application/json"]
     end
 

@@ -47,7 +47,9 @@ defmodule Apiary.Artifacts do
   #      source read at most 64 KiB past the limit; a path that cannot be read,
   #      `{:invalid, {:unreadable, index}}`;
   #   7. each staged file passes its base view's format check, else
-  #      `{:invalid, {:format | :extension | :schema | :unreadable, index}}`.
+  #      `{:invalid, {:format | :extension | :schema | :unreadable, index}}`;
+  #   8. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
+  #      else `{:invalid, :no_video}`.
   #
   # Then every file is kept in the store, and only then are the rows written, in one
   # transaction: the work item locked `FOR UPDATE`, read again in the workspace it was
@@ -287,7 +289,8 @@ defmodule Apiary.Artifacts do
          :ok <- writable(writer, type, Keyword.get(opts, :writes, :any)),
          {:ok, fields} <- fields(opts),
          {:ok, files} <- files(type, files),
-         {:ok, staged} <- stage_all(type, files) do
+         {:ok, staged} <- stage_all(type, files),
+         :ok <- complete(type, staged) do
       case commit_all(staged) do
         {:ok, stored} -> write(writer, work_item, type, fields, stored)
         {:error, _reason} = error -> error
@@ -457,6 +460,20 @@ defmodule Apiary.Artifacts do
         {:error, refusal}
     end
   end
+
+  # A version of a video type has a video, not captions alone; else every staged copy is
+  # dropped.
+  defp complete(%Type{base_view: :video}, staged) do
+    if Format.video?(Enum.map(staged, & &1.content_type)) do
+      :ok
+    else
+      store = Store.impl()
+      Enum.each(staged, &store.discard(&1.staged))
+      {:error, {:invalid, :no_video}}
+    end
+  end
+
+  defp complete(_type, _staged), do: :ok
 
   defp stage_one(store, type, index, filename, source, left) do
     case store.stage(source, left) do
