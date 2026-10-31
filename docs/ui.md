@@ -1690,10 +1690,10 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
-- **The time columns.** From 1280 px every right-hand time of the Timeline sits in two
-  fixed, right-aligned columns in tabular numbers, so Prepare machine's rows, the run's rows
-  and the connection rows line up: the time, then the second value, a row's duration or an
-  item's number. A small faint legend names them, at the right above Prepare machine's rows
+- **The time columns.** From 1280 px the Timeline has two fixed, right-aligned columns in
+  tabular numbers, so Prepare machine's rows, the run's rows and the connection rows line
+  up: a preparation row's start time and duration, and a run item's offset and number. A
+  tool's duration stays left of the columns. A small faint legend labels them, at the right above Prepare machine's rows
   ("Started", "Took") and above the run's ("Since run start", "Event"). A faint band
   covers the row under the pointer, so the eye can follow it to the time. Below 1280 px a
   row sets out its times without columns or a legend.
@@ -1811,7 +1811,7 @@ other page. The screen is `role="log"` with `aria-live="off"`.
   shows Raw. Rows open by mouse alone; Raw and the link to the log as text are the way to
   read all of it by keyboard. Download is the same in both views.
 - **Decoded text is not the log's bytes.** JSON escapes control characters, so a decoded
-  value could hold a live escape sequence that the raw line does not. Every decoded value
+  value can contain a live escape sequence that the raw line does not. Every decoded value
   in a row has its C0, C1 and DEL characters removed, a `type` or `subtype` keeps only
   `[A-Za-z0-9_.:-]`, 40 characters at most, and the printed object has all of them escaped.
   Nothing of the log touches the DOM outside xterm.js.

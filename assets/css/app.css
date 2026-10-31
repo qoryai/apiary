@@ -7248,7 +7248,7 @@
     }
   }
 
-  /* The note under the box says what Raw shows; Collapsed shows something else. */
+  /* The note under the box describes what Raw shows; Collapsed shows something else. */
   .q-termbox:has([data-view="collapsed"][aria-pressed="true"]) + .q-term-note {
     display: none;
   }
@@ -7402,9 +7402,10 @@
     }
   }
 
-  /* From the width the rail stands beside the column, every right-hand time sits in two
-     fixed columns, the same in Prepare machine's rows, the run's rows and the connection
-     rows, with a faint band over the row under the pointer to lead the eye to them. Below
+  /* From the width the rail stands beside the column, the times sit in two fixed columns,
+     the same in Prepare machine's rows, the run's rows and the connection rows, with a
+     faint band over the row under the pointer to lead the eye to them. A tool's duration
+     stays left of the columns. Below
      it a row sets out its times as they come, and an empty cell takes no gap. */
   @media (max-width: 1279.98px) {
     .q-prep-cell:not(:has(*)) {

@@ -5,9 +5,9 @@
 //
 // which answers the raw bytes and names the sequence it reached in x-qory-log-through.
 // It reads until the answer reaches nothing further, and again whenever the LiveView says
-// "log_advanced" (a number, nothing else). Bytes go to xterm.js as Uint8Arrays, never as
-// strings, because a chunk may end inside a character; nothing of them touches the DOM
-// outside xterm.js.
+// "log_advanced" (a number, nothing else). In Raw, and for a line that passes through
+// Collapsed, bytes go to xterm.js as Uint8Arrays, never as strings, because a chunk may end
+// inside a character; nothing of them touches the DOM outside xterm.js.
 //
 // A run on pipes has two views, the reader's choice in localStorage. Raw hands the bytes
 // over as they are and interprets none of them. Collapsed, the default, cuts the stream
