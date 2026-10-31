@@ -3556,11 +3556,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         )
 
       assert no_run_line(conn, scope, item, :key_gone) == fixes.key_gone
-
-      # With the workflow model, the run's workflow is the one its stage entry names
-      # (`Apiary.Stages.run_workflow/1`), not the Workflow page's.
-      workflow = if Apiary.Stages.on?(), do: "explore-a-ticket", else: "hello"
-      choose.({:workspace, workflow}, %{model: "claude-sonnet-5-5"})
+      choose.({:workspace, "hello"}, %{model: "claude-sonnet-5-5"})
 
       for cause <- Map.keys(fixes) do
         assert no_run_line(conn, scope, item, cause) == @no_run_unknown, "level 4 #{cause}"

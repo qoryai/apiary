@@ -267,27 +267,18 @@ defmodule Apiary.Stages do
   # model choice are read by. nil for a run the stage runner did not queue, or with the
   # workflow model off, which keep the workflow the Workflow page saved
   # (`Apiary.Stacks.workflow/2`).
+  #
+  # Transition, as D1: nil for explore-a-ticket too. Explore v1 runs exactly as today's
+  # Explore run, by the Workflow page's saved workflow, until the harness change.
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
+  def run_workflow(%DispatchRun{workflow: @explore_workflow}), do: nil
+
   def run_workflow(%DispatchRun{stage_id: stage_id, workflow: workflow})
       when is_binary(stage_id) and is_binary(workflow),
       do: if(on?(), do: workflow)
 
   def run_workflow(%DispatchRun{}), do: nil
-
-  # walked_workflow/1 is the workflow the harness walk of `run` resolves: for a run of a
-  # stage, its workflow, nil for explore-a-ticket, the Qory harness's one workflow, which
-  # the machine runs with no workflow named, as a run with none today; `:not_staged` for
-  # a run the stage runner did not queue, or with the workflow model off.
-  @doc false
-  @spec walked_workflow(DispatchRun.t()) :: String.t() | nil | :not_staged
-  def walked_workflow(%DispatchRun{} = run) do
-    case run_workflow(run) do
-      nil -> :not_staged
-      @explore_workflow -> nil
-      workflow -> workflow
-    end
-  end
 
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
   # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`), which passes

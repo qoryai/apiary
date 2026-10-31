@@ -114,9 +114,6 @@ defmodule Apiary.Harnesses.WalkTest do
     if Stacks.workflow_for(scope.workspace, nil) == nil,
       do: {:ok, _row} = Stacks.put_stack(scope, {:workspace, scope.workspace, "explore"}, nil)
 
-    # With the workflow model, Explore's process runs the workflow the page saved.
-    :ok = Apiary.StagesFixtures.explore_runs!(scope, Stacks.workflow_for(scope.workspace, nil))
-
     {:ok, stack} = Stacks.put_stack(scope, {:workspace, scope.workspace}, document, choice: :qory)
     stack
   end
