@@ -348,7 +348,7 @@ defmodule ApiaryWeb.SetUpComponents do
   step_note/3 is the line under a step's name in the workspace's overview while the set-up
   is not finished. A done step shows what it set where a value of it is at hand: Name the
   workspace's name, Work sources the integrations whose collections bring work to the
-  workspace's Backlog, by name (`Apiary.WorkspaceSetup.source_names/2`), and Machines
+  workspace's Backlog, by name, the ones the step's done rule counts, and Machines
   the node pool that runs the workspace's runs. Test run shows what it does, "Starts one
   run to check the set-up". Every other step, and a step not done, shows its page's heading
   (`step_heading/2`).
