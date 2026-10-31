@@ -14849,7 +14849,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Runs change targets in a system you connect here. Owners and admins of %{organisation} connect it once for the organisation."
+msgid "Runs change targets in a system such as a ticket tracker or a document store. Owners and admins of %{organisation} connect it once for the organisation."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

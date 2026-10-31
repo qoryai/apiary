@@ -1955,7 +1955,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
         <p :if={@step == :destinations} id="set-up-what">
           {gettext(
-            "Runs change targets in a system you connect here. Owners and admins of %{organisation} connect it once for the organisation.",
+            "Runs change targets in a system such as a ticket tracker or a document store. Owners and admins of %{organisation} connect it once for the organisation.",
             organisation: @flow.organisation.name
           )}
         </p>
