@@ -22,7 +22,7 @@ import {
   useReactFlow,
 } from "../vendor/flow/xyflow-react/index.js"
 import "../vendor/flow/xyflow-react/style.css"
-import {CARD_WIDTH, FIT, keyMove, layout, orderByDrop, sameOrder} from "./hooks/stages_canvas"
+import {CARD_WIDTH, FIT, dropX, keyMove, layout, orderByDrop, sameOrder} from "./hooks/stages_canvas"
 
 const line = (text, key, className) => h("p", {key, className}, text)
 
@@ -95,7 +95,7 @@ function Flow({initial, words, push, subscribe, el}) {
   const onNodeDragStop = useCallback(
     (event, node) => {
       const before = (viewRef.current.stages || []).map(s => String(s.id))
-      const {x} = flow.screenToFlowPosition({x: event.clientX, y: event.clientY})
+      const x = dropX(event, node, point => flow.screenToFlowPosition(point))
       const order = orderByDrop(before, node.id, x)
       if (!sameOrder(order, before)) push("reorder", {ids: order})
       snapBack()

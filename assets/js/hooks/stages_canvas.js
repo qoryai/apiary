@@ -55,11 +55,24 @@ export const layout = view => {
 // units: the card takes the place of the slot under the pointer, the first or the last
 // one beyond either end.
 export const orderByDrop = (ids, id, x) => {
+  if (!Number.isFinite(x)) return ids
   const rest = ids.filter(other => other !== id)
   if (rest.length === ids.length) return ids
   const slot = Math.floor((x + CARD_GAP / 2) / (CARD_WIDTH + CARD_GAP))
   const at = Math.min(Math.max(slot, 0), ids.length - 1)
   return [...rest.slice(0, at), id, ...rest.slice(at)]
+}
+
+// Where a card was dropped, in the canvas's units: the pointer's x, from a mouse event or
+// the touch that ended (`changedTouches`), through `toFlow` (React Flow's
+// screenToFlowPosition); the dropped card's middle when the event has no point.
+export const dropX = (event, node, toFlow) => {
+  const point = event?.changedTouches?.[0] ?? event
+  if (Number.isFinite(point?.clientX) && Number.isFinite(point?.clientY)) {
+    const {x} = toFlow({x: point.clientX, y: point.clientY})
+    if (Number.isFinite(x)) return x
+  }
+  return node.position.x + CARD_WIDTH / 2
 }
 
 // The arrow key's move of a card: one place earlier ("-1") or later ("1"), or nil.

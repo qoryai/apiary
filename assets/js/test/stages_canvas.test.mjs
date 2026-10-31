@@ -5,7 +5,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {CARD_GAP, CARD_WIDTH, FIT, keyMove, layout, orderByDrop, sameOrder} from "../hooks/stages_canvas.js"
+import {CARD_GAP, CARD_WIDTH, FIT, dropX, keyMove, layout, orderByDrop, sameOrder} from "../hooks/stages_canvas.js"
 
 const view = {
   editable: true,
@@ -66,6 +66,26 @@ test("a card dropped with the pointer on another card takes that card's place", 
   assert.deepEqual(orderByDrop(ids, "st_a", 5000), ["st_b", "st_c", "st_d", "st_a"])
   assert.equal(sameOrder(orderByDrop(ids, "st_a", slot(2)), ids), false)
   assert.equal(sameOrder(["st_a"], ["st_a"]), true)
+})
+
+test("a drop with no point keeps the order", () => {
+  const ids = ["st_a", "st_b", "st_c"]
+  assert.deepEqual(orderByDrop(ids, "st_c", NaN), ids)
+  assert.deepEqual(orderByDrop(ids, "st_c", undefined), ids)
+})
+
+test("a drop reads the pointer of a mouse or a touch, else the card's middle", () => {
+  const toFlow = ({x, y}) => ({x: x - 100, y})
+  const node = {position: {x: 2 * (CARD_WIDTH + CARD_GAP), y: 0}}
+  assert.equal(dropX({clientX: 400, clientY: 50}, node, toFlow), 300)
+  // A touch drag: a TouchEvent has no clientX; the touch that ended has.
+  const touch = {clientX: undefined, changedTouches: [{clientX: 250, clientY: 50}]}
+  assert.equal(dropX(touch, node, toFlow), 150)
+  // No point at all: the card's middle, so the card stays where it was dropped.
+  const middle = node.position.x + CARD_WIDTH / 2
+  assert.equal(dropX({changedTouches: []}, node, toFlow), middle)
+  assert.equal(dropX({clientX: 10, clientY: 10}, node, () => ({x: NaN})), middle)
+  assert.deepEqual(orderByDrop(["st_a", "st_b", "st_c"], "st_c", middle), ["st_a", "st_b", "st_c"])
 })
 
 test("left and right move a card one place; up and down move nothing", () => {
