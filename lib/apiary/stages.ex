@@ -46,7 +46,8 @@ defmodule Apiary.Stages do
   # `request_changes`, `escalation_<resolution>` or `move`.
   #
   # `add_version/5` stores a version a person adds on the work item, made in its current
-  # stage, then runs that stage's Exists checks again (`version_added/1`). A stage with
+  # stage, then acts on that stage (`version_added/1`): a stage that waits for inputs
+  # starts once its last required input exists, and the Exists checks run again. A stage with
   # no workflow waits at its gate while a required output is missing
   # (`missing_outputs/1`); `approve/4` refuses it, `{:error, {:outputs_missing, types}}`,
   # and a gate `none` passes on once every required output exists.
@@ -482,28 +483,33 @@ defmodule Apiary.Stages do
 
   # resume/1 starts a stage that waits for a required input or for a workflow, once the
   # input exists or the harness declares the workflow: after a person adds an input, or
-  # the harness changes. A stage in any other state is left as it is.
+  # the harness changes. A stage in any other state is left as it is. `{:error,
+  # :not_placed}` for a work item the runner has not placed.
   @doc false
   @spec resume(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, refusal}
   def resume(%WorkItem{id: id}) do
     transact(fn ->
       work_item = lock!(id)
 
-      with {:ok, version, stage} <- placed(work_item) do
-        if work_item.stage_state in [:waiting_inputs, :waiting_workflow] do
-          {work_item, _run} = apply_event(work_item, version, stage, :resume)
-          {:ok, work_item}
-        else
-          {:ok, work_item}
-        end
+      case placed(work_item) do
+        {:ok, version, stage} ->
+          if work_item.stage_state in [:waiting_inputs, :waiting_workflow] do
+            {work_item, _run} = apply_event(work_item, version, stage, :resume)
+            {:ok, work_item}
+          else
+            {:ok, work_item}
+          end
+
+        :not_placed ->
+          {:error, :not_placed}
       end
     end)
   end
 
   # add_version/5 stores a version a person adds on the work item, as the scope's person
   # (`Apiary.Artifacts.push/5`, `{:person, scope}`), with the `stage_id` of the stage the
-  # work item is in, whatever `opts` gives, then runs that stage's checks again
-  # (`version_added/1`): `{:ok, version}`, or the push's refusal.
+  # work item is in, whatever `opts` gives, then acts on that stage (`version_added/1`):
+  # `{:ok, version}`, or the push's refusal.
   @doc false
   @spec add_version(Scope.t(), WorkItem.t(), String.t(), [map], keyword) ::
           {:ok, map} | {:error, term}
@@ -522,11 +528,12 @@ defmodule Apiary.Stages do
     end
   end
 
-  # version_added/1 runs the Exists checks of the work item's stage again after a person
-  # added a version in it: a stage with no workflow at its gate with a gate `none` passes
-  # on once every required output exists, and a person gate keeps waiting. A stage in any
-  # other state, or with a workflow, is left as it is. `{:error, :not_placed}` for a work
-  # item the runner has not placed.
+  # version_added/1 acts on the work item's stage after a person added a version in it. A
+  # stage that waits for inputs starts once its last required input exists (`resume/1`).
+  # At the gate of a stage with no workflow the Exists checks run again: a gate `none`
+  # passes on once every required output exists, and a person gate keeps waiting. A stage
+  # in any other state is left as it is. `{:error, :not_placed}` for a work item the
+  # runner has not placed.
   @doc false
   @spec version_added(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, :not_placed}
   def version_added(%WorkItem{id: id}) do
@@ -535,11 +542,17 @@ defmodule Apiary.Stages do
 
       case placed(work_item) do
         {:ok, version, stage} ->
-          if work_item.stage_state == :at_gate and Runner.people?(stage) do
-            {work_item, _run} = apply_event(work_item, version, stage, :version_added)
-            {:ok, work_item}
-          else
-            {:ok, work_item}
+          cond do
+            work_item.stage_state == :waiting_inputs ->
+              {work_item, _run} = apply_event(work_item, version, stage, :resume)
+              {:ok, work_item}
+
+            work_item.stage_state == :at_gate and Runner.people?(stage) ->
+              {work_item, _run} = apply_event(work_item, version, stage, :version_added)
+              {:ok, work_item}
+
+            true ->
+              {:ok, work_item}
           end
 
         :not_placed ->
@@ -574,18 +587,22 @@ defmodule Apiary.Stages do
     transact(fn ->
       work_item = lock!(id)
 
-      with {:ok, version, stage} <- placed(work_item) do
-        cond do
-          work_item.stage_state != :waiting_workflow ->
-            {:ok, work_item}
+      case placed(work_item) do
+        {:ok, version, stage} ->
+          cond do
+            work_item.stage_state != :waiting_workflow ->
+              {:ok, work_item}
 
-          facts(work_item, version, stage).undeclared != [] ->
-            {:error, :still_missing}
+            facts(work_item, version, stage).undeclared != [] ->
+              {:error, :still_missing}
 
-          true ->
-            {work_item, _run} = apply_event(work_item, version, stage, :resume)
-            {:ok, work_item}
-        end
+            true ->
+              {work_item, _run} = apply_event(work_item, version, stage, :resume)
+              {:ok, work_item}
+          end
+
+        :not_placed ->
+          {:error, :not_placed}
       end
     end)
   end

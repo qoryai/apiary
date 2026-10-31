@@ -686,6 +686,54 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
       assert [_one] = runs(work_item)
     end
+
+    test "a person's version starts a stage that waits for inputs once the last one exists",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "inputs" => [
+            %{"type" => "acceptance-criteria", "required" => true},
+            %{"type" => "mockup", "required" => true}
+          ]
+        })
+      ])
+
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_inputs
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+      assert %WorkItem{stage_state: :waiting_inputs} = reload(work_item)
+      assert runs(work_item) == []
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "mockup", file("m.md"))
+      assert %WorkItem{stage_id: @explore, stage_state: :running} = reload(work_item)
+      assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
+    end
+  end
+
+  describe "a work item the runner has not placed" do
+    setup %{scope: scope} do
+      work_item = take_in!(scope)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [stage_id: nil, stage_state: nil]
+      )
+
+      %{work_item: reload(work_item)}
+    end
+
+    test "resume returns not_placed", %{work_item: work_item} do
+      assert Stages.resume(work_item) == {:error, :not_placed}
+    end
+
+    test "check_workflows returns not_placed", %{scope: scope, work_item: work_item} do
+      assert Stages.check_workflows(scope, work_item, fn _scope, _workspace -> {:ok, []} end) ==
+               {:error, :not_placed}
+    end
+
+    test "version_added returns not_placed", %{work_item: work_item} do
+      assert Stages.version_added(work_item) == {:error, :not_placed}
+    end
   end
 
   describe "inputs and the artifact index" do
