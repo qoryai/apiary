@@ -89,6 +89,16 @@ defmodule Apiary.WorkItems.WorkItem do
     field :taken_in_at, :utc_datetime_usec
     field :declined_at, :utc_datetime_usec
     field :closed_at, :utc_datetime_usec
+    # Where the work item is in its workspace's process (`Apiary.Processes`): the version
+    # it runs under, its stage, the stage's state, the round, the entry of the stage's
+    # sequence and, inside a loop, the entry of the loop's body. Nil before the process
+    # places it. No changeset casts them.
+    belongs_to :process_version, Apiary.Processes.Version
+    field :stage_id, :string
+    field :stage_state, Ecto.Enum, values: Apiary.Processes.Version.stage_states()
+    field :stage_round, :integer
+    field :stage_entry, :integer
+    field :loop_entry, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
