@@ -496,7 +496,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"gate.approve",
-      "approve a stage's gate on a work item, move a work item past a stage, and act on an escalation; where a stage lists its approvers, only they take it there, which the stage's checks ask besides",
+      "approve a stage's gate on a work item, move a work item past a stage, and act on an escalation. When a stage lists approvers, only those people approve its gate, and only once the stage has every output its checks require.",
       feature: :workflow_model,
       roles: @members
     ),

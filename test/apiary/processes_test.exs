@@ -5,11 +5,17 @@ defmodule Apiary.ProcessesTest do
   # entries in the audit trail.
   use Apiary.DataCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
-  import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1]
 
-  alias Apiary.{Organisations, Processes, Stacks}
+  import Apiary.WorkItemsFixtures,
+    only: [work_item_fixture: 1, ticket_connection_fixture: 1, backlog_ticket_fixture: 2]
+
+  alias Apiary.{Deletion, Organisations, Processes, Stacks, WorkItems}
+  alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Organisations.Workspace
   alias Apiary.Processes.Version
   alias Apiary.WorkItems.WorkItem
 
@@ -27,6 +33,25 @@ defmodule Apiary.ProcessesTest do
 
   defp without(document \\ default(), id),
     do: %{document | "stages" => Enum.reject(document["stages"], &(&1["id"] == id))}
+
+  # A run of the work item's take in 1, its attempt `attempt`, waiting for a claim, under
+  # `version`, written directly.
+  defp run!(work_item, attempt, version) do
+    %DispatchRun{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      process_version_id: version.id
+    }
+    |> DispatchRun.queue_changeset(%{
+      work_item_id: work_item.id,
+      step: "explore",
+      take_in: 1,
+      attempt: attempt,
+      of: 3,
+      queued_at: DateTime.utc_now()
+    })
+    |> Repo.insert!()
+  end
 
   # Another version of `like`'s workspace, with its document, written directly.
   defp version!(%Version{} = like, number, status) do
@@ -395,6 +420,35 @@ defmodule Apiary.ProcessesTest do
 
       assert Processes.workflow_declaration(scope.workspace, "capture-demo") == nil
     end
+
+    test "add the names of the last read of the workspace's harness source, which replaces the one before" do
+      %{scope: scope} = sign_up_fixture()
+      other = workspace_fixture(scope.organisation, "Other site")
+      assert Processes.declared_snapshot(scope.workspace) == nil
+
+      assert Processes.record_declared(scope.workspace, ["review", "implement", "review"]) == :ok
+
+      assert %{names: ["implement", "review"], read_at: %DateTime{} = first_read} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert Processes.declared_workflows(scope.workspace) ==
+               ["explore-a-ticket", "implement", "review"]
+
+      assert Processes.workflow_declaration(scope.workspace, "review") ==
+               %{name: "review", access: nil, time_limit: nil, reads: nil, writes: nil}
+
+      assert Processes.declared_snapshot(other) == nil
+      assert Processes.declared_workflows(other) == ["explore-a-ticket"]
+
+      :ok = Processes.record_declared(scope.workspace, ["capture-demo"])
+
+      assert %{names: ["capture-demo"], read_at: read_at} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert DateTime.compare(read_at, first_read) in [:gt, :eq]
+      assert Processes.declared_workflows(scope.workspace) == ["capture-demo", "explore-a-ticket"]
+      assert Processes.workflow_declaration(scope.workspace, "review") == nil
+    end
   end
 
   describe "a change, with the feature on" do
@@ -594,6 +648,93 @@ defmodule Apiary.ProcessesTest do
       assert entry.subject_id == work_item.id
       assert entry.before == %{"process_version" => 1}
       assert entry.after == %{"process_version" => 3}
+    end
+
+    test "an assign moves the work item's runs that wait for a claim, and no claimed run", %{
+      scope: scope,
+      first: first
+    } do
+      work_item =
+        Repo.update!(
+          Ecto.Changeset.change(work_item_fixture(scope),
+            process_version_id: first.id,
+            stage_id: @explore,
+            stage_state: :running,
+            stage_round: 1
+          )
+        )
+
+      claimed = run!(work_item, 1, first)
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^claimed.id), set: [state: :claimed])
+      waiting = run!(work_item, 2, first)
+
+      {:ok, trial} = Processes.save(scope, scope.workspace, rename(@shape, "Plan"), trial: true)
+      assert {:ok, _assigned} = Processes.assign(scope, work_item, trial)
+
+      assert Repo.reload!(waiting).process_version_id == trial.id
+      assert Repo.reload!(claimed).process_version_id == first.id
+    end
+
+    test "a work item taken in again in another workspace leaves its place, and the first workspace's purge succeeds",
+         %{scope: scope, first: first} do
+      connection = ticket_connection_fixture(scope)
+      ticket = backlog_ticket_fixture(scope, connection: connection)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      Repo.update!(
+        Ecto.Changeset.change(work_item,
+          process_version_id: first.id,
+          stage_id: @explore,
+          stage_state: :running,
+          stage_round: 1,
+          stage_entry: 0,
+          loop_entry: 0
+        )
+      )
+
+      {:ok, _undone} = WorkItems.undo(scope, Repo.reload!(work_item))
+      elsewhere = workspace_scope(scope.user, workspace_fixture(scope.organisation, "Other site"))
+      ticket |> Ecto.Changeset.change(disconnected_at: DateTime.utc_now()) |> Repo.update!()
+
+      record =
+        backlog_ticket_fixture(elsewhere,
+          connection: connection,
+          external_ref: ticket.external_ref
+        )
+
+      assert {:ok, again} = WorkItems.take_in_again(elsewhere, record.public_id)
+      assert again.workspace_id == elsewhere.workspace.id
+
+      assert {again.process_version_id, again.stage_id, again.stage_state, again.stage_round,
+              again.stage_entry, again.loop_entry} == {nil, nil, nil, nil, nil, nil}
+
+      assert Processes.version_for(again).workspace_id == elsewhere.workspace.id
+
+      # A run in the other workspace that still links to the first workspace's version
+      # loses the link at the purge.
+      [run] =
+        Repo.all(from r in DispatchRun, where: r.work_item_id == ^again.id and r.take_in == 2)
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+        set: [process_version_id: first.id, stage_id: @explore]
+      )
+
+      workspace = scope.workspace
+      {:ok, _marked} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
+
+      Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id),
+        set: [purge_after: DateTime.add(DateTime.utc_now(), -60, :second)]
+      )
+
+      assert {:ok, :purged} =
+               Deletion.purge_workspace(
+                 Scope.for_instance(scope.organisation, Repo.get!(Workspace, workspace.id))
+               )
+
+      assert Repo.get(Version, first.id) == nil
+      assert %DispatchRun{process_version_id: nil, stage_id: @explore} = Repo.reload!(run)
+      assert %WorkItem{workspace_id: moved_to} = Repo.reload!(again)
+      assert moved_to == elsewhere.workspace.id
     end
 
     test "a member may not assign a work item, nor make a trial current, nor drop it", %{

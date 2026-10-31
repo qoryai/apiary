@@ -14,6 +14,9 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
   # entry of the loop's body. A dispatched run keeps the same, with its workflow and the
   # machine type its entry asked for.
   #
+  # A workspace keeps the names of the workflows its harness source listed at the last
+  # read of it, with the time of that read (`Apiary.Processes.record_declared/2`).
+  #
   # Every existing workspace gets version 1, a copy of the software type's default as it
   # is written below, and every open work item gets that version and the stage that
   # matches where it is today: Shape, waiting at its gate, once its proposal is confirmed;
@@ -83,8 +86,14 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
           references(:organisations, type: :binary_id, on_delete: :delete_all),
           null: false
 
-      add :workspace_id, references(:workspaces, type: :binary_id, on_delete: :delete_all),
-        null: false
+      add :workspace_id,
+          references(:workspaces,
+            type: :binary_id,
+            with: [organisation_id: :organisation_id],
+            match: :full,
+            on_delete: :delete_all
+          ),
+          null: false
 
       add :number, :integer, null: false
       add :status, :text, null: false
@@ -120,7 +129,7 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
 
     alter table(:work_items) do
       add :process_version_id,
-          references(:process_versions, type: :binary_id, on_delete: :nothing)
+          references(:process_versions, type: :binary_id, on_delete: :nilify_all)
 
       add :stage_id, :text
       add :stage_state, :text
@@ -133,7 +142,7 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
 
     alter table(:dispatch_runs) do
       add :process_version_id,
-          references(:process_versions, type: :binary_id, on_delete: :nothing)
+          references(:process_versions, type: :binary_id, on_delete: :nilify_all)
 
       add :stage_id, :text
       add :round, :integer
@@ -145,10 +154,12 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
 
     create index(:dispatch_runs, [:process_version_id])
 
+    # A version's purge sets the link to it to null on any row of another workspace that
+    # still links to it. Such a row keeps its `stage_id`, so a stage id does not require
+    # a version.
     for table <- [:work_items, :dispatch_runs] do
       create constraint(table, :"#{table}_stage_id_check",
-               check:
-                 "stage_id IS NULL OR (stage_id ~ '#{@stage_id}' AND process_version_id IS NOT NULL)"
+               check: "stage_id IS NULL OR stage_id ~ '#{@stage_id}'"
              )
 
       create constraint(table, :"#{table}_entries_check",
@@ -169,6 +180,13 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
     create constraint(:dispatch_runs, :dispatch_runs_round_check,
              check: "round IS NULL OR round >= 1"
            )
+
+    # The names of the workflows the workspace's harness source listed at its last read
+    # on the Workflow page, and the time of that read; null before the first.
+    alter table(:workspaces) do
+      add :declared_workflows, {:array, :text}
+      add :declared_workflows_read_at, :utc_datetime_usec
+    end
 
     flush()
     backfill(repo())
@@ -268,6 +286,11 @@ defmodule Apiary.Repo.Migrations.KeepEachWorkspaceSProcess do
 
   # Rolled back, the processes and every work item's and run's place in them are gone.
   def down do
+    alter table(:workspaces) do
+      remove :declared_workflows
+      remove :declared_workflows_read_at
+    end
+
     for table <- [:work_items, :dispatch_runs] do
       drop constraint(table, :"#{table}_stage_id_check")
       drop constraint(table, :"#{table}_entries_check")

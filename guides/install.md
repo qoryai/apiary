@@ -488,10 +488,11 @@ environment variable SMTP_TLS must be always, if_available or never
   `observability`, `security` and `secrets`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- `workflow_model`: the process of each workspace: its stages in order, each with its
-  workflows and its gate, kept as numbered versions, and trial versions that chosen work
-  items are assigned to. Opt-in. Needs `observability`, `security`, `secrets` and
-  `factory`.
+- `workflow_model`: changes to the process of each workspace, its stages in order, each
+  with its workflows and its gate. Owners and admins save numbered versions, and trial
+  versions that chosen work items are assigned to. With the switch off, each workspace
+  keeps version 1 of its process, a copy of its type's default. Opt-in. Needs
+  `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
