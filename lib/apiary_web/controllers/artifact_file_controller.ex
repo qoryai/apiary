@@ -26,7 +26,9 @@ defmodule ApiaryWeb.ArtifactFileController do
   #   * `cache-control: private, no-store`.
   #
   # An image, a video or a caption file in a page's `<img>`, `<video>` or `<track>`
-  # loads from here as well: a browser applies none of these headers to such a load.
+  # loads from here as well. A browser applies the content type, `nosniff` and
+  # `cache-control` to such a load, and ignores `content-disposition` and the
+  # `content-security-policy` header there.
   # A stored copy on the volume is sent with `send_file`, and a `Range` of one span is
   # answered `206`, so a video can seek; a store that returns a stream sends it chunked.
   #

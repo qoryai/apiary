@@ -59,7 +59,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   writer, the check result where the caller passes one, and a link to the newest
   version's page.
 
-  The work item page renders it (`ApiaryWeb.WorkItemLive.Show`), under the feature
+  For the work item page (`ApiaryWeb.WorkItemLive.Show`, piece W), under the feature
   `workflow_model`:
 
       <ApiaryWeb.ArtifactComponents.list

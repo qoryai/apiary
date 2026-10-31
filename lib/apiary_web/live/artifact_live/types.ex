@@ -6,7 +6,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   # (`…/new`), Edit (`…/:type_id/edit`: size limit, most files and, for a structured
   # type, the JSON Schema) and Delete, confirmed in its row (`…/:type_id/delete`). A
   # custom type's name and base view are fixed once it is made. A type that artifacts of
-  # the workspace have is kept, and its row says why (`:in_use`).
+  # the workspace have is kept, and a line under the table says why (`:in_use`).
   #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.
