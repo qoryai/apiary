@@ -17855,9 +17855,14 @@ msgstr ""
 msgid "The tool answered %{status}."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
+#: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "The trial was not dropped: a work item of it is in the stage %{stage}, which the current version does not have. Assign that work item to another version first."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The trial was not dropped: work item %{number}, %{title}, is in the stage %{stage}, which the current version does not have. Assign it to another version first."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -17898,6 +17903,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The version of a release, such as 1.4.0."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The versions changed since this page loaded, so nothing was changed. The page shows them again; check them, then try again."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -19024,6 +19034,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{number}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{number} is already a trial. Make it current or drop it, then save another trial."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -20497,6 +20512,11 @@ msgstr ""
 msgid "a path leads out of its source"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "a removed stage"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "a reserved address"
@@ -20708,6 +20728,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "days"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "default"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

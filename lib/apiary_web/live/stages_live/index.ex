@@ -198,10 +198,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     %{current_scope: scope, draft: draft} = socket.assigns
     trial? = params["trial"] == "true"
 
-    case Processes.save(scope, scope.workspace, draft,
-           trial: trial?,
-           based_on: socket.assigns.base
-         ) do
+    case save(scope, draft, trial?, socket.assigns.base) do
       {:ok, version} ->
         notice =
           if trial?,
@@ -216,12 +213,15 @@ defmodule ApiaryWeb.StagesLive.Index do
 
         {:noreply, socket |> assign(save_errors: [], notice: notice) |> load(version)}
 
+      {:error, {:trial_exists, trial}} ->
+        {:noreply, socket |> reload() |> assign(save_errors: [Words.trial_exists(trial)])}
+
       {:error, errors} when is_list(errors) ->
         {:noreply,
          assign(socket, save_errors: Enum.uniq(Enum.map(errors, &Words.refusal(&1, draft))))}
 
-      {:error, _reason} ->
-        {:noreply, assign(socket, save_errors: [Words.refusal(:forbidden, draft)])}
+      {:error, reason} ->
+        {:noreply, refused(socket, reason)}
     end
   end
 
@@ -235,19 +235,30 @@ defmodule ApiaryWeb.StagesLive.Index do
       trial ->
         chosen = List.wrap(get_in(params, ["assign", "items"]))
 
-        errors =
+        results =
           for item <- items, item.public_id in chosen do
             case Processes.assign(scope, item, trial) do
-              {:ok, _item} -> nil
-              {:error, {:missing_stage, stage_id}} -> missing_stage(item, stage_id, trial)
-              {:error, _reason} -> Words.refusal(:forbidden, nil)
+              {:ok, _item} ->
+                :ok
+
+              {:error, {:missing_stage, stage_id}} ->
+                {:missing, missing_stage(item, stage_id, trial)}
+
+              {:error, reason} ->
+                {:refused, reason}
             end
           end
 
-        {:noreply,
-         socket
-         |> assign(assign_errors: Enum.reject(errors, &is_nil/1))
-         |> load_work_items()}
+        case for({:refused, reason} <- results, do: reason) do
+          [] ->
+            {:noreply,
+             socket
+             |> assign(assign_errors: for({:missing, error} <- results, do: error))
+             |> load_work_items()}
+
+          [reason | _] ->
+            {:noreply, refused(socket, reason)}
+        end
     end
   end
 
@@ -263,39 +274,92 @@ defmodule ApiaryWeb.StagesLive.Index do
 
       {:noreply, socket |> assign(notice: notice, assign_errors: []) |> load(version)}
     else
-      _other -> {:noreply, socket}
+      nil -> {:noreply, socket}
+      {:error, reason} -> {:noreply, refused(socket, reason)}
     end
   end
 
   def handle_event("drop_trial", _params, socket) do
     scope = socket.assigns.current_scope
 
-    with %{} = trial <- trial(socket.assigns.versions),
-         {:ok, version} <- Processes.drop_trial(scope, trial) do
-      notice =
-        gettext(
-          "Dropped version %{number}. Its work items are back on the current version.",
-          number: version.number
-        )
-
-      current = Processes.current(scope.workspace)
-
-      {:noreply,
-       socket |> assign(notice: notice, assign_errors: []) |> load(current) |> load_work_items()}
-    else
-      {:error, {:missing_stage, stage_id}} ->
-        stage = Processes.stage(Processes.current(scope.workspace), stage_id) || %{}
-
-        error =
-          gettext(
-            "The trial was not dropped: a work item of it is in the stage %{stage}, which the current version does not have. Assign that work item to another version first.",
-            stage: stage["name"] || stage_id
-          )
-
-        {:noreply, assign(socket, assign_errors: [error])}
-
-      _other ->
+    case trial(socket.assigns.versions) do
+      nil ->
         {:noreply, socket}
+
+      trial ->
+        case Processes.drop_trial(scope, trial) do
+          {:ok, version} ->
+            notice =
+              gettext(
+                "Dropped version %{number}. Its work items are back on the current version.",
+                number: version.number
+              )
+
+            current = Processes.current(scope.workspace)
+
+            {:noreply,
+             socket
+             |> assign(notice: notice, assign_errors: [])
+             |> load(current)
+             |> load_work_items()}
+
+          {:error, {:missing_stage, stage_id}} ->
+            {:noreply, assign(socket, assign_errors: not_dropped(socket, trial, stage_id))}
+
+          {:error, reason} ->
+            {:noreply, refused(socket, reason)}
+        end
+    end
+  end
+
+  # One trial at a time (the canvas edits one): a trial save while the workspace has a
+  # trial, made on this page or elsewhere, is refused here, as Apiary.Processes allows several.
+  defp save(scope, draft, true, base) do
+    with :ok <- Apiary.Access.check(scope, :"process.edit", scope.workspace),
+         nil <- trial(Processes.list_versions(scope.workspace)) do
+      Processes.save(scope, scope.workspace, draft, trial: true, based_on: base)
+    else
+      %Processes.Version{} = trial -> {:error, {:trial_exists, trial}}
+      error -> error
+    end
+  end
+
+  defp save(scope, draft, false, base),
+    do: Processes.save(scope, scope.workspace, draft, trial: false, based_on: base)
+
+  # A refusal of Apiary.Processes that is no error in the document. `:forbidden` is the
+  # person's role; any other reason (a trial dropped or made current in another tab, a
+  # version gone) means the page is behind, so it reads the versions and work items again.
+  defp refused(socket, :forbidden),
+    do: assign(socket, save_errors: [Words.refusal(:forbidden, nil)])
+
+  defp refused(socket, _reason),
+    do: socket |> reload() |> assign(save_errors: [Words.stale()])
+
+  defp reload(socket) do
+    versions = Processes.list_versions(socket.assigns.current_scope.workspace)
+    socket |> assign(versions: versions, assign_errors: []) |> refresh() |> load_work_items()
+  end
+
+  # The trial was not dropped: each of its work items in a stage that the current version
+  # does not have, with the stage's name from the trial.
+  defp not_dropped(socket, trial, stage_id) do
+    current = Processes.current(socket.assigns.current_scope.workspace)
+
+    stuck =
+      for item <- socket.assigns.work_items,
+          item.process_version_id == trial.id,
+          item.stage_id != nil,
+          Processes.stage(current, item.stage_id) == nil,
+          do: item
+
+    stuck = if stuck == [], do: [%{number: nil, title: nil, stage_id: stage_id}], else: stuck
+
+    for item <- stuck do
+      Words.not_dropped(
+        item,
+        (Processes.stage(trial, item.stage_id) || %{})["name"] || gettext("a removed stage")
+      )
     end
   end
 
@@ -1008,9 +1072,11 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   # Newest first, each with the version before it by number.
+  # Each version with the version its save started from (`based_on_id`), so a version
+  # saved from v1 after a dropped trial v2 lists its changes against v1.
   defp with_older(versions) do
-    by_number = Map.new(versions, &{&1.number, &1})
-    for v <- versions, do: {v, Map.get(by_number, v.number - 1)}
+    by_id = Map.new(versions, &{&1.id, &1})
+    for v <- versions, do: {v, v.based_on_id && Map.get(by_id, v.based_on_id)}
   end
 
   defp change_lines(nil, _version, _people), do: [gettext("The first version.")]

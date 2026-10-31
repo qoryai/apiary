@@ -380,6 +380,92 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
     end
 
+    test "a version lists its changes against the version its save started from", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      v1 = Processes.current(scope.workspace)
+      {added, _id} = Draft.add_stage(v1.document, "Discover")
+      {:ok, v2} = Processes.save(scope, scope.workspace, added, trial: true)
+      {:ok, _v2} = Processes.drop_trial(scope, v2)
+
+      renamed = Draft.update_stage(v1.document, id_of("Shape"), &Map.put(&1, "name", "Plan"))
+      {:ok, _v3} = Processes.save(scope, scope.workspace, renamed, based_on: v1)
+
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(view, "#stages-version-3", "Renamed the stage Shape to Plan.")
+      refute has_element?(view, "#stages-version-3", "Discover")
+      assert has_element?(view, "#stages-version-2", "Added the stage Discover.")
+    end
+
+    test "a trial dropped in another tab: the page shows the versions again", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      item = work_item_fixture(scope, %{title: "Web shop checkout"})
+      {renamed, _id} = Draft.add_stage(Processes.current(scope.workspace).document, "Discover")
+      {:ok, trial} = Processes.save(scope, scope.workspace, renamed, trial: true)
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, "#stages-trial")
+
+      {:ok, _trial} = Processes.drop_trial(scope, trial)
+      view |> form("#stages-assign-form", assign: %{items: [item.public_id]}) |> render_submit()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "The versions changed since this page loaded"
+             )
+
+      refute has_element?(view, "[data-save-error]", "Only owners and admins")
+      refute has_element?(view, "#stages-trial")
+      assert has_element?(view, "#stages-version-2", "dropped")
+    end
+
+    test "a trial made elsewhere: the page shows it, and a second trial is refused", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, path)
+      {added, _id} = Draft.add_stage(Processes.current(scope.workspace).document, "Discover")
+      {:ok, _trial} = Processes.save(scope, scope.workspace, added, trial: true)
+
+      view |> form("#stage-form", stage: %{name: "Plan"}) |> render_change()
+      view |> element("#stages-save-trial") |> render_click()
+
+      assert has_element?(view, "[data-save-error]", "Version 2 is already a trial.")
+      assert has_element?(view, "#stages-trial-title", "Trial: version 2")
+      assert has_element?(view, "#stages-dirty")
+      assert [2, 1] == Enum.map(Processes.list_versions(scope.workspace), & &1.number)
+    end
+
+    test "a trial with a work item in a stage only the trial has is not dropped", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      item = work_item_fixture(scope, %{title: "Web shop checkout"})
+      {added, discover} = Draft.add_stage(Processes.current(scope.workspace).document, "Discover")
+      {:ok, trial} = Processes.save(scope, scope.workspace, added, trial: true)
+      Repo.update_all(WorkItem, set: [stage_id: discover, process_version_id: trial.id])
+
+      {:ok, view, _html} = live(conn, path)
+      view |> element("#stages-drop-trial") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-assign-error]",
+               "work item #{item.number}, Web shop checkout, is in the stage Discover"
+             )
+
+      refute has_element?(view, "[data-assign-error]", discover)
+      assert has_element?(view, "#stages-trial-title", "Trial: version 2")
+    end
+
     test "an admin edits too", %{scope: scope, path: path} do
       %{user: user} = member_fixture(scope, :admin)
       {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
@@ -412,6 +498,33 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       view |> element(~s(button[aria-label="Show Build"])) |> render_click()
       assert has_element?(view, "#stage-panel-title", "Build")
+    end
+
+    test "a save, an assign, a make current and a drop are refused", %{
+      member: conn,
+      path: path,
+      scope: scope
+    } do
+      item = work_item_fixture(scope, %{title: "Web shop checkout"})
+      {added, _id} = Draft.add_stage(Processes.current(scope.workspace).document, "Discover")
+      {:ok, trial} = Processes.save(scope, scope.workspace, added, trial: true)
+      {:ok, view, _html} = live(conn, path)
+
+      for {event, params} <- [
+            {"save", %{"trial" => "false"}},
+            {"save", %{"trial" => "true"}},
+            {"assign", %{"assign" => %{"items" => [item.public_id]}}},
+            {"make_current", %{}},
+            {"drop_trial", %{}}
+          ] do
+        assert render_hook(view, event, params) =~ "Only owners and admins can change the stages.",
+               event
+      end
+
+      assert Enum.map(Processes.list_versions(scope.workspace), &{&1.number, &1.status}) ==
+               [{2, :trial}, {1, :current}]
+
+      assert Repo.get!(WorkItem, item.id).process_version_id != trial.id
     end
 
     test "sends an edit, and nothing changes", %{member: conn, path: path} do

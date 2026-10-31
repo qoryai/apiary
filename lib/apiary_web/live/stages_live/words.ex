@@ -133,8 +133,8 @@ defmodule ApiaryWeb.StagesLive.Words do
   def change({:machine_changed, _id, %{from: from, to: to}}, _older, _newer, _people),
     do:
       gettext("Changed the default machine type from %{from} to %{to}.",
-        from: from || "default",
-        to: to || "default"
+        from: from || gettext("default"),
+        to: to || gettext("default")
       )
 
   defp name(doc, id), do: (Processes.stage(doc, id) || %{})["name"]
@@ -187,6 +187,41 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # A refusal that means the page was behind the versions: a trial dropped or made current
+  # in another tab or by another person, or a version gone.
+  @doc false
+  def stale,
+    do:
+      gettext(
+        "The versions changed since this page loaded, so nothing was changed. The page shows them again; check them, then try again."
+      )
+
+  @doc false
+  def trial_exists(trial),
+    do:
+      gettext(
+        "Version %{number} is already a trial. Make it current or drop it, then save another trial.",
+        number: trial.number
+      )
+
+  # A work item that keeps a trial from being dropped: its stage is only in the trial.
+  @doc false
+  def not_dropped(%{number: nil}, stage),
+    do:
+      gettext(
+        "The trial was not dropped: a work item of it is in the stage %{stage}, which the current version does not have. Assign that work item to another version first.",
+        stage: stage
+      )
+
+  def not_dropped(item, stage),
+    do:
+      gettext(
+        "The trial was not dropped: work item %{number}, %{title}, is in the stage %{stage}, which the current version does not have. Assign it to another version first.",
+        number: item.number,
+        title: item.title,
+        stage: stage
+      )
 
   # The stage's name and the field under it, of a place such as `#/stages/1/name`.
   defp place(path, doc) when is_binary(path) do
