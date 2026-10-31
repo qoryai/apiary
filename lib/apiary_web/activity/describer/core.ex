@@ -94,6 +94,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"adapter.app_values_seal"), do: gettext("Adapter secrets sent")
   def label(:"adapter.end_grant"), do: gettext("Ended a grant")
   def label(:"run_credential.issue"), do: gettext("Run access sent or refused")
+  def label(:"gate.approve"), do: gettext("Work item stage decided")
+  def label(:"process.edit"), do: gettext("Process changed")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -172,10 +174,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"run_credential.issue"
         ]
 
-      # The actions on a workspace's process have no labels yet, so the filter offers none
-      # of them, and their entries show as any change.
+      # Of the actions on a workspace's process, a stage's decisions on a work item and the
+      # changes to the process have labels; the artifacts' actions have none yet, so the
+      # filter offers only the first two, and the others' entries show as any change.
       :workflow_model ->
-        false
+        action in [:"gate.approve", :"process.edit"]
 
       shown_as when shown_as in [:secrets, :nodes] ->
         Features.visible?(scope, shown_as)
@@ -573,6 +576,16 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"target.rebuild_environment", _details, _actor),
     do: gettext("Asked for a build of its environment")
 
+  # A decision at a stage of a work item (`Apiary.Stages`), by its change; the entry is the
+  # work item's.
+  defp said(:"gate.approve", %{"change" => change}, _actor), do: said_stage(change)
+
+  # A change to the workspace's process (`Apiary.Processes`), by its change, with the
+  # version's number; the entry of an assign is the work item's.
+  defp said(:"process.edit", %{"change" => change, "number" => number}, _actor)
+       when is_integer(number),
+       do: said_process(change, number)
+
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
   defp said(_policy, %{"change" => "rule_changed"}, _actor),
@@ -601,6 +614,40 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Changed an integration")
 
   defp said(_action, _details, _actor), do: nil
+
+  defp said_stage("approve"), do: gettext("Approved a stage of a work item")
+  defp said_stage("request_changes"), do: gettext("Asked for changes in a stage of a work item")
+  defp said_stage("move"), do: gettext("Moved a work item to another stage")
+
+  defp said_stage("escalation_accept"),
+    do: gettext("Accepted an escalated stage of a work item as it is")
+
+  defp said_stage("escalation_another_round"),
+    do: gettext("Started another round of an escalated stage of a work item")
+
+  defp said_stage("escalation_move_back"),
+    do: gettext("Moved a work item back to an earlier stage, from an escalation")
+
+  defp said_stage("escalation_close"), do: gettext("Closed a work item, from an escalation")
+  defp said_stage("escalation_decline"), do: gettext("Declined a work item, from an escalation")
+  defp said_stage(_change), do: nil
+
+  defp said_process("save", number),
+    do: gettext("Saved version %{number} of the process", number: number)
+
+  defp said_process("save_trial", number),
+    do: gettext("Saved version %{number} of the process as a trial", number: number)
+
+  defp said_process("make_current", number),
+    do: gettext("Made version %{number} the current process", number: number)
+
+  defp said_process("drop_trial", number),
+    do: gettext("Dropped the trial version %{number} of the process", number: number)
+
+  defp said_process("assign", number),
+    do: gettext("Assigned a work item to version %{number} of the process", number: number)
+
+  defp said_process(_change, _number), do: nil
 
   defp access_word("write"), do: gettext("write")
   defp access_word(_read), do: gettext("read")
