@@ -40,9 +40,8 @@ defmodule Apiary.Processes.TypeTemplates do
   alias Apiary.Organisations.Organisation
   alias Apiary.Processes.TypeTemplate
 
-  # Transition until piece A (`Apiary.Artifacts`) lands: the standard artifact types of
-  # the workflow model (§ 11), with their base views. Swap this list for A's standard
-  # types then.
+  # The standard artifact types of the workflow model (§ 11), with their base views: a
+  # copy of `Apiary.Artifacts.Type.standard/0`, and the two lists have the same entries.
   @standard_types [
     {"acceptance-criteria", :document},
     {"explainer", :document},

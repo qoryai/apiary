@@ -51,7 +51,7 @@ defmodule Apiary.TestSetup do
     seconds (`assert_receive_timeout: 5_000`), and return as soon as there is something.
   - **The artifact store.** A folder of this test run under the system's temporary
     folder, so runs on other partitions share nothing with it, removed when the suite
-    ends. A test that reads the store sets a folder of the test instead.
+    ends. A test that lists the store's files sets a folder of the test instead.
   - **The instance.** It is set up, committed before the sandbox takes over: a sign-up in
     a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`,
     which asks the configured edition whether it is set up, and sets it up through it).
