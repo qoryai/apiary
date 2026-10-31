@@ -629,8 +629,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       html = add_notes(view)
 
       assert html =~
-               "Add the version again: work item ##{ctx.work_item.number} moved to another " <>
-                 "stage while the files uploaded."
+               "Add the version again: work item ##{ctx.work_item.number} moved to another stage."
 
       assert Artifacts.list(ctx.work_item) == []
 

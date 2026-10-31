@@ -4054,7 +4054,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Add the version again: work item #%{number} moved to another stage while the files uploaded."
+msgid "Add the version again: work item #%{number} moved to another stage."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex

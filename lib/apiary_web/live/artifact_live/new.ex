@@ -441,7 +441,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
           socket,
           :error,
           gettext(
-            "Add the version again: work item #%{number} moved to another stage while the files uploaded.",
+            "Add the version again: work item #%{number} moved to another stage.",
             number: socket.assigns.number
           )
         )
