@@ -469,6 +469,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
+  public harness repository from its host over HTTPS, with no connection and no
+  adapter: a repository the host serves to anyone is public. A harness source that is
+  neither linked nor public fails with “… is not public, or does not exist, and no
+  connection of Acme reaches it.” A repository too large to read, a host out of reach or
+  on a private address, and a host that serves no git repository each fail with a
+  separate line: the fix, then the cause. An instance admin allows the Qory Apiary server outbound HTTPS to
+  each host the harnesses use, such as `github.com:443`.
 - An organisation's address follows its name, as a workspace's does. A rename in
   Organisation settings › General changes it, the page opens at the new address, and
   links to the old one stop working, with no redirect. A sign-up, the set-up link's page

@@ -668,6 +668,12 @@ The value is read at boot, so a change takes a restart. A release asked for from
 address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 `integration_source_refused`, and a release found before is not added.
 <!-- /feature -->
+<!-- feature: factory -->
+
+Qory Apiary reads a public harness repository from its host over HTTPS, from public
+addresses only. Allow the Qory Apiary server outbound HTTPS to each host your harnesses
+use, such as `github.com:443`.
+<!-- /feature -->
 
 ### Sign-up and invitations
 
