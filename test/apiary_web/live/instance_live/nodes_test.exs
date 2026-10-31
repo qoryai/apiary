@@ -422,7 +422,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       {:ok, _lv, html} = live(conn, base)
       assert html =~ "Qory Gateway"
-      refute html =~ "of Qory Apiary"
+      refute html =~ "of this instance"
 
       {:ok, _lv, html} = live(conn, base <> "/settings")
 

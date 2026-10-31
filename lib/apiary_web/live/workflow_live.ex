@@ -33,7 +33,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/2`):
   # the organisation's connected repositories (`Apiary.Stacks.Sources.repositories/1`),
   # listed with no call once the page connects, so the group shows Reading… until then;
-  # the harness sources an instance admin assigned to the organisation; and a public
+  # the harness sources Qory Apiary provides to the organisation; and a public
   # address, which shows a field for it. Once a linked repository is listed, a search box narrows
   # the choice and keeps the public address in view. Choosing a source, or typing an
   # address, reads its stacks through the adapters, outside the page's process;
@@ -855,11 +855,14 @@ defmodule ApiaryWeb.WorkflowLive do
             )}
           </p>
           <p :if={!@stages?} id="workflow-list">
-            {pgettext(
-              "plain",
-              "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it.",
-              organisation: @organisation
-            )}
+            <.rich text={
+              rich_pgettext(
+                "plain",
+                "The list shows the repositories connected to %{organisation}, and the harness sources Qory Apiary provides to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or %{contact_support}.",
+                organisation: @organisation,
+                contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+              )
+            } />
           </p>
           <HarnessComponents.about />
         </:context>
