@@ -923,6 +923,14 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule AdminGuide do
+    @moduledoc """
+    A guide for instance admins beyond the core's (`c:ApiaryWeb.Edition.admin_guides/0`),
+    `admin.md`, with one of the core's named again, as an edition might.
+    """
+    def admin_guides, do: ["admin.md", "install.md"]
+  end
+
   defmodule AnotherName do
     @moduledoc """
     The product named Another Product (`c:ApiaryWeb.Edition.product_name/0`), as an

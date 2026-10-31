@@ -15,6 +15,7 @@ defmodule ApiaryWeb.Routes do
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
+    `:docs_admin` (the files of the documentation for instance admins),
     `:contract` (a signed request of the server contract), `:contract_events` and
     `:contract_registration` (the same, each typing its body and held to a bucket of the key's rate
     limit) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
@@ -97,6 +98,14 @@ defmodule ApiaryWeb.Routes do
         plug :accepts, ["json"]
       end
 
+      # The files of the documentation for instance admins (`/docs/admin`): the signed-in
+      # person, with no `accepts`, since its pages load scripts, styles and fonts.
+      pipeline :docs_admin do
+        plug :fetch_session
+        plug :put_secure_browser_headers
+        plug :fetch_current_scope_for_user
+      end
+
       # JSON for a signed-in person's page, such as the palette's answers: the browser's
       # session, cookie and words, without its HTML.
       pipeline :browser_json do
@@ -174,6 +183,16 @@ defmodule ApiaryWeb.Routes do
   """
   defmacro public_routes do
     quote do
+      # The documentation for instance admins, every guide included, which only a
+      # signed-in instance admin reaches; anyone else is answered 404
+      # (`ApiaryWeb.DocsController.admin/2`). Before /docs/*path, which would take it.
+      scope "/", ApiaryWeb do
+        pipe_through :docs_admin
+
+        get "/docs/admin", DocsController, :admin
+        get "/docs/admin/*path", DocsController, :admin
+      end
+
       scope "/", ApiaryWeb do
         pipe_through :browser
 
