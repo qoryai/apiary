@@ -16,7 +16,8 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
       assert {:ok, %{objects: objects, inflated: inflated}} = read(pack)
       assert objects[B.id(:blob, "hello\n")] == {:blob, "hello\n"}
       assert objects[B.id(:tree, "")] == {:tree, ""}
-      assert inflated == byte_size("hello\n") + byte_size("tree x\n")
+      # Each object counts 256 bytes beside its bytes.
+      assert inflated == byte_size("hello\n") + byte_size("tree x\n") + 3 * 256
     end
 
     test "applies an offset delta and a reference delta, in either order in the pack" do
@@ -87,16 +88,16 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
 
     test "the objects of a pack together stay within the budget" do
       pack = B.pack([{:blob, String.duplicate("a", 600)}, {:blob, String.duplicate("b", 600)}])
-      assert {:ok, _} = read(pack, budget: 1200)
-      assert read(pack, budget: 1199) == {:error, :too_large}
+      assert {:ok, _} = read(pack, budget: 1200 + 2 * 256)
+      assert read(pack, budget: 1199 + 2 * 256) == {:error, :too_large}
     end
 
     test "a delta's result counts toward the budget" do
       pack =
         B.pack([{:blob, "abc"}, {:ofs, 0, B.delta(3, 300, List.duplicate({:copy, 0, 3}, 100))}])
 
-      assert {:ok, _} = read(pack, budget: 3 + 300 + 100 * 3)
-      assert read(pack, budget: 3 + 300) == {:error, :too_large}
+      assert {:ok, _} = read(pack, budget: 3 + 300 + 100 * 3 + 2 * 256)
+      assert read(pack, budget: 3 + 300 + 2 * 256) == {:error, :too_large}
     end
 
     test "a delta whose result passes its declared size, or falls short of it, is invalid" do
@@ -143,6 +144,23 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
 
         assert read(pack) == {:error, :invalid}
       end
+    end
+
+    test "a pack of more objects than the cap is too large, before any is inflated" do
+      blobs = for n <- 1..11, do: {:blob, <<n>>}
+      assert {:ok, %{objects: objects}} = read(B.pack(blobs), max_objects: 11)
+      assert map_size(objects) == 11
+      assert read(B.pack(blobs), max_objects: 10) == {:error, :too_large}
+
+      # The default cap: 50,001 one-byte blobs, about 600 KB of pack.
+      many = for n <- 0..50_000, do: {:blob, <<rem(n, 256)>> <> <<div(n, 256)::16>>}
+      assert read(B.pack(many)) == {:error, :too_large}
+    end
+
+    test "each object counts 256 bytes against the budget, however small" do
+      blobs = for n <- 1..10, do: {:blob, <<n>>}
+      assert {:ok, %{inflated: 2570}} = read(B.pack(blobs), budget: 2570)
+      assert read(B.pack(blobs), budget: 2569) == {:error, :too_large}
     end
 
     test "an object of an unknown type, a count over the bytes, or a wrong checksum is invalid" do
@@ -214,6 +232,27 @@ defmodule Apiary.Harnesses.PublicGit.PackTest do
 
           {:error, reason} ->
             assert reason in [:invalid, :too_large]
+        end
+      end
+    end
+
+    property "many tiny objects read within the object cap and the budget, or are too large" do
+      check all(
+              n <- integer(1..400),
+              max_objects <- integer(1..400),
+              budget <- integer(0..120_000)
+            ) do
+        blobs = for i <- 1..n, do: {:blob, <<i::16>>}
+
+        case read(B.pack(blobs), max_objects: max_objects, budget: budget) do
+          {:ok, %{objects: objects, inflated: inflated}} ->
+            assert n <= max_objects
+            assert map_size(objects) == n
+            assert inflated == n * (2 + 256) and inflated <= budget
+
+          {:error, reason} ->
+            assert reason == :too_large
+            assert n > max_objects or n * (2 + 256) > budget
         end
       end
     end

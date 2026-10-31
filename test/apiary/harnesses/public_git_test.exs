@@ -333,4 +333,72 @@ defmodule Apiary.Harnesses.PublicGitTest do
       assert read(commit, "harness.yaml") == {:error, :not_found}
     end
   end
+
+  describe "the session's limits" do
+    # The bytes the session has inflated so far, every repository together.
+    defp inflated, do: Process.get(PublicGit).total
+
+    test "two addresses of one repository share the session's reads" do
+      repo = repository!()
+      PublicGitServer.serve(%{@git => repo.dir})
+
+      PublicGit.session(&PublicGit.no_budget/0, fn ->
+        assert {:ok, content, commit} = PublicGit.read(@git, "main", "harness.yaml")
+        requests()
+
+        for git <- ["https://GitHub.com/acme/harness/", "https://github.com/acme/harness.git"] do
+          assert {:ok, ^content, ^commit} = PublicGit.read(git, "main", "harness.yaml")
+        end
+      end)
+
+      assert requests() == []
+    end
+
+    # Three files of one content: a read of each fetches the same packs, and no read
+    # of one is in the cache for another.
+    @same %{"a.yaml" => "x: 1\n", "b.yaml" => "x: 1\n", "c.yaml" => "x: 1\n"}
+
+    # The bytes one session inflates to read `path` of `git`.
+    defp used(git, path) do
+      PublicGit.session(&PublicGit.no_budget/0, fn ->
+        {:ok, _, _} = PublicGit.read(git, "main", path)
+        inflated()
+      end)
+    end
+
+    test "a repository's inflated bytes count once under every address that names it" do
+      repo = repository!(@same)
+      PublicGitServer.serve(%{@git => repo.dir})
+      used = used(@git, "a.yaml")
+
+      # Room for one file's packs: a second file of the same repository, under another
+      # address of it, is too large.
+      PublicGit.session(
+        &PublicGit.no_budget/0,
+        fn ->
+          assert {:ok, "x: 1\n", _} = PublicGit.read(@git, "main", "b.yaml")
+          assert PublicGit.read(@git <> ".git/", "main", "c.yaml") == {:error, :too_large}
+        end,
+        inflated: used
+      )
+    end
+
+    test "every repository of a session counts toward one total" do
+      first = repository!(@same)
+      second = repository!(@same)
+      other = "https://github.com/acme/other"
+      PublicGitServer.serve(%{@git => first.dir, other => second.dir})
+      used = used(@git, "a.yaml")
+
+      PublicGit.session(
+        &PublicGit.no_budget/0,
+        fn ->
+          assert {:ok, _, _} = PublicGit.read(@git, "main", "b.yaml")
+          assert PublicGit.read(other, "main", "c.yaml") == {:error, :too_large}
+          assert inflated() == used
+        end,
+        session_inflated: used + 1
+      )
+    end
+  end
 end

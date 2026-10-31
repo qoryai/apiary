@@ -38,8 +38,11 @@ defmodule Apiary.Harnesses.PublicGit do
   #   * the ref advertisement and the ref list 1 MiB each; the trees' pack 4 MiB; a
   #     file's pack 320 KiB and the file 256 KiB, the adapters' document cap; the whole
   #     commit 8 MiB;
-  #   * 16 MiB inflated per repository in one session, every pack together, and the pack
-  #     reader's limits (`Apiary.Harnesses.PublicGit.Pack`);
+  #   * 16 MiB inflated per repository in one session, every pack together, and 32 MiB
+  #     for every repository of the session together, each object counted as 256 bytes
+  #     more, and the pack reader's limits (`Apiary.Harnesses.PublicGit.Pack`), 50,000
+  #     objects a pack among them. A repository is counted once under every address
+  #     that names it: host in any case, with or without a final `/` or `.git`;
   #   * a file is UTF-8 text without a NUL character, else `:not_text`.
   #
   # Within one session each repository's advertisement, each ref and each commit's trees
@@ -58,6 +61,7 @@ defmodule Apiary.Harnesses.PublicGit do
   @file_pack_bytes @file_bytes + 65_536
   @full_bytes 8 * 1_048_576
   @inflated 16 * 1_048_576
+  @session_inflated 32 * 1_048_576
   @max_redirects 5
   @user_agent "git/2.0 (qory-apiary)"
   @advertisement "application/x-git-upload-pack-advertisement"
@@ -105,13 +109,24 @@ defmodule Apiary.Harnesses.PublicGit do
   def request_seconds, do: div(@request_time, 1000)
 
   @doc false
-  # session/2 runs `fun` with a session: the requests it makes take their time from
+  # session/3 runs `fun` with a session: the requests it makes take their time from
   # `budget`, and what they read is kept for the session alone. A session inside another
-  # has the inner one's.
-  @spec session(budget, (-> result)) :: result when result: term
-  def session(budget, fun) when is_function(budget, 0) and is_function(fun, 0) do
+  # has the inner one's. `limits`, for the tests: `inflated`, the bytes inflated per
+  # repository (16 MiB), and `session_inflated`, for every repository together (32 MiB).
+  @spec session(budget, (-> result), keyword) :: result when result: term
+  def session(budget, fun, limits \\ []) when is_function(budget, 0) and is_function(fun, 0) do
     previous = Process.get(__MODULE__)
-    Process.put(__MODULE__, %{budget: budget, memo: %{}, inflated: %{}})
+
+    Process.put(__MODULE__, %{
+      budget: budget,
+      memo: %{},
+      inflated: %{},
+      total: 0,
+      limits: %{
+        inflated: Keyword.get(limits, :inflated, @inflated),
+        session: Keyword.get(limits, :session_inflated, @session_inflated)
+      }
+    })
 
     try do
       fun.()
@@ -156,14 +171,31 @@ defmodule Apiary.Harnesses.PublicGit do
   ## The repository
 
   defp repository(git) do
-    memo({:repository, git}, fn ->
+    key = key(git)
+
+    memo({:repository, key}, fn ->
       with {:ok, answer} <- request(:get, base(git) <> @service, nil, @refs_bytes),
            :ok <- served(answer, @advertisement),
            {:ok, base} <- redirected(answer.url),
            {:ok, repository} <- advertisement(answer.body) do
-        {:ok, Map.merge(repository, %{git: git, base: base})}
+        {:ok, Map.merge(repository, %{git: git, key: key, base: base})}
       end
     end)
+  end
+
+  # The repository `git` names, as git's hosts match it: its host in lower case, its
+  # port, and its path with no final `/` or `.git`, case kept. Two addresses of one
+  # repository share a session's reads and its inflated bytes.
+  defp key(git) do
+    uri = URI.parse(git)
+
+    path =
+      (uri.path || "")
+      |> String.trim_trailing("/")
+      |> String.replace_suffix(".git", "")
+      |> String.trim_trailing("/")
+
+    "#{String.downcase(uri.host || "")}:#{uri.port || 443}#{path}"
   end
 
   # The address with no final `/`, its host in lower case, its port kept.
@@ -306,7 +338,7 @@ defmodule Apiary.Harnesses.PublicGit do
         {:error, :version_not_found}
 
       true ->
-        memo({:ref, repository.git, at}, fn -> named(repository, at) end)
+        memo({:ref, repository.key, at}, fn -> named(repository, at) end)
     end
   end
 
@@ -411,7 +443,7 @@ defmodule Apiary.Harnesses.PublicGit do
   # The commit's objects: its trees alone where the host filters blobs, else every
   # object; and its root tree.
   defp snapshot(repository, commit, given) do
-    memo({:snapshot, repository.git, commit}, fn ->
+    memo({:snapshot, repository.key, commit}, fn ->
       trees? = repository.version == 2 and repository.filter
 
       fetched =
@@ -476,15 +508,21 @@ defmodule Apiary.Harnesses.PublicGit do
 
   defp text(_missing), do: {:error, :failed}
 
-  # The objects of a pack fetched, within the repository's inflated bytes; a refusal of
-  # a commit the reader gave is a version the host does not have.
+  # The objects of a pack fetched, within the repository's inflated bytes and the
+  # session's; a refusal of a commit the reader gave is a version the host does not have.
   defp objects(repository, {:ok, pack}, _given) do
-    used = Map.get(state().inflated, repository.git, 0)
+    state = state()
+    used = Map.get(state.inflated, repository.key, 0)
+    budget = min(state.limits.inflated - used, state.limits.session - state.total)
 
-    case Pack.read(pack, hash: repository.hash, budget: @inflated - used) do
+    case Pack.read(pack, hash: repository.hash, budget: budget) do
       {:ok, %{objects: objects, inflated: inflated}} ->
         update(fn state ->
-          %{state | inflated: Map.put(state.inflated, repository.git, used + inflated)}
+          %{
+            state
+            | inflated: Map.put(state.inflated, repository.key, used + inflated),
+              total: state.total + inflated
+          }
         end)
 
         {:ok, objects}
@@ -705,7 +743,13 @@ defmodule Apiary.Harnesses.PublicGit do
 
   ## The session
 
-  @default_budget %{budget: &__MODULE__.no_budget/0, memo: %{}, inflated: %{}}
+  @default_budget %{
+    budget: &__MODULE__.no_budget/0,
+    memo: %{},
+    inflated: %{},
+    total: 0,
+    limits: %{inflated: @inflated, session: @session_inflated}
+  }
 
   @doc false
   # no_budget/0 is the budget outside a session: each request its full time.

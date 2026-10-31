@@ -4,8 +4,8 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
   # before memory is taken for it:
   #
   #   * the pack: its header, then the object count, at most one object per 9 bytes (the
-  #     smallest object a pack can hold), then exactly that many objects and the
-  #     checksum of everything before it, which must match;
+  #     smallest object a pack can hold) and at most `max_objects` (50,000), then exactly
+  #     that many objects and the checksum of everything before it, which must match;
   #   * an object: its declared size at most `max_object` (16 MiB) and at most what is
   #     left of `budget`, read before it is inflated; its zlib stream inflated in steps,
   #     stopped once the output passes the declared size, and its end found by the
@@ -20,7 +20,9 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
   #     (4,095, the most git allows). Chains are resolved with a work list, not by
   #     recursion.
   #
-  # `budget` (16 MiB by default) counts every byte inflated and every delta's result.
+  # `budget` (16 MiB by default) counts every byte inflated, every delta's result, and
+  # `object_cost` (256) bytes more for each object, the memory an object takes beyond
+  # its bytes.
   # Nothing in the input becomes an atom or a term. Every failure is `{:error,
   # :too_large}` for a size over a bound, else `{:error, :invalid}`.
   @moduledoc false
@@ -29,6 +31,8 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
 
   @max_object 16 * 1024 * 1024
   @max_depth 4095
+  @max_objects 50_000
+  @object_cost 256
   @end_tries 8
   @types %{1 => :commit, 2 => :tree, 3 => :blob, 4 => :tag}
 
@@ -41,7 +45,8 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
   @doc false
   # read/2 is the objects of `pack`. `opts`: `hash`, `:sha` (default) or `:sha256`;
   # `budget`, the bytes it may inflate (16 MiB); `max_object` (16 MiB); `max_depth`
-  # (4,095).
+  # (4,095); `max_objects` (50,000); `object_cost` (256). `inflated` counts each
+  # object's cost too.
   @spec read(binary, keyword) :: {:ok, objects} | {:error, :too_large | :invalid}
   def read(pack, opts \\ []) when is_binary(pack) do
     hash = Keyword.get(opts, :hash, :sha)
@@ -51,7 +56,9 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
       id_size: id_size(hash),
       budget: Keyword.get(opts, :budget, @max_object),
       max_object: Keyword.get(opts, :max_object, @max_object),
-      max_depth: Keyword.get(opts, :max_depth, @max_depth)
+      max_depth: Keyword.get(opts, :max_depth, @max_depth),
+      max_objects: Keyword.get(opts, :max_objects, @max_objects),
+      object_cost: Keyword.get(opts, :object_cost, @object_cost)
     }
 
     with {:ok, body, count} <- header(pack, limits),
@@ -123,7 +130,9 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
          <<"PACK", version::32, count::32, _objects::binary>> when version in [2, 3] <- body,
          true <- count <= div(size - 12, 9),
          true <- :crypto.hash(limits.hash, body) == checksum do
-      {:ok, body, count}
+      if count <= limits.max_objects and count * limits.object_cost <= limits.budget,
+        do: {:ok, body, count},
+        else: {:error, :too_large}
     else
       _invalid -> {:error, :invalid}
     end
@@ -138,7 +147,7 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
 
   defp entries(body, at, left, limits, entries, used) do
     with {:ok, type, size, at_data} <- object_header(body, at),
-         :ok <- fits(size, limits.max_object, limits.budget - used),
+         :ok <- fits(size, limits.max_object, limits.budget - used - limits.object_cost),
          {:ok, kind, at_stream} <- kind(type, body, at, at_data, limits),
          {:ok, data, ends} <- inflate(body, at_stream, size) do
       entry =
@@ -148,7 +157,8 @@ defmodule Apiary.Harnesses.PublicGit.Pack do
           {:ref, base} -> {:ref, base, data}
         end
 
-      entries(body, ends, left - 1, limits, Map.put(entries, at, entry), used + size)
+      used = used + size + limits.object_cost
+      entries(body, ends, left - 1, limits, Map.put(entries, at, entry), used)
     end
   end
 
