@@ -34,7 +34,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     artifact_components: ApiaryWeb.ArtifactComponents
   ]
 
-  @states ~w(running waiting_inputs waiting_answers waiting_workflow escalated at_gate done)a
+  @states Apiary.Processes.Version.stage_states()
   @checks [:passed, :missing, :not_checked]
   @verdicts %{
     "passed" => :passed,

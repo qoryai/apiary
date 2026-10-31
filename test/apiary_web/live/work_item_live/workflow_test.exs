@@ -124,6 +124,24 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     work_item
   end
 
+  # A work item where the migration of piece F puts an open one: on the workspace's
+  # current version, in Explore, or in Shape at its gate.
+  defp backfilled!(scope, stage_id, state) do
+    work_item = work_item_fixture(scope)
+
+    {1, _} =
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [
+          process_version_id: Processes.current(scope.workspace).id,
+          stage_id: stage_id,
+          stage_state: state,
+          stage_round: 1
+        ]
+      )
+
+    Repo.get!(WorkItem, work_item.id)
+  end
+
   defp page(scope, number), do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}"
   defp list(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/work"
 
@@ -138,7 +156,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     @describetag with_features: Apiary.Features.all() -- [:workflow_model]
 
     test "the page has the step card and the stages as before it", %{conn: conn, scope: scope} do
-      work_item = work_item_fixture(scope)
+      work_item = backfilled!(scope, @explore, :running)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-step")
@@ -156,7 +174,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     test "the list has the stages strip and no board", %{conn: conn, scope: scope} do
-      work_item_fixture(scope)
+      backfilled!(scope, @shape, :at_gate)
       {:ok, view, _html} = live(conn, list(scope))
 
       assert has_element?(view, "#work-items-stages")
@@ -631,6 +649,53 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       send(view.pid, {:stage_changed, work_item.public_id})
       assert has_element?(view, "#work-item-stage-state", "At the gate")
+    end
+  end
+
+  describe "work items the migration placed" do
+    test "in Explore and in Shape at its gate, on the page and the board", %{
+      conn: conn,
+      scope: scope
+    } do
+      explore = backfilled!(scope, @explore, :running)
+      shape = backfilled!(scope, @shape, :at_gate)
+
+      WorkflowFake.put_work_item(explore,
+        status: %{
+          stage: %{"id" => @explore, "name" => "Explore"},
+          round: 1,
+          rounds: 3,
+          state: :running
+        }
+      )
+
+      WorkflowFake.put_work_item(shape,
+        status: %{
+          stage: %{"id" => @shape, "name" => "Shape"},
+          state: :at_gate,
+          outputs: [],
+          gate: %{approvable?: true, approvals: []}
+        }
+      )
+
+      {:ok, view, _html} = live(conn, list(scope))
+      assert has_element?(view, "#work-items-board-0-h", "Explore")
+      assert has_element?(view, "#work-items-board-0 #work-items-board-item-#{explore.public_id}")
+      assert has_element?(view, "#work-items-board-1-h", "Shape")
+      assert has_element?(view, "#work-items-board-1 #work-items-board-item-#{shape.public_id}")
+
+      {:ok, view, _html} = live(conn, page(scope, explore.number))
+      assert has_element?(view, ~s|#work-item-head-stages-#{@explore}[aria-current="step"]|)
+      assert has_element?(view, "#work-item-stage-state", "Running")
+      assert has_element?(view, "#work-item-stage-round", "Round 1 of 3")
+
+      {:ok, view, _html} = live(conn, page(scope, shape.number))
+      assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")
+      assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
+      assert has_element?(view, "#work-item-stage-state", "At the gate")
+      assert has_element?(view, "#work-item-stage-gate-none", "This stage has no outputs.")
+      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve Shape")
+      refute has_element?(view, "#work-item-stage-round")
     end
   end
 
