@@ -87,6 +87,45 @@ defmodule ApiaryWeb.SupportTest do
     end
   end
 
+  describe "stored_line/2, for an escalation's stored fix line" do
+    setup do
+      Application.put_env(:apiary, :support_address, nil)
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+      Apiary.EditionKit.hide_instance_organisation()
+      %{scope: scope} = Apiary.OrganisationsFixtures.sign_up_fixture()
+      %{scope: scope}
+    end
+
+    defp shown(line) do
+      assigns = %{text: Support.stored_line(line)}
+      html(~H"<.rich text={@text} />")
+    end
+
+    test "links Contact support where an address is set", %{scope: scope} do
+      {:ok, _address} =
+        Apiary.SupportAddress.save(scope, %{"support_address" => "https://help.example.com"})
+
+      assert shown("Contact support with run r-42.") ==
+               ~s(<a href="https://help.example.com" class="q-link">Contact support</a> with run r-42.)
+
+      assert shown("Contact support with work item #7.") ==
+               ~s(<a href="https://help.example.com" class="q-link">Contact support</a> with work item #7.)
+    end
+
+    test "shows the stored line as plain text where none is" do
+      assert shown("Contact support with run r-42.") == "Contact support with run r-42."
+    end
+
+    test "leaves a line that does not start with Contact support as it is", %{scope: scope} do
+      {:ok, _address} =
+        Apiary.SupportAddress.save(scope, %{"support_address" => "support@example.com"})
+
+      line = "Owners and admins of Acme connect one in Organisation settings › Integrations."
+      assert Support.stored_line(line) == line
+      assert shown(line) == line
+    end
+  end
+
   describe "rich/1 in a translated sentence" do
     # A sentence of the pattern `ApiaryWeb.Support` documents: one msgid, the words a
     # binding.

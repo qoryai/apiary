@@ -127,6 +127,31 @@ defmodule ApiaryWeb.Support do
     end
   end
 
+  @doc """
+  stored_line/2 is one line of text that Qory Apiary stored in English, such as the fix
+  line of an escalation's stopped run (`Apiary.Stages.StopCause`), as rich text: a line
+  that starts with "Contact support" has those words as `rich/1` makes them, a link where
+  an address is set, and the rest of the line as it is stored; any other line is
+  unchanged. The stored text stays as it is; the link is made when the line is shown.
+  Takes `address:` as `rich/1` does. Split a text of several lines at `"\n"` first.
+
+      iex> ApiaryWeb.Support.stored_line("Contact support with run r-42.", address: "support@example.com")
+      [{:href, "mailto:support@example.com", "Contact support"}, " with run r-42."]
+
+      iex> ApiaryWeb.Support.stored_line("Contact support with run r-42.", address: nil)
+      ["Contact support", " with run r-42."]
+
+      iex> ApiaryWeb.Support.stored_line("The run ended with an error.", address: nil)
+      "The run ended with an error."
+  """
+  @spec stored_line(String.t(), keyword) :: String.t() | list
+  def stored_line(line, opts \\ []) when is_binary(line) and is_list(opts) do
+    case line do
+      "Contact support" <> rest -> [rich(Keyword.take(opts, [:address])), rest]
+      other -> other
+    end
+  end
+
   defp address(:stored), do: SupportAddress.get()
   defp address(address) when is_binary(address) or is_nil(address), do: address
 
