@@ -2762,9 +2762,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.icon name={@icon} class="q-xp-bad-i size-4" />
       <div>
         <p id={"#{@id}-h"}><b>{@heading}</b></p>
-        <p :if={@body}>{@body}</p>
+        <p :if={@body}><.rich text={@body} /></p>
         <p :if={@run[:adapter_failure]} id={"#{@id}-adapter"}>
-          {adapter_failure_words(@run.adapter_failure)}
+          <.rich text={adapter_failure_words(@run.adapter_failure)} />
         </p>
         <p :if={@run[:id]}>
           <.rich text={rich_gettext("The run's page, %{run}, shows what it did.", run: run_ref(@run))} />
@@ -2833,44 +2833,48 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     case cause do
       :timeout ->
-        gettext(
-          "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time.",
+        rich_gettext(
+          "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
         )
 
       :unreachable ->
-        gettext(
-          "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run stopped before it started: the call to %{adapter} for %{what} did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504.",
+        rich_gettext(
+          "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} did not reach it.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
         )
 
       :refused ->
-        gettext(
-          "Ask an instance admin to check %{adapter}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}.",
+        rich_gettext(
+          "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what,
           code: failure.code || "unauthorized"
         )
 
       :invalid_answer ->
-        gettext(
-          "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB.",
-          adapter: adapter,
-          what: what
+        rich_gettext(
+          "%{contact_support}. The run stopped before it started: the answer of %{adapter} failed its signature check or its format check, or was over 1 MiB.",
+          contact_support: ApiaryWeb.Support.rich(),
+          adapter: adapter
         )
 
       :no_address ->
-        gettext(
-          "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: %{adapter} declares no call address, so Qory Apiary could not call it for %{what}.",
-          adapter: adapter,
-          what: what
+        rich_gettext(
+          "%{contact_support}. The run stopped before it started: %{adapter} has no call address.",
+          contact_support: ApiaryWeb.Support.rich(),
+          adapter: adapter
         )
 
       :not_allowed ->
-        gettext(
-          "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to an address that Qory Apiary does not call, or the instance's public address has no host name.",
+        rich_gettext(
+          "%{contact_support}. The run stopped before it started: Qory Apiary does not call the call address of %{adapter}.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter
         )
 
@@ -2939,14 +2943,16 @@ defmodule ApiaryWeb.WorkItemComponents do
         )
 
       "adapter_unavailable" ->
-        gettext(
-          "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. The adapter did not answer three times.",
+        rich_gettext(
+          "Run Explore again. If it ends the same way, %{contact_support}. The adapter %{adapter} did not answer three times.",
+          contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
           adapter: failure.adapter
         )
 
       "walk_error" ->
-        gettext(
-          "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
+        rich_gettext(
+          "Run Explore again. If it ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary.",
+          contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
         )
 
       _adapter_failed ->

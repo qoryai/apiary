@@ -178,6 +178,36 @@ msgstr ""
 msgid "%{contact_support}. Machines can't reach %{url}, the address in this command."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run stopped before it started: %{adapter} has no call address."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run stopped before it started: Qory Apiary does not call the call address of %{adapter}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run stopped before it started: the answer of %{adapter} failed its signature check or its format check, or was over 1 MiB."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} did not reach it."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}: Qory Apiary could not call the %{adapter} adapter."
@@ -4750,36 +4780,6 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run stopped before it started: the call to %{adapter} for %{what} did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to an address that Qory Apiary does not call, or the instance's public address has no host name."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: %{adapter} declares no call address, so Qory Apiary could not call it for %{what}."
-msgstr ""
-
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
@@ -5625,11 +5625,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Check the TLS setting and port, such as 587 with Always, or 465, then send the test link again. The TLS handshake with the relay failed at %{time}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. The adapter did not answer three times."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -14918,7 +14913,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
+msgid "Run Explore again. If it ends the same way, %{contact_support}. The adapter %{adapter} did not answer three times."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run Explore again. If it ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -17561,7 +17561,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it."
+msgid "The list shows the repositories connected to %{organisation}, and the harness sources Qory Apiary provides to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
