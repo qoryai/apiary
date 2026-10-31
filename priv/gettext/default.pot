@@ -4957,7 +4957,7 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Bring tickets in from a system this instance has set up."
+msgid "Bring tickets in from a system such as an issue tracker. Owners and admins of %{organisation} connect it once for the organisation."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -6017,11 +6017,13 @@ msgstr ""
 msgid "Connect %{name} with a command"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connect a destination"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connect a source"
@@ -6052,7 +6054,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps."
+msgid "Connect opens the system in this tab. After its steps, it sends you back here."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7574,6 +7576,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every state that ended well"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Every system is connected."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -12493,7 +12500,6 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change the integrations of the organisation."
 msgstr ""
@@ -12554,6 +12560,16 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of %{organisation} assign %{collections}."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} connect destinations."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} connect work sources."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -14830,6 +14846,11 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs are going through this gateway: %{runs}. Delete it once they end."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs change targets in a system you connect here. Owners and admins of %{organisation} connect it once for the organisation."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
