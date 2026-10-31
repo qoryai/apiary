@@ -118,7 +118,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                |> render()
                |> then(&Regex.scan(~r/Version \d/, &1))
 
-      assert has_element?(view, ~s(#artifact-history a[aria-current="page"]), "Version 2")
+      assert has_element?(view, ~s(#artifact-history a[aria-current="true"]), "Version 2")
     end
 
     test "shows raster images inline and an SVG as a download only", ctx do
@@ -277,7 +277,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert has_element?(view, "#{view_id}-0 h3", "Alpha findings")
       refute render(view) =~ "Beta findings"
-      assert has_element?(view, ~s(#{view_id}-documents [aria-current="page"]), "a.md")
+      assert has_element?(view, ~s(#{view_id}-documents [aria-current="true"]), "a.md")
 
       view |> element(~s(#{view_id}-documents button[phx-value-file="b.md"])) |> render_click()
 

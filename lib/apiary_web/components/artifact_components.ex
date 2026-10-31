@@ -344,7 +344,7 @@ defmodule ApiaryWeb.ArtifactComponents do
       >
         <ul class="flex flex-wrap gap-x-4 gap-y-1 text-[13px]/5">
           <li :for={{file, at} <- Enum.with_index(@version.files)}>
-            <span :if={at == @index} class="font-medium break-all" aria-current="page">
+            <span :if={at == @index} class="font-medium break-all" aria-current="true">
               {file.filename}
             </span>
             <.button
