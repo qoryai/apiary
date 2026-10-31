@@ -62,8 +62,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # `time_limit_minutes`, the minutes the time limits of the run's workspace and target
   # come to for the run's workflow
   # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), left out when no limit
-  # resolves or the run has no workflow. The workflow and the limits are read without a
-  # lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
+  # resolves or the run has no workflow; with the workflow model, the lower of those
+  # minutes and the run's stage entry's time limit (`Apiary.Stages.limits/1`). The
+  # workflow and the limits are read without a lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
   # has the stored copy. Beside it, the run keeps the provider's row id, its keys'
   # secret's row id, the chosen key's value id, the provider's chain and the API the run
   # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
@@ -97,6 +98,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The step of the queue whose runs have `run_settings`.
   @step "explore"
+  # The fewest minutes of a run's time limit (the contract's `time_limit_minutes`).
+  @least_minutes 15
   # The most bytes the run settings take, encoded: the column's check.
   @max_bytes 65_536
   # The most times `hold/1` locks providers: after each of the first three reads of the
@@ -131,7 +134,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # locks anything: nil for a run that has no `run_settings`, else what `build/1` takes.
   @doc false
   @spec hold(DispatchRun.t()) :: map | :unstable | nil
-  def hold(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id}) do
+  def hold(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = dispatch_run) do
     if Features.on?(:factory) and Features.on?(:secrets) do
       workspace = Repo.get!(Workspace, workspace_id)
       organisation = Repo.get!(Organisation, workspace.organisation_id)
@@ -145,7 +148,7 @@ defmodule Apiary.Dispatches.RunSettings do
             workspace: workspace,
             target: target,
             input: input,
-            time_limit: time_limit(workspace, target, workflow)
+            time_limit: lowered(time_limit(workspace, target, workflow), dispatch_run)
           }
 
         :unstable ->
@@ -181,6 +184,20 @@ defmodule Apiary.Dispatches.RunSettings do
     case TimeLimits.Resolution.resolve(TimeLimits.limits_for(workspace, target, workflow)) do
       {:ok, %TimeLimits.Resolution{minutes: minutes}} -> minutes
       :none -> nil
+    end
+  end
+
+  # Hand-over: with the workflow model, a run the stage runner queued takes the lower of
+  # the minutes resolved here and its stage entry's time limit (`Apiary.Stages.limits/1`),
+  # in whole minutes rounded up, and at least 15, the contract's least.
+  defp lowered(minutes, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{time_limit: seconds} when is_integer(seconds) ->
+        entry = max(div(seconds + 59, 60), @least_minutes)
+        if is_integer(minutes), do: min(minutes, entry), else: entry
+
+      _none ->
+        minutes
     end
   end
 

@@ -575,10 +575,18 @@ defmodule Apiary.Dispatches do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
-    case ended_work_items do
-      [] -> []
-      ids -> [workspace_id | Enum.flat_map(Enum.uniq(ids), &Settle.told/1)]
-    end
+    told =
+      case ended_work_items do
+        [] -> []
+        ids -> [workspace_id | Enum.flat_map(Enum.uniq(ids), &Settle.told/1)]
+      end
+
+    # Hand-over: with the workflow model, the stage runner acts on each run's end
+    # (`Apiary.Stages.run_ended/1`). It writes the work items, which the caller holds.
+    staged =
+      if Apiary.Stages.on?(), do: Enum.flat_map(run_ids, &Apiary.Stages.run_ended/1), else: []
+
+    told ++ Enum.reject(Enum.uniq(staged), &(&1 in told))
   end
 
   # requeue_for_image/1 writes the next run of the take in of `dispatch_run`, which its
@@ -824,7 +832,11 @@ defmodule Apiary.Dispatches do
 
     case result do
       {:ok, {taken, freed}} ->
-        broadcast(freed)
+        # Hand-over: with the workflow model, the stage runner acts on the end of each run
+        # the claim ended, once the claim commits, in a transaction of its own that locks
+        # the work item before the run (`Apiary.Stages.claim_ended/1`).
+        {staged, freed} = Enum.split_with(freed, &match?({:stage_run, _id}, &1))
+        broadcast(freed ++ Apiary.Stages.claim_ended(Enum.map(staged, &elem(&1, 1))))
         Handover.broadcast_run({:ok, %{run: registered(taken)}})
         {:ok, taken}
 
@@ -945,7 +957,7 @@ defmodule Apiary.Dispatches do
                  }), ended}
 
               {:ended, changed} ->
-                pick(key, pool, through, now, max - 1, changed ++ ended)
+                pick(key, pool, through, now, max - 1, staged(run) ++ changed ++ ended)
 
               {:error, :unavailable} = error ->
                 error
@@ -967,10 +979,16 @@ defmodule Apiary.Dispatches do
                 set: [ended_at: now, end_cause: :run_ended, updated_at: now]
               )
 
-            pick(key, pool, through, now, max - 1, [run.workspace_id | ended])
+            pick(key, pool, through, now, max - 1, [run.workspace_id | staged(run) ++ ended])
         end
     end
   end
+
+  # A run of a work item the claim ended, for the stage runner once the claim commits.
+  defp staged(%DispatchRun{step: @prebuild}), do: []
+
+  defp staged(%DispatchRun{id: id}),
+    do: if(Apiary.Stages.on?(), do: [{:stage_run, id}], else: [])
 
   # What the run is for: its work item, with the image `pool` keeps for its target, or a
   # prebuild's collection. A run whose image went since `waiting_query/1` read it is
@@ -1377,15 +1395,10 @@ defmodule Apiary.Dispatches do
     {work_items, workspace_ids} = told |> Enum.uniq() |> Enum.split_with(&is_tuple/1)
 
     # With the workflow model, a work item that changed may have changed its stage
-    # (`Apiary.Stages`): it is told so too, on the same topic.
+    # (`Apiary.Stages`): it is told so too, on its stage's topic (`Apiary.Stages.topic/1`).
     if Apiary.Stages.on?() do
-      for {:work_item, workspace_id, public_id} <- work_items do
-        Phoenix.PubSub.broadcast(
-          Apiary.PubSub,
-          Apiary.WorkItems.topic(workspace_id),
-          {:stage_changed, public_id}
-        )
-      end
+      for {:work_item, _workspace_id, public_id} <- work_items,
+          do: Apiary.Stages.tell_stage(public_id)
     end
 
     for workspace_id <- workspace_ids,

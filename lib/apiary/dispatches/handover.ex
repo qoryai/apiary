@@ -731,7 +731,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    harness = harness(dispatch_run, target)
+    harness = dispatch_run |> harness(target) |> lowered_access(dispatch_run)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
@@ -801,6 +801,17 @@ defmodule Apiary.Dispatches.Handover do
         nil
     end
   end
+
+  # Hand-over: with the workflow model, a run the stage runner queued with the access
+  # level `read` (`Apiary.Stages.limits/1`) reads its target, whatever its walk resolved.
+  defp lowered_access(%{access: :write} = harness, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{access: :read} -> %{harness | access: :read}
+      _none -> harness
+    end
+  end
+
+  defp lowered_access(harness, _dispatch_run), do: harness
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.

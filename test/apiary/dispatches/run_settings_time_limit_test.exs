@@ -65,6 +65,61 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     })
   end
 
+  describe "with the workflow model, a run of a stage entry with limits" do
+    @describetag needs: [:factory, :workflow_model]
+
+    # The workspace's process: Explore runs explore-a-ticket with `limits`.
+    defp entry_limits!(%{scope: scope}, limits) do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [Map.merge(%{"workflow" => "explore-a-ticket"}, limits)],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(scope, scope.workspace, document)
+    end
+
+    test "sends the lower of the entry's and the stack's time limit", ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+
+      entry_limits!(ctx, %{"time_limit" => "45m"})
+      assert %{"time_limit_minutes" => 45} = settings(claim!(ctx, place))
+
+      entry_limits!(ctx, %{"time_limit" => "2h"})
+      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+    end
+
+    test "sends the entry's limit with none from the stack, at least 15 minutes", ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+
+      entry_limits!(ctx, %{"time_limit" => "1h30m"})
+      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+
+      entry_limits!(ctx, %{"time_limit" => "5m"})
+      assert %{"time_limit_minutes" => 15} = settings(claim!(ctx, place))
+    end
+
+    test "reads the target when the entry's access is read, whatever the walk resolved",
+         ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+      section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
+      walk = [origin: :setting, document: section, access_level: :write]
+
+      assert %{access: :write} = claim!(ctx, place, walk).harness
+
+      entry_limits!(ctx, %{"access" => "read"})
+      assert %{access: :read} = claim!(ctx, place, walk).harness
+    end
+  end
+
   describe "with one stack row with a workflow" do
     test "sends the workspace's limit after the runtime, and the run keeps it", ctx do
       workflow!(ctx, "hello")

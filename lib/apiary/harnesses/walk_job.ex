@@ -214,12 +214,18 @@ defmodule Apiary.Harnesses.WalkJob do
     now = DateTime.utc_now()
 
     Repo.transact(fn ->
+      # Hand-over: with the workflow model, the stage runner acts on the run's end
+      # (`Apiary.Stages.run_ended/1`) and writes its work item, locked first, before the run.
+      stages? = Apiary.Stages.on?()
+      if stages?, do: Apiary.Stages.hold_work_item(id)
       run = Repo.one(from r in DispatchRun, where: r.id == ^id, lock: "FOR UPDATE")
 
       case {run, pending_row(id)} do
         {%DispatchRun{} = run, %RunHarness{} = row} ->
           {:ok, _row} = row |> Ecto.Changeset.change(failed(failure, attempt)) |> Repo.update()
-          {:ok, end_run(run, failure, now)}
+          told = end_run(run, failure, now)
+          staged = if stages?, do: Apiary.Stages.run_ended(id), else: []
+          {:ok, told ++ Enum.reject(staged, &(&1 in told))}
 
         _gone ->
           {:ok, []}
