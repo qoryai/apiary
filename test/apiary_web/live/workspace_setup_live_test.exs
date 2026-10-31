@@ -3848,6 +3848,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     assert conn |> get(~p"/#{organisation}/#{billing.slug}/set-up/sources") |> Map.fetch!(:status) ==
              404
   end
+
+  # The words of a failed read or a refused save, as text: a "Contact support" in them is
+  # a link only where a support address is set, and none is here.
+  defp read_words(reason, source, organisation),
+    do:
+      reason
+      |> ApiaryWeb.HarnessComponents.read_words(source, organisation)
+      |> ApiaryWeb.RichText.plain_text()
+
+  defp refusal_words(reason, source, ref, organisation) do
+    case ApiaryWeb.HarnessComponents.refusal_words(reason, source, ref, organisation) do
+      nil -> nil
+      words -> ApiaryWeb.RichText.plain_text(words)
+    end
+  end
 end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
@@ -5325,20 +5340,5 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-remove")
     refute deleted?(pool)
     assert read_only?(lv)
-  end
-
-  # The words of a failed read or a refused save, as text: a "Contact support" in them is
-  # a link only where a support address is set, and none is here.
-  defp read_words(reason, source, organisation),
-    do:
-      reason
-      |> ApiaryWeb.HarnessComponents.read_words(source, organisation)
-      |> ApiaryWeb.RichText.plain_text()
-
-  defp refusal_words(reason, source, ref, organisation) do
-    case ApiaryWeb.HarnessComponents.refusal_words(reason, source, ref, organisation) do
-      nil -> nil
-      words -> ApiaryWeb.RichText.plain_text(words)
-    end
   end
 end
