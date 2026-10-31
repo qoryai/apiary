@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.InstanceLive.NodesTest do
-  # Instance settings › Nodes (`ApiaryWeb.InstanceLive.Nodes`, `ApiaryWeb.InstanceLive.Node`),
+  # Instance settings › Qory Pool and Qory Gateway (`ApiaryWeb.InstanceLive.Nodes`, `ApiaryWeb.InstanceLive.Node`),
   # for an instance admin: the instance's pool and gateway, each with its Overview, its
   # Access key tab, which says a new code comes after a revoke only for a node of a kind
   # a setting declares, under any name, and where Revoke is the one act, refused for a person no longer an instance
@@ -52,11 +52,11 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
   end
 
   # The ids of the Nodes page's rows of nodes, in their order.
-  defp row_ids(lv) do
+  defp row_ids(lv, table \\ "#nodes") do
     lv
     |> render()
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#nodes [id]")
+    |> LazyHTML.query("#{table} [id]")
     |> LazyHTML.attribute("id")
     |> Enum.filter(&Regex.match?(~r/\Anode-n[a-z]_[0-9a-z]+\z/, &1))
   end
@@ -82,7 +82,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
   describe "the list" do
     test "has the pool and the gateway, each leading to its page",
          %{conn: conn, pool: pool, gateway: gateway} do
-      {:ok, lv, html} = live(conn, ~p"/instance/nodes")
+      {:ok, lv, html} = live(conn, ~p"/instance/qory-pool-and-gateway")
 
       assert html =~
                "The Qory Pool and the Qory Gateway that run with this instance. Qory Apiary " <>
@@ -91,23 +91,40 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       assert words(lv, "#instance-node-#{pool.public_id}-name") == "Qory Pool"
       assert words(lv, "#instance-node-#{gateway.public_id}-name") == "Qory Gateway"
-      assert has_element?(lv, "#instance-node-#{pool.public_id}-kind", "Node pool")
+      assert has_element?(lv, "#instance-node-#{pool.public_id}-kind", "Pool")
       assert has_element?(lv, "#instance-node-#{gateway.public_id}-kind", "Gateway")
       assert has_element?(lv, "#instance-node-#{pool.public_id}-state", "Never seen")
 
       assert has_element?(
                lv,
-               ~s|#instance-node-#{pool.public_id}-name[href="/instance/nodes/#{pool.public_id}"]|
+               ~s|#instance-node-#{pool.public_id}-name[href="/instance/qory-pool-and-gateway/#{pool.public_id}"]|
              )
 
-      assert has_element?(lv, ~s|a[href="/instance/nodes"]|, "Nodes")
+      assert has_element?(
+               lv,
+               ~s|a[href="/instance/qory-pool-and-gateway"]|,
+               "Qory Pool and Qory Gateway"
+             )
+
+      assert has_element?(lv, "h1", "Qory Pool and Qory Gateway")
+    end
+
+    test "sends the old address on, with what followed and the query",
+         %{conn: conn, pool: pool} do
+      for {old, new} <- [
+            {"/instance/nodes", "/instance/qory-pool-and-gateway"},
+            {"/instance/nodes/#{pool.public_id}/keys?x=1",
+             "/instance/qory-pool-and-gateway/#{pool.public_id}/keys?x=1"}
+          ] do
+        assert redirected_to(get(conn, old), 301) == new
+      end
     end
 
     test "is a path that does not exist for anyone but an instance admin" do
       %{user: user} = sign_up_fixture()
       conn = log_in_user(build_conn(), user)
 
-      assert_raise ApiaryWeb.NotFound, fn -> live(conn, ~p"/instance/nodes") end
+      assert_raise ApiaryWeb.NotFound, fn -> live(conn, ~p"/instance/qory-pool-and-gateway") end
     end
   end
 
@@ -120,7 +137,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       pool_run!(pool, a, "i_a")
       pool_run!(pool, b, "i_b")
 
-      {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{pool.public_id}")
+      {:ok, lv, _html} = live(conn, ~p"/instance/qory-pool-and-gateway/#{pool.public_id}")
 
       assert has_element?(lv, "#node-instances-count", "2 of 10 running")
       assert has_element?(lv, "#node-running", "i_a")
@@ -131,7 +148,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
     end
 
     test "the gateway's Overview has its URL", %{conn: conn, gateway: gateway} do
-      {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{gateway.public_id}")
+      {:ok, lv, _html} = live(conn, ~p"/instance/qory-pool-and-gateway/#{gateway.public_id}")
 
       assert has_element?(lv, "#node-about-url", "https://gateway.example")
       refute has_element?(lv, "#node-instances")
@@ -142,7 +159,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       theirs = pool_fixture(admin)
 
       assert_raise ApiaryWeb.NotFound, fn ->
-        live(conn, ~p"/instance/nodes/#{theirs.public_id}")
+        live(conn, ~p"/instance/qory-pool-and-gateway/#{theirs.public_id}")
       end
     end
 
@@ -152,9 +169,9 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       %{access_key: key} = installed_key_fixture(pool)
       :ok = Phoenix.PubSub.subscribe(Apiary.PubSub, InstalledAdapters.topic())
 
-      {:ok, lv, html} = live(conn, ~p"/instance/nodes/#{pool.public_id}/keys")
+      {:ok, lv, html} = live(conn, ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/keys")
 
-      assert html =~ "Qory Apiary writes this node&#39;s one-time code to its folder."
+      assert html =~ "Qory Apiary writes this machine&#39;s one-time code to its folder."
       assert html =~ "When you revoke the key, Qory Apiary writes a new code"
       refute html =~ "This instance has no setting for this node"
       assert words(lv, "#key-#{key.key_id}-secret") == "Stays on the Qory Pool; it is never shown"
@@ -162,10 +179,14 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       refute html =~ "command"
 
       lv |> element("#key-#{key.key_id}-revoke") |> render_click()
-      assert_patch(lv, ~p"/instance/nodes/#{pool.public_id}/keys/#{key.key_id}/revoke")
+
+      assert_patch(
+        lv,
+        ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/keys/#{key.key_id}/revoke"
+      )
 
       lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-      assert_patch(lv, ~p"/instance/nodes/#{pool.public_id}/keys")
+      assert_patch(lv, ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/keys")
       assert render(lv) =~ "#{key.label} is revoked."
       assert %AccessKey{revoked_at: %DateTime{}} = Repo.get!(AccessKey, key.id)
       assert_receive :nudge
@@ -176,10 +197,10 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       declare(%{pool: nil, gateway: nil, url: nil})
 
       for node <- [pool, gateway] do
-        {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{node.public_id}/keys")
+        {:ok, lv, _html} = live(conn, ~p"/instance/qory-pool-and-gateway/#{node.public_id}/keys")
 
         assert words(lv, "#node-access-key-intro") ==
-                 "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
+                 "This instance has no setting for this machine, so Qory Apiary writes no new code after a revoke."
       end
     end
 
@@ -189,16 +210,17 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       declare(%{pool: "other-pool", gateway: "edge", url: "https://gateway.example"})
 
       for node <- [pool, gateway] do
-        {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{node.public_id}/keys")
+        {:ok, lv, _html} = live(conn, ~p"/instance/qory-pool-and-gateway/#{node.public_id}/keys")
 
         assert words(lv, "#node-access-key-intro") ==
-                 "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
+                 "Qory Apiary writes this machine's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the machine's code file, and the machine enrols with it when it reads the file."
       end
     end
 
     test "the Settings tab sets the pool's limit, with an entry in the instance's trail",
          %{conn: conn, pool: pool, admin: admin} do
-      {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{pool.public_id}/settings")
+      {:ok, lv, _html} =
+        live(conn, ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/settings")
 
       assert lv |> form("#node-form", node: %{instance_limit: "0"}) |> render_submit() =~
                "must be greater than or equal to 1"
@@ -219,7 +241,8 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
     test "the gateway's Settings tab shows its URL and sets nothing",
          %{conn: conn, gateway: gateway} do
-      {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{gateway.public_id}/settings")
+      {:ok, lv, _html} =
+        live(conn, ~p"/instance/qory-pool-and-gateway/#{gateway.public_id}/settings")
 
       assert has_element?(lv, "#node-url-field", "https://gateway.example")
       refute has_element?(lv, "#node-form")
@@ -235,7 +258,10 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       pool_run!(pool, other, "i_theirs")
 
       {:ok, lv, _html} =
-        live(log_in_user(build_conn(), user), ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+        live(
+          log_in_user(build_conn(), user),
+          ~p"/#{scope.organisation}/#{scope.workspace}/machines"
+        )
 
       assert words(lv, "#node-#{pool.public_id}-level") ==
                "The instance provides the Qory Pool to every workspace that has no pool. " <>
@@ -258,11 +284,11 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
     end
 
     test "links them for an instance admin", %{conn: conn, admin: admin, pool: pool} do
-      {:ok, lv, _html} = live(conn, ~p"/#{admin.organisation}/#{admin.workspace}/nodes")
+      {:ok, lv, _html} = live(conn, ~p"/#{admin.organisation}/#{admin.workspace}/machines")
 
       assert has_element?(
                lv,
-               ~s|#node-#{pool.public_id}-link[href="/instance/nodes/#{pool.public_id}"]|
+               ~s|#node-#{pool.public_id}-link[href="/instance/qory-pool-and-gateway/#{pool.public_id}"]|
              )
 
       assert words(lv, "#node-#{pool.public_id}-link") == "Qory Pool"
@@ -272,7 +298,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
          %{conn: conn, admin: admin, pool: pool, gateway: gateway} do
       _ours = pool_fixture(admin)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{admin.organisation}/#{admin.workspace}/nodes")
+      {:ok, lv, _html} = live(conn, ~p"/#{admin.organisation}/#{admin.workspace}/machines")
 
       refute has_element?(lv, "#node-#{pool.public_id}")
       assert has_element?(lv, "#node-#{gateway.public_id}")
@@ -283,7 +309,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       %{scope: scope, user: user} = sign_up_fixture()
       ours = node_fixture(scope, %{name: "edge-node"})
       conn = log_in_user(build_conn(), user)
-      nodes = ~p"/#{scope.organisation}/#{scope.workspace}/nodes"
+      nodes = ~p"/#{scope.organisation}/#{scope.workspace}/machines"
 
       {:ok, lv, _html} = live(conn, nodes <> "?kind=node")
       assert has_element?(lv, "#node-#{ours.public_id}")
@@ -313,21 +339,18 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       refute has_element?(lv, "#node-#{gateway.public_id}")
     end
 
-    test "sorts the instance's nodes by the names it shows, Qory Gateway and Qory Pool",
+    test "sorts the instance's nodes by the names it shows, the gateways under their heading",
          %{pool: pool, gateway: gateway} do
       %{scope: scope, user: user} = sign_up_fixture()
       ours = node_fixture(scope, %{name: "Quarry"})
       conn = log_in_user(build_conn(), user)
-      nodes = ~p"/#{scope.organisation}/#{scope.workspace}/nodes"
+      nodes = ~p"/#{scope.organisation}/#{scope.workspace}/machines"
 
       for path <- [nodes, nodes <> "?sort=seen"] do
         {:ok, lv, _html} = live(conn, path)
 
-        assert row_ids(lv) == [
-                 "node-#{gateway.public_id}",
-                 "node-#{pool.public_id}",
-                 "node-#{ours.public_id}"
-               ]
+        assert row_ids(lv) == ["node-#{pool.public_id}", "node-#{ours.public_id}"]
+        assert row_ids(lv, "#gateways") == ["node-#{gateway.public_id}"]
       end
     end
   end
@@ -342,8 +365,8 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
     test "the forms for a node and a pool say the default is this instance's gateway",
          %{scope: scope, member: conn} do
       for path <- [
-            ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new",
-            ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-pool"
+            ~p"/#{scope.organisation}/#{scope.workspace}/machines/new",
+            ~p"/#{scope.organisation}/#{scope.workspace}/machines/new-pool"
           ] do
         {:ok, _lv, html} = live(conn, path)
 
@@ -355,7 +378,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
     test "with a gateway of the workspace too, the form groups the instance's under This instance",
          %{scope: scope, member: conn, gateway: gateway} do
       ours = gateway_fixture(scope)
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines/new")
 
       assert has_element?(lv, ~s|optgroup[label="This workspace"] option[value="#{ours.id}"]|)
       assert has_element?(lv, ~s|optgroup[label="This instance"] option[value="#{gateway.id}"]|)
@@ -366,7 +389,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
     test "the command, its Forager file and Configure a machine say the Qory Gateway",
          %{scope: scope, member: conn, node: node} do
-      base = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}"
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node.public_id}"
       {:ok, lv, _html} = live(conn, base <> "/access-key")
       lv |> element("#code-new-button") |> render_click()
 
@@ -388,7 +411,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       {:ok, lv, _html} = live(conn, base <> "/access-key")
 
       assert words(lv, "#node-configure-steps-1") =~
-               "Point the node at Qory Apiary, through the Qory Gateway."
+               "Point the machine at Qory Apiary, through the Qory Gateway."
 
       assert words(lv, "#node-configure-steps-1") =~
                "via sends every request to Qory Apiary through the Qory Gateway."
@@ -396,7 +419,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
     test "the node's Overview, Settings and Access key tabs name the Qory Gateway",
          %{scope: scope, member: conn, node: node} do
-      base = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}"
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node.public_id}"
 
       {:ok, _lv, html} = live(conn, base)
       assert html =~ "Qory Gateway"
@@ -424,7 +447,10 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
     defp confirm(conn, pool, key) do
       {:ok, lv, _html} =
-        live(conn, ~p"/instance/nodes/#{pool.public_id}/keys/#{key.key_id}/revoke")
+        live(
+          conn,
+          ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/keys/#{key.key_id}/revoke"
+        )
 
       lv
     end
@@ -441,7 +467,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       )
 
       lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-      assert_redirect(lv, ~p"/instance/nodes")
+      assert_redirect(lv, ~p"/instance/qory-pool-and-gateway")
       assert Repo.get!(AccessKey, key.id).revoked_at == nil
     end
 
@@ -454,7 +480,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       )
 
       lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-      assert_redirect(lv, ~p"/instance/nodes")
+      assert_redirect(lv, ~p"/instance/qory-pool-and-gateway")
       assert Repo.get!(AccessKey, key.id).revoked_at == nil
     end
   end

@@ -12,7 +12,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
   alias Apiary.Runs.Run
 
   defp node_path(scope, node, rest \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}" <> rest
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}" <> rest
 
   defp member_conn(scope, level \\ :member) do
     %{user: user} = member_fixture(scope, level)
@@ -33,7 +33,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       assert has_element?(lv, "h1#node-header-title", "build-01")
       assert has_element?(lv, "#node-public-id", node.public_id)
-      assert has_element?(lv, "#node-kind", "Node")
+      assert has_element?(lv, "#node-kind", "Machine")
       assert has_element?(lv, "#node-state", "Never seen")
 
       assert has_element?(
@@ -45,7 +45,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, ~s{#node-made abbr[data-tip="#{scope.user.email} (you)"]})
       # About says who made it the same way.
       assert has_element?(lv, ~s{#node-about dd abbr[data-tip="#{scope.user.email} (you)"]})
-      assert has_element?(lv, "#breadcrumb", "Nodes")
+      assert has_element?(lv, "#breadcrumb", "Machines")
 
       # The node's name, cut where the segment is short, is whole in its title; the fixed
       # words before it carry none.
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert titled == ["build-01"]
       refute has_element?(lv, "#breadcrumb .truncate[title='Nodes']")
 
-      assert has_element?(lv, ~s{nav#node-tabs[aria-label="Node"]})
+      assert has_element?(lv, ~s{nav#node-tabs[aria-label="Machine"]})
       assert has_element?(lv, ~s{#node-tabs-overview[aria-current="page"]}, "Overview")
 
       assert has_element?(
@@ -81,26 +81,26 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       pool = pool_fixture(scope, instance_limit: 10)
 
       {:ok, lv, _html} = live(conn, node_path(scope, node))
-      assert has_element?(lv, "#node-instances h2", "Instance")
+      assert has_element?(lv, "#node-instances h2", "Machine")
 
       assert has_element?(
                lv,
                "#node-instances-none",
-               "No instance of this node has reported yet."
+               "This machine has not reported yet."
              )
 
       render_async(lv)
-      assert has_element?(lv, "#node-runs-none", "No run of this node is in the record yet.")
-      assert has_element?(lv, "#node-about-limit", "1, one instance at a time")
+      assert has_element?(lv, "#node-runs-none", "No run of this machine is in the record yet.")
+      assert has_element?(lv, "#node-about-limit", "1: one machine")
 
       {:ok, lv, _html} = live(conn, node_path(scope, pool))
-      assert has_element?(lv, "#node-kind", "Node pool")
-      assert has_element?(lv, "#node-instances h2", "Running instances")
+      assert has_element?(lv, "#node-kind", "Pool")
+      assert has_element?(lv, "#node-instances h2", "Running machines")
 
       assert has_element?(
                lv,
                "#node-instances-none",
-               "No instance of this pool has reported yet."
+               "No machine of this pool has reported yet."
              )
 
       assert has_element?(lv, "#node-about-limit", "10")
@@ -123,10 +123,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-overview")
     end
 
-    test "a node of another workspace or organisation, or a deleted one, is not found", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "a machine or pool of another workspace or organisation, or a deleted one, is not found",
+         %{
+           conn: conn,
+           scope: scope
+         } do
       other_workspace = node_fixture(%{scope | workspace: workspace_fixture(scope.organisation)})
       other_organisation = node_fixture(sign_up_fixture().scope)
       deleted = node_fixture(scope)
@@ -147,8 +148,8 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       assert has_element?(lv, "#settings-tab-general[aria-current=page]", "General")
       refute has_element?(lv, "#settings-tabs a", "Access keys")
-      assert has_element?(lv, "#node-kind-field", "Node: one permanent machine.")
-      assert has_element?(lv, "#node-limit-field", "A node runs one instance at a time.")
+      assert has_element?(lv, "#node-kind-field", "Machine: always there, such as build-01.")
+      assert has_element?(lv, "#node-limit-field", "1: one machine.")
       refute has_element?(lv, "#node-form input[name='node[instance_limit]']")
 
       html = lv |> form("#node-form", node: %{name: "build-02"}) |> render_submit()
@@ -161,7 +162,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       pool = pool_fixture(scope, name: "spot-runners")
       {:ok, lv, _html} = live(conn, node_path(scope, pool, "/settings"))
 
-      assert has_element?(lv, "#node-kind-field", "Node pool")
+      assert has_element?(lv, "#node-kind-field", "Pool")
 
       assert lv
              |> form("#node-form", node: %{instance_limit: "10001"})
@@ -197,7 +198,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       refute has_element?(lv, "#node-danger")
 
       render_hook(lv, "save", %{"node" => %{"name" => "mine"}})
-      assert render(lv) =~ "Only owners and admins change nodes."
+      assert render(lv) =~ "Only owners and admins change machines."
       assert Repo.get!(Node, node.id).name == "build-01"
     end
 
@@ -250,7 +251,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
                "#node-form input[name='node[instance_limit]'][disabled][value='5']"
              )
 
-      assert has_element?(lv, "#node-form", "You can't change the instance limit.")
+      assert has_element?(lv, "#node-form", "You can't change the machine limit.")
       assert has_element?(lv, "#node-save")
 
       html = lv |> form("#node-form", node: %{name: "ci-runners"}) |> render_submit()
@@ -261,7 +262,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       render_hook(lv, "save", %{"node" => %{"name" => "ci-runners", "instance_limit" => "9"}})
 
       assert lv |> element("#flash-group") |> render() =~
-               "You can&#39;t change the instance limit."
+               "You can&#39;t change the machine limit."
 
       assert has_element?(lv, "#node-save")
       assert %Node{name: "ci-runners", instance_limit: 5} = Repo.get!(Node, pool.id)
@@ -304,7 +305,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         lv
         |> form("#delete-node-form")
         |> render_submit()
-        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines")
 
       assert html =~ "build-01 is deleted."
       refute has_element?(list, "#node-#{node.public_id}")
@@ -319,11 +320,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       {:ok, lv, html} =
         live(conn, node_path(scope, node, "/settings/delete")) |> follow_redirect(conn)
 
-      assert html =~ "Only owners and admins delete nodes."
+      assert html =~ "Only owners and admins delete machines."
       refute has_element?(lv, "#delete-node-form")
 
       render_hook(lv, "delete", %{})
-      assert render(lv) =~ "Only owners and admins delete nodes."
+      assert render(lv) =~ "Only owners and admins delete machines."
       assert Repo.get!(Node, node.id).deleted_at == nil
     end
 
@@ -336,9 +337,9 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         lv
         |> form("#delete-node-form")
         |> render_submit()
-        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines")
 
-      assert html =~ "This node is gone: it was deleted."
+      assert html =~ "This machine is gone: it was deleted."
     end
   end
 
@@ -379,7 +380,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(
                lv,
                "#node-instance-claim",
-               "An instance is what Forager, run with this node's key, reports itself as"
+               "Each machine here is what Forager, run with this key, reports itself as."
              )
 
       refute render(lv) =~ "Once runners use"
@@ -453,7 +454,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-running .q-nm > .q-cut[title='spot-1']", "spot-1")
       assert has_element?(lv, "#node-running .q-nm > .q-side.q-mono[title='i_1']", "i_1")
       assert has_element?(lv, "#node-running .q-nm > .q-cut[title='i_2']", "i_2")
-      assert has_element?(lv, "#node-refused", "4 starts were refused at the instance limit")
+      assert has_element?(lv, "#node-refused", "4 starts were refused at the machine limit")
 
       {:ok, _} = Nodes.update_node(scope, pool, %{instance_limit: ""})
       send(lv.pid, :tick)
@@ -495,7 +496,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       # Its instances went a day after they were last seen: none is running.
       assert none_line(lv) ==
-               "No instance of this pool is running. An instance shows here while it runs."
+               "No machine of this pool is running. A machine shows here while it runs."
 
       refute has_element?(lv, "#node-instances-idle")
 
@@ -532,12 +533,12 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       {:ok, lv, _html} = live(conn, node_path(scope, pool))
 
       assert none_line(lv) ==
-               "No instance of this pool has reported yet. An instance shows here while it runs."
+               "No machine of this pool has reported yet. A machine shows here while it runs."
 
       {:ok, lv, _html} = live(conn, node_path(scope, node))
 
       assert none_line(lv) ==
-               "No instance of this node has reported yet. It shows here once it runs, running or when it was last seen."
+               "This machine has not reported yet. It shows here once it runs, running or when it was last seen."
     end
 
     test "says when a pool's last instance was seen, once none runs", %{conn: conn, scope: scope} do
@@ -621,7 +622,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
             "/runs/rn_0123456789abcdef/clear-instance"
           ] do
         {:ok, _lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
-        assert html =~ "This node has no such instance."
+        assert html =~ "That machine is not here."
       end
     end
 
@@ -635,7 +636,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       for rest <- ["/instances/i_1/clear", "/runs/i_1/clear-instance"] do
         {:ok, lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
-        assert html =~ "This node has no such instance."
+        assert html =~ "That machine is not here."
         refute has_element?(lv, "#clear-instance")
       end
 
@@ -711,7 +712,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         live(conn, node_path(scope, node, "/instances/#{encoded}/clear"))
         |> follow_redirect(conn)
 
-      assert html =~ "This node has no such instance."
+      assert html =~ "That machine is not here."
       refute has_element?(lv, "#clear-instance")
       assert Repo.get!(Run, run.id).state == "pending"
     end
@@ -790,7 +791,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         live(conn, node_path(scope, node, "/runs/#{run.public_id}/clear-instance"))
         |> follow_redirect(conn)
 
-      assert html =~ "This node has no such instance."
+      assert html =~ "That machine is not here."
     end
 
     test "another node's or another workspace's ids are not this node's instances", %{
@@ -817,7 +818,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
             "/runs/#{elsewhere_run.public_id}/clear-instance"
           ] do
         {:ok, lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
-        assert html =~ "This node has no such instance.", rest
+        assert html =~ "That machine is not here.", rest
         refute has_element?(lv, "#clear-instance")
       end
 
@@ -838,7 +839,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
             "/runs/#{Ecto.UUID.generate()}/clear-instance"
           ] do
         {:ok, _lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
-        assert html =~ "This node has no such instance.", rest
+        assert html =~ "That machine is not here.", rest
       end
     end
 
@@ -854,7 +855,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       for rest <- ["/instances/#{instance.id}/clear", "/runs/#{run.public_id}/clear-instance"] do
         {:ok, _lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
-        assert html =~ "Only owners and admins clear instances."
+        assert html =~ "Only owners and admins clear machines."
       end
 
       {:ok, lv, _html} =
@@ -864,7 +865,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       refute has_element?(lv, "#clear-instance")
 
       render_hook(lv, "clear_instance", %{})
-      assert render(lv) =~ "Only owners and admins clear instances."
+      assert render(lv) =~ "Only owners and admins clear machines."
       assert Repo.get!(Run, run.id).state == "pending"
     end
   end

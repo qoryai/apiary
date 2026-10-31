@@ -75,14 +75,14 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "h2", "No runs yet")
 
       assert text(view, "#main") =~
-               "A run appears here when a machine connected to a node of this workspace starts one."
+               "A run appears here when a machine or pool of this workspace starts one."
 
-      assert text(view, "#main") =~ "Add a node, connect a machine to it, and start a run."
+      assert text(view, "#main") =~ "Add a machine, connect it, and start a run."
 
       assert has_element?(
                view,
-               "#runs-new-node[href='#{workspace_path(scope)}/nodes/new']",
-               "New node"
+               "#runs-new-node[href='#{workspace_path(scope)}/machines/new']",
+               "New machine"
              )
 
       refute has_element?(view, "#runs-go-to-nodes")
@@ -99,19 +99,19 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(log_in_user(build_conn(), member), scope)
 
       refute has_element?(view, "#runs-new-node")
-      assert has_element?(view, "#main", "An owner or admin adds nodes.")
-      assert has_element?(view, "#runs-go-to-nodes[href='#{workspace_path(scope)}/nodes']")
+      assert has_element?(view, "#main", "An owner or admin adds machines.")
+      assert has_element?(view, "#runs-go-to-nodes[href='#{workspace_path(scope)}/machines']")
     end
 
     test "no runs, a node exists: go to the nodes, and listen", %{conn: conn, scope: scope} do
       Apiary.NodesFixtures.pool_fixture(scope)
       view = open(conn, scope)
-      assert text(view, "#main") =~ "A machine posts once it is connected to a node."
+      assert text(view, "#main") =~ "A machine posts once it is connected."
 
       assert has_element?(
                view,
-               "#runs-go-to-nodes[href='#{workspace_path(scope)}/nodes']",
-               "Go to nodes"
+               "#runs-go-to-nodes[href='#{workspace_path(scope)}/machines']",
+               "Go to Machines"
              )
 
       refute has_element?(view, "#runs-new-node")
@@ -883,7 +883,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> Apiary.Repo.update!()
 
       view = open(conn, scope)
-      assert has_element?(view, "#runs-filter-open-node", "Node")
+      assert has_element?(view, "#runs-filter-open-node", "Machine or pool")
       refute has_element?(view, "#runs-filter-open-key")
       assert text(view, "#filter-node-form") =~ "build-01 1"
 
@@ -1415,7 +1415,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     # those two on a list that is not narrowed to a target.
     defp plain_sidebar?(view, scope, carried \\ false) do
       plain =
-        [overview: "", targets: "/targets", nodes: "/nodes", settings: "/settings"] ++
+        [overview: "", targets: "/targets", nodes: "/machines", settings: "/settings"] ++
           if(Apiary.Features.on?(:security), do: [policy: "/policy"], else: []) ++
           if(carried, do: [], else: [runs: "/runs", network: "/network"])
 

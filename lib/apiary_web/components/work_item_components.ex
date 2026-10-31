@@ -2146,7 +2146,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, _whose} when assigns.test ->
           {gettext("Explore is queued."),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. The agent answers the line in it.",
+             "Run %{attempt} of %{of} starts when the workspace's pool takes it. The agent answers the line in it.",
              attempt: attempt,
              of: of
            )}
@@ -2161,7 +2161,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, :none} ->
           {gettext("Explore is queued."),
            gettext(
-             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
+             "Qory starts run %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2170,7 +2170,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, whose} ->
           {queued_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
+             "Run %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
              attempt: attempt,
              of: of,
              item: assigns.item

@@ -1442,7 +1442,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
            ApiaryWeb.Access.who_may(
              scope,
              :"node.delete",
-             gettext("Only owners and admins delete nodes.")
+             gettext("Only owners and admins delete machines.")
            )
          )
          |> reload()}
@@ -2390,8 +2390,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               </span>
             </span>
             <span :if={act == :check} class="q-choice-p">
-              <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
-                {gettext("Check the nodes")}
+              <.link id={"#{id}-check"} navigate={~p"/instance/qory-pool-and-gateway"} class="q-link">
+                {gettext("Check the Qory Pool and Qory Gateway")}
               </.link>
             </span>
             <span :if={act == :instance} id={"#{id}-who-may"} class="q-choice-p">
@@ -2476,7 +2476,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <span :if={!line.instance and act != :pool}>{line.pool.name}</span>
             <.link
               :if={act == :pool}
-              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/nodes/#{line.pool}"}
+              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/machines/#{line.pool}"}
               class="q-link"
             >
               {line.pool.name}
@@ -2488,8 +2488,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             </span>
           </span>
           <span :if={act == :check} class="q-choice-p">
-            <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
-              {gettext("Check the nodes")}
+            <.link id={"#{id}-check"} navigate={~p"/instance/qory-pool-and-gateway"} class="q-link">
+              {gettext("Check the Qory Pool and Qory Gateway")}
             </.link>
           </span>
           <span :if={act in [:instance, :workspace]} id={"#{id}-who-may"} class="q-choice-p">
@@ -2715,7 +2715,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_taken_line(name, workspace),
     do:
       gettext(
-        "Rename the node %{name} on the Nodes page, then add the pool. A node of %{workspace} already has that name.",
+        "Rename the machine %{name} on the Machines page, then add the pool. A machine of %{workspace} already has that name.",
         name: name,
         workspace: workspace.name
       )

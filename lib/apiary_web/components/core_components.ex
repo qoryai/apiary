@@ -1287,7 +1287,7 @@ defmodule ApiaryWeb.CoreComponents do
       <.header>
         Nodes
         <:subtitle>A node is one permanent machine; a node pool is a fleet of short-lived instances.</:subtitle>
-        <:actions><.button variant="primary">New node</.button></:actions>
+        <:actions><.button variant="primary">New machine</.button></:actions>
       </.header>
   """
   attr :class, :any, default: nil

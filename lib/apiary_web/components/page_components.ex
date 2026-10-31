@@ -31,15 +31,15 @@ defmodule ApiaryWeb.PageComponents do
   page_header/1 is a page's header: its title, the page's one `<h1>`; one line under it of
   what the page is for (`description`); and at the right at most one primary and one
   default action (`actions`), or, where the page makes two peer kinds, two default
-  actions and no primary, as on Nodes; under the title on a phone. Beside the title, a
+  actions and no primary, as on Machines; under the title on a phone. Beside the title, a
   state or a tag (`badge`); under the description, what the page says of itself before
   its content, such as the line of a narrowed list (`inner_block`).
 
-      <.page_header title={gettext("Nodes")}>
+      <.page_header title={gettext("Machines")}>
         <:description>{gettext("The machines and pools your runs run on.")}</:description>
         <:actions>
-          <.button patch={new_node_path}>{gettext("New node")}</.button>
-          <.button patch={new_pool_path}>{gettext("New node pool")}</.button>
+          <.button patch={new_node_path}>{gettext("New machine")}</.button>
+          <.button patch={new_pool_path}>{gettext("New pool")}</.button>
         </:actions>
       </.page_header>
   """
@@ -79,7 +79,7 @@ defmodule ApiaryWeb.PageComponents do
   its few sections are listed in the page, never as a second column. Each tab's id is the
   bar's, then its key: `target-tabs-policy`.
 
-      <.page_tabs id="node-tabs" label={gettext("Node")} current={:overview}>
+      <.page_tabs id="node-tabs" label={gettext("Machine")} current={:overview}>
         <:tab key={:overview} patch={overview}>{gettext("Overview")}</:tab>
         <:tab key={:settings} patch={settings} settings>{gettext("Settings")}</:tab>
       </.page_tabs>
@@ -265,7 +265,7 @@ defmodule ApiaryWeb.PageComponents do
   other way back in the header: a link the page adds names where it goes ("Back to the
   variables"), never a bare Back.
 
-      <.page_form id="new-node" title={gettext("New node")} cancel={nodes}>
+      <.page_form id="new-node" title={gettext("New machine")} cancel={nodes}>
         <:description>{gettext("A machine that runs runs.")}</:description>
         <.form for={@form} id="new-node-form" phx-submit="create" novalidate>
           <.input field={@form[:name]} label={gettext("Name")} />

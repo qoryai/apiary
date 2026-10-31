@@ -243,7 +243,11 @@ defmodule Apiary.Nodes.Node do
     |> unique_constraint([:organisation_id, :workspace_id, :name],
       name: :nodes_live_name_index,
       error_key: :name,
-      message: dgettext_noop("errors", "is already the name of a node in this workspace")
+      message:
+        dgettext_noop(
+          "errors",
+          "is already the name of a machine, pool or gateway in this workspace"
+        )
     )
     |> unique_constraint([:organisation_id, :name],
       name: :nodes_organisation_live_name_index,

@@ -1936,7 +1936,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       # title, and no dialog, no tabs, no version view under it.
       assert has_element?(view, "section#policy-export")
       refute has_element?(view, "dialog#policy-export")
-      assert has_element?(view, "h1#policy-export-h", "Export for a node without a server")
+      assert has_element?(view, "h1#policy-export-h", "Export for a machine without a server")
       refute has_element?(view, "#export-crumbs")
       refute has_element?(view, "#policy-export nav")
 

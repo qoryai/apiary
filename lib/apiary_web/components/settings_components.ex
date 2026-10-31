@@ -203,7 +203,7 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-adjustments-horizontal",
         path:
           if(node.workspace_id,
-            do: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings",
+            do: ~p"/#{organisation}/#{workspace}/machines/#{node}/settings",
             else: ~p"/#{organisation}/gateways/#{node}/settings"
           )
       }

@@ -1011,7 +1011,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       id={"#{@item.id}-act"}
       navigate={
-        ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
+        ~p"/#{@scope.organisation}/#{@scope.workspace}/machines/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
       }
       class="q-act"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
@@ -1939,18 +1939,16 @@ defmodule ApiaryWeb.OverviewComponents do
       <div class="q-onb-steps">
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
-          {gettext(
-            "Nothing has posted to this workspace yet. A machine posts once it is connected to a node."
-          )}
+          {gettext("Nothing has posted to this workspace yet. A machine posts once it is connected.")}
         </p>
         <p :if={@current > 1} class="q-onb-lead">
           {gettext(
-            "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
+            "A machine or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
           )}
         </p>
         <.steps current={@current} class="my-5">
-          <:step title={gettext("Add a node")}>
-            {gettext("One per machine, or a node pool for short-lived instances that share one key.")}
+          <:step title={gettext("Add a machine")}>
+            {gettext("One per machine, or a pool of machines that share one key.")}
           </:step>
           <:step title={gettext("Connect it")}>
             {pgettext(
@@ -1970,21 +1968,21 @@ defmodule ApiaryWeb.OverviewComponents do
           <.button
             id={"#{@id}-new-node"}
             variant="primary"
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new"}
             class="max-[479px]:w-full"
           >
-            <.icon name="hero-server" class="size-4" /> {gettext("New node")}
+            <.icon name="hero-server" class="size-4" /> {gettext("New machine")}
           </.button>
           <.button
             id={"#{@id}-new-pool"}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new-pool"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new-pool"}
             class="max-[479px]:w-full"
           >
-            <.icon name="hero-server-stack" class="size-4" /> {gettext("New node pool")}
+            <.icon name="hero-server-stack" class="size-4" /> {gettext("New pool")}
           </.button>
         </div>
         <p :if={@current == 1 and !@may_add} id={"#{@id}-members"} class="text-[13px]/5 text-muted">
-          {gettext("An owner or admin adds nodes and connects them.")}
+          {gettext("An owner or admin adds machines and connects them.")}
         </p>
         <p :if={@asks} id={"#{@id}-target"} class="text-[13px]/5">
           <.rich text={
@@ -2003,10 +2001,10 @@ defmodule ApiaryWeb.OverviewComponents do
         <.button
           :if={@current == 3 or (@current == 2 and !@asks)}
           id={"#{@id}-nodes"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines"}
           class="max-[479px]:w-full"
         >
-          {gettext("Go to nodes")}
+          {gettext("Go to Machines")}
         </.button>
         <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
@@ -2042,7 +2040,7 @@ defmodule ApiaryWeb.OverviewComponents do
               </div>
               <%!-- Said only to one who may add a node and connect it. --%>
               <p :if={@may_add} id={"#{@id}-choose"} class="text-muted">
-                {gettext("You choose one for each node, once you have added it.")}
+                {gettext("You choose one for each machine or pool, once you have added it.")}
               </p>
             </div>
             <.listening>{gettext("Listening for the first post from a machine.")}</.listening>
@@ -2230,7 +2228,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp no_run_words(:secrets_not_allowed, _choice),
     do:
       gettext(
-        "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to go through it."
+        "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's pool has to go through it."
       )
 
   defp no_run_words(cause, {5, %{locked: false, model_id: model}})
@@ -2268,7 +2266,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp failed_line(:no_machine),
     do:
       gettext(
-        "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
+        "Check the pool in Instance settings › Qory Pool and Qory Gateway. No machine has taken the test run yet."
       )
 
   defp failed_line(:model_key_missing),
@@ -2277,7 +2275,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp failed_line(:silent),
     do:
       gettext(
-        "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
+        "Check that the gateway is running in Instance settings › Qory Pool and Qory Gateway. The machine stopped sending for 10 minutes."
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason
@@ -2354,10 +2352,10 @@ defmodule ApiaryWeb.OverviewComponents do
   defp target_path(_scope, nil), do: nil
 
   defp target_path(scope, target),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{target}/access-key"
 
   defp generate_path(scope, target),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key/generate"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{target}/access-key/generate"
 
   defp way_icon(:enrol), do: "hero-command-line"
   defp way_icon(:generate), do: "hero-key"

@@ -20,10 +20,10 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       # A member changes the policy's rules only where there is a policy: with `security`.
       if Apiary.Features.on?(:security) do
         assert html =~
-                 "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy&#39;s rules that are not locked."
+                 "The people in this organisation. Owners and admins manage members, settings and machines; members see the runs and change the policy&#39;s rules that are not locked."
       else
         assert html =~
-                 "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
+                 "The people in this organisation. Owners and admins manage members, settings and machines; members see the runs."
 
         refute html =~ "policy"
       end
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
       assert html =~
-               "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
+               "The people in this organisation. Owners and admins manage members, settings and machines; members see the runs."
 
       refute html =~ "policy"
     end
@@ -164,7 +164,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert has_element?(
                lv,
                "#member-#{membership.id}-level-admin",
-               "Manages members, workspaces, nodes and settings"
+               "Manages members, workspaces, machines and settings"
              )
 
       assert has_element?(lv, "#member-#{membership.id}-level-member", "Sees the runs")
@@ -667,7 +667,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       assert [
                owner: "Changes everything, including who owns the organisation",
-               admin: "Manages members, workspaces, nodes and settings",
+               admin: "Manages members, workspaces, machines and settings",
                member: member_hint
              ] = hints(conn, scope, member)
 

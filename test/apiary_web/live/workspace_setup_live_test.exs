@@ -3214,7 +3214,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                       "The gateway for this run is not allowed to receive its secrets, which " <>
                       "the run needs. Only the instance's gateway is allowed to receive them. " <>
                       "An instance admin " <>
-                      "installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to " <>
+                      "installs it with QORY_INSTALLED_GATEWAY, and the run's pool has to " <>
                       "go through it."
 
     # The Test run step's line for `item`'s run ended at its claim on `cause`.
@@ -3318,7 +3318,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-failed[data-cause=no_machine]")
 
       assert words(lv, "#set-up-test-failed") ==
-               "Check the pool in Instance settings › Nodes. No machine has taken the test " <>
+               "Check the pool in Instance settings › Qory Pool and Qory Gateway. No machine has taken the test " <>
                  "run yet."
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
@@ -3425,7 +3425,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "Add a model key on the Model step. The gateway had no model key for the run."},
             {[state: :ended, end_cause: :lost, end_detail: nil],
              %{state: "lost", silenced_at: DateTime.utc_now()}, "silent",
-             "Check that the gateway is running in Instance settings › Nodes. The machine " <>
+             "Check that the gateway is running in Instance settings › Qory Pool and Qory Gateway. The machine " <>
                "stopped sending for 10 minutes."},
             {[state: :ended, end_cause: :run_ended],
              %{state: "failed", exit_code: 1, exited_at: DateTime.utc_now()}, "ended",
@@ -4573,8 +4573,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       |> live(~p"/#{admin.organisation}/#{admin.workspace}/set-up/machines")
 
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
-    assert words(lv, "#set-up-pool-instance-check") == "Check the nodes"
-    assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/nodes"
+    assert words(lv, "#set-up-pool-instance-check") == "Check the Qory Pool and Qory Gateway"
+    assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/qory-pool-and-gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
 
     lv = open(ctx, member(ctx.organisation))
@@ -4602,7 +4602,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#{id}-state") == "Not ready: no active key"
 
     assert href(lv, "#{id}-name a") ==
-             ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/nodes/#{pool.public_id}"
+             ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/machines/#{pool.public_id}"
 
     refute has_element?(lv, "#{id}-who-may")
     assert words(lv, "#{id}-code") == "Get the command"
@@ -4775,7 +4775,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-pool-add-button")
 
     assert words(lv, "#set-up-pool-taken") ==
-             "Rename the node #{node.name} on the Nodes page, then add the pool. A node of #{workspace.name} already has that name."
+             "Rename the machine #{node.name} on the Machines page, then add the pool. A machine of #{workspace.name} already has that name."
 
     # Once the node has another name, Add pool makes the pool.
     node |> Ecto.Changeset.change(name: "build-renamed") |> Repo.update!()
@@ -5168,7 +5168,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     lv |> element("#set-up-pool-remove-button") |> render_click()
     refute deleted?(pool)
-    assert words(lv, "#flash-error") =~ "Only owners and admins delete nodes."
+    assert words(lv, "#flash-error") =~ "Only owners and admins delete machines."
     refute has_element?(lv, "#set-up-pool-remove")
   end
 

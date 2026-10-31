@@ -1659,11 +1659,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp nodes_more(scope, count) do
     %{
       count: count,
-      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/machines?#{%{"sort" => "seen"}}",
       title:
         ngettext(
-          "%{number} more item, on the nodes page",
-          "%{number} more items, on the nodes page",
+          "%{number} more item, on the Machines page",
+          "%{number} more items, on the Machines page",
           count,
           number: Format.number(count)
         )
@@ -1922,6 +1922,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       ApiaryWeb.Access.who_may(
         scope,
         :"access_key.create_code",
-        gettext("Only owners and admins connect a node.")
+        gettext("Only owners and admins connect a machine.")
       )
 end

@@ -27,10 +27,10 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
     do: ~p"/#{scope.organisation}/gateways/#{gateway}" <> rest
 
   defp nodes_path(scope, rest \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes" <> rest
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines" <> rest
 
   defp node_path(scope, node, rest \\ ""),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}" <> rest
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}" <> rest
 
   defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.trim()
 
@@ -77,13 +77,13 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#gateways-intro",
-               "Nodes in any workspace of #{scope.organisation.name} can use the gateways added here. A workspace can also add gateways that only its nodes use."
+               "Machines and pools in any workspace of #{scope.organisation.name} can use the gateways added here. A workspace can also add gateways that only its machines and pools use."
              )
 
       assert has_element?(
                lv,
                "#gateways-empty",
-               "Add one so the nodes in #{scope.organisation.name}'s workspaces can send runs through it."
+               "Add one so the machines and pools in #{scope.organisation.name}'s workspaces can send runs through it."
              )
     end
 
@@ -124,7 +124,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#new-gateway",
-               "The address that runs go through when their node or node pool in a workspace of #{scope.organisation.name} is set to this gateway."
+               "The address that runs go through when their machine or pool in a workspace of #{scope.organisation.name} is set to this gateway."
              )
 
       {:ok, _tab, html} =
@@ -146,7 +146,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#new-gateway-form #node_url-hint",
-               "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+               "Where your machines and pools will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
              )
     end
 
@@ -179,10 +179,10 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#gateway-who-can-use",
-               "Nodes in any workspace of #{scope.organisation.name} can use it."
+               "Machines and pools in any workspace of #{scope.organisation.name} can use it."
              )
 
-      assert has_element?(lv, "#gateway-using", "No node uses it now.")
+      assert has_element?(lv, "#gateway-using", "No machine or pool uses it now.")
 
       assert has_element?(
                lv,
@@ -196,7 +196,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#gateway-using",
-               "Nodes in #{scope.organisation.name} › #{scope.workspace.name} use it now."
+               "Machines and pools in #{scope.organisation.name} › #{scope.workspace.name} use it now."
              )
     end
 
@@ -215,7 +215,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#gateway-using",
-               "Nodes in #{scope.organisation.name} › #{scope.workspace.name} and 1 more workspace use it now."
+               "Machines and pools in #{scope.organisation.name} › #{scope.workspace.name} and 1 more workspace use it now."
              )
 
       # The owner reaches both.
@@ -224,7 +224,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#gateway-using",
-               "Nodes in #{scope.organisation.name} › Build, #{scope.organisation.name} › #{scope.workspace.name} use it now."
+               "Machines and pools in #{scope.organisation.name} › Build, #{scope.organisation.name} › #{scope.workspace.name} use it now."
              )
     end
 
@@ -279,7 +279,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       words = NodeComponents.in_use_words(scope, Gateways.delete_blockers(gateway), MapSet.new())
 
       assert words =~
-               "Nodes use this gateway: 2 nodes in workspaces you don't have access to."
+               "Machines and pools use this gateway: 2 machines or pools in workspaces you don't have access to."
     end
 
     test "deleted, it leads back to the organisation's Gateways", %{conn: conn, scope: scope} do
@@ -412,7 +412,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(lv, "#gateways-empty", "No gateways yet")
 
       assert lv |> element("#gateways-empty p") |> render() |> text() ==
-               "Add one so the nodes in #{scope.organisation.name}'s workspaces can send runs through it."
+               "Add one so the machines and pools in #{scope.organisation.name}'s workspaces can send runs through it."
 
       Edition.put_test_stub(EditionStubs.GatewaysEmptyWorded)
       {:ok, lv, _html} = live(conn, gateways_path(scope))
@@ -424,7 +424,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(
                lv,
                "#gateways-intro",
-               "Nodes in any workspace of #{scope.organisation.name} can use the gateways added here."
+               "Machines and pools in any workspace of #{scope.organisation.name} can use the gateways added here."
              )
     end
   end

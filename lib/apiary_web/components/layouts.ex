@@ -107,9 +107,9 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :record,
         key: :nodes,
-        label: gettext("Nodes"),
+        label: gettext("Machines"),
         icon: "hero-server",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/nodes" end,
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/machines" end,
         action: :"node.read"
       },
       # Guard: what the runs reached and what decided it, then the rules that decide. On an
@@ -236,16 +236,16 @@ defmodule ApiaryWeb.Layouts do
         [
           %Entry{
             key: :node,
-            label: gettext("New node"),
+            label: gettext("New machine"),
             icon: "hero-server",
-            path: ~p"/#{organisation}/#{workspace}/nodes/new",
+            path: ~p"/#{organisation}/#{workspace}/machines/new",
             action: :"node.create"
           },
           %Entry{
             key: :node_pool,
-            label: gettext("New node pool"),
+            label: gettext("New pool"),
             icon: "hero-server-stack",
-            path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
+            path: ~p"/#{organisation}/#{workspace}/machines/new-pool",
             action: :"node.create"
           }
         ] ++
@@ -416,9 +416,9 @@ defmodule ApiaryWeb.Layouts do
         %Entry{
           section: :instance,
           key: :nodes,
-          label: gettext("Nodes"),
+          label: gettext("Qory Pool and Qory Gateway"),
           icon: "hero-server-stack",
-          path: ~p"/instance/nodes",
+          path: ~p"/instance/qory-pool-and-gateway",
           place: :instance
         }
 
