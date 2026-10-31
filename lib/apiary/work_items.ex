@@ -200,8 +200,20 @@ defmodule Apiary.WorkItems do
   # in, with the edit page's changes or as it stands (`Apiary.WorkItems.Moves`).
   @spec confirm(Scope.t(), WorkItem.t(), pos_integer, map | nil) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params \\ nil),
-    do: Moves.confirm(scope, work_item, attempt, params)
+  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params \\ nil) do
+    # Hand-over: with the workflow model, the confirmation approves Explore's gate in the
+    # same transaction, a member's changes kept as their proposal version
+    # (`Apiary.Stages.confirmed/2`).
+    if Apiary.Stages.on?() do
+      Repo.transact(fn ->
+        with {:ok, confirmed} <- Moves.confirm(scope, work_item, attempt, params),
+             {:ok, _placed} <- Apiary.Stages.confirmed(scope, confirmed),
+             do: {:ok, Repo.get!(WorkItem, confirmed.id)}
+      end)
+    else
+      Moves.confirm(scope, work_item, attempt, params)
+    end
+  end
 
   @doc false
   # explore_again/3 queues the next run of `work_item`'s take in after its latest run,

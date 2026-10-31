@@ -169,6 +169,12 @@ defmodule Apiary.DispatchesTest do
       work_item = work_item_fixture(ctx.scope)
       work_item |> queue!() |> set_run!(state: :ended, end_cause: :lost, of: 2)
 
+      # With the workflow model, the stage runner counts the runs of a work item it placed
+      # by the rounds of the stage's loop; this work item is one it did not place.
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [process_version_id: nil, stage_id: nil, stage_state: nil]
+      )
+
       second = queued_next!(work_item)
       assert %DispatchRun{attempt: 2, of: 2} = run!(second)
 
