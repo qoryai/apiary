@@ -293,10 +293,9 @@ The messages:
   - "Fix notes.txt to match the format of explainer: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
-    the enum values: "passed", "changes-requested" or "escalate"." For a file that a
-    structured type's JSON Schema refuses, the part after the colon is "at <path>,
-    <error>.", with the JSON pointer of the first failing value and the text of the
-    schema check.
+    the enum values: "passed", "changes-requested" or "escalate"." For a file that fails
+    a structured type's JSON Schema, the part after the colon is "at <path>, <error>.",
+    with the JSON pointer of the first failing value and the text of the schema check.
   - "Push checkout.png again: Qory Apiary could not read it after it was received."
   - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
     video."
