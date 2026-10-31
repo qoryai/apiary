@@ -12,6 +12,12 @@ defmodule ApiaryWeb.StagesLive.Index do
   # through `Apiary.Processes.save/4`, which checks the document against its schema.
   #
   # Owners and admins (`process.edit`) edit; members read the page with no edit controls.
+  #
+  # The workflow picker offers `Apiary.Processes.declared_workflows/1`. Once the page is
+  # connected, for whoever may save the harness (`harness.save`), it reads the workspace's
+  # saved harness source again (`Apiary.Stacks.Sources.read/2`, outside the page's
+  # process) and records the workflows of the stack the saved document extends, as the
+  # Workflow page does; a read that fails keeps the list of the last read, with its error.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -20,6 +26,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Organisations, Processes, Repo, WorkItems}
+  alias Apiary.Stacks.{Document, Sources}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{People, SettingsComponents}
   alias ApiaryWeb.StagesLive.{ArtifactTypes, Draft, Words}
@@ -42,9 +49,12 @@ defmodule ApiaryWeb.StagesLive.Index do
         page_title: SettingsComponents.page_title(scope, :workspace, [gettext("Stages")]),
         sections: SettingsComponents.sections(scope, :workspace),
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
-        harness: harness_name(Apiary.Stacks.Sources.chosen(workspace)),
+        harness: harness_name(Sources.chosen(workspace)),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
+        snapshot: Processes.declared_snapshot(workspace),
+        harness_source: nil,
+        declared_error: nil,
         types: ArtifactTypes.types(workspace),
         members: members,
         people: Map.new(members, &{&1.user.id, People.short(People.email(&1.user))}),
@@ -59,8 +69,88 @@ defmodule ApiaryWeb.StagesLive.Index do
       )
       |> load(current)
       |> load_work_items()
+      |> read_declared(Sources.current(workspace))
 
     {:ok, socket}
+  end
+
+  ## The harness's workflows
+
+  # The saved harness source read again once the page is connected, for whoever may save
+  # the harness: the source of the base the workspace's saved document extends, and no
+  # other. With no saved document, or one with no base, nothing is read.
+  defp read_declared(socket, %{base: %{} = base}) do
+    if connected?(socket) and socket.assigns.may_harness do
+      scope = socket.assigns.current_scope
+      source = saved_source(base)
+
+      socket
+      |> assign(harness_source: %{source: source, base: base})
+      |> start_async(:declared, fn -> Sources.read(scope, source) end)
+    else
+      socket
+    end
+  end
+
+  defp read_declared(socket, _none), do: socket
+
+  # The source a document's base is read from: its address and version, narrowed to its
+  # stack or folder, as a source the Workflow page offers (`t:Apiary.Stacks.Sources.source/0`).
+  defp saved_source(base) do
+    %{
+      id: "saved",
+      kind: :address,
+      label: Document.shown(base["git"]),
+      git: base["git"],
+      ref: base["ref"],
+      narrowing: Map.take(base, ["path", "stack"]),
+      location: nil,
+      version: nil,
+      stacks: nil
+    }
+  end
+
+  @impl true
+  def handle_async(:declared, {:ok, {:ok, stacks}}, socket) when is_list(stacks) do
+    workspace = socket.assigns.current_scope.workspace
+
+    # Only the stack the saved document extends, as the Workflow page records it
+    # (`ApiaryWeb.WorkflowLive`); with none, nothing is recorded.
+    case Enum.find(stacks, &(&1.base == socket.assigns.harness_source.base)) do
+      nil -> :ok
+      stack -> :ok = Processes.record_declared(workspace, stack.workflows)
+    end
+
+    {:noreply,
+     socket
+     |> assign(
+       declared: Processes.declared_workflows(workspace),
+       snapshot: Processes.declared_snapshot(workspace),
+       declared_error: nil
+     )
+     |> refresh()}
+  end
+
+  def handle_async(:declared, {:ok, {:error, reason}}, socket),
+    do: {:noreply, declared_failed(socket, reason)}
+
+  def handle_async(:declared, {:ok, other}, socket),
+    do: {:noreply, declared_failed(socket, other)}
+
+  def handle_async(:declared, {:exit, _reason}, socket),
+    do: {:noreply, declared_failed(socket, :exited)}
+
+  # The list of the last read stays; the line under it gives the cause, in the words the
+  # Workflow page uses for a read that failed.
+  defp declared_failed(socket, reason) do
+    words =
+      ApiaryWeb.HarnessComponents.read_words(
+        reason,
+        socket.assigns.harness_source.source,
+        socket.assigns.current_scope.organisation.name
+      )
+
+    assign(socket, declared_error: words)
   end
 
   # The editor on `version`: its document as the draft, its first stage selected.
@@ -626,6 +716,12 @@ defmodule ApiaryWeb.StagesLive.Index do
               {gettext("Change")}
             </.link>
           </p>
+          <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
+            <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot)}</p>
+            <p :if={@declared_error} id="stages-workflows-error" class="text-error">
+              {Words.read_failed(@declared_error, @snapshot)}
+            </p>
+          </div>
           <div id="stages-version" class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <p class="text-[13.5px]/5">
               {version_line(@base, @may)}

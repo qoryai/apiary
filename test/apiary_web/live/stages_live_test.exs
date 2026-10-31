@@ -4,14 +4,17 @@ defmodule ApiaryWeb.StagesLiveTest do
   and the Workflow page's link to it: not found while the feature `workflow_model` is off;
   the canvas, the editor, with the inspector of the selected stage; adding a stage at a
   place ("+"), renaming, moving and removing it; a stage's sequence, loop, inputs, outputs
-  and gate; the placement check; a save, a trial and the history; and a member's page,
-  with the same canvas and a read-only inspector.
+  and gate; the placement check; a save, a trial and the history; a member's page, with
+  the same canvas and a read-only inspector; and the harness's workflows, read again from
+  the saved harness source against stub adapters (`Req.Test`).
 
   Not async: each test sets the instance's features, which are the whole node's.
   """
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import Apiary.HarnessReadsFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -708,6 +711,132 @@ defmodule ApiaryWeb.StagesLiveTest do
       render_hook(view, "reorder", %{"ids" => Enum.reverse(ids(view))})
       render_hook(view, "move", %{"id" => hd(ids(view)), "by" => "1"})
       assert names(view) == ~w(Explore Shape Build Verify Release)
+    end
+  end
+
+  describe "the harness's workflows" do
+    @harness "https://code.example.com/acme/harness"
+    @base %{"git" => @harness, "ref" => "HEAD", "stack" => "triage"}
+    @stack "modules:\n  - name: core\n    source: {path: modules/core}\n"
+    @files %{
+      {"R_harness", "harness.yaml"} => "exports:\n  stacks: [triage, other]\n",
+      {"R_harness", "stacks/triage/qory-stack.yaml"} =>
+        @stack <> "workflows:\n  triage: {}\n  fix: {}\n",
+      {"R_harness", "stacks/other/qory-stack.yaml"} => @stack <> "workflows:\n  review: {}\n"
+    }
+
+    setup %{scope: scope} do
+      adapter = call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(scope, adapter.adapter, :listed)
+      live_grant_fixture(scope.organisation.id, adapter.adapter, connection, "G_acme")
+      harness_collection_fixture(connection, @harness, "acme/harness")
+      covered = %{adapter.adapter.id => %{@harness => {"G_acme", "R_harness"}}}
+      {:ok, _stack} = Apiary.Stacks.Sources.save(scope, @base, "fix")
+      %{adapter: adapter, covered: covered}
+    end
+
+    test "read when the page opens: the saved source's stack is recorded, with its time",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      serve_calls([adapter], covered: covered, files: @files)
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+
+      # Only the stack the saved document extends: not "review" of the other stack.
+      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "Workflows the harness listed just now: explore-a-ticket, fix, triage."
+             )
+
+      refute has_element?(view, "#stages-workflows-error")
+      # The picker of Explore, the selected stage, offers them.
+      assert has_element?(view, ~s(#stage-panel select option[value="triage"]))
+    end
+
+    test "a read that fails keeps the list of the last read, with the cause",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      snapshot = Processes.declared_snapshot(scope.workspace)
+      serve_calls([adapter], covered: covered, files: @files, down: true)
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+
+      assert Processes.declared_snapshot(scope.workspace) == snapshot
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "Workflows the harness listed just now: explore-a-ticket, fix, review."
+             )
+
+      assert has_element?(
+               view,
+               "#stages-workflows-error",
+               "This read of the harness failed, so the list is from the last read."
+             )
+    end
+
+    test "the page shows the stored list before the read ends", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      test = self()
+      {:ok, gate} = Agent.start_link(fn -> :held end)
+
+      # The first call waits for the test; a call after it fails at once.
+      Req.Test.stub(Apiary.Adapters.Calls, fn conn ->
+        if Agent.get(gate, & &1) == :held do
+          send(test, {:held, self()})
+
+          receive do
+            :go -> :ok
+          after
+            5_000 -> :ok
+          end
+        end
+
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
+
+      {:ok, view, _html} = live(conn, path)
+      assert_receive {:held, call}, 2_000
+
+      assert has_element?(view, "#stages-workflows-list", "explore-a-ticket, fix, review.")
+      refute has_element?(view, "#stages-workflows-error")
+
+      Agent.update(gate, fn _held -> :open end)
+      send(call, :go)
+      render_async(view, 5_000)
+      assert has_element?(view, "#stages-workflows-error")
+    end
+
+    test "a member sees the same list and time, and the page reads nothing", %{
+      scope: scope,
+      path: path,
+      adapter: adapter,
+      covered: covered
+    } do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      snapshot = Processes.declared_snapshot(scope.workspace)
+      serve_calls([adapter], covered: covered, files: @files)
+      %{user: user} = member_fixture(scope)
+
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+      render_async(view, 5_000)
+
+      refute_received {:harness_call, _path, _call}
+      assert Processes.declared_snapshot(scope.workspace) == snapshot
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "Workflows the harness listed just now: explore-a-ticket, fix, review."
+             )
     end
   end
 

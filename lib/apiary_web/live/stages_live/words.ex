@@ -94,6 +94,31 @@ defmodule ApiaryWeb.StagesLive.Words do
   @doc false
   def add_after(name), do: gettext("Add a stage after %{stage}", stage: name)
 
+  # The workflows a stage may take, with the time the harness listed them, where it was
+  # read (`Apiary.Processes.declared_snapshot/1`).
+  @doc false
+  def workflows_line(names, %{read_at: at}),
+    do:
+      gettext("Workflows the harness listed %{time}: %{names}.",
+        time: ApiaryWeb.Format.time_ago(at, DateTime.utc_now(), case: :inline),
+        names: Enum.join(names, ", ")
+      )
+
+  def workflows_line(names, nil),
+    do: gettext("Workflows: %{names}.", names: Enum.join(names, ", "))
+
+  # A read of the harness that failed, with its cause (`words`): the list stays as the
+  # last read left it.
+  @doc false
+  def read_failed(words, %{read_at: _at}),
+    do:
+      gettext("This read of the harness failed, so the list is from the last read. %{cause}",
+        cause: words
+      )
+
+  def read_failed(words, nil),
+    do: gettext("This read of the harness failed. %{cause}", cause: words)
+
   # The label of the "+" before the first stage.
   @doc false
   def add_before(name), do: gettext("Add a stage before %{stage}", stage: name)
