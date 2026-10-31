@@ -12562,7 +12562,7 @@ msgstr ""
 msgid "Owners and admins can change these."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
+#: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} finish the set-up."
 msgstr ""

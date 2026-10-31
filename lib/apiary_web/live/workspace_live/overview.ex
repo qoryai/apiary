@@ -120,10 +120,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       <:crumb>{gettext("Overview")}</:crumb>
       <.set_up_list
         workspace={@current_scope.workspace}
-        organisation={@current_scope.organisation}
         set_up={@set_up}
         notes={@notes}
         continues={@continues}
+        finishers={@finishers}
       />
     </Layouts.app>
     """
@@ -272,9 +272,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   attr :workspace, :any, required: true
-  attr :organisation, :any, required: true
   attr :set_up, :map, required: true
   attr :continues, :boolean, required: true
+  attr :finishers, :string, required: true, doc: "who finishes the set-up, for `continues` false"
   attr :notes, :map, required: true, doc: "each step's line, by its id"
 
   # The set-up while it is not finished: each step with its state, done, the next or to
@@ -291,9 +291,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             else: gettext("%{workspace} is being set up", workspace: @workspace.name)}
         </h1>
         <p :if={!@continues} id="overview-set-up-who" class="text-[13.5px]/5 text-muted">
-          {gettext("Owners and admins of %{organisation} finish the set-up.",
-            organisation: @organisation.name
-          )}
+          {@finishers}
         </p>
       </div>
       <ol id="overview-set-up-steps" class="q-su-list rounded-box border border-line p-2">
@@ -352,6 +350,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
            # Continue and its heading for a person who may take the next step's action, as
            # its page checks; for anyone else, the steps read only and who finishes them.
            continues: SetUpComponents.changes_step?(scope, set_up.next.id),
+           # Who finishes the set-up, the edition's line for the next step.
+           finishers: Apiary.Edition.set_up_finishers_line(scope, set_up.next.id),
            # Each step's line, read once here rather than on every render.
            notes:
              Map.new(
