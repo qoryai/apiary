@@ -3318,10 +3318,55 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-failed[data-cause=no_machine]")
 
       assert words(lv, "#set-up-test-failed") ==
-               "Check on the Machines page that a machine of the pool is running, or contact " <>
-                 "support with work item ##{item.number}. No machine has taken the test run yet."
+               "Check on the Machines page that a machine of shared-pool is running. No machine " <>
+                 "has taken the test run yet."
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
+    end
+
+    test "no machine took the run of the Qory Pool: contact support with the work item", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReadyQoryPool)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Contact support with work item ##{item.number}. No machine has taken the test " <>
+                 "run yet."
+    end
+
+    test "a lost run of a machine of the workspace names the machine; of the Qory Pool, support",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      machine = node_fixture(scope, %{name: "build-01"})
+      pool = pool_fixture(scope, %{name: "spot-runners"})
+      qory_pool = instance_pool_fixture()
+      changes = [state: :ended, end_cause: :lost, end_detail: nil]
+      lost = %{state: "lost", silenced_at: DateTime.utc_now(), node_instance_id: "i-7"}
+
+      for {node, line} <- [
+            {machine,
+             "Check on the Machines page that build-01 is running. It stopped sending for 10 minutes."},
+            {pool,
+             "Check on the Machines page that i-7 is running. It stopped sending for 10 minutes."},
+            {qory_pool,
+             "Contact support with run RUN_ID. The machine stopped sending for 10 minutes."}
+          ] do
+        Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
+        run = test_run!(item, changes, Map.put(lost, :node_id, node.id))
+        {:ok, lv, _html} = live(conn, test_path(scope))
+
+        assert has_element?(lv, "#set-up-test-failed[data-cause=silent]")
+
+        assert words(lv, "#set-up-test-failed") ==
+                 String.replace(line, "RUN_ID", run.public_id),
+               node.name
+      end
     end
 
     test "one who may not take an item in reads who runs the test, and has no field", %{
@@ -3425,8 +3470,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              "Add a model key on the Model step. The gateway had no model key for the run."},
             {[state: :ended, end_cause: :lost, end_detail: nil],
              %{state: "lost", silenced_at: DateTime.utc_now()}, "silent",
-             "Check on the Machines page that the machine is running, or contact support with " <>
-               "run RUN_ID. The machine stopped sending for 10 minutes."},
+             "Contact support with run RUN_ID. The machine stopped sending for 10 minutes."},
             {[state: :ended, end_cause: :run_ended],
              %{state: "failed", exit_code: 1, exited_at: DateTime.utc_now()}, "ended",
              "The test run failed: exit 1. See the run"},

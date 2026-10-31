@@ -205,6 +205,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Dispatches.RunSettings
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
+  alias Apiary.Nodes.Node
   alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stacks.Sources
 
@@ -212,6 +213,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessComponents,
     HarnessTargets,
     IntegrationComponents,
+    NodeComponents,
     OverviewComponents,
     SetUpComponents,
     SettingsComponents
@@ -575,6 +577,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       test_state: test && test.state,
       test_preparation: test_preparation(scope, workspace, test),
       test_choice: test_choice(test),
+      test_machine: test_machine(scope, workspace, test),
       machines: Edition.machines_ready(workspace),
       may: Access.can?(scope, :"work_item.take_in", workspace),
       who_may:
@@ -593,6 +596,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     do: Preparation.read(%{scope | workspace: workspace}, run)
 
   defp test_preparation(_scope, _workspace, _test), do: nil
+
+  # The name of the machine a lost test run ran on, for its line: the machine's, or for a
+  # pool's run the name its instance reported, else its instance id; nil for no node.
+  defp test_machine(_scope, _workspace, %{
+         state: {:failed, :silent},
+         run: %Run{node: %Node{kind: :node} = node}
+       }),
+       do: NodeComponents.shown_name(node)
+
+  defp test_machine(scope, workspace, %{
+         state: {:failed, :silent},
+         run: %Run{node: %Node{} = node, node_instance_id: instance_id}
+       })
+       when is_binary(instance_id) do
+    case Apiary.Nodes.get_instance(%{scope | workspace: workspace}, node, instance_id) do
+      %{name: name} when is_binary(name) -> name
+      _instance -> Apiary.ExternalText.sent(instance_id)
+    end
+  end
+
+  defp test_machine(_scope, _workspace, _test), do: nil
 
   # The model choice a new test run takes, for a test run that ended at its claim on a
   # cause of its model choice, so the line names the Model step only where its choice is
@@ -2178,6 +2202,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             choice={@test_choice}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
             item={@test.work_item && @test.work_item.number}
+            pool={@machines && @machines.pool}
+            machine={@test_machine}
           />
         </span>
       </.notice>

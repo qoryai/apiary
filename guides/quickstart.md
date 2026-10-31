@@ -401,8 +401,10 @@ with Main's pool by name in place of the instance's pool, or "…on a machine." 
 run with no machine or pool, and **See the run**: the agent's output is in the run's log. Owners,
 admins and members run the test. If the step shows another line, follow its first
 sentence, then select **Run the test** again. When no machine takes the test run within 5
-minutes, for example, the step shows "Check on the Machines page that a machine of the pool
-is running, or contact support with work item #…. No machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
+minutes, for example, the step shows "Check on the Machines page that a machine of
+main-pool is running. No machine has taken the test run yet." for a pool of Main named
+`main-pool`, or "Contact support with work item #…. No machine has taken the test run yet."
+for the Qory Pool. After a pass, **Go to Main** opens Main's overview,
 and opening Main opens the overview from then on.
 
 The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,

@@ -5333,12 +5333,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Check on the Machines page that a machine of the pool is running, or contact support with work item #%{number}. No machine has taken the test run yet."
+msgid "Check on the Machines page that %{machine} is running. It stopped sending for 10 minutes."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Check on the Machines page that the machine is running, or contact support with run %{run}. The machine stopped sending for 10 minutes."
+msgid "Check on the Machines page that a machine of %{pool} is running. No machine has taken the test run yet."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -5958,6 +5958,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Connections inline"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support with run %{run}. The machine stopped sending for 10 minutes."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support with work item #%{number}. No machine has taken the test run yet."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex

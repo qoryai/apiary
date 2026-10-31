@@ -2170,6 +2170,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :path, :string, default: nil
   attr :item, :integer, default: nil, doc: "the number of the test run's work item"
+  attr :pool, :any, default: nil, doc: "the pool the Machines step found ready, or nil"
+  attr :machine, :string, default: nil, doc: "the name of the machine a lost run ran on"
 
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
       when cause in [:ended, :silent] do
@@ -2208,7 +2210,8 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   def test_failed(assigns) do
-    ~H"{failed_line(@cause, @run, @item)}"
+    assigns = assign(assigns, :line, failed_line(assigns.cause, assigns))
+    ~H"{@line}"
   end
 
   # What fixes a test run that ended at its claim, and why it ended
@@ -2265,20 +2268,37 @@ defmodule ApiaryWeb.OverviewComponents do
         "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
       )
 
-  defp failed_line(:no_machine, _run, item),
+  # A pool or a machine with an organisation is one the workspace's owners and admins can
+  # check on the Machines page; the instance's pool, with none, only support can.
+  defp failed_line(:no_machine, %{pool: %{organisation_id: id} = pool}) when not is_nil(id),
     do:
       gettext(
-        "Check on the Machines page that a machine of the pool is running, or contact support with work item #%{number}. No machine has taken the test run yet.",
+        "Check on the Machines page that a machine of %{pool} is running. No machine has taken the test run yet.",
+        pool: ApiaryWeb.NodeComponents.shown_name(pool)
+      )
+
+  defp failed_line(:no_machine, %{item: item}),
+    do:
+      gettext(
+        "Contact support with work item #%{number}. No machine has taken the test run yet.",
         number: item
       )
 
-  defp failed_line(:model_key_missing, _run, _item),
+  defp failed_line(:model_key_missing, _assigns),
     do: gettext("Add a model key on the Model step. The gateway had no model key for the run.")
 
-  defp failed_line(:silent, run, _item),
+  defp failed_line(:silent, %{run: %{node: %{organisation_id: id}}, machine: machine})
+       when not is_nil(id) and is_binary(machine),
+       do:
+         gettext(
+           "Check on the Machines page that %{machine} is running. It stopped sending for 10 minutes.",
+           machine: machine
+         )
+
+  defp failed_line(:silent, %{run: run}),
     do:
       gettext(
-        "Check on the Machines page that the machine is running, or contact support with run %{run}. The machine stopped sending for 10 minutes.",
+        "Contact support with run %{run}. The machine stopped sending for 10 minutes.",
         run: run.public_id
       )
 
