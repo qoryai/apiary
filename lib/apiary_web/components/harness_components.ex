@@ -767,12 +767,32 @@ defmodule ApiaryWeb.HarnessComponents do
   def read_words({:invalid, file, rule}, source, _organisation),
     do: invalid_words(file, rule, source)
 
-  def read_words({:unreadable, :address}, _source, _organisation), do: address_form_words(:form)
+  # An address the person typed is the person's to correct; any other comes from Qory
+  # Apiary's records: a connected repository's or an assignment's.
+  def read_words({:unreadable, :address}, %{kind: :address}, _organisation),
+    do: address_form_words(:form)
 
-  def read_words({:unreadable, :path, _path}, _source, _organisation),
+  def read_words({:unreadable, :address}, source, _organisation),
     do:
       gettext(
-        "Correct the folder: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
+        "Tell an instance admin: the address of %{source} is not https://, a host, an optional port and an optional path, so Qory Apiary does not read it.",
+        source: label(source)
+      )
+
+  # A folder comes from an assignment alone: no page has a folder field.
+  def read_words({:unreadable, :path, _path}, source, _organisation),
+    do:
+      gettext(
+        "An instance admin corrects the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long.",
+        source: label(source)
+      )
+
+  # An assigned source's version is the assignment's, which no version field changes.
+  def read_words({:unreadable, :version, _ref}, %{kind: :assigned} = source, _organisation),
+    do:
+      gettext(
+        "An instance admin corrects the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+        source: label(source)
       )
 
   def read_words({:unreadable, :version, _ref}, _source, _organisation), do: ref_form_words()
@@ -788,15 +808,36 @@ defmodule ApiaryWeb.HarnessComponents do
         source: label(source)
       )
 
-  # A source no adapter links to the organisation and none reads in public.
+  # A source no adapter of the instance reads in public and no grant of the organisation
+  # covers, or one an adapter refused as not covered or not public (`:not_covered`).
+  # Neither the read nor the walk knows whether the source is public: no adapter
+  # answered for it. So both fixes show, each with its condition.
   defp not_covered_words(source, organisation),
     do:
       pgettext(
         "plain",
-        "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment.",
+        "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, the instance admin installs an adapter for %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations.",
+        source: label(source),
+        organisation: organisation,
+        host: host(source)
+      )
+
+  # A source a grant of the instance's organisation covers, not assigned to the
+  # organisation (the walk's `not_allowed`).
+  defp not_allowed_words(source, organisation),
+    do:
+      pgettext(
+        "plain",
+        "An instance admin assigns %{source} to %{organisation}. An integration of the instance covers %{source}, and Qory Apiary reads it for %{organisation} only through an assignment.",
         source: label(source),
         organisation: organisation
       )
+
+  # The host of `source`'s address, else its label.
+  defp host(%{git: git} = source) when is_binary(git),
+    do: URI.parse(git).host || label(source)
+
+  defp host(source), do: label(source)
 
   defp limited_words(seconds, source),
     do:
@@ -1245,9 +1286,11 @@ defmodule ApiaryWeb.HarnessComponents do
   def refusal_words({:limited, seconds}, source, _ref, _organisation),
     do: limited_words(seconds, source)
 
-  def refusal_words({:walk, %{failure: failure}}, source, _ref, organisation)
-      when failure in [:not_covered, :not_allowed],
-      do: not_covered_words(source, organisation)
+  def refusal_words({:walk, %{failure: :not_covered}}, source, _ref, organisation),
+    do: not_covered_words(source, organisation)
+
+  def refusal_words({:walk, %{failure: :not_allowed}}, source, _ref, organisation),
+    do: not_allowed_words(source, organisation)
 
   def refusal_words({:walk, failure}, source, ref, _organisation),
     do: ref_words(failure, source, ref) || walk_words(failure, source)

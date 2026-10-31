@@ -2187,9 +2187,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       pick_repository(lv)
 
       assert words(lv, "#harness-stack-error") ==
-               "Link acme/harness to #{ctx.organisation.name}, or ask an instance admin to " <>
-                 "assign it: Qory Apiary reads a harness repository that is not public only " <>
-                 "through a linked repository or an assignment."
+               "Qory Apiary reached no adapter that reads acme/harness, and no integration of " <>
+                 "#{ctx.organisation.name} covers it. If acme/harness is public, the instance " <>
+                 "admin installs an adapter for code.example.com. If it is private, owners and " <>
+                 "admins of #{ctx.organisation.name} connect an integration that covers it in " <>
+                 "Organisation settings › Integrations."
 
       assert has_element?(lv, "#set-up-continue[disabled]")
     end
@@ -2311,17 +2313,52 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
 
-      assert reads.({:unreadable, :address}) ==
+      # No adapter answered for the source, so both fixes show, each with its condition.
+      not_covered =
+        "Qory Apiary reached no adapter that reads acme/harness, and no integration of Acme " <>
+          "covers it. If acme/harness is public, the instance admin installs an adapter for " <>
+          "code.example.com. If it is private, owners and admins of Acme connect an " <>
+          "integration that covers it in Organisation settings › Integrations."
+
+      assert reads.(:not_covered) == not_covered
+      assert words.(failure.(:not_covered, chosen, nil)) == not_covered
+
+      assert words.(failure.(:not_allowed, chosen, nil)) ==
+               "An instance admin assigns acme/harness to Acme. An integration of the instance " <>
+                 "covers acme/harness, and Qory Apiary reads it for Acme only through an " <>
+                 "assignment."
+
+      # An address the person typed is the person's to correct; a connected repository's
+      # or an assignment's is not.
+      assert ApiaryWeb.HarnessComponents.read_words(
+               {:unreadable, :address},
+               Map.put(source, :kind, :address),
+               "Acme"
+             ) ==
                "Correct the address: write it as https://, a host, an optional port and an " <>
                  "optional path."
 
+      assert reads.({:unreadable, :address}) ==
+               "Tell an instance admin: the address of acme/harness is not https://, a host, " <>
+                 "an optional port and an optional path, so Qory Apiary does not read it."
+
+      # A folder comes from an assignment alone.
       assert reads.({:unreadable, :path, "../x/qory-stack.yaml"}) ==
-               "Correct the folder: a folder is a relative path with no empty, . or .. part, " <>
-                 "at most 1,024 characters long."
+               "An instance admin corrects the folder of acme/harness: a folder is a relative " <>
+                 "path with no empty, . or .. part, at most 1,024 characters long."
 
       assert reads.({:unreadable, :version, "v 9"}) ==
                "Correct the version: a branch, tag or commit name has 1 to 255 letters, digits, " <>
                  "dots, underscores, slashes and hyphens, and no spaces."
+
+      assert ApiaryWeb.HarnessComponents.read_words(
+               {:unreadable, :version, "v 9"},
+               Map.put(source, :kind, :assigned),
+               "Acme"
+             ) ==
+               "An instance admin corrects the version of acme/harness: a branch, tag or " <>
+                 "commit name has 1 to 255 letters, digits, dots, underscores, slashes and " <>
+                 "hyphens, and no spaces."
 
       # A module's address, folder or ref, which the harness document lists.
       assert words.(

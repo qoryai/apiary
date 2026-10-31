@@ -535,7 +535,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow_workflow[disabled]")
     end
 
-    test "that no linked repository or assignment covers, and that is not public, says so", %{
+    test "that no integration reaches, and that is not public, says so", %{
       conn: conn,
       scope: scope,
       path: path
@@ -547,7 +547,12 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#workflow-read-error",
-               "Link https://public.example.org/qory/stack to #{scope.organisation.name}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
+               "Qory Apiary reached no adapter that reads https://public.example.org/qory/stack, " <>
+                 "and no integration of #{scope.organisation.name} covers it. If " <>
+                 "https://public.example.org/qory/stack is public, the instance admin installs an " <>
+                 "adapter for public.example.org. If it is private, owners and admins of " <>
+                 "#{scope.organisation.name} connect an integration that covers it in " <>
+                 "Organisation settings › Integrations."
              )
     end
 

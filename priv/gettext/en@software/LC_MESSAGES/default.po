@@ -4366,6 +4366,22 @@ msgstr ""
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "An instance admin assigns %{source} to %{organisation}. An integration of the instance covers %{source}, and Qory Apiary reads it for %{organisation} only through an assignment."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin corrects the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin corrects the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
+msgstr "An instance admin corrects the version of %{source}: a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
+
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgid "An instance admin finds the cause in the machine log of the Machine started step."
@@ -6101,11 +6117,6 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Correct the folder: %{path} leads out of %{source}."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Correct the folder: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -9670,12 +9681,6 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
 msgid "Linked repositories"
 msgstr ""
 
@@ -13099,6 +13104,12 @@ msgstr ""
 msgid "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Qory Apiary reached no adapter that reads %{source}, and no integration of %{organisation} covers it. If %{source} is public, the instance admin installs an adapter for %{host}. If it is private, owners and admins of %{organisation} connect an integration that covers it in Organisation settings › Integrations."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary received no exit within %{duration} after the gateway took the run, so it marked the run lost. The run may still be running; only its exit changes this record now."
@@ -15892,6 +15903,11 @@ msgstr "Repositories that set %{name}"
 #, elixir-autogen, elixir-format
 msgid "Targets · Policy"
 msgstr "Repositories · Policy"
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Tell an instance admin: the address of %{source} is not https://, a host, an optional port and an optional path, so Qory Apiary does not read it."
+msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
