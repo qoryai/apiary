@@ -978,8 +978,11 @@ defmodule ApiaryWeb.MemberLive.Index do
              |> assign(:password_link, nil)
              |> put_flash(
                :error,
-               gettext(
-                 "Only an admin of this Qory Apiary makes password links, while it sends no email."
+               plain_text(
+                 rich_gettext(
+                   "%{contact_support} for a password link. Qory Apiary sends no email yet.",
+                   contact_support: ApiaryWeb.Support.rich()
+                 )
                )
              )
              |> load()}

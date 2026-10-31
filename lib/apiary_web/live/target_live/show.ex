@@ -699,9 +699,13 @@ defmodule ApiaryWeb.TargetLive.Show do
             id="target-environment-no-registry"
             class="q-tgt-card-empty"
           >
-            {gettext(
-              "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
-            )}
+            <%= if Apiary.Access.instance_admin?(@current_scope) do %>
+              {gettext(
+                "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
+              )}
+            <% else %>
+              {gettext("Runs of this target start in the pool's default image.")}
+            <% end %>
           </p>
           <p
             :if={@environment.state == :no_environment}

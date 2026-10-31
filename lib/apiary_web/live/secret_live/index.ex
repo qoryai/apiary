@@ -2576,16 +2576,23 @@ defmodule ApiaryWeb.SecretLive.Index do
         view
       )
 
-  defp refusal(socket, :key_unavailable, view),
-    do:
-      back(
-        socket,
-        :error,
-        gettext(
-          "The values of this workspace cannot be read: the instance's encryption secret is not the one they were stored under."
-        ),
-        view
-      )
+  defp refusal(socket, :key_unavailable, view) do
+    words =
+      if Apiary.Access.instance_admin?(socket.assigns.current_scope),
+        do:
+          gettext(
+            "The values of this workspace cannot be read: the instance's encryption secret is not the one they were stored under."
+          ),
+        else:
+          plain_text(
+            rich_gettext(
+              "%{contact_support}. The values of this workspace cannot be read: they were stored under another encryption secret.",
+              contact_support: ApiaryWeb.Support.rich()
+            )
+          )
+
+    back(socket, :error, words, view)
+  end
 
   defp refusal(socket, :not_found, view) do
     socket = reload_scope(socket)
