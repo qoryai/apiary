@@ -3823,6 +3823,11 @@ msgstr ""
 msgid "Add a stage after %{stage}"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Add a stage before %{stage}"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a value to %{name}"
@@ -13216,12 +13221,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Press Enter to open the stage beside the canvas."
+msgid "Press Enter to open the stage under the canvas."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Press Enter to open the stage beside the canvas. Move it with the left and right arrow keys."
+msgid "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex

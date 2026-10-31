@@ -123,6 +123,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       canvas = canvas_view(view)
       assert canvas["editable"]
       assert canvas["selected"] == id_of("Explore")
+      assert canvas["first"] == "Add a stage before Explore"
 
       assert [explore | _] = canvas["stages"]
 
@@ -150,6 +151,13 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path
     } do
       {:ok, view, _html} = live(conn, path)
+
+      # The + before the first card.
+      render_hook(view, "add_stage", %{"at" => "0"})
+      assert names(view) == ["New stage", "Explore", "Shape", "Build", "Verify", "Release"]
+      assert canvas_view(view)["first"] == "Add a stage before New stage"
+      assert has_element?(view, "#stage-panel-title", "Edit New stage")
+      view |> element("#stage-remove") |> render_click()
 
       # The + between Explore and Shape.
       render_hook(view, "add_stage", %{"at" => "1"})

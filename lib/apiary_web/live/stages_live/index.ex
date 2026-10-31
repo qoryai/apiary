@@ -7,7 +7,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   #
   # The canvas is the editor (`assets/js/canvas.js`, React Flow, through the hook
   # `assets/js/hooks/stages_canvas.js`): it sends a selection, an order of stages, a move
-  # by the arrow keys and a "+" (add_stage) as events; the inspector beside it edits the
+  # by the arrow keys and a "+" (add_stage) as events; the inspector under it edits the
   # selected stage. The page is the only writer of the document, and every save goes
   # through `Apiary.Processes.save/4`, which checks the document against its schema.
   #
@@ -124,6 +124,11 @@ defmodule ApiaryWeb.StagesLive.Index do
     %{
       editable: assigns.may,
       selected: assigns.selected,
+      first:
+        case assigns.draft["stages"] do
+          [first | _] -> Words.add_before(first["name"])
+          [] -> nil
+        end,
       stages:
         for stage <- assigns.draft["stages"] do
           %{
@@ -668,9 +673,11 @@ defmodule ApiaryWeb.StagesLive.Index do
             <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
           </.notice>
 
-          <%!-- The canvas is the editor: a card selected on it opens in the inspector beside
-          it, at desktop width, or under it. --%>
-          <div id="stages-editor" class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <%!-- The canvas is the editor: a card selected on it opens in the inspector under it.
+          The canvas takes the column's full width (60rem at most, `.q-settings-main-list`),
+          where five stages fit at a readable zoom; beside it the inspector would leave the
+          canvas less than the 1000 px both need. --%>
+          <div id="stages-editor" class="grid items-start gap-4">
             <div
               id="stages-canvas"
               phx-hook=".StagesCanvas"
@@ -1206,9 +1213,9 @@ defmodule ApiaryWeb.StagesLive.Index do
       label: gettext("Stages, in order"),
       node:
         gettext(
-          "Press Enter to open the stage beside the canvas. Move it with the left and right arrow keys."
+          "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
         ),
-      node_read: gettext("Press Enter to open the stage beside the canvas."),
+      node_read: gettext("Press Enter to open the stage under the canvas."),
       moved: gettext("Moved the selected stage."),
       no_workflow: gettext("No workflow"),
       zoom_in: gettext("Zoom in"),

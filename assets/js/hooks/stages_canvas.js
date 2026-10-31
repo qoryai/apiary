@@ -3,7 +3,7 @@
 // document: this hook only draws the view the page sends (data-view on mount, then
 // "stages:view" events) and sends back a selection ("select"), an order of stages
 // ("reorder"), a move by the arrow keys ("move") and a new stage at a place
-// ("add_stage"). The inspector beside the canvas edits the selected stage.
+// ("add_stage"). The inspector under the canvas edits the selected stage.
 //
 // React and React Flow are vendored (assets/vendor/flow) and built as their own bundle,
 // assets/js/canvas.js, fetched on the first mount of this hook and by no other page. If
@@ -20,13 +20,16 @@ export const CARD_GAP = 44
 export const ADD_SIZE = 28
 export const ADD_TOP = 8
 
-// The fitView options: never larger than zoom 1, and never smaller than 0.85, so the text
-// stays readable; a longer line is shown from its start and scrolls sideways (the canvas
-// pans on a drag of its background).
-export const FIT = {padding: 0.04, maxZoom: 1, minZoom: 0.85}
+// The fitView options: never larger than zoom 1, and never smaller than 0.75, so the text
+// stays readable (five default stages fit 960 px at about 0.8); a longer line is shown
+// from its start and pans, with the selected card kept in view.
+export const FIT = {padding: 0.04, maxZoom: 1, minZoom: 0.75}
 
-// The width of the line of `count` cards, with the "+" after the last one.
-export const lineWidth = count => count * (CARD_WIDTH + CARD_GAP)
+// The left edge of the card at place `index`: a gap, with its "+", before the first card.
+export const cardX = index => CARD_GAP + index * (CARD_WIDTH + CARD_GAP)
+
+// The width of the line of `count` cards, with a "+" before each card and after the last.
+export const lineWidth = count => CARD_GAP + count * (CARD_WIDTH + CARD_GAP)
 
 const text = value => String(value ?? "")
 
@@ -37,15 +40,17 @@ const step = item =>
     : {workflow: text(item?.workflow)}
 
 // The nodes and edges React Flow draws for `view`: the stages in a line, left to right,
-// each joined to the next by an arrow; where the person may edit, a "+" node in each gap
-// and after the last card, which adds a stage at that place.
+// each joined to the next by an arrow; where the person may edit, a "+" node before the
+// first card, in each gap and after the last card, which adds a stage at that place. The
+// nodes are in the line's order, a "+" between the cards it sits between, so Tab reaches
+// them in that order.
 export const layout = view => {
   const stages = Array.isArray(view?.stages) ? view.stages : []
   const editable = view?.editable === true
-  const nodes = stages.map((stage, index) => ({
+  const cards = stages.map((stage, index) => ({
     id: String(stage.id),
     type: "stage",
-    position: {x: index * (CARD_WIDTH + CARD_GAP), y: 0},
+    position: {x: cardX(index), y: 0},
     selected: stage.id === view.selected,
     draggable: editable,
     // A ring on keyboard focus: React Flow's stylesheet draws none for a custom node.
@@ -59,25 +64,31 @@ export const layout = view => {
       alerts: (stage.alerts || []).map(text),
     },
   }))
-  const adds = editable
-    ? stages.map((stage, index) => ({
-        id: `add:${index + 1}`,
-        type: "add",
-        position: {x: index * (CARD_WIDTH + CARD_GAP) + CARD_WIDTH + (CARD_GAP - ADD_SIZE) / 2, y: ADD_TOP},
-        draggable: false,
-        selectable: false,
-        focusable: false,
-        data: {at: index + 1, label: text(stage.add)},
-      }))
-    : []
-  const edges = nodes.slice(1).map((node, index) => ({
-    id: `${nodes[index].id}->${node.id}`,
-    source: nodes[index].id,
-    target: node.id,
+  // A "+" at place `at`: before the card there, or after the last. Its node is neither
+  // dragged nor selected, so React Flow gives it no pointer events; the style gives them
+  // back, so a click reaches the button.
+  const add = at => ({
+    id: `add:${at}`,
+    type: "add",
+    position: {x: at * (CARD_WIDTH + CARD_GAP) + (CARD_GAP - ADD_SIZE) / 2, y: ADD_TOP},
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    style: {pointerEvents: "all"},
+    data: {at, label: text(at === 0 ? view.first : stages[at - 1].add)},
+  })
+  const nodes =
+    editable && cards.length > 0
+      ? [...cards.flatMap((card, index) => [add(index), card]), add(cards.length)]
+      : cards
+  const edges = cards.slice(1).map((card, index) => ({
+    id: `${cards[index].id}->${card.id}`,
+    source: cards[index].id,
+    target: card.id,
     focusable: false,
     selectable: false,
   }))
-  return {nodes: [...nodes, ...adds], edges}
+  return {nodes, edges}
 }
 
 // Whether a node is a stage card, not a "+".
@@ -90,7 +101,7 @@ export const orderByDrop = (ids, id, x) => {
   if (!Number.isFinite(x)) return ids
   const rest = ids.filter(other => other !== id)
   if (rest.length === ids.length) return ids
-  const slot = Math.floor((x + CARD_GAP / 2) / (CARD_WIDTH + CARD_GAP))
+  const slot = Math.floor((x - CARD_GAP / 2) / (CARD_WIDTH + CARD_GAP))
   const at = Math.min(Math.max(slot, 0), ids.length - 1)
   return [...rest.slice(0, at), id, ...rest.slice(at)]
 }

@@ -94,6 +94,10 @@ defmodule ApiaryWeb.StagesLive.Words do
   @doc false
   def add_after(name), do: gettext("Add a stage after %{stage}", stage: name)
 
+  # The label of the "+" before the first stage.
+  @doc false
+  def add_before(name), do: gettext("Add a stage before %{stage}", stage: name)
+
   # A workflow the harness no longer declares (spec addition 2).
   @doc false
   def undeclared(stage_name, workflow),

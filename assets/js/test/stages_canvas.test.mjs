@@ -11,6 +11,7 @@ import {
   CARD_GAP,
   CARD_WIDTH,
   FIT,
+  cardX,
   dropX,
   isStage,
   keyMove,
@@ -23,6 +24,7 @@ import {
 const view = {
   editable: true,
   selected: "st_b",
+  first: "Add a stage before Explore",
   stages: [
     {
       id: "st_a",
@@ -45,9 +47,9 @@ test("stages lie in a line, left to right, and the selected one is selected", ()
   assert.deepEqual(
     nodes.map(n => [n.id, n.position.x, n.position.y, n.selected]),
     [
-      ["st_a", 0, 0, false],
-      ["st_b", CARD_WIDTH + CARD_GAP, 0, true],
-      ["st_c", 2 * (CARD_WIDTH + CARD_GAP), 0, false],
+      ["st_a", CARD_GAP, 0, false],
+      ["st_b", CARD_GAP + CARD_WIDTH + CARD_GAP, 0, true],
+      ["st_c", CARD_GAP + 2 * (CARD_WIDTH + CARD_GAP), 0, false],
     ],
   )
 })
@@ -76,19 +78,32 @@ test("a loop is a group of its workflows with its label; a workflow is a step", 
   assert.deepEqual(stages(view)[2].data.sequence, [])
 })
 
-test("a + sits in each gap and after the last card, and adds a stage at its place", () => {
+test("a + sits before the first card, in each gap and after the last, and adds a stage there", () => {
   const adds = layout(view).nodes.filter(n => n.type === "add")
   assert.deepEqual(
-    adds.map(n => [n.data.at, n.data.label, n.position.x]),
+    adds.map(n => [n.data.at, n.data.label]),
     [
-      [1, "Add a stage after Explore", CARD_WIDTH + (CARD_GAP - ADD_SIZE) / 2],
-      [2, "Add a stage after Build", 2 * CARD_WIDTH + CARD_GAP + (CARD_GAP - ADD_SIZE) / 2],
-      [3, "Add a stage after <b>Release</b>", 3 * CARD_WIDTH + 2 * CARD_GAP + (CARD_GAP - ADD_SIZE) / 2],
+      [0, "Add a stage before Explore"],
+      [1, "Add a stage after Explore"],
+      [2, "Add a stage after Build"],
+      [3, "Add a stage after <b>Release</b>"],
     ],
   )
   assert.ok(adds.every(n => n.draggable === false && n.selectable === false))
-  // In the gap: after its card, before the next one.
-  for (const n of adds) assert.ok(n.position.x + ADD_SIZE <= n.data.at * (CARD_WIDTH + CARD_GAP))
+  // A click reaches the button: React Flow gives such a node no pointer events of its own.
+  assert.ok(adds.every(n => n.style.pointerEvents === "all"))
+  // In its gap: after the card before it, before the card after it.
+  for (const n of adds) {
+    if (n.data.at > 0) assert.ok(n.position.x >= cardX(n.data.at - 1) + CARD_WIDTH)
+    assert.ok(n.position.x + ADD_SIZE <= cardX(n.data.at))
+  }
+})
+
+test("Tab reaches each + between the cards it sits between", () => {
+  assert.deepEqual(
+    layout(view).nodes.map(n => n.id),
+    ["add:0", "st_a", "add:1", "st_b", "add:2", "st_c", "add:3"],
+  )
 })
 
 test("a member's canvas has no card to drag and no +", () => {
@@ -103,7 +118,7 @@ test("no view draws nothing", () => {
 
 test("a card dropped with the pointer on another card takes that card's place", () => {
   const ids = ["st_a", "st_b", "st_c", "st_d"]
-  const slot = n => n * (CARD_WIDTH + CARD_GAP) + CARD_WIDTH / 2
+  const slot = n => cardX(n) + CARD_WIDTH / 2
   // Across two cards: from the first place to the third.
   assert.deepEqual(orderByDrop(ids, "st_a", slot(2)), ["st_b", "st_c", "st_a", "st_d"])
   assert.deepEqual(orderByDrop(ids, "st_d", slot(0)), ["st_d", "st_a", "st_b", "st_c"])
@@ -142,10 +157,12 @@ test("left and right move a card one place; up and down move nothing", () => {
   assert.equal(keyMove("Enter"), null)
 })
 
-test("fitView stays between zoom 0.85 and 1, so card text stays 11 to 14 px", () => {
+test("five default stages fit a 960 px canvas at zoom 0.75 or more, and never past 1", () => {
   assert.equal(FIT.maxZoom, 1)
-  assert.ok(FIT.minZoom >= 0.85)
-  assert.equal(lineWidth(5), 5 * (CARD_WIDTH + CARD_GAP))
+  assert.equal(FIT.minZoom, 0.75)
+  assert.equal(lineWidth(5), CARD_GAP + 5 * (CARD_WIDTH + CARD_GAP))
+  const zoom = (960 - 2) / (lineWidth(5) * (1 + FIT.padding))
+  assert.ok(zoom >= 0.75, `zoom ${zoom}`)
 })
 
 test("each card has a ring on keyboard focus", () => {

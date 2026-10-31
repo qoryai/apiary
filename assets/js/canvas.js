@@ -8,9 +8,11 @@
 // "select", with a stage id, on a click or Enter on a card; "reorder", with every stage
 // id in the new order, after a card is dropped; "move", one place earlier or later, on
 // the left and right arrow keys, with the focus kept on the moved card; and "add_stage",
-// with the place, from a "+" between the cards or after the last one. The wheel scrolls
-// the page; a pinch or the buttons zoom. All text reaches React as props and is rendered
-// as text.
+// with the place, from a "+" before the first card, between two cards or after the last.
+// A card or "+" that takes the focus is panned into view, and so is the selected card;
+// after a "+", the new stage is selected, panned to, and its name field in the inspector
+// takes the focus. The wheel scrolls the page; a pinch or the buttons zoom. All text
+// reaches React as props and is rendered as text.
 import {
   createContext,
   createElement as h,
@@ -37,6 +39,7 @@ import {
   ADD_SIZE,
   CARD_WIDTH,
   FIT,
+  cardX,
   dropX,
   isStage,
   keyMove,
@@ -46,8 +49,8 @@ import {
   sameOrder,
 } from "./hooks/stages_canvas"
 
-// The page's push and words, for the nodes React Flow draws.
-const Page = createContext({push: () => {}, words: {}})
+// The page's push and words, and what a "+" does, for the nodes React Flow draws.
+const Page = createContext({push: () => {}, words: {}, add: () => {}})
 
 const line = (text, key, className) => h("p", {key, className, title: text}, text)
 
@@ -97,17 +100,17 @@ const StageCard = memo(({data, selected}) => {
 
 // A "+" between two cards, or after the last: adds a stage at its place.
 const AddNode = memo(({data}) => {
-  const {push} = useContext(Page)
+  const {add} = useContext(Page)
   return h(
     "button",
     {
       type: "button",
       className:
-        "nodrag nopan grid place-items-center rounded-full border border-base-300 bg-base-100 text-[16px]/none text-base-content shadow-sm hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "nodrag nopan pointer-events-auto grid place-items-center rounded-full border border-base-300 bg-base-100 text-[16px]/none text-base-content shadow-sm hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
       style: {width: ADD_SIZE, height: ADD_SIZE},
       "aria-label": data.label,
       title: data.label,
-      onClick: () => push("add_stage", {at: String(data.at)}),
+      onClick: () => add(data.at),
     },
     h("span", {"aria-hidden": "true"}, "+"),
   )
@@ -124,35 +127,94 @@ function Flow({initial, words, push, subscribe, el}) {
   const viewRef = useRef(initial)
   // The card the arrow keys moved, to focus again once the page sends the new order.
   const focusId = useRef(null)
+  // Set by a "+": the next view's selected stage is the new one.
+  const added = useRef(false)
+  // The new stage, to pan to once the canvas has fitted the longer line.
+  const pending = useRef(null)
   const flow = useReactFlow()
   const count = (view.stages || []).length
+
+  // Pans so the node `id` is in view, at the zoom the canvas has, unless it is already
+  // whole in the canvas (`always` pans in any case, for a card not drawn yet).
+  const reveal = useCallback(
+    (id, always = false) => {
+      const element = el.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`)
+      if (!always && element) {
+        const box = element.getBoundingClientRect()
+        const frame = el.getBoundingClientRect()
+        if (box.left >= frame.left && box.right <= frame.right) return
+      }
+      const node = flow.getNode(id)
+      const index = (viewRef.current.stages || []).findIndex(s => String(s.id) === id)
+      const width = node?.measured?.width ?? (index >= 0 ? CARD_WIDTH : ADD_SIZE)
+      const height = node?.measured?.height ?? 120
+      const x = node ? node.position.x : cardX(Math.max(index, 0))
+      const y = node ? node.position.y : 0
+      flow.setCenter(x + width / 2, y + height / 2, {zoom: flow.getViewport().zoom, duration: 150})
+    },
+    [el, flow],
+  )
 
   useEffect(
     () =>
       subscribe(next => {
+        const before = viewRef.current.selected
         viewRef.current = next
         setView(next)
         setNodes(layout(next).nodes)
+        if (added.current && next.selected && next.selected !== before) {
+          added.current = false
+          // The fit that follows the longer line pans to the new stage; its name in the
+          // inspector takes the focus once the page has drawn it.
+          pending.current = String(next.selected)
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => document.getElementById("stage-name")?.focus()),
+          )
+        } else if (next.selected && next.selected !== before) {
+          requestAnimationFrame(() => reveal(String(next.selected)))
+        }
       }),
-    [subscribe],
+    [subscribe, reveal],
+  )
+
+  const add = useCallback(
+    at => {
+      added.current = true
+      push("add_stage", {at: String(at)})
+    },
+    [push],
+  )
+
+  // A card or "+" that takes the focus by Tab is panned into view.
+  const onFocusCapture = useCallback(
+    event => {
+      const id = event.target.closest?.(".react-flow__node")?.dataset.id
+      if (id) reveal(id)
+    },
+    [reveal],
   )
 
   // Every stage in view when the number of stages changes, at a readable zoom: a line
-  // wider than the canvas at the smallest zoom is shown from its start.
+  // wider than the canvas at the smallest zoom is shown from its start, then panned to
+  // the selected card if that is out of view.
   useEffect(() => {
     let inner
     const frame = requestAnimationFrame(() => {
       flow.fitView(FIT)
       inner = requestAnimationFrame(() => {
         const {y, zoom} = flow.getViewport()
-        if (lineWidth(count) * zoom + 32 > el.clientWidth) flow.setViewport({x: 16, y, zoom})
+        const wide = lineWidth(count) * zoom + 32 > el.clientWidth
+        if (wide) flow.setViewport({x: 16, y, zoom})
+        const target = pending.current || (wide && viewRef.current.selected)
+        pending.current = null
+        if (target) reveal(String(target))
       })
     })
     return () => {
       cancelAnimationFrame(frame)
       cancelAnimationFrame(inner)
     }
-  }, [count, flow, el])
+  }, [count, flow, el, reveal])
 
   // The moved card keeps the focus after the page sends the new order. React Flow draws
   // the reordered nodes in commits after this one, and moving a focused element in the
@@ -239,10 +301,10 @@ function Flow({initial, words, push, subscribe, el}) {
 
   return h(
     Page.Provider,
-    {value: {push, words}},
+    {value: {push, words, add}},
     h(
       "div",
-      {className: "h-full w-full", onKeyDownCapture},
+      {className: "h-full w-full", onKeyDownCapture, onFocusCapture},
       h(
         ReactFlow,
         {
