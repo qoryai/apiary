@@ -250,6 +250,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert html =~
                "Keep main. Give another name only when this work item keeps two artifacts of this type, such as two mockups called payment and receipt."
 
+      assert html =~ "Document. At most 1 file, 1 MiB in all."
+
       input =
         file_input(view, "#artifact-form", :files, [
           %{name: "notes.md", content: "# Notes", type: "text/markdown"}
@@ -396,8 +398,15 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert {:error, _reason} = render_upload(input, "a.png")
 
       assert view |> form("#artifact-form", artifact: %{type: "mockup"}) |> render_change() =~
-               "Remove or shrink files: the files of a version of mockup come to at most"
+               "Remove or shrink files: the files of a version of mockup come to at most 10 MiB."
     end
+  end
+
+  test "size/1 shows a size in binary units" do
+    assert Enum.map(
+             [812, 1024, 65_536, 1_572_864, 1_048_576, 10_485_760, 1_073_741_824, 1_048_575],
+             &ArtifactComponents.size/1
+           ) == ["812 B", "1 KiB", "64 KiB", "1.5 MiB", "1 MiB", "10 MiB", "1 GiB", "1 MiB"]
   end
 
   describe "the plain list" do

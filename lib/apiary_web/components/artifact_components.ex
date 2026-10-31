@@ -51,6 +51,38 @@ defmodule ApiaryWeb.ArtifactComponents do
     ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/artifacts/#{version_id}/files/#{filename}"
   end
 
+  @doc """
+  size/1 is a size in binary units, 1 KiB being 1,024 bytes, as every artifact page
+  shows one: "812 B", "64 KiB", "1.5 MiB", "2 GiB". A whole number has no decimal, and
+  a size that rounds up to 1,024 of its unit is shown in the next one.
+  """
+  @spec size(non_neg_integer) :: String.t()
+  def size(bytes) when is_integer(bytes) and bytes < 1024,
+    do: gettext("%{number} B", number: Format.number(bytes))
+
+  def size(bytes) when is_integer(bytes),
+    do: size(bytes, [{1024, :kib}, {1_048_576, :mib}, {1_073_741_824, :gib}])
+
+  defp size(bytes, [{unit, name} | larger]) do
+    # Tenths of the unit, a half rounded up.
+    tenths = div(bytes * 10 + div(unit, 2), unit)
+
+    if tenths >= 10_240 and larger != [] do
+      size(bytes, larger)
+    else
+      number =
+        if rem(tenths, 10) == 0,
+          do: Format.number(div(tenths, 10)),
+          else: Format.number(tenths / 10, digits: 1)
+
+      case name do
+        :kib -> gettext("%{number} KiB", number: number)
+        :mib -> gettext("%{number} MiB", number: number)
+        :gib -> gettext("%{number} GiB", number: number)
+      end
+    end
+  end
+
   ## The plain list
 
   @doc """
@@ -217,7 +249,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         <a href={@path.(file)} download={file.filename} class="font-medium text-accent break-all">
           {file.filename}
         </a>
-        <span class="text-[12.5px] text-muted tabular-nums">{Format.bytes(file.size)}</span>
+        <span class="text-[12.5px] text-muted tabular-nums">{size(file.size)}</span>
       </li>
     </ul>
     """
@@ -296,7 +328,7 @@ defmodule ApiaryWeb.ArtifactComponents do
           <a href={@path.(file)} download={file.filename} class="text-accent break-all">
             {file.filename}
           </a>
-          <span class="text-muted tabular-nums">{Format.bytes(file.size)}</span>
+          <span class="text-muted tabular-nums">{size(file.size)}</span>
         </figcaption>
       </figure>
     </div>

@@ -97,7 +97,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
                 class="flex flex-wrap items-baseline gap-x-2"
               >
                 <span class="font-medium break-all">{entry.client_name}</span>
-                <span class="text-muted tabular-nums">{Format.bytes(entry.client_size)}</span>
+                <span class="text-muted tabular-nums">{ArtifactComponents.size(entry.client_size)}</span>
                 <span :if={entry.progress < 100} class="text-muted tabular-nums">
                   {gettext("%{percent} % uploaded", percent: entry.progress)}
                 </span>
@@ -347,7 +347,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp too_large(type) do
     gettext("Remove or shrink files: the files of a version of %{type} come to at most %{size}.",
       type: type.name,
-      size: Format.bytes(type.size_limit)
+      size: ArtifactComponents.size(type.size_limit)
     )
   end
 
@@ -519,7 +519,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
         ngettext("%{number} file", "%{number} files", type.max_files,
           number: Format.number(type.max_files)
         ),
-      size: Format.bytes(type.size_limit)
+      size: ArtifactComponents.size(type.size_limit)
     )
   end
 

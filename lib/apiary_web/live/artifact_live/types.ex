@@ -567,14 +567,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp base_view_hint(:file), do: gettext("Any file, offered as a download.")
   defp base_view_hint(:structured), do: gettext("One JSON document, shown as a table.")
 
-  # A size in binary units as the form takes it: "64 KiB", "200 MiB", else bytes.
-  defp size(bytes) when rem(bytes, @mib) == 0,
-    do: gettext("%{number} MiB", number: Format.number(div(bytes, @mib)))
-
-  defp size(bytes) when rem(bytes, 1024) == 0,
-    do: gettext("%{number} KiB", number: Format.number(div(bytes, 1024)))
-
-  defp size(bytes), do: Format.bytes(bytes)
+  defp size(bytes), do: ApiaryWeb.ArtifactComponents.size(bytes)
 
   # A size limit in MiB, as the form shows it: at most four decimals, without trailing
   # zeros.
