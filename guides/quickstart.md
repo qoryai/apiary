@@ -402,7 +402,7 @@ run with no machine or pool, and **See the run**: the agent's output is in the r
 admins and members run the test. If the step shows another line, follow its first
 sentence, then select **Run the test** again. When no machine takes the test run within 5
 minutes, for example, the step shows "Check on the Machines page that a machine of the pool
-is running, or contact support with work item wi_…. No machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
+is running, or contact support with work item #…. No machine has taken the test run yet." After a pass, **Go to Main** opens Main's overview,
 and opening Main opens the overview from then on.
 
 The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,

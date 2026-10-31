@@ -2169,7 +2169,7 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the model choice a new test run takes, as `{level, choice}`"
 
   attr :path, :string, default: nil
-  attr :item, :string, default: nil, doc: "the public id of the test run's work item"
+  attr :item, :integer, default: nil, doc: "the number of the test run's work item"
 
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
       when cause in [:ended, :silent] do
@@ -2229,8 +2229,8 @@ defmodule ApiaryWeb.OverviewComponents do
   defp no_run_words(:secrets_not_allowed, _choice, item),
     do:
       gettext(
-        "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item %{item}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is.",
-        item: item
+        "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is.",
+        number: item
       )
 
   defp no_run_words(cause, {5, %{locked: false, model_id: model}}, _item)
@@ -2268,8 +2268,8 @@ defmodule ApiaryWeb.OverviewComponents do
   defp failed_line(:no_machine, _run, item),
     do:
       gettext(
-        "Check on the Machines page that a machine of the pool is running, or contact support with work item %{item}. No machine has taken the test run yet.",
-        item: item
+        "Check on the Machines page that a machine of the pool is running, or contact support with work item #%{number}. No machine has taken the test run yet.",
+        number: item
       )
 
   defp failed_line(:model_key_missing, _run, _item),

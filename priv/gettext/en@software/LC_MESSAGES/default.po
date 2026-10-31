@@ -5333,7 +5333,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Check on the Machines page that a machine of the pool is running, or contact support with work item %{item}. No machine has taken the test run yet."
+msgid "Check on the Machines page that a machine of the pool is running, or contact support with work item #%{number}. No machine has taken the test run yet."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15123,7 +15123,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item %{item}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
+msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

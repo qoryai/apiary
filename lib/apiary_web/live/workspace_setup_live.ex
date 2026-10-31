@@ -2177,7 +2177,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             preparation={@test_preparation}
             choice={@test_choice}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
-            item={@test.work_item && @test.work_item.public_id}
+            item={@test.work_item && @test.work_item.number}
           />
         </span>
       </.notice>

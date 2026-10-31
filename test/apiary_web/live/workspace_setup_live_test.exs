@@ -3210,10 +3210,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
     @no_run_lead "The test run ended before a machine started it. "
     @no_run_unknown @no_run_lead <> "No run was recorded, so this step cannot show why."
-    # ITEM_ID stands for the public id of the test run's work item.
+    # ITEM_ID stands for the number of the test run's work item.
     @no_run_secrets @no_run_lead <>
                       "Set the run's pool to go through the Qory Gateway in the pool's " <>
-                      "Settings, or contact support with work item ITEM_ID. The gateway for " <>
+                      "Settings, or contact support with work item #ITEM_ID. The gateway for " <>
                       "this run is not allowed to receive the secrets the run needs; only the " <>
                       "Qory Gateway is."
 
@@ -3319,7 +3319,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#set-up-test-failed") ==
                "Check on the Machines page that a machine of the pool is running, or contact " <>
-                 "support with work item #{item.public_id}. No machine has taken the test run yet."
+                 "support with work item ##{item.number}. No machine has taken the test run yet."
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
     end
@@ -3481,7 +3481,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {:closed, @no_run_unknown}
           ] do
         assert no_run_line(conn, scope, item, cause) ==
-                 String.replace(line, "ITEM_ID", item.public_id),
+                 String.replace(line, "ITEM_ID", to_string(item.number)),
                "#{cause}"
       end
     end
@@ -3531,7 +3531,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       for {cause, line} <- Map.put(fixes, :secrets_not_allowed, @no_run_secrets) do
         assert no_run_line(conn, scope, item, cause) ==
-                 String.replace(line, "ITEM_ID", item.public_id),
+                 String.replace(line, "ITEM_ID", to_string(item.number)),
                "#{cause}"
       end
 
