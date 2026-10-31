@@ -261,7 +261,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       row = lv |> element("#prepare-machine-started summary") |> render()
       assert row =~ "Running"
       assert row =~ "q-prep-pulse"
-      refute row =~ "<time datetime"
+      refute has_element?(lv, "#prepare-machine-started .q-tc1 time")
 
       assert has_element?(
                lv,
@@ -274,9 +274,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       # `dispatched` reaches no run's topic: the quiet tick reads it.
       :ok = Dispatches.dispatched(key, dispatch.public_id, %{external: nil})
       send(lv.pid, :quiet_tick)
-      row = lv |> element("#prepare-machine-started summary") |> render()
-      assert row =~ "<time datetime"
-      assert row =~ "Running"
+      assert has_element?(lv, "#prepare-machine-started .q-tc1 time")
+      assert lv |> element("#prepare-machine-started summary") |> render() =~ "Running"
 
       started_at = Apiary.Repo.get!(Apiary.Dispatches.Dispatch, dispatch.id).dispatched_at
 
@@ -286,8 +285,14 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
              )
 
       # Neither does the redemption of the run's code.
+      attrs = gateway_run_attrs(DateTime.utc_now())
+
       run
-      |> Ecto.Changeset.change(run_code_public_key: :binary.copy(<<1>>, 32))
+      |> Ecto.Changeset.change(attrs)
+      |> Ecto.Changeset.change(
+        run_code_public_key: :binary.copy(<<1>>, 32),
+        backstop_at: DateTime.add(attrs.attached_at, 3600, :second)
+      )
       |> Apiary.Repo.update!()
 
       send(lv.pid, :quiet_tick)
@@ -323,13 +328,32 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       ])
 
       {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
       row = lv |> element("#prepare-machine-step-1 summary") |> render()
       assert row =~ "1 m 12 s"
       refute has_element?(lv, "#prepare-machine-step-1-clock")
       refute row =~ "q-prep-pulse"
     end
 
-    test "nothing ticks once the run has ended, a step left running included", ctx do
+    test "a lost run's step stays running, with no clock and no pulse", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}}
+        ])
+
+      run = run |> Ecto.Changeset.change(state: "lost") |> Apiary.Repo.update!()
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
+      refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "q-prep-pulse"
+      refute has_element?(lv, "#prepare-machine time[data-tick]")
+    end
+
+    test "nothing ticks once the run has ended, a step left open included", ctx do
       %{run: run} = claimed_run(ctx.scope)
 
       run =
@@ -345,8 +369,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert lv |> element("#prepare-machine-step-1 summary") |> render() =~ "Running"
-      refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "q-prep-pulse"
+      # The run's exit closes a step without an exit as cancelled.
+      assert has_element?(lv, "#prepare-machine-step-1[data-state='cancelled']")
+      refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "Running"
       refute has_element?(lv, "#prepare-machine-step-1-clock")
       refute has_element?(lv, "#prepare-machine time[data-tick]")
       assert lv |> element("#prepare-machine-step-2 summary") |> render() =~ "48 s"

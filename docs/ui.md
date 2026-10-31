@@ -1708,9 +1708,10 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   duration; while the run is alive, a running row has the word Running, a mark that pulses
   (still under `prefers-reduced-motion`), and in place of its duration a clock that ticks in
   the browser (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for
-  Machine started before the starter's `dispatched`, from the claim. A step left running
-  on a run that ended has no clock. Each row opens on a click: a step to its output, the last 64 KiB as plain text,
-  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
+  Machine started before the starter's `dispatched`, from the claim. A run's exit closes a
+  step without an exit as Cancelled; on a lost run such a step keeps the word Running, with
+  no clock and no pulse. Each row opens on a click: a step to its output, the last 64 KiB as
+  plain text, for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
   sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
   for anyone else. With no machine log recorded, an instance admin reads "No machine log
