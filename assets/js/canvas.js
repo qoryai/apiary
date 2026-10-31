@@ -38,7 +38,8 @@ const StageCard = memo(({data, selected}) =>
     },
     h(Handle, {type: "target", position: Position.Left, isConnectable: false, className: "!opacity-0"}),
     line(data.name, "name", "truncate text-[14px]/5 font-semibold text-base-content"),
-    ...data.workflows.map((name, i) => line(name, `w${i}`, "break-all font-mono text-[12.5px]/[18px]")),
+    // break-words: a long name wraps at its hyphens, never inside a word.
+    ...data.workflows.map((name, i) => line(name, `w${i}`, "break-words font-mono text-[12.5px]/[18px]")),
     line(data.loop, "loop", "text-muted"),
     line(data.gate, "gate", "text-muted"),
     ...data.alerts.map((text, i) => line(text, `a${i}`, "text-error")),
@@ -78,13 +79,25 @@ function Flow({initial, words, push, subscribe, el}) {
     return () => cancelAnimationFrame(frame)
   }, [count, flow])
 
-  // The moved card keeps the focus after the page redraws the stages in the new order.
+  // The moved card keeps the focus after the page sends the new order. React Flow draws
+  // the reordered nodes in commits after this one, and moving a focused element in the
+  // DOM blurs it, so the focus is set again on each of the next few frames, by node id,
+  // unless the person has put it somewhere else.
   useEffect(() => {
     const id = focusId.current
     if (!id) return
-    const card = el.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`)
-    if (card && document.activeElement !== card) card.focus()
-    if (card) focusId.current = null
+    focusId.current = null
+    let frames = 8
+    let frame
+    const step = () => {
+      const card = el.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`)
+      const active = document.activeElement
+      const free = !active || active === document.body || el.contains(active)
+      if (card && free && active !== card) card.focus({preventScroll: true})
+      if (--frames > 0) frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
   }, [view, el])
 
   const snapBack = useCallback(() => setNodes(layout(viewRef.current).nodes), [])
