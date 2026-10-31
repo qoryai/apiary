@@ -455,6 +455,16 @@ defmodule Apiary.ArtifactsTest do
       assert count(Artifact) == 0
     end
 
+    test "counts a note's length in code points, as the database does", %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, "explainer", [doc()], &1)
+
+      # "e" and U+0301: one grapheme, two code points.
+      accent = "e\u0301"
+      assert {:error, {:invalid, :note}} = push.(note: String.duplicate(accent, 4000))
+      assert {:ok, %Version{note: note}} = push.(note: String.duplicate(accent, 2000))
+      assert String.length(note) == 2000
+    end
+
     test "refuses no files, too many files and a file of the wrong shape",
          %{run: run} = context do
       push = &Artifacts.push({:run, run}, context.work_item, &1, &2)

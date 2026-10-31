@@ -381,9 +381,13 @@ defmodule Apiary.Artifacts do
 
   defp note?(nil), do: true
 
+  # The length is counted in code points, as the database's `char_length` counts it
+  # (`artifact_versions_note_check`): "é" written as "e" and U+0301 is one grapheme and
+  # two code points.
   defp note?(note) when is_binary(note) do
     byte_size(note) <= 4 * @max_note and String.valid?(note) and
-      String.length(note) <= @max_note and not Regex.match?(@refused_in_note, note)
+      length(String.to_charlist(note)) <= @max_note and
+      not Regex.match?(@refused_in_note, note)
   end
 
   defp note?(_note), do: false
