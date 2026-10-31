@@ -148,9 +148,11 @@ defmodule ApiaryWeb.ArtifactLive.New do
             hint={gettext("What changed in this version, for the people and runs that read it.")}
           />
 
-          <p :if={@error} id="artifact-error" class="text-[13px]/5 text-error" role="alert">
-            {@error}
-          </p>
+          <div :if={@error} id="artifact-error" class="grid gap-1 text-[13px]/5" role="alert">
+            <p :for={{line, at} <- Enum.with_index(List.wrap(@error))} class={at == 0 && "text-error"}>
+              {line}
+            </p>
+          </div>
 
           <.page_form_foot cancel={work_item_path(@current_scope, @number)}>
             <.button
@@ -420,34 +422,43 @@ defmodule ApiaryWeb.ArtifactLive.New do
         assign(socket, :file_errors, [file_line(reason, filename.(index), type)])
 
       :store_unavailable ->
+        Artifacts.log_refusal(socket.assigns.work_item, params["type"], refusal)
+
         assign(
           socket,
           :error,
-          gettext(
-            "Qory Apiary could not store the files. Try again; if it fails again, tell the instance admin."
-          )
+          gettext("Store the files again. If it fails again, contact support.")
         )
 
       access when access in [:forbidden, :not_found] ->
-        assign(socket, :error, access_line(socket))
+        assign(socket, :error, access_line(socket, params, access))
 
-      _other ->
-        assign(socket, :error, general_line())
+      other ->
+        assign(socket, :error, general_lines(socket, params, other))
     end
   end
 
-  defp role_line, do: gettext("Your role no longer lets you add versions.")
-
-  defp general_line,
-    do:
+  defp role_lines(scope),
+    do: [
+      gettext("Your level no longer lets you add versions."),
       gettext(
-        "Qory Apiary could not add the version. Try again; if it fails again, tell the instance admin."
+        "Owners and admins of %{org} change your level in Organisation settings › People if you need to.",
+        org: scope.organisation.name
       )
+    ]
+
+  # The line for a refusal the page finds no cause of. The cause goes to the server log
+  # (`Apiary.Artifacts.log_refusal/3`).
+  defp general_lines(socket, params, refusal) do
+    Artifacts.log_refusal(socket.assigns.work_item, params["type"], refusal)
+
+    gettext("Add the version again. If it fails again, contact support.")
+  end
 
   # Why the push found no work item it may write. The push refuses with `:forbidden` or
   # `:not_found` for several causes, so the page asks again, with the reader's scope read
   # again (`Apiary.Access.reload/2`); a cause it cannot find gets the general line.
-  defp access_line(socket) do
+  defp access_line(socket, params, refusal) do
     scope = Access.reload(socket.assigns.current_scope)
     number = socket.assigns.number
 
@@ -458,9 +469,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
         )
 
       not Apiary.Features.visible?(scope, :workflow_model) ->
-        gettext("Artifacts are turned off, so work item #%{number} takes no new versions.",
-          number: number
-        )
+        gettext("Artifacts are not available here. Contact support if you need them.")
 
       is_nil(Load.work_item(scope, number)) ->
         gettext(
@@ -470,10 +479,10 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
       Access.authorize(scope, :"artifact.write", Load.work_item(scope, number)) ==
           {:error, :forbidden} ->
-        role_line()
+        role_lines(scope)
 
       true ->
-        general_line()
+        general_lines(socket, params, refusal)
     end
   end
 

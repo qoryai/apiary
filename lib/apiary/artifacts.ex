@@ -105,6 +105,8 @@ defmodule Apiary.Artifacts do
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
+  require Logger
+
   # The access actions of artifacts, of the feature `workflow_model` (`Apiary.Access`):
   # where the feature is off or hidden from the person, `authorize/3` refuses them as
   # `{:error, :not_found}`.
@@ -312,6 +314,45 @@ defmodule Apiary.Artifacts do
       end
     end
   end
+
+  # log_refusal/3 writes one warning to the server log for a refused push that a page
+  # shows with no cause, or as a store failure: the refusal's shape, the work item's
+  # public id and the type's name. Nothing of a file, a filename or a note is written: a text in the refusal is
+  # `"…"`, a changeset is its schema and the fields with errors, an exception its module,
+  # and a type name that is not one (`Type.name?/1`) is `"…"`.
+  @doc false
+  @spec log_refusal(WorkItem.t(), term, term) :: :ok
+  def log_refusal(%WorkItem{public_id: id}, type_name, refusal) do
+    Logger.warning(
+      "A push from Add a version failed: #{shape(refusal)}; " <>
+        "work item #{id}, type #{logged_type(type_name)}"
+    )
+  end
+
+  defp logged_type(name), do: if(Type.name?(name), do: name, else: ~s("…"))
+
+  @shown_items 10
+
+  defp shape(%Ecto.Changeset{data: %schema{}, errors: errors}) do
+    fields = errors |> Keyword.keys() |> Enum.uniq() |> Enum.map_join(", ", &Atom.to_string/1)
+    "changeset of #{inspect(schema)}, errors on #{fields}"
+  end
+
+  defp shape(%{__exception__: true, __struct__: module}), do: inspect(module)
+  defp shape(%{__struct__: module}), do: "%#{inspect(module)}{…}"
+  defp shape(value) when is_atom(value) or is_number(value), do: inspect(value)
+  defp shape(value) when is_binary(value), do: ~s("…")
+
+  defp shape(value) when is_tuple(value),
+    do: "{" <> (value |> Tuple.to_list() |> Enum.map_join(", ", &shape/1)) <> "}"
+
+  defp shape(value) when is_list(value) do
+    shown = value |> Enum.take(@shown_items) |> Enum.map_join(", ", &shape/1)
+    if length(value) > @shown_items, do: "[#{shown}, …]", else: "[#{shown}]"
+  end
+
+  defp shape(value) when is_map(value), do: "%{…}"
+  defp shape(_value), do: "…"
 
   # topic/1 is the PubSub topic of the work item's artifacts (`"artifacts:<work item
   # id>"`, its internal id): after each push, `{:artifact_pushed, work_item_id,
@@ -551,7 +592,11 @@ defmodule Apiary.Artifacts do
       {:error, :unreadable} ->
         {:error, {:invalid, {:unreadable, index}}}
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.error(
+          "The artifact store could not stage a file of type #{type.name}: #{shape(reason)}"
+        )
+
         {:error, :store_unavailable}
     end
   end
@@ -563,14 +608,15 @@ defmodule Apiary.Artifacts do
     |> Enum.reduce_while({:ok, []}, fn file, {:ok, acc} ->
       case store.commit(file.staged) do
         {:ok, key} -> {:cont, {:ok, [Map.put(file, :store_key, key) | acc]}}
-        {:error, _reason} -> {:halt, :error}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
     |> case do
       {:ok, stored} ->
         {:ok, Enum.reverse(stored)}
 
-      :error ->
+      {:error, reason} ->
+        Logger.error("The artifact store could not keep a staged file: #{shape(reason)}")
         Enum.each(staged, &store.discard(&1.staged))
         {:error, :store_unavailable}
     end
@@ -674,7 +720,13 @@ defmodule Apiary.Artifacts do
       end
 
     {count, _rows} = Repo.insert_all(ArtifactFile, rows)
-    if count == length(rows), do: :ok, else: {:error, :store_unavailable}
+
+    if count == length(rows) do
+      :ok
+    else
+      Logger.error("A push wrote #{count} of its #{length(rows)} file rows")
+      {:error, :store_unavailable}
+    end
   end
 
   defp audit_push(%{writer: :run}, _work_item, _artifact, _version), do: :ok

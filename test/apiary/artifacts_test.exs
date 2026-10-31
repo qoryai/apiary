@@ -700,6 +700,36 @@ defmodule Apiary.ArtifactsTest do
     end
   end
 
+  describe "log_refusal/3" do
+    import ExUnit.CaptureLog
+
+    test "writes the refusal's shape, the work item and the type, and nothing of the files",
+         context do
+      changeset =
+        %Version{}
+        |> Ecto.Changeset.change(note: "secret note")
+        |> Ecto.Changeset.add_error(:note, "is too long, secret")
+
+      log =
+        capture_log(fn ->
+          Artifacts.log_refusal(context.work_item, "explainer", {:error, changeset})
+          Artifacts.log_refusal(context.work_item, "<b>plan.md</b>", {:odd, "plan.md", [1, 2]})
+        end)
+
+      assert log =~
+               "A push from Add a version failed: " <>
+                 "{:error, changeset of Apiary.Artifacts.Version, errors on note}; " <>
+                 "work item #{context.work_item.public_id}, type explainer"
+
+      assert log =~
+               ~s(Add a version failed: {:odd, "…", [1, 2]}; ) <>
+                 ~s(work item #{context.work_item.public_id}, type "…")
+
+      refute log =~ "secret"
+      refute log =~ "plan.md"
+    end
+  end
+
   describe "push/5 by a person" do
     test "stores the person's version and an audit entry", %{scope: scope} = context do
       member = member_fixture(scope)

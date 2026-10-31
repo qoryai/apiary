@@ -466,8 +466,9 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:workflow_model])
       on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
 
-      assert add_notes(view) =~
-               "Artifacts are turned off, so work item ##{ctx.work_item.number} takes no new versions."
+      html = add_notes(view)
+      assert html =~ "Artifacts are not available here. Contact support if you need them."
+      refute html =~ "QORY_FEATURES"
     end
 
     test "says so when the reader can no longer read the work items", ctx do
@@ -512,8 +513,21 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
-      assert add_notes(view) =~
-               "Qory Apiary could not store the files. Try again; if it fails again, tell the instance admin."
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert add_notes(view) =~ "Store the files again. If it fails again, contact support."
+        end)
+
+      # The store's cause, then the page's line: the work item and the type, and nothing
+      # of the file.
+      assert log =~ "The artifact store could not stage a file of type explainer: :"
+
+      assert log =~
+               "A push from Add a version failed: :store_unavailable; " <>
+                 "work item #{ctx.work_item.public_id}, type explainer"
+
+      refute log =~ "notes.md"
+      refute log =~ "# Notes"
     end
 
     test "sets the upload from the chosen type", ctx do

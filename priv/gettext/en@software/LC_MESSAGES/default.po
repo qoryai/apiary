@@ -4042,6 +4042,11 @@ msgstr "Add repository rule"
 msgid "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Network access page, one row at a time."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Add the version again. If it fails again, contact support."
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Add type"
@@ -4785,7 +4790,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Artifacts are turned off, so work item #%{number} takes no new versions."
+msgid "Artifacts are not available here. Contact support if you need them."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -13295,6 +13300,11 @@ msgstr ""
 msgid "Owners and admins of %{organisation} install integrations."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{org} change your level in Organisation settings › People if you need to."
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "PNG, JPEG, GIF, WebP or SVG images."
@@ -13753,11 +13763,6 @@ msgstr "Qory Apiary cannot read the repositories of the %{adapter} adapter: the 
 msgid "Qory Apiary cannot read the targets of the %{adapter} adapter: the instance's public address (PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory harness needs no call address."
 msgstr "Qory Apiary cannot read the repositories of the %{adapter} adapter: the instance's public address (PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory harness needs no call address."
 
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary could not add the version. Try again; if it fails again, tell the instance admin."
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not check the credential from the adapter"
@@ -13782,11 +13787,6 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
-msgstr ""
-
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary could not store the files. Try again; if it fails again, tell the instance admin."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -16520,6 +16520,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Store files on work item #%{number} as a new version of one of its artifacts."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Store the files again. If it fails again, contact support."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -21053,6 +21058,16 @@ msgstr ""
 msgid "Your invitation to %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Your level no longer lets you add versions."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Your level no longer lets you change artifact types."
+msgstr ""
+
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format
 msgid "Your membership in %{name} is suspended. An owner of it can activate it."
@@ -21087,16 +21102,6 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Your personal account"
-msgstr ""
-
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
-msgid "Your role no longer lets you add versions."
-msgstr ""
-
-#: lib/apiary_web/live/artifact_live/types.ex
-#, elixir-autogen, elixir-format
-msgid "Your role no longer lets you change artifact types."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex

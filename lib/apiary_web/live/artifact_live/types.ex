@@ -367,7 +367,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     socket
     |> put_flash(
       :error,
-      gettext("Your role no longer lets you change artifact types.")
+      gettext("Your level no longer lets you change artifact types.")
     )
     |> push_patch(to: types_path(socket.assigns.current_scope, :index))
   end

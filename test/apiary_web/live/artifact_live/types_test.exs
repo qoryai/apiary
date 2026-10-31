@@ -261,7 +261,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     view |> element("#artifact-type-delete") |> render_click()
 
     assert render(view) =~
-             "Your role no longer lets you change artifact types."
+             "Your level no longer lets you change artifact types."
 
     assert Artifacts.type(ctx.scope.workspace, "demo-findings")
   end
