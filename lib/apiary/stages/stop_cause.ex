@@ -48,7 +48,7 @@ defmodule Apiary.Stages.StopCause do
     do: "The run stopped reporting and was marked lost."
 
   def text(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
-    {cause, fix} = lines(run, names(work_item), context)
+    {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
     cause <> "\n" <> fix
   end
 
@@ -120,8 +120,8 @@ defmodule Apiary.Stages.StopCause do
       {"The gateway did not start the run, because it had no model key for the run.",
        "Owners and admins of #{n.workspace} add a model key on the set-up step Model."}
 
-  defp lines(%DispatchRun{end_cause: :run_refused, end_detail: code}, _n, _ctx),
-    do: unknown("The gateway did not start the run.", "refusal", code)
+  defp lines(%DispatchRun{end_cause: :run_refused, end_detail: code}, n, _ctx),
+    do: unknown("The gateway did not start the run.", "refusal", code, n)
 
   defp lines(%DispatchRun{end_cause: :build_failed}, n, _ctx) do
     cause =
@@ -192,13 +192,24 @@ defmodule Apiary.Stages.StopCause do
     end
   end
 
-  defp lines(%DispatchRun{end_cause: cause}, _n, _ctx),
-    do: unknown("The run ended before it started.", "end cause", cause, "instance's")
+  defp lines(%DispatchRun{end_cause: cause}, n, _ctx),
+    do: unknown("The run ended before it started.", "end cause", cause, n)
 
-  defp unknown(first, kind, code, log \\ "run's"),
-    do:
-      {"#{first} Qory Apiary has no description for its #{kind} (#{code}).",
-       "The instance admin finds the details in the #{log} log."}
+  defp unknown(first, kind, code, n),
+    do: {"#{first} Qory Apiary has no description for its #{kind} (#{code}).", support(n)}
+
+  # Contact support, with the reference the person can give: the registered run's public
+  # id, or, for a run that ended before a claim registered it, the work item's number.
+  # Support finds the details in the instance's log by either.
+  defp support(%{run: %DispatchRun{id: id}} = n) when is_binary(id) do
+    case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, select: r.public_id) do
+      nil -> support(Map.delete(n, :run))
+      public_id -> "Contact support with run #{public_id}."
+    end
+  end
+
+  defp support(%{work_item: %WorkItem{number: number}}),
+    do: "Contact support with work item ##{number}."
 
   # How the run reached its target, as the claim's work entry did
   # (`Apiary.Runs.RunCredentials.reach/3`), read when the run ends: the state, and the
@@ -215,7 +226,7 @@ defmodule Apiary.Stages.StopCause do
 
   # A target path the access rules do not take, by the first part of it they refuse
   # (`Apiary.Integrations.ApplyTemplates.refused_in/1`).
-  defp path_refused(%{target: path} = n, title) do
+  defp path_refused(%{target: path} = n, _title) do
     fix = fn without ->
       "Whoever manages #{path} where it is kept renames it without #{without}, or owners and admins of #{n.workspace} remove it on the set-up step Destinations."
     end
@@ -234,8 +245,8 @@ defmodule Apiary.Stages.StopCause do
       # The path has no refused part, so the adapter's apply items made a path out of
       # the grammar, which the check of its description refuses at its start.
       nil ->
-        {"The run did not start, because the access rules of the adapter #{title} do not take target #{path}.",
-         "The instance admin corrects the access rules in the description of the adapter #{title}, then starts the adapter again."}
+        {"The run did not start, because Qory Apiary could not give it access to target #{path}.",
+         support(n)}
     end
   end
 
@@ -249,27 +260,30 @@ defmodule Apiary.Stages.StopCause do
   # A gateway that may not receive the run's secrets: one of its keys was made without
   # stored secrets, or the model key may not be sealed for it.
   defp secrets(n, %{gateway: %Node{} = gateway} = ctx) do
-    {who, page} = gateway_fixer(gateway, n)
+    cond do
+      # The instance's gateway: the person sees neither it nor its keys.
+      Gateways.level(gateway) == :instance ->
+        secrets(n, %{})
 
-    if Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) do
-      {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
-       "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}
-    else
-      {"The run did not start, because gateway #{gateway.name} is not allowed to receive the run's secrets.",
-       "#{who} an access key for #{gateway.name} with stored secrets allowed, on #{page}."}
+      Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) ->
+        {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
+         "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}
+
+      true ->
+        {who, page} = gateway_fixer(gateway, n)
+
+        {"The run did not start, because gateway #{gateway.name} is not allowed to receive the run's secrets.",
+         "#{who} an access key for #{gateway.name} with stored secrets allowed, on #{page}."}
     end
   end
 
-  defp secrets(_n, _ctx),
+  defp secrets(n, _ctx),
     do:
       {"The run did not start, because its gateway is not allowed to receive the run's secrets.",
-       "The instance admin finds the gateway in the instance's log."}
+       support(n)}
 
   defp gateway_fixer(gateway, n) do
     case Gateways.level(gateway) do
-      :instance ->
-        {"The instance admin adds", "Instance settings › Nodes › #{gateway.name} › Access key"}
-
       {:organisation, _id} ->
         {"Owners and admins of #{n.organisation} add", "Gateways › #{gateway.name} › Access key"}
 
@@ -293,8 +307,7 @@ defmodule Apiary.Stages.StopCause do
          "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
 
       nil ->
-        {"The run did not start, because one of its variables breaks its rule.",
-         "The instance admin finds the details in the instance's log."}
+        {"The run did not start, because one of its variables breaks its rule.", support(n)}
 
       _repositories ->
         {"The run did not start, because its variable QORY_RUN_REPOSITORIES breaks its rule: each entry owner/name, all of the target's owner, none twice, and at most 256 bytes together.",
@@ -376,28 +389,16 @@ defmodule Apiary.Stages.StopCause do
       {"it takes harness sources from more than #{Walk.max_links()} accounts",
        "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, on the set-up step Harness."}
 
-  defp harness_reason("adapter_unavailable", walk, _n) do
-    adapter = adapter_name(walk)
+  defp harness_reason("adapter_unavailable", _walk, n),
+    do: {"three calls to read it failed", support(n)}
 
-    {"three calls to the adapter #{adapter} failed",
-     "The instance admin checks #{adapter} in Instance settings › Adapters."}
-  end
+  defp harness_reason("walk_error", _walk, n),
+    do: {"the harness walk stopped on an error in Qory Apiary", support(n)}
 
-  defp harness_reason("walk_error", _walk, _n),
-    do:
-      {"the harness walk stopped on an error in Qory Apiary",
-       "The instance admin finds the details in the instance's log."}
-
-  defp harness_reason(code, _walk, _n),
+  defp harness_reason(code, _walk, n),
     do:
       {"a failure Qory Apiary has no description for#{if code, do: ", with the code #{code}", else: ""}",
-       "The instance admin finds the details in the instance's log."}
-
-  defp adapter_name(%RunHarness{failed_adapter: %Node{} = adapter}),
-    do: Apiary.Adapters.title(adapter)
-
-  defp adapter_name(%RunHarness{failure_adapter: name}) when is_binary(name), do: name
-  defp adapter_name(_walk), do: "of the harness source"
+       support(n)}
 
   ## Names
 

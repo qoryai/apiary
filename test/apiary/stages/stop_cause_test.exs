@@ -21,6 +21,7 @@ defmodule Apiary.Stages.StopCauseTest do
       id: Ecto.UUID.generate(),
       workspace_id: workspace.id,
       organisation_id: organisation.id,
+      number: 12,
       target_system: "git.example.com",
       target_path: "acme/web-shop"
     }
@@ -101,7 +102,7 @@ defmodule Apiary.Stages.StopCauseTest do
 
     assert text(:variables_invalid, work_item) ==
              "The run did not start, because one of its variables breaks its rule.\n" <>
-               "The instance admin finds the details in the instance's log."
+               "Contact support with work item #12."
   end
 
   test "a missing or removed model key links the set-up step Model", %{work_item: work_item} do
@@ -117,9 +118,12 @@ defmodule Apiary.Stages.StopCauseTest do
     keys = [%{allow_secrets: false}]
     instance = %Node{kind: :gateway, name: "edge-1"}
 
-    assert text(:secrets_not_allowed, work_item, [], %{gateway: instance, keys: keys}) ==
-             "The run did not start, because gateway edge-1 is not allowed to receive the run's secrets.\n" <>
-               "The instance admin adds an access key for edge-1 with stored secrets allowed, on Instance settings › Nodes › edge-1 › Access key."
+    # The instance's gateway is not named: the person sees neither it nor its keys.
+    for keys <- [keys, [%{allow_secrets: true}]] do
+      assert text(:secrets_not_allowed, work_item, [], %{gateway: instance, keys: keys}) ==
+               "The run did not start, because its gateway is not allowed to receive the run's secrets.\n" <>
+                 "Contact support with work item #12."
+    end
 
     organisation = %{instance | organisation_id: work_item.organisation_id}
 
@@ -132,7 +136,7 @@ defmodule Apiary.Stages.StopCauseTest do
              "\nOwners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Nodes › edge-1 › Access key."
 
     assert text(:secrets_not_allowed, work_item, [], %{
-             gateway: instance,
+             gateway: organisation,
              keys: [%{allow_secrets: true}]
            }) =~ "may not be sent to gateway edge-1"
   end
@@ -149,11 +153,15 @@ defmodule Apiary.Stages.StopCauseTest do
   test "a harness with no walk row, and an unknown cause, show the code with a description",
        %{work_item: work_item} do
     assert text(:harness_unresolved, work_item) =~
-             ~r/\AQory Apiary could not read the harness of .+ \(a failure Qory Apiary has no description for\)\.\nThe instance admin finds the details in the instance's log\.\z/
+             ~r/\AQory Apiary could not read the harness of .+ \(a failure Qory Apiary has no description for\)\.\nContact support with work item #12\.\z/
 
     assert text(:collection_ended, work_item) ==
              "The run ended before it started. Qory Apiary has no description for its end cause (collection_ended).\n" <>
-               "The instance admin finds the details in the instance's log."
+               "Contact support with work item #12."
+
+    assert text(:run_refused, work_item, end_detail: "machine_busy") ==
+             "The gateway did not start the run. Qory Apiary has no description for its refusal (machine_busy).\n" <>
+               "Contact support with work item #12."
   end
 
   describe "a harness walk that failed" do

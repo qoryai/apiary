@@ -708,7 +708,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
     end
 
-    test "a path filled out of the grammar by the adapter's access rules names the adapter",
+    test "a path filled out of the grammar by the adapter's access rules sends the person to support",
          ctx do
       # A description's check refuses such apply items at the adapter's start; written
       # here directly.
@@ -732,11 +732,9 @@ defmodule Apiary.Runs.RunCredentialsTest do
           end_cause: :target_access_gone
       }
 
-      adapter = String.replace_prefix(two.integration, "the integration", "the adapter")
-
       assert Apiary.Stages.StopCause.text(run, two.work_item) ==
-               "The run did not start, because the access rules of #{adapter} do not take target acme/shop.\n" <>
-                 "The instance admin corrects the access rules in the description of #{adapter}, then starts the adapter again."
+               "The run did not start, because Qory Apiary could not give it access to target acme/shop.\n" <>
+                 "Contact support with work item ##{two.work_item.number}."
 
       assert Apiary.Stages.StopCause.set_up_step(run) == nil
     end
@@ -757,6 +755,22 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert Apiary.Stages.StopCause.text(run, work_item) ==
                "The run did not start, because its variable QORY_RUN_SYSTEM, the system forge..example.com of target acme/shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
                  "Owners and admins of #{ctx.scope.organisation.name} check #{two.integration} in Organisation settings › Integrations."
+    end
+
+    test "a run a claim registered is named to support by its public id", ctx do
+      {work_item, queued} = queued!(ctx)
+      assert {:ok, %{registered: %Run{public_id: public_id}}} = claim(ctx)
+
+      run = %{
+        Repo.get!(DispatchRun, queued.id)
+        | state: :ended,
+          end_cause: :run_refused,
+          end_detail: "machine_busy"
+      }
+
+      assert Apiary.Stages.StopCause.text(run, work_item) ==
+               "The gateway did not start the run. Qory Apiary has no description for its refusal (machine_busy).\n" <>
+                 "Contact support with run #{public_id}."
     end
   end
 end
