@@ -21149,7 +21149,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "main, unless this work item keeps two artifacts of this type, such as checkout and receipt."
+msgid "main, unless this work item keeps two artifacts of this type, such as cart and receipt."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

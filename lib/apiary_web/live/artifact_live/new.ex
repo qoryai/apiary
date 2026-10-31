@@ -72,7 +72,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
             label={gettext("Name")}
             hint={
               gettext(
-                "main, unless this work item keeps two artifacts of this type, such as checkout and receipt."
+                "main, unless this work item keeps two artifacts of this type, such as cart and receipt."
               )
             }
             autocomplete="off"
