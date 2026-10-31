@@ -95,7 +95,10 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp read_declared(socket, _none), do: socket
 
   # The source a document's base is read from: its address and version, narrowed to its
-  # stack or folder, as a source the Workflow page offers (`t:Apiary.Stacks.Sources.source/0`).
+  # folder where it has one, as a source the Workflow page offers
+  # (`t:Apiary.Stacks.Sources.source/0`). A base with a stack name is read at the root,
+  # every stack the root exports, as the Workflow page reads a connected repository; the
+  # base then picks its stack.
   defp saved_source(base) do
     %{
       id: "saved",
@@ -103,7 +106,7 @@ defmodule ApiaryWeb.StagesLive.Index do
       label: Document.shown(base["git"]),
       git: base["git"],
       ref: base["ref"],
-      narrowing: Map.take(base, ["path", "stack"]),
+      narrowing: Map.take(base, ["path"]),
       location: nil,
       version: nil,
       stacks: nil
@@ -113,12 +116,14 @@ defmodule ApiaryWeb.StagesLive.Index do
   @impl true
   def handle_async(:declared, {:ok, {:ok, stacks}}, socket) when is_list(stacks) do
     workspace = socket.assigns.current_scope.workspace
+    base = socket.assigns.harness_source.base
 
     # Only the stack the saved document extends, as the Workflow page records it
-    # (`ApiaryWeb.WorkflowLive`); with none, nothing is recorded.
-    case Enum.find(stacks, &(&1.base == socket.assigns.harness_source.base)) do
-      nil -> :ok
-      stack -> :ok = Processes.record_declared(workspace, stack.workflows)
+    # (`ApiaryWeb.WorkflowLive`); with none, nothing is recorded. A harness saved while
+    # the read ran has a newer snapshot, which this read does not replace.
+    with %{base: ^base} <- Sources.current(workspace),
+         %{workflows: workflows} <- Enum.find(stacks, &(&1.base == base)) do
+      :ok = Processes.record_declared(workspace, workflows)
     end
 
     {:noreply,

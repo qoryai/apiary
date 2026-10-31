@@ -31,6 +31,15 @@ defmodule ApiaryWeb.StagesLiveTest do
     %{path: workspace_path(scope, "/settings/stages")}
   end
 
+  # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
+  defp calls do
+    receive do
+      {:harness_call, path, call} -> [{path, call} | calls()]
+    after
+      0 -> []
+    end
+  end
+
   # The id of the default process's stage `name`.
   defp id_of(name),
     do: Enum.find(Processes.default_document("software")["stages"], &(&1["name"] == name))["id"]
@@ -741,14 +750,22 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, view, _html} = live(conn, path)
       render_async(view, 5_000)
 
-      # Only the stack the saved document extends: not "review" of the other stack.
+      # The read covers both stacks the root exports, each in its folder; only the base
+      # the saved document extends picks triage, not "review" of the other stack.
+      reads = for {"read", call} <- calls(), do: call["path"]
+      assert "stacks/triage/qory-stack.yaml" in reads
+      assert "stacks/other/qory-stack.yaml" in reads
       assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
 
+      # The line has the names the harness listed; explore-a-ticket, of the Qory harness,
+      # is only in the picker.
       assert has_element?(
                view,
                "#stages-workflows-list",
-               "Workflows the harness listed just now: explore-a-ticket, fix, triage."
+               "Workflows the harness listed just now: fix, triage."
              )
+
+      assert has_element?(view, ~s(#stage-panel select option[value="explore-a-ticket"]))
 
       refute has_element?(view, "#stages-workflows-error")
       # The picker of Explore, the selected stage, offers them.
@@ -769,8 +786,13 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-workflows-list",
-               "Workflows the harness listed just now: explore-a-ticket, fix, review."
+               "Workflows the harness listed just now: review."
              )
+
+      # fix, the saved workflow, is not in the snapshot: the picker offers it, the line
+      # leaves it out.
+      assert has_element?(view, ~s(#stage-panel select option[value="fix"]))
+      refute has_element?(view, "#stages-workflows-list", "fix")
 
       assert has_element?(
                view,
@@ -806,7 +828,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, view, _html} = live(conn, path)
       assert_receive {:held, call}, 2_000
 
-      assert has_element?(view, "#stages-workflows-list", "explore-a-ticket, fix, review.")
+      assert has_element?(view, "#stages-workflows-list", "listed just now: review.")
       refute has_element?(view, "#stages-workflows-error")
 
       Agent.update(gate, fn _held -> :open end)
@@ -835,8 +857,53 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-workflows-list",
-               "Workflows the harness listed just now: explore-a-ticket, fix, review."
+               "Workflows the harness listed just now: review."
              )
+    end
+
+    test "a harness saved while the read runs keeps its snapshot", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      adapter: adapter,
+      covered: covered
+    } do
+      test = self()
+      {:ok, gate} = Agent.start_link(fn -> :held end)
+
+      # The first call waits for the test, then fails; the retry reaches the stub below.
+      Req.Test.stub(Apiary.Adapters.Calls, fn conn ->
+        if Agent.get(gate, & &1) == :held do
+          send(test, {:held, self()})
+
+          receive do
+            :go -> :ok
+          after
+            5_000 -> :ok
+          end
+        end
+
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
+
+      {:ok, view, _html} = live(conn, path)
+      assert_receive {:held, call}, 2_000
+
+      # The person saves the other stack while the read of triage runs.
+      Agent.update(gate, fn _held -> :open end)
+      serve_calls([adapter], covered: covered, files: @files)
+      other = %{"git" => @harness, "ref" => "HEAD", "stack" => "other"}
+      {:ok, _stack} = Apiary.Stacks.Sources.save(scope, other, "review")
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      snapshot = Processes.declared_snapshot(scope.workspace)
+
+      send(call, :go)
+      render_async(view, 5_000)
+
+      # The read of triage ended, and its workflows are not recorded over the snapshot.
+      assert Enum.any?(calls(), &match?({"read", _call}, &1))
+      assert Processes.declared_snapshot(scope.workspace) == snapshot
+      refute has_element?(view, "#stages-workflows-error")
     end
   end
 
