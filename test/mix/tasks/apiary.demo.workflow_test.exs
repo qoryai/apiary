@@ -49,11 +49,8 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
 
       env = %{"APIARY_DEV_DATABASE" => "apiary_preview_workflow"}
 
-      assert Workflow.refusal(:dev, false, "apiary_preview_workflow", %{
-               env
-               | "DATABASE_URL" => ""
-             }) ==
-               nil
+      empty_url = Map.put(env, "DATABASE_URL", "")
+      assert Workflow.refusal(:dev, false, "apiary_preview_workflow", empty_url) == nil
 
       assert Workflow.refusal(
                :dev,

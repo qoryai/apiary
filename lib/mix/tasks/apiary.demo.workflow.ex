@@ -678,6 +678,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
             "filed_by" => %{"name" => "Dana", "kind" => "person"},
             "labels" => ["web-shop"],
             "state" => "open",
+            "state_reason" => nil,
             "comment_count" => 0,
             "created_at" => time(filed),
             "updated_at" => time(filed)
@@ -865,7 +866,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       ) || Shell.raise!("#{work_item.title} has no run of Explore waiting")
 
     now = DateTime.utc_now()
-    run = hand_over!(dispatch_run, key, now)
+    run = hand_over!(dispatch_run, work_item, key, now)
 
     meta = %{
       contract_version: 1,
@@ -883,7 +884,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # Stands in for the claim and handover, which need a gateway the preview does not have:
   # writes the handed-over run of the queue and its registered run straight to the
   # database. For development only, as is the whole task.
-  defp hand_over!(%DispatchRun{} = dispatch_run, key, now) do
+  defp hand_over!(%DispatchRun{} = dispatch_run, %WorkItem{} = work_item, key, now) do
     {:ok, run} =
       Repo.transact(fn ->
         {1, _rows} =
@@ -902,6 +903,13 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
             access_key_id: key.id,
             state: "pending",
             registered_at: now,
+            # A direct registration has every registration column set.
+            registration_labels: %{},
+            registration_about: %{"kind" => "Explore", "title" => work_item.title},
+            registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
+            registration_interval_seconds: 60,
+            registration_answer_digest:
+              "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
             projected_sequence: Run.projected_from(%{registered_at: now}),
             dispatch_run_id: dispatch_run.id,
             inserted_at: now,
