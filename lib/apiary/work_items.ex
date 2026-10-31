@@ -203,11 +203,13 @@ defmodule Apiary.WorkItems do
   def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params \\ nil) do
     # Hand-over: with the workflow model, the confirmation approves Explore's gate in the
     # same transaction, a member's changes kept as their proposal version
-    # (`Apiary.Stages.confirmed/2`).
+    # (`Apiary.Stages.confirmed/3`).
     if Apiary.Stages.on?() do
       Repo.transact(fn ->
         with {:ok, confirmed} <- Moves.confirm(scope, work_item, attempt, params),
-             {:ok, _placed} <- Apiary.Stages.confirmed(scope, confirmed),
+             explore = Apiary.Stages.explore_stage_id(confirmed),
+             {:ok, _placed} <-
+               Apiary.Stages.confirmed(scope, confirmed, expect_stage: explore),
              do: {:ok, Repo.get!(WorkItem, confirmed.id)}
       end)
     else

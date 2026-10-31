@@ -473,7 +473,8 @@ defmodule Apiary.StagesTest do
                  where: e.action == "gate.approve" and e.subject_id == ^work_item.id
              )
 
-      {:ok, _work_item} = Stages.approve(scope, work_item, nil)
+      {:ok, _work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
       assert Repo.one(
                from e in Entry,
@@ -509,7 +510,10 @@ defmodule Apiary.StagesTest do
     test "approve confirms today's proposal too", %{scope: scope} do
       work_item = take_in!(scope) |> end_run!(understood_result())
 
-      assert {:ok, %WorkItem{stage_id: @shape}} = Stages.approve(scope, work_item, "Looks right")
+      assert {:ok, %WorkItem{stage_id: @shape}} =
+               Stages.approve(scope, work_item, "Looks right",
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert %Confirmation{changes: changes} =
                Repo.get_by(Confirmation, work_item_id: work_item.id)
@@ -520,7 +524,9 @@ defmodule Apiary.StagesTest do
 
     test "approve is refused away from the gate", %{scope: scope} do
       work_item = take_in!(scope)
-      assert Stages.approve(scope, work_item, nil) == {:error, :not_at_gate}
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id) ==
+               {:error, :not_at_gate}
     end
 
     test "request changes reruns the loop from round 1, with the note and its version", %{
@@ -529,7 +535,9 @@ defmodule Apiary.StagesTest do
       work_item = take_in!(scope) |> end_run!(understood_result())
       [proposal] = versions(work_item, "proposal")
 
-      assert Stages.request_changes(scope, work_item, "x", "av_0000000000000000") ==
+      assert Stages.request_changes(scope, work_item, "x", "av_0000000000000000",
+               expect_stage: reload(work_item).stage_id
+             ) ==
                {:error, :not_found}
 
       assert {:ok, %WorkItem{stage_state: :running, stage_round: 1}} =
@@ -537,7 +545,8 @@ defmodule Apiary.StagesTest do
                  scope,
                  work_item,
                  "Leave out the invoice",
-                 proposal.public_id
+                 proposal.public_id,
+                 expect_stage: reload(work_item).stage_id
                )
 
       assert [%GateDecision{kind: :request_changes, note: "Leave out the invoice"} = decision] =
@@ -558,15 +567,24 @@ defmodule Apiary.StagesTest do
       ])
 
       work_item = take_in!(scope) |> end_run!(understood_result())
-      assert Stages.approve(member.scope, work_item, nil) == {:error, :not_approver}
+
+      assert Stages.approve(member.scope, work_item, nil,
+               expect_stage: reload(work_item).stage_id
+             ) == {:error, :not_approver}
+
       refute Stages.status(work_item, member.scope).gate.approvable?
-      assert {:ok, %WorkItem{stage_id: @shape}} = Stages.approve(scope, work_item, nil)
+
+      assert {:ok, %WorkItem{stage_id: @shape}} =
+               Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
     end
 
     test "a new output version after the last stage's approval reopens its gate", %{scope: scope} do
       save!(scope, [explore_stage()])
       work_item = take_in!(scope) |> end_run!(understood_result())
-      {:ok, work_item} = Stages.approve(scope, work_item, nil)
+
+      {:ok, work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
+
       assert %{stage_state: :done} = reload(work_item)
       assert Stages.status(work_item).state == :done
 
@@ -590,7 +608,10 @@ defmodule Apiary.StagesTest do
       ])
 
       work_item = take_in!(scope) |> end_run!(understood_result())
-      {:ok, work_item} = Stages.approve(scope, work_item, nil)
+
+      {:ok, work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
+
       [proposal] = versions(work_item, "proposal")
 
       assert reload(work_item).stage_state == :at_gate
@@ -644,14 +665,25 @@ defmodule Apiary.StagesTest do
       work_item = take_in!(scope) |> end_run!(questions_result())
       {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The sale price", "2" => "Yes"})
       work_item = end_run!(work_item, nil)
-      {:ok, _} = Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart")
+
+      {:ok, _} =
+        Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart",
+          expect_stage: reload(work_item).stage_id
+        )
+
       work_item = end_run!(work_item, understood_result())
       [proposal] = versions(work_item, "proposal")
 
       {:ok, _} =
-        Stages.request_changes(scope, work_item, "Name the price rule", proposal.public_id)
+        Stages.request_changes(scope, work_item, "Name the price rule", proposal.public_id,
+          expect_stage: reload(work_item).stage_id
+        )
 
-      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough")
+      {:ok, _} =
+        Stages.move(scope, work_item, @shape, "Shaped enough",
+          expect_stage: reload(work_item).stage_id
+        )
+
       user_id = scope.user.id
       proposal_id = proposal.public_id
 
@@ -681,7 +713,9 @@ defmodule Apiary.StagesTest do
       work_item: work_item
     } do
       assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
-               Stages.resolve_escalation(scope, work_item, :another_round, "Read the sale page")
+               Stages.resolve_escalation(scope, work_item, :another_round, "Read the sale page",
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert %DispatchRun{attempt: 2, round: 2} = newest_run(work_item)
 
@@ -712,7 +746,9 @@ defmodule Apiary.StagesTest do
       work_item: work_item
     } do
       assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
-               Stages.resolve_escalation(scope, work_item, :accept, nil)
+               Stages.resolve_escalation(scope, work_item, :accept, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert %Escalation{resolution: :accept} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
@@ -731,13 +767,17 @@ defmodule Apiary.StagesTest do
       assert %Escalation{cause: :round_limit} = escalation(work_item)
 
       assert {:ok, %WorkItem{stage_state: :escalated, stage_entry: 1}} =
-               Stages.resolve_escalation(scope, work_item, :accept, nil)
+               Stages.resolve_escalation(scope, work_item, :accept, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert %Escalation{cause: :round_limit, gaps: "No proposal was stored in this stage."} =
                escalation(work_item)
 
       assert {:ok, %WorkItem{stage_state: :at_gate}} =
-               Stages.resolve_escalation(scope, work_item, :accept, nil)
+               Stages.resolve_escalation(scope, work_item, :accept, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert escalation(work_item) == nil
       assert [%{check: :missing}] = Stages.status(work_item).outputs
@@ -745,26 +785,37 @@ defmodule Apiary.StagesTest do
 
     test "close and decline end the work item", %{scope: scope, work_item: work_item} do
       assert {:ok, %WorkItem{state: :closed}} =
-               Stages.resolve_escalation(scope, work_item, :close, nil)
+               Stages.resolve_escalation(scope, work_item, :close, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert %Escalation{resolution: :close} = Repo.get_by(Escalation, work_item_id: work_item.id)
 
       other = take_in!(scope) |> end_run!(nil)
 
       assert {:ok, %WorkItem{state: :declined}} =
-               Stages.resolve_escalation(scope, other, :decline, nil)
+               Stages.resolve_escalation(scope, other, :decline, nil,
+                 expect_stage: reload(other).stage_id
+               )
     end
 
     test "move back goes to an earlier stage only", %{scope: scope, work_item: work_item} do
-      assert Stages.resolve_escalation(scope, work_item, {:move_back, @shape}, nil) ==
+      assert Stages.resolve_escalation(scope, work_item, {:move_back, @shape}, nil,
+               expect_stage: reload(work_item).stage_id
+             ) ==
                {:error, :not_earlier}
 
-      assert Stages.resolve_escalation(scope, work_item, :accept_all, nil) == {:error, :invalid}
+      assert Stages.resolve_escalation(scope, work_item, :accept_all, nil,
+               expect_stage: reload(work_item).stage_id
+             ) == {:error, :invalid}
     end
 
     test "is refused with nothing open", %{scope: scope} do
       work_item = take_in!(scope)
-      assert Stages.resolve_escalation(scope, work_item, :accept, nil) == {:error, :not_escalated}
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil,
+               expect_stage: reload(work_item).stage_id
+             ) == {:error, :not_escalated}
     end
   end
 
@@ -802,7 +853,9 @@ defmodule Apiary.StagesTest do
                Stages.status(work_item)
 
       assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
-               Stages.resolve_escalation(scope, work_item, :another_round, nil)
+               Stages.resolve_escalation(scope, work_item, :another_round, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert %Escalation{resolution: :another_round} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
@@ -854,7 +907,9 @@ defmodule Apiary.StagesTest do
         )
 
       assert %{stage: %{id: @shape}, state: :at_gate} = Stages.status(work_item)
-      assert {:ok, %WorkItem{stage_id: @build}} = Stages.approve(scope, work_item, nil)
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
     end
   end
 
@@ -863,7 +918,9 @@ defmodule Apiary.StagesTest do
       work_item = take_in!(scope)
 
       assert {:ok, %WorkItem{stage_id: @build, stage_state: :at_gate}} =
-               Stages.move(scope, work_item, @build, "Skip shaping")
+               Stages.move(scope, work_item, @build, "Skip shaping",
+                 expect_stage: reload(work_item).stage_id
+               )
 
       assert Repo.one(
                from e in Entry,
@@ -876,13 +933,107 @@ defmodule Apiary.StagesTest do
                "note" => "Skip shaping"
              }
 
-      assert Stages.move(scope, work_item, "st_zzzzzzzzzz", nil) == {:error, :unknown_stage}
+      assert Stages.move(scope, work_item, "st_zzzzzzzzzz", nil,
+               expect_stage: reload(work_item).stage_id
+             ) == {:error, :unknown_stage}
     end
 
     test "is refused to a person of another workspace", %{scope: scope} do
       work_item = take_in!(scope)
       other = sign_up_fixture().scope
-      assert Stages.move(other, work_item, @build, nil) == {:error, :not_found}
+
+      assert Stages.move(other, work_item, @build, nil, expect_stage: reload(work_item).stage_id) ==
+               {:error, :not_found}
+    end
+  end
+
+  describe "a page that shows an earlier stage" do
+    # Each action names the stage the person's page showed (`expect_stage`). A work item
+    # that left that stage, or an action that names none, is refused and nothing changes.
+    defp unchanged!(work_item, before) do
+      after_ = reload(work_item)
+
+      assert Map.take(after_, [:stage_id, :stage_state, :stage_round, :state]) ==
+               Map.take(before, [:stage_id, :stage_state, :stage_round, :state])
+
+      after_
+    end
+
+    test "a late approve of Shape does not approve Build", %{scope: scope} do
+      work_item = shape_gate_fixture(scope)
+
+      assert {:ok, %WorkItem{stage_id: @build, stage_state: :at_gate}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      before = reload(work_item)
+      count = length(decisions(work_item))
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape) ==
+               {:error, :stage_changed}
+
+      assert Stages.approve(scope, work_item, nil) == {:error, :stage_changed}
+      unchanged!(work_item, before)
+      assert length(decisions(work_item)) == count
+    end
+
+    test "request changes, move and resolve are refused for another stage, or none", %{
+      scope: scope
+    } do
+      work_item = shape_gate_fixture(scope)
+      before = reload(work_item)
+
+      assert Stages.request_changes(scope, work_item, "x", nil, expect_stage: @explore) ==
+               {:error, :stage_changed}
+
+      assert Stages.request_changes(scope, work_item, "x", nil) == {:error, :stage_changed}
+
+      assert Stages.move(scope, work_item, @build, nil, expect_stage: @explore) ==
+               {:error, :stage_changed}
+
+      assert Stages.move(scope, work_item, @build, nil) == {:error, :stage_changed}
+      unchanged!(work_item, before)
+
+      escalated = take_in!(scope) |> end_run!(nil)
+      before = reload(escalated)
+
+      assert Stages.resolve_escalation(scope, escalated, :accept, nil, expect_stage: @shape) ==
+               {:error, :stage_changed}
+
+      assert Stages.resolve_escalation(scope, escalated, :accept, nil) ==
+               {:error, :stage_changed}
+
+      unchanged!(escalated, before)
+      assert %Escalation{resolution: nil} = escalation(escalated)
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.move(scope, work_item, @build, nil, expect_stage: @shape)
+    end
+
+    test "a confirmation approves Explore's gate only while the work item is there", %{
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+      assert Stages.explore_stage_id(work_item) == @explore
+
+      assert Repo.transact(fn ->
+               Stages.confirmed(scope, work_item, expect_stage: @shape)
+             end) == {:error, :stage_changed}
+
+      assert reload(work_item).stage_state == :at_gate
+      assert {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1)
+      assert %{stage_id: @shape} = reload(work_item)
+    end
+
+    test "move back to the stage itself, or a later one, is not earlier", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(nil)
+
+      for stage_id <- [@explore, @shape] do
+        assert Stages.resolve_escalation(scope, work_item, {:move_back, stage_id}, nil,
+                 expect_stage: @explore
+               ) == {:error, :not_earlier}
+      end
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
     end
   end
 end

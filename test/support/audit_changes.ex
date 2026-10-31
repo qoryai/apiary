@@ -1670,7 +1670,7 @@ defmodule Apiary.AuditChanges do
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
 
   defp attempt(:"gate.approve", scope, work_item),
-    do: Apiary.Stages.approve(scope, work_item, nil)
+    do: Apiary.Stages.approve(scope, work_item, nil, expect_stage: work_item.stage_id)
 
   defp attempt(:"process.edit", scope, _) do
     document = Apiary.Processes.default_document("software")

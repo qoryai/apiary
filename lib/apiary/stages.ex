@@ -85,8 +85,16 @@ defmodule Apiary.Stages do
           | :not_earlier
           | :unknown_stage
           | :not_live
+          | :stage_changed
           | {:invalid, :note}
           | term
+
+  @typedoc """
+  The stage the person acted on, as their page showed it: `expect_stage: stage_id`,
+  required. An action on a work item that is no longer in that stage, or that names
+  none, changes nothing and returns `{:error, :stage_changed}`.
+  """
+  @type expect :: [expect_stage: String.t()]
 
   # on?/0 is whether the workflow model is on for the instance.
   @doc false
@@ -248,16 +256,18 @@ defmodule Apiary.Stages do
 
   def limits(%DispatchRun{}), do: nil
 
-  # confirmed/2 approves Explore's gate for the work item whose proposal the scope's
-  # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`). A confirmation
+  # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
+  # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`), which passes
+  # Explore's stage id as `expect_stage` (`explore_stage_id/1`). A confirmation
   # with changes first stores the person's `proposal` version.
   @doc false
-  @spec confirmed(Scope.t(), WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, term}
-  def confirmed(%Scope{} = scope, %WorkItem{id: id}) do
+  @spec confirmed(Scope.t(), WorkItem.t(), expect) :: {:ok, WorkItem.t()} | {:error, term}
+  def confirmed(%Scope{} = scope, %WorkItem{id: id}, opts \\ []) do
     in_transaction!()
     work_item = lock!(id)
 
     with {:ok, version, stage} <- placed(work_item),
+         :ok <- expected(work_item, opts),
          :at_gate <- work_item.stage_state do
       confirmation = Explore.confirmation(work_item.id, work_item.take_in)
 
@@ -268,7 +278,22 @@ defmodule Apiary.Stages do
         {:ok, work_item}
       end
     else
+      {:error, :stage_changed} = refused -> refused
       _not_at_gate -> {:ok, work_item}
+    end
+  end
+
+  # explore_stage_id/1 is the id of the stage of the work item's process version that runs
+  # explore-a-ticket, which a confirmation of its proposal approves; nil for none.
+  @doc false
+  @spec explore_stage_id(WorkItem.t()) :: String.t() | nil
+  def explore_stage_id(%WorkItem{} = work_item) do
+    case Processes.version_for(work_item) do
+      %{document: %{"stages" => stages}} ->
+        Enum.find_value(stages, &(@explore_workflow in Runner.workflows(&1) && &1["id"]))
+
+      _none ->
+        nil
     end
   end
 
@@ -397,12 +422,12 @@ defmodule Apiary.Stages do
   # the work item enters the next stage, or its stage is done after the last. At Explore's
   # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`).
   @doc false
-  @spec approve(Scope.t(), WorkItem.t(), String.t() | nil) ::
+  @spec approve(Scope.t(), WorkItem.t(), String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
-  def approve(%Scope{} = scope, %WorkItem{} = work_item, note) do
+  def approve(%Scope{} = scope, %WorkItem{} = work_item, note, opts \\ []) do
     transact(fn ->
       with {:ok, note} <- note(note),
-           {:ok, work_item, version, stage} <- hold(scope, work_item),
+           {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
            {:ok, confirmed?} <- confirm_explore(scope, work_item) do
         # A confirmation already wrote the act's entry in the audit trail.
@@ -445,12 +470,18 @@ defmodule Apiary.Stages do
   # start, with the person's note, which may point at one artifact version of the work
   # item (`av_…`).
   @doc false
-  @spec request_changes(Scope.t(), WorkItem.t(), String.t() | nil, String.t() | nil) ::
+  @spec request_changes(Scope.t(), WorkItem.t(), String.t() | nil, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
-  def request_changes(%Scope{} = scope, %WorkItem{} = work_item, note, artifact_version_id) do
+  def request_changes(
+        %Scope{} = scope,
+        %WorkItem{} = work_item,
+        note,
+        artifact_version_id,
+        opts \\ []
+      ) do
     transact(fn ->
       with {:ok, note} <- note(note),
-           {:ok, work_item, version, stage} <- hold(scope, work_item),
+           {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
            :ok <- version_of(work_item, artifact_version_id),
            {:ok, _decision} <-
@@ -479,12 +510,12 @@ defmodule Apiary.Stages do
   # another round with the person's note, move the work item back to an earlier stage,
   # close it or decline it.
   @doc false
-  @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil) ::
+  @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
-  def resolve_escalation(%Scope{} = scope, %WorkItem{} = work_item, resolution, note) do
+  def resolve_escalation(%Scope{} = scope, %WorkItem{} = work_item, resolution, note, opts \\ []) do
     transact(fn ->
       with {:ok, note} <- note(note),
-           {:ok, work_item, version, stage} <- hold(scope, work_item),
+           {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            %Escalation{} = escalation <- escalation!(work_item, version, stage),
            {:ok, work_item} <-
              resolve(scope, work_item, version, stage, escalation, resolution, note),
@@ -535,12 +566,12 @@ defmodule Apiary.Stages do
   # move/4 moves the work item to the stage `stage_id` of its version, forward past a
   # stage or back, with the person's note, and starts that stage.
   @doc false
-  @spec move(Scope.t(), WorkItem.t(), String.t(), String.t() | nil) ::
+  @spec move(Scope.t(), WorkItem.t(), String.t(), String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
-  def move(%Scope{} = scope, %WorkItem{} = work_item, stage_id, note) do
+  def move(%Scope{} = scope, %WorkItem{} = work_item, stage_id, note, opts \\ []) do
     transact(fn ->
       with {:ok, note} <- note(note),
-           {:ok, work_item, version, stage} <- hold(scope, work_item),
+           {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            target when is_map(target) <-
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
            {:ok, _decision} <- decide(scope, work_item, version, stage, :move, [], nil, note),
@@ -1108,12 +1139,13 @@ defmodule Apiary.Stages do
 
   # The work item in the scope's workspace, locked, with its version and stage, once the
   # scope may take `gate.approve` on it and is a listed approver of its stage.
-  defp hold(scope, %WorkItem{id: id}) do
+  defp hold(scope, %WorkItem{id: id}, opts) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
          %WorkItem{} = found <- in_workspace(workspace, id),
          :ok <- Access.authorize(scope, @action, found),
          work_item = lock!(found.id),
+         :ok <- expected(work_item, opts),
          :ok <- if(work_item.state == :exploring, do: :ok, else: {:error, :not_live}),
          {:ok, version, stage} <- placed(work_item),
          :ok <- if(may_approve?(scope, stage), do: :ok, else: {:error, :not_approver}) do
@@ -1123,6 +1155,15 @@ defmodule Apiary.Stages do
       nil -> {:error, :not_found}
       :not_placed -> {:error, :not_placed}
       {:error, _reason} = refused -> refused
+    end
+  end
+
+  # A person's action applies only to the stage their page showed: a work item that moved
+  # on since, or an action that names no stage, is refused (`t:expect/0`).
+  defp expected(%WorkItem{stage_id: stage_id}, opts) do
+    case Keyword.get(opts, :expect_stage) do
+      expected when is_binary(expected) and expected == stage_id -> :ok
+      _other -> {:error, :stage_changed}
     end
   end
 
