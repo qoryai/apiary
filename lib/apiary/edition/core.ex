@@ -66,6 +66,14 @@ defmodule Apiary.Edition.Core do
         organisation: organisation.name
       )
 
+  # Owners and admins hold the action of every step of the set-up a member may not take.
+  @impl true
+  def set_up_finishers_line(%Scope{organisation: organisation}, _step_id),
+    do:
+      gettext("Owners and admins of %{organisation} finish the set-up.",
+        organisation: organisation.name
+      )
+
   # The limit of `limits/0`, one workspace an organisation.
   @impl true
   def workspace_limit_line(organisation),
