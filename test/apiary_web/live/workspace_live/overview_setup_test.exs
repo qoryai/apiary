@@ -23,6 +23,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
   setup :register_and_log_in_user
 
+  # An edition whose line of who finishes the set-up names the next step it is asked for.
+  defmodule Finishers do
+    @moduledoc false
+    def set_up_finishers_line(_scope, step_id), do: "The operator finishes #{step_id}."
+  end
+
   setup do
     Application.put_env(:apiary, ApiaryWeb.WorkspaceLive.Overview,
       coalesce: 0,
@@ -231,6 +237,18 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert words(lv, "#overview-set-up-sources .q-su-note") == source_name
       refute words(lv, "#overview-set-up-sources .q-su-note") =~ other_name
       assert words(lv, "#overview-set-up-machines .q-su-note") == pool.name
+    end
+
+    test "who finishes the set-up is the edition's line, asked for the next step", %{
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Finishers)
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+
+      {:ok, lv, _html} = live(conn, overview(scope))
+      assert words(lv, "#overview-set-up-who") == "The operator finishes sources."
+      refute has_element?(lv, "#overview-set-up-continue")
     end
 
     test "a member whose next step is Test run, which they may start, is offered Continue", %{

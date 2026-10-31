@@ -27,7 +27,8 @@ defmodule Apiary.Edition do
     `workspace_created/3`, `instance_organisation_id/0`, `first_sign_up_line/0`,
     `first_workspace_line/1`, `first_workspace_waiting_line/1`,
     `audit_retention_max_days/0`, `attribution?/0`.
-  - **The set-up's steps**: `set_up_steps/2`, `set_up_title/2`, `set_up_context/2`.
+  - **The set-up's steps**: `set_up_steps/2`, `set_up_title/2`, `set_up_context/2`,
+    `set_up_finishers_line/2`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
   - **Stored secrets** (`Apiary.Secrets`): `organisation_secrets/2`, whether an
@@ -187,6 +188,17 @@ defmodule Apiary.Edition do
   runs.
   """
   @callback workspace_limit_line(%Organisation{}) :: String.t()
+
+  @doc """
+  The line the workspace's overview (`/:org/:workspace`) shows, while the set-up is not
+  finished, to the person of `scope` who may not take the action of the next step
+  `step_id` (`ApiaryWeb.SetUpComponents.changes_step?/2`), one of `:name`, `:sources`,
+  `:destinations`, `:model`, `:harness`, `:machines` and `:test`: who finishes the
+  set-up, in place of Continue. The scope has the organisation and the workspace. The
+  core returns "Owners and admins of Acme finish the set-up." An edition where someone else
+  holds that step's action returns who does. Translated when the callback runs.
+  """
+  @callback set_up_finishers_line(Scope.t(), atom) :: String.t()
 
   # The set-up's steps
 
@@ -793,6 +805,7 @@ defmodule Apiary.Edition do
     first_workspace_line: 1,
     first_workspace_waiting_line: 1,
     workspace_limit_line: 1,
+    set_up_finishers_line: 2,
     set_up_steps: 2,
     set_up_title: 2,
     set_up_context: 2,
