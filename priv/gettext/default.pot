@@ -1362,6 +1362,7 @@ msgid_plural "%{number} %{items} match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} B"
@@ -1372,7 +1373,12 @@ msgstr ""
 msgid "%{number} GB"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} GiB"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} KiB"
 msgstr ""
@@ -1382,7 +1388,7 @@ msgstr ""
 msgid "%{number} MB"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} MiB"
 msgstr ""
@@ -1600,17 +1606,11 @@ msgid_plural "%{number} events."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} file"
 msgid_plural "%{number} files"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/artifact_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} file · %{writer}"
-msgid_plural "%{number} files · %{writer}"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2480,6 +2480,11 @@ msgid "%{run} · %{count} run, %{state}"
 msgid_plural "%{run} · %{count} runs, %{state}"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{run} · round %{round}"
+msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -4656,6 +4661,11 @@ msgstr ""
 msgid "Artifact types"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Artifacts are turned off in this workspace, so work item #%{number} takes no new versions."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "As a chart"
@@ -5577,6 +5587,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Choose a day to jump to."
 msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a file"
+msgid_plural "Choose files"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
@@ -9611,6 +9628,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Keep it"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Keep main. Give another name only when this work item keeps two artifacts of this type, such as two mockups called payment and receipt."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -13991,6 +14013,11 @@ msgstr ""
 msgid "Remove the filed-by filter"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the files and add them again, so they are checked against %{type}."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the filter %{filter}"
@@ -14653,16 +14680,6 @@ msgstr ""
 msgid "Run not found"
 msgstr ""
 
-#: lib/apiary_web/components/artifact_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run of %{workflow}"
-msgstr ""
-
-#: lib/apiary_web/components/artifact_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run of %{workflow}, round %{round}"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -14756,6 +14773,11 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs and denied network connections in the last 14 days"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Runs and people can no longer store artifacts of this type. You cannot undo this."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -19550,6 +19572,21 @@ msgstr ""
 msgid "Work item #%{number}"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Work item #%{number} changed while the files were sent. Add the version again."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Work item #%{number} is no longer in this workspace, so it takes no new versions."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Work item #%{number} takes no new versions in its stage: the stage's id is not 1 to 64 letters, digits, hyphens or underscores. Ask an admin to fix the work item's process."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Work item #%{number}, declined by %{name}"
@@ -19644,11 +19681,6 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workflow"
-msgstr ""
-
-#: lib/apiary_web/live/artifact_live/types.ex
-#, elixir-autogen, elixir-format
-msgid "Workflows can no longer store artifacts of this type. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -20060,7 +20092,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "You can no longer add a version to this work item. Open the work item again."
+msgid "You can no longer read the work items of this workspace, so you cannot add a version."
 msgstr ""
 
 #: lib/apiary_web/access.ex
@@ -20424,6 +20456,16 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Your personal account"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Your role in this workspace no longer lets you add versions."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Your role in this workspace no longer lets you change artifact types."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -21147,11 +21189,6 @@ msgstr ""
 msgid "mailbox"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
-msgid "main, unless this work item keeps two artifacts of this type, such as cart and receipt."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "max %{max}"
@@ -21386,6 +21423,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "open or close the item"
 msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "or drop it here"
+msgid_plural "or drop them here"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
