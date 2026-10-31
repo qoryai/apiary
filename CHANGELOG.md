@@ -19,7 +19,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its
   step **Name**. A workspace's address follows its name: a rename, on **Name** or in
   Workspace settings, changes it, and links to the old address stop working, with no
-  redirect. A name whose address another workspace or a page of Qory Apiary has is
+  redirect. A name whose address another workspace has, or Qory Apiary keeps, is
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
 - An address under an organisation that matches no workspace the person reaches, such as
@@ -468,7 +468,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Organisation settings › General changes it, the page opens at the new address, and
   links to the old one stop working, with no redirect. A sign-up, the set-up link's page
   and the release command's claim make the address from the name too. A name whose
-  address another organisation or a page of Qory Apiary has is refused there, never
+  address another organisation has, or Qory Apiary keeps, is refused there, never
   numbered: “Choose another name. Another organisation has the address /acme.” The audit
   log records the old and the new name and address of a rename.
 - A name of an organisation or a workspace with no letter or digit from A to Z or 0 to 9,
@@ -486,8 +486,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
 - The organisation slug `integrations` is reserved as well: a sign-up or a rename to the
-  name Integrations is refused with “Choose another name. /integrations is a page of Qory
-  Apiary.”
+  name Integrations is refused with “Choose another name. Qory Apiary keeps the address
+  /integrations.”
 - An account's email address, at sign-up and when it is changed, and an invitation's
   address refuse a control or format character (a right-to-left override, a zero-width
   space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160
