@@ -571,6 +571,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       if match?(%{dispatch_run: %{state: state}} when state != :ended, test),
         do: socket.assigns.test_notice
 
+    machines = Edition.machines_ready(workspace)
+
     socket
     |> assign(
       test: test,
@@ -578,7 +580,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       test_preparation: test_preparation(scope, workspace, test),
       test_choice: test_choice(test),
       test_machine: test_machine(scope, workspace, test),
-      machines: Edition.machines_ready(workspace),
+      test_pool: test_pool(machines, workspace),
+      machines: machines,
       may: Access.can?(scope, :"work_item.take_in", workspace),
       who_may:
         ApiaryWeb.Access.who_may(
@@ -590,6 +593,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
     |> wait_for_machine()
   end
+
+  # The pool of a test run's no-machine line: the ready pool, else the first pool that
+  # serves the workspace's runs, not ready; nil where no pool serves them.
+  defp test_pool(%{pool: pool}, _workspace), do: pool
+
+  defp test_pool(nil, workspace),
+    do: workspace |> WorkspaceSetup.serving_pools() |> List.first()
 
   # How a failed test run's machine was prepared, for its run's step and cause line.
   defp test_preparation(scope, workspace, %{state: {:failed, _cause}, run: %Run{} = run}),
@@ -2202,7 +2212,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             choice={@test_choice}
             path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
             item={@test.work_item && @test.work_item.number}
-            pool={@machines && @machines.pool}
+            pool={@test_pool}
             machine={@test_machine}
           />
         </span>

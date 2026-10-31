@@ -3339,6 +3339,33 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "run yet."
     end
 
+    test "no machine took the run, the workspace's pool not ready: check that pool",
+         %{conn: conn, scope: scope} do
+      pool_fixture(scope, %{name: "spot-runners"})
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Check on the Machines page that a machine of spot-runners is running. No " <>
+                 "machine has taken the test run yet."
+    end
+
+    test "no machine took the run, the workspace with no pool: contact support", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "Contact support with work item ##{item.number}. No machine has taken the test " <>
+                 "run yet."
+    end
+
     test "a lost run of a machine of the workspace names the machine; of the Qory Pool, support",
          %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
