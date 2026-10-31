@@ -1389,6 +1389,7 @@ msgid "%{number} MB"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} MiB"
 msgstr ""
@@ -4663,7 +4664,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Artifacts are turned off in this workspace, so work item #%{number} takes no new versions."
+msgid "Artifacts are turned off, so work item #%{number} takes no new versions."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -7100,6 +7101,11 @@ msgstr ""
 #: lib/apiary_web/controllers/docs_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Documentation"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Documents of this version"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -13345,6 +13351,11 @@ msgstr ""
 msgid "Qory Apiary cannot read the targets of the %{adapter} adapter: the instance's public address (PUBLIC_URL) has no host name. An instance admin sets PUBLIC_URL. The Qory harness needs no call address."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not add the version. Try again; if it fails again, tell the instance admin."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not check the credential from the adapter"
@@ -13905,6 +13916,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{filename}"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{filename} and add it again: the browser sent no size of 0 or more for it."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -19574,17 +19590,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Work item #%{number} changed while the files were sent. Add the version again."
-msgstr ""
-
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
 msgid "Work item #%{number} is no longer in this workspace, so it takes no new versions."
-msgstr ""
-
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
-msgid "Work item #%{number} takes no new versions in its stage: the stage's id is not 1 to 64 letters, digits, hyphens or underscores. Ask an admin to fix the work item's process."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -20460,12 +20466,12 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Your role in this workspace no longer lets you add versions."
+msgid "Your role no longer lets you add versions."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
-msgid "Your role in this workspace no longer lets you change artifact types."
+msgid "Your role no longer lets you change artifact types."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
