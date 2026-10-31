@@ -129,7 +129,7 @@ defmodule ApiaryWeb.Support do
 
   @doc """
   stored_line/2 is one line of text that Qory Apiary stored in English, such as the fix
-  line of an escalation's stopped run (`Apiary.Stages.StopCause`), as rich text: a line
+  line of an escalation's stopped run, which the stage runner writes, as rich text: a line
   that starts with "Contact support" has those words as `rich/1` makes them, a link where
   an address is set, and the rest of the line as it is stored; any other line is
   unchanged. The stored text stays as it is; the link is made when the line is shown.
