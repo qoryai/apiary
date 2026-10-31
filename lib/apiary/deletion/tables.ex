@@ -28,7 +28,8 @@ defmodule Apiary.Deletion.Tables do
   them all. Nor are the instance's tables, `users` and
   `users_tokens` (an account belongs to no organisation), `purged_organisations` (what the
   instance keeps of a purged organisation), `access_key_public_keys` (the ledger of public
-  keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`) and Oban's.
+  keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`), `type_template_versions`
+  (the workspace types' default processes, `Apiary.Processes.TypeTemplate`) and Oban's.
   """
 
   @typedoc "What a table holds: an organisation's rows, or a workspace's too."
@@ -53,12 +54,13 @@ defmodule Apiary.Deletion.Tables do
   # and the workspaces they name; an adapter's collections, the
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
-  # item, and so are its artifacts and the workspace's artifact types; the decisions at a
-  # work item's gates and its escalations before the runs of the queue they name; the
-  # work items and the runs of the queue before the process versions they run under; a
-  # connection's workspaces before the connection, and the connections before the
-  # releases, the service definitions and the secrets they name; everything of a
-  # workspace before the workspace.
+  # item, and so are its artifacts, the workspace's artifact types, the decisions at its
+  # gates and its stages' failed checks; its escalations before the runs of the queue they
+  # name; the work items and the runs of the queue before the process versions they run
+  # under, and a work item or a run of another workspace that still links to one has that
+  # link set to null (`ON DELETE SET NULL`); a connection's workspaces before the
+  # connection, and the connections before the releases, the service definitions and the
+  # secrets they name; everything of a workspace before the workspace.
   #
   # A run of the queue names its work item by the organisation, not the workspace: it
   # stays in the workspace it was queued in when its work item moves to another. So a
@@ -84,6 +86,7 @@ defmodule Apiary.Deletion.Tables do
     {"dispatches", :workspace},
     {"gate_decisions", :workspace},
     {"escalations", :workspace},
+    {"stage_checks", :workspace},
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
     {"work_item_events", :workspace},

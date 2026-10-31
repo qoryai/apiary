@@ -26,16 +26,25 @@ defmodule Apiary.Stages.Runner do
   #     its cause as the gaps.
   #   * Questions wait for answers (`:waiting_answers`); the answers run the same workflow
   #     again, as the loop's next round. Questions in a loop's last round escalate,
-  #     `round_limit`, with the questions as the gaps.
+  #     `round_limit`, with the questions as the gaps; so do questions outside a loop
+  #     from the last run its entry may have, as many as a take in of today's Explore
+  #     (`:last_attempt`, `Apiary.Stages`).
   #   * At the end of the sequence the Exists checks run. When every required output
   #     passes, a person gate waits (`:at_gate`) and a gate `none` passes on (`:advance`).
   #     On a failure, a stage with a loop starts another round of its last loop, with the
-  #     failed checks as the gaps, and the round counts; at the limit it escalates,
-  #     `round_limit`. A stage with no loop escalates, `check_failed`.
+  #     failed checks as the gaps of that round (`{:checks_failed, round, gaps}`), and the
+  #     round counts; at the limit it escalates,
+  #     `round_limit`. A stage with workflows and no loop escalates, `check_failed`.
+  #   * A stage with no workflow is worked by people (§ 4): with a required output
+  #     missing, it waits at its gate, a gate `none` too, and escalates nothing. A version
+  #     a person adds in the stage (`:version_added`) runs the checks again: once every
+  #     required output passes, a gate `none` passes on and a person gate keeps waiting.
   #   * Request changes runs the sequence again from its first loop, round 1, or from its
   #     start when it has no loop.
-  #   * An escalation accepted counts the loop as passed: the sequence goes on after it,
-  #     and an escalation at the end of the sequence goes to the gate. Another round runs
+  #   * An escalation accepted counts the loop as passed: the sequence goes on with its
+  #     next workflow, or, after its last, to the gate without the Exists checks, where
+  #     a failed check stays shown (§ 6); an escalation at the end of the sequence goes to
+  #     the gate too. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
   #     start for a stage with no loop.
@@ -84,6 +93,7 @@ defmodule Apiary.Stages.Runner do
           | :request_changes
           | {:accept, cause}
           | {:another_round, cause}
+          | :version_added
 
   @typedoc """
   What the caller read: the stage's required input types with no version
@@ -112,7 +122,11 @@ defmodule Apiary.Stages.Runner do
         }
 
   @typedoc "An action for `Apiary.Stages` to apply."
-  @type action :: {:queue, run_spec} | {:escalate, cause, String.t() | nil} | :advance
+  @type action ::
+          {:queue, run_spec}
+          | {:escalate, cause, String.t() | nil}
+          | {:checks_failed, pos_integer, String.t()}
+          | :advance
 
   @typedoc "The stage's next state, its position and the actions to apply."
   @type outcome :: %{state: state, position: position, actions: [action]}
@@ -150,9 +164,21 @@ defmodule Apiary.Stages.Runner do
   end
 
   def step(stage, position, {:accept, _cause}, facts) do
-    if at_end?(stage, position),
-      do: gate(stage, position),
-      else: start(stage, next(stage, position), facts)
+    next = next(stage, position)
+
+    cond do
+      at_end?(stage, position) -> gate(stage, position)
+      entry_at(stage, next) == nil -> gate(stage, %{next | loop_entry: nil})
+      true -> start(stage, next, facts)
+    end
+  end
+
+  # A person added a version at the gate of a stage with no workflow: the checks run
+  # again. At the gate of a stage with workflows, a version changes nothing.
+  def step(stage, position, :version_added, facts) do
+    if people?(stage),
+      do: finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts),
+      else: %{state: :at_gate, position: position, actions: []}
   end
 
   def step(stage, position, {:another_round, cause}, facts) do
@@ -210,13 +236,13 @@ defmodule Apiary.Stages.Runner do
       %{state: :waiting_workflow, position: position, actions: []}
     else
       declaration = Map.get(Map.get(facts, :declarations, %{}), workflow)
+      %{time_limit: time_limit, access: access} = lowered(entry, declaration)
 
       spec = %{
         workflow: workflow,
         machine_type: entry["machine"] || Map.get(facts, :machine) || "default",
-        time_limit:
-          lower_time(seconds(entry["time_limit"]), seconds(declared(declaration, :time_limit))),
-        access: lower_access(entry["access"], declared(declaration, :access)),
+        time_limit: time_limit,
+        access: access,
         entry: position.entry,
         loop_entry: position.loop_entry,
         round: position.round
@@ -224,6 +250,28 @@ defmodule Apiary.Stages.Runner do
 
       %{state: :running, position: position, actions: [{:queue, spec}]}
     end
+  end
+
+  # limits/3 is the time limit, in seconds, and the access level of a run of the entry at
+  # `position` of `stage`, given the harness's declaration of its workflow (nil for
+  # none): the lower of the entry's and the declaration's (addition 10). nil where the
+  # position has no workflow entry.
+  @doc false
+  @spec limits(map, position, map | nil) ::
+          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+  def limits(stage, position, declaration) do
+    case entry_at(stage, position) do
+      %{"workflow" => _name} = entry -> lowered(entry, declaration)
+      _none -> nil
+    end
+  end
+
+  defp lowered(entry, declaration) do
+    %{
+      time_limit:
+        lower_time(seconds(entry["time_limit"]), seconds(declared(declaration, :time_limit))),
+      access: lower_access(entry["access"], declared(declaration, :access))
+    }
   end
 
   ## A run's end
@@ -243,10 +291,17 @@ defmodule Apiary.Stages.Runner do
   defp run_ended(_stage, position, {:stopped, cause}, _facts),
     do: escalate(:run_stopped, cause, position)
 
-  defp run_ended(stage, position, {:questions, questions}, _facts) do
-    if in_loop?(position) and position.round >= rounds(stage, position.entry),
-      do: escalate(:round_limit, questions, position),
-      else: %{state: :waiting_answers, position: position, actions: []}
+  defp run_ended(stage, position, {:questions, questions}, facts) do
+    cond do
+      in_loop?(position) and position.round >= rounds(stage, position.entry) ->
+        escalate(:round_limit, questions, position)
+
+      not in_loop?(position) and Map.get(facts, :last_attempt, false) ->
+        escalate(:round_limit, questions, position)
+
+      true ->
+        %{state: :waiting_answers, position: position, actions: []}
+    end
   end
 
   # The next workflow of the loop's ring, or the next round from its first, or the round
@@ -269,11 +324,17 @@ defmodule Apiary.Stages.Runner do
   ## The end of the sequence
 
   defp finish(stage, position, facts) do
-    case Map.get(facts, :failed_checks, []) do
-      [] ->
+    failed = Map.get(facts, :failed_checks, [])
+
+    cond do
+      failed == [] ->
         gate(stage, position)
 
-      failed ->
+      # No run makes the outputs of a stage with no workflow: people add them at its gate.
+      people?(stage) ->
+        %{state: :at_gate, position: position, actions: []}
+
+      true ->
         gaps = check_gaps(failed)
 
         case last_loop(stage) do
@@ -281,9 +342,13 @@ defmodule Apiary.Stages.Runner do
             escalate(:check_failed, gaps, position)
 
           index ->
-            if position.round >= rounds(stage, index),
-              do: escalate(:round_limit, gaps, position),
-              else: start(stage, %{entry: index, loop_entry: 0, round: position.round + 1}, facts)
+            if position.round >= rounds(stage, index) do
+              escalate(:round_limit, gaps, position)
+            else
+              round = position.round + 1
+              outcome = start(stage, %{entry: index, loop_entry: 0, round: round}, facts)
+              %{outcome | actions: [{:checks_failed, round, gaps} | outcome.actions]}
+            end
         end
     end
   end
@@ -369,6 +434,11 @@ defmodule Apiary.Stages.Runner do
     |> Enum.filter(&is_binary/1)
     |> Enum.uniq()
   end
+
+  # people?/1 is whether the stage has no workflow, so people make its outputs (§ 4).
+  @doc false
+  @spec people?(map) :: boolean
+  def people?(stage), do: workflows(stage) == []
 
   # at_end?/2 is whether `position` is past the sequence's last entry.
   @doc false

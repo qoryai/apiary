@@ -8,6 +8,7 @@ defmodule Apiary.ArtifactsTest do
   alias Apiary.Artifacts
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Store, Type, Version}
   alias Apiary.Audit.Entry
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
@@ -113,6 +114,17 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "create_type/3" do
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "is not found with workflow_model off", %{scope: scope} do
+      assert {:error, :not_found} =
+               Artifacts.create_type(scope, scope.workspace, %{
+                 "name" => "demo-findings",
+                 "base_view" => "document"
+               })
+
+      assert Artifacts.type(scope.workspace, "demo-findings") == nil
+    end
+
     test "makes a custom type with the base view's defaults and an audit entry", %{scope: scope} do
       assert {:ok, %Type{} = type} =
                Artifacts.create_type(scope, scope.workspace, %{
@@ -579,7 +591,7 @@ defmodule Apiary.ArtifactsTest do
       assert {:error, {:invalid, :no_video}} =
                push.("demo-video", [file("en.vtt", "WEBVTT\n"), file("de.vtt", "WEBVTT\n")])
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/verdict", error: "value must be" <> _}}}} =
                push.("verdict", [json("v.json", %{"verdict" => "done"})])
 
       assert {:error, {:invalid, {:format, 0}}} = push.("verdict", [file("v.json", "{not json")])
@@ -629,16 +641,20 @@ defmodule Apiary.ArtifactsTest do
             "https://",
             "https://forge.example.com/a b"
           ] do
-        assert {:error, {:invalid, {:schema, 0}}} = push.("change", %{"url" => url}),
+        assert {:error, {:invalid, {:schema, 0, %{path: "#/url"}}}} =
+                 push.("change", %{"url" => url}),
                "#{url} is taken"
       end
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error, {:invalid, {:schema, 0, %{path: "#", error: extra}}}} =
                push.("change", %{"url" => "https://a.example", "extra" => 1})
+
+      assert extra =~ "'extra'"
 
       assert {:ok, _version} = push.("proposal", proposal())
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#", error: "property 'scope' is required"}}}} =
                push.("proposal", Map.delete(proposal(), "scope"))
 
       assert {:ok, _version} =
@@ -647,7 +663,8 @@ defmodule Apiary.ArtifactsTest do
                  "understanding" => "A checkout change."
                })
 
-      assert {:error, {:invalid, {:schema, 0}}} = push.("questions", %{"questions" => []})
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/questions"}}}} =
+               push.("questions", %{"questions" => []})
 
       assert {:ok, _version} =
                push.("verdict", %{
@@ -655,7 +672,7 @@ defmodule Apiary.ArtifactsTest do
                  "gaps" => "The demo has no second card."
                })
 
-      assert {:error, {:invalid, {:schema, 0}}} =
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/gaps"}}}} =
                push.("verdict", %{"verdict" => "passed", "gaps" => ""})
     end
 
@@ -674,8 +691,48 @@ defmodule Apiary.ArtifactsTest do
 
       push = &Artifacts.push({:run, run}, context.work_item, "bids", [json("bids.json", &1)])
       assert {:ok, _version} = push.(%{"bids" => [1.5, 2]})
-      assert {:error, {:invalid, {:schema, 0}}} = push.(%{"bids" => ["high"]})
-      assert {:error, {:invalid, {:schema, 0}}} = push.(%{"bids" => Enum.to_list(1..10_001)})
+
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#/bids/0", error: "value is not of type number"}}}} =
+               push.(%{"bids" => ["high"]})
+
+      assert {:error, {:invalid, {:schema, 0, %{path: "#", error: "the document has more" <> _}}}} =
+               push.(%{"bids" => Enum.to_list(1..10_001)})
+    end
+  end
+
+  describe "log_refusal/3" do
+    import ExUnit.CaptureLog
+
+    test "writes the refusal's shape, the work item and the type, and nothing of the files",
+         context do
+      changeset =
+        %Version{}
+        |> Ecto.Changeset.change(note: "secret note")
+        |> Ecto.Changeset.add_error(:note, "is too long, secret")
+
+      log =
+        capture_log(fn ->
+          Artifacts.log_refusal(context.work_item, "explainer", {:error, changeset})
+          Artifacts.log_refusal(context.work_item, "<b>plan.md</b>", {:odd, "plan.md", [1, 2]})
+          Artifacts.log_refusal(context.work_item, "explainer", {:error, ~c"plan.md"})
+        end)
+
+      assert log =~
+               "A push from Add a version failed: " <>
+                 "{:error, changeset of Apiary.Artifacts.Version, errors on note}; " <>
+                 "work item #{context.work_item.public_id}, type explainer"
+
+      assert log =~
+               ~s(Add a version failed: {:odd, "…", […]}; ) <>
+                 ~s(work item #{context.work_item.public_id}, type "…")
+
+      # A charlist is a list: its characters are not written, as numbers or as text.
+      assert log =~ "Add a version failed: {:error, […]}; work item"
+      refute log =~ "[112"
+
+      refute log =~ "secret"
+      refute log =~ "plan.md"
     end
   end
 
@@ -707,6 +764,14 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.push({:person, other}, context.work_item, "explainer", [doc()])
     end
 
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "is not found with workflow_model off", %{scope: scope} = context do
+      assert {:error, :not_found} =
+               Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
+
+      assert Artifacts.list(context.work_item) == []
+    end
+
     test "is not bound by a workflow's writes", %{scope: scope} = context do
       assert {:ok, _version} =
                Artifacts.push(
@@ -715,6 +780,87 @@ defmodule Apiary.ArtifactsTest do
                  "mockup",
                  [file("a.png", @png)],
                  writes: []
+               )
+    end
+  end
+
+  describe "push/5 with expect_stage" do
+    setup %{work_item: work_item} do
+      %{work_item: in_stage(work_item, "st_bbbbbbbbbb")}
+    end
+
+    defp in_stage(work_item, stage_id) do
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: stage_id]
+        )
+
+      Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "refuses a work item in another stage, with no row and no message",
+         %{scope: scope, work_item: work_item, root: root} do
+      :ok = Artifacts.subscribe(scope, work_item)
+
+      assert {:error, :stage_changed} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 stage_id: "st_aaaaaaaaaa",
+                 expect_stage: "st_aaaaaaaaaa"
+               )
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+      assert count(ArtifactFile) == 0
+      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+      refute_received {:artifact_pushed, _work_item_id, _version_id}
+
+      # The transaction refuses after the store keeps the bytes, as every refusal there
+      # does, and nothing deletes them.
+      assert [_kept] = stored_paths(root)
+    end
+
+    test "stores the version in the same stage", %{scope: scope, work_item: work_item} do
+      assert {:ok, %Version{stage_id: "st_bbbbbbbbbb"}} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 stage_id: "st_bbbbbbbbbb",
+                 expect_stage: "st_bbbbbbbbbb"
+               )
+    end
+
+    test "compares nothing where the option is left out",
+         %{scope: scope, work_item: work_item} do
+      assert {:ok, %Version{stage_id: "st_aaaaaaaaaa"}} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 stage_id: "st_aaaaaaaaaa"
+               )
+    end
+
+    test "reads nil as a work item with no stage", %{scope: scope, work_item: work_item} do
+      assert {:error, :stage_changed} =
+               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+                 expect_stage: nil
+               )
+
+      assert {:ok, %Version{stage_id: nil}} =
+               Artifacts.push(
+                 {:person, scope},
+                 in_stage(work_item, nil),
+                 "explainer",
+                 [doc()],
+                 expect_stage: nil
+               )
+    end
+
+    test "refuses a run's push too", %{work_item: work_item, run: run} do
+      assert {:error, :stage_changed} =
+               Artifacts.push(
+                 {:run, run},
+                 work_item,
+                 "verdict",
+                 [
+                   json("verdict.json", %{"verdict" => "passed"})
+                 ],
+                 expect_stage: "st_aaaaaaaaaa"
                )
     end
   end
@@ -785,8 +931,10 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "after a push" do
-    test "the work item's workspace hears of the version", %{run: run} = context do
+    test "the work item's artifacts topic hears of the version", %{run: run} = context do
       work_item = context.work_item
+      assert Artifacts.topic(work_item) == "artifacts:" <> work_item.id
+      :ok = Artifacts.subscribe(context.scope, work_item)
       Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.WorkItems.topic(work_item.workspace_id))
 
       {:ok, version} = Artifacts.push({:run, run}, work_item, "explainer", [doc()])
@@ -794,10 +942,19 @@ defmodule Apiary.ArtifactsTest do
       assert_receive {:artifact_pushed, work_item_id, version_id}
       assert {work_item_id, version_id} == {work_item.public_id, version.public_id}
 
+      # The workspace's work items topic gets no message: its pages do not handle one.
+      refute_receive {:artifact_pushed, _work_item_id, _version_id}
+
       assert {:error, {:invalid, :no_files}} =
                Artifacts.push({:run, run}, work_item, "explainer", [])
 
       refute_receive {:artifact_pushed, _work_item_id, _version_id}
+    end
+
+    test "a person who may not read the work item cannot subscribe", context do
+      outsider = Apiary.AccountsFixtures.user_fixture()
+      scope = %{context.scope | user: outsider}
+      assert {:error, _reason} = Artifacts.subscribe(scope, context.work_item)
     end
 
     test "each version comes with who made it", %{run: run, scope: scope} = context do

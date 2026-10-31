@@ -86,6 +86,20 @@ defmodule Apiary.Integrations.ApplyTemplates do
   defp grammar?(path), do: String.valid?(path) and Regex.match?(@grammar, path)
 
   @doc false
+  # refused_in/1 is the first part of `path` that `target_path?/1` refuses, from the
+  # start: `{:character, char}` for `*`, `?`, `#` or a space character, `{:sequence, ".."}`
+  # or `{:sequence, "//"}`, or nil for a path with none (and for one that is not UTF-8).
+  @spec refused_in(String.t()) :: {:character | :sequence, String.t()} | nil
+  def refused_in(path) when is_binary(path) do
+    with true <- String.valid?(path),
+         [found] <- Regex.run(@refused_target, path) do
+      if found in ["..", "//"], do: {:sequence, found}, else: {:character, found}
+    else
+      _none -> nil
+    end
+  end
+
+  @doc false
   # target_path?/1 is whether a target path may fill a template: UTF-8 with no `..`, `//`,
   # `*`, `?`, `#` and no space character.
   @spec target_path?(term) :: boolean

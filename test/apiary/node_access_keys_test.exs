@@ -349,7 +349,7 @@ defmodule Apiary.NodeAccessKeysTest do
       {:ok, first} = add(scope, node, %{label: "build-01"})
 
       assert {:error, changeset} = add(scope, node, %{label: "build-01"})
-      assert errors_on(changeset).label == ["is already the label of a key of this node"]
+      assert errors_on(changeset).label == ["is already the label of a key of this machine"]
 
       # Another node's key may have it.
       assert {:ok, _} = add(scope, node_fixture(scope), %{label: "build-01"})

@@ -1038,6 +1038,29 @@ defmodule Apiary.DispatchesTest do
       assert Dispatches.sweep(Dispatches.now()) == []
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a held run's end escalates its stage run_stopped", ctx do
+      queue_prebuild!(ctx.collection, ctx.deleted)
+      held = held!(ctx)
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
+
+      assert {:work_item, ctx.scope.workspace.id,
+              Repo.get!(WorkItem, held.work_item_id).public_id} in Dispatches.sweep(
+               Dispatches.now()
+             )
+
+      assert %WorkItem{stage_state: :escalated} = Repo.get!(WorkItem, held.work_item_id)
+
+      target = Repo.get!(WorkItem, held.work_item_id).target_path
+
+      assert %Apiary.Stages.Escalation{cause: :run_stopped, gaps: gaps} =
+               Repo.get_by!(Apiary.Stages.Escalation, work_item_id: held.work_item_id)
+
+      assert gaps ==
+               "The run did not start, because the build of the environment for target #{target} failed.\n" <>
+                 "Read why on the page of target #{target}, under Targets, then choose Rebuild there."
+    end
+
     test "ends no held run while a live pool has the image for the target", ctx do
       prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
       held = held!(ctx)

@@ -61,11 +61,9 @@ defmodule Apiary.HarnessReadsFixtures do
 
   @doc """
   Serves the calls of `adapters`, each `%{adapter, host, seed}`. `covered` maps an
-  adapter's id to a map of an address to its `{grant_ref, resource_ref}`, to those and its
-  public ref, `{grant_ref, resource_ref, {:public, public_ref}}`, or to its public ref
-  alone, `{:public, public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps
-  `{resource_ref, path}` to a document, a public ref's read as public (`read-public`). A
-  resource's version is `c-<resource_ref>`, whatever version a read asks, or its value in
+  adapter's id to a map of an address to its `{grant_ref, resource_ref}`; `files` maps
+  `{resource_ref, path}` to a document. A public repository is served by its host
+  (`Apiary.PublicGitServer`). A resource's version is `c-<resource_ref>`, whatever version a read asks, or its value in
   `versions`, a map by resource_ref. `refuse_at` maps a version a read asks for (`at`) to
   the code a 404 refuses that read with, such as `"version_not_found"`. `down: true` makes
   every call reach no one, and `down:` a list of adapter ids the calls of those adapters.
@@ -95,23 +93,6 @@ defmodule Apiary.HarnessReadsFixtures do
           results =
             for address <- call["addresses"] do
               case by_address[address] do
-                {:public, public_ref} ->
-                  %{
-                    "address" => address,
-                    "resource_ref" => "N_" <> public_ref,
-                    "public" => true,
-                    "public_ref" => public_ref
-                  }
-
-                {grant_ref, resource_ref, {:public, public_ref}} ->
-                  %{
-                    "address" => address,
-                    "grant_ref" => grant_ref,
-                    "resource_ref" => resource_ref,
-                    "public" => true,
-                    "public_ref" => public_ref
-                  }
-
                 {grant_ref, resource_ref} ->
                   %{
                     "address" => address,
@@ -126,10 +107,10 @@ defmodule Apiary.HarnessReadsFixtures do
 
           answer(conn, 200, %{"version" => 1, "revision" => 1, "results" => results}, adapter)
 
-        path in ["read", "read-public"] and is_map_key(opts[:refuse_at] || %{}, call["at"]) ->
+        path == "read" and is_map_key(opts[:refuse_at] || %{}, call["at"]) ->
           answer(conn, 404, %{"error" => opts[:refuse_at][call["at"]]}, adapter)
 
-        path in ["read", "read-public"] ->
+        path == "read" ->
           found =
             case files[{call["resource_ref"], call["path"]}] do
               nil -> %{"found" => false}

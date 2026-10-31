@@ -193,7 +193,20 @@ defmodule Apiary.WorkItems do
   # and queues its next run (`Apiary.WorkItems.Moves`).
   @spec answer(Scope.t(), WorkItem.t(), pos_integer, map) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate answer(scope, work_item, attempt, answers), to: Moves
+  def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
+    # Hand-over: with the workflow model, answers to the last run a stage's entry may have
+    # escalate the stage, `round_limit`, as the runner does for questions at that run
+    # (`Apiary.Stages.answers_used_up/1`).
+    case Moves.answer(scope, work_item, attempt, answers) do
+      {:error, :used_up} = refused ->
+        if Apiary.Stages.on?(),
+          do: Apiary.Stages.answers_used_up(work_item, refused),
+          else: refused
+
+      result ->
+        result
+    end
+  end
 
   @doc false
   # confirm/4 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
@@ -203,11 +216,13 @@ defmodule Apiary.WorkItems do
   def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params \\ nil) do
     # Hand-over: with the workflow model, the confirmation approves Explore's gate in the
     # same transaction, a member's changes kept as their proposal version
-    # (`Apiary.Stages.confirmed/2`).
+    # (`Apiary.Stages.confirmed/3`).
     if Apiary.Stages.on?() do
       Repo.transact(fn ->
         with {:ok, confirmed} <- Moves.confirm(scope, work_item, attempt, params),
-             {:ok, _placed} <- Apiary.Stages.confirmed(scope, confirmed),
+             explore = Apiary.Stages.confirmed_stage_id(confirmed, attempt),
+             {:ok, _placed} <-
+               Apiary.Stages.confirmed(scope, confirmed, expect_stage: explore),
              do: {:ok, Repo.get!(WorkItem, confirmed.id)}
       end)
     else
@@ -220,7 +235,16 @@ defmodule Apiary.WorkItems do
   # `attempt`, gave no result, was lost or was cancelled (`Apiary.WorkItems.Moves`).
   @spec explore_again(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate explore_again(scope, work_item, attempt), to: Moves
+  def explore_again(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
+    again = fn -> Moves.explore_again(scope, work_item, attempt) end
+
+    # Hand-over: with the workflow model, Explore again on an escalated stage resolves
+    # the escalation, with the same check as the stage's gate
+    # (`Apiary.Stages.explore_again/3`).
+    if Apiary.Stages.on?(),
+      do: Apiary.Stages.explore_again(scope, work_item, again),
+      else: again.()
+  end
 
   @doc false
   # comment/3 writes a comment of the scope's person on `work_item`

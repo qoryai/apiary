@@ -32,6 +32,9 @@ defmodule ApiaryWeb.SetUpComponents do
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
   alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
+  alias Apiary.Processes.TypeTemplates
+  alias Apiary.Stacks.Sources
+  alias ApiaryWeb.{HarnessComponents, WorkspaceComponents}
   alias Apiary.Accounts.Scope
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.{Invitation, Organisation, Workspace}
@@ -343,6 +346,96 @@ defmodule ApiaryWeb.SetUpComponents do
     do: gettext("Which machines run the runs in %{workspace}?", workspace: name)
 
   def step_heading(:test, _workspace), do: gettext("Run a test")
+
+  @doc """
+  step_note/3 is the line under a step's name in the workspace's overview while the set-up
+  is not finished. A done step shows what it set where a value of it is at hand: Name the
+  workspace's name, Work sources the integrations whose collections bring work to the
+  workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
+  titles of the collections the step's done rule counts, or their number from 3 on, Model
+  the chosen model as the step shows it, Harness the chosen harness as the step shows it,
+  and Machines the node pool that runs the workspace's runs. Each value is read for the
+  scope's person with the reads of its step's page: Work sources and Destinations only
+  where `adapter.read` allows the tick list, Model only where the person may read the
+  choices of the workspace's chain as the Model step reads them. Test run shows
+  what it does, "Starts one run to check the set-up". A step not done, and a done step
+  whose value the person may not read or is not at hand, shows its page's heading
+  (`step_heading/2`).
+  """
+  @spec step_note(Scope.t(), atom, boolean) :: String.t()
+  def step_note(scope, id, done)
+  def step_note(%Scope{workspace: %Workspace{name: name}}, :name, _done), do: name
+  def step_note(_scope, :test, _done), do: gettext("Starts one run to check the set-up")
+
+  def step_note(%Scope{workspace: workspace} = scope, :sources, true) do
+    case WorkspaceSetup.source_names(scope, Domain.for_workspace(workspace)) do
+      [] -> step_heading(:sources, workspace)
+      names -> Enum.join(names, ", ")
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace} = scope, :destinations, true) do
+    case WorkspaceSetup.destination_names(scope, Domain.for_workspace(workspace)) do
+      [] ->
+        step_heading(:destinations, workspace)
+
+      names when length(names) <= 2 ->
+        Enum.join(names, ", ")
+
+      names ->
+        count = length(names)
+        ngettext("%{number} target", "%{number} targets", count, number: Format.number(count))
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace} = scope, :model, true),
+    do: WorkspaceSetup.model_name(scope) || step_heading(:model, workspace)
+
+  def step_note(%Scope{workspace: workspace}, :harness, true) do
+    case HarnessComponents.harness_words(Sources.chosen(workspace)) do
+      "" -> step_heading(:harness, workspace)
+      words -> words
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace}, :machines, true) do
+    case WorkspaceSetup.machines(workspace) do
+      %{pool: %{name: name}} -> name
+      nil -> step_heading(:machines, workspace)
+    end
+  end
+
+  def step_note(%Scope{workspace: workspace}, id, _done), do: step_heading(id, workspace)
+
+  @doc """
+  changes_step?/2 is whether the person of `scope` may take the action of the set-up step
+  `id` of the scope's workspace, the action its page checks before it shows its form
+  rather than the step read only: Name `workspace.rename`, Work sources and Destinations
+  `collection.assign`, Model `model_choice.write`, Harness `harness.save`, Machines
+  `node.create`, Test run `work_item.take_in`.
+  """
+  @spec changes_step?(Scope.t(), atom) :: boolean
+  def changes_step?(%Scope{organisation: organisation, workspace: workspace} = scope, id) do
+    case id do
+      :name ->
+        Access.can?(scope, :"workspace.rename", workspace)
+
+      list when list in [:sources, :destinations] ->
+        Access.can?(scope, :"collection.assign", organisation)
+
+      :model ->
+        Access.can?(scope, :"model_choice.write", workspace)
+
+      :harness ->
+        Access.can?(scope, :"harness.save", workspace)
+
+      :machines ->
+        Access.can?(scope, :"node.create", workspace)
+
+      :test ->
+        Access.can?(scope, :"work_item.take_in", workspace)
+    end
+  end
 
   @doc """
   flow_title/1 is the line above the indicator's count: "Set up Payments · Software
@@ -677,17 +770,23 @@ defmodule ApiaryWeb.SetUpComponents do
   attr :steps, :list, required: true
   attr :page, :string, default: nil
 
+  attr :up, :map,
+    default: nil,
+    doc: "on a page of a step, the step itself, `path` and `label`, where Back leads"
+
   @doc """
   back/1 is the Back button at the foot of a step's form: a ghost button to the step
   before the current one in its progress, a patch where its path is `page`. None on the
   first step of a progress, such as Name, which leads back to no step of the
-  instance's, nor where the step before has no page, such as Your account.
+  instance's, nor where the step before has no page, such as Your account. On a page of a
+  step, such as Connect of Work sources, Back leads to the step (`up`).
   """
   def back(assigns) do
     steps = progress_steps(assigns.steps)
     at = Enum.find_index(steps, &(&1.state == :current))
     before = if at && at > 0, do: Enum.at(steps, at - 1)
     before = if before && is_binary(before.path), do: before
+    before = assigns.up || before
 
     assigns = assign(assigns, before: before, patch: before && patch?(before.path, assigns.page))
 
@@ -755,6 +854,11 @@ defmodule ApiaryWeb.SetUpComponents do
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
   attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
 
+  attr :previews, :map,
+    default: %{},
+    doc:
+      "a domain's name to the process its workspace starts with (`previews/1`), shown under the cards"
+
   def kind_cards(assigns) do
     assigns =
       assigns
@@ -812,8 +916,33 @@ defmodule ApiaryWeb.SetUpComponents do
           </div>
         </li>
       </ul>
+      <%= for {domain, _card} <- @cards, document = !@limit && @previews[domain.name()] do %>
+        <WorkspaceComponents.process_preview
+          id={"#{@id}-preview-#{domain.name()}"}
+          document={document}
+        />
+      <% end %>
     </div>
     """
+  end
+
+  @doc """
+  previews/1 is, with the feature `workflow_model` where `scope` is, the process a new
+  workspace of each type with a kind card starts with, the newest version of its type's
+  default (`Apiary.Processes.TypeTemplates.newest/1`), by the domain's name, for
+  `kind_cards/1`'s `previews`; else none.
+  """
+  @spec previews(Scope.t()) :: %{String.t() => map}
+  def previews(%Scope{} = scope) do
+    if Features.visible?(scope, :workflow_model) do
+      for domain <- Domain.choices(),
+          kind_card_words(domain) != nil,
+          %{document: document} <- [TypeTemplates.newest(Domain.definition(domain).key)],
+          into: %{},
+          do: {domain.name(), document}
+    else
+      %{}
+    end
   end
 
   # The words of a domain's card, nil for a domain without one, which shows no card. A

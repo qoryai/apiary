@@ -43,7 +43,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # the run stopped at, nil for none (`%{adapter: title, cause: cause, call: path, code:
   # code}`, the adapter's title by `Apiary.Adapters.title/1`), `harness_failure`, why its
   # harness walk failed, nil for none (`%{code: code, source: source or nil, rule: rule or
-  # nil, adapter: title, the name the walk kept, or nil}`, `Apiary.Harnesses.RunHarness`),
+  # nil, adapter: title, the name the walk kept, or nil, organisation: name, workspace:
+  # name}`, `Apiary.Harnesses.RunHarness`, the names of the run's organisation and
+  # workspace),
   # and by what it gave: `proposal`
   # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none; `understanding` and
   # `questions`, each `%{public_id: position, text: question, answer: answer or nil}`, for
@@ -137,16 +139,23 @@ defmodule Apiary.WorkItems.ExploreView do
     }
   end
 
-  defp harness_failure(%{end_cause: :harness_unresolved, harness_walk: %RunHarness{} = walk}) do
+  defp harness_failure(
+         %{end_cause: :harness_unresolved, harness_walk: %RunHarness{} = walk} = dispatch_run
+       ) do
     %{
       code: walk.failure,
       source: walk.failed_source,
       rule: walk.failure_rule,
-      adapter: walk_adapter(walk)
+      adapter: walk_adapter(walk),
+      organisation: name(dispatch_run.organisation),
+      workspace: name(dispatch_run.workspace)
     }
   end
 
   defp harness_failure(_dispatch_run), do: nil
+
+  defp name(%{name: name}), do: name
+  defp name(_not_loaded), do: nil
 
   # The adapter a failed walk names: its title, read from its node, else the name the walk
   # kept, for a walk that failed before walks kept the adapter's id and once the adapter's

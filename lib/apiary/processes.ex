@@ -7,9 +7,9 @@ defmodule Apiary.Processes do
 
   ## Versions
 
-  A workspace is made with version 1, a copy of its type's default process
-  (`default_document/1`), with the default's `{type, version}` kept as its `template`
-  (`copy_default/1`). A workspace made another way, before the process was kept or by a
+  A workspace is made with version 1, a copy of the newest version of its type's default
+  process (`Apiary.Processes.TypeTemplates.newest/1`), with that version's `{type,
+  number}` kept as its `template` (`copy_default/1`). A workspace made another way, before the process was kept or by a
   test that inserts it, gets that copy the first time `current/1` reads it.
 
   A save (`save/4`) makes a new current version, and the version before it past; work
@@ -32,19 +32,21 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   A stage's sequence names workflows that the workspace's harness declares
-  (`declared_workflows/1`, `workflow_declaration/2`). A save keeps a name the harness
-  does not declare; `placement_check/3` lists it, as it lists a type the workspace does
-  not have and an input that no earlier stage outputs.
+  (`declared_workflows/1`, `workflow_declaration/2`), as the workspace keeps them from
+  the last read of its harness source (`record_declared/2`, `declared_snapshot/1`). A
+  save keeps a name the harness does not declare; `placement_check/3` lists it, as it
+  lists a type the workspace does not have and an input that no earlier stage outputs.
   """
 
   import Ecto.Query, warn: false
 
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
-  alias Apiary.Processes.Version
+  alias Apiary.Processes.{TypeTemplates, Version}
   alias Apiary.Stacks.Stack
   alias Apiary.WorkItems.WorkItem
 
@@ -54,8 +56,9 @@ defmodule Apiary.Processes do
   # They leave room for the fields the schema does not list, which a save keeps.
   @limits [list: 64, members: 64, nodes: 20_000, string: 4_096, depth: 16]
 
-  # The version of the default processes below: a workspace's version 1 keeps it, with
-  # its type, as its `template`.
+  # The version of the default processes below, as the release ships them: a type's
+  # versions keep it (`Apiary.Processes.TypeTemplates`), and a higher one here adds the
+  # changed default as a new version of each type no instance admin has saved.
   @template_version 1
 
   # Crockford base32 without i, l, o and u, as `Apiary.PublicId` writes its ids.
@@ -126,6 +129,9 @@ defmodule Apiary.Processes do
   # lists it.
   @qory_workflows ["explore-a-ticket"]
 
+  # A snapshot keeps at most this many names; a read lists at most 20 stacks.
+  @max_declared 1_000
+
   @typedoc "A process document, decoded JSON with string keys."
   @type document :: map
 
@@ -186,15 +192,33 @@ defmodule Apiary.Processes do
   def default_document(domain) when is_atom(domain), do: default_document(domain.name())
 
   @doc """
+  default_version/1 is the version of the default process the release ships for the
+  domain `domain` (a module or its name): `Apiary.Processes.TypeTemplates` adds a higher
+  one as a new version of the type.
+  """
+  @spec default_version(module | String.t()) :: pos_integer
+  def default_version(_domain), do: @template_version
+
+  @doc """
   template/1 is what a workspace of the domain `domain` (a module, or a workspace) keeps
-  of the default it copied: `%{"type" => key, "version" => version}`, the key of the
-  domain's definition (`Apiary.Lingo.Domain.Definition`) and the version of its default.
+  of the default it copies: `%{"type" => key, "version" => number}`, the key of the
+  domain's definition (`Apiary.Lingo.Domain.Definition`) and the number of the newest
+  version of the type's default process (`Apiary.Processes.TypeTemplates.newest/1`).
   """
   @spec template(module | %Workspace{}) :: %{String.t() => term}
   def template(%Workspace{} = workspace), do: template(Domain.for_workspace(workspace))
 
-  def template(domain) when is_atom(domain),
-    do: %{"type" => Domain.definition(domain).key, "version" => @template_version}
+  def template(domain) when is_atom(domain) do
+    key = Domain.definition(domain).key
+    %{"type" => key, "version" => TypeTemplates.newest(key).number}
+  end
+
+  @doc """
+  qory_workflows/0 is the workflows the Qory harness declares, which every workspace
+  composes.
+  """
+  @spec qory_workflows() :: [String.t()]
+  def qory_workflows, do: @qory_workflows
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
@@ -314,20 +338,24 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  copy_default/1 inserts the workspace's version 1, a copy of its type's default
-  (`default_document/1`), with no author and the default's `template/1`: called where
-  the workspace is created, in that transaction. `{:ok, version}`.
+  copy_default/1 inserts the workspace's version 1, a copy of the newest version of its
+  type's default process (`Apiary.Processes.TypeTemplates.newest/1`), with no author and
+  that version's `{type, number}` as its `template`: called where the workspace is
+  created, in that transaction. `{:ok, version}`.
   """
   @spec copy_default(%Workspace{}, keyword) :: {:ok, Version.t()} | {:error, term}
   def copy_default(%Workspace{} = workspace, opts \\ []) do
+    key = Domain.definition(Domain.for_workspace(workspace)).key
+    newest = TypeTemplates.newest(key)
+
     %Version{
       organisation_id: workspace.organisation_id,
       workspace_id: workspace.id,
       public_id: Apiary.PublicId.generate("pv"),
       number: 1,
       status: :current,
-      document: default_document(workspace),
-      template: template(workspace)
+      document: newest.document,
+      template: %{"type" => key, "version" => newest.number}
     }
     |> Repo.insert(opts)
   end
@@ -392,7 +420,9 @@ defmodule Apiary.Processes do
     end)
   end
 
-  defp with_stage_ids(%{"stages" => stages} = document) when is_list(stages) do
+  @doc false
+  # The document with a new id (`new_stage_id/0`) on each stage that has none.
+  def with_stage_ids(%{"stages" => stages} = document) when is_list(stages) do
     stages =
       Enum.map(stages, fn
         %{} = stage when not is_map_key(stage, "id") -> Map.put(stage, "id", new_stage_id())
@@ -402,7 +432,7 @@ defmodule Apiary.Processes do
     %{document | "stages" => stages}
   end
 
-  defp with_stage_ids(document), do: document
+  def with_stage_ids(document), do: document
 
   defp base(workspace, nil), do: {:ok, current(workspace)}
 
@@ -537,7 +567,9 @@ defmodule Apiary.Processes do
   assign/3 makes `work_item` run under `version`, a version of its workspace that is not
   dropped, under `process.edit`. The work item keeps its stage, its stage's state and its
   place in the stage's sequence; a run in progress finishes under the version it started
-  with. `{:ok, work_item}`, unchanged where it is on the version already;
+  with. The work item's runs queued and not yet claimed (`:waiting`) move to `version`
+  with it; a run claimed or later keeps its version. `{:ok, work_item}`, unchanged
+  where it is on the version already;
   `{:error, {:missing_stage, stage_id}}` where `version` does not have the work item's
   stage; `{:error, :dropped}` for a dropped version; or a reason of `Apiary.Access`.
   """
@@ -564,6 +596,13 @@ defmodule Apiary.Processes do
                    work_item
                    |> Ecto.Changeset.change(process_version_id: version.id)
                    |> Repo.update(),
+                 {_runs, _} <-
+                   Repo.update_all(
+                     from(r in DispatchRun,
+                       where: r.work_item_id == ^work_item.id and r.state == :waiting
+                     ),
+                     set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
+                   ),
                  {:ok, _entry} <-
                    Audit.record(Repo, scope, :"process.edit", assigned, %{
                      before: %{process_version: before.number},
@@ -756,31 +795,90 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   @doc """
+  record_declared/2 keeps `names` as the workflows the workspace's harness source lists,
+  read now: it replaces the names the workspace kept, with the time of this read
+  (`declared_snapshot/1`). Call it after a read of the workspace's harness source
+  succeeds: Workspace settings > Workflow calls it for the stack the saved workflow's
+  document extends, read or saved there, and for no other source a person tries. Each
+  name is kept once, sorted, at most 1,000. `:ok`.
+  """
+  @spec record_declared(%Workspace{}, [String.t()]) :: :ok
+  def record_declared(%Workspace{id: id, organisation_id: organisation_id}, names)
+      when is_list(names) do
+    names =
+      names |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort() |> Enum.take(@max_declared)
+
+    {_one_or_none, _} =
+      Repo.update_all(
+        from(w in "workspaces",
+          where: w.id == type(^id, :binary_id),
+          where: w.organisation_id == type(^organisation_id, :binary_id)
+        ),
+        set: [declared_workflows: names, declared_workflows_read_at: DateTime.utc_now()]
+      )
+
+    :ok
+  end
+
+  @doc """
+  declared_snapshot/1 is the workflow names the workspace kept at the last read of its
+  harness source (`record_declared/2`): `%{names: names, read_at: time}`, or nil before
+  the first read. It covers only the workspace's harness source, the stack the workflow
+  saved on Workspace settings > Workflow extends: not a harness file of a repository,
+  and not the stack chosen for a target.
+  """
+  @spec declared_snapshot(%Workspace{}) :: %{names: [String.t()], read_at: DateTime.t()} | nil
+  def declared_snapshot(%Workspace{id: id}) do
+    Repo.one(
+      from w in "workspaces",
+        where: w.id == type(^id, :binary_id) and not is_nil(w.declared_workflows_read_at),
+        select: %{
+          names: w.declared_workflows,
+          read_at: type(w.declared_workflows_read_at, :utc_datetime_usec)
+        }
+    )
+  end
+
+  @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
-  sorted: explore-a-ticket, of the Qory harness, and the workflow saved on the
-  workspace's Workflow page, at the workspace or a target of it. Qory Apiary keeps no
-  other list of what a harness declares: reading one means reading the harness's stack
-  files.
+  sorted: explore-a-ticket, of the Qory harness; the names of the workspace's snapshot
+  (`declared_snapshot/1`), which covers only the workspace's harness source; and the
+  workflow saved on the workspace's Workflow page, at the workspace or a target of it.
+  Before the first snapshot, the names are explore-a-ticket and the saved workflow.
   """
   @spec declared_workflows(%Workspace{}) :: [String.t()]
   def declared_workflows(%Workspace{} = workspace) do
-    (@qory_workflows ++ Enum.map(saved_workflows(workspace), & &1.workflow))
+    workspace
+    |> declared_names(saved_workflows(workspace))
     |> Enum.uniq()
     |> Enum.sort()
+  end
+
+  # Transition: the saved workflow is added by hand, as explore-a-ticket is, for a
+  # workspace with no snapshot or a snapshot older than its save. Remove it once the
+  # snapshot is written wherever a workspace's harness is chosen or saved.
+  defp declared_names(workspace, saved) do
+    snapshot =
+      case declared_snapshot(workspace) do
+        %{names: names} -> names
+        nil -> []
+      end
+
+    @qory_workflows ++ snapshot ++ Enum.map(saved, & &1.workflow)
   end
 
   @doc """
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
-  the level recorded with the saved workflow, nil where none is;
-  `time_limit`, `reads` and `writes` are nil, since Qory Apiary keeps none of them: nil
-  `reads` and `writes` mean any type.
+  the level recorded with the saved workflow where one is, else nil: the level the
+  workflow declares in its stack. `time_limit`, `reads` and `writes` are nil, since Qory
+  Apiary keeps none of them: nil `reads` and `writes` mean any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
     saved = saved_workflows(workspace)
 
-    if name in @qory_workflows or Enum.any?(saved, &(&1.workflow == name)) do
+    if name in declared_names(workspace, saved) do
       access =
         saved
         |> Enum.filter(&(&1.workflow == name))

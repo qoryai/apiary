@@ -488,10 +488,11 @@ environment variable SMTP_TLS must be always, if_available or never
   `observability`, `security` and `secrets`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- `workflow_model`: the process of each workspace: its stages in order, each with its
-  workflows and its gate, kept as numbered versions, and trial versions that chosen work
-  items are assigned to. Opt-in. Needs `observability`, `security`, `secrets` and
-  `factory`.
+- `workflow_model`: changes to the process of each workspace, its stages in order, each
+  with its workflows and its gate. Owners and admins save numbered versions, and trial
+  versions that chosen work items are assigned to. With the switch off, each workspace
+  keeps version 1 of its process, a copy of its type's default. Opt-in. Needs
+  `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
@@ -546,11 +547,11 @@ To switch a feature on later, add it to the value and restart. Every instance ha
 whole database schema whatever its features, so nothing is migrated.
 
 <!-- feature: factory -->
-### The instance's node pool and gateway
+### The instance's pool and gateway
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `QORY_INSTALLED_POOL` | none | The name of the instance's node pool: a lower-case letter, then lower-case letters, digits and hyphens, 32 characters at most. Not set, or empty, declares none. |
+| `QORY_INSTALLED_POOL` | none | The name of the instance's pool: a lower-case letter, then lower-case letters, digits and hyphens, 32 characters at most. Not set, or empty, declares none. |
 | `QORY_INSTALLED_GATEWAY` | none | The name of the instance's gateway, by the same rule. Not set, or empty, declares none. |
 | `QORY_INSTALLED_GATEWAY_URL` | required with `QORY_INSTALLED_GATEWAY` | The address pools reach the gateway at: `https://`, a host, and a port if needed, nothing more. Set without `QORY_INSTALLED_GATEWAY`, it stops the boot. |
 
@@ -559,15 +560,15 @@ workspace; `compose.yaml` runs neither. Once the instance is set up, Qory Apiary
 one declared and, while it has no key in use, writes a one-time code for it to
 `<name>/code` in `QORY_ENROLMENT_DIR`, `/run/qory/enrolment` when not set. The pool or
 the gateway makes its key from that code: no person runs a command for them. The pool
-takes the runs of every workspace with no node pool in use, and the gateway serves every
+takes the runs of every workspace with no pool in use, and the gateway serves every
 organisation.
 
 The gateway's key allows stored secrets, which a test run with a model key needs; a key
-that a person makes on **Nodes** never allows them, so a test run through a gateway added
-there ends before a machine starts it. For a workspace with no node pool in use, the
+that a person makes on **Machines** never allows them, so a test run through a gateway added
+there ends before a machine starts it. For a workspace with no pool in use, the
 set-up's step **Machines** shows the instance's pool as ready once the pool and the
 gateway each have a key in use. An instance admin checks them in **Instance settings ›
-Nodes**: each is ready when **State** shows **Running** or **Last seen**. If one shows
+Pool and gateway**: each is ready when **State** shows **Running** or **Last seen**. If one shows
 **Never seen**, open the logs of the pool and the gateway on the instance's host.
 
 The variables are read at boot. A malformed value, the same name for the pool and the
@@ -673,6 +674,12 @@ token, so private releases are not supported.
 The value is read at boot, so a change takes a restart. A release asked for from an
 address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 `integration_source_refused`, and a release found before is not added.
+<!-- /feature -->
+<!-- feature: factory -->
+
+Qory Apiary reads a public harness repository from its host over HTTPS, from public
+addresses only. Allow the Qory Apiary server outbound HTTPS to each host your harnesses
+use, such as `github.com:443`.
 <!-- /feature -->
 
 ### Sign-up and invitations
@@ -839,9 +846,10 @@ With the `factory` feature, both pages have more steps:
   **Name**, and **Continue** on the other steps, open the next step.
   - **Work sources** and **Destinations** show a card for each account that the
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
-    connect an adapter, open **Connect another source**, or **Connect another
-    destination**, select **Connect** beside the adapter, and follow the steps that the
-    column **About this step** lists under its name. **Choose** opens the account's
+    connect an adapter, select **Connect** beside it on the step, or, once one is
+    connected, on the page that **Connect another source**, or **Connect another
+    destination**, opens, and follow the steps that the column **About this step** lists under its
+    name. **Back** returns to the step. **Choose** opens the account's
     collections: choose **All repositories, including new ones**, in the adapter's word
     for its collections, or **Only selected** and tick them, then **Save**. All also
     assigns to the workspace each collection that the adapter lists for the account
@@ -966,8 +974,8 @@ entry in the activity. On the organisation's **People** page an owner suspends a
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
 open pages follow. **The access keys they added keep working**: an access key belongs to
-its node, not to a person, so an owner or an admin revokes it on the node's **Access key**
-tab if it should stop.
+its machine or pool, not to a person, so an owner or an admin revokes it on the machine's or
+pool's **Access key** tab if it should stop.
 
 The last owner of the organisation who may act is not suspended, made an admin or a member,
 or removed. Should every instance admin be locked out, `grant_instance_admin` is the way
@@ -1014,7 +1022,7 @@ boot with an error that does not name the variable.
 ## Load the demo into a test instance
 
 To try Qory Apiary with data in it, load the demo into a new instance: synthetic runs,
-people and nodes, all under `example.com` and other example names. Never load it into an
+people and machines, all under `example.com` and other example names. Never load it into an
 instance people work in.
 
 1. Set up the instance with the organisation name **Acme**. On Acme's overview, `/acme`,
@@ -1029,7 +1037,7 @@ instance people work in.
 
 The command fills Acme and its workspace Main: about 6,000 runs over the last 56 days in
 about 150 repositories, 11 more people at every level and two invitations pending, and
-nodes with their access keys. Dana (`dana@example.com`) is an owner of Acme, the instance's
+machines and pools with their access keys. Dana (`dana@example.com`) is an owner of Acme, the instance's
 organisation, so an instance admin.
 With mail set, each person the demo adds gets a log-in email, and each person it invites
 gets an invitation email, at their example address. The runs take the longest to write;
@@ -1043,16 +1051,18 @@ bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
 ```
 
 The command makes nothing and stops when the instance is not set up, its organisation is
-not Acme, Acme has no workspace Main yet, or Main already has runs or nodes. Otherwise it
+not Acme, Acme has no workspace Main yet, or Main already has runs or machines. Otherwise it
 prints what it made, and last the address to open.
 
 ## Backups
 
-Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
-three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
-`SECRET_KEY_BASE`, which `compose.yaml` keeps in the volume `keys`.
-[Backup and restore](backup.md) has the commands for the compose installation, its keys
-and an external Postgres, what is lost without each key, and a restore drill. A deleted account
+Postgres and the artifact store are the state: a `pg_dump` of the database and a copy of
+the store taken after it, the volume `artifacts` or the folder `QORY_ARTIFACTS_DIR` is set
+to, are a complete backup. The three values to keep beside them are
+`APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`, which
+`compose.yaml` keeps in the volume `keys`. [Backup and restore](backup.md) has the
+commands for the compose installation, its keys, its artifact store and an external
+Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so
 how long you keep dumps bounds how long a deletion takes to be complete. What the server
 deletes with age, and how to keep less or more, is in [Retention](retention.md).

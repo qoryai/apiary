@@ -3,8 +3,9 @@ defmodule Apiary.Repo.Migrations.KeepGateDecisionsAndEscalations do
 
   # What people decide at a stage of a work item's process (`Apiary.Stages`).
   #
-  # `gate_decisions`: a person's approval of a stage's gate, or their request for
-  # changes, with the stage and the process version it was made under. `versions` is the
+  # `gate_decisions`: a person's approval of a stage's gate, their request for changes,
+  # or their move of the work item to another stage, with the stage and the process
+  # version it was made under. `versions` is the
   # list of the public ids of the artifact versions an approval covers (`av_…`);
   # `artifact_version_id` the public id of the version a request for changes points at,
   # nil for none; `note` what the person wrote.
@@ -14,6 +15,10 @@ defmodule Apiary.Repo.Migrations.KeepGateDecisionsAndEscalations do
   # came from. Once a person acts on it, `resolution` is what they chose (`accept`,
   # `another_round`, `move_back`, `close` or `decline`), with who, when and their note.
   # At most one escalation of a work item is open.
+  #
+  # `stage_checks`: the Exists checks that failed at the end of a stage's sequence and
+  # started another round of its last loop, with the round they started and their gaps,
+  # which that round's run reads (`Apiary.Stages.notes/1`).
   #
   # Both follow their work item to another workspace, as its answers and confirmations do.
   @causes ~w(round_limit escalate check_failed run_stopped)
@@ -130,9 +135,44 @@ defmodule Apiary.Repo.Migrations.KeepGateDecisionsAndEscalations do
     create constraint(:escalations, :escalations_note_check,
              check: "note IS NULL OR char_length(note) BETWEEN 1 AND 4000"
            )
+
+    create table(:stage_checks, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+
+      add :organisation_id,
+          references(:organisations, type: :binary_id, on_delete: :delete_all),
+          null: false
+
+      add :workspace_id,
+          references(:workspaces,
+            type: :binary_id,
+            with: [organisation_id: :organisation_id],
+            match: :full,
+            on_delete: :delete_all
+          ),
+          null: false
+
+      add :work_item_id, :binary_id, null: false
+      add :stage_id, :text, null: false
+
+      add :process_version_id,
+          references(:process_versions, type: :binary_id, on_delete: :nothing),
+          null: false
+
+      add :round, :integer, null: false
+      add :gaps, :text, null: false
+      add :inserted_at, :utc_datetime_usec, null: false
+    end
+
+    work_item_key(:stage_checks)
+    create index(:stage_checks, [:work_item_id, :stage_id])
+    create index(:stage_checks, [:organisation_id, :workspace_id])
+    create index(:stage_checks, [:process_version_id])
+    create constraint(:stage_checks, :stage_checks_round_check, check: "round >= 1")
   end
 
   def down do
+    drop table(:stage_checks)
     drop table(:escalations)
     drop table(:gate_decisions)
   end

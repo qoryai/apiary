@@ -137,7 +137,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     @step_2_text "Run one command on the machine, or generate a key for a CI or another system."
 
-    @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each node, once you have added it."
+    @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each machine or pool, once you have added it."
 
     # The ids of step 2's buttons, in their order, and those shown as primary.
     defp ways(view) do
@@ -161,10 +161,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
-      assert has_element?(view, "#onboarding .q-step-current", "Add a node")
+      assert has_element?(view, "#onboarding .q-step-current", "Add a machine")
 
       assert text(view, "#onboarding") =~
-               "Nothing has posted to this workspace yet. A machine posts once it is connected to a node."
+               "Nothing has posted to this workspace yet. A machine posts once it is connected."
 
       assert has_element?(view, "#onboarding .q-steps li:nth-child(2)", "Connect it")
       assert text(view, "#onboarding") =~ @step_2_text
@@ -173,14 +173,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#onboarding-new-node[href='#{workspace_path(scope, "/nodes/new")}']",
-               "New node"
+               "#onboarding-new-node[href='#{workspace_path(scope, "/machines/new")}']",
+               "New machine"
              )
 
       assert has_element?(
                view,
-               "#onboarding-new-pool[href='#{workspace_path(scope, "/nodes/new-pool")}']",
-               "New node pool"
+               "#onboarding-new-pool[href='#{workspace_path(scope, "/machines/new-pool")}']",
+               "New pool"
              )
 
       refute has_element?(view, "#onboarding-nodes")
@@ -212,9 +212,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         view
         |> element("#onboarding-new-node")
         |> render_click()
-        |> follow_redirect(conn, workspace_path(scope, "/nodes/new"))
+        |> follow_redirect(conn, workspace_path(scope, "/machines/new"))
 
-      assert html =~ "New node"
+      assert html =~ "New machine"
     end
 
     test "no node, a member: no buttons, who adds one instead", %{scope: scope} = ctx do
@@ -225,7 +225,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(
                view,
                "#onboarding-members",
-               "An owner or admin adds nodes and connects them."
+               "An owner or admin adds machines and connects them."
              )
 
       assert text(view, "#onboarding") =~ @step_2_text
@@ -246,14 +246,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       pool_fixture(scope, %{name: "spot-runners"})
       node = node_fixture(scope, %{name: "build-01"})
       view = open(conn, scope)
-      tab = workspace_path(scope, "/nodes/#{node.public_id}/access-key")
+      tab = workspace_path(scope, "/machines/#{node.public_id}/access-key")
 
       assert has_element?(view, "#onboarding[data-step='2'] h2", "Send your first run")
-      assert has_element?(view, "#onboarding .q-step-done", "Add a node")
+      assert has_element?(view, "#onboarding .q-step-done", "Add a machine")
       assert has_element?(view, "#onboarding .q-step-current", "Connect it")
 
       assert text(view, "#onboarding") =~
-               "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
+               "A machine or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
 
       assert text(view, "#onboarding") =~ @step_2_text
 
@@ -498,7 +498,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_hook(view, "get_command", %{})
 
       assert view |> element("#flash-group") |> render() =~
-               "Only owners and admins connect a node."
+               "Only owners and admins connect a machine."
 
       refute has_element?(view, "#onboarding-command")
       assert AccessKeys.list_enrolment_codes(scope, node) == []
@@ -511,7 +511,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       node_fixture(scope, %{name: "build-01"})
       pool = pool_fixture(scope, %{name: "spot-runners"})
       view = open(conn, scope)
-      tab = workspace_path(scope, "/nodes/#{pool.public_id}/access-key")
+      tab = workspace_path(scope, "/machines/#{pool.public_id}/access-key")
 
       assert text(view, "#onboarding-target") == "spot-runners has no key yet."
       assert has_element?(view, "#onboarding-target a[href='#{tab}']", "spot-runners")
@@ -553,8 +553,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#onboarding-nodes[href='#{workspace_path(scope, "/nodes")}']",
-               "Go to nodes"
+               "#onboarding-nodes[href='#{workspace_path(scope, "/machines")}']",
+               "Go to Machines"
              )
 
       refute has_element?(view, "#onboarding-target")
@@ -590,7 +590,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='1']")
-      assert has_element?(view, "#onboarding .q-step-current", "Add a node")
+      assert has_element?(view, "#onboarding .q-step-current", "Add a machine")
       refute has_element?(view, "#onboarding .q-step-done")
       refute text(view, "#onboarding") =~ "The machine has verified with its key."
       refute text(view, "#onboarding") =~ "edge-01"
@@ -648,7 +648,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # The command is spent: the panel is the listening line alone.
       refute text(view, "#onboarding") =~ "What you ran on the machine"
       refute has_element?(view, "#onboarding-command")
-      assert has_element?(view, "#onboarding-nodes", "Go to nodes")
+      assert has_element?(view, "#onboarding-nodes", "Go to Machines")
       refute has_element?(view, "#onboarding-target")
       refute has_element?(view, "#onboarding-ways")
       refute has_element?(view, "#onboarding-members-key")
@@ -732,7 +732,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#onboarding")
       refute has_element?(view, "#onboarding-new-node")
       refute has_element?(view, "#onboarding-nodes")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ "/machines"
       refute render(view) =~ "Send your first run"
 
       assert text(view, ".q-onb-after") =~ "fill in once the first run lands"
@@ -751,13 +751,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_click(view, "get_command", %{})
 
       refute has_element?(view, "#onboarding")
-      refute render(view) =~ "Only owners and admins connect a node."
+      refute render(view) =~ "Only owners and admins connect a machine."
       refute render(view) =~ "Nothing was changed."
       assert Apiary.Repo.aggregate(Apiary.AccessKeys.EnrolmentCode, :count) == 0
 
       # Asked again, with the box gone, nothing is said either.
       render_click(view, "get_command", %{})
-      refute render(view) =~ "Only owners and admins connect a node."
+      refute render(view) =~ "Only owners and admins connect a machine."
     end
 
     test "hidden while the page is open, an idle key's row leaves, not struck", %{
@@ -780,7 +780,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#att-key-#{idle.id}")
       assert String.to_integer(text(view, "#attention-n")) == shown - 1
       refute render(view) =~ "Revoked."
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ "/machines"
     end
 
     test "shown again, the box is back", %{conn: conn, scope: scope} do
@@ -792,7 +792,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "To review leads nowhere on the nodes page, and to the Policy page for a policy item",
+    test "To review leads nowhere on the Machines page, and to the Policy page for a policy item",
          %{conn: conn, scope: scope} do
       idle = node_key(scope, "old-runner")
       long_ago(idle, 34)
@@ -831,7 +831,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
 
       refute has_element?(view, "#att-key-#{idle.id}")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ "/machines"
     end
 
     @tag needs: :security
@@ -888,7 +888,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                open(conn, scope),
-               "#attention-more[href='#{workspace_path(scope, "/nodes?sort=seen")}'][title='1 more item, on the nodes page']",
+               "#attention-more[href='#{workspace_path(scope, "/machines?sort=seen")}'][title='1 more item, on the Machines page']",
                "and 1 more"
              )
 
@@ -897,7 +897,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert text(view, "#attention-n") == "5"
       refute has_element?(view, "#attention-more")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ "/machines"
     end
   end
 
@@ -1386,7 +1386,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#attention-more[href='#{workspace_path(scope, "/nodes?sort=seen")}'][title='1 more item, on the nodes page']"
+               "#attention-more[href='#{workspace_path(scope, "/machines?sort=seen")}'][title='1 more item, on the Machines page']"
              )
 
       kinds =
@@ -1450,7 +1450,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "Open"
              )
 
-      # The idle key is the sixth: on the nodes page, not on this list.
+      # The idle key is the sixth: on the Machines page, not on this list.
       refute has_element?(view, "#att-key-#{idle.id}")
     end
 
@@ -1718,7 +1718,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#att-key-#{idle.id}") =~ "Never used in 34 days"
 
       revoke =
-        workspace_path(scope, "/nodes/#{node.public_id}/access-key/keys/#{idle.key_id}/revoke")
+        workspace_path(scope, "/machines/#{node.public_id}/access-key/keys/#{idle.key_id}/revoke")
 
       assert has_element?(
                view,

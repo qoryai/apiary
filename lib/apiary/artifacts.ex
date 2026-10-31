@@ -19,7 +19,8 @@ defmodule Apiary.Artifacts do
   #
   # `push(actor, work_item, type, files, opts)` stores a new version of the work item's
   # artifact of `type` and `opts[:name]`, `main` unless given, made in the stage
-  # `opts[:stage_id]`, with the writer's `opts[:note]`. `actor` is `{:run, run}`, a run of
+  # `opts[:stage_id]`, with the writer's `opts[:note]`. `opts[:expect_stage]`, where given,
+  # is the stage the caller read, nil for no stage. `actor` is `{:run, run}`, a run of
   # the queue (`Apiary.Dispatches.DispatchRun`) of that work item, or `{:person, scope}`,
   # a person who may `artifact.write` the work item (`Apiary.Access`), whose push writes
   # its entry in the audit trail. A run writes only the types in `opts[:writes]`, any type
@@ -47,7 +48,11 @@ defmodule Apiary.Artifacts do
   #      source read at most 64 KiB past the limit; a path that cannot be read,
   #      `{:invalid, {:unreadable, index}}`;
   #   7. each staged file passes its base view's format check, else
-  #      `{:invalid, {:format | :extension | :schema | :unreadable, index}}`;
+  #      `{:invalid, {:format | :extension | :unreadable, index}}`, or, for a structured
+  #      file its JSON Schema refuses, `{:invalid, {:schema, index, %{path: path,
+  #      error: error}}}`: the JSON pointer of the first failing value, at most 256
+  #      bytes, and the validator's message for it, at most 300 characters, both with
+  #      their control characters replaced (`Apiary.Artifacts.SchemaError`);
   #   8. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`.
   #
@@ -56,15 +61,19 @@ defmodule Apiary.Artifacts do
   # in, else `{:error, :not_found}`; the artifact found or made; the next number, one
   # more than the highest; the version and its files. The lock makes the transactions of
   # pushes to one work item run one after the other, so the numbers of an artifact are
-  # 1, 2, … with no gap. A refusal, or a failure of the transaction, writes no row; a
-  # file kept in the store before it stays there (a content address that a later version
-  # may share). A store with no root, or one that cannot write, is
+  # 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in another stage is
+  # `{:error, :stage_changed}`, and no row, audit entry or message is written; without
+  # it, the stage is not compared. A refusal, or a failure of the transaction, writes no
+  # row; a file kept in the store before it stays there (a content address that a later
+  # version may share). A store with no root, or one that cannot write, is
   # `{:error, :store_unavailable}`.
   #
-  # Once the rows are committed, `{:artifact_pushed, work_item_id, version_id}`, the work
-  # item's public id (`wi_…`) and the version's (`av_…`), goes to the topic of the work
-  # items of the work item's workspace (`Apiary.WorkItems.topic/1`), so its pages show the
-  # version.
+  # Once the push's transaction commits, `{:artifact_pushed, work_item_id, version_id}`,
+  # the work item's public id (`wi_…`) and the version's (`av_…`), goes to the work item's
+  # artifacts topic (`topic/1`), so its pages show the version. A push called inside an
+  # outer transaction sends the message when its transaction ends, before the outer one
+  # commits: a page that reads at once may not find the version yet, or find none should
+  # the outer transaction roll back.
   #
   # ## Reading
   #
@@ -75,7 +84,9 @@ defmodule Apiary.Artifacts do
   # public id (`av_…`), with its artifact and files; `open_file(file)` a file's stored
   # copy, a path or a stream of its bytes. Each version comes with its `user`, the
   # person who made it, and its `run`, the run of the queue that made it, where the row
-  # is there. These read no scope: the caller has read the work item through
+  # is there; that run comes with its `run`, the run its claim registered
+  # (`Apiary.Runs.Run`, with its id, public id and `dispatch_run_id` only), or nil before
+  # a claim. These read no scope: the caller has read the work item through
   # `Apiary.Access`.
   #
   # `exists?(work_item, stage_id, type)` is the Exists check of a stage's output: whether
@@ -96,6 +107,8 @@ defmodule Apiary.Artifacts do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
+
+  require Logger
 
   # The access actions of artifacts, of the feature `workflow_model` (`Apiary.Access`):
   # where the feature is off or hidden from the person, `authorize/3` refuses them as
@@ -288,7 +301,7 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec push(actor, WorkItem.t(), term, [file], keyword) ::
           {:ok, Version.t()}
-          | {:error, refusal | :not_found | :forbidden | :store_unavailable}
+          | {:error, refusal | :not_found | :forbidden | :store_unavailable | :stage_changed}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item),
@@ -305,19 +318,69 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # After the rows are committed, the pages of the work item's workspace hear of the new
-  # version on its work items' topic (`Apiary.WorkItems.topic/1`).
-  defp broadcast({:ok, %Version{artifact: artifact} = version} = pushed) do
-    work_item_id =
-      Repo.one!(from w in WorkItem, where: w.id == ^artifact.work_item_id, select: w.public_id)
+  # log_refusal/3 writes one warning to the server log for a refused push that a page
+  # shows with no cause, or as a store failure: the refusal's shape, the work item's
+  # public id and the type's name. Nothing of a file, a filename or a note is written: a
+  # text in the refusal is `"…"`, a list `[…]` (a charlist is text too), a changeset its
+  # schema and the fields with errors, an exception its module, and a type name that is
+  # not one (`Type.name?/1`) `"…"`.
+  @doc false
+  @spec log_refusal(WorkItem.t(), term, term) :: :ok
+  def log_refusal(%WorkItem{public_id: id}, type_name, refusal) do
+    Logger.warning(
+      "A push from Add a version failed: #{shape(refusal)}; " <>
+        "work item #{id}, type #{logged_type(type_name)}"
+    )
+  end
 
+  defp logged_type(name), do: if(Type.name?(name), do: name, else: ~s("…"))
+
+  defp shape(%Ecto.Changeset{data: %schema{}, errors: errors}) do
+    fields = errors |> Keyword.keys() |> Enum.uniq() |> Enum.map_join(", ", &Atom.to_string/1)
+    "changeset of #{inspect(schema)}, errors on #{fields}"
+  end
+
+  defp shape(%{__exception__: true, __struct__: module}), do: inspect(module)
+  defp shape(%{__struct__: module}), do: "%#{inspect(module)}{…}"
+  defp shape(value) when is_atom(value) or is_number(value), do: inspect(value)
+  defp shape(value) when is_binary(value), do: ~s("…")
+
+  defp shape(value) when is_tuple(value),
+    do: "{" <> (value |> Tuple.to_list() |> Enum.map_join(", ", &shape/1)) <> "}"
+
+  defp shape(value) when is_list(value), do: "[…]"
+
+  defp shape(value) when is_map(value), do: "%{…}"
+  defp shape(_value), do: "…"
+
+  # topic/1 is the PubSub topic of the work item's artifacts (`"artifacts:<work item
+  # id>"`, its internal id): after each push, `{:artifact_pushed, work_item_id,
+  # version_id}`, with the work item's public id (`wi_…`) and the version's (`av_…`). One
+  # topic per work item, so that only its pages get the message.
+  @doc false
+  @spec topic(WorkItem.t()) :: String.t()
+  def topic(%WorkItem{id: id}) when is_binary(id), do: "artifacts:" <> id
+
+  # subscribe/2 subscribes the caller to the work item's artifacts topic (`topic/1`), for
+  # a person who may read the work item (`work_item.read`): `:ok`, or `Apiary.Access`'s
+  # refusal.
+  @doc false
+  @spec subscribe(Scope.t(), WorkItem.t()) :: :ok | {:error, Access.reason()}
+  def subscribe(%Scope{} = scope, %WorkItem{} = work_item) do
+    with :ok <- Access.authorize(scope, :"work_item.read", work_item),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(work_item))
+  end
+
+  # After the push's transaction ends, the work item's pages hear of the new version
+  # (`topic/1`), with the work item's public id as the transaction read it.
+  defp broadcast({:ok, {%Version{} = version, %WorkItem{} = held}}) do
     Phoenix.PubSub.broadcast(
       Apiary.PubSub,
-      Apiary.WorkItems.topic(artifact.workspace_id),
-      {:artifact_pushed, work_item_id, version.public_id}
+      topic(held),
+      {:artifact_pushed, held.public_id, version.public_id}
     )
 
-    pushed
+    {:ok, version}
   end
 
   defp broadcast(refused), do: refused
@@ -380,12 +443,13 @@ defmodule Apiary.Artifacts do
     name = Keyword.get(opts, :name, "main")
     stage_id = Keyword.get(opts, :stage_id)
     note = normal_note(Keyword.get(opts, :note))
+    expect_stage = Keyword.fetch(opts, :expect_stage)
 
     cond do
       not Type.name?(name) -> {:error, {:invalid, :name}}
       not stage_id?(stage_id) -> {:error, {:invalid, :stage_id}}
       not note?(note) -> {:error, {:invalid, :note}}
-      true -> {:ok, %{name: name, stage_id: stage_id, note: note}}
+      true -> {:ok, %{name: name, stage_id: stage_id, note: note, expect_stage: expect_stage}}
     end
   end
 
@@ -513,6 +577,10 @@ defmodule Apiary.Artifacts do
                sha256: staged.sha256
              }}
 
+          {:error, {:schema, detail}} ->
+            store.discard(staged)
+            {:error, {:invalid, {:schema, index, detail}}}
+
           {:error, reason} ->
             store.discard(staged)
             {:error, {:invalid, {reason, index}}}
@@ -524,7 +592,11 @@ defmodule Apiary.Artifacts do
       {:error, :unreadable} ->
         {:error, {:invalid, {:unreadable, index}}}
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.error(
+          "The artifact store could not stage a file of type #{type.name}: #{shape(reason)}"
+        )
+
         {:error, :store_unavailable}
     end
   end
@@ -536,14 +608,15 @@ defmodule Apiary.Artifacts do
     |> Enum.reduce_while({:ok, []}, fn file, {:ok, acc} ->
       case store.commit(file.staged) do
         {:ok, key} -> {:cont, {:ok, [Map.put(file, :store_key, key) | acc]}}
-        {:error, _reason} -> {:halt, :error}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
     |> case do
       {:ok, stored} ->
         {:ok, Enum.reverse(stored)}
 
-      :error ->
+      {:error, reason} ->
+        Logger.error("The artifact store could not keep a staged file: #{shape(reason)}")
         Enum.each(staged, &store.discard(&1.staged))
         {:error, :store_unavailable}
     end
@@ -554,12 +627,13 @@ defmodule Apiary.Artifacts do
       now = DateTime.utc_now()
 
       with %WorkItem{} = held <- held_work_item(work_item),
+           :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
            {:ok, version} <- version(artifact, writer, fields, now),
            :ok <- insert_files(version, stored),
            :ok <- audit_push(writer, held, artifact, version) do
-        {:ok, Repo.preload(%{version | artifact: artifact}, files: files_query())}
+        {:ok, {Repo.preload(%{version | artifact: artifact}, files: files_query()), held}}
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error
@@ -576,6 +650,12 @@ defmodule Apiary.Artifacts do
         lock: "FOR UPDATE"
     )
   end
+
+  # The held work item's stage against `opts[:expect_stage]`, as `Keyword.fetch/2` read it:
+  # nil is a value, a work item with no stage, and `:error` is an option not given.
+  defp stage_kept(_held, :error), do: :ok
+  defp stage_kept(%WorkItem{stage_id: stage_id}, {:ok, stage_id}), do: :ok
+  defp stage_kept(_held, {:ok, _other}), do: {:error, :stage_changed}
 
   # A custom type locked `FOR SHARE` until the push commits, so a deletion of the type,
   # which locks it `FOR UPDATE` before it counts the artifacts of its name, runs before or
@@ -647,7 +727,13 @@ defmodule Apiary.Artifacts do
       end
 
     {count, _rows} = Repo.insert_all(ArtifactFile, rows)
-    if count == length(rows), do: :ok, else: {:error, :store_unavailable}
+
+    if count == length(rows) do
+      :ok
+    else
+      Logger.error("A push wrote #{count} of its #{length(rows)} file rows")
+      {:error, :store_unavailable}
+    end
   end
 
   defp audit_push(%{writer: :run}, _work_item, _artifact, _version), do: :ok
@@ -675,7 +761,9 @@ defmodule Apiary.Artifacts do
       from a in Artifact,
         where: a.work_item_id == ^id and a.workspace_id == ^workspace_id,
         order_by: [a.type, a.name],
-        preload: [versions: ^{versions_query(), [:user, :run, files: files_query()]}]
+        preload: [
+          versions: ^{versions_query(), [:user, run: [run: runs_query()], files: files_query()]}
+        ]
     )
   end
 
@@ -685,7 +773,7 @@ defmodule Apiary.Artifacts do
     Repo.all(
       from v in versions_query(),
         where: v.artifact_id == ^id,
-        preload: [:user, :run, files: ^files_query()]
+        preload: [:user, run: [run: ^runs_query()], files: ^files_query()]
     )
   end
 
@@ -700,7 +788,7 @@ defmodule Apiary.Artifacts do
             a.name == ^name,
         order_by: [desc: v.number],
         limit: 1,
-        preload: [:user, :run, artifact: a, files: ^files_query()]
+        preload: [:user, run: [run: ^runs_query()], artifact: a, files: ^files_query()]
     )
   end
 
@@ -713,9 +801,15 @@ defmodule Apiary.Artifacts do
     Repo.one!(
       from v in Version,
         where: v.public_id == ^id,
-        preload: [:artifact, :user, :run, files: ^files_query()]
+        preload: [:artifact, :user, run: [run: ^runs_query()], files: ^files_query()]
     )
   end
+
+  # The run a run of the queue registered when it was claimed (`Apiary.Runs.Run`), for its
+  # public id (`rn_…`) and its page: its id and public id, and `dispatch_run_id`, which
+  # the preload needs to match each run to its run of the queue.
+  defp runs_query,
+    do: from(r in Apiary.Runs.Run, select: struct(r, [:id, :public_id, :dispatch_run_id]))
 
   @doc false
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}

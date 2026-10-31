@@ -36,8 +36,10 @@ being one. Every variable named here is described in [Install and configure](ins
   every feature that is on by default. A feature that is off is absent for everybody on
   the instance, so decide before they arrive:
   [Install and configure](install.md#features).
-- **Postgres that is backed up.** The database is the only state. Schedule the dump, and
-  restore one into an empty database once, before it is needed.
+- **Postgres and the artifact store, backed up.** The database and the artifact store
+  (the volume `artifacts`, or the folder `QORY_ARTIFACTS_DIR` is set to) are the state.
+  Schedule the dump and a copy of the store after it, and restore both once, into an
+  empty database and an empty store, before they are needed.
 - **Set the instance up.** Until it is set up, every start logs its set-up link, "Set up
   Qory Apiary at …/setup/<code>.", the same each time; `docker compose logs apiary` shows
   it with `compose.yaml`. Open it as soon as the instance is up, since anyone who reads
@@ -55,6 +57,11 @@ being one. Every variable named here is described in [Install and configure](ins
   `INTEGRATION_URL_SOURCES=false` so that they are added from forges' releases alone; a
   release's download links, which its author chooses on GitLab and Codeberg, are still
   followed to any public https host: [Install and configure](install.md#integrations).
+<!-- /feature -->
+<!-- feature: factory -->
+- **Where public harnesses come from.** Qory Apiary reads a public harness repository
+  from its host over HTTPS, from public addresses only. Allow the Qory Apiary server
+  outbound HTTPS to each host your harnesses use, such as `github.com:443`.
 <!-- /feature -->
 - **The proxy's address.** Behind a reverse proxy, set `TRUSTED_PROXIES` to the address
   the proxy's connections come from; unset, every client counts as the proxy, and they

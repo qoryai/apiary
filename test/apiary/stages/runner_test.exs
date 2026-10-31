@@ -72,11 +72,82 @@ defmodule Apiary.Stages.RunnerTest do
       assert %{state: :done, actions: [:advance]} =
                Runner.step(stage([], gate: %{"kind" => "none"}), nil, :enter)
     end
+  end
 
-    test "a stage with no workflow and a missing required output escalates check_failed" do
-      outcome = Runner.step(stage([]), nil, :enter, %{failed_checks: ["proposal"]})
-      assert %{state: :escalated, actions: [{:escalate, :check_failed, gaps}]} = outcome
-      assert gaps == "No proposal was stored in this stage."
+  describe "a stage with no workflow (§ 4)" do
+    @none %{"kind" => "none"}
+
+    test "with a missing required output waits at its gate and escalates nothing" do
+      outcome = Runner.step(stage([]), nil, :enter, %{failed_checks: ["acceptance-criteria"]})
+      assert outcome == %{state: :at_gate, position: pos(0, nil, 1), actions: []}
+    end
+
+    test "with gate none waits at its gate too while an output is missing" do
+      outcome =
+        Runner.step(stage([], gate: @none), nil, :enter, %{failed_checks: ["acceptance-criteria"]})
+
+      assert %{state: :at_gate, actions: []} = outcome
+    end
+
+    test "a person's version runs the checks again: gate none passes once the outputs exist" do
+      seq = stage([], gate: @none)
+      missing = %{failed_checks: ["acceptance-criteria", "mockup"]}
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(seq, pos(0, nil, 1), :version_added, missing)
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(seq, pos(0, nil, 1), :version_added, %{failed_checks: ["mockup"]})
+
+      assert %{state: :done, position: pos(0, nil, 1), actions: [:advance]} ==
+               Runner.step(seq, pos(0, nil, 1), :version_added, %{})
+    end
+
+    test "a person's version keeps a person gate waiting, with or without the outputs" do
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(stage([]), pos(0, nil, 1), :version_added, %{failed_checks: ["x"]})
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(stage([]), pos(0, nil, 1), :version_added, %{})
+    end
+
+    test "a version at the gate of a stage with workflows escalates nothing" do
+      seq = stage([wf("a")], gate: @none)
+
+      assert %{state: :at_gate, position: pos(1, nil, 1), actions: []} ==
+               Runner.step(seq, pos(1, nil, 1), :version_added, %{failed_checks: ["x"]})
+    end
+
+    test "request changes goes back to the gate while an output is missing" do
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(stage([]), pos(0, nil, 1), :request_changes, %{failed_checks: ["x"]})
+    end
+
+    test "people?/1 is a stage with no workflow" do
+      assert Runner.people?(stage([]))
+      assert Runner.people?(Map.delete(stage([]), "sequence"))
+      refute Runner.people?(stage([wf("a")]))
+      refute Runner.people?(explore())
+    end
+
+    test "a stage that ran workflows still escalates a missing output, check_failed" do
+      outcome =
+        Runner.step(stage([wf("a")]), pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+          failed_checks: ["proposal"]
+        })
+
+      assert outcome == %{
+               state: :escalated,
+               position: pos(1, nil, 1),
+               actions: [{:escalate, :check_failed, "No proposal was stored in this stage."}]
+             }
+
+      seq = stage([wf("a")], gate: @none)
+
+      assert %{state: :escalated, actions: [{:escalate, :check_failed, _gaps}]} =
+               Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{
+                 failed_checks: ["proposal"]
+               })
     end
   end
 
@@ -201,7 +272,21 @@ defmodule Apiary.Stages.RunnerTest do
           failed_checks: ["demo-video"]
         })
 
-      assert queued(outcome) == {"capture-demo", 1, 0, 2}
+      assert [{:checks_failed, 2, "No demo-video was stored in this stage."} | queue] =
+               outcome.actions
+
+      assert queued(%{outcome | actions: queue}) == {"capture-demo", 1, 0, 2}
+    end
+
+    test "a failure that starts a round waiting for its workflow still keeps the gaps" do
+      outcome =
+        Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :passed, nil}}, %{
+          failed_checks: ["demo-video"],
+          undeclared: ["capture-demo"]
+        })
+
+      assert %{state: :waiting_workflow, position: %{round: 2}} = outcome
+      assert [{:checks_failed, 2, "No demo-video was stored in this stage."}] = outcome.actions
     end
 
     test "a failure at the round limit escalates round_limit at the end" do
@@ -225,7 +310,8 @@ defmodule Apiary.Stages.RunnerTest do
       outcome =
         Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, nil, nil}}, %{failed_checks: ["x"]})
 
-      assert queued(outcome) == {"a", 0, 0, 2}
+      assert [{:checks_failed, 2, _gaps} | queue] = outcome.actions
+      assert queued(%{outcome | actions: queue}) == {"a", 0, 0, 2}
     end
 
     test "passing checks go to a person gate, or pass on with gate none" do
@@ -263,6 +349,12 @@ defmodule Apiary.Stages.RunnerTest do
       seq = stage([loop([wf("a")]), wf("b")])
       assert queued(Runner.step(seq, pos(0, 0, 3), {:accept, :round_limit})) == {"b", 1, nil, 3}
       assert %{state: :at_gate} = Runner.step(build(), pos(1, 1, 3), {:accept, :round_limit})
+
+      # After the last loop, the gate opens without the checks; a failed one stays shown.
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(build(), pos(1, 1, 3), {:accept, :round_limit}, %{
+                 failed_checks: ["demo"]
+               })
     end
 
     test "accept at the end goes to the gate without the checks" do
@@ -363,6 +455,26 @@ defmodule Apiary.Stages.RunnerTest do
         Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{time_limit: nil, access: :read}}}).actions
 
       assert spec.access == :read
+    end
+
+    test "limits/3 is the lowered limits of the entry at a position" do
+      seq = build()
+      declaration = %{time_limit: "20m", access: :write}
+
+      seq =
+        put_in(seq, ["sequence"], [
+          wf("implement", %{"time_limit" => "1h"}),
+          loop([wf("capture-demo", %{"access" => "read"}), wf("fix-demo-findings")])
+        ])
+
+      assert Runner.limits(seq, pos(0, nil, 1), declaration) == %{
+               time_limit: 1200,
+               access: :write
+             }
+
+      assert Runner.limits(seq, pos(1, 0, 2), nil) == %{time_limit: nil, access: :read}
+      assert Runner.limits(seq, pos(1, 1, 2), nil) == %{time_limit: nil, access: nil}
+      assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
     end
 
     test "reads durations" do
