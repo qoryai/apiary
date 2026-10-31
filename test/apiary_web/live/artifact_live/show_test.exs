@@ -273,6 +273,23 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#{view_id}-1 h3", "Beta findings")
     end
 
+    test "stops reading the history once the reader loses the work item", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      %{user: member, membership: membership} = member_fixture(ctx.scope, :member)
+      {:ok, view, _html} = live(log_in_user(build_conn(), member), page(ctx, version))
+      listeners = Registry.lookup(Apiary.PubSub, Artifacts.topic(ctx.work_item))
+      assert Enum.any?(listeners, fn {pid, _value} -> pid == view.pid end)
+
+      Apiary.Repo.delete!(membership)
+      newer = pushed!(ctx, "explainer", [{"plan.md", "# Second"}])
+
+      refute has_element?(view, "#artifact-history-#{newer.public_id}")
+
+      # The page no longer listens on the work item's artifacts topic.
+      listeners = Registry.lookup(Apiary.PubSub, Artifacts.topic(ctx.work_item))
+      refute Enum.any?(listeners, fn {pid, _value} -> pid == view.pid end)
+    end
+
     test "is read again when a version is pushed to its work item", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))

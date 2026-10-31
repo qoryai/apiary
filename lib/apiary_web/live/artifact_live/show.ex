@@ -13,7 +13,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   #
   # **Live.** The page listens on its work item's artifacts topic
   # (`Apiary.Artifacts.subscribe/2`) and reads the history again on
-  # `{:artifact_pushed, work_item_id, version_id}`.
+  # `{:artifact_pushed, work_item_id, version_id}`, while `work_item.read`, asked of the
+  # reader as they are now, passes; once it fails, the page stops listening.
   #
   # The module reference leaves out this module of the `workflow_model` feature.
   @moduledoc false
@@ -196,11 +197,21 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
   @impl true
   def handle_info({:artifact_pushed, work_item_id, _version_id}, socket) do
-    work_item = socket.assigns.work_item
+    %{work_item: work_item, current_scope: scope} = socket.assigns
 
-    if work_item_id == work_item.public_id,
-      do: {:noreply, load_history(socket)},
-      else: {:noreply, socket}
+    cond do
+      work_item_id != work_item.public_id ->
+        {:noreply, socket}
+
+      Access.authorize(scope, :"work_item.read", work_item) == :ok ->
+        {:noreply, load_history(socket)}
+
+      # The reader can no longer read the work item: the page stops listening, and shows
+      # the history it had.
+      true ->
+        Phoenix.PubSub.unsubscribe(Apiary.PubSub, Artifacts.topic(work_item))
+        {:noreply, socket}
+    end
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
