@@ -39,7 +39,9 @@ defmodule Apiary.Deletion.Tables do
   # configurations before the run configurations they were composed from; the run
   # configurations and the policy's rules
   # before the targets, and so are the pins; the runs before the runs of the queue they
-  # name, a dispatch's machine log before the dispatch, the dispatches before the runs of
+  # name; an artifact's files before its versions, its versions before it, and the
+  # versions before the runs of the queue they link to; a dispatch's machine log before
+  # the dispatch, the dispatches before the runs of
   # the queue, the node pools and the access keys they name, and the runs of the queue
   # before their work items; the environment records before the
   # node pools and the collections they name; a node's instances before the access keys
@@ -51,7 +53,8 @@ defmodule Apiary.Deletion.Tables do
   # and the workspaces they name; an adapter's collections, the
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
-  # item; a connection's workspaces before the connection, and the connections before the
+  # item, and so are its artifacts and the workspace's artifact types; a connection's
+  # workspaces before the connection, and the connections before the
   # releases, the service definitions and the secrets they name; everything of a
   # workspace before the workspace.
   #
@@ -72,6 +75,9 @@ defmodule Apiary.Deletion.Tables do
     {"run_configurations", :workspace},
     {"run_credentials", :workspace},
     {"runs", :workspace},
+    {"artifact_files", :workspace},
+    {"artifact_versions", :workspace},
+    {"artifacts", :workspace},
     {"dispatch_machine_logs", :workspace},
     {"dispatches", :workspace},
     {"dispatch_runs", :workspace},
@@ -83,6 +89,7 @@ defmodule Apiary.Deletion.Tables do
     {"model_choices", :workspace},
     {"time_limits", :workspace},
     {"stacks", :workspace},
+    {"artifact_types", :workspace},
     {"work_items", :workspace},
     {"work_item_counters", :workspace},
     {"retention_runs", :workspace},
