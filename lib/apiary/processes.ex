@@ -32,15 +32,17 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   A stage's sequence names workflows that the workspace's harness declares
-  (`declared_workflows/1`, `workflow_declaration/2`). A save keeps a name the harness
-  does not declare; `placement_check/3` lists it, as it lists a type the workspace does
-  not have and an input that no earlier stage outputs.
+  (`declared_workflows/1`, `workflow_declaration/2`), as the workspace keeps them from
+  the last read of its harness source (`record_declared/2`, `declared_snapshot/1`). A
+  save keeps a name the harness does not declare; `placement_check/3` lists it, as it
+  lists a type the workspace does not have and an input that no earlier stage outputs.
   """
 
   import Ecto.Query, warn: false
 
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
@@ -125,6 +127,9 @@ defmodule Apiary.Processes do
   # workflows yet, so `declared_workflows/1` adds it by hand. Remove this once that stack
   # lists it.
   @qory_workflows ["explore-a-ticket"]
+
+  # A snapshot keeps at most this many names; a read lists at most 20 stacks.
+  @max_declared 1_000
 
   @typedoc "A process document, decoded JSON with string keys."
   @type document :: map
@@ -537,7 +542,9 @@ defmodule Apiary.Processes do
   assign/3 makes `work_item` run under `version`, a version of its workspace that is not
   dropped, under `process.edit`. The work item keeps its stage, its stage's state and its
   place in the stage's sequence; a run in progress finishes under the version it started
-  with. `{:ok, work_item}`, unchanged where it is on the version already;
+  with. The work item's runs queued and not yet claimed (`:waiting`) move to `version`
+  with it; a run claimed or later keeps its version. `{:ok, work_item}`, unchanged
+  where it is on the version already;
   `{:error, {:missing_stage, stage_id}}` where `version` does not have the work item's
   stage; `{:error, :dropped}` for a dropped version; or a reason of `Apiary.Access`.
   """
@@ -564,6 +571,13 @@ defmodule Apiary.Processes do
                    work_item
                    |> Ecto.Changeset.change(process_version_id: version.id)
                    |> Repo.update(),
+                 {_runs, _} <-
+                   Repo.update_all(
+                     from(r in DispatchRun,
+                       where: r.work_item_id == ^work_item.id and r.state == :waiting
+                     ),
+                     set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
+                   ),
                  {:ok, _entry} <-
                    Audit.record(Repo, scope, :"process.edit", assigned, %{
                      before: %{process_version: before.number},
@@ -756,31 +770,90 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   @doc """
+  record_declared/2 keeps `names` as the workflows the workspace's harness source lists,
+  read now: it replaces the names the workspace kept, with the time of this read
+  (`declared_snapshot/1`). Call it after a read of the workspace's harness source
+  succeeds: Workspace settings > Workflow calls it for the stack the saved workflow's
+  document extends, read or saved there, and for no other source a person tries. Each
+  name is kept once, sorted, at most 1,000. `:ok`.
+  """
+  @spec record_declared(%Workspace{}, [String.t()]) :: :ok
+  def record_declared(%Workspace{id: id, organisation_id: organisation_id}, names)
+      when is_list(names) do
+    names =
+      names |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort() |> Enum.take(@max_declared)
+
+    {_one_or_none, _} =
+      Repo.update_all(
+        from(w in "workspaces",
+          where: w.id == type(^id, :binary_id),
+          where: w.organisation_id == type(^organisation_id, :binary_id)
+        ),
+        set: [declared_workflows: names, declared_workflows_read_at: DateTime.utc_now()]
+      )
+
+    :ok
+  end
+
+  @doc """
+  declared_snapshot/1 is the workflow names the workspace kept at the last read of its
+  harness source (`record_declared/2`): `%{names: names, read_at: time}`, or nil before
+  the first read. It covers only the workspace's harness source, the stack the workflow
+  saved on Workspace settings > Workflow extends: not a harness file of a repository,
+  and not the stack chosen for a target.
+  """
+  @spec declared_snapshot(%Workspace{}) :: %{names: [String.t()], read_at: DateTime.t()} | nil
+  def declared_snapshot(%Workspace{id: id}) do
+    Repo.one(
+      from w in "workspaces",
+        where: w.id == type(^id, :binary_id) and not is_nil(w.declared_workflows_read_at),
+        select: %{
+          names: w.declared_workflows,
+          read_at: type(w.declared_workflows_read_at, :utc_datetime_usec)
+        }
+    )
+  end
+
+  @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
-  sorted: explore-a-ticket, of the Qory harness, and the workflow saved on the
-  workspace's Workflow page, at the workspace or a target of it. Qory Apiary keeps no
-  other list of what a harness declares: reading one means reading the harness's stack
-  files.
+  sorted: explore-a-ticket, of the Qory harness; the names of the workspace's snapshot
+  (`declared_snapshot/1`), which covers only the workspace's harness source; and the
+  workflow saved on the workspace's Workflow page, at the workspace or a target of it.
+  Before the first snapshot, the names are explore-a-ticket and the saved workflow.
   """
   @spec declared_workflows(%Workspace{}) :: [String.t()]
   def declared_workflows(%Workspace{} = workspace) do
-    (@qory_workflows ++ Enum.map(saved_workflows(workspace), & &1.workflow))
+    workspace
+    |> declared_names(saved_workflows(workspace))
     |> Enum.uniq()
     |> Enum.sort()
+  end
+
+  # Transition: the saved workflow is added by hand, as explore-a-ticket is, for a
+  # workspace with no snapshot or a snapshot older than its save. Remove it once the
+  # snapshot is written wherever a workspace's harness is chosen or saved.
+  defp declared_names(workspace, saved) do
+    snapshot =
+      case declared_snapshot(workspace) do
+        %{names: names} -> names
+        nil -> []
+      end
+
+    @qory_workflows ++ snapshot ++ Enum.map(saved, & &1.workflow)
   end
 
   @doc """
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
-  the level recorded with the saved workflow, nil where none is;
-  `time_limit`, `reads` and `writes` are nil, since Qory Apiary keeps none of them: nil
-  `reads` and `writes` mean any type.
+  the level recorded with the saved workflow where one is, else nil: the level the
+  workflow declares in its stack. `time_limit`, `reads` and `writes` are nil, since Qory
+  Apiary keeps none of them: nil `reads` and `writes` mean any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
     saved = saved_workflows(workspace)
 
-    if name in @qory_workflows or Enum.any?(saved, &(&1.workflow == name)) do
+    if name in declared_names(workspace, saved) do
       access =
         saved
         |> Enum.filter(&(&1.workflow == name))
