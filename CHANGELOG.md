@@ -479,7 +479,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 - The guides Install and configure and Hosting checklist are only for signed-in instance
   admins: `/docs` leads an instance admin to `/docs/admin`, which has every guide, and
-  answers anyone else 404 there. The public documentation leaves them out of its pages,
+  gives anyone else 404 there. The public documentation leaves them out of its pages,
   sidebar and search, and a link to them is its words. `mix docs` builds both trees. The
   guides stay in the repository's `guides` directory.
 - An organisation's address follows its name, as a workspace's does. A rename in

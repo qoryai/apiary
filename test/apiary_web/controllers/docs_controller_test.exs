@@ -252,6 +252,16 @@ defmodule ApiaryWeb.DocsControllerTest do
       assert conn |> get("/docs/admin/install.html") |> html_response(404) =~ "Not Found"
     end
 
+    test "the 404 there is the usual page, as for any path under /docs", %{conn: conn} do
+      public = conn |> get("/docs/install.html") |> html_response(404)
+      admin = conn |> get("/docs/admin/install.html") |> html_response(404)
+      title = &Regex.run(~r{<title[^>]*>(.*?)</title>}s, &1, capture: :all_but_first)
+
+      assert [_title] = title.(admin)
+      assert title.(admin) == title.(public)
+      assert admin =~ ~s(<link) and admin =~ "Not Found"
+    end
+
     test "a visitor who is not signed in is not found there", %{conn: conn} do
       assert redirected_to(get(conn, ~p"/docs")) == "/docs/index.html"
       assert conn |> get("/docs/admin") |> html_response(404) =~ "Not Found"

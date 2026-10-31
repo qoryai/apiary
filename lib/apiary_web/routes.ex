@@ -99,9 +99,11 @@ defmodule ApiaryWeb.Routes do
       end
 
       # The files of the documentation for instance admins (`/docs/admin`): the signed-in
-      # person, with no `accepts`, since its pages load scripts, styles and fonts.
+      # person, with no `accepts`, since its pages load scripts, styles and fonts. The root
+      # layout is the one the usual 404 page has.
       pipeline :docs_admin do
         plug :fetch_session
+        plug :put_root_layout, html: {ApiaryWeb.Layouts, :root}
         plug :put_secure_browser_headers
         plug :fetch_current_scope_for_user
       end
