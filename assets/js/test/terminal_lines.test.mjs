@@ -14,7 +14,7 @@ const lineOf = text => new LineBuffer().push(encode(`${text}\n`))[0]
 const words = {bytes: "%{number} B", kilobytes: "%{number} kB", megabytes: "%{number} MB"}
 const number = (n, digits) => n.toFixed(digits)
 // A row without the sequences the view adds, which hold its only ESC, and its line ending.
-const visible = text => text.replace(/\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r\n$/, "")
+const visible = text => text.replace(/\x1b\]8;;\x1b\\/g, "").replace(/\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r\n$/, "")
 
 test("a chunk that ends inside a line keeps the line whole", () => {
   const lines = new LineBuffer()
@@ -120,6 +120,10 @@ test("a preview cut in a pair of surrogates leaves no half of a character", () =
 const HOSTILE = '{"type":"re\\u001b[2Jsult","subtype":"\\u001b]0;x\\u0007","result":"A\\u001b]0;x\\u0007B\\u001b[2JC\\u009b2JD\\u007fE\\u0090F"}'
 
 const controls = text => [...text].filter(c => /[\u0000-\u001f\u007f-\u009f]/.test(c))
+
+test("a row ends a hyperlink that a line before it left open", () => {
+  assert.ok(row(entry(lineOf('{"type":"a"}')), 80, "1 B").startsWith("\x1b\\\x1b]8;;\x1b\\"))
+})
 
 test("no decoded value in a row has a control character", () => {
   const line = entry(lineOf(HOSTILE))

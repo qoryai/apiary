@@ -152,8 +152,8 @@ export const size = (bytes, words, number) => {
 }
 
 // A row in `width` columns: the marker, the names, the preview and the size, on one line of
-// the screen. It starts by ending any sequence a line before it left open, so what passes
-// through cannot swallow a row or colour it.
+// the screen. It starts by ending any sequence, hyperlink and colour a line before it left
+// open, so what passes through cannot swallow a row, link it or colour it.
 export const row = (line, width, sizeWords) => {
   const mark = line.open ? "v" : ">"
   const head = line.names ? `${mark} ${line.names}` : mark
@@ -161,7 +161,7 @@ export const row = (line, width, sizeWords) => {
   const preview = line.preview && room >= 8 ? cut(line.preview, room) : ""
   const middle = preview ? `  ${preview}` : ""
   return (
-    `\x1b\\\x1b[0m\x1b[90m${mark}\x1b[39m\x1b[1m${head.slice(1)}\x1b[22m${middle}` +
+    `\x1b\\\x1b]8;;\x1b\\\x1b[0m\x1b[90m${mark}\x1b[39m\x1b[1m${head.slice(1)}\x1b[22m${middle}` +
     `  \x1b[90m${sizeWords}\x1b[0m\r\n`
   )
 }
