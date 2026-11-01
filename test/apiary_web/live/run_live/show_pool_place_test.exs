@@ -3,8 +3,9 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
   Where a run ran, wherever the pages show a run's host (`ApiaryWeb.RunComponents.place_of/1`,
   `Apiary.Runs.Place`): for a run a node pool's dispatch handed over, the pool's name,
   never the host its `run.started` reported; for any other run, that host. The run page's
-  header, its Run started item and its Details tab's Host row, the runs list's Host column,
-  its preview and its Filter, a target's runs and its Machines, and a key's hosts.
+  header, its Run started item and its Details tab's Host row, the runs list's preview,
+  its Filter and its Machine or pool column, a target's runs and its Machines, and a key's
+  hosts.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -248,17 +249,24 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
     refute html =~ "mac-pool"
   end
 
-  test "the runs list's Host column: a pool's run shows the pool's name, any other run its host",
-       %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run} do
+  test "the runs list has no Host column: a pool's run names the pool under Machine or pool",
+       %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run, key: key} do
+    # The run of the pool's dispatch ran on the pool, the node of its access key.
+    {1, _rows} =
+      Apiary.Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^pool_run.id),
+        set: [node_id: key.node_id]
+      )
+
     lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
-    pool_cell = lv |> element("#run-#{pool_run.public_id} .q-rl-host") |> render()
-    assert pool_cell =~ "mac-pool"
-    refute pool_cell =~ @machine
+    refute has_element?(lv, "#runs th", "Host")
+    refute has_element?(lv, "#run-#{pool_run.public_id} .q-rl-host")
 
-    local_cell = lv |> element("#run-#{local_run.public_id} .q-rl-host") |> render()
-    assert local_cell =~ @laptop
-    refute local_cell =~ "mac-pool"
+    pool_row = lv |> element("#run-#{pool_run.public_id}") |> render()
+    refute pool_row =~ @machine
+    assert lv |> element("#run-#{pool_run.public_id} .q-rl-c5") |> render() =~ "mac-pool"
+
+    refute lv |> element("#run-#{local_run.public_id}") |> render() =~ "mac-pool"
   end
 
   test "the target page's runs: a pool's run shows the pool's name, any other run its host",

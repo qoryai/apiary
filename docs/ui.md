@@ -605,7 +605,8 @@ version in force is exported; another version's path sends on to it.
   screen reader hears what a view, a filter or a search left; an empty list says its
   empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `started:>2026-09-01`, `denied:yes`;
+  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `item:3` (a work item's
+  number, `item:#3` too), `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
   case (a run's id, title or target; a destination's host or path). A run's id is the start
@@ -617,7 +618,8 @@ version in force is exported; another version's path sends on to it.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
   a menu, each section searches its values on the server over every value there is,
   fifty shown and more on asking, each counted under the other filters
-  (`RunComponents.filter_options/1`).
+  (`RunComponents.filter_options/1`). The runs list's Work item section lists the work
+  items of the runs ("#3 Say hello") and sets `item:`.
 - **The rail** (`<.target_rail>`, from 1280 px) holds the targets with their counts under
   every filter but the target, in the list's unit: runs on the runs list ("Most runs"),
   destinations on Network access ("Most destinations"), as its views and its Filter
@@ -625,17 +627,42 @@ version in force is exported; another version's path sends on to it.
   first under Pinned (`counts.pins`), then the busiest twenty and "n more", the rail's
   headings under an `<h2>` for a screen reader so the outline never skips a level.
   Choosing one sets the target; below 1280 px the Filter menu's Target section does it,
-  never both.
-- **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
-  target after it until the table is 1000 px wide, then in a column; its state a dot
-  (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. Completed is its green dot alone, the word for a screen reader;
-  Cancelled shows its word, muted, and a grey dot.
-  What the run says it is about is a muted line under them, only when it names a kind or a
-  subject: the kind, then up to two subjects, each its type and ref
-  as given ("pull request #412"), then "+N more", as text and never a link, since the
-  title's link covers the row. Below 640 px it names one subject, so the count stays in
-  sight; the whole line is its tooltip.
+  never both. The runs list shows its rail only where a run under the other filters has
+  a target, or where a target is chosen; where every run is unassigned there is no rail.
+- **A run is one line** (`<.runs_table>` with `Apiary.Runs.list_facts/2`), in the
+  columns State, Run, Workflow, Work item, Started by, Runtime, Started, Duration and
+  Denied. The state is a dot and its word for every state, Completed included; Cancelled
+  shows its word muted and a grey dot. Run is the run's `rn_` id, the link to its page,
+  which covers the row. Workflow is the workflow the claim handed to the machine, in the
+  mono font (`explore-a-ticket`, `hello`): the run's harness walk's workflow, only while
+  that walk is resolved from the target's harness file, a setting or the built-in
+  harness; "Prebuild", muted, for an environment build; "n/a" for any other run (a walk
+  pending or failed, a walk that resolved to no workflow, a run queued before walks were
+  kept, a direct `qory run`). With the workflow model, the stage that placed the run is a
+  muted line under it, "Build", a middle dot and "round 2" inside a loop, the stage alone outside one, only
+  where the stage's name is not the workflow's name or its first word (Explore with
+  explore-a-ticket has none). Work item is "#3 Say hello", a link to the work item for a
+  reader who may read work items; a work item that moved to another workspace shows its
+  title alone, with no number, no link and no target; a run with none shows the title the run gave, with what
+  it is about (its kind and up to two subjects, as text) muted under it, else "No work
+  item". Started by says how the run started: "Taken in by dana", "Taken in again by
+  dana", "Attempt 2 of 3, after answers from dana", "Explore again by dana", "Test run by
+  dana" (the two take in texts only for the run a take in queued, at the start of the
+  first stage),
+  "The workspace's process" (any other run the stage runner placed), "Queued again after a missing image", "qory run on a machine" (a run of no
+  queue), each person by the short form of their address, "Former member" for one no
+  longer there, else "n/a". Target (Repository in a software workspace) shows only where
+  a run of the page has a target, from its start's labels, else from its work item in this
+  workspace. There
+  is no Host column; the Host filter stays, and the Machine or pool column (from 1300 px)
+  names the instance's Qory Pool. Where the table is narrow the columns give way in
+  this order: Runtime below 1100 px, Target below 1000, Started by below 900, which then
+  shows muted under the work item. Below 640 px a run is a card: its id and its workflow
+  (the id, a middle dot and `explore-a-ticket`; nothing after the id for "n/a") and its state; its work
+  item; when it started and how long it ran; its denials when it has any. Another list of
+  runs, such as a machine's recent runs, keeps the line it had: the title, else the id,
+  the target after it, what the run is about under it, and Runtime and Host from 1150
+  px.
 - **A destination is one line** (`<.connections_table>`, `RunComponents.connection_row/1`):
   its host in mono, the port faint and the path muted, the only strong text; its runs and
   attempts muted numbers; allowed and denied a thin split with its two numbers, the denied
