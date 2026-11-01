@@ -89,7 +89,7 @@ defmodule ApiaryWeb.PreparationComponents do
             state="succeeded"
             name={gettext("Machine requested")}
             at={@preparation.machine.requested_at}
-            duration_ms={0}
+            duration_ms={@preparation.machine.requested_ms}
           >
             <dl class="q-prep-facts">
               <dt>{gettext("Pool")}</dt>

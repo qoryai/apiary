@@ -1710,7 +1710,8 @@ id".
   from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
   content while a pending run has no event. One row per step, in the order the steps ran:
   Machine requested (the claim, with the pool and the machine type, "pool default" while
-  the claim answer has none) and Machine started (from the starter's `dispatched` to the
+  the claim answer has none; its duration runs to the starter's `dispatched`, and is
+  empty without one) and Machine started (from the starter's `dispatched` to the
   redemption of the run's code) for a run a pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
