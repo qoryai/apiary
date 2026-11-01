@@ -16,6 +16,14 @@ defmodule Apiary.Processes.TypeTemplates do
 
   A save (`save/4`) is a new version, the newest at once; there is no trial.
 
+  ## Texts
+
+  Each version also keeps the type's name, summary and description, the "How it works"
+  text (`Apiary.Processes.TypeTemplate`). A copy of the release's default keeps none, and
+  a page shows the texts the release ships in code instead (`Apiary.Processes.type_texts/1`).
+  A save keeps the texts it is given, or the newest version's; a change of a text alone is
+  a new version too.
+
   ## Who
 
   Reading asks nothing: every person who creates a workspace sees its type's newest
@@ -55,30 +63,40 @@ defmodule Apiary.Processes.TypeTemplates do
     {"verdict", :structured}
   ]
 
+  @texts [:name, :summary, :description]
+
   @typedoc "A type and its newest version, as `list/0` gives them."
   @type entry :: %{type: String.t(), name: String.t(), newest: TypeTemplate.t()}
 
   @typedoc """
   Why a save is refused: `:forbidden`, for anyone but an instance admin or where the
   feature `workflow_model` is off; `:stale`, when a version newer than `based_on` exists;
-  `:unknown_type`, for a key no type has; or the document's errors, in the shape of
+  `:unknown_type`, for a key no type has; `{:too_long, text, limit}`, for a text over its
+  limit (`Apiary.Processes.TypeTemplate.limits/0`); or the document's errors, in the shape of
   `Apiary.Processes.validate/1`'s, with `:named_approvers` for a gate that lists people
-  and `:unchanged` for the document of the newest version.
+  and `:unchanged` for the document and the texts of the newest version.
   """
-  @type reason :: :forbidden | :stale | :unknown_type | [Processes.error()]
+  @type reason ::
+          :forbidden
+          | :stale
+          | :unknown_type
+          | {:too_long, TypeTemplate.text(), pos_integer}
+          | [Processes.error()]
 
   ## Reading
 
   @doc """
   list/0 is every workspace type, in the order a person picks one
-  (`Apiary.Lingo.Domain.choices/0`): its key, its name (`c:Apiary.Lingo.Domain.type_name/0`,
-  translated in the locale of the caller's process) and its newest version.
+  (`Apiary.Lingo.Domain.choices/0`): its key, its name as its newest version shows it
+  (`Apiary.Processes.type_texts/1`, translated in the locale of the caller's process) and
+  its newest version.
   """
   @spec list() :: [entry]
   def list do
     for domain <- Domain.choices() do
       key = Domain.definition(domain).key
-      %{type: key, name: domain.type_name(), newest: newest(key)}
+      newest = newest(key)
+      %{type: key, name: Processes.type_texts(newest).name, newest: newest}
     end
   end
 
@@ -171,6 +189,12 @@ defmodule Apiary.Processes.TypeTemplates do
   a newer version exists. Without it, the save starts from the newest version. A stage
   with no `id` is given a new one (`Apiary.Processes.new_stage_id/0`).
 
+  `texts:` is a map of the version's name, summary and description (`:name`, `:summary`,
+  `:description`). Each is kept trimmed, with `\r\n` as `\n`; a blank text, a text the
+  map does not have, or one equal to the release's (`Apiary.Processes.type_text_defaults/1`),
+  is kept as nil, so a page shows the release's text in each locale. Without `texts:`, the save keeps the newest
+  version's texts.
+
   The document passes `Apiary.Processes.validate/1`, and one rule of a type's process: a
   gate's `approvers` is `"members"`, since a type has no people to list; a list of people
   is the error `:named_approvers`, at `#/stages/<index>/gate/approvers`.
@@ -182,6 +206,7 @@ defmodule Apiary.Processes.TypeTemplates do
   def save(scope, type, document, opts \\ []) when is_binary(type) do
     based_on = based_on(Keyword.get(opts, :based_on))
     document = Processes.with_stage_ids(document)
+    texts = Keyword.get(opts, :texts)
 
     Repo.transact(fn ->
       with :ok <- authorize(scope),
@@ -189,10 +214,11 @@ defmodule Apiary.Processes.TypeTemplates do
            :ok <- lock(type),
            %TypeTemplate{} = newest <- ensure(type, domain, nil),
            :ok <- fresh(newest, based_on),
+           {:ok, texts} <- texts(texts, type, newest),
            :ok <- validate(document),
-           :ok <- changed(newest, document),
+           :ok <- changed(newest, document, texts),
            {:ok, instance_scope, organisation} <- instance_scope(scope),
-           {:ok, version} <- insert(scope, type, newest, document),
+           {:ok, version} <- insert(scope, type, newest, document, texts),
            {:ok, _entry} <- record(instance_scope, organisation, version) do
         {:ok, Repo.preload(version, :author)}
       end
@@ -241,10 +267,40 @@ defmodule Apiary.Processes.TypeTemplates do
   defp fresh(%TypeTemplate{number: number}, number), do: :ok
   defp fresh(_newest, _based_on), do: {:error, :stale}
 
-  defp changed(%TypeTemplate{document: document}, document),
-    do: {:error, [%{path: "#", error: :unchanged, detail: nil}]}
+  # The texts the save keeps (§ Texts).
+  defp texts(nil, _type, newest), do: {:ok, Map.take(newest, @texts)}
 
-  defp changed(_newest, _document), do: :ok
+  defp texts(%{} = texts, type, _newest) do
+    defaults = Processes.type_text_defaults(type)
+    limits = TypeTemplate.limits()
+
+    Enum.reduce_while(@texts, {:ok, %{}}, fn text, {:ok, kept} ->
+      value = kept_text(Map.get(texts, text), defaults[text])
+
+      # Counted in code points, as the table's check counts them.
+      if value && length(String.codepoints(value)) > limits[text],
+        do: {:halt, {:error, {:too_long, text, limits[text]}}},
+        else: {:cont, {:ok, Map.put(kept, text, value)}}
+    end)
+  end
+
+  defp kept_text(value, default) when is_binary(value) do
+    case value |> String.replace("\r\n", "\n") |> String.trim() do
+      "" -> nil
+      ^default -> nil
+      value -> value
+    end
+  end
+
+  defp kept_text(_none, _default), do: nil
+
+  defp changed(%TypeTemplate{document: document} = newest, document, texts) do
+    if Map.take(newest, @texts) == texts,
+      do: {:error, [%{path: "#", error: :unchanged, detail: nil}]},
+      else: :ok
+  end
+
+  defp changed(_newest, _document, _texts), do: :ok
 
   # The scope the entry is recorded with: the admin's, in the instance's organisation,
   # whose trail holds it.
@@ -257,13 +313,16 @@ defmodule Apiary.Processes.TypeTemplates do
     end
   end
 
-  defp insert(%Scope{user: user}, type, newest, document) do
+  defp insert(%Scope{user: user}, type, newest, document, texts) do
     %TypeTemplate{
       type: type,
       number: newest.number + 1,
       document: document,
       author_id: user.id,
-      based_on: newest.number
+      based_on: newest.number,
+      name: texts.name,
+      summary: texts.summary,
+      description: texts.description
     }
     |> Ecto.Changeset.change()
     |> Ecto.Changeset.unique_constraint([:type, :number],

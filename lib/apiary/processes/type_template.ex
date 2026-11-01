@@ -12,14 +12,23 @@ defmodule Apiary.Processes.TypeTemplate do
     admin's save.
   - `based_on`: the number of the version the save started from; nil for a copy of the
     release's default.
+  - `name`, `summary` and `description`: the type's name, its one or two sentences on
+    New workspace, and its "How it works" text, at most `limits/0` characters each. Nil
+    shows the text the release ships in code, translated (`Apiary.Processes.type_texts/1`).
   """
   use Ecto.Schema
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
+  # The most characters of each text, as the table's check has them.
+  @limits %{name: 60, summary: 200, description: 1200}
+
   @typedoc "A version of a workspace type's default process."
   @type t :: %__MODULE__{}
+
+  @typedoc "One of a version's texts: its name, its summary or its description."
+  @type text :: :name | :summary | :description
 
   schema "type_template_versions" do
     field :type, :string
@@ -27,9 +36,16 @@ defmodule Apiary.Processes.TypeTemplate do
     field :document, :map
     field :release, :integer
     field :based_on, :integer
+    field :name, :string
+    field :summary, :string
+    field :description, :string
 
     belongs_to :author, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)
   end
+
+  @doc "limits/0 is the most characters of each text: name 60, summary 200, description 1200."
+  @spec limits() :: %{text => pos_integer}
+  def limits, do: @limits
 end
