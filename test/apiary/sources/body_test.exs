@@ -1,6 +1,6 @@
 defmodule Apiary.Sources.BodyTest do
   @moduledoc """
-  A ticket's text as the console shows it (`Apiary.Sources.Body.render/3`): Markdown
+  A ticket's text as the console shows it (`Apiary.Sources.Body.render/4`): Markdown
   formatted, to a fixed allowlist, every link `https`, no image and no raw HTML; any other
   format as written, unchanged.
   """
@@ -441,6 +441,37 @@ defmodule Apiary.Sources.BodyTest do
       html = html(~s{[x](<https://example.com/"onmouseover="alert(1)>)})
 
       assert html == "<p>x</p>"
+    end
+  end
+
+  describe "hard breaks" do
+    test "off by default: a line break inside a paragraph is a soft break, as for a ticket" do
+      html = html("Hello, Dana\nThe Web shop is up\n\nNext")
+
+      assert html =~ "<p>Hello, Dana\nThe Web shop is up</p>"
+      refute html =~ "<br"
+    end
+
+    test "on: each line of a paragraph stays a line, and a heading or a list is formatted as before" do
+      assert {:safe, html} =
+               Body.render("# Hi\nHello, Dana\nThe Web shop is up\n\n- a\n- b", "markdown", "text",
+                 hard_breaks: true
+               )
+
+      html = IO.iodata_to_binary(html)
+      assert_allowed(html)
+      assert html =~ "<h3>Hi</h3>"
+      assert html =~ ~r{<p>Hello, Dana<br ?/?>\s*The Web shop is up</p>}
+      assert html =~ "<li>a</li>"
+    end
+
+    test "on: raw HTML is still dropped" do
+      assert {:safe, html} =
+               Body.render("a <b>bold</b>\n<script>x</script>", "markdown", "text", hard_breaks: true)
+
+      html = IO.iodata_to_binary(html)
+      refute html =~ "<b>"
+      refute html =~ "<script"
     end
   end
 
