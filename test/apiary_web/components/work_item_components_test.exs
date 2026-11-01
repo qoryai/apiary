@@ -378,6 +378,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, "#work-item-step-run a") == 0
       assert text(html, "#work-item-step-run .q-wi-run-id") == "15"
     end
+
+    test "a run with no number reads n/a" do
+      run = %{id: "rn_01a9e3c7", number: nil, path: nil, started_at: ago(6 * 60)}
+      html = card(work_item(%{status: :running, run: run}))
+
+      assert text(html, "#work-item-step-run .q-wi-run-id") == "n/a"
+    end
   end
 
   describe "step_card/1, Confirm" do

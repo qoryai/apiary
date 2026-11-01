@@ -1354,9 +1354,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   # A run's number, as a link to its page where the page gives one. A run that ended
   # before its handover has none: no part names it with this.
   defp run_ref(%{path: path, number: number}) when is_binary(path),
-    do: {:link, path, Integer.to_string(number), "q-wi-run"}
+    do: {:link, path, shown_number(number), "q-wi-run"}
 
-  defp run_ref(%{number: number}), do: {:m, Integer.to_string(number), "q-wi-run-id"}
+  defp run_ref(%{number: number}), do: {:m, shown_number(number), "q-wi-run-id"}
+
+  # A run with no number reads n/a, as a run with no id did.
+  defp shown_number(number) when is_integer(number), do: Integer.to_string(number)
+  defp shown_number(_number), do: gettext("n/a")
 
   attr :class, :any, default: "q-bl-bee q-bl-bee-lg"
 
@@ -3153,8 +3157,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # A run in a DOM id: its public id, or for a run that ended before its handover, which
-  # has none, its place in the take in.
+  # A run in a DOM id: its number, or for a run that ended before its handover, which has
+  # no public id, its place in the take in.
   defp run_dom(%{id: id, number: number}) when is_binary(id), do: Integer.to_string(number)
   defp run_dom(run), do: "run-#{run.attempt}"
 
