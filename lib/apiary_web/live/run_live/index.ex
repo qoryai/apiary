@@ -32,8 +32,9 @@ defmodule ApiaryWeb.RunLive.Index do
   and a typed `repo:` name a target as the line does, its system only where its path is
   shared, and write its id.
 
-  From 1920 px a preview pane beside the list shows the run chosen (`?run=`, patched by a
-  click or ↑ and ↓ while the list has focus; the first row until then): its state, its
+  From 1920 px a preview pane beside the list shows the run chosen (`?run=`, the run's
+  number, patched by a click or ↑ and ↓ while the list has focus; the first row until
+  then; a `?run=` with the run's `rn_` id is patched to its number): its state, its
   facts, its denials and the last lines of its log. The page learns the width from the
   `RunList` hook; below 1920 px a row is a link to the run's page.
 
@@ -760,8 +761,8 @@ defmodule ApiaryWeb.RunLive.Index do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {chosen, rest} = Map.pop(params, "run")
-    chosen = chosen_id(chosen)
+    {asked, rest} = Map.pop(params, "run")
+    chosen = chosen_id(socket.assigns.current_scope, asked)
     filters = Filters.parse(rest, :runs)
     bad_run? = Map.has_key?(params, "run") and is_nil(chosen)
 
@@ -771,7 +772,8 @@ defmodule ApiaryWeb.RunLive.Index do
     filters = Narrowing.drop_unknown(filters, socket.assigns.narrowing)
 
     # The path's organisation and workspace are not filters.
-    if not bad_run? and Filters.to_params(filters) == Map.drop(rest, ["org", "workspace"]) do
+    if not bad_run? and asked == chosen and
+         Filters.to_params(filters) == Map.drop(rest, ["org", "workspace"]) do
       socket =
         socket
         |> keep_notices()
@@ -894,7 +896,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, filters: filters, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
+    if listing && Enum.any?(listing.runs, &(Integer.to_string(&1.number) == id)),
       do: {:noreply, push_patch(socket, to: page_path(scope, filters, id), replace: true)},
       else: {:noreply, socket}
   end
@@ -904,7 +906,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("open", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
+    if listing && Enum.any?(listing.runs, &(Integer.to_string(&1.number) == id)),
       do:
         {:noreply,
          push_navigate(socket, to: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}")},
@@ -1230,7 +1232,7 @@ defmodule ApiaryWeb.RunLive.Index do
       cond do
         not wide -> nil
         chosen -> chosen
-        listing && listing.runs != [] -> hd(listing.runs).public_id
+        listing && listing.runs != [] -> Integer.to_string(hd(listing.runs).number)
         true -> nil
       end
 
@@ -1252,7 +1254,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp reload_preview(socket) do
     %{current_scope: scope, preview_id: id, listing: listing} = socket.assigns
-    on_page = listing && Enum.find(listing.runs, &(&1.public_id == id))
+    on_page = listing && Enum.find(listing.runs, &(Integer.to_string(&1.number) == id))
 
     start_async(socket, :preview, fn ->
       # A row's run can be a moment behind the record: the preview reads it again.
@@ -1357,8 +1359,24 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp loaded_total(_loaded, _filters, _listing), do: nil
 
-  # A run's id as the URL may carry it, its `public_id`, `rn_…`; nil for anything else.
-  defp chosen_id(value), do: if(Run.public_id?(value), do: value)
+  # The run `?run=` chooses, as the URL carries it: its number, as written. A run's
+  # `public_id`, `rn_…`, is the number of that run of the workspace, so the address is
+  # patched to it; nil for anything else, and for an `rn_` id the workspace has no run of.
+  defp chosen_id(scope, value) do
+    cond do
+      Run.parse_number(value) != :error ->
+        value
+
+      Run.public_id?(value) ->
+        case Apiary.Runs.get_run_by_param(scope, value) do
+          %Run{number: number} -> Integer.to_string(number)
+          nil -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
 
   # No run in the workspace at all, and nothing narrowing the view: the first-run states.
   defp first_run?(%{total: 0}, filters), do: not Filters.any?(filters)

@@ -807,13 +807,11 @@ defmodule ApiaryWeb.RunComponents do
   ## A run's title
 
   @doc """
-  A run's title: the one it gave in its `about` as a page shows it
-  (`shown_run_title/1`), else "Run" and its short id. Every page that names a run calls it
-  this; a row that shows the short id alone when there is no title asks
+  A run's name: "Run" and its number ("Run 14"), whether or not it gave a title. Every page
+  that names a run calls it this; the title it gave, when it gave one, is
   `shown_run_title/1`.
   """
-  def run_title(run),
-    do: shown_run_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
+  def run_title(run), do: gettext("Run %{run}", run: run.number)
 
   @doc "The title a run gave in its `about`, as sent, or nil when it gave none."
   def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
@@ -829,17 +827,14 @@ defmodule ApiaryWeb.RunComponents do
   def shown_run_title(run), do: Apiary.ExternalText.present(given_title(run))
 
   @doc """
-  A run's name in a row, as markup: the title it gave (`shown_run_title/1`), isolated in a
-  `<bdi>` so a bidirectional character in it reorders nothing around it, else its short
-  id. A tooltip or a label takes `shown_run_title/1` as plain text.
+  A run's name in a row, as markup: "Run" and its number (`run_title/1`), whether or not it
+  gave a title. A tooltip takes the title it gave, `shown_run_title/1`, as plain text.
   """
   attr :run, :map, required: true
 
   def run_name(assigns) do
-    assigns = assign(assigns, :title, shown_run_title(assigns.run))
-
     ~H"""
-    <.external_text text={@title} />{if !@title, do: short_id(@run.public_id)}
+    {run_title(@run)}
     """
   end
 
@@ -1990,7 +1985,7 @@ defmodule ApiaryWeb.RunComponents do
   columns join by the table's width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
-  Every row's id is the run's (`run-<public_id>`); its title is a link to the run's page that
+  Every row's id is the run's number's (`run-<number>`); its title is a link to the run's page that
   covers the row. `selected` marks the row a preview beside the list shows
   (`aria-current`). `target={false}` leaves the target out, for a list of one target.
   `nodes`, the nodes the runs ran on by id (`Apiary.Nodes.names/2`), adds the Node column
@@ -2005,7 +2000,7 @@ defmodule ApiaryWeb.RunComponents do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :quiet_ids, :any, default: nil
-  attr :selected, :string, default: nil, doc: "the public_id of the row the preview shows"
+  attr :selected, :string, default: nil, doc: "the number of the run whose row the preview shows"
   attr :loading, :boolean, default: false
   attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :target, :boolean, default: true
@@ -2075,7 +2070,7 @@ defmodule ApiaryWeb.RunComponents do
             shared={@shared}
             nodes={@nodes}
             quiet={MapSet.member?(@quiet_ids, run.id)}
-            selected={@selected == run.public_id}
+            selected={@selected == Integer.to_string(run.number)}
           />
         </tbody>
       </table>
@@ -2130,10 +2125,10 @@ defmodule ApiaryWeb.RunComponents do
   defp run_row(assigns) do
     ~H"""
     <tr
-      id={"run-#{@run.public_id}"}
+      id={"run-#{@run.number}"}
       class="q-rl-row"
       role="row"
-      data-run={@run.public_id}
+      data-run={@run.number}
       aria-current={@selected && "true"}
     >
       <td class="q-rl-st" role="cell">
@@ -2148,7 +2143,7 @@ defmodule ApiaryWeb.RunComponents do
         <span class="q-rl-tt">
           <.link
             navigate={run_page(@scope, @run)}
-            class={["q-rowlink q-rl-title", !shown_run_title(@run) && "q-rl-id"]}
+            class="q-rowlink q-rl-title"
             title={shown_run_title(@run)}
           >
             <.run_name run={@run} />
@@ -2297,7 +2292,9 @@ defmodule ApiaryWeb.RunComponents do
             <.external_text text={@preview.run.runtime_version} />
           </span>
           <.ran_on run={@preview.run} class="font-mono text-[12px]" />
-          <span class="font-mono text-[12px]">{short_id(@preview.run.public_id)}</span>
+          <span :if={shown_run_title(@preview.run)}>
+            <.external_text text={shown_run_title(@preview.run)} />
+          </span>
         </p>
         <dl class="q-pv-kv">
           <dt>{gettext("Started")}</dt>
@@ -2464,7 +2461,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp run_page(scope, run),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
   ## Tabs
 
@@ -2851,7 +2848,7 @@ defmodule ApiaryWeb.RunComponents do
           <div class="q-hits">
             <.link
               :for={hit <- @open.runs}
-              id={"#{@id}-run-#{hit.run.public_id}"}
+              id={"#{@id}-run-#{hit.run.number}"}
               navigate={@run_path && @run_path.(hit.run)}
               class="q-hit"
             >
@@ -2861,11 +2858,8 @@ defmodule ApiaryWeb.RunComponents do
                   :if={shown_run_title(hit.run)}
                   class="font-medium"
                 ><.external_text text={shown_run_title(hit.run)} /></b>
-                <span class={[
-                  "font-mono text-xs text-faint",
-                  shown_run_title(hit.run) && "ml-1"
-                ]}>
-                  {short_id(hit.run.public_id)}
+                <span class={["text-xs text-faint", shown_run_title(hit.run) && "ml-1"]}>
+                  {run_title(hit.run)}
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">

@@ -708,8 +708,8 @@ defmodule Apiary.Nodes do
 
   @typedoc """
   An instance running now, as the pages show it: its id and name, since when it runs (the
-  start of its oldest run alive), its newest run alive (`run_public_id`, the run's
-  `public_id`) and the Forager version that run reported. `row_id` is the id of its row
+  start of its oldest run alive), its newest run alive (`run_public_id` and `run_number`,
+  the run's `public_id` and number) and the Forager version that run reported. `row_id` is the id of its row
   in `node_instances`, nil when it has none (rows are bounded and pruned): a page
   addresses the instance by `row_id`, and one with no row by `run_public_id`, never by
   the node's instance id (`instance_id`).
@@ -720,6 +720,7 @@ defmodule Apiary.Nodes do
           name: String.t() | nil,
           since: DateTime.t(),
           run_public_id: String.t(),
+          run_number: pos_integer,
           forager_version: String.t() | nil
         }
 
@@ -1228,6 +1229,7 @@ defmodule Apiary.Nodes do
            name: row && row.name,
            since: runs |> Enum.map(& &1.since) |> Enum.min(DateTime),
            run_public_id: newest.public_id,
+           run_number: newest.number,
            forager_version: newest.forager_version || (row && row.last_forager_version)
          }}
       end)
@@ -1293,6 +1295,7 @@ defmodule Apiary.Nodes do
         node_id: r.node_id,
         instance_id: r.node_instance_id,
         public_id: r.public_id,
+        number: r.number,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version
       }
@@ -1310,6 +1313,7 @@ defmodule Apiary.Nodes do
         node_id: r.node_id,
         instance_id: r.node_instance_id,
         public_id: r.public_id,
+        number: r.number,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version
       }

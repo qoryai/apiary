@@ -12,10 +12,12 @@ defmodule ApiaryWeb.RunLive.Show do
   `/runs/:run_id/details` (the live action `:details`) lands on the Timeline with Details
   open.
 
-  `:run_id` in the URL is the run's `public_id`, `rn_…`, the id Qory Apiary gives it; the
-  node's run id, the run's subject, is on Details. A run that is not in the caller's
-  workspace renders the not-found state, whatever else it may be, and so does the node's
-  run id in the URL.
+  `:run_id` in the URL is the run's number (`Apiary.Runs.Run`, `number`); the node's run
+  id, the run's subject, is on Details. An address with the run's `public_id`, `rn_…`, the
+  id the API gives, is patched to the number's, for a run of the caller's workspace alone.
+  A run that is not in the caller's workspace renders the not-found state, whatever else
+  it may be, the same for a number of no run and a number of another workspace's run, and
+  so does the node's run id in the URL.
 
   The timeline is a stream over a window of the run's items (300 on mount, 200 more at
   either end, never more than 600 in the DOM); the layout of the whole run comes from
@@ -76,8 +78,8 @@ defmodule ApiaryWeb.RunLive.Show do
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
         {gettext("Runs")}
       </:crumb>
-      <:crumb :if={missing_id(@loaded_id)}>
-        {gettext("Run %{id}", id: missing_id(@loaded_id))}
+      <:crumb :if={missing_number(@loaded_id)}>
+        {gettext("Run %{run}", run: missing_number(@loaded_id))}
       </:crumb>
 
       <.empty_state
@@ -86,7 +88,7 @@ defmodule ApiaryWeb.RunLive.Show do
         heading="h1"
         title={gettext("This run is not in this workspace")}
       >
-        {gettext("The link may be for another workspace, or the run id is mistyped.")}
+        {gettext("The link may be for another workspace, or the run number is mistyped.")}
         <:actions>
           <.button navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
             {gettext("Back to runs")}
@@ -111,7 +113,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {gettext("Runs")}
       </:crumb>
       <:crumb patch={@tab != :timeline && tab_path(@current_scope, @run, :timeline)}>
-        {gettext("Run %{id}", id: short_id(@run.public_id))}
+        {run_title(@run)}
       </:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
@@ -123,12 +125,11 @@ defmodule ApiaryWeb.RunLive.Show do
            Details in place, above the tabs. --%>
       <div id="run-page" class="q-run">
         <header class="q-run-head">
-          <h1 :if={shown_run_title(@run)} id="run-title" tabindex="-1">
+          <h1 id="run-title" tabindex="-1">{run_title(@run)}</h1>
+          <%!-- The title the run gave, under the header that names it by its number. --%>
+          <p :if={shown_run_title(@run)} id="run-given-title" class="q-run-about">
             <.external_text text={shown_run_title(@run)} />
-          </h1>
-          <h1 :if={!shown_run_title(@run)} id="run-title" tabindex="-1">
-            <.rich text={rich_gettext("Run %{id}", id: {:m, @run.public_id, "font-mono text-[18px]"})} />
-          </h1>
+          </p>
           <.about_header run={@run} />
           <div class="q-run-sub">
             <div class="q-run-meta-wrap">
@@ -231,11 +232,11 @@ defmodule ApiaryWeb.RunLive.Show do
                 run={@run}
                 diagnostics={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/diagnostics"
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run}/diagnostics"
                 }
                 log={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/log"
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run}/log"
                 }
               />
             </div>
@@ -444,11 +445,11 @@ defmodule ApiaryWeb.RunLive.Show do
             role="menuitem"
             tabindex="-1"
             phx-hook="CopyToClipboard"
-            data-copy={@run.public_id}
+            data-copy={@run.number}
             data-copied-words={gettext("Copied")}
             data-menu-close
           >
-            <.icon name="hero-link" class="size-4" /> {gettext("Copy run id")}
+            <.icon name="hero-link" class="size-4" /> {gettext("Copy run number")}
             <span class="sr-only" aria-live="polite"></span>
           </button>
         </li>
@@ -693,7 +694,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.terminal
         :if={@log.chunks > 0}
         id="terminal"
-        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.public_id}/log"}
+        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run}/log"}
         script={~p"/assets/js/terminal.js"}
         stylesheet={~p"/assets/js/terminal.css"}
         streams={@log.streams}
@@ -1062,14 +1063,14 @@ defmodule ApiaryWeb.RunLive.Show do
       <section class="q-rail-sec" aria-labelledby="rail-record">
         <h3 id="rail-record">{gettext("Record")}</h3>
         <dl class="q-rail-kv">
-          <dt>{gettext("Run id")}</dt>
-          <dd class="font-mono">
-            <span id="run-id">{@run.public_id}</span>
+          <dt>{gettext("Run number")}</dt>
+          <dd>
+            <span id="run-number">{@run.number}</span>
             <.copy_button
-              id="copy-run-id"
-              target="#run-id"
+              id="copy-run-number"
+              target="#run-number"
               icon_only
-              label={gettext("Copy the run id")}
+              label={gettext("Copy the run number")}
             />
           </dd>
           <dt>{gettext("Run id on the machine")}</dt>
@@ -1442,12 +1443,16 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   @impl true
-  def handle_params(%{"run_id" => run_id} = params, _uri, socket) do
+  def handle_params(%{"run_id" => run_id} = params, uri, socket) do
     socket = assign_tab(socket)
     socket = if socket.assigns.loaded_id == run_id, do: socket, else: load_run(socket, run_id)
     refuse_terminal(socket)
 
     case socket.assigns do
+      # An address with the run's `rn_` id: the same address with its number.
+      %{run: %Run{} = run, loaded_id: loaded_id} when loaded_id != run_id ->
+        {:noreply, push_patch(socket, to: numbered(uri, run_id, run), replace: true)}
+
       %{run: %Run{} = run, loaded: true} ->
         socket = apply_params(socket, Map.drop(params, ["org", "workspace", "run_id"]))
         {:noreply, assign(socket, :page_title, run_title(run, socket.assigns.tab))}
@@ -1498,7 +1503,7 @@ defmodule ApiaryWeb.RunLive.Show do
       {:ok, run} ->
         socket =
           socket
-          |> assign(loaded_id: run_id, new_count: 0, ending: nil)
+          |> assign(loaded_id: Integer.to_string(run.number), new_count: 0, ending: nil)
           |> assign(
             :target_shared,
             run.target_id != nil and Targets.shared?(scope, run.target_path)
@@ -1681,14 +1686,22 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp tab_path(scope, run, tab, query \\ %{})
 
-  defp tab_path(scope, %Run{public_id: id}, :timeline, query),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}?#{query}"
+  defp tab_path(scope, %Run{} = run, :timeline, query),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run}?#{query}"
 
-  defp tab_path(scope, %Run{public_id: id}, :terminal, query),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/terminal?#{query}"
+  defp tab_path(scope, %Run{} = run, :terminal, query),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run}/terminal?#{query}"
 
-  defp tab_path(scope, %Run{public_id: id}, :connections, query),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/network?#{query}"
+  defp tab_path(scope, %Run{} = run, :connections, query),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run}/network?#{query}"
+
+  # The address `uri` with the run's number in the place of `run_id`, the `rn_` id it was
+  # asked by: the same tab, the same query.
+  defp numbered(uri, run_id, %Run{number: number}) do
+    %URI{path: path, query: query} = URI.parse(uri)
+    [before, rest] = String.split(path, "/runs/" <> run_id, parts: 2)
+    before <> "/runs/#{number}" <> rest <> if(query, do: "?" <> query, else: "")
+  end
 
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
@@ -1698,9 +1711,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp label_path(_scope, _page, _key), do: nil
 
-  # The short form of the id a run that is not here was asked by, when it is a run's id at
-  # all; nil for an address that is none, whose breadcrumb ends with Runs.
-  defp missing_id(run_id), do: if(Run.public_id?(run_id), do: short_id(run_id))
+  # The number a run that is not here was asked by, when the address has a run's number;
+  # nil for any other address, whose breadcrumb ends with Runs.
+  defp missing_number(run_id) do
+    case Run.parse_number(run_id) do
+      {:ok, number} -> number
+      :error -> nil
+    end
+  end
 
   # The page of the target the run names, by the target's public id: `{target_id, path}`,
   # read again only when the run names another target.

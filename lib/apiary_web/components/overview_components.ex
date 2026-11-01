@@ -44,7 +44,6 @@ defmodule ApiaryWeb.OverviewComponents do
       refusal_cause: 1,
       relative_time: 1,
       rule_panel: 1,
-      short_id: 1,
       shown_refusal_code: 1,
       shown_target_label: 3,
       state_label: 1,
@@ -427,14 +426,14 @@ defmodule ApiaryWeb.OverviewComponents do
        when kind in [:quiet, :lost, :behind] do
     ~H"""
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.number}"}
       class="q-ar-t"
       title={row_title(@item.run)}
     >
       <.external_text text={shown_title(@item.run)} />
       {if !shown_title(@item.run), do: row_title(@item.run)}
     </.link>
-    <span class="q-ar-id">{short_id(@item.run.public_id)}</span>
+    <span class="q-ar-id">{gettext("Run %{run}", run: @item.run.number)}</span>
     """
   end
 
@@ -927,7 +926,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.number}"}
       class="q-act"
       aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
@@ -954,7 +953,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.number}"}
       class="q-act"
       aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
@@ -1170,11 +1169,12 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
-  else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
+  else "Run" and its number: what a row calls it, as plain text for a tooltip or a label, shown as
   a text Forager sent is (`Apiary.ExternalText.line/1`). A title or a command line with
   nothing left to show, or only whitespace, is none (`Apiary.ExternalText.present/1`).
   """
-  def row_title(run), do: shown_title(run) || shown_command(run) || short_id(run.public_id)
+  def row_title(run),
+    do: shown_title(run) || shown_command(run) || gettext("Run %{run}", run: run.number)
 
   # The title a run gave, as a page shows it; nil where it gave none, or one with nothing
   # left to show, or only whitespace.
@@ -2009,7 +2009,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
           <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.public_id}"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.number}"}
             class="q-link"
           >{gettext("Open it")}</.link>
         </p>
@@ -2303,7 +2303,7 @@ defmodule ApiaryWeb.OverviewComponents do
     do:
       gettext(
         "Contact support with run %{run}. The machine stopped sending for 10 minutes.",
-        run: run.public_id
+        run: run.number
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason

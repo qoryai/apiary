@@ -32,8 +32,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `confirmed_by_id` and `confirmed_at`, the current take in's confirmation, nil for
   #     none, and `changes`, the fields it changed, each `%{value: value, by_id: id}`.
   #
-  # A run map: `id` (its registered run's public id, nil for a run with none: one waiting,
-  # or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
+  # A run map: `id` and `number` (its registered run's public id and number, both nil for
+  # a run with none: one waiting, or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
   # when its work item moves, `attempt`, `of`, `state`
   # (`Apiary.WorkItems.Explore.run_state/1`), `place` (`Apiary.WorkItems.Explore.step/4`),
   # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,
@@ -172,6 +172,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
     view = %{
       id: step.run && step.run.public_id,
+      number: step.run && step.run.number,
       workspace_id: step.dispatch_run.workspace_id,
       attempt: step.attempt,
       of: step.of,
@@ -568,11 +569,12 @@ defmodule Apiary.WorkItems.ExploreView do
   defp run_ref(%{run: run, dispatch_run: dispatch_run, attempt: attempt, of: of}, _key),
     do: %{
       id: run && run.public_id,
+      number: run && run.number,
       workspace_id: dispatch_run.workspace_id,
       attempt: attempt,
       of: of
     }
 
   defp run_ref(nil, {_take_in, attempt}),
-    do: %{id: nil, workspace_id: nil, attempt: attempt, of: nil}
+    do: %{id: nil, number: nil, workspace_id: nil, attempt: attempt, of: nil}
 end
