@@ -506,6 +506,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gives anyone else 404 there. The public documentation leaves them out of its pages,
   sidebar and search, and a link to them is its words. `mix docs` builds both trees. The
   guides stay in the repository's `guides` directory.
+- The Runs list shows, for each run, the workflow it ran (such as `explore-a-ticket`,
+  with the stage and round that placed it), its work item as a link, and how it started,
+  such as "Taken in by dana". The Host column is gone, and the Target column and the
+  rail show only where a run has a target. `item:3` in the query, or the Filter menu's
+  Work item section, keeps the runs of work item 3. Below 640 px a run is a card.
 - A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
   public harness repository from its host over HTTPS, with no connection and no
   adapter: a repository the host serves to anyone is public. A harness source that is

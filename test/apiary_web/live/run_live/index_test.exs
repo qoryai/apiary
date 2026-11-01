@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.RunLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
@@ -189,7 +190,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   end
 
   describe "the list (U1, U5)" do
-    test "one line per run: its state, its title, its target, runtime, host, started, duration and denials",
+    test "one line per run: its state, its id, its title, its target, runtime, started, duration and denials",
          %{conn: conn, scope: scope} do
       run =
         started_run(scope, shop(),
@@ -204,9 +205,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert cells =~ "Failed"
       refute cells =~ "exit 1"
-      assert cells =~ "checkout-tax acme/shop"
+      assert text(view, "#{row(run)} .q-rl-wi-text") == "checkout-tax"
+      assert text(view, "#{row(run)} .q-rl-tg") == "acme/shop"
       assert cells =~ "claude 2.1.0"
-      assert cells =~ "dev-laptop"
+      # No Host column: the host is in the preview and the Filter menu.
+      refute cells =~ "dev-laptop"
+      refute has_element?(view, "#runs th", "Host")
       assert cells =~ "2 minutes ago"
       assert cells =~ "6 m 51 s"
       assert has_element?(view, "#{row(run)} .q-st-failed .q-st-w:not(.sr-only)", "Failed")
@@ -215,7 +219,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(
                view,
                "#{row(run)} a.q-rowlink[href='#{workspace_path(scope)}/runs/#{run.public_id}']",
-               "checkout-tax"
+               RunComponents.short_id(run.public_id)
              )
 
       # One notation: a path the workspace has on one system reads as the path alone.
@@ -230,14 +234,14 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#runs-status[role=status]")
     end
 
-    test "a run that ended well is its dot, its word for a screen reader only", %{
+    test "a run that ended well is its dot and its word", %{
       conn: conn,
       scope: scope
     } do
       run = started_run(scope, shop(), exit: %{"state" => "succeeded", "exit_code" => 0})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-st-completed .q-st-w.sr-only", "Completed")
+      assert has_element?(view, "#{row(run)} .q-st-completed .q-st-w:not(.sr-only)", "Completed")
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
@@ -285,7 +289,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, row(failed))
     end
 
-    test "under its title, what a run is about: its kind and two subjects as text, then how many more",
+    test "a run with no work item: its title, and under it what it is about, its kind and two subjects as text",
          %{conn: conn, scope: scope} do
       subject = fn type, ref -> %{"type" => type, "ref" => ref} end
 
@@ -321,7 +325,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       title_only = started_run(scope, shop(), about: %{"title" => "Fix the login redirect"})
       view = open(conn, scope)
 
-      assert text(view, "#{row(review)} .q-rowlink") == "Review the payment retry change"
+      assert text(view, "#{row(review)} .q-rl-wi-text") == "Review the payment retry change"
       line = "Review · pull request #418 · ticket ENG-21 · +1 more"
       assert text(view, "#{row(review)} .q-rl-about-wide") == line
       assert has_element?(view, ~s(#{row(review)} .q-rl-about-wide[title="#{line}"]))
@@ -329,16 +333,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#{row(review)} .q-rl-about-phone") ==
                "Review · pull request #418 · +2 more"
 
-      # Text, never a link: the title's link covers the row.
+      # Text, never a link: the id's link covers the row.
       refute has_element?(view, "#{row(review)} .q-rl-about a")
       refute render(view) =~ "tracker.example.com"
 
-      # No title: the short id, in mono, and the line under it.
+      # No title: no work item, and the line under it.
       assert has_element?(
                view,
                "#{row(untitled)} .q-rowlink.q-rl-id",
                String.slice(untitled.public_id, 0, 11)
              )
+
+      assert text(view, "#{row(untitled)} .q-rl-wi-none") == "No work item"
 
       assert text(view, "#{row(untitled)} .q-rl-about-wide") ==
                "Implementation · pull request #412 · ticket ENG-17"
@@ -366,12 +372,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), about: %{"title" => title, "kind" => kind})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", "Fix the loginredirect")
-      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="Fix the loginredirect"]))
+      assert has_element?(view, "#{row(run)} .q-rl-wi-text > bdi", "Fix the loginredirect")
+      assert has_element?(view, ~s(#{row(run)} .q-rl-wi-text[title="Fix the loginredirect"]))
       assert has_element?(view, "#{row(run)} .q-rl-about bdi", "Implementation")
     end
 
-    test "a run's title, kind, runtime and host as a page shows them, and in the Filter menu",
+    test "a run's title, kind and runtime as a page shows them, and the host in the Filter menu",
          %{conn: conn, scope: scope} do
       # A bidirectional override, a zero-width space and a control character; the run's
       # `about` keeps no control character, so the title is given one in the record.
@@ -385,11 +391,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = Repo.update!(Ecto.Changeset.change(run, about_title: "\u202EFix the login\u200B\a"))
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", "Fix the login\uFFFD")
-      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="Fix the login\uFFFD"]))
+      assert has_element?(view, "#{row(run)} .q-rl-wi-text > bdi", "Fix the login\uFFFD")
+      assert has_element?(view, ~s(#{row(run)} .q-rl-wi-text[title="Fix the login\uFFFD"]))
       assert has_element?(view, "#{row(run)} .q-rl-about bdi", ~r/^Review$/)
-      assert has_element?(view, "#{row(run)} .q-rl-c4 > span > bdi", "claude\uFFFD")
-      assert has_element?(view, "#{row(run)} .q-rl-host > bdi", "build-02\uFFFD")
+      assert has_element?(view, "#{row(run)} .q-rl-rt > span > bdi", "claude\uFFFD")
 
       assert text(view, "#filter-runtime-form") =~ "claude\uFFFD 1"
       assert text(view, "#filter-host-form") =~ "build-02\uFFFD 1"
@@ -406,15 +411,15 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = Repo.update!(Ecto.Changeset.change(run, node_instance_id: "i-\u202E42"))
       view = open(conn, scope)
 
-      assert text(view, "#{row(run)} .q-rl-c3") == "acme/shop"
+      assert text(view, "#{row(run)} .q-rl-tg") == "acme/shop"
 
       assert has_element?(
                view,
-               ~s(#{row(run)} .q-rl-c3 .q-tname[title="github.example/acme/shop"])
+               ~s(#{row(run)} .q-rl-tg .q-tname[title="github.example/acme/shop"])
              )
 
       # A path sent with nothing left to show is marked, never n/a.
-      assert text(view, "#{row(blank)} .q-rl-c3") == "\uFFFD\uFFFD"
+      assert text(view, "#{row(blank)} .q-rl-tg") == "\uFFFD\uFFFD"
 
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
@@ -460,7 +465,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, ~s(#filter-host-form input[value="\u200B"]))
     end
 
-    test "a host and a runtime sent with nothing left to show are marked, never n/a or blank",
+    test "a runtime and a host sent with nothing left to show are marked, never n/a or blank",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop(), host: " \u00A0")
       run = Repo.update!(Ecto.Changeset.change(run, runtime: "\u200B", runtime_version: nil))
@@ -468,13 +473,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       none = Repo.update!(Ecto.Changeset.change(none, runtime: nil, host: nil))
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-rl-host > bdi", "\uFFFD")
-      assert text(view, "#{row(run)} .q-rl-host") == "\uFFFD"
-      assert text(view, "#{row(run)} .q-rl-c4:not(.q-rl-host)") == "\uFFFD"
+      assert text(view, "#{row(run)} .q-rl-rt") == "\uFFFD"
 
-      # A host and a runtime never sent keep n/a.
-      assert text(view, "#{row(none)} .q-rl-host") == "n/a"
-      assert text(view, "#{row(none)} .q-rl-c4:not(.q-rl-host)") == "n/a"
+      # A runtime never sent keeps n/a.
+      assert text(view, "#{row(none)} .q-rl-rt") == "n/a"
 
       render_hook(view, "viewport", %{"wide" => true})
       render_hook(view, "select", %{"id" => run.public_id})
@@ -490,8 +492,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), about: %{"title" => "\u202E\u200B"})
       view = open(conn, scope)
 
-      refute has_element?(view, "#{row(run)} .q-rowlink > bdi")
-      refute has_element?(view, "#{row(run)} .q-rowlink[title]")
+      refute has_element?(view, "#{row(run)} .q-rl-wi-text")
+      assert text(view, "#{row(run)} .q-rl-wi-none") == "No work item"
 
       assert has_element?(
                view,
@@ -510,7 +512,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, scope)
 
       assert text(view, "#{row(plain)} .q-rowlink") == String.slice(plain.public_id, 0, 11)
-      assert has_element?(view, "#{row(plain)} .q-rl-c3", "n/a")
+      assert has_element?(view, "#{row(plain)} .q-rl-tg", "n/a")
 
       assert has_element?(
                view,
@@ -524,7 +526,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       cells = text(view, row(pending))
       assert cells =~ "Pending"
       assert cells =~ String.slice(pending.public_id, 0, 11)
-      assert cells =~ "n/a n/a"
+      assert text(view, "#{row(pending)} .q-rl-rt") == "n/a"
     end
 
     test "a path on more than one system is written with its system", %{
@@ -536,9 +538,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
       view = open(conn, scope)
 
-      assert text(view, "#{row(github)} .q-rl-c3") == "github.example / acme/shop"
-      assert text(view, "#{row(gitlab)} .q-rl-inl") == "gitlab.example / acme/shop"
-      assert text(view, "#{row(api)} .q-rl-c3") == "acme/api"
+      assert text(view, "#{row(github)} .q-rl-tg") == "github.example / acme/shop"
+      assert text(view, "#{row(gitlab)} .q-rl-tg") == "gitlab.example / acme/shop"
+      assert text(view, "#{row(api)} .q-rl-tg") == "acme/api"
     end
 
     test "a running run counts up; a quiet one is amber and says at least", %{
@@ -562,10 +564,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{row(live_run)} time[data-tick=duration][data-base='90'][data-now]"
              )
 
-      # the note is the state's, in its cell, where the list puts it under the word; the
-      # target follows the title in the run's cell, where it gives way before the title
+      # the note is the state's, in its cell, where the list puts it under the word
       assert has_element?(view, "#{row(quiet)} td.q-rl-st .q-st-quiet > .q-quiet")
-      assert has_element?(view, "#{row(quiet)} td.q-rl-run .q-rl-title + .q-rl-inl")
 
       assert text(view, "#{row(quiet)} .q-quiet") =~
                ~r/^No heartbeat for \d\d s \. Heartbeats are due every 30 s\./
@@ -690,6 +690,305 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, row(mine))
       refute has_element?(view, row(theirs))
       assert text(view, "#runs-view-all") == "All 1"
+    end
+  end
+
+  describe "the workflow, the work item and how a run started" do
+    @describetag needs: :factory
+
+    setup %{scope: scope} do
+      %{name: scope.user.email |> String.split("@") |> hd()}
+    end
+
+    defp walk(state, origin, workflow), do: %{state: state, origin: origin, workflow: workflow}
+
+    test "the workflow the claim handed over in the mono font; Prebuild; n/a for none", %{
+      conn: conn,
+      scope: scope
+    } do
+      explore = started_run(scope, %{}, ago: 50)
+      queue_run!(scope, explore, walk: walk(:resolved, :file, "explore-a-ticket"))
+      prebuild = started_run(scope, %{}, ago: 40)
+      queue_run!(scope, prebuild, step: "prebuild")
+      pending = started_run(scope, %{}, ago: 30)
+      queue_run!(scope, pending, walk: walk(:pending, nil, "explore-a-ticket"))
+      none = started_run(scope, %{}, ago: 20)
+      queue_run!(scope, none, walk: walk(:resolved, :none, nil))
+      direct = started_run(scope, %{}, ago: 10)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#runs th.q-rl-wf", "Workflow")
+      assert text(view, "#{row(explore)} .q-rl-wf-name") == "explore-a-ticket"
+      refute has_element?(view, "#{row(explore)} td.q-rl-wf-none")
+      assert text(view, "#{row(prebuild)} .q-rl-wf-step") == "Prebuild"
+      refute has_element?(view, "#{row(prebuild)} td.q-rl-wf-none")
+
+      # n/a is the class the phone hides, so a card shows nothing after the id.
+      for run <- [pending, none, direct] do
+        assert text(view, "#{row(run)} td.q-rl-wf-none .q-rl-wf-step") == "n/a"
+        refute has_element?(view, "#{row(run)} .q-rl-wf-name")
+      end
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "under the workflow, the stage that placed the run and its round, where it adds to the name",
+         %{conn: conn, scope: scope} do
+      version = Apiary.Processes.current(scope.workspace)
+      stage = fn name -> Enum.find(version.document["stages"], &(&1["name"] == name))["id"] end
+
+      build = started_run(scope, %{}, ago: 20)
+
+      queue_run!(scope, build,
+        attempt: 4,
+        of: 6,
+        walk: walk(:resolved, :file, "implement"),
+        queued: [
+          process_version_id: version.id,
+          stage_id: stage.("Build"),
+          round: 2,
+          loop_entry: 0
+        ]
+      )
+
+      explore = started_run(scope, %{}, ago: 10)
+
+      queue_run!(scope, explore,
+        walk: walk(:resolved, :setting, "explore-a-ticket"),
+        queued: [
+          process_version_id: version.id,
+          stage_id: stage.("Explore"),
+          round: 2,
+          loop_entry: 0
+        ]
+      )
+
+      view = open(conn, scope)
+
+      assert text(view, "#{row(build)} .q-rl-wf") == "implement Build · round 2"
+      assert text(view, "#{row(build)} .q-rl-stage") == "Build · round 2"
+      assert text(view, "#{row(build)} .q-rl-sb") == "The workspace's process"
+      refute has_element?(view, "#{row(explore)} .q-rl-stage")
+    end
+
+    test "the work item, a link to its page; a run with none: its title, else No work item", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      linked = started_run(scope, %{}, ago: 30)
+      queue_run!(scope, linked, work_item: work_item)
+      titled = started_run(scope, %{}, ago: 20, about: %{"title" => "Nightly dependency check"})
+      untitled = started_run(scope, %{}, ago: 10)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#runs th.q-rl-wi", "Work item")
+      label = "##{work_item.number} Say hello"
+
+      assert has_element?(
+               view,
+               ~s(#{row(linked)} a.q-rl-wi-link[href="#{workspace_path(scope)}/work/#{work_item.number}"][title="#{label}"]),
+               "Say hello"
+             )
+
+      assert text(view, "#{row(linked)} .q-rl-wi-link") == label
+      # The run's id stays the link that covers the row.
+      assert has_element?(view, "#{row(linked)} .q-rl-rn a.q-rowlink.q-rl-id")
+
+      assert text(view, "#{row(titled)} .q-rl-wi-text") == "Nightly dependency check"
+      refute has_element?(view, "#{row(titled)} .q-rl-wi-link")
+      assert text(view, "#{row(untitled)} .q-rl-wi-none") == "No work item"
+    end
+
+    test "a work item that moved to another workspace: its title alone, and no target from it",
+         %{conn: conn, scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      run = started_run(scope, %{})
+      queue_run!(scope, run, work_item: work_item)
+      elsewhere = Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
+
+      Repo.update_all(
+        from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: elsewhere.id]
+      )
+
+      view = open(conn, scope)
+
+      assert text(view, "#{row(run)} .q-rl-wi-text") == "Say hello"
+      refute has_element?(view, "#{row(run)} .q-rl-wi-link")
+      refute text(view, row(run)) =~ "##{work_item.number}"
+      # Its target is the other workspace's: no Target column, no rail.
+      refute has_element?(view, "#runs th.q-rl-tg")
+      refute has_element?(view, "#runs-rail")
+    end
+
+    test "each way a run starts, by who did it", %{conn: conn, scope: scope, name: name} do
+      user = scope.user
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+      first = started_run(scope, %{}, ago: 70)
+      queue_run!(scope, first, work_item: work_item)
+
+      work_item_event!(work_item, :answered, user, %{"take_in" => 1, "attempt" => 1})
+      answered = started_run(scope, %{}, ago: 60)
+      queue_run!(scope, answered, work_item: work_item, attempt: 2)
+
+      work_item_event!(work_item, :explore_again, user, %{"take_in" => 1, "attempt" => 3})
+      again = started_run(scope, %{}, ago: 50)
+      queue_run!(scope, again, work_item: work_item, attempt: 3)
+
+      requeued = started_run(scope, %{}, ago: 40)
+
+      queue_run!(scope, requeued,
+        work_item: work_item,
+        attempt: 4,
+        of: 4,
+        queued: [image_requeue: true]
+      )
+
+      work_item_event!(work_item, :taken_in, user, %{"take_in" => 2})
+      second = started_run(scope, %{}, ago: 30)
+      queue_run!(scope, second, work_item: work_item, take_in: 2)
+
+      test_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      # A Set up test work item: no connection, no source item.
+      Repo.update!(
+        Ecto.Changeset.change(test_item,
+          test: true,
+          connection_id: nil,
+          adapter_id: nil,
+          item_id: nil,
+          external_ref: nil,
+          url: nil
+        )
+      )
+
+      tested = started_run(scope, %{}, ago: 20)
+      queue_run!(scope, tested, work_item: test_item, walk: walk(:resolved, :builtin, "hello"))
+
+      direct = started_run(scope, %{}, ago: 10)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#runs th.q-rl-sb", "Started by")
+
+      for {run, words} <- [
+            {first, "Taken in by #{name}"},
+            {answered, "Attempt 2 of 3, after answers from #{name}"},
+            {again, "Explore again by #{name}"},
+            {requeued, "Queued again after a missing image"},
+            {second, "Taken in again by #{name}"},
+            {tested, "Test run by #{name}"},
+            {direct, "qory run on a machine"}
+          ] do
+        assert text(view, "#{row(run)} td.q-rl-sb") == words
+        # Where the table is narrow, the same words sit under the work item.
+        assert text(view, "#{row(run)} .q-rl-wi .q-rl-sb-under") == words
+      end
+
+      assert text(view, "#{row(tested)} .q-rl-wf-name") == "hello"
+    end
+
+    test "a person no longer there is a former member; no record is n/a", %{
+      conn: conn,
+      scope: scope
+    } do
+      assert RunComponents.started_by_words({:taken_in, Ecto.UUID.generate()}, %{}) ==
+               "Taken in by Former member"
+
+      unexplained = started_run(scope, %{})
+      queue_run!(scope, unexplained, attempt: 2)
+      view = open(conn, scope)
+
+      assert text(view, "#{row(unexplained)} td.q-rl-sb") == "n/a"
+      refute has_element?(view, "#{row(unexplained)} .q-rl-sb-under")
+    end
+
+    test "the Target column and the rail only where a run has a target, a work item's too", %{
+      conn: conn,
+      scope: scope
+    } do
+      plain = started_run(scope, %{})
+      view = open(conn, scope)
+
+      refute has_element?(view, "#runs th", "Repository")
+      refute has_element?(view, "#{row(plain)} .q-rl-tg")
+      refute has_element?(view, "#runs-rail")
+
+      # A run whose start gave no target takes its work item's.
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      claimed = started_run(scope, %{}, ago: 5)
+      queue_run!(scope, claimed, work_item: work_item)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#runs th.q-rl-tg")
+      assert text(view, "#{row(claimed)} .q-rl-tg") == "acme/shop"
+      assert text(view, "#{row(plain)} .q-rl-tg") == "n/a"
+      # The rail counts the runs' targets: neither run has one of its start.
+      refute has_element?(view, "#runs-rail")
+
+      started_run(scope, shop(), ago: 1)
+      view = open(conn, scope)
+      assert has_element?(view, "#runs-rail")
+      assert text(view, "#runs-rail-none") =~ "Unassigned 2"
+    end
+
+    test "item: narrows the list to a work item's runs, from the query and the Filter menu", %{
+      conn: conn,
+      scope: scope
+    } do
+      hello = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      other = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Fix the web shop"})
+      mine = started_run(scope, %{}, ago: 30)
+      queue_run!(scope, mine, work_item: hello)
+      theirs = started_run(scope, %{}, ago: 20)
+      queue_run!(scope, theirs, work_item: other)
+      direct = started_run(scope, %{}, ago: 10)
+      view = open(conn, scope)
+
+      assert has_element?(
+               view,
+               ~s(#runs-query-input[placeholder="Filter runs, e.g. state:failed item:3 started:>2026-10-01"])
+             )
+
+      assert has_element?(view, "#runs-filter-open-item", "Work item")
+      assert text(view, "#filter-item-form") =~ "##{hello.number} Say hello 1"
+      assert text(view, "#filter-item-form") =~ "##{other.number} Fix the web shop 1"
+
+      view |> form("#runs-query", %{"q" => "item:##{hello.number}"}) |> render_submit()
+      assert_patch(view, runs(scope, "?item=#{hello.number}"))
+      render_async(view)
+      assert has_element?(view, row(mine))
+      refute has_element?(view, row(theirs))
+      refute has_element?(view, row(direct))
+      assert token(view, "item") == "item:#{hello.number}"
+
+      view |> form("#filter-item-form") |> render_change(%{"item" => "#{other.number}"})
+      assert_patch(view, runs(scope, "?item=#{other.number}"))
+      render_async(view)
+      assert has_element?(view, row(theirs))
+      refute has_element?(view, row(mine))
+
+      # A number that cannot be a work item's is dropped, and the page ends on every run.
+      assert {:error, {:live_redirect, %{to: to}}} = live(conn, runs(scope, "?item=0"))
+      assert to == runs(scope)
+    end
+
+    test "the header says what the list shows; a card on a phone is the row's cells", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, %{})
+      queue_run!(scope, run, walk: walk(:resolved, :file, "explore-a-ticket"))
+      view = open(conn, scope)
+
+      assert render(view) =~
+               "Every run in this workspace, with its workflow, its work item and how it started."
+
+      # The phone grid places these cells (assets/css/app.css, below 640 px).
+      assert has_element?(view, "table#runs.q-rl-list")
+
+      for class <- ~w(q-rl-st q-rl-rn q-rl-wf q-rl-wi q-rl-when q-rl-dur q-rl-den) do
+        assert has_element?(view, "#{row(run)} td.#{class}")
+      end
     end
   end
 
@@ -2356,25 +2655,25 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, scope)
 
       # The first change opens the window and is applied at once.
-      Runs.broadcast_changed(%{Repo.reload!(run) | host: "first"})
+      Runs.broadcast_changed(%{Repo.reload!(run) | runtime: "first"})
       assert text(view, row(run)) =~ "first"
 
       # The rest wait for the window's end, the last word on each run winning.
-      for host <- ~w(second third fourth) do
-        Runs.broadcast_changed(%{Repo.reload!(run) | host: host})
+      for runtime <- ~w(second third fourth) do
+        Runs.broadcast_changed(%{Repo.reload!(run) | runtime: runtime})
       end
 
-      Runs.broadcast_changed(%{Repo.reload!(other) | host: "other-host"})
+      Runs.broadcast_changed(%{Repo.reload!(other) | runtime: "other-runtime"})
       assert text(view, row(run)) =~ "first"
-      refute text(view, row(other)) =~ "other-host"
+      refute text(view, row(other)) =~ "other-runtime"
 
       send(view.pid, :flush_runs)
       assert text(view, row(run)) =~ "fourth"
-      assert text(view, row(other)) =~ "other-host"
+      assert text(view, row(other)) =~ "other-runtime"
 
       # A window with nothing in it closes; the next change is applied at once again.
       send(view.pid, :flush_runs)
-      Runs.broadcast_changed(%{Repo.reload!(run) | host: "fifth"})
+      Runs.broadcast_changed(%{Repo.reload!(run) | runtime: "fifth"})
       assert text(view, row(run)) =~ "fifth"
     end
 

@@ -168,6 +168,23 @@ defmodule Apiary.Runs.RunCodeTest do
       assert %Dispatch{dispatched_at: %DateTime{}} = Repo.get!(Dispatch, claimed.dispatch.id)
     end
 
+    test "broadcasts the run as changed, with its run key's fields; a repeat does not", ctx do
+      %Run{id: id, workspace_id: workspace_id} = ctx.run
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Runs.topic(workspace_id, id))
+      pair = ed25519_key_pair()
+
+      assert {:ok, first} = redeem(ctx, pair, at(ctx, 60))
+      assert_received {:run_changed, %Run{id: ^id} = run}
+      assert run.run_code_public_key == pair.public_key
+      stored = Repo.get!(Run, id)
+
+      assert {run.run_key_issued_at, run.attach_by} ==
+               {stored.run_key_issued_at, stored.attach_by}
+
+      assert redeem(ctx, pair, at(ctx, 61)) == {:ok, first}
+      refute_received {:run_changed, %Run{}}
+    end
+
     test "at minute 14 finds the dispatch handed over and the run waiting, and sets its attach window to 600 seconds from then",
          ctx do
       minute_14 = at(ctx, 14 * 60)
