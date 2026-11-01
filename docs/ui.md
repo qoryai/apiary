@@ -1914,6 +1914,35 @@ start when the run has both.
 - **No output.** For a run with neither a log nor runtime events, the column shows an
   empty state in place of the box.
 
+## The stages canvas
+
+`<Canvas.canvas>` in `ApiaryWeb.StagesLive.Canvas` draws a process's stages with React
+Flow (`assets/js/canvas.js`, a separate bundle loaded on first mount). Workspace settings ›
+Stages, Instance settings › Workspace types and New workspace use it.
+
+- **The column.** The stages lie top to bottom on a dotted ground (dots 20 px apart, the
+  theme's text colour at 22 %), each a 360 px card with its name (18 px), its workflows and
+  loops (16 px; a loop is a dashed box inside the card, labelled with its rounds), its gate
+  line and its alert lines, joined to the next card by an arrow. The cards are drawn at
+  zoom 1; a pinch or the zoom buttons zoom from 0.75 to 1.5. You reach stages out of view
+  by scrolling the canvas; there is no "more" control.
+- **Edit mode** (`mode={:edit}`): a "+" above the first card, between two cards and below
+  the last adds a stage there. You drag a card to a new place, or move it one place with
+  the up and down arrow keys; Enter opens it in the inspector beside the canvas.
+- **View-only mode** (`mode={:view}`): no "+", no drag and no move. With
+  `selectable={false}` a card opens nothing and Tab passes it by.
+- **The buttons**, at the canvas's top right in both modes: Zoom out, Zoom in, **Focus**
+  (`f` outside a field; a class on the root that folds the shell and the sidebar away so
+  the box takes the window; Escape leaves) and **Full screen**, the browser's, shown only where the browser
+  has it.
+- **Size.** In a `.q-canvas-fill` box (app.css) the canvas takes the rest of the window,
+  as the terminal does: from 1024 px the page is the window's height, every element down
+  to the box stretches, and the box takes the rest, never under 380 px. A `.q-canvas-side`
+  after the canvas in that box (the inspector, or a side panel) sits beside it, 30rem wide
+  unless `--q-canvas-side` sets another width, and scrolls; below 1024 px it goes under
+  the canvas, which is then 70 % of the window tall. Focus and Full screen show the whole
+  box, the side too. Outside such a box the canvas is as tall as its column.
+
 ## Words
 
 Every visible or announced string goes through Gettext in engine words, one whole sentence
