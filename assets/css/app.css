@@ -4477,10 +4477,6 @@
     text-decoration-color: var(--q-border-strong);
     text-underline-offset: 2px;
   }
-  .q-rl-title.q-rl-id {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-  }
   .q-rl-inl {
     min-width: 0;
     overflow: hidden;
