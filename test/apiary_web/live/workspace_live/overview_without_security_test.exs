@@ -118,7 +118,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, nodes, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      {:ok, nodes, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines")
       refute subscribed_to_policy?(nodes, scope)
     end
 

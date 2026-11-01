@@ -40,9 +40,10 @@ defmodule ApiaryWeb.ActivityInstalledAdapterTest do
     assert shown(:"access_key.cancel_code", :instance, %{"code_id" => Ecto.UUID.generate()}) ==
              "Cancelled an adapter's code it no longer needs"
 
-    assert shown(:"access_key.create_code", :person, nil) == "Made a command to connect a node"
+    assert shown(:"access_key.create_code", :person, nil) ==
+             "Made a command to connect a machine, pool or gateway"
 
     assert shown(:"access_key.cancel_code", :person, %{"code_id" => Ecto.UUID.generate()}) ==
-             "Cancelled a command to connect a node"
+             "Cancelled a command to connect a machine, pool or gateway"
   end
 end

@@ -107,9 +107,9 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :record,
         key: :nodes,
-        label: gettext("Nodes"),
+        label: gettext("Machines"),
         icon: "hero-server",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/nodes" end,
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/machines" end,
         action: :"node.read"
       },
       # Guard: what the runs reached and what decided it, then the rules that decide. On an
@@ -236,16 +236,16 @@ defmodule ApiaryWeb.Layouts do
         [
           %Entry{
             key: :node,
-            label: gettext("New node"),
+            label: gettext("New machine"),
             icon: "hero-server",
-            path: ~p"/#{organisation}/#{workspace}/nodes/new",
+            path: ~p"/#{organisation}/#{workspace}/machines/new",
             action: :"node.create"
           },
           %Entry{
             key: :node_pool,
-            label: gettext("New node pool"),
+            label: gettext("New pool"),
             icon: "hero-server-stack",
-            path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
+            path: ~p"/#{organisation}/#{workspace}/machines/new-pool",
             action: :"node.create"
           }
         ] ++
@@ -416,9 +416,9 @@ defmodule ApiaryWeb.Layouts do
         %Entry{
           section: :instance,
           key: :nodes,
-          label: gettext("Nodes"),
+          label: gettext("Pool and gateway"),
           icon: "hero-server-stack",
-          path: ~p"/instance/nodes",
+          path: ~p"/instance/qory-pool-and-gateway",
           place: :instance
         }
 
@@ -432,6 +432,20 @@ defmodule ApiaryWeb.Layouts do
           label: gettext("Diagnostics keys"),
           icon: "hero-key",
           path: ~p"/instance/diagnostics-keys",
+          place: :instance
+        }
+
+    # The stages a new workspace of each type starts with, with the `workflow_model`
+    # feature, which the instance has or not, as the adapters. After the edition's, before
+    # Adapters.
+    workspace_types =
+      admin? && Apiary.Features.on?(:workflow_model) &&
+        %Entry{
+          section: :instance,
+          key: :workspace_types,
+          label: gettext("Workspace types"),
+          icon: "hero-rectangle-stack",
+          path: ~p"/instance/workspace-types",
           place: :instance
         }
 
@@ -449,7 +463,7 @@ defmodule ApiaryWeb.Layouts do
     for %Entry{} = entry <-
           [general] ++
             ApiaryWeb.Edition.instance_sections(scope) ++
-            [adapters, nodes, diagnostics_keys, mail, configuration],
+            [workspace_types, adapters, nodes, diagnostics_keys, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

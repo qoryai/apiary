@@ -189,12 +189,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   card shows the adapter and the account, such as “GitHub · acme”, how many of the
   account's collections the workspace has, such as “2 of 14 repositories”, or “All
   repositories”, and **Choose**. An adapter connected with no account yet shows
-  **Connected**. **Connect another source**, or **Connect another destination** in
-  **Destinations**, lists the adapters the instance has set up for the workspace's type
-  that the organisation has not connected, each with **Not connected**, or
-  **Connecting…** while the connection is pending. That list is open while the step
-  shows no card and no **Connected** line. Owners and admins have **Connect**, which returns to the step after the
-  adapter's steps; anyone else reads who may connect. A connection to an adapter is the
+  **Connected**, and one whose connection is pending **Connecting…**. With nothing
+  connected, owners and admins see on the step the adapters the instance has set up for
+  the workspace's type, each with **Not connected**, or **Connecting…** while the
+  connection is pending, and **Connect**, which returns to the step after the adapter's
+  steps. Once the step has a card or a **Connected** line, **Connect another source**, or
+  **Connect another destination**, opens a page of the step,
+  `/acme/main/set-up/sources/connect`, with the adapters not connected yet, or “Every
+  system is connected.” **Back** on that page, and on the chooser, returns to the step,
+  and the breadcrumb shows the step, a link to it, then the page: “Work sources /
+  Connect another source”. **About this step** says “Bring tickets in from a system such
+  as an issue tracker. Owners and admins of Acme connect it once for the organisation.”
+  and “Connect opens the system in this tab. After its steps, it sends you back here.”
+  Anyone else sees no **Connect** and reads “Only owners and admins of Acme connect work
+  sources.”, or “… connect destinations.” A connection to an adapter is the
   organisation's and serves every workspace, so its **Connect** has no setting of where
   it applies: one connection to GitHub serves both steps of every workspace. With no
   adapter to list, the step shows “No work source for this type is set up on this
@@ -231,8 +239,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Destinations** once a repository is the workspace's.
 - **Workspace settings › Work sources**, “Which work sources does Main use?”, and
   **› Destinations**, “Which repositories may runs in Main change?”, show the same cards
-  as the set-up's steps, with **Connect another source** or **Connect another
-  destination**. **Choose** opens the same chooser in the workspace's settings, at
+  as the set-up's steps, with **Connect a source** or **Connect a destination** for
+  owners and admins, which reads **Connect another …** once the page has a card or a
+  **Connected** line. Anyone else reads the step's line, such as “Only owners and admins
+  of Acme connect work sources.” **Choose** opens the same chooser in the workspace's settings, at
   `/acme/main/settings/choose?step=sources&grant=<id>`. Its **Save** and **Back** return
   to the settings page. **Connect** and **Change access** return to the set-up's step of
   the workspace. Under **Only selected**, ticking a work source assigns it to the
@@ -469,6 +479,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
+  public harness repository from its host over HTTPS, with no connection and no
+  adapter: a repository the host serves to anyone is public. A harness source that is
+  neither linked nor public fails with “… is not public, or does not exist, and no
+  connection of Acme reaches it.” A repository too large to read, a host out of reach or
+  on a private address, and a host that serves no git repository each fail with a
+  separate line: the fix, then the cause. An instance admin allows the Qory Apiary server outbound HTTPS to
+  each host the harnesses use, such as `github.com:443`.
+<!-- review: Vito accepts these words before the branch is pushed -->
+- The workspace's **Nodes** page is **Machines**, at `/<organisation>/<workspace>/machines`:
+  machines and pools first, then the gateways under the heading **Gateways**. On every
+  page a node is a machine, a node pool is a pool, and an instance of a pool is one of
+  its machines: **Machine limit**, **Running machines** and **Clear machine…**.
+  **Instance settings › Nodes** is
+  **Pool and gateway**, a page headed **Qory Pool and Qory Gateway**, at
+  `/instance/qory-pool-and-gateway`. The old `/nodes`
+  addresses send on to the new ones. The runs query takes `machine:`, and `node:` still
+  works.
 - An organisation's address follows its name, as a workspace's does. A rename in
   Organisation settings › General changes it, the page opens at the new address, and
   links to the old one stop working, with no redirect. A sign-up, the set-up link's page

@@ -503,6 +503,24 @@ defmodule ApiaryWeb.RunComponents do
   def elapsed(%{inserted_at: %DateTime{} = at}), do: {0, at}
   def elapsed(_run), do: {nil, nil}
 
+  ## The time columns
+
+  @doc """
+  The legend over a list of rows whose right-hand values sit in two columns (`.q-tc1`,
+  `.q-tc2`), wide enough for the rail to stand beside them; `app.css` shows it from 1280 px.
+  """
+  attr :first, :string, required: true
+  attr :second, :string, required: true
+
+  def time_legend(assigns) do
+    ~H"""
+    <div class="q-tlegend" aria-hidden="true">
+      <span class="q-tc1">{@first}</span>
+      <span class="q-tc2">{@second}</span>
+    </div>
+    """
+  end
+
   ## Duration
 
   @doc """
@@ -2021,7 +2039,7 @@ defmodule ApiaryWeb.RunComponents do
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Runtime")}</th>
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Host")}</th>
             <th :if={@nodes} scope="col" role="columnheader" class="q-rl-c5">
-              {gettext("Node")}
+              {gettext("Machine or pool")}
             </th>
             <th scope="col" role="columnheader">{gettext("Started")}</th>
             <th scope="col" role="columnheader" class="q-rl-c2 q-num">{gettext("Duration")}</th>
@@ -2314,14 +2332,14 @@ defmodule ApiaryWeb.RunComponents do
           <dd :if={key_label(@scope, @preview.run)} class="font-mono text-[12px]">
             {key_label(@scope, @preview.run)}
           </dd>
-          <dt :if={@preview.run.node_id}>{gettext("Node")}</dt>
+          <dt :if={@preview.run.node_id}>{gettext("Machine or pool")}</dt>
           <dd :if={@preview.run.node_id} id={"#{@id}-node"}>
             <.node_name
               scope={@scope}
               node={Ecto.assoc_loaded?(@preview.run.node) && @preview.run.node}
             />
           </dd>
-          <dt :if={@preview.run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dt :if={@preview.run.node_instance_id}>{gettext("Machine id")}</dt>
           <dd :if={@preview.run.node_instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
             <.external_text text={@preview.run.node_instance_id} />
           </dd>
@@ -2425,7 +2443,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <%= cond do %>
       <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
-        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
+        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/#{@node}"}>
           {ApiaryWeb.NodeComponents.shown_name(@node)}
         </.link>
       <% @node && is_nil(@node.deleted_at) -> %>
@@ -3442,7 +3460,7 @@ defmodule ApiaryWeb.RunComponents do
     <span :if={@value == "connected" && !@invocation} class={["q-outcome", answer_tone(@status)]}>
       {gettext("Connected")}<span
         :if={@status}
-        class="q-status"
+        class="q-outcome-code"
         title={gettext("The host answered %{status}.", status: @status)}
       >{@status}</span>
     </span>

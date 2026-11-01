@@ -18,7 +18,7 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.SecretLive.Index`), with the `factory` feature Work sources and
     Destinations (the tick lists of the set-up's steps), and Runs (how long it keeps runs,
     their events and their logs).
-  - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
+  - A node's (`/:org/:workspace/machines/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
 
@@ -181,7 +181,7 @@ defmodule ApiaryWeb.SettingsComponents do
           %Entry{
             section: :main,
             key: :stages,
-            label: gettext("Stages"),
+            label: stages_label(),
             icon: "hero-arrow-path-rounded-square",
             path: ~p"/#{organisation}/#{workspace}/settings/stages"
           }
@@ -195,6 +195,16 @@ defmodule ApiaryWeb.SettingsComponents do
             path: ~p"/#{organisation}/#{workspace}/settings/workflow"
           }
       end,
+      # The workspace's artifact types, with the `workflow_model` feature, for whoever may
+      # edit them.
+      Access.can?(scope, :"artifact_type.edit", workspace) &&
+        %Entry{
+          section: :main,
+          key: :artifact_types,
+          label: gettext("Artifact types"),
+          icon: "hero-document-duplicate",
+          path: ~p"/#{organisation}/#{workspace}/settings/artifact-types"
+        },
       %Entry{
         section: :main,
         key: :runs,
@@ -215,7 +225,7 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-adjustments-horizontal",
         path:
           if(node.workspace_id,
-            do: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings",
+            do: ~p"/#{organisation}/#{workspace}/machines/#{node}/settings",
             else: ~p"/#{organisation}/gateways/#{node}/settings"
           )
       }
@@ -963,4 +973,11 @@ defmodule ApiaryWeb.SettingsComponents do
     </.form>
     """
   end
+
+  @doc """
+  stages_label/0 is the name of Workspace settings › Stages, as its sidebar entry shows it,
+  for a text that leads a person there.
+  """
+  @spec stages_label() :: String.t()
+  def stages_label, do: gettext("Stages")
 end

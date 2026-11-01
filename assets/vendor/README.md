@@ -33,6 +33,44 @@ The source maps the files name in their last line are not vendored.
 To update: download the three tarballs with `curl`, copy the four files over these, and
 replace the versions and checksums above.
 
+## Mermaid (`mermaid/`)
+
+The diagrams of an artifact's Document view. Bundled through the separate entry
+`assets/js/mermaid.js`, so only artifact pages download it.
+
+The files are Mermaid's ES module build: `mermaid.esm.min.mjs` and the 103 modules it
+imports from `chunks/mermaid.esm.min/`. esbuild bundles them into one file. The package's
+single-file build, `dist/mermaid.min.js`, is not used: it declares a top-level `var` and then
+reads it back from `globalThis`, which fails once esbuild wraps the file in a module scope.
+
+| File | Package | Version | From the tarball | sha256 of the file |
+|---|---|---|---|---|
+| `mermaid/mermaid.esm.min.mjs` | `mermaid` | 11.17.2 | `package/dist/mermaid.esm.min.mjs` | `462d6f73fc9833044bca6dc08e62e0ee83f5a2b09583f588f95d5fd91b1960ed` |
+| `mermaid/chunks/mermaid.esm.min/*.mjs` (103 files) | `mermaid` | 11.17.2 | `package/dist/chunks/mermaid.esm.min/*.mjs` | see below |
+| `mermaid/LICENSE` | `mermaid` | 11.17.2 | `package/LICENSE` | `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80` |
+
+The 104 module files have one combined checksum,
+`821b16a5cfcfe38973846fe1064198701b8db5f6a2afc8b5608c747300ec1b04`. Check it from
+`assets/vendor/mermaid/`:
+
+```sh
+shasum -a 256 mermaid.esm.min.mjs chunks/mermaid.esm.min/*.mjs | LC_ALL=C sort | shasum -a 256
+```
+
+Tarball, from the npm registry:
+
+- `https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz`
+  (sha256 `6ad2f42c3fc26bbf9e45cbb6d11898972573ea52b33a5f4ff51952899f950ffd`)
+
+Licence: MIT.
+
+The source maps (`*.map`) beside the files in the tarball are not vendored.
+
+To update: download the tarball with `curl` and check it against `dist.integrity` in the
+registry. Delete `mermaid/chunks/` (the chunk names change with each release), then copy
+`package/dist/mermaid.esm.min.mjs`, the `.mjs` files of `package/dist/chunks/mermaid.esm.min/`
+and `package/LICENSE`. Replace the version and checksums above.
+
 ## React Flow (`flow/`)
 
 The canvas of Workspace settings › Stages: `@xyflow/react` with React and React DOM.

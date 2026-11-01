@@ -91,13 +91,20 @@ defmodule Apiary.Dispatches.RunEnd do
   # a prebuild (`Apiary.Environments.hold_build/2`), in the order of
   # `Apiary.Dispatches.Slots`: the connections and then the collections of its target
   # that name an `environment_ref` `FOR SHARE`, by id, as a Rebuild holds them; then the
-  # work items in Explore whose runs wait for its build `FOR KEY SHARE`, by id; then its
-  # environment record `FOR UPDATE`, as a release holds it (`Apiary.Dispatches.Release`):
+  # work items in Explore whose runs wait for its build `FOR KEY SHARE`, or `FOR UPDATE`
+  # with the workflow model on, by id; then its environment record `FOR UPDATE`, as a release holds it (`Apiary.Dispatches.Release`):
   # so each of them and a Rebuild take turns at the record, a listing's part that holds a
   # collection `FOR UPDATE` and a close that holds a work item `FOR UPDATE` take turns
-  # with the end before the record, and a claim, which takes no held run and holds the
-  # collections it queues a build of `FOR SHARE` as well, never waits on the end for a
-  # run the end ends. For any other run, its work item
+  # with the end before the record. With the workflow model off, a claim, which takes no
+  # held run and holds the collections it queues a build of `FOR SHARE` as well, never
+  # waits on the end for a run the end ends. With it on, a claim waits for the end at one
+  # of those work items once it writes a run of that work item a second time in its
+  # transaction, as its registration and an end at the claim do: Postgres then checks
+  # `dispatch_runs.work_item_id` with a `FOR KEY SHARE` lock on the work item. A claim's
+  # free that sets a lapsed run of that work item back to waiting, then takes it, can so
+  # wait at the work item while the end waits for that run: Postgres aborts one side
+  # (40P01), an aborted claim returns `{:error, :unavailable}`, and its caller retries.
+  # For any other run, its work item
   # `FOR KEY SHARE`, which a release and a close hold `FOR UPDATE` before the run of the
   # queue: so the end and either of them take turns at the work item. A run whose folded
   # exit says its image was missing (**An image missing**) holds more, in the order of
@@ -111,18 +118,22 @@ defmodule Apiary.Dispatches.RunEnd do
   # end then holds already: a listing's part or an assign, which holds its collections
   # `FOR UPDATE`, waits for the end at the connection or at the collection, and never
   # holds what the end waits for. A release, a close or a next run of the work item waits
-  # for the end at the work item. For any other run, `FOR KEY SHARE` is enough on the
-  # work item: the end writes no work item and inserts no run of it, it only writes the
-  # run of the queue, and a release or a close still waits for it there with its
-  # `FOR UPDATE`.
+  # for the end at the work item. For any other run with the workflow model off,
+  # `FOR KEY SHARE` is enough on the work item: the end writes no work item and inserts
+  # no run of it, it only writes the run of the queue, and a release or a close still
+  # waits for it there with its `FOR UPDATE`. With the workflow model on, the end writes
+  # the work item's place in its stage and may queue its next run
+  # (`Apiary.Stages.run_ended/2`), so the work item is locked `FOR UPDATE`.
   # An end by an exit writes the run of the queue a second time when the result it
   # stores differs from the one the row has (`settled/4`, `Apiary.Dispatches.Settle`,
   # which skips equal values), and Postgres then checks that write's foreign key with a
   # `FOR KEY SHARE` lock on the work item. Taken there alone, after the run of the
   # queue, that lock waits on a release that holds the work item and waits on the run of
   # the queue: a deadlock (40P01). Then the run of the queue is locked `FOR UPDATE`, then
-  # the registered run, then the dispatches are written. `refused/1` holds nothing
-  # first: it writes the run of the queue once.
+  # the registered run, then the dispatches are written. With the workflow model off,
+  # `refused/1` holds nothing first: it writes the run of the queue once. With it on, it
+  # holds the work item `FOR UPDATE` first (`Apiary.Stages.hold_work_item/1`), since the
+  # end writes the work item's place in its stage.
   # Every path that locks a run of the queue together with its dispatches or its
   # registered run locks the run of the queue first (`Apiary.Dispatches.Slots`), so two
   # ends of one run take turns there and the second finds it ended. A projection and an
@@ -194,9 +205,11 @@ defmodule Apiary.Dispatches.RunEnd do
   # run of the queue, inside the caller's transaction, from the run of the queue read
   # without a lock, for its columns that never change. For a prebuild, what
   # `Apiary.Environments.hold_build/2` holds: the collections of its target `FOR SHARE`,
-  # the work items whose runs wait for its build `FOR KEY SHARE`, then its environment
+  # the work items whose runs wait for its build `FOR KEY SHARE` (`FOR UPDATE` with the
+  # workflow model on), then its environment
   # record `FOR UPDATE`, returned as `{:build, record, collections, work_item_ids}`. For
-  # any other run, its work item `FOR KEY SHARE`, and nil returned: an end
+  # any other run, its work item `FOR KEY SHARE`, or `FOR UPDATE` with the workflow model
+  # on, and nil returned: an end
   # that writes the run of the queue twice in its transaction makes Postgres check
   # `dispatch_runs_work_item_id_fkey` again at the second write, with that same lock on
   # the work item, which then comes after the run of the queue unless taken here. For
@@ -227,7 +240,13 @@ defmodule Apiary.Dispatches.RunEnd do
       {_step, _pool_id, _collection_id, work_item_id} when is_binary(work_item_id) ->
         case missing(dispatch_run_id) do
           nil ->
-            :ok = share_work_item(work_item_id)
+            # Hand-over: with the workflow model, the end writes the work item's place in
+            # its stage (`Apiary.Stages.run_ended/1`), so it is locked `FOR UPDATE` here.
+            :ok =
+              if Apiary.Stages.on?(),
+                do: lock_work_item(work_item_id),
+                else: share_work_item(work_item_id)
+
             nil
 
           :unknown ->
@@ -300,11 +319,21 @@ defmodule Apiary.Dispatches.RunEnd do
       changed = end_locked(dispatch_run, cause, now, detail(cause, run))
       built = build_ended(held, dispatch_run, cause, run, now)
       settled = settled(dispatch_run, run, cause, now)
-      changed ++ built ++ settled ++ image_missing(held, dispatch_run, run, cause, now)
+      requeued = image_missing(held, dispatch_run, run, cause, now)
+      told = changed ++ built ++ settled ++ requeued
+      told ++ Enum.reject(staged(dispatch_run), &(&1 in told))
     end
   end
 
   def finish(_dispatch_run, %Run{}, _cause, %DateTime{}, _held), do: []
+
+  # Hand-over: with the workflow model, the stage runner acts on the run's end
+  # (`Apiary.Stages.run_ended/1`), after a requeue for a missing image, which it then reads
+  # as the stage's newest run.
+  defp staged(%DispatchRun{step: @prebuild}), do: []
+
+  defp staged(%DispatchRun{id: id}),
+    do: if(Apiary.Stages.on?(), do: Apiary.Stages.run_ended(id), else: [])
 
   defp settled(dispatch_run, run, :run_ended, now),
     do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: :run_ended}, run, now)
@@ -423,8 +452,9 @@ defmodule Apiary.Dispatches.RunEnd do
   def run_ended(%Run{}), do: []
 
   # refused/1 ends the run of the queue of `run`, a run that is not a prebuild whose
-  # projection folded a refusal, `run_refused`, in a separate transaction: the run of the
-  # queue locked first, then the registered run. It changes nothing when the run of the
+  # projection folded a refusal, `run_refused`, in a separate transaction: with the
+  # workflow model, its work item locked first; then the run of the queue, then the
+  # registered run. It changes nothing when the run of the
   # queue is not handed over any more, or when an exit came, stored or folded, which ends
   # it `run_ended`. The ids of the workspaces whose slots changed, and the
   # work item whose run ended, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
@@ -434,6 +464,11 @@ defmodule Apiary.Dispatches.RunEnd do
       when is_binary(dispatch_run_id) do
     {:ok, changed} =
       Repo.transact(fn ->
+        # Hand-over: with the workflow model, the end writes the work item's place in its
+        # stage (`Apiary.Stages.run_ended/2`), so the work item is locked first, in the
+        # order every path keeps.
+        if Apiary.Stages.on?(), do: :ok = Apiary.Stages.hold_work_item(dispatch_run_id)
+
         with %DispatchRun{state: :handed_over, step: step} = dispatch_run when step != @prebuild <-
                lock(dispatch_run_id),
              %Run{} = run <- locked_run(run_id),

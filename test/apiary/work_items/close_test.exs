@@ -164,6 +164,8 @@ defmodule Apiary.WorkItems.CloseTest do
       other = work_item_fixture(ctx.first)
       refute other.adapter_id == ctx.adapter.id
       run = queue!(other)
+      # With the workflow model, the queue places the work item in its first stage.
+      other = Repo.get!(WorkItem, other.id)
 
       remove!(ctx)
 

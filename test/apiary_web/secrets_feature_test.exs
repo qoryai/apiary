@@ -199,7 +199,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       answer = jump(conn, scope)
 
       assert labels(answer, "Actions") ==
-               ["New node", "New node pool"] ++ rule() ++ ["Invite people"]
+               ["New machine", "New pool"] ++ rule() ++ ["Invite people"]
 
       refute "Workspace settings › Integrations" in labels(answer, "Go to")
       refute "Workspace settings › Secrets and variables" in labels(answer, "Go to")
@@ -239,7 +239,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       %{access_key: key} = node_key_fixture(scope, node)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/access-key")
 
       assert has_element?(view, "#key-#{key.key_id}-fingerprint")
       refute has_element?(view, "#key-#{key.key_id}-stored-secrets")
@@ -411,7 +411,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       answer = jump(conn, scope)
 
       assert labels(answer, "Actions") ==
-               ["New node", "New node pool"] ++
+               ["New machine", "New pool"] ++
                  rule() ++
                  [
                    "Add integration",
@@ -437,7 +437,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       %{access_key: key} = node_key_fixture(scope, node)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}/access-key")
 
       assert has_element?(view, "#key-#{key.key_id}-stored-secrets", "Not allowed")
       assert render(view) =~ "Stored secrets"

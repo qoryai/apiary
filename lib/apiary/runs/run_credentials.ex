@@ -89,6 +89,42 @@ defmodule Apiary.Runs.RunCredentials do
     end
   end
 
+  @doc false
+  # reach/3 is how the run's work entry reaches its target, from the collection
+  # `form_work/3` takes: `{:gone, adapter}` for a collection that ended or a connection
+  # not connected, `{:path_refused, adapter}` for a target path its adapter's apply items
+  # do not take, else `{:reaches, adapter}`; nil for no collection. Read without a lock,
+  # for the text of why a run ended `target_access_gone` (`Apiary.Stages.StopCause`).
+  @spec reach(DispatchRun.t(), WorkItem.t() | nil, map | nil) ::
+          {:gone | :path_refused | :reaches, Node.t()} | nil
+  def reach(%DispatchRun{} = dispatch_run, work_item, %{path: path} = target) do
+    case collection(dispatch_run, work_item, target) do
+      nil ->
+        nil
+
+      {%Collection{ended_at: %DateTime{}}, _connection, adapter} ->
+        {:gone, adapter}
+
+      {_collection, %Connection{state: state}, adapter} when state != :connected ->
+        {:gone, adapter}
+
+      {_collection, _connection, %Node{source_apply: nil} = adapter} ->
+        {:reaches, adapter}
+
+      {_collection, _connection, adapter} ->
+        {filled(adapter, path), adapter}
+    end
+  end
+
+  def reach(%DispatchRun{}, _work_item, _target), do: nil
+
+  defp filled(adapter, path) do
+    case ApplyTemplates.fill(adapter.source_apply, path) do
+      {:ok, _apply} -> :reaches
+      {:error, :path_refused} -> :path_refused
+    end
+  end
+
   # The collection the run's work entry comes from, with its connection and adapter: a
   # prebuild's, or for a run with a work item the matching collection it takes (the
   # moduledoc). Nil where there is none.
@@ -160,13 +196,26 @@ defmodule Apiary.Runs.RunCredentials do
   end
 
   # The run's access level: its harness walk's, `:read` for a prebuild and for a run with
-  # no walk.
+  # no walk. With the workflow model, the lower of the walk's and the stage entry's
+  # (`Apiary.Stages.limits/1`), as the run's documents have it (`Apiary.Dispatches.Handover`).
   defp access(%DispatchRun{step: @prebuild}), do: :read
 
-  defp access(%DispatchRun{id: id}) do
-    Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
-      :read
+  defp access(%DispatchRun{id: id} = dispatch_run) do
+    walk =
+      Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
+        :read
+
+    lowered(walk, dispatch_run)
   end
+
+  defp lowered(:write, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{access: :read} -> :read
+      _none -> :write
+    end
+  end
+
+  defp lowered(access, _dispatch_run), do: access
 
   @doc false
   # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run
