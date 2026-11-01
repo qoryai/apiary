@@ -261,15 +261,16 @@ defmodule ApiaryWeb.RunLogControllerTest do
                [~s(attachment; filename="run-#{run.number}.log")]
     end
 
-    test "the run's rn_ address sends on to its number, with the query", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "the run's rn_ address sends on to its number, with the query, percent-encoded too",
+         %{conn: conn, scope: scope} do
       run = run_with_log(scope)
       path = "#{workspace_path(scope)}/runs"
 
-      conn = get(conn, "#{path}/#{run.public_id}/log?download=1&limit=1")
-      assert redirected_to(conn) == "#{path}/#{run.number}/log?download=1&limit=1"
+      for id <- [run.public_id, String.replace(run.public_id, "_", "%5F")] do
+        assert redirected_to(get(conn, "#{path}/#{id}/log?download=1&limit=1")) ==
+                 "#{path}/#{run.number}/log?download=1&limit=1",
+               id
+      end
     end
 
     test "a parameter that is not what it should be is a 400", %{conn: conn, scope: scope} do

@@ -100,10 +100,18 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
     end
   end
 
-  test "the run's rn_ address sends on to its number", %{conn: conn, scope: scope, run: run} do
+  test "the run's rn_ address sends on to its number, percent-encoded too", %{
+    conn: conn,
+    scope: scope,
+    run: run
+  } do
     base = ~p"/#{scope.organisation}/#{scope.workspace}/runs"
-    conn = get(conn, "#{base}/#{run.public_id}/diagnostics")
-    assert redirected_to(conn) == "#{base}/#{run.number}/diagnostics"
+
+    for id <- [run.public_id, String.replace(run.public_id, "_", "%5F")] do
+      assert redirected_to(get(conn, "#{base}/#{id}/diagnostics")) ==
+               "#{base}/#{run.number}/diagnostics",
+             id
+    end
   end
 
   test "signed out, it redirects to the log-in page", %{path: path} do

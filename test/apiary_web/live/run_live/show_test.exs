@@ -181,10 +181,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = projected(scope, record())
       path = workspace_path(scope, "/runs")
 
-      for tab <- ["", "/terminal", "/network"] do
-        assert {:error, {:live_redirect, %{to: to}}} =
-                 live(conn, "#{path}/#{run.public_id}#{tab}?cx=0")
+      # Percent-encoded too: the router decodes `rn%5F…` to the same id.
+      encoded = String.replace(run.public_id, "_", "%5F")
 
+      for id <- [run.public_id, encoded], tab <- ["", "/terminal", "/network"] do
+        assert {:error, {:live_redirect, %{to: to}}} = live(conn, "#{path}/#{id}#{tab}?cx=0")
         assert to == "#{path}/#{run.number}#{tab}?cx=0"
       end
     end

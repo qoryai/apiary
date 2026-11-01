@@ -1696,11 +1696,12 @@ defmodule ApiaryWeb.RunLive.Show do
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run}/network?#{query}"
 
   # The address `uri` with the run's number in the place of `run_id`, the `rn_` id it was
-  # asked by: the same tab, the same query.
-  defp numbered(uri, run_id, %Run{number: number}) do
+  # asked by: the same tab, the same query. The path is compared one decoded segment at a
+  # time, as the router matched it.
+  defp numbered(uri, run_id, %Run{} = run) do
     %URI{path: path, query: query} = URI.parse(uri)
-    [before, rest] = String.split(path, "/runs/" <> run_id, parts: 2)
-    before <> "/runs/#{number}" <> rest <> if(query, do: "?" <> query, else: "")
+    segments = path |> String.split("/", trim: true) |> Enum.map(&URI.decode/1)
+    ApiaryWeb.RunAddress.renumber(segments, query, run_id, run)
   end
 
   # A label that names the target, by the workspace's domain, links to the target's page.
