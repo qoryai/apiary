@@ -322,16 +322,21 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       assign(assigns,
         marks: Map.new(assigns.page.index, &{&1.type, &1}),
         versions: Enum.filter(assigns.page.outputs, & &1.version_id),
+        # At a Confirm gate the proposal can exist with no artifact, so an output with no
+        # version is not shown as missing.
+        shown: shown_outputs(assigns.page),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none"
       )
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
-      <h3 class="text-sm font-semibold">{gettext("Outputs")}</h3>
+      <h3 :if={@shown != [] or @page.outputs == []} class="text-sm font-semibold">
+        {gettext("Outputs")}
+      </h3>
       <p :if={@page.outputs == []} id={"#{@id}-none"}>{gettext("This stage has no outputs.")}</p>
-      <ul :if={@page.outputs != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
-        <li :for={output <- @page.outputs} id={"#{@id}-output-#{output.type}"}>
+      <ul :if={@shown != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
+        <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
           <span>{version_words(output.type, output.version)}</span>
           · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
           <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
@@ -408,6 +413,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </div>
     """
   end
+
+  defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
+    do: Enum.filter(outputs, & &1.version_id)
+
+  defp shown_outputs(%{outputs: outputs}), do: outputs
 
   defp check_words(%{version: nil, required: false}), do: gettext("Optional, none")
   defp check_words(%{check: :passed}), do: gettext("Passed")

@@ -679,6 +679,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-step-confirm")
       refute has_element?(view, "#work-item-stage-gate-line")
       refute has_element?(view, "#work-item-stage-gate-add-proposal")
+      refute has_element?(view, "#work-item-stage-gate-output-proposal")
     end
 
     test "a stale Approve: the notice lists the output and the stage", %{
