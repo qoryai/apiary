@@ -165,7 +165,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             notice={@stage_notice}
           />
           <.step_card
-            :if={!@flow or @flow.explore}
+            :if={step_card?(@flow, @item)}
             work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
@@ -938,6 +938,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           Access.can?(scope, action, row)
     }
   end
+
+  # Today's step card, beside the stage card at Explore. At the run limit it says Explore
+  # cannot run again in this take in, which is false while the escalation card offers Run
+  # another round: there the step card is not shown.
+  defp step_card?(nil, _item), do: true
+  defp step_card?(%{explore: false}, _item), do: false
+  defp step_card?(flow, item), do: not (status(item) == :used_up and escalated?(flow, :used_up))
 
   defp status(%{status: status}), do: status
   defp status(_item), do: nil

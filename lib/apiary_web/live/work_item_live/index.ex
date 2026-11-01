@@ -35,11 +35,13 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   #
   # **The board.** Where the reader is shown the feature `workflow_model`
   # (`ApiaryWeb.WorkItemLive.Workflow`), the Open view under no stage, no search and no
-  # filter shows the board in place of the stages strip and the bands: a column for each
-  # stage of the workspace's current process version, then one for each stage that
-  # version removed while live work items remain in it, marked with its version
-  # (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`). It is read again on
-  # `{:work_items_changed, ids}`. Without the feature the page is as before it.
+  # filter shows the board in place of the stages strip: a column for each stage of the
+  # workspace's current process version, then one for each stage that version removed
+  # while live work items remain in it, marked with its version
+  # (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`). Under the board, in place
+  # of the bands, the Open view is a page of rows with the pager, as every other view is.
+  # The board is read again on `{:work_items_changed, ids}`. Without the feature the page
+  # is as before it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -181,7 +183,6 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           <.view_note view={@params.view} item_noun={@item_noun} />
 
           <%= cond do %>
-            <% @board -> %>
             <% @bands -> %>
               <.stage_band
                 :for={stage <- stages()}
@@ -382,8 +383,14 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     params = socket.assigns.params
     now = DateTime.utc_now()
 
+    board =
+      if params.view == :open and is_nil(params.stage) and is_nil(params.search) and
+           not Enum.any?(@filters, &on?(params, &1)) and Workflow.on?(scope),
+         do: Workflow.board(scope, params.sort)
+
+    # Under the board, the Open view is a page of rows, as every other view is.
     {list, bands} =
-      if params.view == :open and is_nil(params.stage) do
+      if params.view == :open and is_nil(params.stage) and is_nil(board) do
         bands = WorkItems.list_bands(scope, query(params), now)
         {Map.merge(bands, %{rows: [], first: 1, next: nil, prev: nil}), bands.bands}
       else
@@ -392,11 +399,6 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
     people = people(rows, one_owner(params), socket.assigns.options.owner)
-
-    board =
-      if params.view == :open and is_nil(params.stage) and is_nil(params.search) and
-           not Enum.any?(@filters, &on?(params, &1)) and Workflow.on?(scope),
-         do: Workflow.board(scope, params.sort)
 
     assign(socket,
       board: board,

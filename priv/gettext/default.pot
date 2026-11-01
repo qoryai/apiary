@@ -2619,11 +2619,6 @@ msgstr ""
 msgid "%{stage} waits for answers to the agent's questions."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage} waits for you"
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage}: a value is not valid. Check the stage, then save again."
@@ -14672,6 +14667,7 @@ msgid "Qory's words"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Queued"
 msgstr ""

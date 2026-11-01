@@ -87,6 +87,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     current_id = id_of(get(status, :stage))
     at = Enum.find_index(all, &(&1.id == current_id))
     state = state(get(status, :state))
+    outputs = Enum.map(get(status, :outputs) || [], &output/1)
 
     stage =
       Enum.find(
@@ -100,14 +101,16 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       stages: track(all, at, state),
       stage: stage,
       state: state,
+      # The stage runs, and its newest run still waits for a machine.
+      queued: state == :running and match?([%{shows: :queued} | _], runs),
       round: get(status, :round),
       rounds: get(status, :rounds),
       gaps: lines(get(status, :gaps)),
       runs: runs,
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
-      outputs: Enum.map(get(status, :outputs) || [], &output/1),
-      escalation: escalation(scope, get(status, :escalation), runs),
+      outputs: outputs,
+      escalation: escalation(scope, get(status, :escalation), runs, outputs),
       approvers: approvers(stage),
       gate_kind: get(get(status, :gate) || %{}, :kind),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
@@ -266,20 +269,27 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  defp escalation(_scope, nil, _runs), do: nil
+  defp escalation(_scope, nil, _runs, _outputs), do: nil
 
-  defp escalation(scope, escalation, runs) do
+  defp escalation(scope, escalation, runs, outputs) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
+    cause = Map.get(@causes, cause, :escalate)
 
     %{
-      cause: Map.get(@causes, cause, :escalate),
+      cause: cause,
+      result: result?(cause, outputs),
       gaps: lines(get(escalation, :gaps)),
       round: get(escalation, :round),
       run: escalated_run(escalation, runs),
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
   end
+
+  # Whether the stage has a result to accept as it is: a version of one of its outputs, or,
+  # for a stage with no outputs, a run that did not stop before its verdict.
+  defp result?(cause, []), do: cause != :run_stopped
+  defp result?(_cause, outputs), do: Enum.any?(outputs, & &1.version_id)
 
   # An artifact of the index with its approval marks: the number of the version a gate
   # approved, and of a newer one where there is one.
@@ -350,6 +360,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
+
+  # Accept as it is only where the stage has a result: the page offers it nowhere else.
+  defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
+    do: {:error, :invalid}
 
   defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
   defp checked({:move, id, _note} = action, page), do: back(action, id, page)
