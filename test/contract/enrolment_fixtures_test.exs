@@ -91,6 +91,16 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
     })
   end
 
+  defp built("answer-diagnostics.json") do
+    Enrolment.answer_body(%{
+      access_key_id: "ak_f1xt0re000000000",
+      node_id: "dg_f1xt0re000000000",
+      node_kind: :diagnostics,
+      stored_secrets: false,
+      apiary_public_key: server_keys(:one)
+    })
+  end
+
   defp built("refusal-key-invalid.json"),
     do: Enrolment.refusal_body(:key_invalid, server_keys(:one))
 
@@ -106,11 +116,12 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
     do: Enrolment.refusal_body(:key_limit, server_keys(:rotation))
 
   @requests ~w(request.json request-two-fingerprints.json request-gateway.json)
-  # The answers the known answers sign, and an adapter's, which none signs.
+  # The answers the known answers sign, and an adapter's and a diagnostics key's, which
+  # none signs.
   @signed_answers ~w(answer.json refusal-key-invalid.json refusal-key-limit.json
                      refusal-rate-limited.json refusal-key-invalid-rotation.json
                      refusal-key-limit-rotation.json answer-gateway.json)
-  @answers @signed_answers ++ ~w(answer-adapter.json)
+  @answers @signed_answers ++ ~w(answer-adapter.json answer-diagnostics.json)
 
   # The request each answer answers, whose proof is its line 3.
   defp request_of("answer-gateway.json"), do: "request-gateway.json"

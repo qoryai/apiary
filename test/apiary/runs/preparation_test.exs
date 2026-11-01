@@ -301,6 +301,20 @@ defmodule Apiary.Runs.PreparationTest do
                  "#{ctx.scope.workspace.name} reads why in the log of build-pool on its host."
     end
 
+    test "Machine requested takes from the claim to the starter's `dispatched`", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+
+      change_dispatch!(dispatch,
+        dispatched_at: DateTime.add(dispatch.claimed_at, 2500, :millisecond)
+      )
+
+      assert %{machine: %{requested_ms: 2500}} = Preparation.read(ctx.scope, run)
+
+      # Handed over at the code's redemption, with no `dispatched`: no time is recorded.
+      change_dispatch!(dispatch, dispatched_at: nil)
+      assert %{machine: %{requested_ms: nil}} = Preparation.read(ctx.scope, run)
+    end
+
     test "a pending run whose code is still good has not stopped", ctx do
       run = ctx.scope |> handed_over_fixture(ctx.key) |> unredeemed!()
 

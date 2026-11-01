@@ -47,6 +47,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ]
 
   alias Apiary.ExternalText
+  alias Apiary.Runs.Record.Timeline
   alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
@@ -417,7 +418,16 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :seq_path, :any, required: true, doc: "a function from a sequence to the item's permalink"
   attr :target, :string, default: nil
   attr :isolate, :string, default: nil
-  attr :connections, :boolean, default: true, doc: "false hides every connection (?cx=0)"
+
+  attr :connections, :boolean,
+    default: false,
+    doc: "true shows the allowed connections too (?cx=1); a denied one always shows"
+
+  attr :terminal_path, :any,
+    default: nil,
+    doc:
+      "a function from a sequence to the item in the Terminal, nil for a reader without the log"
+
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
@@ -455,6 +465,7 @@ defmodule ApiaryWeb.RunPageComponents do
           item={item}
           started_at={@started_at}
           seq_path={@seq_path}
+          terminal_path={@terminal_path}
           security={@security}
         />
       </ol>
@@ -509,6 +520,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
   attr :security, :boolean, default: true
 
   def timeline_item(assigns) do
@@ -544,6 +556,7 @@ defmodule ApiaryWeb.RunPageComponents do
           item={@item}
           started_at={@started_at}
           seq_path={@seq_path}
+          terminal_path={@terminal_path}
           security={@security}
         />
       </div>
@@ -618,6 +631,9 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :tool, status: :open}),
     do: %{glyph: :spinner, shape: :round, tone: :info}
 
+  defp node_look(%{kind: :tool, status: :denied}),
+    do: %{glyph: "hero-no-symbol-micro", shape: :round, tone: nil}
+
   defp node_look(%{kind: :tool, status: :no_end}),
     do: %{glyph: "hero-ellipsis-horizontal-micro", shape: :round, tone: nil}
 
@@ -632,6 +648,9 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp node_look(%{kind: :notification}),
     do: %{glyph: "hero-bell-micro", shape: :round, tone: nil}
+
+  defp node_look(%{kind: :text}),
+    do: %{glyph: "hero-bars-3-bottom-left-micro", shape: :round, tone: nil}
 
   defp node_look(%{kind: :turn_finished}),
     do: %{glyph: "hero-bars-3-bottom-left-micro", shape: :round, tone: nil}
@@ -650,6 +669,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
   attr :security, :boolean, default: true
 
   defp item_body(%{item: %{kind: :run_started}} = assigns) do
@@ -823,10 +843,33 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # The prompt on the label's line, its line breaks as spaces, cut at the row's end.
   defp item_body(%{item: %{kind: :prompt}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Prompt")} />
-    <.say item={@item} class="q-say-prompt" />
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Prompt")}>
+      <bdi>{one_line(@item.text)}</bdi>
+    </.head>
+    """
+  end
+
+  # A text of the session: its first line, without its Markdown marks, and the way to the
+  # whole text in the Terminal's Transcript, for a reader of the log.
+  defp item_body(%{item: %{kind: :text}} = assigns) do
+    ~H"""
+    <div class="q-hd">
+      <span class="q-k">{gettext("Text")}</span>
+      <.who :if={@item.who} lane={@item.lane} />
+      <span class="q-s q-s-fit"><bdi>{sent(@item.first_line)}</bdi></span>
+      <.link
+        :if={@terminal_path}
+        patch={@terminal_path.(@item.sequence)}
+        class="q-to-term"
+        aria-label={gettext("Show this text in the Terminal")}
+      >
+        {gettext("Terminal")} <span aria-hidden="true">›</span>
+      </.link>
+      <.tail item={@item} started_at={@started_at} seq_path={@seq_path} />
+    </div>
     """
   end
 
@@ -842,7 +885,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span class="q-k q-k-mono"><.external_text text={@item.tool} /></span>
         <.who :if={@item.who} lane={@item.lane} />
-        <span class="q-s q-s-mono"><.tool_summary summary={@item.summary} /></span>
+        <span class="q-s q-s-mono"><.external_text text={@item.summary} /></span>
         <.badge :if={@item.in_background} color="info" class="self-center">
           {gettext("In background")}
         </.badge>
@@ -852,6 +895,7 @@ defmodule ApiaryWeb.RunPageComponents do
             else: gettext("Failed")}</span>
           <span :if={@item.status == :open} class="q-running">{gettext("Running")}</span>
           <span :if={@item.status == :no_end} class="q-no-end">{gettext("No end recorded")}</span>
+          <span :if={@item.status == :denied} class="q-no-end">{gettext("Not run: denied")}</span>
           <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
         </.tail>
       </summary>
@@ -900,11 +944,13 @@ defmodule ApiaryWeb.RunPageComponents do
         :if={@item.kind == :subagent_started}
         text={@item.agent_id}
       /></span>
+      <span :if={@item.kind == :subagent_finished} class="q-s"><bdi>{sent(
+        Timeline.first_line(@item.text)
+      )}</bdi></span>
       <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
         <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
       </.tail>
     </div>
-    <.say :if={@item.kind == :subagent_finished} item={@item} />
     """
   end
 
@@ -916,10 +962,11 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # The turn's last message is the text item before it: the row shows the label "Turn
+  # finished" and its time, and no text.
   defp item_body(%{item: %{kind: :turn_finished}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Turn finished")} />
-    <.say item={@item} />
     """
   end
 
@@ -947,7 +994,6 @@ defmodule ApiaryWeb.RunPageComponents do
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Result")}>
       {result_words(@item)}
     </.head>
-    <.say item={@item} />
     """
   end
 
@@ -1279,29 +1325,11 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  attr :summary, :any, required: true
+  # A text of several lines on one line: each run of whitespace a space.
+  defp one_line(text) when is_binary(text),
+    do: text |> sent_lines() |> String.replace(~r/\s+/u, " ") |> String.trim()
 
-  defp tool_summary(%{summary: {:pattern, _pattern, _path}} = assigns) do
-    ~H"""
-    <.external_text text={elem(@summary, 1)} />
-    <span class="text-faint">{pgettext("a pattern in a path", "in")}</span>
-    <.external_text text={elem(@summary, 2)} />
-    """
-  end
-
-  defp tool_summary(%{summary: {:text, _text}} = assigns),
-    do: ~H"<.external_text text={elem(@summary, 1)} />"
-
-  defp tool_summary(assigns), do: ~H""
-
-  attr :item, :map, required: true
-  attr :class, :any, default: nil
-
-  defp say(assigns) do
-    ~H"""
-    <p :if={@item.text} class={["q-say", @class]} phx-no-format>{sent_lines(@item.text)}<.show_all :if={@item.text_cut} seq={@item.sequence} bytes={@item.text_bytes} /></p>
-    """
-  end
+  defp one_line(_text), do: nil
 
   ## Code wells
 
@@ -1325,7 +1353,8 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :seq, :integer, required: true
   attr :bytes, :integer, required: true
 
-  defp show_all(assigns) do
+  @doc false
+  def show_all(assigns) do
     ~H"""
     <button type="button" class="q-show-all" phx-click="show_all" phx-value-seq={@seq}>{gettext(
       "Show all %{size}",
@@ -1388,7 +1417,8 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp exit_code_words(_item), do: nil
 
-  defp result_words(item) do
+  @doc "A result's head, `success · 6 turns · 14 s · $0.09`: what is known of it."
+  def result_words(item) do
     [
       sent(item.outcome),
       item.turns &&
@@ -1410,10 +1440,11 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # The same for a text of several lines, which keeps its tabs and line breaks
   # (`Apiary.ExternalText.present_lines/1`).
-  defp sent_lines(text) when is_binary(text) and text != "",
+  @doc false
+  def sent_lines(text) when is_binary(text) and text != "",
     do: ExternalText.present_lines(text) || ExternalText.marked(text)
 
-  defp sent_lines(_text), do: nil
+  def sent_lines(_text), do: nil
 
   # The texts an item said, each as `sent/1` shows it, joined by a middle dot.
   defp said(texts), do: texts |> Enum.map(&sent/1) |> Enum.reject(&is_nil/1) |> Enum.join(" · ")
@@ -1516,10 +1547,12 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc """
   The terminal box: dark in both themes. It fills the window below the run page's tab bar,
-  never under 380 px; the bar and the screen belong to the `Terminal` hook
-  (`phx-update="ignore"`); the foot is the LiveView's, which sends numbers and never
-  bytes. The hook reads the log from `src` and asks again when the LiveView says the log
-  has advanced.
+  never under 380 px. It has two views: the Transcript (`transcript`, the LiveView's,
+  `ApiaryWeb.TranscriptComponents`) and Raw, the log's bytes. The bar and Raw's screen
+  belong to the `Terminal` hook (`phx-update="ignore"`); the foot is the LiveView's, which
+  sends numbers and never bytes. The hook reads the log from `src` and asks again when the
+  LiveView says the log has advanced. The view is the root's `data-view`, set from `view`
+  on the first render and by the hook after it.
 
   `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
   a run on pipes. With a size the hook replays at the recorded size, each answer of `src`
@@ -1527,11 +1560,12 @@ defmodule ApiaryWeb.RunPageComponents do
   box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
-  The bar: the stream, the view (on pipes: Collapsed or Raw, the reader's preference kept
-  in `localStorage`), search, follow, wrap (on pipes), the text size (A−, A+ and, at a
-  recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
-  download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
-  (the browser's, where it has one).
+  The bar: the view (Transcript or Raw, when the run has a Transcript and a log; on pipes
+  the reader's preference kept in `localStorage`), the stream (Raw only), search, follow
+  and wrap (on pipes; both Raw only), the text size (A−, A+ and, at a recorded size, Fit;
+  11 to 18 px, the reader's preference kept in `localStorage`), the download, Focus (`f`:
+  the terminal takes the window; Escape leaves) and Full screen (the browser's, where it
+  has one). Without a log (`raw` false) the box has the Transcript alone.
   """
   attr :id, :string, required: true
   attr :src, :string, required: true
@@ -1544,12 +1578,25 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :through, :integer, required: true
   attr :cols, :integer, default: nil
   attr :rows, :integer, default: nil
+  attr :raw, :boolean, default: true, doc: "whether the log is there to show in Raw"
+  attr :view, :string, default: "raw", doc: ~s("transcript" or "raw": the view it opens in)
+  slot :transcript, doc: "the Transcript; none for a run with no runtime events"
 
   def terminal(assigns) do
+    pty = assigns.streams == ["terminal"]
+
     assigns =
       assign(assigns,
         sized: is_integer(assigns.cols) and is_integer(assigns.rows),
-        pty: assigns.streams == ["terminal"]
+        pty: pty,
+        both: assigns.raw and assigns.transcript != [],
+        # A pseudo-terminal run opens in Raw, where its screen is.
+        opening:
+          cond do
+            not assigns.raw -> "transcript"
+            assigns.transcript == [] or pty -> "raw"
+            true -> assigns.view
+          end
       )
 
     ~H"""
@@ -1559,6 +1606,9 @@ defmodule ApiaryWeb.RunPageComponents do
       role="region"
       aria-label={gettext("Terminal output")}
       phx-hook="Terminal"
+      phx-mounted={JS.ignore_attributes(["data-view", "data-tr-wrap", "style"])}
+      data-view={@opening}
+      data-raw={to_string(@raw)}
       data-src={@src}
       data-script={@script}
       data-stylesheet={@stylesheet}
@@ -1572,13 +1622,20 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
         <a
+          :if={@raw}
           class="sr-only focus:not-sr-only q-tbtn"
           href={@src <> "?download=1"}
           download
         >
           {gettext("Read the log as text")}
         </a>
-        <div class="q-tseg" role="group" aria-label={gettext("Stream")}>
+        <div :if={@both} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
+          <button type="button" data-view-button="transcript" aria-pressed="false">
+            {gettext("Transcript")}
+          </button>
+          <button type="button" data-view-button="raw" aria-pressed="false">{gettext("Raw")}</button>
+        </div>
+        <div :if={@raw} class="q-tseg q-term-raw" role="group" aria-label={gettext("Stream")}>
           <%= if length(@streams) > 1 do %>
             <button :for={stream <- @streams} type="button" data-stream={stream} aria-pressed="false">
               {stream}
@@ -1588,18 +1645,12 @@ defmodule ApiaryWeb.RunPageComponents do
             <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
           <% end %>
         </div>
-        <div :if={!@pty} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
-          <button type="button" data-view="collapsed" aria-pressed="true">
-            {gettext("Collapsed")}
-          </button>
-          <button type="button" data-view="raw" aria-pressed="false">{gettext("Raw")}</button>
-        </div>
-        <label class="q-term-find">
+        <label :if={@raw} class="q-term-find">
           <.icon name="hero-magnifying-glass-micro" class="size-4" />
           <span class="sr-only">
-            {if @pty,
-              do: gettext("Search the log"),
-              else: gettext("Search the log. Searching shows the Raw view.")}
+            {if @both,
+              do: gettext("Search the log. Searching shows the Raw view."),
+              else: gettext("Search the log")}
           </span>
           <input
             type="text"
@@ -1611,14 +1662,15 @@ defmodule ApiaryWeb.RunPageComponents do
           <span data-find-count aria-live="polite"></span>
         </label>
         <span class="q-term-grow"></span>
-        <span class="q-term-hint">
+        <span :if={@raw} class="q-term-hint q-term-raw">
           <.rich text={rich_gettext("%{key} leaves focus", key: {:part, :key})}>
             <:part name={:key}><kbd>{gettext("esc")}</kbd></:part>
           </.rich>
         </span>
         <button
+          :if={@raw}
           type="button"
-          class="q-tbtn"
+          class="q-tbtn q-term-raw"
           aria-pressed={to_string(@live)}
           title={gettext("Follow the end of the log (End)")}
           data-follow
@@ -1629,12 +1681,37 @@ defmodule ApiaryWeb.RunPageComponents do
             else: gettext("Jump to end")}</span>
         </button>
         <button
-          :if={!@sized}
+          :if={!@sized and @raw}
           type="button"
-          class="q-tbtn"
+          class="q-tbtn q-term-raw"
           title={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
+        >
+          <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
+          <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
+        </button>
+        <%!-- The Transcript's: its end, and whether a tool's line and its result wrap. --%>
+        <button
+          :if={@transcript != []}
+          type="button"
+          class="q-tbtn q-term-trv"
+          aria-pressed={to_string(@live)}
+          title={gettext("Follow the end of the log (End)")}
+          data-tr-end
+        >
+          <.icon name="hero-arrow-down-micro" class="size-4" />
+          <span class="q-tbtn-lbl" data-tr-end-label>{if @live,
+            do: gettext("Following"),
+            else: gettext("Jump to end")}</span>
+        </button>
+        <button
+          :if={@transcript != []}
+          type="button"
+          class="q-tbtn q-term-trv"
+          title={gettext("Wrap long lines")}
+          aria-pressed="false"
+          data-tr-wrap
         >
           <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
           <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
@@ -1661,9 +1738,9 @@ defmodule ApiaryWeb.RunPageComponents do
             {gettext("A+")}
           </button>
           <button
-            :if={@sized}
+            :if={@sized and @raw}
             type="button"
-            class="q-tbtn"
+            class="q-tbtn q-term-raw"
             title={gettext("Fit the recorded columns to the width")}
             aria-pressed="false"
             data-size-fit
@@ -1671,8 +1748,9 @@ defmodule ApiaryWeb.RunPageComponents do
             {gettext("Fit")}
           </button>
         </div>
-        <span class="q-term-sep" aria-hidden="true"></span>
+        <span :if={@raw} class="q-term-sep" aria-hidden="true"></span>
         <a
+          :if={@raw}
           class="q-tbtn"
           title={gettext("Download the raw bytes")}
           aria-label={gettext("Download the raw bytes")}
@@ -1705,7 +1783,16 @@ defmodule ApiaryWeb.RunPageComponents do
           <.icon name="hero-arrows-pointing-out-micro" class="size-4" />
         </button>
       </div>
-      <div id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
+      <div
+        :if={@transcript != []}
+        id={"#{@id}-transcript"}
+        class="q-term-tr"
+        data-transcript-scroll
+        tabindex="0"
+      >
+        {render_slot(@transcript)}
+      </div>
+      <div :if={@raw} id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
         <div data-screen role="log" aria-live="off" aria-label={gettext("Log")}></div>
         <span class="sr-only" data-announce aria-live="polite"></span>
         <button type="button" class="q-newpill q-term-pill" data-pill tabindex="-1" aria-hidden="true">
@@ -1720,11 +1807,13 @@ defmodule ApiaryWeb.RunPageComponents do
       <div class="q-term-foot">
         <span :if={@live} class="q-term-live"><i></i>{gettext("Live")}</span>
         <span :if={!@live}>{gettext("Ended")}</span>
-        <span>{Format.bytes(@bytes)}</span>
-        <span class="q-term-opt">
+        <span :if={@raw}>{Format.bytes(@bytes)}</span>
+        <span :if={@raw} class="q-term-opt">
           {ngettext("%{number} chunk", "%{number} chunks", @chunks, number: Format.number(@chunks))}
         </span>
-        <span class="q-term-opt">{gettext("through #%{sequence}", sequence: pad(@through))}</span>
+        <span :if={@raw} class="q-term-opt">
+          {gettext("through #%{sequence}", sequence: pad(@through))}
+        </span>
         <span
           :if={@sized}
           class="q-term-size"
@@ -1735,7 +1824,7 @@ defmodule ApiaryWeb.RunPageComponents do
         </span>
       </div>
     </div>
-    <p class="q-term-note">
+    <p :if={@raw} class="q-term-note">
       {if @sized,
         do:
           gettext(

@@ -4554,6 +4554,99 @@
     }
   }
 
+  /* The runs list's columns (`runs_table/1` with facts). State, Run, Workflow, Work
+     item, Started, Duration and Denied always show; how a run started joins from 900 px
+     (under the work item, muted, until then), the target from 1000 and the runtime from
+     1100, so they give way in the opposite order. */
+  .q-rl-list .q-rl-rn {
+    width: 1%;
+  }
+  .q-rl-list .q-rl-wi {
+    width: 100%;
+    max-width: 0;
+  }
+  .q-rl-wf-name {
+    display: block;
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-rl-wf-step {
+    display: block;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-rl-stage {
+    display: block;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .q-rl-wi-link,
+  .q-rl-wi-text,
+  .q-rl-wi-none {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-wi-link,
+  .q-rl-wi-text {
+    color: var(--color-base-content);
+  }
+  .q-rl-wi-none {
+    color: var(--q-muted);
+  }
+  /* Above the run's link, which covers the row. */
+  .q-rl-row .q-rl-wi-link {
+    position: relative;
+    z-index: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-strong);
+    text-underline-offset: 2px;
+  }
+  .q-rl-row .q-rl-wi-link:hover {
+    text-decoration-color: currentColor;
+  }
+  .q-rl-sb-under {
+    display: block;
+    overflow: hidden;
+    margin-top: 1px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-list .q-rl-tg,
+  .q-rl-list .q-rl-sb,
+  .q-rl-list .q-rl-rt {
+    display: none;
+  }
+  @container (min-width: 900px) {
+    .q-rl-list .q-rl-sb {
+      display: table-cell;
+    }
+    .q-rl-list .q-rl-sb-under {
+      display: none;
+    }
+  }
+  @container (min-width: 1000px) {
+    .q-rl-list .q-rl-tg {
+      display: table-cell;
+    }
+  }
+  @container (min-width: 1100px) {
+    .q-rl-list .q-rl-rt {
+      display: table-cell;
+    }
+  }
+
   /* A run's state in a row: a dot, and a word only where the state needs a look. */
   .q-st {
     display: inline-flex;
@@ -5877,6 +5970,64 @@
     .q-rl tbody tr td.q-rl-c5 {
       display: none;
     }
+
+    /* The runs list's card: the run's id and its workflow, then the state; the work
+       item; when it started and how long it ran; its denials. */
+    .q-rl.q-rl-list tbody tr {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      column-gap: 0;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-rn {
+      grid-column: 1;
+      grid-row: 1;
+      width: auto;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wf {
+      grid-column: 2;
+      grid-row: 1;
+      display: flex;
+      align-items: baseline;
+      padding-right: 12px;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wf::before {
+      content: "\00a0\00b7\00a0";
+      color: var(--q-muted);
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wf.q-rl-wf-none,
+    .q-rl.q-rl-list tbody tr td .q-rl-stage,
+    .q-rl.q-rl-list tbody tr td .q-rl-sb-under,
+    .q-rl.q-rl-list tbody tr td.q-rl-tg,
+    .q-rl.q-rl-list tbody tr td.q-rl-sb,
+    .q-rl.q-rl-list tbody tr td.q-rl-rt {
+      display: none;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-st {
+      grid-column: 3;
+      grid-row: 1;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wi {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      width: auto;
+      max-width: none;
+    }
+    .q-rl.q-rl-list .q-rl-wi-link,
+    .q-rl.q-rl-list .q-rl-wi-text,
+    .q-rl.q-rl-list .q-rl-wi-none {
+      font-size: 0.78125rem;
+      text-decoration: none;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-when {
+      grid-column: 1 / 3;
+      grid-row: 3;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-dur {
+      grid-column: 3;
+      grid-row: 3;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-den {
+      grid-row: 4;
+    }
   }
 
   /* The runs table reflows into blocks below 640 px; roles stay on the elements. */
@@ -6583,9 +6734,12 @@
   .q-ti.q-ti-off {
     opacity: 0.28;
   }
-  .q-tl[data-cx="0"] .q-ti-cx,
-  .q-tl[data-cx="0"] .q-during,
-  .q-tl[data-cx="0"] .q-xb:not(:has(.q-io)) {
+  /* Connections inline off: the allowed ones leave; a denied one stays beside the call
+     that made it. */
+  .q-tl[data-cx="0"] .q-ti-cx:not([data-denied]),
+  .q-tl[data-cx="0"] .q-during:not(:has(.q-cx-denied)),
+  .q-tl[data-cx="0"] .q-during .q-cx:not(.q-cx-denied),
+  .q-tl[data-cx="0"] .q-xb:not(:has(.q-io, .q-cx-denied)) {
     display: none;
   }
   .q-g {
@@ -6705,6 +6859,20 @@
     font-size: 0.8125rem;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* A row's words as wide as they are, so what follows them sits beside them. */
+  .q-s-fit {
+    flex: 0 1 auto;
+  }
+  .q-to-term {
+    flex: none;
+    color: var(--color-primary);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .q-to-term:hover {
+    text-decoration: underline;
   }
   .q-s-mono {
     color: var(--color-base-content);
@@ -7182,6 +7350,196 @@
     overflow: hidden;
     padding: 12px 0 12px 14px;
   }
+  /* The two views of the box (`data-view`, the Terminal hook's): one of the Transcript and
+     Raw's screen shows in the box's middle row, and the bar's stream, search hint, follow,
+     wrap and Fit are Raw's. The note under the box describes Raw. */
+  .q-termbox[data-view="transcript"] .q-term-screen,
+  .q-termbox[data-view="transcript"] .q-term-raw,
+  .q-termbox[data-view="raw"] .q-term-tr,
+  .q-termbox[data-view="raw"] .q-term-trv {
+    display: none;
+  }
+  .q-termbox[data-view="transcript"] + .q-term-note {
+    display: none;
+  }
+  /* The Transcript (`TranscriptComponents`): the session as a terminal shows it, in the
+     mono font at the reader's size (`--q-tr-size`, set by the hook). */
+  .q-term-tr {
+    min-height: 0;
+    overflow: auto;
+    padding: 12px 16px 16px 14px;
+    font-family: var(--font-mono);
+    font-size: var(--q-tr-size, 13px);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .q-term-tr:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+  .q-tr {
+    display: grid;
+    gap: 6px;
+  }
+  .q-tr-i {
+    min-width: 0;
+    border-radius: 4px;
+  }
+  .q-tr-i.q-tr-target {
+    background-color: color-mix(in oklab, var(--color-primary) 16%, transparent);
+  }
+  /* A subagent's lines, under the tool call that started it. */
+  .q-tr-sub {
+    margin-left: 2.2em;
+  }
+  .q-tr-row {
+    display: grid;
+    grid-template-columns: 1.6em minmax(0, 1fr) auto;
+    align-items: baseline;
+  }
+  .q-tr-mark {
+    color: var(--q-term-fg);
+  }
+  .q-tr-say,
+  .q-tr-finished {
+    color: var(--q-term-green);
+  }
+  .q-tr-open {
+    color: var(--q-term-dim);
+  }
+  .q-tr-denied,
+  .q-tr-warn {
+    color: var(--q-term-yellow);
+  }
+  .q-tr-failed,
+  .q-tr-bad {
+    color: var(--q-term-red);
+  }
+  .q-tr-tool {
+    font-weight: 600;
+  }
+  .q-tr-wrap {
+    white-space: pre-wrap;
+  }
+  .q-tr-out {
+    display: grid;
+    grid-template-columns: 1.6em 1.6em minmax(0, 1fr);
+    color: var(--q-term-dim);
+  }
+  .q-tr-out::before {
+    content: "";
+  }
+  .q-tr-out.q-tr-bad {
+    color: var(--q-term-red);
+  }
+  .q-tr-out.q-tr-warn {
+    color: var(--q-term-yellow);
+  }
+  .q-tr-lns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+  /* Wrap off, as the Transcript opens: a tool's line and its result's lines are cut at the
+     box's edge with an ellipsis. A text wraps either way. */
+  .q-termbox:not([data-tr-wrap="true"]) .q-tr-call .q-tr-head {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-termbox:not([data-tr-wrap="true"]) li.q-tr-tool .q-tr-ln {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+  /* A result drawn apart from its call that has nothing to show. */
+  .q-tr-i[data-part="result"]:not(:has(*)) {
+    display: none;
+  }
+  .q-tr-ln {
+    white-space: pre-wrap;
+  }
+  .q-tr-fold {
+    justify-self: start;
+    color: var(--q-term-dim);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .q-tr-fold:hover {
+    color: var(--q-term-fg);
+  }
+  .q-tr-cut {
+    color: var(--q-term-yellow);
+  }
+  .q-tr-think summary {
+    list-style: none;
+    cursor: pointer;
+    color: var(--q-term-dim);
+  }
+  .q-tr-think summary::-webkit-details-marker {
+    display: none;
+  }
+  .q-tr-end .q-tr-head {
+    color: var(--q-term-dim);
+  }
+  .q-tr-more {
+    display: inline-flex;
+    margin: 4px 0 8px;
+    align-items: center;
+    gap: 4px;
+    color: var(--q-term-dim);
+    cursor: pointer;
+  }
+  .q-tr-more:hover {
+    color: var(--q-term-fg);
+  }
+  /* The link to Raw: at the row's end, shown on hover and on focus. */
+  .q-tr-raw {
+    margin-left: 12px;
+    color: var(--q-term-dim);
+    font-size: 0.85em;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .q-tr-row:hover .q-tr-raw,
+  .q-tr-raw:focus-visible {
+    opacity: 1;
+  }
+  .q-tr-raw:hover {
+    color: var(--q-term-fg);
+    text-decoration: underline;
+  }
+  /* An assistant's text: Markdown in the work item style, in the terminal's colours. */
+  .q-tr-text {
+    min-width: 0;
+  }
+  .q-tr-md.q-ticket-formatted > * + * {
+    margin-top: 8px;
+  }
+  .q-tr-md.q-ticket-formatted a {
+    color: var(--q-term-blue);
+  }
+  .q-tr-md.q-ticket-formatted :where(code, pre) {
+    border-color: var(--q-term-edge);
+    background-color: color-mix(in oklab, var(--q-term-bg) 70%, black);
+    font-size: 1em;
+  }
+  .q-tr-md.q-ticket-formatted blockquote {
+    border-left-color: var(--q-term-edge);
+    color: var(--q-term-dim);
+  }
+  .q-tr-md.q-ticket-formatted :where(hr, th, td) {
+    border-color: var(--q-term-edge);
+  }
+  .q-tr-md.q-ticket-formatted .q-ticket-ext {
+    color: var(--q-term-dim);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .q-tr-raw {
+      transition: opacity 120ms;
+    }
+  }
   /* A recorded screen keeps its columns and rows: it is drawn on the terminal's ground,
      centred only inside the box's own darker one, and scrolls inside the box when it is
      larger than the box. */
@@ -7246,11 +7604,6 @@
     .q-term-px {
       display: none;
     }
-  }
-
-  /* The note under the box describes what Raw shows; Collapsed shows something else. */
-  .q-termbox:has([data-view="collapsed"][aria-pressed="true"]) + .q-term-note {
-    display: none;
   }
 
   .q-term-screen [data-screen] {

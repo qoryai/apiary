@@ -605,7 +605,8 @@ version in force is exported; another version's path sends on to it.
   screen reader hears what a view, a filter or a search left; an empty list says its
   empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `started:>2026-09-01`, `denied:yes`;
+  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `item:3` (a work item's
+  number, `item:#3` too), `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
   case (a run's id, title or target; a destination's host or path). A run's id is the start
@@ -617,7 +618,8 @@ version in force is exported; another version's path sends on to it.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
   a menu, each section searches its values on the server over every value there is,
   fifty shown and more on asking, each counted under the other filters
-  (`RunComponents.filter_options/1`).
+  (`RunComponents.filter_options/1`). The runs list's Work item section lists the work
+  items of the runs ("#3 Say hello") and sets `item:`.
 - **The rail** (`<.target_rail>`, from 1280 px) holds the targets with their counts under
   every filter but the target, in the list's unit: runs on the runs list ("Most runs"),
   destinations on Network access ("Most destinations"), as its views and its Filter
@@ -625,17 +627,42 @@ version in force is exported; another version's path sends on to it.
   first under Pinned (`counts.pins`), then the busiest twenty and "n more", the rail's
   headings under an `<h2>` for a screen reader so the outline never skips a level.
   Choosing one sets the target; below 1280 px the Filter menu's Target section does it,
-  never both.
-- **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
-  target after it until the table is 1000 px wide, then in a column; its state a dot
-  (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. Completed is its green dot alone, the word for a screen reader;
-  Cancelled shows its word, muted, and a grey dot.
-  What the run says it is about is a muted line under them, only when it names a kind or a
-  subject: the kind, then up to two subjects, each its type and ref
-  as given ("pull request #412"), then "+N more", as text and never a link, since the
-  title's link covers the row. Below 640 px it names one subject, so the count stays in
-  sight; the whole line is its tooltip.
+  never both. The runs list shows its rail only where a run under the other filters has
+  a target, or where a target is chosen; where every run is unassigned there is no rail.
+- **A run is one line** (`<.runs_table>` with `Apiary.Runs.list_facts/2`), in the
+  columns State, Run, Workflow, Work item, Started by, Runtime, Started, Duration and
+  Denied. The state is a dot and its word for every state, Completed included; Cancelled
+  shows its word muted and a grey dot. Run is the run's `rn_` id, the link to its page,
+  which covers the row. Workflow is the workflow the claim handed to the machine, in the
+  mono font (`explore-a-ticket`, `hello`): the run's harness walk's workflow, only while
+  that walk is resolved from the target's harness file, a setting or the built-in
+  harness; "Prebuild", muted, for an environment build; "n/a" for any other run (a walk
+  pending or failed, a walk that resolved to no workflow, a run queued before walks were
+  kept, a direct `qory run`). With the workflow model, the stage that placed the run is a
+  muted line under it, "Build", a middle dot and "round 2" inside a loop, the stage alone outside one, only
+  where the stage's name is not the workflow's name or its first word (Explore with
+  explore-a-ticket has none). Work item is "#3 Say hello", a link to the work item for a
+  reader who may read work items; a work item that moved to another workspace shows its
+  title alone, with no number, no link and no target; a run with none shows the title the run gave, with what
+  it is about (its kind and up to two subjects, as text) muted under it, else "No work
+  item". Started by says how the run started: "Taken in by dana", "Taken in again by
+  dana", "Attempt 2 of 3, after answers from dana", "Explore again by dana", "Test run by
+  dana" (the two take in texts only for the run a take in queued, at the start of the
+  first stage),
+  "The workspace's process" (any other run the stage runner placed), "Queued again after a missing image", "qory run on a machine" (a run of no
+  queue), each person by the short form of their address, "Former member" for one no
+  longer there, else "n/a". Target (Repository in a software workspace) shows only where
+  a run of the page has a target, from its start's labels, else from its work item in this
+  workspace. There
+  is no Host column; the Host filter stays, and the Machine or pool column (from 1300 px)
+  names the instance's Qory Pool. Where the table is narrow the columns give way in
+  this order: Runtime below 1100 px, Target below 1000, Started by below 900, which then
+  shows muted under the work item. Below 640 px a run is a card: its id and its workflow
+  (the id, a middle dot and `explore-a-ticket`; nothing after the id for "n/a") and its state; its work
+  item; when it started and how long it ran; its denials when it has any. Another list of
+  runs, such as a machine's recent runs, keeps the line it had: the title, else the id,
+  the target after it, what the run is about under it, and Runtime and Host from 1150
+  px.
 - **A destination is one line** (`<.connections_table>`, `RunComponents.connection_row/1`):
   its host in mono, the port faint and the path muted, the only strong text; its runs and
   attempts muted numbers; allowed and denied a thin split with its two numbers, the denied
@@ -1694,6 +1721,19 @@ id".
   Overview's rows, Network access's hits and ⌘K's results), in a
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
   an `aria-label` and an announcement hold them as plain text.
+- **The Timeline's rows are one line each.** A tool row is the tool and the first line
+  of its `summary`, the part of its input Forager selects, never words Qory Apiary makes
+  from a tool's name; a denied tool reads "Not run: denied" in place of its duration. A
+  text of the session is a **Text** row: its first line with words, without Markdown
+  marks (a heading's `#`, a quote's `>`, a bullet or number, emphasis, code and a link's
+  address), and **Terminal ›**, a link to the text in the Terminal tab's Transcript for
+  a reader who may read the log. Thinking has no row. **Turn finished** and **Result**
+  show no text: the Text row before them has it; Result keeps its outcome, turns,
+  duration and cost (`success · 6 turns · 14 s · $0.09`).
+- **Connections inline.** The switch above the Timeline (`?cx=1`) shows the allowed
+  connections, each under the tool call that made it; it is off when the page opens. A
+  denied connection shows next to its tool call whether the switch is on or off, so a
+  denial is always beside its cause. Network access shows every connection.
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
@@ -1710,7 +1750,8 @@ id".
   from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
   content while a pending run has no event. One row per step, in the order the steps ran:
   Machine requested (the claim, with the pool and the machine type, "pool default" while
-  the claim answer has none) and Machine started (from the starter's `dispatched` to the
+  the claim answer has none; its duration runs to the starter's `dispatched`, and is
+  empty without one) and Machine started (from the starter's `dispatched` to the
   redemption of the run's code) for a run a pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
@@ -1737,9 +1778,12 @@ id".
   its admins read why in the pool's log on its host. The section's duration runs from its first row to
   the session's start, or to the failed row's end. While the preparation of a live run goes
   on, a row running or the machine started with no step yet, the heading has the time so
-  far, ticking from its first row. The page reads the preparation again at each flush, and at
-  each quiet tick (5 s) while Machine started is running: `dispatched` and the redemption
-  of the run's code reach no run's topic.
+  far, ticking from its first row. With neither a session's start nor a failed row, and no
+  row running, the duration runs to the end of the last row that ended: between two steps,
+  and after the last step of a runtime with no session event. The page reads the
+  preparation again at each flush; the starter's `dispatched` and the redemption of the
+  run's code are broadcast on the run's topic, so they show at once. On the Timeline tab
+  the page also reads them at each quiet tick (5 s) while Machine started is running.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's
@@ -1794,46 +1838,81 @@ id".
 
 `<.terminal>` in `RunPageComponents` is dark in both themes: the recorded output's colours
 are written against a dark ground. It fills the window below the tab bar, never under
-380 px. The `Terminal` hook reads the bytes from the run's log endpoint and, in the Raw
-view, hands them to xterm.js as `Uint8Array`s, never decoded strings, in slices per frame
-so a long log does not block input, and interprets none of them. The bytes never cross the LiveView socket: the LiveView sends the foot's
-numbers and a signal that the log advanced. xterm.js is vendored under
-`assets/vendor/xterm`, built as a separate bundle and loaded on the hook's first mount, by no
-other page. The screen is `role="log"` with `aria-live="off"`.
+380 px. It has two views, **Transcript** and **Raw**, as a two-button segment at the bar's
+start when the run has both.
 
+- **Transcript** (`ApiaryWeb.TranscriptComponents`) is the session drawn by the LiveView
+  from its runtime events (`dev.qory.runtime.*`), in sequence order, as HTML in the mono
+  font. It reads no runtime's output format, so a runtime whose Forager descriptor maps
+  its output to these events needs no change here. Its lines:
+  - a prompt: `❯` and the prompt, from `runtime.prompt_submitted`, or a text whose `role`
+    is `user`, such as a subagent's prompt (the Timeline shows it as a Prompt row);
+  - a tool call: `⏺`, the tool and the first line of its `summary` in brackets
+    (`⏺ Skill(harness:greet)`), or the tool alone without one; under it, after `⎿`, the
+    first 3 lines of the result the runtime gave the model (`runtime.tool_result`), then
+    "%{number} more lines", which opens the rest, read whole, and "Show less", which
+    folds it again. A string result shows as written; of an array of blocks, each text
+    block's text shows, and each other block its type in brackets. A call with no result
+    has no line under it. A denied call shows `⎿ Denied:` and the reason, or "Not run:
+    denied" without one, on one line; a failed call shows its error in the failure
+    colour. When lines of another agent arrived between a call and its result (a
+    subagent's lines under its Task call), the result is drawn after them, at the call's
+    indent, by sequence and agent alone;
+  - a text: `⏺` and the text as Markdown through `Apiary.Sources.Body`, as on a work
+    item, with each line kept (`hard_breaks: true`), and no HTML of the text; thinking
+    with text is folded under "Thinking", and empty thinking is left out;
+  - the result: `✓` or `✗` and its outcome, turns, duration and cost, without its text,
+    which the text line before it shows.
+
+  A subagent's lines are indented. A text or result the session cut at 64 KiB ends with
+  "Cut at 64 KiB. Raw has every byte.". Each line read from the session's output has a
+  **Raw** link at its end, shown on hover and on focus, named "Show line %{number} in
+  Raw": the server finds where that line starts in the log (`Record.log_offset/5`,
+  counting the session's stdout chunks outside steps, as Forager counts `line`), and Raw
+  is read again with that line marked at the top of the screen; a Raw that showed stderr
+  alone shows both streams. The Transcript is a window of the items, as the Timeline is:
+  "%{number} earlier events" and "Load newer" load more, a live run adds its lines as
+  they arrive, and the end is followed while the reader is at it. A Timeline link
+  (`?seq=`) brings its line into view. Wrap is off as the Transcript opens: a tool's line
+  and its result's lines are cut at the box's edge with `…`, and a text wraps; Wrap on
+  wraps every line.
+- **Older runs.** A run recorded before Forager sent texts, results and denials shows
+  its tool lines, and each turn's last message (`turn_finished`) in place of the texts; a
+  tool's line opens to what the tool returned, as JSON. With neither texts nor turn ends,
+  the result shows its text.
+- **Raw** is the log's bytes in xterm.js. The `Terminal` hook reads them from the run's
+  log endpoint and hands them to xterm.js as `Uint8Array`s, never decoded strings, in
+  slices per frame so a long log does not block input, and interprets none of them. A
+  sequence that scrolls, inserts or deletes more than 10,000 lines, or repeats a character
+  more than 65,536 times, is dropped, as no screen needs it and carrying it out held the
+  page for seconds. The bytes never cross the LiveView socket: the LiveView sends the
+  foot's numbers and a signal that the log advanced. xterm.js is vendored under
+  `assets/vendor/xterm`, built as a separate bundle and loaded the first time Raw shows,
+  by no other page. The screen is `role="log"` with `aria-live="off"`, with the note under
+  the box.
+- **The view it opens in.** A run on pipes with a Transcript opens in Transcript, or in
+  Raw when that is the reader's choice, kept in `localStorage`. A run on a pseudo-terminal
+  opens in Raw, as its log is cursor movement, and so does a run with no runtime events.
 - **The recorded width is kept.** A run whose record says its pseudo-terminal's size is
   drawn at those columns and rows, centred only inside the box's darker ground, which
   fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
   to the box, with Wrap.
-- **Collapsed and Raw.** A run on pipes has a two-button segment, Collapsed by default,
-  the reader's choice kept in `localStorage`. A run on a pseudo-terminal has none: its log
-  is cursor movement, and it stays Raw. Raw is the bytes as they are, with the note under
-  the box; Collapsed has no note. Collapsed cuts the stream into lines in `terminal_lines.js`:
-  a line of up to 16 MiB that starts with `{` and parses to a JSON object is one row of the
-  screen, with a marker, its `type` and `subtype`, a preview (its `result`, else the first text in
-  `message.content`, cut to the row) and its size, as "> result success  API Error: 400 ...
-  1.1 kB"; every other line passes through as its bytes. A click on a row opens it to the
-  object, printed, and a click on the row closes it; a row over 1 MiB, as a line or printed,
-  shows Raw instead. xterm.js cannot rewrite a row above the end, so the view keeps its lines and writes the screen again at the same scroll
-  position, as it does when the box's width changes. A log of over 50,000 lines or 256 MiB
-  shows Raw. Rows open by mouse alone; Raw and the link to the log as text are the way to
-  read all of it by keyboard. Download is the same in both views.
-- **Decoded text is not the log's bytes.** JSON escapes control characters, so a decoded
-  value can contain a live escape sequence that the raw line does not. Every decoded value
-  in a row has its C0, C1 and DEL characters removed, a `type` or `subtype` keeps only
-  `[A-Za-z0-9_.:-]`, 40 characters at most, and the printed object has all of them escaped.
-  Nothing of the log touches the DOM outside xterm.js.
-- **The bar**: the stream, the view, search (`/`), follow (End), wrap, the **text size** (A−, A+,
-  11 to 18 px, and Fit, the largest size at which a recorded screen's columns fit), a
-  reading preference kept in `localStorage`; download; **Focus** (`f` outside a field;
-  Escape leaves), a class on the root that folds the shell, the header, the tabs and the
-  rail away so the box takes the window; and **Full screen**, the browser's, on the box,
-  shown only where the browser has it. A narrow box names its buttons on hover only
-  (a container query), so the bar never wraps. Search reads the screen, and a collapsed
-  row hides its words, so typing in it shows Raw, the segment with it, without changing
-  the reader's choice.
-- **No output.** A run with no output says so in the column instead of the box, as an
-  empty state.
+- **The bar**: the view, then Raw's stream (stdout, stderr or both), search (`/`), follow
+  (End) and wrap, which show only in Raw; in the Transcript, **Jump to end** (End), which
+  loads the lines after the window and follows the end, and **Wrap**; the **text size** (A−, A+, 11 to 18 px, and Fit,
+  the largest size at which a recorded screen's columns fit), a reading preference kept in
+  `localStorage` for both views; download; **Focus** (`f` outside a field; Escape
+  leaves), a class on the root that folds the shell, the header, the tabs and the rail
+  away so the box takes the window; and **Full screen**, the browser's, on the box, shown
+  only where the browser has it. A narrow box names its buttons on hover only (a
+  container query), so the bar never wraps. Search reads Raw's screen, so typing in it
+  shows Raw ("Search the log. Searching shows the Raw view."); with no match, an ended run
+  shows the start of its log.
+- **Access and retention.** The tab is `run.read_log`'s, as tool results are log content.
+  The Transcript follows the events' retention and Raw the log's, and the log goes first:
+  a run whose log was pruned shows the log's pruned notice and the Transcript alone.
+- **No output.** For a run with neither a log nor runtime events, the column shows an
+  empty state in place of the box.
 
 ## Words
 
