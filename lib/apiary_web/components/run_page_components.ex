@@ -47,6 +47,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ]
 
   alias Apiary.ExternalText
+  alias Apiary.Runs.Record.Timeline
   alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
@@ -417,7 +418,14 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :seq_path, :any, required: true, doc: "a function from a sequence to the item's permalink"
   attr :target, :string, default: nil
   attr :isolate, :string, default: nil
-  attr :connections, :boolean, default: true, doc: "false hides every connection (?cx=0)"
+  attr :connections, :boolean,
+    default: false,
+    doc: "true shows the allowed connections too (?cx=1); a denied one always shows"
+
+  attr :terminal_path, :any,
+    default: nil,
+    doc: "a function from a sequence to the item in the Terminal, nil for a reader without the log"
+
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
@@ -455,6 +463,7 @@ defmodule ApiaryWeb.RunPageComponents do
           item={item}
           started_at={@started_at}
           seq_path={@seq_path}
+          terminal_path={@terminal_path}
           security={@security}
         />
       </ol>
@@ -509,6 +518,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
   attr :security, :boolean, default: true
 
   def timeline_item(assigns) do
@@ -544,6 +554,7 @@ defmodule ApiaryWeb.RunPageComponents do
           item={@item}
           started_at={@started_at}
           seq_path={@seq_path}
+          terminal_path={@terminal_path}
           security={@security}
         />
       </div>
@@ -618,6 +629,9 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :tool, status: :open}),
     do: %{glyph: :spinner, shape: :round, tone: :info}
 
+  defp node_look(%{kind: :tool, status: :denied}),
+    do: %{glyph: "hero-no-symbol-micro", shape: :round, tone: nil}
+
   defp node_look(%{kind: :tool, status: :no_end}),
     do: %{glyph: "hero-ellipsis-horizontal-micro", shape: :round, tone: nil}
 
@@ -632,6 +646,9 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp node_look(%{kind: :notification}),
     do: %{glyph: "hero-bell-micro", shape: :round, tone: nil}
+
+  defp node_look(%{kind: :text}),
+    do: %{glyph: "hero-bars-3-bottom-left-micro", shape: :round, tone: nil}
 
   defp node_look(%{kind: :turn_finished}),
     do: %{glyph: "hero-bars-3-bottom-left-micro", shape: :round, tone: nil}
@@ -650,6 +667,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
   attr :security, :boolean, default: true
 
   defp item_body(%{item: %{kind: :run_started}} = assigns) do
@@ -823,10 +841,33 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # The prompt on the label's line, its line breaks as spaces, cut at the row's end.
   defp item_body(%{item: %{kind: :prompt}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Prompt")} />
-    <.say item={@item} class="q-say-prompt" />
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Prompt")}>
+      <bdi>{one_line(@item.text)}</bdi>
+    </.head>
+    """
+  end
+
+  # A text of the session: its first line, without its Markdown marks, and the way to the
+  # whole text in the Terminal's Transcript, for a reader of the log.
+  defp item_body(%{item: %{kind: :text}} = assigns) do
+    ~H"""
+    <div class="q-hd">
+      <span class="q-k">{gettext("Text")}</span>
+      <.who :if={@item.who} lane={@item.lane} />
+      <span class="q-s q-s-fit"><bdi>{sent(@item.first_line)}</bdi></span>
+      <.link
+        :if={@terminal_path}
+        patch={@terminal_path.(@item.sequence)}
+        class="q-to-term"
+        aria-label={gettext("Show this text in the Terminal")}
+      >
+        {gettext("Terminal")} <span aria-hidden="true">›</span>
+      </.link>
+      <.tail item={@item} started_at={@started_at} seq_path={@seq_path} />
+    </div>
     """
   end
 
@@ -842,7 +883,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span class="q-k q-k-mono"><.external_text text={@item.tool} /></span>
         <.who :if={@item.who} lane={@item.lane} />
-        <span class="q-s q-s-mono"><.tool_summary summary={@item.summary} /></span>
+        <span class="q-s q-s-mono"><.external_text text={@item.summary} /></span>
         <.badge :if={@item.in_background} color="info" class="self-center">
           {gettext("In background")}
         </.badge>
@@ -852,6 +893,7 @@ defmodule ApiaryWeb.RunPageComponents do
             else: gettext("Failed")}</span>
           <span :if={@item.status == :open} class="q-running">{gettext("Running")}</span>
           <span :if={@item.status == :no_end} class="q-no-end">{gettext("No end recorded")}</span>
+          <span :if={@item.status == :denied} class="q-no-end">{gettext("Not run: denied")}</span>
           <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
         </.tail>
       </summary>
@@ -900,11 +942,13 @@ defmodule ApiaryWeb.RunPageComponents do
         :if={@item.kind == :subagent_started}
         text={@item.agent_id}
       /></span>
+      <span :if={@item.kind == :subagent_finished} class="q-s"><bdi>{sent(
+        Timeline.first_line(@item.text)
+      )}</bdi></span>
       <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
         <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
       </.tail>
     </div>
-    <.say :if={@item.kind == :subagent_finished} item={@item} />
     """
   end
 
@@ -916,10 +960,11 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # The turn's last message is the text item before it: the row says only that the turn
+  # finished.
   defp item_body(%{item: %{kind: :turn_finished}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Turn finished")} />
-    <.say item={@item} />
     """
   end
 
@@ -947,7 +992,6 @@ defmodule ApiaryWeb.RunPageComponents do
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Result")}>
       {result_words(@item)}
     </.head>
-    <.say item={@item} />
     """
   end
 
@@ -1279,29 +1323,11 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  attr :summary, :any, required: true
+  # A text of several lines on one line: each run of whitespace a space.
+  defp one_line(text) when is_binary(text),
+    do: text |> sent() |> String.replace(~r/\s+/u, " ") |> String.trim()
 
-  defp tool_summary(%{summary: {:pattern, _pattern, _path}} = assigns) do
-    ~H"""
-    <.external_text text={elem(@summary, 1)} />
-    <span class="text-faint">{pgettext("a pattern in a path", "in")}</span>
-    <.external_text text={elem(@summary, 2)} />
-    """
-  end
-
-  defp tool_summary(%{summary: {:text, _text}} = assigns),
-    do: ~H"<.external_text text={elem(@summary, 1)} />"
-
-  defp tool_summary(assigns), do: ~H""
-
-  attr :item, :map, required: true
-  attr :class, :any, default: nil
-
-  defp say(assigns) do
-    ~H"""
-    <p :if={@item.text} class={["q-say", @class]} phx-no-format>{sent_lines(@item.text)}<.show_all :if={@item.text_cut} seq={@item.sequence} bytes={@item.text_bytes} /></p>
-    """
-  end
+  defp one_line(_text), do: nil
 
   ## Code wells
 
@@ -1325,7 +1351,8 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :seq, :integer, required: true
   attr :bytes, :integer, required: true
 
-  defp show_all(assigns) do
+  @doc false
+  def show_all(assigns) do
     ~H"""
     <button type="button" class="q-show-all" phx-click="show_all" phx-value-seq={@seq}>{gettext(
       "Show all %{size}",
@@ -1388,7 +1415,8 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp exit_code_words(_item), do: nil
 
-  defp result_words(item) do
+  @doc "A result's head, `success · 6 turns · 14 s · $0.09`: what is known of it."
+  def result_words(item) do
     [
       sent(item.outcome),
       item.turns &&
@@ -1410,10 +1438,11 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # The same for a text of several lines, which keeps its tabs and line breaks
   # (`Apiary.ExternalText.present_lines/1`).
-  defp sent_lines(text) when is_binary(text) and text != "",
+  @doc false
+  def sent_lines(text) when is_binary(text) and text != "",
     do: ExternalText.present_lines(text) || ExternalText.marked(text)
 
-  defp sent_lines(_text), do: nil
+  def sent_lines(_text), do: nil
 
   # The texts an item said, each as `sent/1` shows it, joined by a middle dot.
   defp said(texts), do: texts |> Enum.map(&sent/1) |> Enum.reject(&is_nil/1) |> Enum.join(" · ")

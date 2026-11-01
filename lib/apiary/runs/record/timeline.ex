@@ -15,8 +15,11 @@ defmodule Apiary.Runs.Record.Timeline do
       already cut by the query that read them (`Apiary.Runs.Record`), or by `slim/2` from
       a whole event.
 
-  Pairing uses ids only: `tool_use_id` for the three tool events, `agent_id` for the two
-  subagent events. Order is the events' `sequence`, never a clock. A connection is placed
+  Pairing uses ids only: `tool_use_id` for the five tool events, `agent_id` for the two
+  subagent events. A call's item is its start, its end (finished, failed or denied) and
+  the result the runtime gave the model, in whatever order they arrive; a result whose
+  call the record lacks makes no item. A text event makes a text item, a thinking block
+  with text a thinking item, and an empty block none. Order is the events' `sequence`, never a clock. A connection is placed
   inside a tool call only when exactly one call is open at its sequence; that says
   *while*, never *because*. A call whose end the record lacks stops being open when its
   agent's turn ends, its subagent finishes, the session ends or starts again, or the run
@@ -49,6 +52,9 @@ defmodule Apiary.Runs.Record.Timeline do
     "runtime.tool_started" => :tool,
     "runtime.tool_finished" => :tool,
     "runtime.tool_failed" => :tool,
+    "runtime.tool_result" => :tool,
+    "runtime.tool_denied" => :tool,
+    "runtime.text" => :text,
     "runtime.subagent_started" => :subagent_started,
     "runtime.subagent_finished" => :subagent_finished,
     "runtime.notification" => :notification,
@@ -62,9 +68,9 @@ defmodule Apiary.Runs.Record.Timeline do
   # last one (`run_started/2`).
   @session_started "session.started"
 
-  # The session reads this one from the runtime's output; every other `runtime.` event
-  # comes from a hook.
-  @not_from_a_hook "runtime.result"
+  # The session reads these from the runtime's output; every other `runtime.` event comes
+  # from a hook.
+  @not_from_a_hook ~w(runtime.result runtime.text runtime.tool_result runtime.tool_denied)
 
   @max_rails 4
   @colors [:a, :b, :c]
@@ -118,7 +124,8 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc """
   Lays the run out. `events` are light events in sequence order, maps with `:sequence`,
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
-  `:agent_type`, `:background_tasks` (a list, or nil when the event gives none), `:host`,
+  `:agent_type`, `:text_kind` (on a text event: its `kind`, or `"empty"` for a block with
+  no text), `:background_tasks` (a list, or nil when the event gives none), `:host`,
   `:port`, `:decision` and, on an egress event that names one, `:tool`, the tool whose host
   it was for; with `:decision` allowed it is a tool invocation
   (`Apiary.Runs.tool_invocation?/2`). `alive:` says whether the record
@@ -138,6 +145,8 @@ defmodule Apiary.Runs.Record.Timeline do
     * `:rails`: how many rails the gutter needs, one to four;
     * `:session_items`: how many items are the session's (not Forager's, not egress);
     * `:hook_events`: how many `runtime.` events came from the runtime's hooks;
+    * `:texts`: how many text items there are: none in a run recorded before the runtime
+      reported its text, whose Transcript then takes the text of each turn's end;
     * `:background`: `%{tasks: [...], count: n}`, the tasks of the last list the runtime
       gave, each with the sequence it was first listed at;
     * `:through`: the highest sequence folded.
@@ -202,6 +211,8 @@ defmodule Apiary.Runs.Record.Timeline do
       open_by_agent: %{},
       # tool_use_id => item seq, for a call closed without its end: a late end finds it
       closed_tools: %{},
+      # tool_use_id => item seq, for every call: a result, or a start after its end, finds it
+      calls: %{},
       # agent_id => lane index, while the agent is open and tracked
       open_lanes: %{},
       # rail => lane index, for the lanes that hold a rail (three at most)
@@ -212,6 +223,7 @@ defmodule Apiary.Runs.Record.Timeline do
       rails: 1,
       session_items: 0,
       hook_events: 0,
+      texts: 0,
       # the tasks of the last list given
       tasks: [],
       # the sequence of the last policy applied, for the reload that follows it
@@ -244,6 +256,7 @@ defmodule Apiary.Runs.Record.Timeline do
       rails: state.rails,
       session_items: state.session_items,
       hook_events: state.hook_events,
+      texts: state.texts,
       background: outstanding(state),
       through: state.through
     }
@@ -252,8 +265,8 @@ defmodule Apiary.Runs.Record.Timeline do
   defp public_lane(lane),
     do: Map.take(lane, [:index, :id, :type, :rail, :color, :started_seq, :finished_seq])
 
-  defp count(state, %{type: @prefix <> "runtime." <> _ = type}) do
-    if type == @prefix <> @not_from_a_hook,
+  defp count(state, %{type: @prefix <> "runtime." <> name}) do
+    if "runtime." <> name in @not_from_a_hook,
       do: state,
       else: %{state | hook_events: state.hook_events + 1}
   end
@@ -311,17 +324,41 @@ defmodule Apiary.Runs.Record.Timeline do
         # The same call started twice: one item, not a second that nothing would close.
         also(state, state.open_tools[id], event.sequence)
 
+      is_map_key(state.calls, id) ->
+        # The call's end came first: the start joins its item.
+        seq = state.calls[id]
+
+        state
+        |> update_item(seq, &%{&1 | start_seq: &1.start_seq || event.sequence})
+        |> also(seq, event.sequence)
+
       true ->
         agent = agent_key(event)
+        state = push(state, :tool, event, %{start_seq: event.sequence})
 
         %{
-          push(state, :tool, event)
+          state
           | open_tools: Map.put(state.open_tools, id, event.sequence),
-            open_by_agent: Map.update(state.open_by_agent, agent, [id], &[id | &1])
+            open_by_agent: Map.update(state.open_by_agent, agent, [id], &[id | &1]),
+            calls: Map.put(state.calls, id, event.sequence)
         }
     end
   end
 
+  # What the runtime gave the model for a call: it neither opens nor closes the call.
+  defp place(state, :tool, %{type: @prefix <> "runtime.tool_result"} = event) do
+    case state.calls[event[:tool_use_id]] do
+      nil ->
+        state
+
+      seq ->
+        state
+        |> update_item(seq, &%{&1 | result_seq: &1.result_seq || event.sequence})
+        |> also(seq, event.sequence)
+    end
+  end
+
+  # A call's end: finished, failed, or denied, which ends a call that never ran.
   defp place(state, :tool, event) do
     id = event[:tool_use_id]
 
@@ -329,10 +366,25 @@ defmodule Apiary.Runs.Record.Timeline do
       {nil, _open} ->
         case Map.pop(state.closed_tools, id) do
           {nil, _} ->
-            # An end without its start: the record lacks it, so the item is the end alone.
-            state
-            |> push(:tool, event)
-            |> update_item(event.sequence, &%{&1 | end_seq: event.sequence})
+            case is_binary(id) && state.calls[id] do
+              seq when is_integer(seq) ->
+                # A second end of a call, or the end of a call whose end came first.
+                if state.items[seq].end_seq,
+                  do: also(state, seq, event.sequence),
+                  else: end_call(state, seq, event)
+
+              _ ->
+                # An end without its start: the record lacks it, so the item is the end
+                # alone, and a later start or result joins it.
+                state
+                |> push(:tool, event)
+                |> update_item(event.sequence, &%{&1 | end_seq: event.sequence})
+                |> then(fn state ->
+                  if is_binary(id),
+                    do: %{state | calls: Map.put(state.calls, id, event.sequence)},
+                    else: state
+                end)
+            end
 
           {seq, closed} ->
             end_call(%{state | closed_tools: closed}, seq, event)
@@ -340,6 +392,21 @@ defmodule Apiary.Runs.Record.Timeline do
 
       {seq, open} ->
         end_call(%{state | open_tools: open}, seq, event)
+    end
+  end
+
+  # A text block. A thinking block with text is an item of its own kind, which only the
+  # Transcript shows; an empty block, of either kind, is none.
+  defp place(state, :text, event) do
+    case event[:text_kind] do
+      "empty" ->
+        state
+
+      "thinking" ->
+        push(state, :thinking, event)
+
+      _text ->
+        state |> push(:text, event) |> Map.update!(:texts, &(&1 + 1))
     end
   end
 
@@ -525,6 +592,8 @@ defmodule Apiary.Runs.Record.Timeline do
           inner: [],
           inner_count: 0,
           denied_inside: false,
+          start_seq: nil,
+          result_seq: nil,
           started_seq: nil,
           previous_seq: nil,
           session_seq: nil,
@@ -623,6 +692,8 @@ defmodule Apiary.Runs.Record.Timeline do
         _ ->
           [item.seq | inner] ++
             List.wrap(item.end_seq) ++
+            List.wrap(item.start_seq) ++
+            List.wrap(item.result_seq) ++
             List.wrap(item.started_seq) ++
             List.wrap(item.previous_seq) ++ List.wrap(item.session_seq)
       end
@@ -641,6 +712,7 @@ defmodule Apiary.Runs.Record.Timeline do
   defp session_kind?(kind),
     do:
       kind not in [
+        :thinking,
         :run_started,
         :policy_applied,
         :run_exited,
@@ -732,7 +804,9 @@ defmodule Apiary.Runs.Record.Timeline do
         id: "e-#{item.seq}",
         sequence: item.seq,
         time: event.time,
-        full: item.seq in full
+        full: item.seq in full,
+        line: event[:line],
+        session: event[:session]
       })
       |> Map.merge(body(item, event, events, limit))
     end
@@ -846,14 +920,16 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp body(%{kind: :tool} = item, event, events, limit) do
     # An item made of an end alone has no start: the one event is both.
-    source = event
+    source = (item[:start_seq] && events[item.start_seq]) || event
     ended = if item.end_seq, do: events[item.end_seq]
+    result = item[:result_seq] && events[item.result_seq]
 
     status =
       cond do
         is_nil(ended) and item.tool_state == :open -> :open
         is_nil(ended) -> :no_end
         failed?(ended) -> :failed
+        denied?(ended) -> :denied
         true -> :finished
       end
 
@@ -861,8 +937,8 @@ defmodule Apiary.Runs.Record.Timeline do
       for seq <- item.inner, egress = events[seq], is_map(egress), do: connection(egress)
 
     %{
-      tool: source.tool || gettext("tool"),
-      summary: source.summary,
+      tool: source.tool || (ended && ended.tool) || gettext("tool"),
+      summary: source.summary || (ended && ended.summary),
       status: status,
       interrupted: status == :failed and ended.interrupted == true,
       duration_ms: ended && ended.duration_ms,
@@ -870,8 +946,34 @@ defmodule Apiary.Runs.Record.Timeline do
       connections: connections,
       connections_count: item.inner_count,
       denied_inside: item.denied_inside,
-      wells: wells(source, ended, status, limit)
+      wells: wells(source, ended, status, limit),
+      # The tool line's place in the session's output: the start's when it was read from
+      # the output, else the denial's, else the result's.
+      line:
+        Enum.find_value([source, status == :denied && ended, result, ended], fn
+          %{line: line} when is_integer(line) -> line
+          _ -> nil
+        end),
+      reason: if(status == :denied, do: ended.text),
+      error: if(status == :failed, do: ended.error),
+      error_bytes: if(status == :failed, do: ended.error_bytes),
+      result: result_of(result, limit),
+      # A run recorded before the runtime reported a call's result: what the tool returned,
+      # as JSON, for the Transcript to show in its place.
+      response:
+        if(is_nil(result) and status == :finished,
+          do: response_of(ended, limit)
+        )
     }
+  end
+
+  defp body(%{kind: kind}, event, _events, limit) when kind in [:text, :thinking] do
+    event
+    |> text(limit)
+    |> Map.merge(%{
+      truncated: event.truncated == true,
+      first_line: first_line(event.text)
+    })
   end
 
   defp body(%{kind: kind} = item, event, events, limit)
@@ -1014,6 +1116,69 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   defp failed?(%{type: type}), do: type == @prefix <> "runtime.tool_failed"
+  defp denied?(%{type: type}), do: type == @prefix <> "runtime.tool_denied"
+
+  # The content the runtime gave the model, as the Transcript shows it: the text, cut at
+  # `limit`, how many lines and bytes it has whole, whether the session cut it at 64 KiB,
+  # and whether the runtime reported it as an error. Nil without a result, or with an
+  # empty one.
+  defp result_of(%{content: content} = result, limit) when is_binary(content) do
+    {shown, cut?} = cap(content, limit)
+    bytes = result.content_bytes || byte_size(content)
+
+    %{
+      text: shown,
+      bytes: bytes,
+      lines: result.content_lines || lines(content),
+      cut: cut? or bytes > byte_size(shown),
+      truncated: result.truncated == true,
+      error: result.is_error == true,
+      line: result.line
+    }
+  end
+
+  defp result_of(_result, _limit), do: nil
+
+  defp response_of(%{} = ended, limit) do
+    {text, bytes} =
+      cond do
+        is_binary(ended.response_json) -> {ended.response_json, ended.response_json_bytes}
+        is_binary(ended.response) -> {ended.response, ended.response_bytes}
+        is_binary(ended.stdout) -> {ended.stdout, ended.stdout_bytes}
+        true -> {nil, nil}
+      end
+
+    if text do
+      {shown, cut?} = cap(text, limit)
+      bytes = bytes || byte_size(text)
+      %{text: shown, bytes: bytes, lines: lines(text), cut: cut? or bytes > byte_size(shown)}
+    end
+  end
+
+  @markdown_marks ~r/\A(?:\s{0,3}(?:[#]{1,6}\s+|>\s?|[-*+]\s+|\d{1,9}[.)]\s+))+/u
+
+  @doc """
+  The first line of a text that has words, without its Markdown marks: a heading's `#`,
+  a quote's `>`, a list's bullet or number, emphasis, code and a link's address. One
+  line, at most #{400} characters; nil for a text with none.
+  """
+  def first_line(text) when is_binary(text) do
+    text
+    |> String.split(["\r\n", "\n", "\r"])
+    |> Enum.find_value(fn line ->
+      plain =
+        line
+        |> String.replace(@markdown_marks, "")
+        |> String.replace(~r/!?\[([^\]]*)\]\([^)]*\)/u, "\\1")
+        |> String.replace(~r/(\*\*|__|~~|`)/u, "")
+        |> String.replace(~r/(?<![\w*])[*_](?=\S)|(?<=\S)[*_](?![\w*])/u, "")
+        |> String.trim()
+
+      if plain != "", do: bound(plain, @summary_limit)
+    end)
+  end
+
+  def first_line(_text), do: nil
 
   defp wells(source, ended, status, limit) do
     input = well(gettext("input"), :json, source.input, source.input_bytes, nil, limit)
@@ -1113,10 +1278,10 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall
     mode source model cwd kind outcome reason state code signal method request_method path decision rule
-    path_rule credential request_id port exit_code duration_ms turns status cost_usd interrupted in_background allow
+    path_rule credential request_id port exit_code duration_ms turns status line session cost_usd interrupted in_background truncated is_error allow
     allow_count allow_first allow_first_count credentials deny deny_count run_configuration terminated terminated_count tools summary text
     text_bytes error error_bytes error_lines details details_bytes details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
-    stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
+    stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes content content_bytes content_lines)a
 
   @doc "The keys of a slim event."
   def slim_keys, do: @slim_keys
@@ -1135,6 +1300,7 @@ defmodule Apiary.Runs.Record.Timeline do
       case event.type do
         @prefix <> "runtime.prompt_submitted" -> data["prompt"]
         @prefix <> "runtime.result" -> data["result"]
+        @prefix <> "runtime.text" -> data["text"]
         _ -> data["message"]
       end
 
@@ -1172,13 +1338,15 @@ defmodule Apiary.Runs.Record.Timeline do
       end
     )
     |> Map.merge(
-      for key <- ~w(port exit_code duration_ms turns status)a,
+      for key <- ~w(port exit_code duration_ms turns status line session)a,
           into: %{},
           do: {key, integer(data, Atom.to_string(key))}
     )
     |> Map.merge(%{
       cost_usd: if(is_number(data["cost_usd"]), do: data["cost_usd"]),
       interrupted: data["interrupted"] == true,
+      truncated: data["truncated"] == true,
+      is_error: data["is_error"] == true,
       in_background: input["run_in_background"] == true,
       allow: hosts(data["allow"]),
       allow_count: if(is_list(data["allow"]), do: length(data["allow"]), else: 0),
@@ -1201,7 +1369,7 @@ defmodule Apiary.Runs.Record.Timeline do
           do: named_hosts(data["tools"]),
           else: []
         ),
-      summary: tool_summary(string(data, "tool"), input, first_string(input))
+      summary: tool_summary(string(data, "summary"), first_string(input))
     })
     |> Map.merge(slim_text(:text, body, limit, false))
     |> Map.merge(slim_text(:error, data["error"], limit, true))
@@ -1213,6 +1381,7 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(slim_text(:stdout, stdout || nil, limit, true))
     |> Map.merge(slim_text(:stderr, stderr || nil, limit, true))
     |> Map.merge(slim_text(:response_json, json, limit, false))
+    |> Map.merge(slim_text(:content, content_text(data["content"]), limit, true))
     |> egress_host()
   end
 
@@ -1239,37 +1408,43 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   @doc """
-  The one-line summary of a tool call, chosen per tool from the fields of its input,
-  copied, never rewritten: `{:text, s}`, `{:pattern, pattern, path}` or nil. `input` holds
-  the strings of the input by key and `first` its first string by key, for a tool
-  this module has no rule for.
+  The one-line summary of a tool call: the first line of the event's `summary`, the one
+  member of the input that Forager's descriptor chose for the tool, copied, never
+  rewritten. A call recorded before Forager sent one has the first string of its input,
+  by key in byte order (`first`), in its place. Nil when there is neither: the call shows
+  its tool alone. No tool's name changes what is read.
   """
-  def tool_summary(tool, input, first) do
-    case tool do
-      "Bash" -> field(input, "command")
-      tool when tool in ~w(Read Edit Write MultiEdit NotebookEdit) -> field(input, "file_path")
-      tool when tool in ~w(Grep Glob) -> pattern(input)
-      "WebFetch" -> field(input, "url")
-      tool when tool in ~w(Task Agent) -> field(input, "description")
-      _ -> nil
-    end || (is_binary(first) and first != "" and {:text, bound(first, @summary_limit)}) || nil
+  def tool_summary(summary, first) do
+    Enum.find_value([summary, first], fn
+      value when is_binary(value) ->
+        case value |> String.split(["\r\n", "\n", "\r"], parts: 2) |> hd() |> String.trim() do
+          "" -> nil
+          line -> bound(line, @summary_limit)
+        end
+
+      _ ->
+        nil
+    end)
   end
 
-  defp field(input, key) do
-    case input[key] do
-      value when is_binary(value) and value != "" -> {:text, bound(value, @summary_limit)}
-      _ -> nil
-    end
+  @doc """
+  The content of a `runtime.tool_result` as text: a string as it is; an array of blocks as
+  the `text` of each text block, and `[type]` for any other block, one per line. Nil for
+  anything else.
+  """
+  def content_text(content) when is_binary(content), do: content
+
+  def content_text(content) when is_list(content) do
+    content
+    |> Enum.map(fn
+      %{"type" => "text", "text" => text} when is_binary(text) -> text
+      %{"type" => type} when is_binary(type) -> "[" <> String.slice(type, 0, 40) <> "]"
+      _ -> "[?]"
+    end)
+    |> Enum.join("\n")
   end
 
-  defp pattern(input) do
-    with {:text, pattern} <- field(input, "pattern") do
-      case field(input, "path") do
-        {:text, path} -> {:pattern, pattern, path}
-        nil -> {:text, pattern}
-      end
-    end
-  end
+  def content_text(_content), do: nil
 
   # The first string of the input, by key in byte order.
   defp first_string(input) do

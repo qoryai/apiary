@@ -610,6 +610,10 @@ defmodule ApiaryWeb.RunLive.Show do
         target={@focused && "e-#{@focused}"}
         isolate={@lane}
         connections={@cx}
+        terminal_path={
+          Access.can?(@current_scope, :"run.read_log", @run) &&
+            (&tab_path(@current_scope, @run, :terminal, %{"seq" => &1}))
+        }
         earlier={@earlier}
         later={max(@later - @new_count, 0)}
         security={@security}
@@ -1570,7 +1574,9 @@ defmodule ApiaryWeb.RunLive.Show do
     seq = tab == :timeline && sequence(params["seq"])
     focused = seq && index.by_seq[seq]
     lane = tab == :timeline && Timeline.lane(index, params["lane"])
-    cx = not (tab == :timeline and params["cx"] == "0")
+    # Allowed connections are inline only on the reader's word (`?cx=1`); a denied one is
+    # inline always.
+    cx = tab == :timeline and params["cx"] == "1"
 
     decision =
       tab == :connections && params["decision"] in ~w(allowed denied) && params["decision"]
@@ -1580,7 +1586,7 @@ defmodule ApiaryWeb.RunLive.Show do
     timeline_query =
       %{}
       |> put_if("lane", lane && lane.id)
-      |> put_if("cx", if(cx, do: nil, else: "0"))
+      |> put_if("cx", if(cx, do: "1"))
 
     socket =
       socket
@@ -1670,8 +1676,8 @@ defmodule ApiaryWeb.RunLive.Show do
     if current == lane_id, do: Map.delete(query, "lane"), else: Map.put(query, "lane", lane_id)
   end
 
-  defp cx_query(query, true), do: Map.put(query, "cx", "0")
-  defp cx_query(query, false), do: Map.delete(query, "cx")
+  defp cx_query(query, true), do: Map.delete(query, "cx")
+  defp cx_query(query, false), do: Map.put(query, "cx", "1")
 
   defp connections_query(decision, page) do
     %{}

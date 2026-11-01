@@ -6583,9 +6583,12 @@
   .q-ti.q-ti-off {
     opacity: 0.28;
   }
-  .q-tl[data-cx="0"] .q-ti-cx,
-  .q-tl[data-cx="0"] .q-during,
-  .q-tl[data-cx="0"] .q-xb:not(:has(.q-io)) {
+  /* Connections inline off: the allowed ones leave; a denied one stays beside the call
+     that made it. */
+  .q-tl[data-cx="0"] .q-ti-cx:not([data-denied]),
+  .q-tl[data-cx="0"] .q-during:not(:has(.q-cx-denied)),
+  .q-tl[data-cx="0"] .q-during .q-cx:not(.q-cx-denied),
+  .q-tl[data-cx="0"] .q-xb:not(:has(.q-io, .q-cx-denied)) {
     display: none;
   }
   .q-g {
@@ -6705,6 +6708,20 @@
     font-size: 0.8125rem;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* A row's words as wide as they are, so what follows them sits beside them. */
+  .q-s-fit {
+    flex: 0 1 auto;
+  }
+  .q-to-term {
+    flex: none;
+    color: var(--color-primary);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .q-to-term:hover {
+    text-decoration: underline;
   }
   .q-s-mono {
     color: var(--color-base-content);
