@@ -4554,6 +4554,99 @@
     }
   }
 
+  /* The runs list's columns (`runs_table/1` with facts). State, Run, Workflow, Work
+     item, Started, Duration and Denied always show; how a run started joins from 900 px
+     (under the work item, muted, until then), the target from 1000 and the runtime from
+     1100, so they give way in the opposite order. */
+  .q-rl-list .q-rl-rn {
+    width: 1%;
+  }
+  .q-rl-list .q-rl-wi {
+    width: 100%;
+    max-width: 0;
+  }
+  .q-rl-wf-name {
+    display: block;
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-rl-wf-step {
+    display: block;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-rl-stage {
+    display: block;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .q-rl-wi-link,
+  .q-rl-wi-text,
+  .q-rl-wi-none {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-wi-link,
+  .q-rl-wi-text {
+    color: var(--color-base-content);
+  }
+  .q-rl-wi-none {
+    color: var(--q-muted);
+  }
+  /* Above the run's link, which covers the row. */
+  .q-rl-row .q-rl-wi-link {
+    position: relative;
+    z-index: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-strong);
+    text-underline-offset: 2px;
+  }
+  .q-rl-row .q-rl-wi-link:hover {
+    text-decoration-color: currentColor;
+  }
+  .q-rl-sb-under {
+    display: block;
+    overflow: hidden;
+    margin-top: 1px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-list .q-rl-tg,
+  .q-rl-list .q-rl-sb,
+  .q-rl-list .q-rl-rt {
+    display: none;
+  }
+  @container (min-width: 900px) {
+    .q-rl-list .q-rl-sb {
+      display: table-cell;
+    }
+    .q-rl-list .q-rl-sb-under {
+      display: none;
+    }
+  }
+  @container (min-width: 1000px) {
+    .q-rl-list .q-rl-tg {
+      display: table-cell;
+    }
+  }
+  @container (min-width: 1100px) {
+    .q-rl-list .q-rl-rt {
+      display: table-cell;
+    }
+  }
+
   /* A run's state in a row: a dot, and a word only where the state needs a look. */
   .q-st {
     display: inline-flex;
@@ -5876,6 +5969,64 @@
     .q-rl tbody tr td.q-rl-c4,
     .q-rl tbody tr td.q-rl-c5 {
       display: none;
+    }
+
+    /* The runs list's card: the run's id and its workflow, then the state; the work
+       item; when it started and how long it ran; its denials. */
+    .q-rl.q-rl-list tbody tr {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      column-gap: 0;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-rn {
+      grid-column: 1;
+      grid-row: 1;
+      width: auto;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wf {
+      grid-column: 2;
+      grid-row: 1;
+      display: flex;
+      align-items: baseline;
+      padding-right: 12px;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wf::before {
+      content: "\00a0\00b7\00a0";
+      color: var(--q-muted);
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wf.q-rl-wf-none,
+    .q-rl.q-rl-list tbody tr td .q-rl-stage,
+    .q-rl.q-rl-list tbody tr td .q-rl-sb-under,
+    .q-rl.q-rl-list tbody tr td.q-rl-tg,
+    .q-rl.q-rl-list tbody tr td.q-rl-sb,
+    .q-rl.q-rl-list tbody tr td.q-rl-rt {
+      display: none;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-st {
+      grid-column: 3;
+      grid-row: 1;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-wi {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      width: auto;
+      max-width: none;
+    }
+    .q-rl.q-rl-list .q-rl-wi-link,
+    .q-rl.q-rl-list .q-rl-wi-text,
+    .q-rl.q-rl-list .q-rl-wi-none {
+      font-size: 0.78125rem;
+      text-decoration: none;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-when {
+      grid-column: 1 / 3;
+      grid-row: 3;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-dur {
+      grid-column: 3;
+      grid-row: 3;
+    }
+    .q-rl.q-rl-list tbody tr td.q-rl-den {
+      grid-row: 4;
     }
   }
 
