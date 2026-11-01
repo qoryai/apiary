@@ -24,10 +24,11 @@ defmodule Apiary.Runs.ListFacts do
   #     explore-a-ticket has none. `round` is the run's round inside a loop
   #     (`loop_entry` set), nil outside one. Nil otherwise.
   #   * `work_item`: `%{number: n, title: title, here: boolean, target_system: system,
-  #     target_path: path}` for the work item of the run of the queue, `here` false where
-  #     it moved to another workspace since, the target nil for a work item with none; nil
-  #     for none.
-  #   * `started_by`: how the run started (`started_by/4`), nil where no record says.
+  #     target_path: path}` for the work item of the run of the queue, the target nil for
+  #     a work item with none. Where the work item moved to another workspace since,
+  #     `here` is false and the number and the target are nil, since they are the other
+  #     workspace's. Nil for no work item.
+  #   * `started_by`: how the run started (`started_by/3`), nil where no record says.
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -99,6 +100,7 @@ defmodule Apiary.Runs.ListFacts do
             process_version_id: d.process_version_id,
             stage_id: d.stage_id,
             round: d.round,
+            stage_entry: d.stage_entry,
             loop_entry: d.loop_entry,
             walk_state: h.state,
             walk_origin: h.origin,
@@ -124,7 +126,7 @@ defmodule Apiary.Runs.ListFacts do
          workflow: workflow,
          stage: stage(row, stages, workflow),
          work_item: work_item(row),
-         started_by: started_by(row, Map.get(events, row.work_item_id, []))
+         started_by: started_by(row, stages, Map.get(events, row.work_item_id, []))
        }}
     end)
   end
@@ -148,7 +150,8 @@ defmodule Apiary.Runs.ListFacts do
   defp stage(row, stages, workflow) do
     with true <- Apiary.Stages.on?(),
          id when is_binary(id) <- row.stage_id,
-         name when is_binary(name) and name != "" <- stages[{row.process_version_id, id}],
+         %{name: name} when is_binary(name) and name != "" <-
+           stages[{row.process_version_id, id}],
          false <- same_name?(name, workflow) do
       %{name: name, round: if(row.loop_entry, do: row.round)}
     else
@@ -164,12 +167,12 @@ defmodule Apiary.Runs.ListFacts do
 
   defp same_name?(_name, _workflow), do: false
 
-  # The names of the stages the rows name, by `{version id, stage id}`: one read of their
-  # versions.
+  # The stages the rows name, by `{version id, stage id}`, each `%{name:, first:}`, `first`
+  # whether it is the first stage of its version: one read of their versions.
   defp stage_names(rows) do
     version_ids = for %{stage_id: s, process_version_id: v} <- rows, s, v, uniq: true, do: v
 
-    if version_ids == [] or not Apiary.Stages.on?() do
+    if version_ids == [] do
       %{}
     else
       for version <- Repo.all(from v in Version, where: v.id in ^version_ids),
@@ -177,17 +180,27 @@ defmodule Apiary.Runs.ListFacts do
           version_id == version.id,
           stage = Processes.stage(version, stage_id),
           into: %{},
-          do: {{version.id, stage_id}, stage["name"]}
+          do:
+            {{version.id, stage_id},
+             %{name: stage["name"], first: first_stage_id(version) == stage_id}}
     end
   end
 
+  defp first_stage_id(%Version{document: %{"stages" => [%{"id" => id} | _rest]}}), do: id
+  defp first_stage_id(_version), do: nil
+
   defp work_item(%{work_item_id: nil}), do: nil
+
+  # A work item that moved to another workspace keeps its title alone: its number and its
+  # target are the other workspace's.
+  defp work_item(%{here: false} = row),
+    do: %{number: nil, title: row.title, here: false, target_system: nil, target_path: nil}
 
   defp work_item(row),
     do: %{
       number: row.number,
       title: row.title,
-      here: row.here,
+      here: true,
       target_system: row.target_system,
       target_path: row.target_path
     }
@@ -235,14 +248,14 @@ defmodule Apiary.Runs.ListFacts do
     events
   end
 
-  # How a run started, by its run of the queue and its work item's events (the type).
-  # The first rule that holds decides, in this order: a run of no queue; a prebuild, of
-  # which no record says; a run queued again after a missing image; a test work item's
-  # run; the first run of a take in; a run after answers; a run of Explore again; a run
-  # the stage runner placed.
-  defp started_by(%{dispatch_run_id: nil}, _events), do: :direct
+  # How a run started, by its run of the queue, its stage and its work item's events (the
+  # type). The first rule that holds decides, in this order: a run of no queue; a
+  # prebuild, of which no record says; a run queued again after a missing image; a test
+  # work item's run; the run a take in queued; a run after answers; a run of Explore
+  # again; a run the stage runner placed.
+  defp started_by(%{dispatch_run_id: nil}, _stages, _events), do: :direct
 
-  defp started_by(row, events) do
+  defp started_by(row, stages, events) do
     cond do
       row.step == DispatchRun.prebuild() ->
         nil
@@ -253,7 +266,7 @@ defmodule Apiary.Runs.ListFacts do
       row.test ->
         person(:test_run, find(events, :taken_in, row.take_in))
 
-      row.attempt == 1 ->
+      queued_by_take_in?(row, stages) ->
         taken_in(row, find(events, :taken_in, row.take_in))
 
       answered = find(events, :answered, row.take_in, row.attempt - 1) ->
@@ -269,6 +282,17 @@ defmodule Apiary.Runs.ListFacts do
         nil
     end
   end
+
+  # The run a take in queued: its first attempt, and, for a run the stage runner placed,
+  # the start of the first stage of its version (entry 0, round 1). The stage runner
+  # numbers its runs on from the take in's last, so where the take in queued none (the
+  # first stage waits, or has no workflow), a later stage's first run is attempt 1 too.
+  defp queued_by_take_in?(%{attempt: 1, stage_id: nil}, _stages), do: true
+
+  defp queued_by_take_in?(%{attempt: 1, stage_entry: 0, round: 1} = row, stages),
+    do: match?(%{first: true}, stages[{row.process_version_id, row.stage_id}])
+
+  defp queued_by_take_in?(_row, _stages), do: false
 
   defp taken_in(%{take_in: 1}, event), do: person(:taken_in, event)
   defp taken_in(_row, event), do: person(:taken_in_again, event)

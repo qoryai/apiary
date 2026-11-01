@@ -2328,12 +2328,21 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   # The work item of a row of the runs list: "#3 Say hello", a link to its page where the
-  # reader may follow one and it is still in this workspace; for a run with none, the
-  # title the run gave (`shown_run_title/1`); else "No work item".
+  # reader may follow one; its title alone, with no link, where it moved to another
+  # workspace, whose number it has now; for a run with none, the title the run gave
+  # (`shown_run_title/1`); else "No work item".
   attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :work_item, :map, default: nil
   attr :link, :boolean, required: true
+
+  defp work_item_cell(%{work_item: %{here: false} = work_item} = assigns) do
+    assigns = assign(assigns, :title, shown_sent(work_item.title))
+
+    ~H"""
+    <span class="q-rl-wi-text" title={@title}><.external_text text={@title} /></span>
+    """
+  end
 
   defp work_item_cell(%{work_item: %{} = work_item} = assigns) do
     assigns =
@@ -2346,7 +2355,7 @@ defmodule ApiaryWeb.RunComponents do
             title: shown_sent(work_item.title) || ""
           ),
         path:
-          assigns.link && work_item.here &&
+          assigns.link &&
             ~p"/#{assigns.scope.organisation}/#{assigns.scope.workspace}/work/#{work_item.number}"
       )
 

@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.RunLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
@@ -796,6 +797,28 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#{row(titled)} .q-rl-wi-text") == "Nightly dependency check"
       refute has_element?(view, "#{row(titled)} .q-rl-wi-link")
       assert text(view, "#{row(untitled)} .q-rl-wi-none") == "No work item"
+    end
+
+    test "a work item that moved to another workspace: its title alone, and no target from it",
+         %{conn: conn, scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      run = started_run(scope, %{})
+      queue_run!(scope, run, work_item: work_item)
+      elsewhere = Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
+
+      Repo.update_all(
+        from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: elsewhere.id]
+      )
+
+      view = open(conn, scope)
+
+      assert text(view, "#{row(run)} .q-rl-wi-text") == "Say hello"
+      refute has_element?(view, "#{row(run)} .q-rl-wi-link")
+      refute text(view, row(run)) =~ "##{work_item.number}"
+      # Its target is the other workspace's: no Target column, no rail.
+      refute has_element?(view, "#runs th.q-rl-tg")
+      refute has_element?(view, "#runs-rail")
     end
 
     test "each way a run starts, by who did it", %{conn: conn, scope: scope, name: name} do

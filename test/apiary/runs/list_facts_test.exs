@@ -164,6 +164,80 @@ defmodule Apiary.Runs.ListFactsTest do
     end
   end
 
+  describe "the run a take in queued, through the stage runner" do
+    # Runs of the queue the stage runner wrote (`Apiary.Stages`), each given a run as a
+    # claim would.
+    defp run_of!(scope, queued) do
+      run = started_run(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [dispatch_run_id: queued.id]
+        )
+
+      run
+    end
+
+    defp queued_of(work_item),
+      do:
+        Repo.all(
+          from d in Apiary.Dispatches.DispatchRun,
+            where: d.work_item_id == ^work_item.id,
+            order_by: [d.take_in, d.attempt]
+        )
+
+    @tag needs: [:observability, :factory, :workflow_model]
+    test "the first stage's start is the take in's", %{scope: scope, user: user} do
+      work_item = Apiary.StagesFixtures.taken_in_fixture(scope)
+      assert [%{attempt: 1, stage_entry: 0, round: 1} = queued] = queued_of(work_item)
+
+      assert facts(scope, run_of!(scope, queued)).started_by == {:taken_in, user.id}
+    end
+
+    @tag needs: [:observability, :factory, :workflow_model]
+    test "a later stage's first run, attempt 1 where the first stage queued none, is the process's",
+         %{scope: scope} do
+      # The first stage has no workflow and waits at a person's gate: the take in queues
+      # no run, and Build's run after the approval is attempt 1.
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          %{
+            "id" => "st_p9w5cvh311",
+            "name" => "Shape",
+            "inputs" => [],
+            "sequence" => [],
+            "outputs" => [],
+            "gate" => gate
+          },
+          %{
+            "id" => "st_6ns22c4pav",
+            "name" => "Build",
+            "inputs" => [],
+            "sequence" => [%{"workflow" => "implement"}],
+            "outputs" => [],
+            "gate" => gate
+          }
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = Apiary.StagesFixtures.taken_in_fixture(scope)
+      assert %{stage_id: "st_p9w5cvh311", stage_state: :at_gate} = work_item
+      assert queued_of(work_item) == []
+
+      assert {:ok, %{stage_id: "st_6ns22c4pav"}} =
+               Apiary.Stages.approve(scope, work_item, nil, expect_stage: "st_p9w5cvh311")
+
+      assert [%{attempt: 1, stage_id: "st_6ns22c4pav"} = queued] = queued_of(work_item)
+
+      assert facts(scope, run_of!(scope, queued)).started_by == :process
+    end
+  end
+
   describe "how a run started" do
     test "a take in, a take in again, answers, Explore again and a missing image", %{
       scope: scope,
@@ -238,6 +312,27 @@ defmodule Apiary.Runs.ListFactsTest do
       assert id == user.id
       assert facts(scope, unexplained).started_by == nil
       assert %{started_by: :direct, work_item: nil, workflow: nil} = facts(scope, direct)
+    end
+
+    test "a work item that moved to another workspace: its title alone, no number, no target",
+         %{scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      run = started_run(scope)
+      queue_run!(scope, run, work_item: work_item)
+      elsewhere = workspace_fixture(scope.organisation)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: elsewhere.id]
+        )
+
+      assert facts(scope, run).work_item == %{
+               number: nil,
+               title: "Say hello",
+               here: false,
+               target_system: nil,
+               target_path: nil
+             }
     end
 
     test "another workspace's run has no facts", %{scope: scope} do

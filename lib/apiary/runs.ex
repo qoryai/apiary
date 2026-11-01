@@ -196,9 +196,9 @@ defmodule Apiary.Runs do
   that builds an environment, or nil where the run was handed none; `stage` the stage of
   the workspace's process that placed it, `%{name:, round:}`, where its name adds to the
   workflow's, else nil; `work_item` its work item, `%{number:, title:, here:,
-  target_system:, target_path:}`, `here` false where the work item moved to another
-  workspace, else nil; `started_by` how it started: `:direct` (a run of no queue),
-  `:image_requeue`, `:process` (the stage runner placed it), `{:test_run, person}`,
+  target_system:, target_path:}`, where the work item moved to another workspace `here`
+  false and the number and the target nil, else nil; `started_by` how it started: `:direct` (a run of no queue),
+  `:image_requeue`, `:process` (any other run the stage runner placed), `{:test_run, person}`,
   `{:taken_in, person}`, `{:taken_in_again, person}`, `{:explore_again, person}` or
   `{:answers, attempt, of, person}`, `person` an account id; nil where no record says. A
   run of another workspace has none. Four reads, whatever the number of runs.

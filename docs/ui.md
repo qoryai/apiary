@@ -642,15 +642,18 @@ version in force is exported; another version's path sends on to it.
   muted line under it, "Build", a middle dot and "round 2" inside a loop, the stage alone outside one, only
   where the stage's name is not the workflow's name or its first word (Explore with
   explore-a-ticket has none). Work item is "#3 Say hello", a link to the work item for a
-  reader who may read work items; a run with none shows the title the run gave, with what
+  reader who may read work items; a work item that moved to another workspace shows its
+  title alone, with no number, no link and no target; a run with none shows the title the run gave, with what
   it is about (its kind and up to two subjects, as text) muted under it, else "No work
   item". Started by says how the run started: "Taken in by dana", "Taken in again by
   dana", "Attempt 2 of 3, after answers from dana", "Explore again by dana", "Test run by
-  dana", "The workspace's process" (a run the stage runner placed that no person's act
-  queued), "Queued again after a missing image", "qory run on a machine" (a run of no
+  dana" (the two take in texts only for the run a take in queued, at the start of the
+  first stage),
+  "The workspace's process" (any other run the stage runner placed), "Queued again after a missing image", "qory run on a machine" (a run of no
   queue), each person by the short form of their address, "Former member" for one no
   longer there, else "n/a". Target (Repository in a software workspace) shows only where
-  a run of the page has a target, from its start's labels, else from its work item. There
+  a run of the page has a target, from its start's labels, else from its work item in this
+  workspace. There
   is no Host column; the Host filter stays, and the Machine or pool column (from 1300 px)
   names the instance's Qory Pool. Where the table is narrow the columns give way in
   this order: Runtime below 1100 px, Target below 1000, Started by below 900, which then
