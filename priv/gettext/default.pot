@@ -15556,6 +15556,7 @@ msgid "Run %{attempt} of %{of}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run %{attempt} of %{of} is queued."
 msgstr ""

@@ -1675,6 +1675,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
+  attr :queued, :string,
+    default: nil,
+    doc: "Runs' line while a run waits for a machine and none has started, in place of None yet"
+
   def work_item_details(assigns) do
     work_item = assigns.work_item
     now = now(assigns)
@@ -1760,7 +1764,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         <dt>{gettext("Runs")}</dt>
         <dd id={"#{@id}-runs"}>
           <span :if={@runs} class="q-wi-runs"><.rich text={runs_line(@runs)} /></span>
-          <span :if={!@runs} class="q-faint">{gettext("None yet")}</span>
+          <span :if={!@runs and @queued} id={"#{@id}-runs-queued"}>{@queued}</span>
+          <span :if={!@runs and !@queued} class="q-faint">{gettext("None yet")}</span>
         </dd>
         <%= if @ended do %>
           <dt>{elem(@ended, 0)}</dt>

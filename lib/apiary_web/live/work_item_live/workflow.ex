@@ -36,6 +36,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.Run
+  alias Apiary.Stages.Runner
+  alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.WorkItemLive.Board
 
   @states Apiary.Processes.Version.stage_states()
@@ -104,7 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       # The stage runs, and its newest run still waits for a machine.
       queued: state == :running and match?([%{shows: :queued} | _], runs),
       round: get(status, :round),
-      rounds: get(status, :rounds),
+      rounds: shown_rounds(get(status, :round), get(status, :rounds)),
       gaps: lines(get(status, :gaps)),
       runs: runs,
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
@@ -126,6 +128,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       can_add: Access.can?(scope, :"artifact.write", row)
     }
   end
+
+  # The round limit as the card counts it: Run another round at the limit runs one round
+  # more, which is then the last before the stage escalates again, so the count is never
+  # under the round.
+  defp shown_rounds(round, rounds) when is_integer(round) and is_integer(rounds),
+    do: max(round, rounds)
+
+  defp shown_rounds(_round, rounds), do: rounds
 
   # The stages of the version, each with whether it is done, the current one or to come.
   defp track(all, nil, _state), do: Enum.map(all, &Map.put(&1, :at, :todo))
@@ -327,6 +337,83 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   defp approver?(_scope, _stage), do: false
+
+  ## The list's rows
+
+  # Explore's statuses (`Apiary.WorkItems.explore/3`) under which a work item at Explore
+  # keeps Explore's words, as the work item page's head does.
+  @explore_statuses [
+    :queued,
+    :running,
+    :questions,
+    :used_up,
+    :no_result,
+    :lost,
+    :cancelled,
+    :confirm
+  ]
+
+  @doc false
+  # row_statuses/2 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`), the
+  # status each live work item the stage runner placed shows in place of Explore's words,
+  # by the row's id: the stage and its state, with its mark, as the work item page's head
+  # shows them (`ApiaryWeb.WorkItemLive.StageComponents.head_status/1`). A row is left
+  # out, and keeps Explore's words, where it ended, is not placed, or is at Explore while a
+  # run, its questions or its gate are what the stage is at.
+  @spec row_statuses(Scope.t(), [map]) :: %{String.t() => map}
+  def row_statuses(_scope, []), do: %{}
+
+  def row_statuses(%Scope{workspace: %{id: workspace_id} = workspace} = scope, rows) do
+    ids = for %{id: id, state: :exploring} <- rows, do: id
+
+    placed =
+      Repo.all(
+        from w in WorkItem,
+          where: w.workspace_id == ^workspace_id and w.public_id in ^ids,
+          where: not is_nil(w.stage_id) and not is_nil(w.stage_state),
+          select:
+            {w.public_id,
+             %{version: w.process_version_id, stage: w.stage_id, state: w.stage_state}}
+      )
+      |> Map.new()
+
+    versions =
+      if placed == %{}, do: %{}, else: Map.new(Processes.list_versions(workspace), &{&1.id, &1})
+
+    current = if placed == %{}, do: nil, else: Processes.current(workspace)
+    gate? = Access.can?(scope, :"gate.approve", workspace)
+
+    for %{id: id} = row <- rows, place = placed[id], into: %{} do
+      {id, row_status(scope, row, place, Map.get(versions, place.version, current), gate?)}
+    end
+    |> Enum.reject(fn {_id, status} -> is_nil(status) end)
+    |> Map.new()
+  end
+
+  defp row_status(scope, row, place, version, gate?) do
+    stages = stages_of(version)
+    raw = Enum.find(stages, &(get(&1, :id) == place.stage))
+    state = state(place.state)
+
+    cond do
+      is_nil(raw) ->
+        nil
+
+      "explore-a-ticket" in Runner.workflows(raw) and
+        state in [:running, :waiting_answers, :at_gate] and row.status in @explore_statuses ->
+        nil
+
+      true ->
+        stage = stage_map(raw)
+
+        ApiaryWeb.WorkItemLive.StageComponents.head_status(%{
+          stage: stage,
+          state: state,
+          queued: state == :running and row.status == :queued,
+          can_decide: gate? and approver?(scope, stage)
+        })
+    end
+  end
 
   ## What a reader does
 

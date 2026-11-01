@@ -40,8 +40,10 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # while live work items remain in it, marked with its version
   # (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`). Under the board, in place
   # of the bands, the Open view is a page of rows with the pager, as every other view is.
-  # The board is read again on `{:work_items_changed, ids}`. Without the feature the page
-  # is as before it.
+  # The board is read again on `{:work_items_changed, ids}`. Under the feature, on every
+  # view, a row shows the stage its work item is at and the stage's state, as the work
+  # item page's head does (`ApiaryWeb.WorkItemLive.Workflow.row_statuses/2`). Without the
+  # feature the page is as before it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -204,6 +206,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   scope={@current_scope}
                   can_act={@can_act}
                   now={@now}
+                  statuses={@stage_statuses}
                 />
               </.stage_band>
             <% true -> %>
@@ -225,6 +228,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   scope={@current_scope}
                   can_act={@can_act}
                   now={@now}
+                  statuses={@stage_statuses}
                 />
               </.stage_band>
               <ul
@@ -238,6 +242,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   scope={@current_scope}
                   can_act={@can_act}
                   now={@now}
+                  statuses={@stage_statuses}
                 />
               </ul>
               <.work_items_pager
@@ -260,6 +265,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   attr :scope, :any, required: true
   attr :can_act, :boolean, required: true
   attr :now, :any, required: true
+  attr :statuses, :map, default: %{}, doc: "`ApiaryWeb.WorkItemLive.Workflow.row_statuses/2`"
 
   defp rows(assigns) do
     ~H"""
@@ -271,6 +277,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       navigate={work_item_path(@scope, row)}
       can_act={@can_act}
       now={@now}
+      stage_status={@statuses[row.id]}
     />
     """
   end
@@ -293,6 +300,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
        list: nil,
        bands: nil,
        board: nil,
+       stage_statuses: %{},
        people: %{},
        waiting: nil,
        now: DateTime.utc_now(),
@@ -400,8 +408,13 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
     people = people(rows, one_owner(params), socket.assigns.options.owner)
 
+    # Under the workflow model a row shows the stage its work item is at, as its page's
+    # head does.
+    stage_statuses = if Workflow.on?(scope), do: Workflow.row_statuses(scope, rows), else: %{}
+
     assign(socket,
       board: board,
+      stage_statuses: stage_statuses,
       list: list,
       bands: bands,
       people: people,

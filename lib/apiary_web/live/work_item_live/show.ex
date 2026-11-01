@@ -187,6 +187,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             uninstalled={@source.uninstalled}
             item_noun={@source.item_noun}
             collection_noun={@source.collection_noun}
+            queued={queued_run(@flow, @item)}
             now={@now}
           />
         </:rail>
@@ -938,6 +939,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           Access.can?(scope, action, row)
     }
   end
+
+  # Details' Runs under the workflow model, while the newest run waits for a machine and
+  # none has started: that run, as the step card says it, in place of None yet.
+  defp queued_run(%{runs: [%{shows: :queued} | _]}, %{run: %{attempt: attempt, of: of}})
+       when is_integer(attempt) and is_integer(of),
+       do:
+         gettext("Run %{attempt} of %{of} is queued.",
+           attempt: Format.number(attempt),
+           of: Format.number(of)
+         )
+
+  defp queued_run(_flow, _item), do: nil
 
   # Today's step card, beside the stage card at Explore. At the run limit it says Explore
   # cannot run again in this take in, which is false while the escalation card offers Run

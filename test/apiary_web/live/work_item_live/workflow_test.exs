@@ -264,6 +264,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-round", "Round 1 of 3")
       assert has_element?(view, "#work-item-stage-version", "Process version 1")
       assert html =~ "Run 1 · explore-a-ticket · round 1 · queued"
+
+      # Details names the queued run, as the run list does, and not None yet.
+      assert has_element?(view, "#work-item-details-runs", "Run 1 of 3 is queued.")
+      refute has_element?(view, "#work-item-details-runs", "None yet")
     end
 
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
@@ -1164,6 +1168,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert %DispatchRun{attempt: 4, of: 4} = newest_run(work_item)
       assert render(view) =~ "Run 4 · explore-a-ticket · round 4 · queued"
+
+      # The round past the limit is the last before the stage escalates again: the count
+      # is never under the round.
+      assert has_element?(view, "#work-item-stage-round", "Round 4 of 4")
+      refute render(view) =~ "Round 4 of 3"
     end
 
     test "a move back to a later stage, or an action it does not know, is refused", %{
@@ -1790,6 +1799,27 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       for work_item <- [explored, shaped] do
         assert has_element?(view, "#work-items-rows #work-item-#{work_item.public_id}")
       end
+    end
+
+    test "each row shows the stage its work item is at", %{conn: conn, scope: scope} do
+      queued = taken_in_fixture(scope)
+      shaped = shape_gate_fixture(scope)
+      stopped = scope |> taken_in_fixture() |> end_run!(nil)
+
+      built =
+        scope
+        |> shape_gate_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :waiting_inputs)
+
+      row = &"#work-items-rows #work-item-#{&1.public_id}"
+      {:ok, view, _html} = live(conn, list(scope))
+
+      assert has_element?(view, row.(queued), "Explore is queued")
+      assert has_element?(view, row.(shaped), "Shape · At the gate")
+      assert has_element?(view, row.(stopped), "Explore · Waits for a person")
+      assert has_element?(view, row.(built), "Build · Waits for inputs")
+      refute has_element?(view, row.(built), "Ready for Shape")
+      refute has_element?(view, row.(shaped), "Ready for Shape")
     end
 
     test "a work item's number, its title without invisible characters, and the mark Test", %{
