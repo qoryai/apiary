@@ -125,6 +125,23 @@ defmodule Apiary.Runs do
       else: raise(Ecto.NoResultsError, queryable: Run)
   end
 
+  @doc """
+  One run of the scope's workspace by `param`: its number (`Run.parse_number/1`), the
+  form the run's URL carries, or its `public_id`, `rn_…`; nil for a run the workspace has
+  not got, a run of another workspace among them, and for anything of neither shape.
+  """
+  @spec get_run_by_param(Scope.t(), term) :: Run.t() | nil
+  def get_run_by_param(%Scope{} = scope, param) do
+    case Run.parse_number(param) do
+      {:ok, number} ->
+        Repo.one(from r in in_scope(scope), where: r.number == ^number)
+
+      :error ->
+        if Run.public_id?(param),
+          do: Repo.one(from r in in_scope(scope), where: r.public_id == ^param)
+    end
+  end
+
   @doc "The workspace's runs, newest first. `limit:` defaults to #{@default_limit}, at most #{@max_limit}."
   def list_runs(%Scope{} = scope, opts \\ []) do
     limit = opts |> Keyword.get(:limit, @default_limit) |> max(1) |> min(@max_limit)
