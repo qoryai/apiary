@@ -710,7 +710,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                Repo.get!(WorkItem, work_item.id)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      assert has_element?(view, "#work-item-step-confirm")
+      refute has_element?(view, "#work-item-step-confirm")
       assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
       assert has_element?(view, "#work-item-stage-gate-output-acceptance-criteria")
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
