@@ -1554,6 +1554,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/transcript_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} earlier event"
 msgid_plural "%{number} earlier events"
@@ -1689,6 +1690,7 @@ msgid "%{number} kB"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/transcript_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} later event"
 msgid_plural "%{number} later events"
@@ -1826,6 +1828,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} more item, on the runs list"
 msgid_plural "%{number} more items, on the runs list"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} more line"
+msgid_plural "%{number} more lines"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -6297,11 +6306,6 @@ msgstr ""
 msgid "Collapse sidebar"
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Collapsed"
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6974,6 +6978,11 @@ msgstr ""
 msgid "Custom types"
 msgstr ""
 
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cut at 64 KiB. Raw has every byte."
+msgstr ""
+
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Danger zone"
@@ -7489,6 +7498,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Denied."
+msgstr ""
+
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied: %{reason}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10709,6 +10723,7 @@ msgid "Live"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/transcript_components.ex
 #, elixir-autogen, elixir-format
 msgid "Load newer"
 msgstr ""
@@ -12746,6 +12761,12 @@ msgstr ""
 msgid "Not ready: the pool's runs may not go through the chosen gateway"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not run: denied"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not running"
@@ -14723,6 +14744,7 @@ msgid "Rate"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/transcript_components.ex
 #, elixir-autogen, elixir-format
 msgid "Raw"
 msgstr ""
@@ -16853,6 +16875,16 @@ msgstr ""
 msgid "Show it"
 msgstr ""
 
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show less"
+msgstr ""
+
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show line %{number} in Raw"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show more"
@@ -16877,6 +16909,11 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Show them"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show this text in the Terminal"
 msgstr ""
 
 #: lib/apiary_web/live/narrowing.ex
@@ -17607,6 +17644,7 @@ msgstr "Repositories that set %{name}"
 msgid "Targets · Policy"
 msgstr "Repositories · Policy"
 
+#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Terminal"
@@ -17662,6 +17700,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Test run passed: the agent answered on a machine."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Text"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -19384,6 +19427,11 @@ msgstr ""
 msgid "They leave %{organisation} and lose access to its workspaces and their runs at once. Their account stays; you can invite them again."
 msgstr ""
 
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Thinking"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "This %{item} is closed at %{integration}, so it was not taken in."
@@ -20005,6 +20053,12 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Top bar"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgid "Transcript"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -22445,12 +22499,6 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgctxt "a pattern in a path"
-msgid "in"
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
 msgid "in %{agent} %{id}:"
 msgstr ""
 
@@ -23185,6 +23233,12 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "terminal"
+msgstr ""
+
+#: lib/apiary_web/components/transcript_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "a table in a text"
+msgid "text"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex

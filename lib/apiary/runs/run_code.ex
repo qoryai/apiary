@@ -44,7 +44,9 @@ defmodule Apiary.Runs.RunCode do
   #      at the redemption in whole seconds, its `attach_by` 600 seconds after, and writes
   #      the run key's payload, its signature, `run_key_issued_at`, `attach_by`, the
   #      public key and its proof's timestamp in one write; a claimed dispatch is handed
-  #      over in the same transaction (`Apiary.Dispatches.Handover.hand_over/3`). A retry
+  #      over in the same transaction (`Apiary.Dispatches.Handover.hand_over/3`), and
+  #      once it commits the run is broadcast as changed
+  #      (`Apiary.Runs.broadcast_changed/1`). A retry
   #      by the same public key whose proof's timestamp is newer than the one stored is
   #      answered the run key the run has, byte for byte, and writes its proof's timestamp
   #      in place of the one stored, with `updated_at`, and nothing else; one whose
@@ -132,8 +134,20 @@ defmodule Apiary.Runs.RunCode do
          true <- is_binary(relayed_by) || {:error, :unauthorized},
          %{id: _id} = found <- find_run(request.code_head) || {:error, :unauthorized} do
       Repo.transact(fn -> redeem_locked(found, request, relayed_by, now, code_limit) end)
+      |> broadcast_redeemed()
     end
   end
+
+  # Once the first redemption committed, the run is broadcast as changed, so its page
+  # shows the machine's start at once (`Apiary.Dispatches.Handover.broadcast_run/1`). A
+  # retry changes nothing the page shows, and is not broadcast.
+  defp broadcast_redeemed({:ok, {answer, %Run{} = run}}) do
+    Handover.broadcast_run({:ok, %{run: run}})
+    {:ok, answer}
+  end
+
+  defp broadcast_redeemed({:ok, {answer, nil}}), do: {:ok, answer}
+  defp broadcast_redeemed(refused), do: refused
 
   # The run whose code's SHA-256 is the code's, of a workspace and an organisation in use,
   # read without a lock, with its run of the queue: its locks are taken next.
@@ -176,13 +190,17 @@ defmodule Apiary.Runs.RunCode do
          :ok <- within_code_limit(run, code_limit) do
       case state do
         :outstanding ->
-          run_key = redeemed(run, public_key, request.timestamp, now)
+          {run_key, changed} = redeemed(run, public_key, request.timestamp, now)
           if dispatch, do: :ok = Handover.hand_over(dispatch_run, dispatch, now)
-          {:ok, %{run_id: run.node_run_id, run_key: run_key, documents: run.run_documents}}
+
+          {:ok,
+           {%{run_id: run.node_run_id, run_key: run_key, documents: run.run_documents}, changed}}
 
         :redeemed ->
           :ok = retried(run, request.timestamp, now)
-          {:ok, %{run_id: run.node_run_id, run_key: given(run), documents: run.run_documents}}
+
+          {:ok,
+           {%{run_id: run.node_run_id, run_key: given(run), documents: run.run_documents}, nil}}
       end
     end
   end
@@ -277,13 +295,14 @@ defmodule Apiary.Runs.RunCode do
 
   # The first redemption: the run key made from the grant, issued at `now`, and the run's
   # run key fields and the public key written in one write. The grant passed a run key's
-  # rules when the claim made the code, so the run key is made.
+  # rules when the claim made the code, so the run key is made. Returns the run key and
+  # the run's row as written.
   defp redeemed(%Run{id: id, run_code_grant: grant}, public_key, timestamp, now) do
     {:ok, %{run_key: run_key, through: through}} =
       Registration.issue_grant(load(grant), now, @attach_seconds)
 
-    {1, _rows} =
-      Repo.update_all(from(r in Run, where: r.id == ^id),
+    {1, [changed]} =
+      Repo.update_all(from(r in Run, where: r.id == ^id, select: r),
         set:
           Map.to_list(through) ++
             [
@@ -293,7 +312,7 @@ defmodule Apiary.Runs.RunCode do
             ]
       )
 
-    run_key
+    {run_key, changed}
   end
 
   # A retry accepted: its proof's timestamp stored in place of the one before, so the same
