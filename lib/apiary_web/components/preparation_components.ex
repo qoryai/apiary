@@ -8,7 +8,8 @@ defmodule ApiaryWeb.PreparationComponents do
   the cause line under its output. Under Machine started the line is its second sentence
   alone, who fixes the cause: the run's header shows the first as the run's reason. While
   the run is alive, a running row has a clock that ticks in the browser, and the heading
-  has the time so far.
+  has the time so far; with no row running, the heading has the time to the end of the
+  last row that ended.
 
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
@@ -61,10 +62,12 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :alive, :boolean, required: true
 
   def prepare_machine(assigns) do
+    going_from = going_from(assigns.preparation, assigns.alive)
+
     assigns =
       assign(assigns,
-        total_ms: total_ms(assigns.preparation),
-        going_from: going_from(assigns.preparation, assigns.alive)
+        total_ms: if(is_nil(going_from), do: total_ms(assigns.preparation)),
+        going_from: going_from
       )
 
     ~H"""
@@ -332,12 +335,13 @@ defmodule ApiaryWeb.PreparationComponents do
     """
   end
 
-  # When the preparation of a live run began, while it goes on: a row is running, or the
-  # machine started and no step has yet. Between two steps, and for a runtime with no
-  # session event once its last step ended, nothing shows that it goes on, so no clock
-  # counts past it.
+  # When the preparation of a live run began, while it goes on: it has not ended
+  # (`ended_at/1`), and a row is running, or the machine started and no step has yet.
+  # Between two steps, and for a runtime with no session event once its last step ended,
+  # nothing shows that it goes on, so no clock counts past it: the heading has the time
+  # to the end of the last row that ended (`total_ms/1`).
   defp going_from(preparation, alive) do
-    if alive and is_nil(total_ms(preparation)) and going_on?(preparation),
+    if alive and is_nil(ended_at(preparation)) and going_on?(preparation),
       do: first_at(preparation)
   end
 
@@ -350,30 +354,37 @@ defmodule ApiaryWeb.PreparationComponents do
   defp first_at(%{steps: [%{started_at: at} | _]}), do: at
   defp first_at(_preparation), do: nil
 
-  # From the first row's time to the session's start, or to the end of the failed row;
-  # nil while the preparation goes on.
+  # From the first row's time to the session's start, to the end of the failed row, or,
+  # with neither and no row running, to the end of the last row that ended. The caller
+  # shows it only while no clock counts (`going_from/2`).
   defp total_ms(preparation) do
     from = first_at(preparation)
-
-    to =
-      cond do
-        preparation.session_started_at ->
-          preparation.session_started_at
-
-        preparation.stopped == nil ->
-          nil
-
-        preparation.stopped.step == nil ->
-          preparation.machine.started.ended_at
-
-        true ->
-          Enum.find_value(
-            preparation.steps,
-            &(&1.number == preparation.stopped.step && &1.exited_at)
-          )
-      end
-
+    to = ended_at(preparation) || last_end(preparation)
     if from && to, do: max(DateTime.diff(to, from, :millisecond), 0)
+  end
+
+  # When the preparation ended: the session's start, or the end of the failed row; nil
+  # while it has done neither.
+  defp ended_at(%{session_started_at: %DateTime{} = at}), do: at
+  defp ended_at(%{stopped: nil}), do: nil
+  defp ended_at(%{stopped: %{step: nil}, machine: machine}), do: machine.started.ended_at
+
+  defp ended_at(%{stopped: %{step: number}, steps: steps}),
+    do: Enum.find_value(steps, &(&1.number == number && &1.exited_at))
+
+  # The latest end among the rows, while none is running; nil while one is, or none has
+  # an end.
+  defp last_end(%{machine: machine, steps: steps}) do
+    running? =
+      Enum.any?(steps, &(&1.state == "running")) or
+        (machine != nil and machine.started.state == "running")
+
+    ends = [machine && machine.started.ended_at | Enum.map(steps, & &1.exited_at)]
+
+    case Enum.reject(ends, &is_nil/1) do
+      [_ | _] = ends when not running? -> Enum.max(ends, DateTime)
+      _none -> nil
+    end
   end
 
   # The last `limit` bytes of `text` at most, starting at a character.

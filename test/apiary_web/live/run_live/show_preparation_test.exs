@@ -378,7 +378,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     end
 
     test "a live run with no session event counts nothing past its last step", ctx do
-      %{run: run} = claimed_run(ctx.scope)
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      exited = DateTime.add(dispatch.claimed_at, 90, :second)
 
       run =
         project!(run, [
@@ -388,11 +389,26 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
            time: DateTime.utc_now()},
           {3, "run.step_exited",
            %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000},
-           time: DateTime.utc_now()}
+           time: exited}
         ])
 
       lv = open(ctx.conn, ctx.scope, run)
       refute has_element?(lv, "#prepare-machine time[data-tick]")
+
+      # The heading keeps the time from the claim to the step's end.
+      assert lv |> element("#prepare-machine-total") |> render() =~ "1 m 30 s"
+      refute lv |> element(".q-prep-hd") |> render() =~ "so far"
+
+      # Between two steps too: once the next step starts, the heading ticks again.
+      events_fixture(run, [
+        {4, "run.step_started", %{"step" => 2, "name" => "join session 1", "kind" => "join"},
+         time: DateTime.add(exited, 1, :second)}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+      assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
+      assert lv |> element(".q-prep-hd") |> render() =~ "so far"
     end
 
     test "a run with no dispatch and no step has no section", ctx do
