@@ -682,6 +682,47 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-gate-output-proposal")
     end
 
+    test "past Explore with a proposal waiting: Shape's card keeps its needs and Approve", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Explore with gate none passes on to Shape while the proposal waits for Confirm.
+      default = Processes.default_document("software")
+
+      stages =
+        for stage <- default["stages"] do
+          case stage["id"] do
+            @explore ->
+              %{stage | "gate" => %{"kind" => "none"}}
+
+            @shape ->
+              %{stage | "outputs" => [%{"type" => "acceptance-criteria", "required" => true}]}
+
+            _other ->
+              stage
+          end
+        end
+
+      save!(scope, %{default | "stages" => stages})
+      work_item = explore_gate_fixture(scope)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} =
+               Repo.get!(WorkItem, work_item.id)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-step-confirm")
+      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+      assert has_element?(view, "#work-item-stage-gate-output-acceptance-criteria")
+      assert has_element?(view, "#work-item-stage-gate-ask-changes")
+
+      {:ok, _version} =
+        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
+
+      refute has_element?(view, "#work-item-stage-gate-line")
+      view |> form("#work-item-stage-gate-approve") |> render_submit()
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @build
+    end
+
     test "a stale Approve: the notice lists the output and the stage", %{
       conn: conn,
       scope: scope

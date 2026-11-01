@@ -825,14 +825,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       # Explore runs as before the workflow model: while the work item is at Explore,
       # the step card stays beside the stage card, with Undo, the answers, Decline and
       # Confirm. Its Confirm approves Explore's gate (`Apiary.WorkItems.confirm/4`), so
-      # the stage card offers no second Approve there.
+      # the stage card offers no second Approve there. A proposal can still wait after the
+      # work item left Explore (a gate `none` passes on), so the Confirm gate is Explore's.
       flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
 
       flow =
         flow &&
           %{
             flow
-            | confirm_gate: explore.status == :confirm,
+            | confirm_gate: flow.at_explore and explore.status == :confirm,
               explore: explore.status in @explore_statuses,
               ended: explore.status in [:declined, :closed, :undone]
           }
