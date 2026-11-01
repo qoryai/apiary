@@ -31,7 +31,9 @@ defmodule Apiary.Runs do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Filters, Target, Run}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Runs.{Connection, Filters, ListFacts, Target, Run}
+  alias Apiary.WorkItems.WorkItem
 
   @default_limit 50
   @max_limit 200
@@ -186,6 +188,23 @@ defmodule Apiary.Runs do
 
   defp sorted(query, _newest),
     do: order_by(query, [r], desc: coalesce(r.started_at, r.inserted_at), desc: r.id)
+
+  @doc """
+  What the runs list shows of each of `runs`, runs of the scope's workspace, beside the
+  fields of their rows, by run id: `%{workflow:, stage:, work_item:, started_by:}`. `workflow` is
+  the name of the workflow the run's claim handed to its machine, `:prebuild` for a run
+  that builds an environment, or nil where the run was handed none; `stage` the stage of
+  the workspace's process that placed it, `%{name:, round:}`, where its name adds to the
+  workflow's, else nil; `work_item` its work item, `%{number:, title:, here:,
+  target_system:, target_path:}`, `here` false where the work item moved to another
+  workspace, else nil; `started_by` how it started: `:direct` (a run of no queue),
+  `:image_requeue`, `:process` (the stage runner placed it), `{:test_run, person}`,
+  `{:taken_in, person}`, `{:taken_in_again, person}`, `{:explore_again, person}` or
+  `{:answers, attempt, of, person}`, `person` an account id; nil where no record says. A
+  run of another workspace has none. Four reads, whatever the number of runs.
+  """
+  @spec list_facts(Scope.t(), [Run.t()]) :: %{Ecto.UUID.t() => map}
+  def list_facts(%Scope{} = scope, runs) when is_list(runs), do: ListFacts.of(scope, runs)
 
   @doc false
   def page_runs_query(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()),
@@ -492,7 +511,8 @@ defmodule Apiary.Runs do
   @doc """
   The options of each section of the runs list's Filter menu, counted from the data: every
   facet is counted under the other filters and the range, not under itself, so a section
-  shows what choosing another value would give. `%{state:, target:, runtime:, host:, node:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
+  shows what choosing another value would give. `%{state:, target:, runtime:, host:, node:,
+  item:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
   #{@facet_size} of them unless `limits:` maps the facet's name to more, and the chosen one,
   with how many values there are. `narrow:` maps a facet's name to what the reader typed in
   its section, matched anywhere in the value, case-insensitively, as text and never as a
@@ -516,7 +536,8 @@ defmodule Apiary.Runs do
         ),
       runtime: text_facet(scope, filters, now, :runtime, narrow["runtime"], limit.("runtime")),
       host: text_facet(scope, filters, now, :host, narrow["host"], limit.("host")),
-      node: node_facet(scope, filters, now, narrow["node"], limit.("node"))
+      node: node_facet(scope, filters, now, narrow["node"], limit.("node")),
+      item: item_facet(scope, filters, now, narrow["item"], limit.("item"))
     }
   end
 
@@ -691,6 +712,84 @@ defmodule Apiary.Runs do
     %{options: options, total: total}
   end
 
+  # The work items of the runs, by their number in the workspace, the most runs first, each
+  # labelled as the list's Work item column writes it ("#3 Say hello"), its value the
+  # number. A work item that moved to another workspace is not offered: its number here
+  # is gone. Typed text narrows them by their title or their number.
+  defp item_facet(scope, filters, now, narrow, limit) do
+    base = filtered(scope, %{filters | item: nil}, now)
+    pattern = like(narrow)
+
+    grouped =
+      from [run: r] in base,
+        left_join: x in Dispatch,
+        on: x.id == r.dispatch_id,
+        join: d in DispatchRun,
+        on: d.id == coalesce(r.dispatch_run_id, x.dispatch_run_id),
+        join: w in WorkItem,
+        as: :work_item,
+        on: w.id == d.work_item_id and w.workspace_id == r.workspace_id,
+        group_by: [w.id, w.number, w.title]
+
+    grouped =
+      if pattern,
+        do:
+          where(
+            grouped,
+            [work_item: w],
+            ilike(w.title, ^pattern) or ilike(fragment("'#' || ?::text", w.number), ^pattern)
+          ),
+        else: grouped
+
+    rows =
+      Repo.all(
+        from [run: r, work_item: w] in grouped,
+          order_by: [desc: count(r.id), desc: w.number],
+          limit: ^(limit + 1),
+          select: {w.number, w.title, count(r.id)}
+      )
+
+    total =
+      if length(rows) > limit,
+        do: Repo.one(from g in subquery(select(grouped, [work_item: w], w.id)), select: count()),
+        else: length(rows)
+
+    options =
+      for {number, title, n} <- Enum.take(rows, limit),
+          do: {item_label(number, title), Integer.to_string(number), n}
+
+    chosen = filters.item && Integer.to_string(filters.item)
+
+    options =
+      if chosen && not Enum.any?(options, &(elem(&1, 1) == chosen)) do
+        title =
+          Repo.one(
+            from w in WorkItem,
+              where:
+                w.organisation_id == ^scope.organisation.id and
+                  w.workspace_id == ^scope.workspace.id and w.number == ^filters.item,
+              select: w.title
+          )
+
+        n = Repo.aggregate(where_item(base, scope, filters.item), :count)
+
+        [
+          {if(title, do: item_label(filters.item, title), else: "#" <> chosen), chosen, n}
+          | options
+        ]
+      else
+        options
+      end
+
+    %{options: options, total: total}
+  end
+
+  @doc """
+  A work item as the runs list writes it, its number and its title: "#3 Say hello".
+  """
+  @spec item_label(integer, String.t()) :: String.t()
+  def item_label(number, title), do: gettext("#%{number} %{title}", number: number, title: title)
+
   defp node_label(name, nil), do: name
   defp node_label(name, _deleted_at), do: gettext("%{name} (deleted)", name: name)
 
@@ -738,6 +837,7 @@ defmodule Apiary.Runs do
     |> where_text(:runtime, f.runtime)
     |> where_host(f.host)
     |> where_node(scope, f.node)
+    |> where_item(scope, f.item)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
     |> where_if(from, dynamic([r], coalesce(r.started_at, r.inserted_at) >= ^from))
@@ -785,6 +885,31 @@ defmodule Apiary.Runs do
         select: n.id
 
     where(query, [r], r.node_id in subquery(nodes))
+  end
+
+  # A work item by its number in the scope's workspace: the runs of its runs of the queue,
+  # a run whose start failed by the run of the queue of its dispatch.
+  defp where_item(query, _scope, nil), do: query
+
+  defp where_item(query, scope, number) do
+    queued = item_runs(scope, number)
+    dispatches = from x in Dispatch, where: x.dispatch_run_id in subquery(queued), select: x.id
+
+    where(
+      query,
+      [r],
+      r.dispatch_run_id in subquery(queued) or r.dispatch_id in subquery(dispatches)
+    )
+  end
+
+  defp item_runs(scope, number) do
+    from d in DispatchRun,
+      join: w in WorkItem,
+      on: w.id == d.work_item_id,
+      where:
+        w.organisation_id == ^scope.organisation.id and w.workspace_id == ^scope.workspace.id and
+          w.number == ^number,
+      select: d.id
   end
 
   # The free text: the run's id (`id_condition/1`), or its title or its target,
