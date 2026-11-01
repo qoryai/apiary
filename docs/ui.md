@@ -1710,7 +1710,8 @@ id".
   from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
   content while a pending run has no event. One row per step, in the order the steps ran:
   Machine requested (the claim, with the pool and the machine type, "pool default" while
-  the claim answer has none) and Machine started (from the starter's `dispatched` to the
+  the claim answer has none; its duration runs to the starter's `dispatched`, and is
+  empty without one) and Machine started (from the starter's `dispatched` to the
   redemption of the run's code) for a run a pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
   exit is recorded; then Session started. Each row has its state, its start time and its
@@ -1737,9 +1738,12 @@ id".
   its admins read why in the pool's log on its host. The section's duration runs from its first row to
   the session's start, or to the failed row's end. While the preparation of a live run goes
   on, a row running or the machine started with no step yet, the heading has the time so
-  far, ticking from its first row. The page reads the preparation again at each flush, and at
-  each quiet tick (5 s) while Machine started is running: `dispatched` and the redemption
-  of the run's code reach no run's topic.
+  far, ticking from its first row. With neither a session's start nor a failed row, and no
+  row running, the duration runs to the end of the last row that ended: between two steps,
+  and after the last step of a runtime with no session event. The page reads the
+  preparation again at each flush; the starter's `dispatched` and the redemption of the
+  run's code are broadcast on the run's topic, so they show at once. On the Timeline tab
+  the page also reads them at each quiet tick (5 s) while Machine started is running.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

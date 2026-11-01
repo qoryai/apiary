@@ -2766,9 +2766,10 @@ defmodule ApiaryWeb.RunLive.Show do
 
         socket = socket |> assign(quiet_for: now) |> read_machine_start()
 
+        # The run as `read_machine_start/1` may have read it again.
         {:noreply,
          if(socket.assigns.tab == :timeline and socket.assigns.window_loaded,
-           do: assign(socket, limit: limit_reason(run, socket.assigns.index)),
+           do: assign(socket, limit: limit_reason(socket.assigns.run, socket.assigns.index)),
            else: socket
          )}
 
@@ -3006,13 +3007,19 @@ defmodule ApiaryWeb.RunLive.Show do
   defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket), do: socket
   defp refresh_preparation(socket), do: assign_preparation(socket)
 
-  # The starter's `dispatched` and the redemption of the run's code write the dispatch and
-  # the run's row and publish nothing on a run's topic, so a page opened on a machine that
-  # is starting reads them at each quiet tick. A step's start reaches it as an event,
-  # through `flush/1`.
+  # The starter's `dispatched` and the redemption of the run's code are broadcast on the
+  # run's topic once they commit. As that broadcast runs after the commit and may fail,
+  # the Timeline tab, which shows the preparation, also reads them at each quiet tick
+  # while the machine is starting. A step's start reaches the page as an event, through
+  # `flush/1`.
   defp read_machine_start(
-         %{assigns: %{preparation_settled: false, preparation: %{machine: %{started: started}}}} =
-           socket
+         %{
+           assigns: %{
+             tab: :timeline,
+             preparation_settled: false,
+             preparation: %{machine: %{started: started}}
+           }
+         } = socket
        )
        when started.state == "running" do
     case Record.reload(socket.assigns.current_scope, socket.assigns.run) do
