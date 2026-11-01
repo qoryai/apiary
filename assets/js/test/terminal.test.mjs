@@ -66,6 +66,12 @@ test("a run with no Transcript, or on a pseudo-terminal, opens in Raw", () => {
   assert.equal(openingView("raw", "transcript", false), "raw")
 })
 
+test("a link to a line of the Transcript opens it, whatever the reader chose", () => {
+  assert.equal(openingView("transcript", "raw", true, true), "transcript")
+  assert.equal(openingView("raw", "raw", true, true), "transcript")
+  assert.equal(openingView("raw", null, false, true), "transcript")
+})
+
 test("a box with no choice keeps the view the server set", () => {
   assert.equal(openingView("transcript", "raw", false), "transcript")
 })

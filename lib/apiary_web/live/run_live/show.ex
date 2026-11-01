@@ -3135,9 +3135,9 @@ defmodule ApiaryWeb.RunLive.Show do
   # New and changed items of the tab, after the index was extended. The Transcript is
   # followed while its window ends at the record's end; the Timeline while the reader is
   # at its live end too, else a pill counts what arrived.
-  defp follow_timeline(socket, old) do
+  defp follow_timeline(socket, old_index) do
     %{index: index, win_first: first, win_last: last, tab: tab} = socket.assigns
-    old = tab_items(old, tab)
+    old = tab_items(old_index, tab)
     new = tab_items(index, tab)
     old_last = old |> List.last() |> then(&((&1 && &1.seq) || 0))
     at_end = tab == :terminal or (socket.assigns.at_end and socket.assigns.new_count == 0)
@@ -3152,14 +3152,24 @@ defmodule ApiaryWeb.RunLive.Show do
             into: %{},
             do: {item.seq, item}
 
+      # A result is drawn again when the Transcript's choice of texts changes: it shows its
+      # text only in a run with neither texts nor turn ends.
+      fallback_changed = tab == :terminal and fallback(old_index) != fallback(index)
+
       changed =
         for item <- new,
             item.seq >= first and item.seq <= last,
-            old_in_window[item.seq] != item,
+            old_in_window[item.seq] != item or (fallback_changed and item.kind == :result),
             do: item
+
+      # An item the tab no longer shows leaves the window: on the Terminal tab, a turn's end
+      # once a text of the run arrived, which has the turn's message.
+      shown = MapSet.new(new, & &1.seq)
+      removed = for {seq, _item} <- old_in_window, seq not in shown, do: seq
 
       appended = Enum.drop_while(new, &(&1.seq <= old_last))
 
+      socket = Enum.reduce(removed, socket, &stream_delete(&2, :items, %{id: "e-#{&1}"}))
       socket = if changed == [], do: socket, else: stream(socket, :items, build(socket, changed))
 
       cond do
@@ -3181,6 +3191,11 @@ defmodule ApiaryWeb.RunLive.Show do
       end
     end
   end
+
+  # Whether the Transcript shows turn ends and result texts in place of texts: none in a run
+  # recorded before Forager sent them (`ApiaryWeb.TranscriptComponents.transcript?/2`).
+  defp fallback(index),
+    do: {index.texts == 0, Enum.any?(index.items, &(&1.kind == :turn_finished))}
 
   ## Words
 

@@ -1558,6 +1558,51 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       flush(lv)
       assert has_element?(lv, "#e-5", "Second")
     end
+
+    test "a live run's turn end leaves the Transcript when the turn's text arrives", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.turn_finished", %{"session_id" => "s", "message" => "Hi, Dana"}},
+          {4, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")}}
+        ])
+
+      {:ok, lv, _html} = terminal(conn, scope, run)
+      # No text yet, so the turn's end shows the turn's message.
+      assert has_element?(lv, "#e-3", "Hi, Dana")
+
+      project_more(run, [
+        {5, "runtime.text", %{"session_id" => "s", "kind" => "text", "text" => "Hi, Dana"}}
+      ])
+
+      html = flush(lv)
+      refute has_element?(lv, "#e-3")
+      assert has_element?(lv, "#e-5", "Hi, Dana")
+      assert length(String.split(html, "Hi, Dana")) == 2
+    end
+
+    test "a pseudo-terminal run with runtime events opens in Raw, with the Transcript", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data(%{"interactive" => true})},
+          {3, "runtime.tool_started",
+           %{"session_id" => "s", "tool" => "Read", "tool_use_id" => "a", "input" => %{}}},
+          {4, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}}
+        ])
+
+      {:ok, lv, _html} = terminal(conn, scope, run)
+      assert has_element?(lv, ~s(#terminal[data-pty="true"][data-view="raw"]))
+      assert has_element?(lv, ~s(#terminal-bar [data-view-button="transcript"]))
+      assert has_element?(lv, "#e-3.q-tr-tool", "Read")
+    end
   end
 
   describe "the terminal tab (P1)" do

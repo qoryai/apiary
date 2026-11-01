@@ -1877,8 +1877,8 @@ start when the run has both.
 - **Access and retention.** The tab is `run.read_log`'s, as tool results are log content.
   The Transcript follows the events' retention and Raw the log's, and the log goes first:
   a run whose log was pruned shows the log's pruned notice and the Transcript alone.
-- **No output.** A run with neither a log nor runtime events says so in the column
-  instead of the box, as an empty state.
+- **No output.** For a run with neither a log nor runtime events, the column shows an
+  empty state in place of the box.
 
 ## Words
 

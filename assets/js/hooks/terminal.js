@@ -18,8 +18,8 @@
 // typing in it shows Raw.
 //
 // A line of the Transcript read from the session's output has a link to that line in Raw
-// (data-raw-line, data-session). The server answers where the line starts in the bytes
-// Raw reads (`raw_line`), and Raw is read again from the start with a marker at that byte.
+// (data-raw-line, data-session). The `raw_line` event returns where the line starts in the
+// bytes Raw reads, and Raw is read again from the start with a marker at that byte.
 //
 // A run whose record says the pseudo-terminal's size (data-cols, data-rows) is replayed
 // at it: every answer of the endpoint names in x-qory-log-size the size its bytes were
@@ -127,9 +127,12 @@ export const overCount = (params, most) => {
 export const stopAt = (at, length, mark) =>
   mark != null && mark > at && mark < at + length ? mark - at : length
 
-// The view a box opens in: Raw without a Transcript or on a pseudo-terminal, else the
-// reader's choice. The Collapsed view kept as a choice before it was removed is Transcript.
-export const openingView = (initial, stored, choice) => {
+// The view a box opens in. A link to a line of the Transcript (`targeted`, the Transcript
+// box's data-target) opens the Transcript, whatever the reader chose, and the choice stays.
+// Otherwise: Raw without a Transcript or on a pseudo-terminal, else the reader's choice.
+// The Collapsed view kept as a choice before it was removed is Transcript.
+export const openingView = (initial, stored, choice, targeted = false) => {
+  if (targeted) return "transcript"
   if (!choice || initial === "raw") return initial
   if (stored === "raw") return "raw"
   return "transcript"
@@ -208,10 +211,12 @@ export const Terminal = {
     this.preference = storedSize()
     this.viewButtons = [...this.el.querySelectorAll("[data-view-button]")]
     this.hasRaw = this.el.dataset.raw !== "false"
+    const box = this.transcript && this.transcript.querySelector("[data-transcript]")
     this.view = openingView(
       this.el.dataset.view || "raw",
       storedView(),
       this.viewButtons.length > 0 && this.hasRaw,
+      !!(box && box.dataset.target),
     )
 
     this.live = this.el.dataset.live === "true"
@@ -236,8 +241,9 @@ export const Terminal = {
       })
     }
     this.bind()
-    this.bindTranscript()
+    // The view shows before the Transcript scrolls to its target.
     this.showView()
+    this.bindTranscript()
     if (this.view === "raw" && this.hasRaw) this.boot()
   },
 
@@ -516,6 +522,8 @@ export const Terminal = {
       const line = document.getElementById(target)
       if (line) {
         this.shownTarget = target
+        // The line is in the Transcript: it shows, and the reader's choice stays as it was.
+        if (this.view !== "transcript") this.pickView("transcript")
         this.transcript
           .querySelectorAll(".q-tr-target")
           .forEach(el => el.classList.remove("q-tr-target"))

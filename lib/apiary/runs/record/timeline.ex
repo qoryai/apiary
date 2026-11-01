@@ -395,7 +395,7 @@ defmodule Apiary.Runs.Record.Timeline do
     end
   end
 
-  # A text block. A thinking block with text is an item of its own kind, which only the
+  # A text block. A thinking block with text is a `:thinking` item, which only the
   # Transcript shows; an empty block, of either kind, is none.
   defp place(state, :text, event) do
     case event[:text_kind] do

@@ -962,8 +962,8 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # The turn's last message is the text item before it: the row says only that the turn
-  # finished.
+  # The turn's last message is the text item before it: the row shows the label "Turn
+  # finished" and its time, and no text.
   defp item_body(%{item: %{kind: :turn_finished}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Turn finished")} />
@@ -1583,15 +1583,18 @@ defmodule ApiaryWeb.RunPageComponents do
   slot :transcript, doc: "the Transcript; none for a run with no runtime events"
 
   def terminal(assigns) do
+    pty = assigns.streams == ["terminal"]
+
     assigns =
       assign(assigns,
         sized: is_integer(assigns.cols) and is_integer(assigns.rows),
-        pty: assigns.streams == ["terminal"],
+        pty: pty,
         both: assigns.raw and assigns.transcript != [],
+        # A pseudo-terminal run opens in Raw, where its screen is.
         opening:
           cond do
             not assigns.raw -> "transcript"
-            assigns.transcript == [] -> "raw"
+            assigns.transcript == [] or pty -> "raw"
             true -> assigns.view
           end
       )
