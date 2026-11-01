@@ -25,10 +25,18 @@ defmodule Apiary.Runs.Record.TimelineTest do
         port: data["port"] && to_string(data["port"]),
         decision: data["decision"],
         tool: data["tool"],
-        background_tasks: data["background_tasks"]
+        background_tasks: data["background_tasks"],
+        text_kind: text_kind(event.type, data)
       }
     end
   end
+
+  # As the light query reads it: "empty" for a text event without text, else its kind.
+  defp text_kind("dev.qory.runtime.text", data) do
+    if data["text"] in [nil, ""], do: "empty", else: data["kind"]
+  end
+
+  defp text_kind(_type, _data), do: nil
 
   defp index(events, opts \\ []), do: events |> light() |> Timeline.index(opts)
 
@@ -546,6 +554,160 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
+  defp text(sequence, text, extra \\ %{}) do
+    event(
+      sequence,
+      "runtime.text",
+      Map.merge(%{"session_id" => "s1", "text" => text, "kind" => "text"}, extra)
+    )
+  end
+
+  defp result(sequence, id, content, extra \\ %{}) do
+    event(
+      sequence,
+      "runtime.tool_result",
+      Map.merge(%{"session_id" => "s1", "tool_use_id" => id, "content" => content}, extra)
+    )
+  end
+
+  describe "runtime texts, results and denials" do
+    test "a text is an item, thinking with text is one the Timeline leaves out, empty is none" do
+      index =
+        index([
+          text(1, "Hello, Dana"),
+          text(2, "Weighing it", %{"kind" => "thinking"}),
+          text(3, "", %{"kind" => "thinking"}),
+          event(4, "runtime.text", %{"session_id" => "s1", "kind" => "text"})
+        ])
+
+      assert Enum.map(index.items, &{&1.seq, &1.kind}) == [{1, :text}, {2, :thinking}]
+      assert index.texts == 1
+      assert index.session_items == 1
+      # Read from the output, not from a hook.
+      assert index.hook_events == 0
+    end
+
+    test "a text's first line has words and no Markdown marks; its line and session are kept" do
+      [item] =
+        build([
+          text(1, "\n# Hello, **Dana**\n\nThe [shop](https://shop.example) is `up`.", %{
+            "line" => 7,
+            "session" => 1
+          })
+        ])
+
+      assert %{kind: :text, first_line: "Hello, Dana", line: 7, session: 1, truncated: false} =
+               item
+
+      assert Timeline.first_line("> - 1. _Web shop_ ready") == "Web shop ready"
+      assert Timeline.first_line("![logo](a.png) Acme") == "logo Acme"
+      assert Timeline.first_line("  \n\n") == nil
+    end
+
+    test "a result joins its call, with its lines and line number; a call may have none" do
+      [with_result, without] =
+        build([
+          tool(1, "started", "a", %{"line" => 3, "session" => 1}),
+          result(2, "a", "one\ntwo\nthree\nfour\nfive\n", %{"line" => 4}),
+          tool(3, "finished", "a"),
+          tool(4, "started", "b"),
+          tool(5, "finished", "b")
+        ])
+
+      assert %{
+               status: :finished,
+               line: 3,
+               session: 1,
+               result: %{text: "one\ntwo\nthree\nfour\nfive\n", lines: 5, line: 4, error: false}
+             } = with_result
+
+      assert %{status: :finished, result: nil, response: nil} = without
+    end
+
+    test "a result of blocks shows each text block, and any other block as its type" do
+      [item] =
+        build([
+          tool(1, "started", "a"),
+          result(
+            2,
+            "a",
+            [
+              %{"type" => "text", "text" => "Launching skill: harness:greet"},
+              %{"type" => "image", "source" => %{}},
+              %{"type" => "text", "text" => "done"}
+            ],
+            %{"is_error" => true, "truncated" => true}
+          )
+        ])
+
+      assert %{
+               result: %{
+                 text: "Launching skill: harness:greet\n[image]\ndone",
+                 lines: 3,
+                 error: true,
+                 truncated: true
+               }
+             } = item
+    end
+
+    test "a denial ends its call: no end follows, the reason is the denial's message" do
+      index =
+        index([
+          tool(1, "started", "a"),
+          event(2, "runtime.tool_denied", %{
+            "session_id" => "s1",
+            "tool" => "Bash",
+            "tool_use_id" => "a",
+            "message" => "Quoted text in this command can't be checked before it runs",
+            "line" => 9
+          })
+        ])
+
+      assert [%{seq: 1, kind: :tool, end_seq: 2}] = index.items
+
+      [item] =
+        build([
+          tool(1, "started", "a"),
+          event(2, "runtime.tool_denied", %{
+            "session_id" => "s1",
+            "tool" => "Bash",
+            "tool_use_id" => "a",
+            "message" => "Quoted text in this command can't be checked before it runs",
+            "line" => 9
+          })
+        ])
+
+      assert %{
+               status: :denied,
+               reason: "Quoted text in this command can't be checked before it runs",
+               line: 9,
+               result: nil
+             } = item
+    end
+
+    test "a denial alone is a call that was never run" do
+      assert [%{kind: :tool, status: :denied, tool: "Bash", reason: nil}] =
+               build([
+                 event(1, "runtime.tool_denied", %{
+                   "session_id" => "s1",
+                   "tool" => "Bash",
+                   "tool_use_id" => "a"
+                 })
+               ])
+    end
+
+    test "a subagent's lines are on its lane by agent_id alone, with no type" do
+      [call, inside] =
+        build([
+          tool(1, "started", "t", %{"tool" => "Agent", "summary" => "Explore the shop"}),
+          text(2, "Reading", %{"agent_id" => "a1"})
+        ])
+
+      assert %{kind: :tool, lane: %{id: "main"}, summary: "Explore the shop"} = call
+      assert %{kind: :text, lane: %{id: "a1", type: nil}} = inside
+    end
+  end
+
   describe "build/3" do
     test "a run's end carries the state its exit means; a refusal is an item with its code" do
       for {data, state} <- [
@@ -570,7 +732,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
                ])
     end
 
-    test "a tool: the summary is copied from the input, the wells are its input and its response" do
+    test "a tool: the summary is Forager's, the wells are its input and its response" do
       input = %{
         "command" => "npm test",
         "description" => "Run the tests",
@@ -579,7 +741,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
       [item] =
         build([
-          tool(1, "started", "a", %{"input" => input}),
+          tool(1, "started", "a", %{"input" => input, "summary" => "npm test\nand more"}),
           egress(2, %{"decision" => "denied", "rule" => ""}),
           tool(3, "finished", "a", %{
             "input" => input,
@@ -592,7 +754,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
                id: "e-1",
                kind: :tool,
                tool: "Bash",
-               summary: {:text, "npm test"},
+               summary: "npm test",
                status: :finished,
                duration_ms: 3400,
                in_background: true,
@@ -606,38 +768,39 @@ defmodule Apiary.Runs.Record.TimelineTest do
              } = item
     end
 
-    test "summaries per tool" do
-      summary = fn tool, input ->
-        [item] =
-          build([
-            event(1, "runtime.tool_started", %{
-              "tool" => tool,
-              "tool_use_id" => "x",
-              "input" => input
-            })
-          ])
-
+    test "a summary is the first line of Forager's, whatever the tool; none without one" do
+      summary = fn events ->
+        [item] = build(events)
         item.summary
       end
 
-      assert summary.("Read", %{"file_path" => "/work/a.py", "limit" => 5}) ==
-               {:text, "/work/a.py"}
+      # The tool's name and input change nothing: only `summary` is read.
+      for name <- ~w(Task Agent Read Custom) do
+        assert summary.([
+                 tool(1, "started", "x", %{
+                   "tool" => name,
+                   "input" => %{"description" => "Explore", "file_path" => "/work/a.py"}
+                 })
+               ]) == nil
 
-      assert summary.("Grep", %{"pattern" => "vat", "path" => "/work"}) ==
-               {:pattern, "vat", "/work"}
+        assert summary.([
+                 tool(1, "started", "x", %{"tool" => name, "summary" => "  Explore  \nrest"})
+               ]) == "Explore"
+      end
 
-      assert summary.("Glob", %{"pattern" => "**/*.ex"}) == {:text, "**/*.ex"}
+      # A call reported only at its end, as opencode reports tools, has its end's summary.
+      assert summary.([tool(1, "finished", "x", %{"summary" => "harness:greet"})]) ==
+               "harness:greet"
 
-      assert summary.("WebFetch", %{"url" => "https://docs.example/a", "prompt" => "p"}) ==
-               {:text, "https://docs.example/a"}
+      # A start without one takes its end's.
+      assert summary.([
+               tool(1, "started", "x"),
+               tool(2, "finished", "x", %{"summary" => "harness:greet"})
+             ]) == "harness:greet"
 
-      assert summary.("Task", %{"description" => "Explore", "prompt" => "p"}) ==
-               {:text, "Explore"}
-
-      assert summary.("Custom", %{"a" => 1, "b" => "first string", "c" => "second"}) ==
-               {:text, "first string"}
-
-      assert summary.("Custom", %{}) == nil
+      assert summary.([tool(1, "started", "x", %{"summary" => "\n"})]) == nil
+      long = tool(1, "started", "x", %{"summary" => String.duplicate("a", 1024)})
+      assert summary.([long]) == String.duplicate("a", 400) <> "…"
     end
 
     test "a failed tool carries the error and whether it was interrupted" do

@@ -420,7 +420,7 @@ defmodule Apiary.Runs.Record do
   end
 
   # The columns of the statement below, by name: its own names, never an event's.
-  @slim_columns Map.new(Timeline.slim_keys() ++ [:input_first], &{Atom.to_string(&1), &1})
+  @slim_columns Map.new(Timeline.slim_keys(), &{Atom.to_string(&1), &1})
 
   @slim_sql """
   SELECT
@@ -431,7 +431,7 @@ defmodule Apiary.Runs.Record do
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (e.data -> 'truncated' = 'true'::jsonb) IS TRUE AS truncated,
     (e.data -> 'is_error' = 'true'::jsonb) IS TRUE AS is_error,
-    CASE WHEN jsonb_typeof(e.data -> 'summary') = 'string' THEN left(e.data ->> 'summary', 400) END AS summary,
+    CASE WHEN jsonb_typeof(e.data -> 'summary') = 'string' THEN left(e.data ->> 'summary', 401) END AS summary,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
     #{Enum.map_join(~w(allow allow_first deny), ",\n  ", fn list -> """
     CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN jsonb_array_length(e.data -> '#{list}') ELSE 0 END AS #{list}_count,
@@ -446,8 +446,6 @@ defmodule Apiary.Runs.Record do
     CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts_of["tools"] |> String.replace("%DATA%", "e.data") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS tools,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts_of["credentials"] |> String.replace("%DATA%", "e.data") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS credentials,
-    (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
-       WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,
     #{Enum.map_join(~w(text error details input response stdout stderr response_json content), ",\n  ", fn name -> "left(y.#{name}, $5) AS #{name}, octet_length(y.#{name}) AS #{name}_bytes" end)},
     #{Enum.map_join(~w(error details response stdout stderr content), ",\n  ", fn name -> "CASE WHEN y.#{name} IS NULL OR y.#{name} = '' THEN 0 ELSE length(y.#{name}) - length(replace(y.#{name}, E'\\n', '')) + CASE WHEN right(y.#{name}, 1) = E'\\n' THEN 0 ELSE 1 END END AS #{name}_lines" end)}
   FROM events e
@@ -512,7 +510,7 @@ defmodule Apiary.Runs.Record do
     |> Map.update!(:deny, &(&1 || []))
     |> Map.update!(:tools, &(&1 || []))
     |> Map.update!(:credentials, &(&1 || []))
-    |> Map.put(:summary, Timeline.tool_summary(row.summary, row.input_first))
+    |> Map.put(:summary, Timeline.tool_summary(row.summary))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn
       {key, ""} -> {key, nil}
@@ -991,7 +989,7 @@ defmodule Apiary.Runs.Record do
 
   # The chunk the line starts in, and the bytes of the chunk before it: `breaks` line
   # feeds of the session's stdout come before the line. A line that starts where a chunk
-  # ends starts at the next chunk.
+  # ends starts at the next chunk; with none, the log has no such line yet.
   defp line_start(scope, run, session, breaks, after_sequence) do
     page =
       Repo.all(
@@ -1027,9 +1025,11 @@ defmodule Apiary.Runs.Record do
     if length(feeds) >= breaks do
       {at, 1} = Enum.at(feeds, breaks - 1)
 
-      if at + 1 < byte_size(bytes) or rest == [],
-        do: {:found, sequence, at + 1},
-        else: find_break(rest, 0)
+      cond do
+        at + 1 < byte_size(bytes) -> {:found, sequence, at + 1}
+        rest == [] -> {:more, 0, sequence}
+        true -> find_break(rest, 0)
+      end
     else
       case rest do
         [] -> {:more, breaks - length(feeds), sequence}

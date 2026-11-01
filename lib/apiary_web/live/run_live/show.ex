@@ -2212,11 +2212,19 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # A result of the Transcript opens to every line, read whole as `show_all` reads an item,
   # and folds again to its first lines.
-  def handle_event("transcript_open", %{"seq" => seq}, %{assigns: %{window_loaded: true}} = socket),
-    do: {:noreply, transcript_fold(socket, seq, true)}
+  def handle_event(
+        "transcript_open",
+        %{"seq" => seq},
+        %{assigns: %{window_loaded: true}} = socket
+      ),
+      do: {:noreply, transcript_fold(socket, seq, true)}
 
-  def handle_event("transcript_close", %{"seq" => seq}, %{assigns: %{window_loaded: true}} = socket),
-    do: {:noreply, transcript_fold(socket, seq, false)}
+  def handle_event(
+        "transcript_close",
+        %{"seq" => seq},
+        %{assigns: %{window_loaded: true}} = socket
+      ),
+      do: {:noreply, transcript_fold(socket, seq, false)}
 
   # A line of the Transcript in Raw: the byte of the log at which the session's output line
   # `line` starts, in the stream Raw shows (`Apiary.Runs.Record.log_offset/5`). Nil when the

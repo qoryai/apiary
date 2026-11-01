@@ -716,15 +716,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert has_element?(lv, "#e-12 summary .q-k", "Read")
-      assert has_element?(lv, "#e-12 summary .q-s", "/work/shop/package.json")
+      # Recorded before Forager sent summaries: the tool alone, never words made from its input.
+      refute has_element?(lv, "#e-12 summary .q-s", "/work/shop/package.json")
       assert has_element?(lv, "#e-12 .q-well", "input")
       assert has_element?(lv, "#e-12 .q-well", "response")
       assert has_element?(lv, "#e-12 .q-well .q-key", "\"file_path\"")
       refute has_element?(lv, "#e-12 details[open]")
       # the end of a call is not a separate item
       refute has_element?(lv, "#e-13")
-
-      assert has_element?(lv, "#e-26 summary .q-s", "CheckoutForm in /work/shop/src")
 
       assert has_element?(lv, "#e-59 details[open]")
       assert has_element?(lv, "#e-59 summary .q-bad", "Failed")
@@ -781,7 +780,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       refute has_element?(lv, "ol#timeline[data-target]")
       refute has_element?(lv, "ol#timeline[data-isolate]")
-      assert has_element?(lv, "ol#timeline[data-cx='1']")
+      assert has_element?(lv, "ol#timeline[data-cx='0']")
       refute html =~ "nobody"
       refute html =~ "8642097531"
 
@@ -792,7 +791,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "ol#timeline[data-target='e-59']")
     end
 
-    test "?lane= isolates a lane and ?cx=0 hides the connections; both are toggles that patch", %{
+    test "?lane= isolates a lane and ?cx=1 shows the allowed connections; both toggles patch", %{
       conn: conn,
       run: run,
       scope: scope
@@ -811,23 +810,23 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "button.q-lanekey.q-lane-a[aria-pressed='true']")
       assert has_element?(lv, "button.q-lanekey.q-lane-b[aria-pressed='false']")
 
-      assert has_element?(lv, "#toggle-connections[aria-pressed='true'] .q-toggle[data-on]")
-      lv |> element("#toggle-connections") |> render_click()
-
-      assert_patch(
-        lv,
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?cx=0&lane=agent-demo-a1"
-      )
-
-      assert has_element?(lv, "ol#timeline[data-cx='0']")
-
       assert has_element?(
                lv,
                "#toggle-connections[aria-pressed='false'] .q-toggle:not([data-on])"
              )
 
+      lv |> element("#toggle-connections") |> render_click()
+
+      assert_patch(
+        lv,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?cx=1&lane=agent-demo-a1"
+      )
+
+      assert has_element?(lv, "ol#timeline[data-cx='1']")
+      assert has_element?(lv, "#toggle-connections[aria-pressed='true'] .q-toggle[data-on]")
+
       lv |> element("button.q-lanekey.q-lane-a") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?cx=0")
+      assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?cx=1")
       refute has_element?(lv, "ol#timeline[data-isolate]")
     end
 
@@ -1385,6 +1384,182 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
+  describe "the Transcript (C3)" do
+    defp terminal(conn, scope, run, query \\ "") do
+      live(
+        conn,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/terminal" <> query
+      )
+    end
+
+    test "the session from its runtime events, in order, with links to Raw", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, runtime_record())
+      {:ok, lv, _html} = terminal(conn, scope, run)
+
+      assert has_element?(lv, ~s(#terminal[data-view="transcript"][data-raw="true"]))
+      assert has_element?(lv, "#e-7.q-tr-prompt", "/harness:hello")
+      assert has_element?(lv, "#e-10.q-tr-tool", "Skill")
+      assert has_element?(lv, "#e-10 .q-tr-ln", "Launching skill: harness:greet")
+      assert has_element?(lv, "#e-15 .q-tr-warn", "Denied: Quoted text")
+      assert has_element?(lv, "#e-17 .q-tr-think", "Thinking")
+      assert has_element?(lv, "#e-18 .q-tr-md h3, #e-18 .q-tr-md h2")
+      assert has_element?(lv, "#e-20.q-tr-result", "success · 6 turns · 14 s · $0.09")
+
+      # Texts are there, so a turn's end is not a line.
+      refute has_element?(lv, "#e-19")
+      # The Timeline's rows are not the Transcript's.
+      refute has_element?(lv, "#e-1")
+
+      assert has_element?(
+               lv,
+               ~s(#e-9 .q-tr-raw[data-raw-line="2"][data-session="1"][aria-label="Show line 2 in Raw"])
+             )
+
+      render_hook(lv, "raw_line", %{"session" => 1, "line" => 2, "stream" => nil})
+      assert_reply(lv, %{offset: 42})
+
+      render_hook(lv, "raw_line", %{"session" => 1, "line" => 5, "stream" => "stdout"})
+      assert_reply(lv, %{offset: 141})
+    end
+
+    test "a result opens to every line and folds again", %{conn: conn, scope: scope} do
+      lines = Enum.map_join(1..5, "\n", &"line #{&1}")
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.tool_started",
+           %{"session_id" => "s", "tool" => "Bash", "tool_use_id" => "a", "input" => %{}}},
+          {4, "runtime.tool_result",
+           %{"session_id" => "s", "tool_use_id" => "a", "content" => lines}},
+          {5, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")}}
+        ])
+
+      {:ok, lv, _html} = terminal(conn, scope, run)
+      refute has_element?(lv, "#e-3 .q-tr-ln", "line 4")
+
+      lv |> element("#e-3 .q-tr-fold", "2 more lines") |> render_click()
+      assert has_element?(lv, "#e-3 .q-tr-ln", "line 5")
+
+      lv |> element("#e-3 .q-tr-fold", "Show less") |> render_click()
+      refute has_element?(lv, "#e-3 .q-tr-ln", "line 4")
+    end
+
+    test "a Timeline text links to its line in the Transcript", %{conn: conn, scope: scope} do
+      run = projected(scope, runtime_record())
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
+      assert has_element?(lv, "#e-18 .q-s-fit", "Hello, Dana")
+      refute has_element?(lv, "#e-17")
+
+      lv |> element("#e-18 .q-to-term") |> render_click()
+
+      assert_patch(
+        lv,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/terminal?seq=18"
+      )
+
+      assert has_element?(lv, ~s(#transcript-box[data-target="e-18"]))
+    end
+
+    test "a session with no runtime events opens in Raw, with no Transcript", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("plain\n")}}
+        ])
+
+      {:ok, lv, _html} = terminal(conn, scope, run)
+      assert has_element?(lv, ~s(#terminal[data-view="raw"]))
+      refute has_element?(lv, "#terminal [data-view-button]")
+      refute has_element?(lv, "#transcript")
+    end
+
+    test "a pruned log leaves the Transcript, under the pruned notice, with no Raw", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, runtime_record())
+      Repo.delete_all(from l in Apiary.Runs.LogChunk, where: l.run_id == ^run.id)
+
+      {1, _} =
+        Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [log_pruned_at: DateTime.utc_now()]
+        )
+
+      {:ok, lv, html} = terminal(conn, scope, run)
+      assert html =~ "log output was pruned on"
+      assert has_element?(lv, ~s(#terminal[data-view="transcript"][data-raw="false"]))
+      assert has_element?(lv, "#e-18")
+      refute has_element?(lv, ".q-tr-raw")
+      refute has_element?(lv, "#terminal-screen")
+    end
+
+    test "a run recorded before the text events shows each turn's last message", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.tool_started",
+           %{"session_id" => "s", "tool" => "Read", "tool_use_id" => "a", "input" => %{}}},
+          {4, "runtime.tool_finished",
+           %{
+             "session_id" => "s",
+             "tool" => "Read",
+             "tool_use_id" => "a",
+             "response" => %{"ok" => true}
+           }},
+          {5, "runtime.turn_finished", %{"session_id" => "s", "message" => "Done, Dana"}},
+          {6, "runtime.result",
+           %{
+             "session_id" => "s",
+             "outcome" => "success",
+             "is_error" => false,
+             "result" => "Done, Dana"
+           }},
+          {7, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")}}
+        ])
+
+      {:ok, lv, _html} = terminal(conn, scope, run)
+      assert has_element?(lv, "#e-5", "Done, Dana")
+      refute has_element?(lv, "#e-6", "Done, Dana")
+      assert has_element?(lv, "#e-3 .q-tr-fold", "more line")
+    end
+
+    test "a live run adds its lines as they arrive", %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.text", %{"session_id" => "s", "kind" => "text", "text" => "First"}},
+          {4, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")}}
+        ])
+
+      {:ok, lv, _html} = terminal(conn, scope, run)
+      assert has_element?(lv, "#e-3", "First")
+
+      project_more(run, [
+        {5, "runtime.text", %{"session_id" => "s", "kind" => "text", "text" => "Second"}}
+      ])
+
+      flush(lv)
+      assert has_element?(lv, "#e-5", "Second")
+    end
+  end
+
   describe "the terminal tab (P1)" do
     test "the box points the hook at the log endpoint and carries numbers, never bytes", %{
       conn: conn,
@@ -1440,11 +1615,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#terminal-bar [data-fullscreen][hidden]")
       assert has_element?(lv, "#terminal-bar .q-term-hint", "leaves focus")
 
-      # a run on pipes has the two views, Collapsed first, and search's label shows what it switches to
-      assert has_element?(lv, ~s(#terminal[data-pty="false"]))
-      assert has_element?(lv, ~s(#terminal-bar [data-view="collapsed"][aria-pressed="true"]))
-      assert has_element?(lv, ~s(#terminal-bar [data-view="raw"][aria-pressed="false"]), "Raw")
+      # a run on pipes with a session has the two views, Transcript first, and search's label
+      # shows what it switches to
+      assert has_element?(lv, ~s(#terminal[data-pty="false"][data-view="transcript"]))
+      assert has_element?(lv, ~s(#terminal-bar [data-view-button="transcript"]), "Transcript")
+      assert has_element?(lv, ~s(#terminal-bar [data-view-button="raw"]), "Raw")
       assert has_element?(lv, "#terminal-bar .q-term-find", "Searching shows the Raw view.")
+      refute has_element?(lv, "#terminal-bar", "Collapsed")
 
       # the script's words are the server's, in the domain's language
       words =

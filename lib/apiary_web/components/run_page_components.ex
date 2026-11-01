@@ -418,13 +418,15 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :seq_path, :any, required: true, doc: "a function from a sequence to the item's permalink"
   attr :target, :string, default: nil
   attr :isolate, :string, default: nil
+
   attr :connections, :boolean,
     default: false,
     doc: "true shows the allowed connections too (?cx=1); a denied one always shows"
 
   attr :terminal_path, :any,
     default: nil,
-    doc: "a function from a sequence to the item in the Terminal, nil for a reader without the log"
+    doc:
+      "a function from a sequence to the item in the Terminal, nil for a reader without the log"
 
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
@@ -1325,7 +1327,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # A text of several lines on one line: each run of whitespace a space.
   defp one_line(text) when is_binary(text),
-    do: text |> sent() |> String.replace(~r/\s+/u, " ") |> String.trim()
+    do: text |> sent_lines() |> String.replace(~r/\s+/u, " ") |> String.trim()
 
   defp one_line(_text), do: nil
 

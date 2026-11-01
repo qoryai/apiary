@@ -8,8 +8,9 @@ defmodule ApiaryWeb.TranscriptComponents do
   An item is what `Apiary.Runs.Record.Timeline.build/3` made of the run's events; the
   Transcript shows the items of `transcript?/2`. Everything in an item came from Forager
   and is untrusted: a text is interpolated, so it is escaped, and an assistant's text is
-  Markdown made safe by `Apiary.Sources.Body`, which renders no HTML of the text. The
-  markers (`❯`, `⏺`, `⎿`, `✓`, `✗`) are not words and are not translated.
+  Markdown made safe by the work item renderer (Apiary.Sources.Body), which renders no
+  HTML of the text. The markers (`❯`, `⏺`, `⎿`, `✓`, `✗`) are not words and are not
+  translated.
 
     * Prompt: `❯` and the prompt.
     * Tool call: `⏺`, the tool and its summary in brackets, then under it the result the
@@ -62,6 +63,7 @@ defmodule ApiaryWeb.TranscriptComponents do
   attr :later, :integer, default: 0
   attr :raw, :boolean, default: true, doc: "whether Raw has the log, so a line links to it"
   attr :target, :string, default: nil
+
   attr :results, :boolean,
     default: true,
     doc: "false for a run with neither texts nor turn ends: its result shows its text"
@@ -152,7 +154,9 @@ defmodule ApiaryWeb.TranscriptComponents do
     <div class="q-tr-row">
       <span class={["q-tr-mark", "q-tr-dot", "q-tr-#{@item.status}"]} aria-hidden="true">⏺</span>
       <span class="q-tr-head">
-        <b class="q-tr-tool"><.external_text text={@item.tool} /></b><span :if={@item.summary}>(<.external_text text={@item.summary} />)</span>
+        <b class="q-tr-tool"><.external_text text={@item.tool} /></b><span :if={@item.summary}>(<.external_text text={
+          @item.summary
+        } />)</span>
       </span>
       <.raw_link raw={@raw} item={@item} line={@item.line} />
     </div>
@@ -317,12 +321,14 @@ defmodule ApiaryWeb.TranscriptComponents do
          ) do
       {:as_written, text} ->
         assigns = assign(assigns, :written, text)
+
         ~H"""
         <div class="q-tr-md q-tr-wrap">{@written}</div>
         """
 
       html ->
         assigns = assign(assigns, :html, html)
+
         ~H"""
         <div class="q-tr-md q-ticket-formatted">{@html}</div>
         """

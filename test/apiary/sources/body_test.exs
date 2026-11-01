@@ -454,7 +454,10 @@ defmodule Apiary.Sources.BodyTest do
 
     test "on: each line of a paragraph stays a line, and a heading or a list is formatted as before" do
       assert {:safe, html} =
-               Body.render("# Hi\nHello, Dana\nThe Web shop is up\n\n- a\n- b", "markdown", "text",
+               Body.render(
+                 "# Hi\nHello, Dana\nThe Web shop is up\n\n- a\n- b",
+                 "markdown",
+                 "text",
                  hard_breaks: true
                )
 
@@ -467,7 +470,9 @@ defmodule Apiary.Sources.BodyTest do
 
     test "on: raw HTML is still dropped" do
       assert {:safe, html} =
-               Body.render("a <b>bold</b>\n<script>x</script>", "markdown", "text", hard_breaks: true)
+               Body.render("a <b>bold</b>\n<script>x</script>", "markdown", "text",
+                 hard_breaks: true
+               )
 
       html = IO.iodata_to_binary(html)
       refute html =~ "<b>"

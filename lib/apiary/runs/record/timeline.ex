@@ -266,7 +266,7 @@ defmodule Apiary.Runs.Record.Timeline do
     do: Map.take(lane, [:index, :id, :type, :rail, :color, :started_seq, :finished_seq])
 
   defp count(state, %{type: @prefix <> "runtime." <> name}) do
-    if "runtime." <> name in @not_from_a_hook,
+    if ("runtime." <> name) in @not_from_a_hook,
       do: state,
       else: %{state | hook_events: state.hook_events + 1}
   end
@@ -1369,7 +1369,7 @@ defmodule Apiary.Runs.Record.Timeline do
           do: named_hosts(data["tools"]),
           else: []
         ),
-      summary: tool_summary(string(data, "summary"), first_string(input))
+      summary: tool_summary(data["summary"])
     })
     |> Map.merge(slim_text(:text, body, limit, false))
     |> Map.merge(slim_text(:error, data["error"], limit, true))
@@ -1410,22 +1410,17 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc """
   The one-line summary of a tool call: the first line of the event's `summary`, the one
   member of the input that Forager's descriptor chose for the tool, copied, never
-  rewritten. A call recorded before Forager sent one has the first string of its input,
-  by key in byte order (`first`), in its place. Nil when there is neither: the call shows
-  its tool alone. No tool's name changes what is read.
+  rewritten. Nil without one, as for a call recorded before Forager sent summaries: the
+  call shows its tool alone. No tool's name changes what is read.
   """
-  def tool_summary(summary, first) do
-    Enum.find_value([summary, first], fn
-      value when is_binary(value) ->
-        case value |> String.split(["\r\n", "\n", "\r"], parts: 2) |> hd() |> String.trim() do
-          "" -> nil
-          line -> bound(line, @summary_limit)
-        end
-
-      _ ->
-        nil
-    end)
+  def tool_summary(summary) when is_binary(summary) do
+    case summary |> String.split(["\r\n", "\n", "\r"], parts: 2) |> hd() |> String.trim() do
+      "" -> nil
+      line -> bound(line, @summary_limit)
+    end
   end
+
+  def tool_summary(_summary), do: nil
 
   @doc """
   The content of a `runtime.tool_result` as text: a string as it is; an array of blocks as
@@ -1445,13 +1440,6 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   def content_text(_content), do: nil
-
-  # The first string of the input, by key in byte order.
-  defp first_string(input) do
-    input
-    |> Enum.sort()
-    |> Enum.find_value(fn {_key, value} -> if is_binary(value) and value != "", do: value end)
-  end
 
   ## Reading untrusted data
 
