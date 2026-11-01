@@ -177,6 +177,15 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
   @t0 ~U[2026-10-09 12:00:00Z]
 
+  # The built item of one event of `type` with `data`.
+  defp built(type, data) do
+    event = %{sequence: 1, type: type, time: @t0, data: data}
+    kind = if type == "dev.qory.runtime.text", do: data["kind"]
+    index = Timeline.index([%{sequence: 1, type: type, time: @t0, text_kind: kind}])
+    [item] = Timeline.build(index.items, %{1 => Timeline.slim(event)})
+    item
+  end
+
   # The timeline's item of one event of `type` with `data`, as the run page draws it.
   defp item_html(type, data) do
     event = %{sequence: 1, type: type, time: @t0, data: data}
@@ -211,30 +220,97 @@ defmodule ApiaryWeb.RunPageComponentsTest do
   end
 
   describe "the timeline's items, texts the run's report sent" do
-    test "a tool call: its tool and its summary cleaned, isolated in <bdi>" do
+    test "a tool call: its tool and its summary's first line cleaned, isolated in <bdi>" do
       html =
         item_html("dev.qory.runtime.tool_started", %{
           "tool" => dirty("Bash"),
-          "input" => %{"command" => dirty("ls")}
+          "summary" => dirty("ls") <> "\nsecond line",
+          "input" => %{"command" => "not shown"}
         })
 
       assert texts(html, ".q-k-mono > bdi") == [clean("Bash")]
       assert texts(html, ".q-s-mono > bdi") == [clean("ls")]
       refute_dirty(html |> query("summary") |> LazyHTML.to_html())
-    end
-
-    test "a tool call's pattern and path: each cleaned; one sent blank is marked" do
-      html =
-        item_html("dev.qory.runtime.tool_started", %{
-          "tool" => "Grep",
-          "input" => %{"pattern" => dirty("TODO"), "path" => " "}
-        })
-
-      assert texts(html, ".q-s-mono > bdi") == [clean("TODO"), @shown_control]
-      assert texts(html, ".q-k-mono > bdi") == ["Grep"]
 
       blank = item_html("dev.qory.runtime.tool_started", %{"tool" => @zwsp})
       assert texts(blank, ".q-k-mono > bdi") == [@shown_control]
+    end
+
+    test "a tool call with no summary shows its tool alone, whatever its input" do
+      html =
+        item_html("dev.qory.runtime.tool_started", %{
+          "tool" => "Grep",
+          "input" => %{"pattern" => "TODO", "path" => "/work"}
+        })
+
+      assert texts(html, ".q-k-mono > bdi") == ["Grep"]
+      assert texts(html, ".q-s-mono > bdi") == []
+    end
+
+    test "a denied tool call reads Not run: denied" do
+      events = [
+        %{
+          sequence: 1,
+          type: "dev.qory.runtime.tool_denied",
+          time: @t0,
+          data: %{"tool" => "Bash", "tool_use_id" => "a", "message" => "no"}
+        }
+      ]
+
+      index = Timeline.index([%{sequence: 1, type: hd(events).type, time: @t0, tool_use_id: "a"}])
+      [item] = Timeline.build(index.items, Map.new(events, &{&1.sequence, Timeline.slim(&1)}))
+
+      html =
+        render_component(&RunPageComponents.timeline_item/1,
+          id: "e-1",
+          item: item,
+          started_at: @t0,
+          seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+        )
+
+      assert texts(html, ".q-no-end") == ["Not run: denied"]
+    end
+
+    test "a text: Text, its first line without Markdown marks, and a link to the Terminal" do
+      text = "## " <> dirty("Hello") <> ", **Dana**\n\nThe second paragraph."
+
+      html =
+        render_component(&RunPageComponents.timeline_item/1,
+          id: "e-1",
+          item: built("dev.qory.runtime.text", %{"text" => text, "kind" => "text"}),
+          started_at: @t0,
+          seq_path: fn seq -> "/runs/r?seq=#{seq}" end,
+          terminal_path: fn seq -> "/runs/r/terminal?seq=#{seq}" end
+        )
+
+      assert texts(html, ".q-k") == ["Text"]
+      assert texts(html, ".q-s-fit > bdi") == [clean("Hello") <> ", Dana"]
+      refute html =~ "second paragraph"
+      assert attributes(html, ".q-to-term", "href") == ["/runs/r/terminal?seq=1"]
+
+      assert attributes(html, ".q-to-term", "aria-label") == [
+               "Show this text in the Terminal"
+             ]
+
+      no_log = item_html("dev.qory.runtime.text", %{"text" => "Hello", "kind" => "text"})
+      assert query(no_log, ".q-to-term") |> Enum.count() == 0
+    end
+
+    test "Turn finished and Result show no text" do
+      html = item_html("dev.qory.runtime.turn_finished", %{"message" => "Hello, Dana"})
+      refute html =~ "Hello, Dana"
+
+      html =
+        item_html("dev.qory.runtime.result", %{
+          "outcome" => "success",
+          "turns" => 6,
+          "duration_ms" => 14_000,
+          "cost_usd" => 0.09,
+          "result" => "Hello, Dana"
+        })
+
+      refute html =~ "Hello, Dana"
+      assert LazyHTML.text(query(html, ".q-s")) =~ "success · 6 turns · 14 s · $0.09"
     end
 
     test "a session started: its model, source and directory cleaned" do
@@ -252,19 +328,19 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       assert texts(blank, ".q-s bdi") == [@shown_control, @shown_control]
     end
 
-    test "what a prompt said: cleaned, its line breaks kept; one sent blank is marked" do
+    test "what a prompt said: cleaned, on one line; one sent blank is marked" do
       html =
         item_html("dev.qory.runtime.prompt_submitted", %{
           "prompt" => "Fix the build\n\t" <> dirty("now")
         })
 
-      assert texts(html, ".q-say") == ["Fix the build\n\t" <> clean("now")]
+      assert texts(html, ".q-s > bdi") == ["Fix the build " <> clean("now")]
       refute_dirty(html)
 
       for blank <- @blanks do
         html = item_html("dev.qory.runtime.prompt_submitted", %{"prompt" => blank})
-        assert html |> texts(".q-say") |> Enum.map(&String.trim/1) |> Enum.all?(&(&1 != ""))
-        assert LazyHTML.text(query(html, ".q-say")) =~ @shown_control
+        assert [shown] = texts(html, ".q-s > bdi")
+        assert shown =~ @shown_control
       end
     end
 

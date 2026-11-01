@@ -3,8 +3,8 @@ defmodule Apiary.Sources.Body do
   # it, and that is what an agent reads; this only decides how a page shows it. Kept out
   # of the generated documentation, which every instance serves.
   #
-  # `render/3` takes the text, its format, `"markdown"` or `"text"`, and the word for one
-  # of its source's items (`ApiaryWeb.SourceComponents.item/1`). Markdown comes back as
+  # `render/4` takes the text, its format, `"markdown"` or `"text"`, the word for one of
+  # its source's items (`ApiaryWeb.SourceComponents.item/1`), and options. Markdown comes back as
   # safe HTML, formatted. Any other format, nil included, comes back as
   # `{:as_written, text}`, the text as an external system's text of several lines is shown
   # (`Apiary.ExternalText.lines/1`), which a page interpolates, so HEEx escapes it.
@@ -43,6 +43,9 @@ defmodule Apiary.Sources.Body do
   #   * A table is named for a screen reader, "Table in the ticket", with its source's
   #     word in place of "ticket", by an `aria-label` the sanitiser sets; its header
   #     cells are `th` with `scope="col"`.
+  #   * With `hard_breaks: true`, each line break inside a paragraph is a `<br>`, so each
+  #     line of the text stays a line, as a terminal prints it: the run's Transcript
+  #     (`ApiaryWeb.TranscriptComponents`). Off by default, which is the ticket's text.
   #
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `https` the one URL scheme and no relative URL; nothing changes it
@@ -125,7 +128,8 @@ defmodule Apiary.Sources.Body do
   def max_depth, do: @max_depth
 
   # The ticket's text `body` in the format `format`, `item` being its source's word for
-  # one of its items, which names a table for a screen reader: safe HTML for
+  # one of its items, which names a table for a screen reader, and `opts` the options
+  # (`hard_breaks:`, false by default): safe HTML for
   # `"markdown"`, and `{:as_written, text}` for any other format, nil included, and for a Markdown text
   # `render/3` does not format: longer than `max_length/0`, asking for more table cells
   # than `max_cells/0`, nesting deeper than `max_depth/0`, or not valid UTF-8. An empty or
@@ -135,22 +139,22 @@ defmodule Apiary.Sources.Body do
   # characters but the tab and the line breaks, and its bytes that are not UTF-8, shown as
   # U+FFFD.
   @doc false
-  @spec render(String.t() | nil, String.t() | nil, String.t()) ::
+  @spec render(String.t() | nil, String.t() | nil, String.t(), keyword()) ::
           Phoenix.HTML.safe() | {:as_written, String.t()}
-  def render(body, format, item)
-  def render(nil, _format, _item), do: {:as_written, ""}
-  def render("", _format, _item), do: {:as_written, ""}
+  def render(body, format, item, opts \\ [])
+  def render(nil, _format, _item, _opts), do: {:as_written, ""}
+  def render("", _format, _item, _opts), do: {:as_written, ""}
 
-  def render(body, "markdown", item) when is_binary(body) and is_binary(item) do
+  def render(body, "markdown", item, opts) when is_binary(body) and is_binary(item) do
     with true <- formattable?(body),
-         {:ok, html} <- markdown(body, item) do
+         {:ok, html} <- markdown(body, item, Keyword.get(opts, :hard_breaks, false)) do
       Phoenix.HTML.raw(html)
     else
       _ -> as_written(body)
     end
   end
 
-  def render(body, _format, item) when is_binary(body) and is_binary(item),
+  def render(body, _format, item, _opts) when is_binary(body) and is_binary(item),
     do: as_written(body)
 
   defp as_written(body), do: {:as_written, Apiary.ExternalText.lines(body)}
@@ -179,11 +183,11 @@ defmodule Apiary.Sources.Body do
     end
   end
 
-  defp markdown(body, item) do
+  defp markdown(body, item, hard_breaks?) do
     document = MDEx.parse_document!(body, @parse_options)
 
     case walk_document(document.nodes) do
-      {:ok, nodes} -> {:ok, html(%{document | nodes: nodes}, item)}
+      {:ok, nodes} -> {:ok, html(%{document | nodes: nodes}, item, hard_breaks?)}
       :too_deep -> :too_deep
     end
   end
@@ -194,9 +198,9 @@ defmodule Apiary.Sources.Body do
     :too_deep -> :too_deep
   end
 
-  defp html(document, item) do
+  defp html(document, item, hard_breaks?) do
     document
-    |> MDEx.to_html!()
+    |> MDEx.to_html!(render: [unsafe: false, hardbreaks: hard_breaks?])
     |> String.replace(@box_done, box("☑", pgettext("ticket task", "Done")))
     |> String.replace(@box_open, box("☐", pgettext("ticket task", "Not done")))
     |> String.replace(@link_end, link_end())
