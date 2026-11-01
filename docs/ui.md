@@ -1741,8 +1741,9 @@ id".
   far, ticking from its first row. With neither a session's start nor a failed row, and no
   row running, the duration runs to the end of the last row that ended: between two steps,
   and after the last step of a runtime with no session event. The page reads the
-  preparation again at each flush, and at each quiet tick (5 s) while Machine started is
-  running: `dispatched` and the redemption of the run's code reach no run's topic.
+  preparation again at each flush; the starter's `dispatched` and the redemption of the
+  run's code are broadcast on the run's topic, so they show at once. On the Timeline tab
+  the page also reads them at each quiet tick (5 s) while Machine started is running.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

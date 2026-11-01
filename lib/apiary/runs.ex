@@ -11,7 +11,9 @@ defmodule Apiary.Runs do
   Changes are announced on two topics of `Apiary.PubSub`:
 
     * `topic(workspace_id)`, `"runs:<workspace_id>"`: `{:run_changed, %Run{}}` whenever a
-      run of the workspace was projected or found lost;
+      run of the workspace was projected or found lost, among other changes of its row
+      or of its dispatch, such as the starter's first `dispatched` and the redemption of
+      the run's code;
     * `topic(workspace_id, run_id)`, `"run:<workspace_id>:<run_id>"` (`run_id` is the
       row's id): `{:run_projected, %Run{}, first_sequence, last_sequence}` after a
       projection, with the lowest and highest sequence it folded, and
