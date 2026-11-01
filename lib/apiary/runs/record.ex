@@ -959,6 +959,85 @@ defmodule Apiary.Runs.Record do
     end
   end
 
+  @doc """
+  Where line `line` (1-based) of the session's stdout starts in the log as Raw reads it:
+  the number of bytes before it in the run's chunks of `stream`, every stream when nil, in
+  sequence order. A runtime event read from the output has the line's number (`line`) and
+  the session's (`session`); a `dev.qory.run.log` event has the session's too. `line`
+  counts the runtime's output only, so a chunk of a step, such as a walled session's setup
+  command, is not counted, though it has the session. The session is read from the chunk's
+  event, as `log_chunks` has no column for it. Nil when the session's stdout in the log
+  has fewer lines, as after the log was pruned.
+  """
+  def log_offset(%Scope{} = scope, %Run{} = run, session, line, stream)
+      when is_integer(session) and is_integer(line) and line >= 1 do
+    case line_start(scope, run, session, line - 1, 0) do
+      {sequence, within} ->
+        before =
+          Repo.one(
+            from l in log_after(scope, run, 0, stream),
+              where: l.sequence < ^sequence,
+              select: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0)
+          )
+
+        to_integer(before) + within
+
+      nil ->
+        nil
+    end
+  end
+
+  def log_offset(_scope, _run, _session, _line, _stream), do: nil
+
+  # The chunk the line starts in, and the bytes of the chunk before it: `breaks` line
+  # feeds of the session's stdout come before the line. A line that starts where a chunk
+  # ends starts at the next chunk.
+  defp line_start(scope, run, session, breaks, after_sequence) do
+    page =
+      Repo.all(
+        from l in log_after(scope, run, after_sequence, "stdout"),
+          where: is_nil(l.step),
+          join: e in subquery(events(scope, run)),
+          on: e.sequence == l.sequence,
+          where: fragment("(?->>'session') = ?", e.data, ^Integer.to_string(session)),
+          order_by: l.sequence,
+          limit: @log_page,
+          select: {l.sequence, l.bytes}
+      )
+
+    case find_break(page, breaks) do
+      {:found, sequence, within} ->
+        {sequence, within}
+
+      {:more, left, last} when length(page) == @log_page ->
+        line_start(scope, run, session, left, last)
+
+      _none ->
+        nil
+    end
+  end
+
+  defp find_break([], breaks), do: {:none, breaks}
+
+  defp find_break([{sequence, _bytes} | _rest], 0), do: {:found, sequence, 0}
+
+  defp find_break([{sequence, bytes} | rest], breaks) do
+    feeds = :binary.matches(bytes, "\n")
+
+    if length(feeds) >= breaks do
+      {at, 1} = Enum.at(feeds, breaks - 1)
+
+      if at + 1 < byte_size(bytes) or rest == [],
+        do: {:found, sequence, at + 1},
+        else: find_break(rest, 0)
+    else
+      case rest do
+        [] -> {:more, breaks - length(feeds), sequence}
+        _ -> find_break(rest, breaks - length(feeds))
+      end
+    end
+  end
+
   # How much of the end of the log a glance reads: enough for thirty long lines.
   @tail_bytes 32_768
   @tail_chunks 64

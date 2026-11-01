@@ -1545,10 +1545,12 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc """
   The terminal box: dark in both themes. It fills the window below the run page's tab bar,
-  never under 380 px; the bar and the screen belong to the `Terminal` hook
-  (`phx-update="ignore"`); the foot is the LiveView's, which sends numbers and never
-  bytes. The hook reads the log from `src` and asks again when the LiveView says the log
-  has advanced.
+  never under 380 px. It has two views: the Transcript (`transcript`, the LiveView's,
+  `ApiaryWeb.TranscriptComponents`) and Raw, the log's bytes. The bar and Raw's screen
+  belong to the `Terminal` hook (`phx-update="ignore"`); the foot is the LiveView's, which
+  sends numbers and never bytes. The hook reads the log from `src` and asks again when the
+  LiveView says the log has advanced. The view is the root's `data-view`, set from `view`
+  on the first render and by the hook after it.
 
   `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
   a run on pipes. With a size the hook replays at the recorded size, each answer of `src`
@@ -1556,11 +1558,12 @@ defmodule ApiaryWeb.RunPageComponents do
   box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
-  The bar: the stream, the view (on pipes: Collapsed or Raw, the reader's preference kept
-  in `localStorage`), search, follow, wrap (on pipes), the text size (A−, A+ and, at a
-  recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
-  download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
-  (the browser's, where it has one).
+  The bar: the view (Transcript or Raw, when the run has a Transcript and a log; on pipes
+  the reader's preference kept in `localStorage`), the stream (Raw only), search, follow
+  and wrap (on pipes; both Raw only), the text size (A−, A+ and, at a recorded size, Fit;
+  11 to 18 px, the reader's preference kept in `localStorage`), the download, Focus (`f`:
+  the terminal takes the window; Escape leaves) and Full screen (the browser's, where it
+  has one). Without a log (`raw` false) the box has the Transcript alone.
   """
   attr :id, :string, required: true
   attr :src, :string, required: true
@@ -1573,12 +1576,22 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :through, :integer, required: true
   attr :cols, :integer, default: nil
   attr :rows, :integer, default: nil
+  attr :raw, :boolean, default: true, doc: "whether the log is there to show in Raw"
+  attr :view, :string, default: "raw", doc: ~s("transcript" or "raw": the view it opens in)
+  slot :transcript, doc: "the Transcript; none for a run with no runtime events"
 
   def terminal(assigns) do
     assigns =
       assign(assigns,
         sized: is_integer(assigns.cols) and is_integer(assigns.rows),
-        pty: assigns.streams == ["terminal"]
+        pty: assigns.streams == ["terminal"],
+        both: assigns.raw and assigns.transcript != [],
+        opening:
+          cond do
+            not assigns.raw -> "transcript"
+            assigns.transcript == [] -> "raw"
+            true -> assigns.view
+          end
       )
 
     ~H"""
@@ -1588,6 +1601,9 @@ defmodule ApiaryWeb.RunPageComponents do
       role="region"
       aria-label={gettext("Terminal output")}
       phx-hook="Terminal"
+      phx-mounted={JS.ignore_attributes(["data-view", "style"])}
+      data-view={@opening}
+      data-raw={to_string(@raw)}
       data-src={@src}
       data-script={@script}
       data-stylesheet={@stylesheet}
@@ -1601,13 +1617,20 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
         <a
+          :if={@raw}
           class="sr-only focus:not-sr-only q-tbtn"
           href={@src <> "?download=1"}
           download
         >
           {gettext("Read the log as text")}
         </a>
-        <div class="q-tseg" role="group" aria-label={gettext("Stream")}>
+        <div :if={@both} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
+          <button type="button" data-view-button="transcript" aria-pressed="false">
+            {gettext("Transcript")}
+          </button>
+          <button type="button" data-view-button="raw" aria-pressed="false">{gettext("Raw")}</button>
+        </div>
+        <div :if={@raw} class="q-tseg q-term-raw" role="group" aria-label={gettext("Stream")}>
           <%= if length(@streams) > 1 do %>
             <button :for={stream <- @streams} type="button" data-stream={stream} aria-pressed="false">
               {stream}
@@ -1617,18 +1640,12 @@ defmodule ApiaryWeb.RunPageComponents do
             <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
           <% end %>
         </div>
-        <div :if={!@pty} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
-          <button type="button" data-view="collapsed" aria-pressed="true">
-            {gettext("Collapsed")}
-          </button>
-          <button type="button" data-view="raw" aria-pressed="false">{gettext("Raw")}</button>
-        </div>
-        <label class="q-term-find">
+        <label :if={@raw} class="q-term-find">
           <.icon name="hero-magnifying-glass-micro" class="size-4" />
           <span class="sr-only">
-            {if @pty,
-              do: gettext("Search the log"),
-              else: gettext("Search the log. Searching shows the Raw view.")}
+            {if @both,
+              do: gettext("Search the log. Searching shows the Raw view."),
+              else: gettext("Search the log")}
           </span>
           <input
             type="text"
@@ -1640,14 +1657,15 @@ defmodule ApiaryWeb.RunPageComponents do
           <span data-find-count aria-live="polite"></span>
         </label>
         <span class="q-term-grow"></span>
-        <span class="q-term-hint">
+        <span :if={@raw} class="q-term-hint q-term-raw">
           <.rich text={rich_gettext("%{key} leaves focus", key: {:part, :key})}>
             <:part name={:key}><kbd>{gettext("esc")}</kbd></:part>
           </.rich>
         </span>
         <button
+          :if={@raw}
           type="button"
-          class="q-tbtn"
+          class="q-tbtn q-term-raw"
           aria-pressed={to_string(@live)}
           title={gettext("Follow the end of the log (End)")}
           data-follow
@@ -1658,9 +1676,9 @@ defmodule ApiaryWeb.RunPageComponents do
             else: gettext("Jump to end")}</span>
         </button>
         <button
-          :if={!@sized}
+          :if={!@sized and @raw}
           type="button"
-          class="q-tbtn"
+          class="q-tbtn q-term-raw"
           title={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
@@ -1690,9 +1708,9 @@ defmodule ApiaryWeb.RunPageComponents do
             {gettext("A+")}
           </button>
           <button
-            :if={@sized}
+            :if={@sized and @raw}
             type="button"
-            class="q-tbtn"
+            class="q-tbtn q-term-raw"
             title={gettext("Fit the recorded columns to the width")}
             aria-pressed="false"
             data-size-fit
@@ -1700,8 +1718,9 @@ defmodule ApiaryWeb.RunPageComponents do
             {gettext("Fit")}
           </button>
         </div>
-        <span class="q-term-sep" aria-hidden="true"></span>
+        <span :if={@raw} class="q-term-sep" aria-hidden="true"></span>
         <a
+          :if={@raw}
           class="q-tbtn"
           title={gettext("Download the raw bytes")}
           aria-label={gettext("Download the raw bytes")}
@@ -1734,7 +1753,16 @@ defmodule ApiaryWeb.RunPageComponents do
           <.icon name="hero-arrows-pointing-out-micro" class="size-4" />
         </button>
       </div>
-      <div id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
+      <div
+        :if={@transcript != []}
+        id={"#{@id}-transcript"}
+        class="q-term-tr"
+        data-transcript-scroll
+        tabindex="0"
+      >
+        {render_slot(@transcript)}
+      </div>
+      <div :if={@raw} id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
         <div data-screen role="log" aria-live="off" aria-label={gettext("Log")}></div>
         <span class="sr-only" data-announce aria-live="polite"></span>
         <button type="button" class="q-newpill q-term-pill" data-pill tabindex="-1" aria-hidden="true">
@@ -1749,11 +1777,13 @@ defmodule ApiaryWeb.RunPageComponents do
       <div class="q-term-foot">
         <span :if={@live} class="q-term-live"><i></i>{gettext("Live")}</span>
         <span :if={!@live}>{gettext("Ended")}</span>
-        <span>{Format.bytes(@bytes)}</span>
-        <span class="q-term-opt">
+        <span :if={@raw}>{Format.bytes(@bytes)}</span>
+        <span :if={@raw} class="q-term-opt">
           {ngettext("%{number} chunk", "%{number} chunks", @chunks, number: Format.number(@chunks))}
         </span>
-        <span class="q-term-opt">{gettext("through #%{sequence}", sequence: pad(@through))}</span>
+        <span :if={@raw} class="q-term-opt">
+          {gettext("through #%{sequence}", sequence: pad(@through))}
+        </span>
         <span
           :if={@sized}
           class="q-term-size"
@@ -1764,7 +1794,7 @@ defmodule ApiaryWeb.RunPageComponents do
         </span>
       </div>
     </div>
-    <p class="q-term-note">
+    <p :if={@raw} class="q-term-note">
       {if @sized,
         do:
           gettext(

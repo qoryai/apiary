@@ -1,41 +1,44 @@
-// The terminal of a run (docs/ui.md). The bytes of the log never cross the LiveView
-// socket: this hook reads them from the run's log endpoint,
+// The terminal of a run (docs/ui.md). It has two views. Transcript is the session drawn
+// by the LiveView from the run's runtime events, as HTML inside this box; this hook only
+// keeps it scrolled, sizes its text and follows its links to Raw. Raw is the log's bytes
+// in xterm.js. The bytes never cross the LiveView socket: this hook reads them from the
+// run's log endpoint,
 //
 //   GET {data-src}?after=<sequence>&limit=<chunks>[&stream=stdout|stderr|terminal]
 //
 // which answers the raw bytes and names the sequence it reached in x-qory-log-through.
 // It reads until the answer reaches nothing further, and again whenever the LiveView says
-// "log_advanced" (a number, nothing else). In Raw, and for a line that passes through
-// Collapsed, bytes go to xterm.js as Uint8Arrays, never as strings, because a chunk may end
-// inside a character; nothing of them touches the DOM outside xterm.js.
+// "log_advanced" (a number, nothing else). The bytes go to xterm.js as Uint8Arrays, never
+// as strings, because a chunk may end inside a character; nothing of them touches the DOM
+// outside xterm.js. xterm.js starts the first time Raw shows.
 //
-// A run on pipes has two views, the reader's choice in localStorage. Raw hands the bytes
-// over as they are and interprets none of them. Collapsed, the default, cuts the stream
-// into lines (terminal_lines.js): a line of up to 16 MiB that is a JSON object is one row of
-// the screen, with no control character of its decoded text, and every other line passes
-// through as its bytes. xterm.js cannot rewrite a row above the end, so the lines stay here: a click on a
-// row (a link provider) opens it to the object, printed, or closes it, and the screen is
-// written again at the same scroll position. Search reads only the screen, so typing in
-// it shows Raw. A pseudo-terminal's output is cursor movement, not lines: it has Raw alone.
+// The view is on the root as data-view, which the LiveView sets once and leaves to this
+// hook. A run on pipes with a Transcript keeps the reader's choice in localStorage; a run
+// on a pseudo-terminal, or with no Transcript, opens in Raw. Search reads Raw's screen, so
+// typing in it shows Raw.
+//
+// A line of the Transcript read from the session's output has a link to that line in Raw
+// (data-raw-line, data-session). The server answers where the line starts in the bytes
+// Raw reads (`raw_line`), and Raw is read again from the start with a marker at that byte.
 //
 // A run whose record says the pseudo-terminal's size (data-cols, data-rows) is replayed
 // at it: every answer of the endpoint names in x-qory-log-size the size its bytes were
 // written to and stops short of the next resize, so the screen is set to that size before
 // the bytes are written and xterm.js reflows as a terminal does. The columns and rows are
-// the record's, never the box's: the screen is drawn at them inside the box's own dark
-// ground, which fills the page's width, and scrolls inside it when it is larger. A run
-// without a size, on pipes or recorded before Forager reported one, is fitted to the
-// box, with the wrap toggle.
+// the record's, never the box's: the screen is drawn at them inside the box's dark ground,
+// which fills the page's width, and scrolls inside it when it is larger. A run without a
+// size, on pipes or recorded before Forager reported one, is fitted to the box, with the
+// wrap toggle.
 //
 // The text size is the reader's (A−, A+, 11 to 18 px, or Fit, the largest at which a
-// recorded screen's columns fit the box), a reading preference kept in localStorage. Focus (the
-// f key, or its button) puts a class on the root that folds the shell away and gives the
-// window to the box, and Escape gives it back; Full screen is the browser's, on the box.
+// recorded screen's columns fit the box), a reading preference kept in localStorage, for
+// both views. Focus (the f key, or its button) puts a class on the root that folds the
+// shell away and gives the window to the box, and Escape gives it back; Full screen is the
+// browser's, on the box.
 //
 // xterm.js is vendored (assets/vendor/xterm) and built as its own bundle; it is loaded
-// on the first mount of this hook and by no other page.
-import {Anchors, LineBuffer, entry, opened, row, rowAt, rowLine, size as sizeOf} from "./terminal_lines"
-import {singleKeys} from "./shortcuts"
+// on the first Raw view of this hook and by no other page.
+import {singleKeys} from "./shortcuts.js"
 
 const LIMIT = 2000
 const SLICE = 256 * 1024
@@ -48,18 +51,20 @@ const LARGEST = 18
 const SIZE_KEY = "qory:terminal-size"
 const VIEW_KEY = "qory:terminal-view"
 const SCROLLBACK = 100000
-// Past this many bytes or lines of a log, the Collapsed view stops keeping them and shows
-// Raw: the lines are held here.
-const MOST_KEPT = 256 * 1024 * 1024
-const MOST_LINES = SCROLLBACK / 2
-// How long a resize of the box settles before Collapsed writes its rows at the new width.
-const RESIZE_MS = 120
 const FOCUS_CLASS = "q-term-focus"
-// What the box keeps beside a recorded screen's columns: the screen's own padding, xterm's
+// What the box keeps beside a recorded screen's columns: the screen's padding, xterm's
 // scrollbar and a little air.
 const SIDE_ROOM = 48
 // The full reset of a terminal (ESC c).
 const RESET = "\x1bc"
+// How far the Transcript may be from its end and still follow it, in pixels.
+const NEAR_END = 24
+// The largest count xterm.js is left to carry out for a sequence that scrolls, inserts or
+// deletes lines (CSI S, T, L, M) or repeats a character (CSI b). A larger one is dropped:
+// `CSI 10000000 S` (16 bytes) held the page for 7.2 s. No program draws more lines than
+// its screen has, and these counts are far above any screen.
+export const MOST_LINES_MOVED = 10000
+export const MOST_REPEATS = 65536
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 // A hidden tab gets no animation frames; the log still loads there.
@@ -77,7 +82,8 @@ const load = (script, stylesheet) => {
     document.head.appendChild(link)
     const tag = document.createElement("script")
     tag.src = script
-    tag.onload = () => (window.QoryTerminal ? resolve(window.QoryTerminal) : reject(new Error("terminal bundle")))
+    tag.onload = () =>
+      window.QoryTerminal ? resolve(window.QoryTerminal) : reject(new Error("terminal bundle"))
     tag.onerror = () => {
       library = null
       tag.remove()
@@ -102,12 +108,37 @@ const hex = ([r, g, b]) => "#" + [r, g, b].map(n => n.toString(16).padStart(2, "
 const mix = (a, b, share) => a.map((n, i) => Math.round(n * share + b[i] * (1 - share)))
 
 // "120x40" as [120, 40], or null: a size is two integers a terminal can be.
-const size = text => {
+export const size = text => {
   const match = /^(\d{1,5})x(\d{1,5})$/.exec(text || "")
   if (!match) return null
   const [cols, rows] = [Number(match[1]), Number(match[2])]
   return cols >= 1 && cols <= 65535 && rows >= 1 && rows <= 65535 ? [cols, rows] : null
 }
+
+// Whether a CSI sequence's count is over `most`, so that it is dropped. xterm.js gives the
+// parameters as numbers, or arrays of numbers for sub-parameters; a missing count is 0.
+export const overCount = (params, most) => {
+  const first = Array.isArray(params[0]) ? params[0][0] : params[0]
+  return typeof first === "number" && first > most
+}
+
+// Where a write of `length` bytes, starting at byte `at` of the log, stops: at its end,
+// or before byte `mark` when the mark falls inside it, so the marker goes on that byte.
+export const stopAt = (at, length, mark) =>
+  mark != null && mark > at && mark < at + length ? mark - at : length
+
+// The view a box opens in: Raw without a Transcript or on a pseudo-terminal, else the
+// reader's choice. The Collapsed view kept as a choice before it was removed is Transcript.
+export const openingView = (initial, stored, choice) => {
+  if (!choice || initial === "raw") return initial
+  if (stored === "raw") return "raw"
+  return "transcript"
+}
+
+// The words are the server's, in the domain's language (`RunPageComponents.terminal_words/0`,
+// on the box as `data-words`); this script has none. A count's words are [one, other].
+export const fill = (template, bindings) =>
+  template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))
 
 // The width of one cell per pixel of font size: xterm.js measures its cell on "W" too.
 const cellRatio = family => {
@@ -116,11 +147,7 @@ const cellRatio = family => {
   return ctx.measureText("W").width / 100
 }
 
-// The words are the server's, in the domain's language (`RunPageComponents.terminal_words/0`,
-// on the box as `data-words`); this script holds none. A count's words are [one, other].
-const fill = (template, bindings) =>
-  template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))
-// The reader's size: a number of pixels, "fit", or null for the page's own choice.
+// The reader's size: a number of pixels, "fit", or null for the page's choice.
 const storedSize = () => {
   try {
     const value = localStorage.getItem(SIZE_KEY)
@@ -138,8 +165,7 @@ const storeSize = value => {
 }
 const storedView = () => {
   try {
-    const value = localStorage.getItem(VIEW_KEY)
-    return value === "raw" || value === "collapsed" ? value : null
+    return localStorage.getItem(VIEW_KEY)
   } catch (_err) {
     return null
   }
@@ -159,7 +185,7 @@ const grouped = n => n.toLocaleString(document.body.dataset.locale || "en-GB")
 const counted = ([one, other], n) => fill(n === 1 ? one : other, {number: grouped(n)})
 
 export const Terminal = {
-  async mounted() {
+  mounted() {
     const q = selector => this.el.querySelector(selector)
     this.words = JSON.parse(this.el.dataset.words)
     this.screen = q("[data-screen]")
@@ -178,12 +204,15 @@ export const Terminal = {
     this.fitButton = q("[data-size-fit]")
     this.focusButton = q("[data-focus]")
     this.fullButton = q("[data-fullscreen]")
+    this.transcript = q("[data-transcript-scroll]")
     this.preference = storedSize()
-    this.viewButtons = [...this.el.querySelectorAll("[data-view]")]
-    // Only a run on pipes has the buttons; a pseudo-terminal's log stays raw.
-    this.view = this.viewButtons.length ? storedView() || "collapsed" : "raw"
-    this.showView()
-    this.forget()
+    this.viewButtons = [...this.el.querySelectorAll("[data-view-button]")]
+    this.hasRaw = this.el.dataset.raw !== "false"
+    this.view = openingView(
+      this.el.dataset.view || "raw",
+      storedView(),
+      this.viewButtons.length > 0 && this.hasRaw,
+    )
 
     this.live = this.el.dataset.live === "true"
     this.following = this.live
@@ -191,28 +220,39 @@ export const Terminal = {
     this.sized = false
     this.stream = ""
     this.through = 0
+    this.at = 0
+    this.mark = null
     this.failures = 0
     this.generation = 0
     this.unseen = 0
     this.dead = false
 
-    this.handleEvent("log_advanced", () => this.pull())
-    this.retry.addEventListener("click", () => {
-      this.failures = 0
-      this.say(null)
-      this.term ? this.pull() : this.boot()
-    })
-    await this.boot()
+    this.handleEvent("log_advanced", () => this.term && this.pull())
+    if (this.retry) {
+      this.retry.addEventListener("click", () => {
+        this.failures = 0
+        this.say(null)
+        this.term ? this.pull() : this.boot()
+      })
+    }
+    this.bind()
+    this.bindTranscript()
+    this.showView()
+    if (this.view === "raw" && this.hasRaw) this.boot()
   },
 
   async boot() {
+    if (this.booting || this.term) return
+    this.booting = true
     let lib
     try {
       lib = await load(this.el.dataset.script, this.el.dataset.stylesheet)
     } catch (err) {
       console.error("terminal: the bundle did not load", err)
+      this.booting = false
       return this.fail(true)
     }
+    this.booting = false
     if (this.dead) return
 
     const style = getComputedStyle(this.el)
@@ -225,8 +265,9 @@ export const Terminal = {
       activeMatchColorOverviewRuler: hex(honey),
       matchOverviewRuler: hex(mix(honey, bg, 0.35)),
     }
+    this.markColor = hex(mix(honey, bg, 0.3))
 
-    // Pipes carry bare line feeds; a pseudo-terminal's output has its own carriage returns.
+    // Pipes carry bare line feeds; a pseudo-terminal's output has its carriage returns.
     const pipes = this.el.dataset.pty !== "true"
 
     this.term = new lib.Terminal({
@@ -238,8 +279,8 @@ export const Terminal = {
       fontFamily: style.getPropertyValue("--font-mono").trim() || "ui-monospace, monospace",
       fontSize: typeof this.preference === "number" ? this.preference : FONT_SIZE,
       lineHeight: 1.52,
-      // The search add-on marks its matches with decorations, which xterm.js keeps behind
-      // this flag (registerDecoration); nothing else here uses a proposed API.
+      // The search add-on marks its matches with decorations, and the line a Transcript link
+      // opens is marked with one: xterm.js keeps them behind this flag (registerDecoration).
       allowProposedApi: true,
       // Off, always: xterm's screen reader mode reads every line aloud as it lands. The log
       // is offered as text beside the box, and a summary is announced at most every 10 s.
@@ -270,12 +311,16 @@ export const Terminal = {
         brightWhite: "#ffffff",
       },
     })
+    // A count too large to carry out is dropped, before xterm.js loops over it.
+    for (const final of ["S", "T", "L", "M"]) {
+      this.term.parser.registerCsiHandler({final}, params => overCount(params, MOST_LINES_MOVED))
+    }
+    this.term.parser.registerCsiHandler({final: "b"}, params => overCount(params, MOST_REPEATS))
     this.fitter = new lib.FitAddon()
     this.search = new lib.SearchAddon()
     this.term.loadAddon(this.fitter)
     this.term.loadAddon(this.search)
     this.term.open(this.screen)
-    this.term.registerLinkProvider({provideLinks: (line, links) => links(this.rowLinks(line))})
     // How wide a cell is per pixel of font size, for the font xterm.js draws with.
     this.cellRatio = cellRatio(this.term.options.fontFamily)
     const recorded = size(`${this.el.dataset.cols}x${this.el.dataset.rows}`)
@@ -300,20 +345,20 @@ export const Terminal = {
       if (this.following && buffer.viewportY < buffer.baseY) this.follow(false)
     })
 
-    this.bind()
+    this.bindTerm()
     this.showFollowing()
+    this.showSize()
     this.pull()
   },
 
   updated() {
     this.live = this.el.dataset.live === "true"
     if (this.term && Number(this.el.dataset.through) > (this.asked || 0)) this.pull()
-    else if (this.term && !this.pulling) this.flushHeld()
   },
 
   // Whatever was missed while the socket was away is behind the same question.
   reconnected() {
-    this.pull()
+    if (this.term) this.pull()
   },
 
   destroyed() {
@@ -324,33 +369,68 @@ export const Terminal = {
     if (document.fullscreenElement === this.el) document.exitFullscreen?.()
     clearTimeout(this.retryTimer)
     clearTimeout(this.saying)
-    clearTimeout(this.resizing)
+    if (this.watch) this.watch.disconnect()
     if (this.resize) this.resize.disconnect()
     if (this.term) this.term.dispose()
   },
 
+  // The bar's controls that do not need xterm.js.
   bind() {
-    this.find.addEventListener("input", () => {
-      if (!this.find.value || this.view === "raw") return this.findNext(true)
-      // Search reads the screen, and a collapsed row hides its words.
-      this.searching = true
-      this.pickView("raw")
-    })
-    this.find.addEventListener("keydown", e => {
-      if (e.key === "Enter") {
-        e.preventDefault()
-        e.shiftKey ? this.findPrevious() : this.findNext(false)
-      } else if (e.key === "Escape") {
-        e.preventDefault()
-        this.clearFind()
-        this.term.focus()
-      }
-    })
-    // Keys, when the screen has focus. xterm.js sees them first; none of them is input.
+    if (this.find) {
+      this.find.addEventListener("input", () => {
+        if (!this.find.value) return this.clearFind()
+        if (this.view === "raw" && this.term && !this.pulling) return this.findNext(true)
+        // Search reads Raw's screen: the match is looked for once the log is read.
+        this.searching = true
+        this.pickView("raw")
+      })
+      this.find.addEventListener("keydown", e => {
+        if (e.key === "Enter") {
+          e.preventDefault()
+          e.shiftKey ? this.findPrevious() : this.findNext(false)
+        } else if (e.key === "Escape") {
+          e.preventDefault()
+          this.clearFind()
+          if (this.term) this.term.focus()
+        }
+      })
+    }
+    if (this.followButton) {
+      this.followButton.addEventListener("click", () => this.follow(!this.following))
+    }
+    if (this.pill) this.pill.addEventListener("click", () => this.follow(true))
+    // A sized run has no wrap: its columns are the record's.
+    if (this.wrapButton) {
+      this.wrapButton.addEventListener("click", () => {
+        this.wrap = !this.wrap
+        this.wrapButton.setAttribute("aria-pressed", String(this.wrap))
+        this.fit()
+      })
+    }
+    this.el.querySelectorAll("[data-size-step]").forEach(button =>
+      button.addEventListener("click", () => this.step(Number(button.dataset.sizeStep))),
+    )
+    if (this.fitButton) this.fitButton.addEventListener("click", () => this.choose("fit"))
+    this.el.querySelectorAll("[data-stream]").forEach(button =>
+      button.addEventListener("click", () => this.pickStream(button.dataset.stream)),
+    )
+    this.viewButtons.forEach(button =>
+      button.addEventListener("click", () => {
+        storeView(button.dataset.viewButton)
+        this.pickView(button.dataset.viewButton)
+      }),
+    )
+    this.bindWindow()
+  },
+
+  // Keys, when Raw's screen has focus. xterm.js sees them first; none of them is input.
+  bindTerm() {
     this.term.attachCustomKeyEventHandler(e => {
       if (e.type !== "keydown") return true
-      const findKey = (e.key === "/" && singleKeys()) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")
-      if (findKey) {
+      const findKey =
+        (e.key === "/" && singleKeys()) ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")
+      if (findKey && this.find) {
         e.preventDefault()
         this.find.focus()
         this.find.select()
@@ -359,42 +439,18 @@ export const Terminal = {
       if (e.key === "End") return this.follow(true), false
       if (e.key === "Home") return this.follow(false), this.term.scrollToTop(), false
       if (e.key === "Escape") return this.clearFind(), false
-      if (e.key === "Enter" && this.find.value) return e.shiftKey ? this.findPrevious() : this.findNext(false), false
+      if (e.key === "Enter" && this.find && this.find.value) {
+        e.shiftKey ? this.findPrevious() : this.findNext(false)
+        return false
+      }
       return true
     })
-    this.followButton.addEventListener("click", () => this.follow(!this.following))
-    this.pill.addEventListener("click", () => this.follow(true))
-    // A sized run has no wrap: its columns are the record's.
-    if (this.wrapButton) this.wrapButton.addEventListener("click", () => {
-      this.wrap = !this.wrap
-      this.wrapButton.setAttribute("aria-pressed", String(this.wrap))
-      this.fit()
-    })
-    this.el.querySelectorAll("[data-size-step]").forEach(button =>
-      button.addEventListener("click", () => this.step(Number(button.dataset.sizeStep))),
-    )
-    if (this.fitButton) this.fitButton.addEventListener("click", () => this.choose("fit"))
-    this.el.querySelectorAll("[data-stream]").forEach(button =>
-      button.addEventListener("click", () => {
-        this.el.querySelectorAll("[data-stream]").forEach(b => b.setAttribute("aria-pressed", String(b === button)))
-        this.stream = button.dataset.stream
-        this.restart()
-      }),
-    )
-    this.viewButtons.forEach(button =>
-      button.addEventListener("click", () => {
-        storeView(button.dataset.view)
-        this.searching = false
-        this.pickView(button.dataset.view)
-      }),
-    )
-    this.bindWindow()
   },
 
   // Focus and Full screen: the box and the window, whether or not there is a log.
   bindWindow() {
     this.focusButton.addEventListener("click", () => this.focus(!this.focused))
-    // f anywhere on the page but in a field, the screen's own input included; Escape leaves.
+    // f anywhere on the page but in a field, Raw's input included; Escape leaves.
     this.onKey = e => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === "Escape" && this.focused) {
@@ -402,8 +458,8 @@ export const Terminal = {
         this.focus(false)
       } else if (e.key === "f" && singleKeys() && !document.querySelector("dialog[open]")) {
         const target = e.target
-        const own = this.term && target === this.term.textarea
-        if (typing(target) && !own) return
+        const screen = this.term && target === this.term.textarea
+        if (typing(target) && !screen) return
         e.preventDefault()
         this.focus(!this.focused)
       }
@@ -412,7 +468,9 @@ export const Terminal = {
     if (document.fullscreenEnabled && this.el.requestFullscreen) {
       this.fullButton.hidden = false
       this.fullButton.addEventListener("click", () =>
-        document.fullscreenElement === this.el ? document.exitFullscreen() : this.el.requestFullscreen(),
+        document.fullscreenElement === this.el ?
+          document.exitFullscreen()
+        : this.el.requestFullscreen(),
       )
       this.onFullscreen = () => {
         const on = document.fullscreenElement === this.el
@@ -425,24 +483,78 @@ export const Terminal = {
     }
   },
 
+  // The Transcript: its links to Raw, its end followed while the reader is there, and the
+  // line `?seq=` points at brought into view. The LiveView patches the list; a mutation
+  // observer sees each patch, as the hook's `updated` is not called for its children.
+  bindTranscript() {
+    if (!this.transcript) return
+    this.transcript.addEventListener("click", e => {
+      const link = e.target.closest("[data-raw-line]")
+      if (!link) return
+      e.preventDefault()
+      this.toLine(Number(link.dataset.session), Number(link.dataset.rawLine))
+    })
+    this.transcriptAtEnd = this.live
+    this.transcript.addEventListener("scroll", () => {
+      const {scrollTop, scrollHeight, clientHeight} = this.transcript
+      this.transcriptAtEnd = scrollHeight - scrollTop - clientHeight <= NEAR_END
+    })
+    this.watch = new MutationObserver(() => this.placeTranscript())
+    this.watch.observe(this.transcript, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-target"],
+    })
+    this.placeTranscript()
+  },
+
+  placeTranscript() {
+    const box = this.transcript.querySelector("[data-transcript]")
+    const target = box && box.dataset.target
+    if (target && target !== this.shownTarget) {
+      const line = document.getElementById(target)
+      if (line) {
+        this.shownTarget = target
+        this.transcript
+          .querySelectorAll(".q-tr-target")
+          .forEach(el => el.classList.remove("q-tr-target"))
+        line.classList.add("q-tr-target")
+        line.scrollIntoView({block: "center"})
+        this.transcriptAtEnd = false
+        return
+      }
+    }
+    if (this.transcriptAtEnd) this.transcript.scrollTop = this.transcript.scrollHeight
+  },
+
+  // A link of the Transcript: Raw from its start, both streams when it showed stderr only,
+  // with the session's output line `line` marked and scrolled to the top.
+  toLine(session, line) {
+    if (!this.hasRaw || !Number.isInteger(session) || !Number.isInteger(line)) return
+    if (this.stream === "stderr") this.showStream("")
+    this.pushEvent("raw_line", {session, line, stream: this.stream || null}, reply => {
+      if (this.dead) return
+      this.mark = reply && Number.isInteger(reply.offset) ? reply.offset : null
+      this.goto = this.mark != null
+      if (this.goto && this.following) this.follow(false)
+      this.searching = false
+      this.pickView("raw", true)
+    })
+  },
+
   // Unsized: the box decides. Unwrapped, the screen is as wide as the output may be and
   // scrolls sideways inside the box; wrapped, it is as wide as the box. Sized: the
   // record decides the columns and rows, and only the font follows the box.
   fit() {
-    if (!this.term) return
+    if (!this.term || this.view !== "raw") return
     if (this.sized) return this.scale()
     this.showSize()
-    const size = this.fitter.proposeDimensions()
-    if (!size || !size.cols || !size.rows) return
-    const cols = this.wrap ? size.cols : Math.max(size.cols, UNWRAPPED_COLS)
-    if (cols !== this.term.cols || size.rows !== this.term.rows) this.term.resize(cols, size.rows)
-    // What the reader sees of a row: an unwrapped screen is wider than the box.
-    this.seenCols = Math.min(cols, size.cols)
-    // A new width of the screen reflows it, and a row's offset from its anchor with it.
-    const moved = this.seenCols !== this.rowCols || cols !== this.drawnCols
-    if (this.view === "collapsed" && this.rows.length && moved) {
-      clearTimeout(this.resizing)
-      this.resizing = setTimeout(() => this.rewrite(), RESIZE_MS)
+    const proposed = this.fitter.proposeDimensions()
+    if (!proposed || !proposed.cols || !proposed.rows) return
+    const cols = this.wrap ? proposed.cols : Math.max(proposed.cols, UNWRAPPED_COLS)
+    if (cols !== this.term.cols || proposed.rows !== this.term.rows) {
+      this.term.resize(cols, proposed.rows)
     }
   },
 
@@ -474,10 +586,15 @@ export const Terminal = {
     this.showSize()
   },
 
+  // The size on screen: Raw's, else the reader's for the Transcript, which has no Fit.
+  fontSize() {
+    if (this.term && this.view === "raw") return this.term.options.fontSize
+    return typeof this.preference === "number" ? this.preference : FONT_SIZE
+  },
+
   // A− and A+: a whole size smaller or larger than the one on screen, within the range.
   step(by) {
-    if (!this.term) return
-    const now = this.term.options.fontSize
+    const now = this.fontSize()
     const next = by < 0 ? Math.ceil(now) - 1 : Math.floor(now) + 1
     this.choose(Math.max(SMALLEST, Math.min(LARGEST, next)))
   },
@@ -485,17 +602,24 @@ export const Terminal = {
   choose(value) {
     this.preference = value
     storeSize(value)
-    if (typeof value === "number") this.term.options.fontSize = value
-    this.sized ? this.scale() : this.fit()
+    if (this.term) {
+      if (typeof value === "number") this.term.options.fontSize = value
+      this.sized ? this.scale() : this.fit()
+    }
+    this.showSize()
   },
 
   showSize() {
-    if (!this.term) return
-    const size = this.term.options.fontSize
-    this.sizeLabel.textContent = fill(this.words.size, {size: grouped(Math.round(size * 10) / 10)})
-    this.el.querySelector('[data-size-step="-1"]').disabled = size <= SMALLEST
-    this.el.querySelector('[data-size-step="1"]').disabled = size >= LARGEST
-    if (this.fitButton) this.fitButton.setAttribute("aria-pressed", String(this.preference === "fit"))
+    const px = this.fontSize()
+    const transcriptPx = typeof this.preference === "number" ? this.preference : FONT_SIZE
+    this.el.style.setProperty("--q-tr-size", `${transcriptPx}px`)
+    if (!this.sizeLabel) return
+    this.sizeLabel.textContent = fill(this.words.size, {size: grouped(Math.round(px * 10) / 10)})
+    this.el.querySelector('[data-size-step="-1"]').disabled = px <= SMALLEST
+    this.el.querySelector('[data-size-step="1"]').disabled = px >= LARGEST
+    if (this.fitButton) {
+      this.fitButton.setAttribute("aria-pressed", String(this.preference === "fit"))
+    }
   },
 
   // The terminal takes the window: the root's class folds the shell, the header, the tabs
@@ -504,50 +628,64 @@ export const Terminal = {
     this.focused = on
     document.documentElement.classList.toggle(FOCUS_CLASS, on)
     if (this.focusButton) this.focusButton.setAttribute("aria-pressed", String(on))
-    if (on && this.term) this.term.focus()
+    if (on && this.term && this.view === "raw") this.term.focus()
+  },
+
+  pickStream(stream) {
+    this.showStream(stream)
+    if (this.term) this.restart()
+  },
+
+  showStream(stream) {
+    this.stream = stream
+    this.el.querySelectorAll("[data-stream]").forEach(button =>
+      button.setAttribute("aria-pressed", String(button.dataset.stream === stream)),
+    )
   },
 
   restart() {
     this.generation += 1
     this.through = 0
+    this.at = 0
     this.unseen = 0
     this.pulling = false
-    this.forget()
+    this.clearMarker()
     // Through the write queue, so what is in it lands before the reset and not on top of it.
     this.term.write(RESET)
     if (!this.searching) this.clearFind()
     this.pull()
   },
 
-  // The view: both read the log again from its start, Collapsed keeping its lines.
-  pickView(view) {
-    if (view === this.view) return
+  // The view. Raw is read from the start when it shows for the first time, and when a
+  // Transcript link marks a line in it (`again`).
+  pickView(view, again = false) {
+    if (view === "raw" && !this.hasRaw) return
+    const changed = view !== this.view
     this.view = view
     this.showView()
-    this.restart()
+    if (view !== "raw") return
+    if (!this.term) return this.boot()
+    if (changed) this.fit()
+    if (again) this.restart()
+    else if (this.searching && !this.pulling) {
+      this.searching = false
+      this.findAfterRead()
+    }
   },
 
   showView() {
+    this.el.dataset.view = this.view
     this.viewButtons.forEach(button =>
-      button.setAttribute("aria-pressed", String(button.dataset.view === this.view)),
+      button.setAttribute("aria-pressed", String(button.dataset.viewButton === this.view)),
     )
+    this.showSize()
   },
 
-  forget() {
-    this.lines = new LineBuffer()
-    this.entries = []
-    this.drawn = 0
-    this.piece = null
-    this.clearRows()
-    this.pass = (this.pass || 0) + 1
-    this.kept = 0
-    this.rewriting = null
-  },
-
-  clearRows() {
-    if (this.anchors) this.anchors.clear()
-    this.anchors = new Anchors()
-    this.rows = []
+  clearMarker() {
+    if (this.marked) this.marked.dispose()
+    if (this.marker) this.marker.dispose()
+    this.marked = null
+    this.marker = null
   },
 
   async pull() {
@@ -566,8 +704,8 @@ export const Terminal = {
         url.searchParams.set("limit", String(LIMIT))
         if (this.stream) url.searchParams.set("stream", this.stream)
 
-        // No Accept of its own: the route sits behind the browser pipeline, which answers 406 to
-        // anything that does not take html, and a fetch's default */* does.
+        // No Accept header is set: the route sits behind the browser pipeline, which
+        // answers 406 to anything that does not take html, and a fetch's default */* does.
         const response = await fetch(url, {credentials: "same-origin"})
         if (!response.ok) throw new Error(`log ${response.status}`)
         const through = Number(response.headers.get("x-qory-log-through"))
@@ -586,13 +724,16 @@ export const Terminal = {
       }
       this.failures = 0
       this.say(null)
-      this.flushHeld()
-      // An ended run is read from its start, or, sized, from its last screen: the
-      // screen is what a full-screen program left, and its scrollback is the reflowed
-      // rest. A live one is followed. The search that showed Raw goes where its match is.
-      if (this.searching) {
+      // A marked line goes to the top of the screen. An ended run is read from its start,
+      // or, sized, from its last screen: the screen is what a full-screen program left,
+      // and its scrollback is the reflowed rest. A live one is followed. The search that
+      // showed Raw goes where its match is.
+      if (this.goto) {
+        this.goto = false
+        this.showMarker()
+      } else if (this.searching) {
         this.searching = false
-        this.findNext(true)
+        this.findAfterRead()
       } else if (first && !this.following) {
         this.sized ? this.term.scrollToBottom() : this.toTop()
       }
@@ -607,201 +748,60 @@ export const Terminal = {
     }
 
     // The log may have advanced while this was reading.
-    if (!this.dead && generation === this.generation && Number(this.el.dataset.through) > this.asked && this.failures === 0) {
+    const behind = Number(this.el.dataset.through) > this.asked
+    if (!this.dead && generation === this.generation && behind && this.failures === 0) {
       this.pull()
     }
   },
 
-  // At most 256 KB per animation frame, so a long log does not freeze the tab.
+  // At most 256 KB per animation frame, so a long log does not freeze the tab. A write
+  // stops at the marked byte, and the marker goes on the line the cursor is then on.
   write(bytes, generation) {
     return new Promise(resolve => {
       let offset = 0
       const before = this.term.buffer.active.length
       const step = () => {
         if (this.dead || generation !== this.generation) return resolve()
-        if (offset >= bytes.length) return resolve(this.wrote(before))
-        const slice = bytes.subarray(offset, offset + SLICE)
+        if (this.mark != null && this.mark === this.at + offset) this.placeMarker()
+        if (offset >= bytes.length) {
+          this.at += bytes.length
+          return resolve(this.wrote(before))
+        }
+        const room = Math.min(SLICE, bytes.length - offset)
+        const slice = bytes.subarray(offset, offset + stopAt(this.at + offset, room, this.mark))
         offset += slice.length
-        const next = () => nextFrame(step)
-        if (this.view === "raw") this.term.write(slice, next)
-        else this.collapse(slice, next)
+        this.term.write(slice, () => nextFrame(step))
       }
       step()
     })
   },
 
-  // A slice of the log, in the Collapsed view: its whole lines are kept and drawn.
-  collapse(slice, then) {
-    this.kept += slice.length
-    if (this.kept > MOST_KEPT || this.entries.length > MOST_LINES) {
-      this.term.write("", then)
-      return this.pickView("raw")
-    }
-    for (const line of this.lines.push(slice)) this.entries.push(entry(line))
-    this.draw(then)
+  placeMarker() {
+    this.mark = null
+    this.clearMarker()
+    this.marker = this.term.registerMarker(0)
   },
 
-  // The lines not on the screen yet, at most 256 KB of them per animation frame, each
-  // frame's after the last has landed: xterm.js throws past 50 MB waiting in its queue.
-  draw(then) {
-    if (this.dead) return
-    this.rowCols = this.seenCols || this.term.cols
-    this.drawnCols = this.term.cols
-    let budget = SLICE
-    while (budget > 0) {
-      if (this.piece) {
-        budget -= this.drawPiece(budget)
-      } else if (this.drawn < this.entries.length) {
-        budget -= this.drawLine(this.entries[this.drawn])
-        this.drawn += 1
-      } else {
-        break
-      }
-    }
-    if (this.piece || this.drawn < this.entries.length) {
-      this.term.write("", () => nextFrame(() => this.draw(then)))
-    } else {
-      this.term.write("", then)
-    }
-  },
-
-  // One line on the screen: a row now, and what follows it as the piece `draw` writes. How
-  // many bytes that took. A row's place is its offset from an anchor's marker, which
-  // xterm.js moves as the buffer scrolls and trims.
-  drawLine(line) {
-    if (!("names" in line)) {
-      this.piece = {data: line.bytes, at: 0}
-      return 0
-    }
-    const text = row(line, this.rowCols, this.sizeWords(line.bytes.length))
-    const pass = this.pass
-    this.term.write(text, () => {
-      if (pass !== this.pass) return
-      this.placeRow(line)
+  // The marked line, at the top of the screen, with a band of the accent across it.
+  showMarker() {
+    const marker = this.marker
+    if (!marker || marker.isDisposed) return
+    this.marked = this.term.registerDecoration({
+      marker,
+      width: this.term.cols,
+      backgroundColor: this.markColor,
+      layer: "bottom",
     })
-    if (line.body) this.piece = {data: line.body, at: 0}
-    return text.length
-  },
-
-  // At most `room` of the bytes or the text being written; how much that was.
-  drawPiece(room) {
-    const {data, at} = this.piece
-    const end = at + room
-    const part = typeof data === "string" ? data.slice(at, end) : data.subarray(at, end)
-    this.term.write(part)
-    this.piece = end < data.length ? {data, at: end} : null
-    return part.length
-  },
-
-  // The row just written, one line above the cursor. A row in the alternate buffer gets no
-  // place: its lines are not the normal buffer's.
-  placeRow(line) {
-    const buffer = this.term.buffer.active
-    if (buffer.type !== "normal") return
-    const y = buffer.baseY + buffer.cursorY - 1
-    const place = this.anchors.place(y, () => this.term.registerMarker(-1))
-    if (place) this.rows.push({...place, line})
-  },
-
-  sizeWords(bytes) {
-    const locale = document.body.dataset.locale || "en-GB"
-    return sizeOf(bytes, this.words, (n, digits) =>
-      n.toLocaleString(locale, {minimumFractionDigits: digits, maximumFractionDigits: digits}),
-    )
-  },
-
-  // Reading stopped: the reader sees a partial line now. While the run is live, one that
-  // can still become an object's row waits for its end.
-  flushHeld() {
-    if (this.view !== "collapsed" || this.dead) return
-    if (this.live && this.lines.holdsObject()) return
-    const line = this.lines.flush()
-    if (!line) return
-    this.entries.push(entry(line))
-    this.draw(() => {})
-  },
-
-  // The index of the row at `y` in the buffer, or of the last one before it. A row
-  // trimmed from the scrollback is on line -1, so the order holds.
-  rowIndex(y, exact) {
-    return rowAt(this.rows, y, exact, rowLine)
-  },
-
-  // A collapsed row is a link to itself: the whole row, no underline. `bufferLine` counts
-  // from 1.
-  rowLinks(bufferLine) {
-    const index = this.view === "collapsed" ? this.rowIndex(bufferLine - 1, true) : -1
-    if (index < 0) return undefined
-    const {line} = this.rows[index]
-    return [
-      {
-        range: {start: {x: 1, y: bufferLine}, end: {x: this.term.cols, y: bufferLine}},
-        text: line.names,
-        decorations: {pointerCursor: true, underline: false},
-        activate: () => this.toggle(line),
-      },
-    ]
-  },
-
-  // A line too long to print opens in Raw, which has its bytes.
-  toggle(line) {
-    line.body = line.open ? null : opened(line.bytes)
-    if (!line.open && !line.body) return this.pickView("raw")
-    line.open = !line.open
-    this.rewrite(this.around(line))
-  },
-
-  // Every line again, at the row width of now, and the reader back at `wanted`, by default
-  // where they are. A row anchors the place, as what is above it may have grown.
-  rewrite(wanted) {
-    if (this.view !== "collapsed" || this.dead) return
-    const place = this.rewriting || wanted || this.place()
-    this.rewriting = place
-    this.pass += 1
-    this.clearRows()
-    this.drawn = 0
-    this.piece = null
-    this.term.write(RESET)
-    this.draw(() => {
-      if (this.rewriting !== place) return
-      this.rewriting = null
-      if (place.end) return this.term.scrollToBottom()
-      const anchor = place.line && this.rows.find(({line}) => line === place.line)
-      const {baseY} = this.term.buffer.active
-      const top = anchor ? rowLine(anchor) + place.below : place.top
-      const line = Math.max(0, Math.min(top, baseY))
-      // Following would take the row off the screen.
-      if (this.following && line < baseY) this.follow(false)
-      this.term.scrollToLine(line)
+    nextFrame(() => {
+      if (this.dead || marker.isDisposed) return
+      if (this.following) this.follow(false)
+      this.term.scrollToLine(Math.max(0, marker.line))
     })
-  },
-
-  // Where a clicked row is: the same place on the screen after it opens or closes.
-  around(line) {
-    const clicked = this.rows.find(row => row.line === line)
-    if (!clicked) return undefined
-    const {viewportY: top} = this.term.buffer.active
-    return {end: false, top, line, below: top - rowLine(clicked)}
-  },
-
-  // Where the reader is, for a new width: at the end, or at a line, by the row at or above
-  // the screen's top.
-  place() {
-    const {viewportY: top, baseY} = this.term.buffer.active
-    const index = this.rowIndex(top, false)
-    const found = index >= 0 && rowLine(this.rows[index]) >= 0 ? this.rows[index] : null
-    return {
-      end: this.following || top >= baseY,
-      top,
-      line: found && found.line,
-      below: found ? top - rowLine(found) : 0,
-    }
   },
 
   wrote(before) {
     const lines = this.term.buffer.active.length
-    const label = this.screen
-    label.setAttribute("aria-label", counted(this.words.log, lines))
+    this.screen.setAttribute("aria-label", counted(this.words.log, lines))
     this.labelInput(lines)
     if (!this.initial && lines > before) this.announce(lines - before)
     if (this.following) {
@@ -814,10 +814,12 @@ export const Terminal = {
 
   // After xterm.js has laid the new lines out, or its viewport puts the end back.
   toTop() {
-    nextFrame(() => setTimeout(() => !this.dead && !this.following && this.term.scrollToTop(), 30))
+    nextFrame(() =>
+      setTimeout(() => !this.dead && !this.following && this.term.scrollToTop(), 30),
+    )
   },
 
-  // One tab stop: xterm's own input element, named for what it is, with its keys.
+  // One tab stop: xterm's input element, named for what it is, with its keys.
   labelInput(lines) {
     const input = this.term.textarea
     if (!input) return
@@ -841,7 +843,7 @@ export const Terminal = {
 
   follow(on) {
     this.following = on
-    if (on) {
+    if (on && this.term) {
       this.unseen = 0
       this.term.scrollToBottom()
     }
@@ -850,11 +852,13 @@ export const Terminal = {
   },
 
   showFollowing() {
+    if (!this.followButton) return
     this.followButton.setAttribute("aria-pressed", String(this.following))
     this.followLabel.textContent = this.following ? this.words.following : this.words.jumpToEnd
   },
 
   showPill() {
+    if (!this.pill) return
     const show = !this.following && this.unseen > 0
     this.pill.classList.toggle("q-newpill-show", show)
     this.pill.setAttribute("aria-hidden", String(!show))
@@ -862,16 +866,28 @@ export const Terminal = {
     this.pillText.textContent = counted(this.words.newLines, this.unseen)
   },
 
+  // The search typed before the log was read. With no match, an ended run shows its
+  // start, as it does without a search.
+  findAfterRead() {
+    if (!this.find.value) return
+    const found = this.findNext(true)
+    if (!found && !this.following) this.toTop()
+  },
+
   findNext(incremental) {
-    if (!this.find.value) return this.clearFind()
-    this.search.findNext(this.find.value, {incremental, decorations: this.decorations})
+    if (!this.find.value) return this.clearFind(), false
+    if (!this.search) return false
+    return this.search.findNext(this.find.value, {incremental, decorations: this.decorations})
   },
 
   findPrevious() {
-    if (this.find.value) this.search.findPrevious(this.find.value, {decorations: this.decorations})
+    if (this.find.value && this.search) {
+      this.search.findPrevious(this.find.value, {decorations: this.decorations})
+    }
   },
 
   clearFind() {
+    if (!this.find) return
     this.find.value = ""
     this.findCount.textContent = ""
     if (this.search) this.search.clearDecorations()
@@ -890,6 +906,7 @@ export const Terminal = {
   },
 
   say(text, retry = false) {
+    if (!this.message) return
     this.message.hidden = !text
     this.messageText.textContent = text || ""
     this.retry.hidden = !retry
