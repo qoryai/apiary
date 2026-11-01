@@ -1817,9 +1817,9 @@ defmodule ApiaryWeb.RunLive.Show do
   defp in_window?(_socket, _seq), do: false
 
   # The items of the index a tab shows. The Timeline leaves thinking out; the Transcript
-  # shows the session (`ApiaryWeb.TranscriptComponents.transcript?/2`).
-  defp tab_items(index, :terminal),
-    do: Enum.filter(index.items, &TranscriptComponents.transcript?(&1, index.texts))
+  # shows the session, with a result after the lines of another agent that came before it
+  # as a line apart (`ApiaryWeb.TranscriptComponents.lines/2`).
+  defp tab_items(index, :terminal), do: TranscriptComponents.lines(index.items, index.texts)
 
   defp tab_items(index, _tab), do: Enum.reject(index.items, &(&1.kind == :thinking))
 

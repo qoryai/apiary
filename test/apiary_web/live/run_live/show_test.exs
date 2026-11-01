@@ -1585,6 +1585,56 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert length(String.split(html, "Hi, Dana")) == 2
     end
 
+    test "a subagent's prompt is a prompt, and its call's result follows the subagent's lines",
+         %{conn: conn, scope: scope} do
+      agent = %{"session_id" => "s", "agent_id" => "agent-a1", "agent_type" => "Explore"}
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.tool_started",
+           %{"session_id" => "s", "tool" => "Task", "tool_use_id" => "t", "input" => %{}}},
+          {4, "runtime.subagent_started", agent},
+          {5, "runtime.text",
+           Map.merge(agent, %{"kind" => "text", "role" => "user", "text" => "Report the kernel"})},
+          {6, "runtime.tool_started",
+           Map.merge(agent, %{"tool" => "Bash", "tool_use_id" => "b", "input" => %{}})},
+          {7, "runtime.tool_result",
+           %{"session_id" => "s", "tool_use_id" => "b", "content" => "7.0.0"}},
+          {8, "runtime.text",
+           Map.merge(agent, %{"kind" => "text", "role" => "assistant", "text" => "Linux 7.0.0"})},
+          {9, "runtime.tool_result",
+           %{"session_id" => "s", "tool_use_id" => "t", "content" => "Linux 7.0.0 for Dana"}},
+          {10, "runtime.tool_finished",
+           %{"session_id" => "s", "tool" => "Task", "tool_use_id" => "t", "input" => %{}}},
+          {11, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")}}
+        ])
+
+      {:ok, lv, html} = terminal(conn, scope, run)
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#transcript > li")
+             |> LazyHTML.attribute("id") ==
+               ["e-3", "e-5", "e-6", "e-8", "e-9"]
+
+      assert has_element?(lv, "#e-5.q-tr-prompt.q-tr-sub", "Report the kernel")
+      refute has_element?(lv, "#e-3 .q-tr-out")
+      assert has_element?(lv, ~s(#e-9[data-part="result"] .q-tr-ln), "Linux 7.0.0 for Dana")
+      refute has_element?(lv, "#e-9.q-tr-sub")
+
+      # The Transcript's bar: its end (a live run: Following) and Wrap, beside Raw's.
+      assert has_element?(lv, ~s(#terminal-bar [data-tr-end][aria-pressed="true"]), "Following")
+      assert has_element?(lv, ~s(#terminal-bar [data-tr-wrap][aria-pressed="false"]), "Wrap")
+
+      {:ok, timeline, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
+      assert has_element?(timeline, "#e-5 .q-k", "Prompt")
+      refute has_element?(timeline, "#e-5 .q-k", "Text")
+    end
+
     test "a pseudo-terminal run with runtime events opens in Raw, with the Transcript", %{
       conn: conn,
       scope: scope
@@ -1666,6 +1716,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#terminal-bar [data-view-button="transcript"]), "Transcript")
       assert has_element?(lv, ~s(#terminal-bar [data-view-button="raw"]), "Raw")
       assert has_element?(lv, "#terminal-bar .q-term-find", "Searching shows the Raw view.")
+      # the Transcript has its end and Wrap too, which show only in the Transcript
+      assert has_element?(lv, ~s(#terminal-bar .q-term-trv[data-tr-end]), "Jump to end")
+      assert has_element?(lv, ~s(#terminal-bar .q-term-trv[data-tr-wrap]), "Wrap")
       refute has_element?(lv, "#terminal-bar", "Collapsed")
 
       # the script's words are the server's, in the domain's language

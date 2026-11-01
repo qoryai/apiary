@@ -124,11 +124,11 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc """
   Lays the run out. `events` are light events in sequence order, maps with `:sequence`,
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
-  `:agent_type`, `:text_kind` (on a text event: its `kind`, or `"empty"` for a block with
-  no text), `:background_tasks` (a list, or nil when the event gives none), `:host`,
-  `:port`, `:decision` and, on an egress event that names one, `:tool`, the tool whose host
-  it was for; with `:decision` allowed it is a tool invocation
-  (`Apiary.Runs.tool_invocation?/2`). `alive:` says whether the record
+  `:agent_type`, `:text_kind` (on a text event: its `kind`, `"prompt"` for a text whose
+  `role` is `user`, or `"empty"` for a block with no text), `:background_tasks` (a list,
+  or nil when the event has none), `:host`, `:port`, `:decision` and, on an egress event
+  that has one, `:tool`, the tool whose host it was for; with `:decision` allowed it is a
+  tool invocation (`Apiary.Runs.tool_invocation?/2`). `alive:` is whether the record
   is still being written: it fades the rails of the last item, and a call without an end is
   open only while it is.
 
@@ -396,11 +396,15 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   # A text block. A thinking block with text is a `:thinking` item, which only the
-  # Transcript shows; an empty block, of either kind, is none.
+  # Transcript shows; a user's text, such as a subagent's prompt, is a `:prompt` item; an
+  # empty block, of any kind, is none.
   defp place(state, :text, event) do
     case event[:text_kind] do
       "empty" ->
         state
+
+      "prompt" ->
+        push(state, :prompt, event)
 
       "thinking" ->
         push(state, :thinking, event)
@@ -782,7 +786,9 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @doc """
   The full items of `light` items, from `events`, a map of sequence to the slim event
-  (see `slim/2`). An item whose first event is missing is left out.
+  (see `slim/2`). An item whose first event is missing is left out. A light item's
+  `:part`, which the Transcript sets on a call drawn apart from its result
+  (`ApiaryWeb.TranscriptComponents.lines/2`), is kept.
 
   `full:` is a list of item sequences whose events were read with the larger cap.
 
@@ -799,7 +805,18 @@ defmodule Apiary.Runs.Record.Timeline do
       {event, events} = narrowed(item, event, events, opts[:scope], opts[:run])
 
       item
-      |> Map.take([:seq, :kind, :lane, :rails, :link, :who, :open_calls, :end_seq, :tool_state])
+      |> Map.take([
+        :seq,
+        :kind,
+        :lane,
+        :rails,
+        :link,
+        :who,
+        :open_calls,
+        :end_seq,
+        :tool_state,
+        :part
+      ])
       |> Map.merge(%{
         id: "e-#{item.seq}",
         sequence: item.seq,

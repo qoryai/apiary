@@ -13,7 +13,7 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
   end
 
   # The items of `events` as the run page builds them, each with `open` as the page sets it.
-  defp items(events, open \\ []) do
+  defp items(events, open \\ [], lines? \\ false) do
     light =
       for %{data: data} = event <- events do
         %{
@@ -24,20 +24,32 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
           agent_id: data["agent_id"],
           agent_type: data["agent_type"],
           tool: data["tool"],
-          text_kind:
-            if(event.type == "dev.qory.runtime.text",
-              do: if(data["text"] in [nil, ""], do: "empty", else: data["kind"])
-            )
+          text_kind: text_kind(event.type, data)
         }
       end
 
     index = Timeline.index(light)
     full = Timeline.full_limit()
+    light = if lines?, do: TranscriptComponents.lines(index.items, index.texts), else: index.items
 
-    index.items
+    light
     |> Timeline.build(Map.new(events, &{&1.sequence, Timeline.slim(&1, full)}))
     |> Enum.map(&Map.put(&1, :open, &1.sequence in open))
   end
+
+  # The lines of `events` as the Terminal tab shows them (`TranscriptComponents.lines/2`).
+  defp lines(events), do: items(events, [], true)
+
+  # As the light query reads it: "empty" for a text without text, "prompt" for a user's.
+  defp text_kind("dev.qory.runtime.text", data) do
+    cond do
+      data["text"] in [nil, ""] -> "empty"
+      data["role"] == "user" -> "prompt"
+      true -> data["kind"]
+    end
+  end
+
+  defp text_kind(_type, _data), do: nil
 
   defp html(items, attrs \\ []) do
     render_component(
@@ -142,8 +154,10 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
       |> html()
     end
 
-    assert texts(denied.(%{"message" => "Quoted text can't be checked"}), ".q-tr-warn .q-tr-ln")
-           |> Enum.map(&squeeze/1) == ["Denied: Quoted text can't be checked"]
+    # One line: the mark and the reason, with no break or space around the reason.
+    reason = denied.(%{"message" => "Quoted text can't be checked"})
+    assert texts(reason, ".q-tr-warn .q-tr-ln") == ["Denied: Quoted text can't be checked"]
+    assert texts(reason, ".q-tr-warn .q-tr-hook") == ["⎿"]
 
     assert texts(denied.(%{}), ".q-tr-warn .q-tr-ln") |> Enum.map(&squeeze/1) == [
              "Not run: denied"
@@ -208,6 +222,57 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
 
     assert query(html, ".q-tr-sub") |> Enum.count() == 1
     assert texts(html, ".q-tr-sub .q-tr-md") |> Enum.map(&squeeze/1) == ["Reading"]
+  end
+
+  test "a user's text, such as a subagent's prompt, is a prompt line indented with its agent" do
+    html =
+      [
+        started(1, "t", %{"tool" => "Task", "summary" => "Look around"}),
+        text(2, "Report the kernel release", %{"agent_id" => "a1", "role" => "user"})
+      ]
+      |> lines()
+      |> html()
+
+    assert texts(html, ".q-tr-prompt.q-tr-sub .q-tr-head") == ["Report the kernel release"]
+    assert texts(html, ".q-tr-prompt .q-tr-mark") == ["❯"]
+    assert query(html, ".q-tr-text") |> Enum.count() == 0
+  end
+
+  test "a result after another agent's lines is drawn after them, at its call's indent" do
+    agent = %{"agent_id" => "a1"}
+
+    html =
+      [
+        started(1, "t", %{"tool" => "Task", "summary" => "Look around"}),
+        event(2, "subagent_started", Map.put(agent, "agent_type", "Explore")),
+        text(3, "Report the kernel release", Map.put(agent, "role", "user")),
+        started(4, "b", Map.put(agent, "summary", "uname -r")),
+        result(5, "b", "7.0.0", agent),
+        text(6, "Linux 7.0.0", agent),
+        event(7, "subagent_finished", agent),
+        result(8, "t", "Linux 7.0.0, from the subagent"),
+        event(9, "tool_finished", %{"tool" => "Task", "tool_use_id" => "t"})
+      ]
+      |> lines()
+      |> html()
+
+    assert query(html, "li") |> LazyHTML.attribute("id") == ["e-1", "e-3", "e-4", "e-6", "e-8"]
+    assert query(html, "#e-1 .q-tr-out") |> Enum.count() == 0
+    assert texts(html, "#e-4 .q-tr-ln") == ["7.0.0"]
+    assert texts(html, "#e-8 .q-tr-ln") == ["Linux 7.0.0, from the subagent"]
+    assert query(html, "#e-8.q-tr-sub") |> Enum.count() == 0
+    assert query(html, ~s(#e-8[data-part="result"] .q-tr-hook)) |> Enum.count() == 1
+  end
+
+  test "calls of one agent keep their results under them, whatever the order" do
+    html =
+      [started(1, "a"), started(2, "b"), result(3, "a", "A"), result(4, "b", "B")]
+      |> lines()
+      |> html()
+
+    assert query(html, "li") |> LazyHTML.attribute("id") == ["e-1", "e-2"]
+    assert texts(html, "#e-1 .q-tr-ln") == ["A"]
+    assert texts(html, "#e-2 .q-tr-ln") == ["B"]
   end
 
   test "a line read from the output links to it in Raw, while Raw has the log" do

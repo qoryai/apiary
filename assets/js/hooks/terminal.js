@@ -1,6 +1,7 @@
 // The terminal of a run (docs/ui.md). It has two views. Transcript is the session drawn
 // by the LiveView from the run's runtime events, as HTML inside this box; this hook only
-// keeps it scrolled, sizes its text and follows its links to Raw. Raw is the log's bytes
+// keeps it scrolled, takes it to its end, wraps its tool lines or cuts them at the box's
+// edge, sizes its text and follows its links to Raw. Raw is the log's bytes
 // in xterm.js. The bytes never cross the LiveView socket: this hook reads them from the
 // run's log endpoint,
 //
@@ -131,6 +132,9 @@ export const stopAt = (at, length, mark) =>
 // box's data-target) opens the Transcript, whatever the reader chose, and the choice stays.
 // Otherwise: Raw without a Transcript or on a pseudo-terminal, else the reader's choice.
 // The Collapsed view kept as a choice before it was removed is Transcript.
+// Whether the Transcript's end button reads "Following": a live run, read at its end.
+export const transcriptFollowing = (live, atEnd) => live && atEnd
+
 export const openingView = (initial, stored, choice, targeted = false) => {
   if (targeted) return "transcript"
   if (!choice || initial === "raw") return initial
@@ -197,6 +201,9 @@ export const Terminal = {
     this.followButton = q("[data-follow]")
     this.followLabel = q("[data-follow-label]")
     this.wrapButton = q("[data-wrap]")
+    this.trEndButton = q("[data-tr-end]")
+    this.trEndLabel = q("[data-tr-end-label]")
+    this.trWrapButton = q("[data-tr-wrap]")
     this.pill = q("[data-pill]")
     this.pillText = q("[data-pill-text]")
     this.message = q("[data-message]")
@@ -504,7 +511,23 @@ export const Terminal = {
     this.transcript.addEventListener("scroll", () => {
       const {scrollTop, scrollHeight, clientHeight} = this.transcript
       this.transcriptAtEnd = scrollHeight - scrollTop - clientHeight <= NEAR_END
+      this.showTranscriptEnd()
     })
+    this.transcript.addEventListener("keydown", e => {
+      if (e.key === "End" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        this.transcriptToEnd()
+      }
+    })
+    if (this.trEndButton) this.trEndButton.addEventListener("click", () => this.transcriptToEnd())
+    // Wrap is on the root, which the LiveView leaves to this hook (data-tr-wrap).
+    if (this.trWrapButton) {
+      this.trWrapButton.addEventListener("click", () => {
+        const on = this.el.dataset.trWrap !== "true"
+        this.el.dataset.trWrap = String(on)
+        this.trWrapButton.setAttribute("aria-pressed", String(on))
+      })
+    }
     this.watch = new MutationObserver(() => this.placeTranscript())
     this.watch.observe(this.transcript, {
       childList: true,
@@ -534,6 +557,22 @@ export const Terminal = {
       }
     }
     if (this.transcriptAtEnd) this.transcript.scrollTop = this.transcript.scrollHeight
+  },
+
+  // The Transcript's end: the lines after the window are loaded first, and the end is
+  // followed from then on, until the reader scrolls away from it.
+  transcriptToEnd() {
+    if (this.transcript.querySelector("[data-later]")) this.pushEvent("show_new", {})
+    this.transcriptAtEnd = true
+    this.transcript.scrollTop = this.transcript.scrollHeight
+    this.showTranscriptEnd()
+  },
+
+  showTranscriptEnd() {
+    if (!this.trEndButton) return
+    const on = transcriptFollowing(this.live, this.transcriptAtEnd)
+    this.trEndButton.setAttribute("aria-pressed", String(on))
+    this.trEndLabel.textContent = on ? this.words.following : this.words.jumpToEnd
   },
 
   // A link of the Transcript: Raw from its start, both streams when it showed stderr only,

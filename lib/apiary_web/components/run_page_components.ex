@@ -1606,7 +1606,7 @@ defmodule ApiaryWeb.RunPageComponents do
       role="region"
       aria-label={gettext("Terminal output")}
       phx-hook="Terminal"
-      phx-mounted={JS.ignore_attributes(["data-view", "style"])}
+      phx-mounted={JS.ignore_attributes(["data-view", "data-tr-wrap", "style"])}
       data-view={@opening}
       data-raw={to_string(@raw)}
       data-src={@src}
@@ -1687,6 +1687,31 @@ defmodule ApiaryWeb.RunPageComponents do
           title={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
+        >
+          <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
+          <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
+        </button>
+        <%!-- The Transcript's: its end, and whether a tool's line and its result wrap. --%>
+        <button
+          :if={@transcript != []}
+          type="button"
+          class="q-tbtn q-term-trv"
+          aria-pressed={to_string(@live)}
+          title={gettext("Follow the end of the log (End)")}
+          data-tr-end
+        >
+          <.icon name="hero-arrow-down-micro" class="size-4" />
+          <span class="q-tbtn-lbl" data-tr-end-label>{if @live,
+            do: gettext("Following"),
+            else: gettext("Jump to end")}</span>
+        </button>
+        <button
+          :if={@transcript != []}
+          type="button"
+          class="q-tbtn q-term-trv"
+          title={gettext("Wrap long lines")}
+          aria-pressed="false"
+          data-tr-wrap
         >
           <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
           <span class="q-tbtn-lbl">{gettext("Wrap")}</span>

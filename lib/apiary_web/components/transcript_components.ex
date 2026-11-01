@@ -16,7 +16,9 @@ defmodule ApiaryWeb.TranscriptComponents do
     * Tool call: `⏺`, the tool and its summary in brackets, then under it the result the
       runtime gave the model (its first 3 lines, the rest behind a button), the denial's
       reason, or the error of a call that failed. A call recorded before Forager sent its
-      result shows what the tool returned, as JSON, in its place.
+      result shows what the tool returned, as JSON, in its place. When lines of another
+      agent arrived between the call and its result, the result is a separate line after
+      them, at the call's indent (`lines/2`).
     * Text: `⏺` and the text as Markdown, each line of a paragraph a line. Thinking with
       text is folded. A run recorded before Forager sent its texts shows the text of each
       turn's end in their place.
@@ -52,6 +54,50 @@ defmodule ApiaryWeb.TranscriptComponents do
 
   def transcript?(%{kind: :turn_finished}, 0), do: true
   def transcript?(_item, _texts), do: false
+
+  @doc """
+  The Transcript's lines from the index's light items (`Timeline.index/2`), in sequence
+  order: the items of `transcript?/2`. A tool call whose result came after a line of
+  another agent (a subagent's prompt, calls and texts) is two lines: the call, with
+  `part: :call`, and the result at the result's sequence, with `part: :result`, after
+  those lines. The choice reads sequences and agents only.
+  """
+  def lines(items, texts) do
+    shown = Enum.filter(items, &transcript?(&1, texts))
+
+    {lines, results} =
+      shown
+      |> Enum.zip(next_other_agent(shown))
+      |> Enum.map_reduce([], fn {item, other}, results ->
+        result = item[:result_seq]
+
+        if item.kind == :tool and is_integer(result) and is_integer(other) and other < result,
+          do:
+            {Map.put(item, :part, :call),
+             [Map.merge(item, %{seq: result, part: :result}) | results]},
+          else: {item, results}
+      end)
+
+    if results == [], do: lines, else: Enum.sort_by(lines ++ results, & &1.seq)
+  end
+
+  # For each item, the sequence of the first later item of another agent, or nil.
+  defp next_other_agent(items) do
+    items
+    |> Enum.reverse()
+    |> Enum.map_reduce({nil, nil}, fn item, {next, next_other} ->
+      other =
+        cond do
+          is_nil(next) -> nil
+          next.lane.id != item.lane.id -> next.seq
+          true -> next_other
+        end
+
+      {other, {item, other}}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
 
   @doc """
   The Transcript: a LiveView stream of lines, with the buttons that load the lines before
@@ -101,6 +147,7 @@ defmodule ApiaryWeb.TranscriptComponents do
         type="button"
         class="q-tr-more"
         phx-click="load_later"
+        data-later
       >
         <.icon name="hero-arrow-down-micro" class="size-3" /> {gettext("Load newer")}
         <span class="text-faint">
@@ -126,6 +173,7 @@ defmodule ApiaryWeb.TranscriptComponents do
       id={@id}
       class={["q-tr-i", "q-tr-#{@item.kind}", @item.lane.id != "main" && "q-tr-sub"]}
       data-seq={@item.sequence}
+      data-part={@item[:part]}
     >
       <.body item={@item} raw={@raw} open={@open} result_text={@result_text} />
     </li>
@@ -147,11 +195,34 @@ defmodule ApiaryWeb.TranscriptComponents do
     """
   end
 
-  defp body(%{item: %{kind: :tool}} = assigns) do
+  # A result drawn apart from its call: the result alone, at the call's indent.
+  defp body(%{item: %{kind: :tool, part: :result}} = assigns) do
     assigns = assign(assigns, out: tool_output(assigns.item))
 
     ~H"""
-    <div class="q-tr-row">
+    <.output
+      :if={@out}
+      out={@out}
+      seq={@item.sequence}
+      open={@open}
+      tone={@out.tone}
+      raw={@raw}
+      item={@item}
+    />
+    """
+  end
+
+  defp body(%{item: %{kind: :tool}} = assigns) do
+    item = assigns.item
+
+    assigns =
+      assign(assigns,
+        out: if(item[:part] != :call, do: tool_output(item)),
+        reason: shown(item.reason)
+      )
+
+    ~H"""
+    <div class="q-tr-row q-tr-call">
       <span class={["q-tr-mark", "q-tr-dot", "q-tr-#{@item.status}"]} aria-hidden="true">⏺</span>
       <span class="q-tr-head">
         <b class="q-tr-tool"><.external_text text={@item.tool} /></b><span :if={@item.summary}>(<.external_text text={
@@ -162,10 +233,8 @@ defmodule ApiaryWeb.TranscriptComponents do
     </div>
     <div :if={@item.status == :denied} class="q-tr-out q-tr-warn">
       <span class="q-tr-hook" aria-hidden="true">⎿</span>
-      <span :if={reason = shown(@item.reason)} class="q-tr-ln">
-        {gettext("Denied: %{reason}", reason: reason)}
-      </span>
-      <span :if={!shown(@item.reason)} class="q-tr-ln">{gettext("Not run: denied")}</span>
+      <span :if={@reason} class="q-tr-ln">{gettext("Denied: %{reason}", reason: @reason)}</span>
+      <span :if={!@reason} class="q-tr-ln">{gettext("Not run: denied")}</span>
     </div>
     <.output
       :if={@out}

@@ -10,6 +10,7 @@ import {
   MOST_REPEATS,
   fill,
   openingView,
+  transcriptFollowing,
   overCount,
   size,
   stopAt,
@@ -79,4 +80,10 @@ test("a box with no choice keeps the view the server set", () => {
 test("a template fills its bindings and keeps an unknown one", () => {
   assert.equal(fill("%{index} of %{total}", {index: 2, total: 5}), "2 of 5")
   assert.equal(fill("%{size} px", {}), "%{size} px")
+})
+
+test("the Transcript's end button reads Following only on a live run read at its end", () => {
+  assert.equal(transcriptFollowing(true, true), true)
+  assert.equal(transcriptFollowing(true, false), false)
+  assert.equal(transcriptFollowing(false, true), false)
 })

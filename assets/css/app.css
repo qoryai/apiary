@@ -7204,7 +7204,8 @@
      wrap and Fit are Raw's. The note under the box describes Raw. */
   .q-termbox[data-view="transcript"] .q-term-screen,
   .q-termbox[data-view="transcript"] .q-term-raw,
-  .q-termbox[data-view="raw"] .q-term-tr {
+  .q-termbox[data-view="raw"] .q-term-tr,
+  .q-termbox[data-view="raw"] .q-term-trv {
     display: none;
   }
   .q-termbox[data-view="transcript"] + .q-term-note {
@@ -7285,7 +7286,24 @@
   }
   .q-tr-lns {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+  }
+  /* Wrap off, as the Transcript opens: a tool's line and its result's lines are cut at the
+     box's edge with an ellipsis. A text wraps either way. */
+  .q-termbox:not([data-tr-wrap="true"]) .q-tr-call .q-tr-head {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-termbox:not([data-tr-wrap="true"]) li.q-tr-tool .q-tr-ln {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+  /* A result drawn apart from its call that has nothing to show. */
+  .q-tr-i[data-part="result"]:not(:has(*)) {
+    display: none;
   }
   .q-tr-ln {
     white-space: pre-wrap;

@@ -31,9 +31,14 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
-  # As the light query reads it: "empty" for a text event without text, else its kind.
+  # As the light query reads it: "empty" for a text event without text, "prompt" for a
+  # user's text, else its kind.
   defp text_kind("dev.qory.runtime.text", data) do
-    if data["text"] in [nil, ""], do: "empty", else: data["kind"]
+    cond do
+      data["text"] in [nil, ""] -> "empty"
+      data["role"] == "user" -> "prompt"
+      true -> data["kind"]
+    end
   end
 
   defp text_kind(_type, _data), do: nil
@@ -694,6 +699,25 @@ defmodule Apiary.Runs.Record.TimelineTest do
                    "tool_use_id" => "a"
                  })
                ])
+    end
+
+    test "a user's text is a prompt on its agent's lane, and no text" do
+      index =
+        index([
+          subagent(1, "started", "a1", "Explore"),
+          text(2, "Report the kernel release", %{"agent_id" => "a1", "role" => "user"})
+        ])
+
+      assert [_started, %{seq: 2, kind: :prompt, lane: %{id: "a1"}}] = index.items
+      assert index.texts == 0
+
+      [_started, prompt] =
+        build([
+          subagent(1, "started", "a1", "Explore"),
+          text(2, "Report the kernel release", %{"agent_id" => "a1", "role" => "user"})
+        ])
+
+      assert %{kind: :prompt, text: "Report the kernel release"} = prompt
     end
 
     test "a subagent's lines are on its lane by agent_id alone, with no type" do

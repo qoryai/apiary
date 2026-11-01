@@ -298,12 +298,14 @@ defmodule Apiary.Runs.Record do
           tool_use_id: fragment("left(? ->> 'tool_use_id', 255)", e.data),
           agent_id: fragment("left(? ->> 'agent_id', 255)", e.data),
           agent_type: fragment("left(? ->> 'agent_type', 255)", e.data),
-          # A text event's kind, or "empty" for a block with no text, which makes no item.
+          # A text event's kind, "prompt" for a user's text, or "empty" for a block with no
+          # text, which makes no item.
           text_kind:
             fragment(
-              "CASE WHEN ? = ? THEN CASE WHEN coalesce(? -> 'text', '\"\"'::jsonb) = '\"\"'::jsonb THEN 'empty' ELSE left(? ->> 'kind', 12) END END",
+              "CASE WHEN ? = ? THEN CASE WHEN coalesce(? -> 'text', '\"\"'::jsonb) = '\"\"'::jsonb THEN 'empty' WHEN ? ->> 'role' = 'user' THEN 'prompt' ELSE left(? ->> 'kind', 12) END END",
               e.type,
               ^@runtime_text,
+              e.data,
               e.data,
               e.data
             ),

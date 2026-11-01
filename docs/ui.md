@@ -1818,7 +1818,8 @@ start when the run has both.
   from its runtime events (`dev.qory.runtime.*`), in sequence order, as HTML in the mono
   font. It reads no runtime's output format, so a runtime whose Forager descriptor maps
   its output to these events needs no change here. Its lines:
-  - the prompt: `❯` and the prompt;
+  - a prompt: `❯` and the prompt, from `runtime.prompt_submitted`, or a text whose `role`
+    is `user`, such as a subagent's prompt (the Timeline shows it as a Prompt row);
   - a tool call: `⏺`, the tool and the first line of its `summary` in brackets
     (`⏺ Skill(harness:greet)`), or the tool alone without one; under it, after `⎿`, the
     first 3 lines of the result the runtime gave the model (`runtime.tool_result`), then
@@ -1826,7 +1827,10 @@ start when the run has both.
     folds it again. A string result shows as written; of an array of blocks, each text
     block's text shows, and each other block its type in brackets. A call with no result
     has no line under it. A denied call shows `⎿ Denied:` and the reason, or "Not run:
-    denied" without one; a failed call shows its error in the failure colour;
+    denied" without one, on one line; a failed call shows its error in the failure
+    colour. When lines of another agent arrived between a call and its result (a
+    subagent's lines under its Task call), the result is drawn after them, at the call's
+    indent, by sequence and agent alone;
   - a text: `⏺` and the text as Markdown through `Apiary.Sources.Body`, as on a work
     item, with each line kept (`hard_breaks: true`), and no HTML of the text; thinking
     with text is folded under "Thinking", and empty thinking is left out;
@@ -1842,7 +1846,9 @@ start when the run has both.
   alone shows both streams. The Transcript is a window of the items, as the Timeline is:
   "%{number} earlier events" and "Load newer" load more, a live run adds its lines as
   they arrive, and the end is followed while the reader is at it. A Timeline link
-  (`?seq=`) brings its line into view.
+  (`?seq=`) brings its line into view. Wrap is off as the Transcript opens: a tool's line
+  and its result's lines are cut at the box's edge with `…`, and a text wraps; Wrap on
+  wraps every line.
 - **Older runs.** A run recorded before Forager sent texts, results and denials shows
   its tool lines, and each turn's last message (`turn_finished`) in place of the texts; a
   tool's line opens to what the tool returned, as JSON. With neither texts nor turn ends,
@@ -1865,7 +1871,8 @@ start when the run has both.
   fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
   to the box, with Wrap.
 - **The bar**: the view, then Raw's stream (stdout, stderr or both), search (`/`), follow
-  (End) and wrap, which show only in Raw; the **text size** (A−, A+, 11 to 18 px, and Fit,
+  (End) and wrap, which show only in Raw; in the Transcript, **Jump to end** (End), which
+  loads the lines after the window and follows the end, and **Wrap**; the **text size** (A−, A+, 11 to 18 px, and Fit,
   the largest size at which a recorded screen's columns fit), a reading preference kept in
   `localStorage` for both views; download; **Focus** (`f` outside a field; Escape
   leaves), a class on the root that folds the shell, the header, the tabs and the rail
