@@ -146,7 +146,7 @@ defmodule Apiary.Runs.ListFactsTest do
       assert facts(scope, shape).stage == nil
     end
 
-    @tag with_features: [:observability, :security, :factory]
+    @tag with_features: [:observability, :security, :secrets, :factory]
     test "with the workflow model off, no stage", %{scope: scope, version: version, stage: stage} do
       run = started_run(scope)
 
