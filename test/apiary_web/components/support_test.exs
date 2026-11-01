@@ -179,8 +179,7 @@ defmodule ApiaryWeb.SupportTest do
           {:unreadable, :path, "../x"},
           {:unreadable, :version, "v 9"},
           {:no_version, "v9"},
-          :exited,
-          :not_covered
+          :exited
         ] ++
           for(
             cause <- [:timeout, :unreachable, :no_address, :unauthorized, :invalid_answer],
@@ -214,7 +213,7 @@ defmodule ApiaryWeb.SupportTest do
       Application.put_env(:apiary, :support_address, "support@example.com")
       linked = support_texts()
 
-      assert length(linked) == 13
+      assert length(linked) == 12
 
       for {text, words} <- Enum.zip(linked, plain) do
         shown = shown_text(text)
