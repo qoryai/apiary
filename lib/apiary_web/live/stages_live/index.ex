@@ -11,6 +11,12 @@ defmodule ApiaryWeb.StagesLive.Index do
   # selected stage. The page is the only writer of the document, and every save goes
   # through `Apiary.Processes.save/4`, which checks the document against its schema.
   #
+  # Two tabs (`ApiaryWeb.PageComponents.page_tabs/1`): Stages, at the page's address, has
+  # the canvas and the inspector; Details, at `?tab=details`, has every other setting, the
+  # placement check, the trial and the history. The version line and its buttons are
+  # beside the tabs, on both: one draft has the edits of both tabs, and a switch of tabs
+  # keeps it.
+  #
   # Owners and admins (`process.edit`) edit; members read the page with no edit controls.
   #
   # The workflow picker offers `Apiary.Processes.declared_workflows/1`. Once the page is
@@ -75,6 +81,11 @@ defmodule ApiaryWeb.StagesLive.Index do
 
     {:ok, socket}
   end
+
+  @impl true
+  def handle_params(params, _uri, socket),
+    do:
+      {:noreply, assign(socket, tab: if(params["tab"] == "details", do: :details, else: :stages))}
 
   ## The harness's workflows
 
@@ -489,7 +500,9 @@ defmodule ApiaryWeb.StagesLive.Index do
         stage: Processes.stage(assigns.draft, assigns.selected),
         dirty: assigns.draft != assigns.base.document,
         trial: trial(assigns.versions),
-        workspace: assigns.current_scope.workspace.name
+        workspace: assigns.current_scope.workspace.name,
+        path:
+          ~p"/#{assigns.current_scope.organisation}/#{assigns.current_scope.workspace}/settings/stages"
       )
 
     ~H"""
@@ -510,64 +523,44 @@ defmodule ApiaryWeb.StagesLive.Index do
         measure="list"
         title={gettext("Stages")}
       >
-        <:subtitle>
-          {gettext(
-            "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version.",
-            workspace: @workspace
-          )}
-        </:subtitle>
-
         <div id="stages" class="grid gap-6">
-          <p id="stages-harness" class="text-[13.5px]/5">
-            {gettext("Harness: %{harness}", harness: @harness)}
-            <span :if={@may_harness} aria-hidden="true" class="text-muted">·</span>
-            <.link
-              :if={@may_harness}
-              id="stages-harness-change"
-              navigate={
-                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/workflow"
-              }
-              class="font-medium text-accent underline underline-offset-[3px]"
-              aria-label={gettext("Change the harness")}
-            >
-              {gettext("Change")}
-            </.link>
-          </p>
-          <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
-            <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot)}</p>
-            <p :if={@declared_error} id="stages-workflows-error" class="text-error">
-              {Words.read_failed(@declared_error, @snapshot)}
-            </p>
-          </div>
-          <div id="stages-version" class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p class="text-[13.5px]/5">
-              {version_line(@base, @may)}
-              <span :if={@dirty} id="stages-dirty" class="badge badge-sm badge-warning ml-2">
-                {gettext("Unsaved changes")}
-              </span>
-            </p>
-            <div :if={@may} class="flex flex-wrap gap-2">
-              <.button
-                id="stages-save"
-                variant="primary"
-                phx-click="save"
-                phx-value-trial="false"
-                disabled={!@dirty}
-              >
-                {gettext("Save")}
-              </.button>
-              <.button
-                id="stages-save-trial"
-                phx-click="save"
-                phx-value-trial="true"
-                disabled={!@dirty or @trial != nil}
-              >
-                {gettext("Save as trial")}
-              </.button>
-              <.button id="stages-discard" variant="ghost" phx-click="discard" disabled={!@dirty}>
-                {gettext("Discard changes")}
-              </.button>
-              <p :if={@save_note} id="stages-save-note" class="self-center text-[13px]/5 text-error">
+          <%!-- One row: the tabs, then the version line and the buttons at its right end. One
+          draft has the edits of both tabs, so the buttons are on both. --%>
+          <div class="flex flex-wrap items-end justify-between gap-x-6 border-b border-line [&>.q-tabs]:border-b-0">
+            <.page_tabs id="stages-tabs" label={gettext("Stages")} current={@tab} place="section">
+              <:tab key={:stages} patch={@path}>{gettext("Stages")}</:tab>
+              <:tab key={:details} patch={"#{@path}?tab=details"}>{gettext("Details")}</:tab>
+            </.page_tabs>
+            <div id="stages-version" class="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-2 py-1">
+              <p class="text-[13.5px]/5">
+                {version_line(@base, @may)}
+                <span :if={@dirty} id="stages-dirty" class="badge badge-sm badge-warning ml-2">
+                  {gettext("Unsaved changes")}
+                </span>
+              </p>
+              <div :if={@may} class="flex flex-wrap gap-2">
+                <.button
+                  id="stages-save"
+                  variant="primary"
+                  phx-click="save"
+                  phx-value-trial="false"
+                  disabled={!@dirty}
+                >
+                  {gettext("Save")}
+                </.button>
+                <.button
+                  id="stages-save-trial"
+                  phx-click="save"
+                  phx-value-trial="true"
+                  disabled={!@dirty or @trial != nil}
+                >
+                  {gettext("Save as trial")}
+                </.button>
+                <.button id="stages-discard" variant="ghost" phx-click="discard" disabled={!@dirty}>
+                  {gettext("Discard changes")}
+                </.button>
+              </div>
+              <p :if={@save_note} id="stages-save-note" class="text-[13px]/5 text-error">
                 {@save_note}
               </p>
             </div>
@@ -590,7 +583,7 @@ defmodule ApiaryWeb.StagesLive.Index do
           The canvas takes the column's full width (60rem at most, `.q-settings-main-list`)
           and draws the cards at zoom 1; beside it the inspector would leave the canvas
           less than the 1000 px both need. --%>
-          <div id="stages-editor" class="grid items-start gap-4">
+          <div :if={@tab == :stages} id="stages-editor" class="grid items-start gap-4">
             <Canvas.canvas
               id="stages-canvas"
               document={@draft}
@@ -616,142 +609,172 @@ defmodule ApiaryWeb.StagesLive.Index do
             />
           </div>
 
-          <.form
-            :if={@may}
-            for={%{}}
-            as={:process}
-            id="stages-process-form"
-            phx-change="edit_process"
-            novalidate
-            class="max-w-md"
-          >
-            <.input
-              id="stages-machine"
-              name="process[machine]"
-              value={@draft["machine"]}
-              label={gettext("Default machine type")}
-              hint={Inspector.machine_hint()}
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </.form>
-          <p :if={!@may} id="stages-machine-read" class="text-[13.5px]/5">
-            {gettext("Default machine type: %{machine}", machine: @draft["machine"])}
-          </p>
-
-          <section id="stages-check" aria-labelledby="stages-check-title" class="grid gap-2">
-            <h2 id="stages-check-title" class="text-[15px]/6 font-semibold">
-              {gettext("Placement check")}
-            </h2>
-            <p :if={@problems == []} id="stages-check-clear" class="text-[13.5px]/5">
+          <div :if={@tab == :details} id="stages-details" class="grid gap-6">
+            <p id="stages-details-line" class="text-[13.5px]/5 text-muted">
               {gettext(
-                "Every workflow is declared, every type exists, and every input is an output of an earlier stage."
+                "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version.",
+                workspace: @workspace
               )}
             </p>
-            <ul :if={@problems != []} class="grid gap-1 text-[13.5px]/5">
-              <li :for={problem <- @problems} data-problem={elem(problem, 0)}>
-                {problem_words(problem, @draft)}
-                <.link
-                  :if={elem(problem, 0) == :missing_type and @may}
-                  navigate={
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/artifact-types"
-                  }
-                  class="ml-1 font-medium text-accent underline underline-offset-[3px]"
-                >
-                  {gettext("Define it")}
-                </.link>
-              </li>
-            </ul>
-          </section>
-
-          <section
-            :if={@may and @trial}
-            id="stages-trial"
-            aria-labelledby="stages-trial-title"
-            class="grid gap-3"
-          >
-            <h2 id="stages-trial-title" class="text-[15px]/6 font-semibold">
-              {gettext("Trial: version %{number}", number: @trial.number)}
-            </h2>
-            <p class="text-[13.5px]/5">
-              {gettext(
-                "Work items you assign here follow version %{number}. Every other work item stays on its version.",
-                number: @trial.number
-              )}
+            <p id="stages-harness" class="text-[13.5px]/5">
+              {gettext("Harness: %{harness}", harness: @harness)}
+              <span :if={@may_harness} aria-hidden="true" class="text-muted">·</span>
+              <.link
+                :if={@may_harness}
+                id="stages-harness-change"
+                navigate={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/workflow"
+                }
+                class="font-medium text-accent underline underline-offset-[3px]"
+                aria-label={gettext("Change the harness")}
+              >
+                {gettext("Change")}
+              </.link>
             </p>
-            <.form
-              for={%{}}
-              as={:assign}
-              id="stages-assign-form"
-              phx-submit="assign"
-              novalidate
-              class="grid gap-2"
-            >
-              <p :if={@work_items == []} id="stages-no-work-items" class="text-[13px]/5 text-muted">
-                {gettext("No open work items.")}
+            <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
+              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot)}</p>
+              <p :if={@declared_error} id="stages-workflows-error" class="text-error">
+                {Words.read_failed(@declared_error, @snapshot)}
               </p>
-              <label
-                :for={item <- @work_items}
-                class="inline-flex items-center gap-2 text-[13.5px]/5"
-              >
-                <input
-                  type="checkbox"
-                  name="assign[items][]"
-                  value={item.public_id}
-                  checked={item.process_version_id == @trial.id}
-                  class="checkbox checkbox-sm checkbox-primary"
-                />
-                <span>{gettext("Work item %{number}: %{title}",
-                  number: item.number,
-                  title: item.title
-                )}</span>
-              </label>
-              <div :if={@work_items != []}>
-                <.button id="stages-assign" type="submit">{gettext("Assign to the trial")}</.button>
-              </div>
-            </.form>
-            <%!-- Here, next to the button, not under Save at the top of the page. --%>
-            <.notice :if={@assigned} kind={:success}>
-              <span id="stages-assigned">{@assigned}</span>
-            </.notice>
-            <.notice :if={@assign_errors != []} kind={:warning}>
-              <span :for={error <- @assign_errors} class="block" data-assign-error>{error}</span>
-            </.notice>
-            <div class="flex flex-wrap gap-2">
-              <.button id="stages-make-current" variant="primary" phx-click="make_current">
-                {gettext("Make current")}
-              </.button>
-              <.button id="stages-drop-trial" variant="danger-ghost" phx-click="drop_trial">
-                {gettext("Drop trial")}
-              </.button>
             </div>
-          </section>
 
-          <section id="stages-history" aria-labelledby="stages-history-title" class="grid gap-2">
-            <h2 id="stages-history-title" class="text-[15px]/6 font-semibold">
-              {gettext("History")}
-            </h2>
-            <ol class="grid gap-3">
-              <li
-                :for={{version, older} <- with_older(@versions)}
-                id={"stages-version-#{version.number}"}
-                class="grid gap-1"
+            <.form
+              :if={@may}
+              for={%{}}
+              as={:process}
+              id="stages-process-form"
+              phx-change="edit_process"
+              novalidate
+              class="max-w-md"
+            >
+              <.input
+                id="stages-machine"
+                name="process[machine]"
+                value={@draft["machine"]}
+                label={gettext("Default machine type")}
+                hint={Inspector.machine_hint()}
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </.form>
+            <p :if={!@may} id="stages-machine-read" class="text-[13.5px]/5">
+              {gettext("Default machine type: %{machine}", machine: @draft["machine"])}
+            </p>
+
+            <section id="stages-check" aria-labelledby="stages-check-title" class="grid gap-2">
+              <h2 id="stages-check-title" class="text-[15px]/6 font-semibold">
+                {gettext("Placement check")}
+              </h2>
+              <p :if={@problems == []} id="stages-check-clear" class="text-[13.5px]/5">
+                {gettext(
+                  "Every workflow is declared, every type exists, and every input is an output of an earlier stage."
+                )}
+              </p>
+              <ul :if={@problems != []} class="grid gap-1 text-[13.5px]/5">
+                <li :for={problem <- @problems} data-problem={elem(problem, 0)}>
+                  {problem_words(problem, @draft)}
+                  <.link
+                    :if={elem(problem, 0) == :missing_type and @may}
+                    navigate={
+                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/artifact-types"
+                    }
+                    class="ml-1 font-medium text-accent underline underline-offset-[3px]"
+                  >
+                    {gettext("Define it")}
+                  </.link>
+                </li>
+              </ul>
+            </section>
+
+            <section
+              :if={@may and @trial}
+              id="stages-trial"
+              aria-labelledby="stages-trial-title"
+              class="grid gap-3"
+            >
+              <h2 id="stages-trial-title" class="text-[15px]/6 font-semibold">
+                {gettext("Trial: version %{number}", number: @trial.number)}
+              </h2>
+              <p class="text-[13.5px]/5">
+                {gettext(
+                  "Work items you assign here follow version %{number}. Every other work item stays on its version.",
+                  number: @trial.number
+                )}
+              </p>
+              <.form
+                for={%{}}
+                as={:assign}
+                id="stages-assign-form"
+                phx-submit="assign"
+                novalidate
+                class="grid gap-2"
               >
-                <p class="text-[13.5px]/5">
-                  <span class="font-medium">
-                    {gettext("Version %{number}", number: version.number)}
-                  </span>
-                  <span class="ml-2 badge badge-sm">{status_word(version.status)}</span>
-                  <span class="ml-2 text-muted">
-                    {author_line(version, @authors)}
-                  </span>
+                <p :if={@work_items == []} id="stages-no-work-items" class="text-[13px]/5 text-muted">
+                  {gettext("No open work items.")}
                 </p>
-                <ul class="grid gap-0.5 text-[13px]/5 text-muted">
-                  <li :for={line <- change_lines(older, version, @people)}>{line}</li>
-                </ul>
-              </li>
-            </ol>
-          </section>
+                <label
+                  :for={item <- @work_items}
+                  class="inline-flex items-center gap-2 text-[13.5px]/5"
+                >
+                  <input
+                    type="checkbox"
+                    name="assign[items][]"
+                    value={item.public_id}
+                    checked={item.process_version_id == @trial.id}
+                    class="checkbox checkbox-sm checkbox-primary"
+                  />
+                  <span>{gettext("Work item %{number}: %{title}",
+                    number: item.number,
+                    title: item.title
+                  )}</span>
+                </label>
+                <div :if={@work_items != []}>
+                  <.button id="stages-assign" type="submit">{gettext("Assign to the trial")}</.button>
+                </div>
+              </.form>
+              <%!-- Here, next to the button, not under Save at the top of the page. --%>
+              <.notice :if={@assigned} kind={:success}>
+                <span id="stages-assigned">{@assigned}</span>
+              </.notice>
+              <.notice :if={@assign_errors != []} kind={:warning}>
+                <span :for={error <- @assign_errors} class="block" data-assign-error>{error}</span>
+              </.notice>
+              <div class="flex flex-wrap gap-2">
+                <.button id="stages-make-current" variant="primary" phx-click="make_current">
+                  {gettext("Make current")}
+                </.button>
+                <.button id="stages-drop-trial" variant="danger-ghost" phx-click="drop_trial">
+                  {gettext("Drop trial")}
+                </.button>
+              </div>
+            </section>
+
+            <section id="stages-history" aria-labelledby="stages-history-title" class="grid gap-2">
+              <h2 id="stages-history-title" class="text-[15px]/6 font-semibold">
+                {gettext("History")}
+              </h2>
+              <ol class="grid gap-3">
+                <li
+                  :for={{version, older} <- with_older(@versions)}
+                  id={"stages-version-#{version.number}"}
+                  class="grid gap-1"
+                >
+                  <p class="text-[13.5px]/5">
+                    <span class="font-medium">
+                      {gettext("Version %{number}", number: version.number)}
+                    </span>
+                    <span class="ml-2 badge badge-sm">{status_word(version.status)}</span>
+                    <span class="ml-2 text-muted">
+                      {author_line(version, @authors)}
+                    </span>
+                  </p>
+                  <ul class="grid gap-0.5 text-[13px]/5 text-muted">
+                    <li :for={line <- change_lines(older, version, @people)}>{line}</li>
+                  </ul>
+                </li>
+              </ol>
+            </section>
+          </div>
         </div>
       </SettingsComponents.layout>
     </Layouts.app>

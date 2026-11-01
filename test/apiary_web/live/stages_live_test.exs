@@ -5,8 +5,9 @@ defmodule ApiaryWeb.StagesLiveTest do
   the canvas, the editor, with the inspector of the selected stage; adding a stage at a
   place ("+"), renaming, moving and removing it; a stage's sequence, loop, inputs, outputs
   and gate; the placement check; a save, a trial and the history; a member's page, with
-  the same canvas and a read-only inspector; and the harness's workflows, read again from
-  the saved harness source against stub adapters (`Req.Test`).
+  the same canvas and a read-only inspector; the tabs Stages and Details, with one draft;
+  and the harness's workflows, read again from the saved harness source against stub
+  adapters (`Req.Test`).
 
   Not async: each test sets the instance's features, which are the whole node's.
   """
@@ -71,6 +72,10 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   defp canvas_view(view), do: canvas_data(view, "data-view")
 
+  # The Details tab, and back to the Stages tab: a patch, so the draft stays.
+  defp details(view, path), do: render_patch(view, path <> "?tab=details")
+  defp stages_tab(view, path), do: render_patch(view, path)
+
   defp canvas_data(view, attribute) do
     [json] =
       view
@@ -121,6 +126,22 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-editor #stages-canvas")
       assert has_element?(view, "#stages-editor #stage-panel")
 
+      # Stages opens first, at the page's address; the other settings are on Details.
+      assert has_element?(view, ~s(#stages-tabs-stages[href="#{path}"][aria-current="page"]))
+      assert has_element?(view, ~s(#stages-tabs-details[href="#{path}?tab=details"]))
+      refute has_element?(view, "#stages-harness")
+      refute has_element?(view, "#stages-history")
+
+      details(view, path)
+      assert has_element?(view, ~s(#stages-tabs-details[aria-current="page"]))
+      refute has_element?(view, "#stages-canvas")
+
+      assert has_element?(
+               view,
+               "#stages-details > p:first-child",
+               "Every work item of #{scope.workspace.name} goes through these stages, in order."
+             )
+
       assert has_element?(view, "#stages-harness", "Harness: Qory harness")
 
       assert has_element?(
@@ -128,6 +149,12 @@ defmodule ApiaryWeb.StagesLiveTest do
                ~s(#stages-harness-change[href="#{workspace_path(scope, "/settings/workflow")}"]),
                "Change"
              )
+
+      assert has_element?(view, "#stages-version", "Editing version 1, current.")
+      assert has_element?(view, "#stages-check-clear")
+      assert has_element?(view, "#stages-version-1", "The first version.")
+
+      stages_tab(view, path)
 
       assert has_element?(
                view,
@@ -165,8 +192,27 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert has_element?(view, "#stage-panel-title", "Edit Explore")
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
-      assert has_element?(view, "#stages-check-clear")
-      assert has_element?(view, "#stages-version-1", "The first version.")
+    end
+
+    test "a switch of tabs keeps the draft, and Save is on both tabs", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, path)
+      view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
+
+      details(view, path)
+      assert has_element?(view, "#stages-dirty", "Unsaved changes")
+      assert has_element?(view, "#stages-save:not([disabled])")
+      view |> form("#stages-process-form", process: %{machine: "large"}) |> render_change()
+
+      stages_tab(view, path)
+      assert hd(names(view)) == "Discover"
+      view |> element("#stages-save") |> render_click()
+
+      assert %{document: %{"machine" => "large", "stages" => [%{"name" => "Discover"} | _]}} =
+               Processes.current(scope.workspace)
     end
 
     test "adds a stage with a new id at a +, renames, moves and removes it", %{
@@ -248,12 +294,14 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
       assert has_element?(view, "#stage-entry-0-machine[value=large]")
 
-      # The machine help text, once, under the default machine type only.
+      # The machine help text, once, under the default machine type only, on Details.
       hint =
         "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
 
-      assert has_element?(view, "#stages-process-form", hint)
       refute has_element?(view, "#stage-panel", "Qory Apiary stores the machine type")
+      details(view, path)
+      assert has_element?(view, "#stages-process-form", hint)
+      stages_tab(view, path)
 
       view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
       refute has_element?(view, "#stage-loop-1")
@@ -279,15 +327,18 @@ defmodule ApiaryWeb.StagesLiveTest do
         "Build uses capture-demo, which the harness no longer declares. Add it to the harness, or choose another workflow for Build."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", undeclared)
-      assert has_element?(view, ~s(#stages-check [data-problem="missing_workflow"]), undeclared)
-
       assert undeclared in card(view, "Build")["alerts"]
+
+      details(view, path)
+      assert has_element?(view, ~s(#stages-check [data-problem="missing_workflow"]), undeclared)
+      stages_tab(view, path)
 
       # Shown as the entry's value, and not offered: the harness declares explore-a-ticket.
       assert has_element?(view, ~s{#stage-sequence option[value="capture-demo"][disabled]})
       refute has_element?(view, ~s{#stage-sequence option[value="capture-demo"]:not([disabled])})
 
       view |> element("#stage-add-inputs") |> render_click()
+      details(view, path)
 
       assert has_element?(
                view,
@@ -351,6 +402,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       |> render_change()
 
       view |> element("#stages-save") |> render_click()
+      details(view, path)
 
       history = view |> element("#stages-history") |> render()
 
@@ -373,7 +425,7 @@ defmodule ApiaryWeb.StagesLiveTest do
         )
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
 
       assert has_element?(
                view,
@@ -401,8 +453,9 @@ defmodule ApiaryWeb.StagesLiveTest do
         )
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
 
+      assert has_element?(view, "#stages-check")
       refute has_element?(view, ~s(#stages-check [data-problem="missing_type"]))
     end
 
@@ -422,6 +475,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-notice", "Saved as version 2.")
       assert has_element?(view, "#stages-version", "Editing version 2, current.")
       refute has_element?(view, "#stages-dirty")
+      details(view, path)
       assert has_element?(view, "#stages-version-2", "Removed the stage Release.")
       assert has_element?(view, "#stages-version-2", "Added the stage New stage.")
 
@@ -498,6 +552,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
       view |> element("#stages-save-trial") |> render_click()
+      details(view, path)
 
       assert has_element?(view, "#stages-trial-title", "Trial: version 2")
       assert has_element?(view, "#stages-assign-form", "Web shop checkout")
@@ -534,7 +589,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, trial} = Processes.save(scope, scope.workspace, added, trial: true)
       {:ok, _item} = Processes.assign(scope, Repo.get!(WorkItem, item.id), trial)
 
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
       view |> element("#stages-drop-trial") |> render_click()
 
       assert has_element?(
@@ -559,6 +614,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       view |> element(~s(#stage-remove[aria-label="Remove Explore"])) |> render_click()
       view |> element("#stages-save-trial") |> render_click()
+      details(view, path)
 
       view |> form("#stages-assign-form", assign: %{items: [item.public_id]}) |> render_submit()
 
@@ -589,7 +645,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       renamed = Draft.update_stage(v1.document, id_of("Shape"), &Map.put(&1, "name", "Plan"))
       {:ok, _v3} = Processes.save(scope, scope.workspace, renamed, based_on: v1)
 
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
 
       assert has_element?(view, "#stages-version-3", "Renamed the stage Shape to Plan.")
       refute has_element?(view, "#stages-version-3", "Discover")
@@ -604,7 +660,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       item = work_item_fixture(scope, %{title: "Web shop checkout"})
       {renamed, _id} = Draft.add_stage(Processes.current(scope.workspace).document, "Discover")
       {:ok, trial} = Processes.save(scope, scope.workspace, renamed, trial: true)
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
       assert has_element?(view, "#stages-trial")
 
       {:ok, _trial} = Processes.drop_trial(scope, trial)
@@ -634,6 +690,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> element("#stages-save-trial") |> render_click()
 
       assert has_element?(view, "[data-save-error]", "Version 2 is already a trial.")
+      details(view, path)
       assert has_element?(view, "#stages-trial-title", "Trial: version 2")
       assert has_element?(view, "#stages-dirty")
       assert [2, 1] == Enum.map(Processes.list_versions(scope.workspace), & &1.number)
@@ -649,7 +706,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, trial} = Processes.save(scope, scope.workspace, added, trial: true)
       Repo.update_all(WorkItem, set: [stage_id: discover, process_version_id: trial.id])
 
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
       view |> element("#stages-drop-trial") |> render_click()
 
       assert has_element?(
@@ -685,8 +742,17 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       # The sidebar's Stages entry, for a member too.
       assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+
+      details(view, path)
       assert has_element?(view, "#stages-harness", "Harness: Qory harness")
       refute has_element?(view, "#stages-harness-change")
+      assert has_element?(view, "#stages-machine-read", "Default machine type: default")
+
+      for selector <- ~w(#stages-process-form #stages-trial #stages-save) do
+        refute has_element?(view, selector), selector
+      end
+
+      stages_tab(view, path)
 
       assert names(view) == ~w(Explore Shape Build Verify Release)
       refute canvas_view(view)["editable"]
@@ -779,17 +845,19 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       # The line has the names the harness listed; explore-a-ticket, of the Qory harness,
       # is only in the picker.
+      assert has_element?(view, ~s(#stage-panel select option[value="explore-a-ticket"]))
+      # The picker of Explore, the selected stage, offers them.
+      assert has_element?(view, ~s(#stage-panel select option[value="triage"]))
+
+      details(view, path)
+
       assert has_element?(
                view,
                "#stages-workflows-list",
                "Workflows the harness listed just now: fix, triage."
              )
 
-      assert has_element?(view, ~s(#stage-panel select option[value="explore-a-ticket"]))
-
       refute has_element?(view, "#stages-workflows-error")
-      # The picker of Explore, the selected stage, offers them.
-      assert has_element?(view, ~s(#stage-panel select option[value="triage"]))
     end
 
     test "a read that fails keeps the list of the last read, with the cause",
@@ -803,15 +871,17 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert Processes.declared_snapshot(scope.workspace) == snapshot
 
+      # fix, the saved workflow, is not in the snapshot: the picker offers it, the line
+      # leaves it out.
+      assert has_element?(view, ~s(#stage-panel select option[value="fix"]))
+      details(view, path)
+
       assert has_element?(
                view,
                "#stages-workflows-list",
                "Workflows the harness listed just now: review."
              )
 
-      # fix, the saved workflow, is not in the snapshot: the picker offers it, the line
-      # leaves it out.
-      assert has_element?(view, ~s(#stage-panel select option[value="fix"]))
       refute has_element?(view, "#stages-workflows-list", "fix")
 
       assert has_element?(
@@ -845,7 +915,7 @@ defmodule ApiaryWeb.StagesLiveTest do
         Req.Test.transport_error(conn, :econnrefused)
       end)
 
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
       assert_receive {:held, call}, 2_000
 
       assert has_element?(view, "#stages-workflows-list", "listed just now: review.")
@@ -868,7 +938,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       serve_calls([adapter], covered: covered, files: @files)
       %{user: user} = member_fixture(scope)
 
-      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path <> "?tab=details")
       render_async(view, 5_000)
 
       refute_received {:harness_call, _path, _call}
@@ -885,7 +955,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       :ok = Processes.record_declared(scope.workspace, [])
       %{user: user} = member_fixture(scope)
 
-      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path <> "?tab=details")
 
       assert has_element?(
                view,
@@ -919,7 +989,7 @@ defmodule ApiaryWeb.StagesLiveTest do
         Req.Test.transport_error(conn, :econnrefused)
       end)
 
-      {:ok, view, _html} = live(conn, path)
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
       assert_receive {:held, call}, 2_000
 
       # The person saves the other stack while the read of triage runs.

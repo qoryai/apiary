@@ -4331,6 +4331,12 @@ msgctxt "workspace type"
 msgid "Agents change code in your repositories."
 msgstr ""
 
+#: lib/apiary/processes.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "Agents change code in your repositories. Each ticket needs a repository."
+msgstr ""
+
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -5162,6 +5168,11 @@ msgstr ""
 msgid "At most 64 characters, and not the name of another adapter here."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "At most 80 words, beside the stages on the type's page. A blank line starts a new paragraph."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "At the gate"
@@ -5626,6 +5637,11 @@ msgctxt "field edited"
 msgid "Changed"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Changed How it works."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed Qory's proposal for a work item and confirmed it"
@@ -5781,6 +5797,11 @@ msgstr ""
 msgid "Changed the instance's configuration"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the name."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the outputs of %{name}."
@@ -5799,6 +5820,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the sequence of %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the summary."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7595,8 +7621,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/artifact_live/show.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Details"
 msgstr ""
@@ -7799,6 +7827,12 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
+msgstr ""
+
+#: lib/apiary/processes.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.\n\nYou connect: where work comes from, where changes go, and a model."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -9431,6 +9465,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "How it ended"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "How it works"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -11553,6 +11592,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/nodes.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -13216,6 +13256,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "One or more machines that use the pool's access key."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "One or two sentences, on the card on New workspace and at the top of the type's page."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/further_repositories.ex
@@ -17161,6 +17206,7 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -17371,6 +17417,7 @@ msgid "Suggestions"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Summary"
 msgstr ""
@@ -21353,6 +21400,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Write at most %{number} characters."
 msgstr ""
