@@ -8747,8 +8747,14 @@ msgid "Fixed when the key was made."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Focus"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/canvas.ex
+#, elixir-autogen, elixir-format
+msgid "Focus: the canvas takes the window (f)"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -9014,6 +9020,7 @@ msgid "Full log"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Full screen"
 msgstr ""
@@ -10603,6 +10610,7 @@ msgid "Leave %{organisation}?"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Leave full screen"
 msgstr ""
@@ -14198,12 +14206,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
-msgid "Press Enter to open the stage under the canvas."
+msgid "Press Enter to open the stage beside the canvas."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
-msgid "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
+msgid "Press Enter to open the stage beside the canvas. Move it with the up and down arrow keys."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -16802,32 +16810,12 @@ msgid_plural "Show %{count} earlier comments"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show %{count} more stages on the left"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show %{count} more stages on the right"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show %{number} more"
 msgid_plural "Show %{number} more"
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show 1 more stage on the left"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show 1 more stage on the right"
-msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -23628,14 +23616,4 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "… %{number} more"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "← %{count} more"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "→ %{count} more"
 msgstr ""
