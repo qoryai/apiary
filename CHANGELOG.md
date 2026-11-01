@@ -479,6 +479,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Every run has a number, one count for the whole server, and the console names and
+  addresses a run by it: “Run 18342” at `/acme/main/runs/18342`, in the run page's header
+  and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the
+  search results. A run's title, when it sent one, is the line under the header. An
+  address with the run's `rn_` id, such as a link built from the API, sends on to the
+  number's address in the same workspace. Details shows **Run number** with Copy, the
+  run's menu copies the number, and a downloaded log is named `run-18342.log`. A run's
+  place in a take in reads “Attempt 2 of 3”. The API keeps the `rn_` id, and the
+  diagnostics endpoint, `GET /v1/runs/<run>/diagnostics`, takes the number or the `rn_`
+  id.
+
 - A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
   public harness repository from its host over HTTPS, with no connection and no
   adapter: a repository the host serves to anyone is public. A harness source that is
@@ -664,6 +675,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
+  value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
+  in the order they started, then the sequence goes on from the highest number. The
+  migration locks `runs` against writes while it runs.
 - `stacks`: two nullable columns, `version_kind` and `version_name`, with a check on their
   combinations. Each saved Qory harness choice at the commit `fe3b3ab` becomes **Always
   the latest version**. Other rows keep their pin.
