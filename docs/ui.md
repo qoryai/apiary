@@ -1694,6 +1694,19 @@ id".
   Overview's rows, Network access's hits and ⌘K's results), in a
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
   an `aria-label` and an announcement hold them as plain text.
+- **The Timeline's rows are one line each.** A tool row is the tool and the first line
+  of its `summary`, the part of its input Forager selects, never words Qory Apiary makes
+  from a tool's name; a denied tool reads "Not run: denied" in place of its duration. A
+  text of the session is a **Text** row: its first line with words, without Markdown
+  marks (a heading's `#`, a quote's `>`, a bullet or number, emphasis, code and a link's
+  address), and **Terminal ›**, a link to the text in the Terminal tab's Transcript for
+  a reader who may read the log. Thinking has no row. **Turn finished** and **Result**
+  show no text: the Text row before them has it; Result keeps its outcome, turns,
+  duration and cost (`success · 6 turns · 14 s · $0.09`).
+- **Connections inline.** The switch above the Timeline (`?cx=1`) shows the allowed
+  connections, each under the tool call that made it; it is off when the page opens. A
+  denied connection shows next to its tool call whether the switch is on or off, so a
+  denial is always beside its cause. Network access shows every connection.
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
@@ -1798,46 +1811,74 @@ id".
 
 `<.terminal>` in `RunPageComponents` is dark in both themes: the recorded output's colours
 are written against a dark ground. It fills the window below the tab bar, never under
-380 px. The `Terminal` hook reads the bytes from the run's log endpoint and, in the Raw
-view, hands them to xterm.js as `Uint8Array`s, never decoded strings, in slices per frame
-so a long log does not block input, and interprets none of them. The bytes never cross the LiveView socket: the LiveView sends the foot's
-numbers and a signal that the log advanced. xterm.js is vendored under
-`assets/vendor/xterm`, built as a separate bundle and loaded on the hook's first mount, by no
-other page. The screen is `role="log"` with `aria-live="off"`.
+380 px. It has two views, **Transcript** and **Raw**, as a two-button segment at the bar's
+start when the run has both.
 
+- **Transcript** (`ApiaryWeb.TranscriptComponents`) is the session drawn by the LiveView
+  from its runtime events (`dev.qory.runtime.*`), in sequence order, as HTML in the mono
+  font. It reads no runtime's output format, so a runtime whose Forager descriptor maps
+  its output to these events needs no change here. Its lines:
+  - the prompt: `❯` and the prompt;
+  - a tool call: `⏺`, the tool and the first line of its `summary` in brackets
+    (`⏺ Skill(harness:greet)`), or the tool alone without one; under it, after `⎿`, the
+    first 3 lines of the result the runtime gave the model (`runtime.tool_result`), then
+    "%{number} more lines", which opens the rest, read whole, and "Show less", which
+    folds it again. A string result shows as written; of an array of blocks, each text
+    block's text shows, and each other block its type in brackets. A call with no result
+    has no line under it. A denied call shows `⎿ Denied:` and the reason, or "Not run:
+    denied" without one; a failed call shows its error in the failure colour;
+  - a text: `⏺` and the text as Markdown through `Apiary.Sources.Body`, as on a work
+    item, with each line kept (`hard_breaks: true`), and no HTML of the text; thinking
+    with text is folded under "Thinking", and empty thinking is left out;
+  - the result: `✓` or `✗` and its outcome, turns, duration and cost, without its text,
+    which the text line before it shows.
+
+  A subagent's lines are indented. A text or result the session cut at 64 KiB ends with
+  "Cut at 64 KiB. Raw has every byte.". Each line read from the session's output has a
+  **Raw** link at its end, shown on hover and on focus, named "Show line %{number} in
+  Raw": the server finds where that line starts in the log (`Record.log_offset/5`,
+  counting the session's stdout chunks outside steps, as Forager counts `line`), and Raw
+  is read again with that line marked at the top of the screen; a Raw that showed stderr
+  alone shows both streams. The Transcript is a window of the items, as the Timeline is:
+  "%{number} earlier events" and "Load newer" load more, a live run adds its lines as
+  they arrive, and the end is followed while the reader is at it. A Timeline link
+  (`?seq=`) brings its line into view.
+- **Older runs.** A run recorded before Forager sent texts, results and denials shows
+  its tool lines, and each turn's last message (`turn_finished`) in place of the texts; a
+  tool's line opens to what the tool returned, as JSON. With neither texts nor turn ends,
+  the result shows its text.
+- **Raw** is the log's bytes in xterm.js. The `Terminal` hook reads them from the run's
+  log endpoint and hands them to xterm.js as `Uint8Array`s, never decoded strings, in
+  slices per frame so a long log does not block input, and interprets none of them. A
+  sequence that scrolls, inserts or deletes more than 10,000 lines, or repeats a character
+  more than 65,536 times, is dropped, as no screen needs it and carrying it out held the
+  page for seconds. The bytes never cross the LiveView socket: the LiveView sends the
+  foot's numbers and a signal that the log advanced. xterm.js is vendored under
+  `assets/vendor/xterm`, built as a separate bundle and loaded the first time Raw shows,
+  by no other page. The screen is `role="log"` with `aria-live="off"`, with the note under
+  the box.
+- **The view it opens in.** A run on pipes with a Transcript opens in Transcript, or in
+  Raw when that is the reader's choice, kept in `localStorage`. A run on a pseudo-terminal
+  opens in Raw, as its log is cursor movement, and so does a run with no runtime events.
 - **The recorded width is kept.** A run whose record says its pseudo-terminal's size is
   drawn at those columns and rows, centred only inside the box's darker ground, which
   fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
   to the box, with Wrap.
-- **Collapsed and Raw.** A run on pipes has a two-button segment, Collapsed by default,
-  the reader's choice kept in `localStorage`. A run on a pseudo-terminal has none: its log
-  is cursor movement, and it stays Raw. Raw is the bytes as they are, with the note under
-  the box; Collapsed has no note. Collapsed cuts the stream into lines in `terminal_lines.js`:
-  a line of up to 16 MiB that starts with `{` and parses to a JSON object is one row of the
-  screen, with a marker, its `type` and `subtype`, a preview (its `result`, else the first text in
-  `message.content`, cut to the row) and its size, as "> result success  API Error: 400 ...
-  1.1 kB"; every other line passes through as its bytes. A click on a row opens it to the
-  object, printed, and a click on the row closes it; a row over 1 MiB, as a line or printed,
-  shows Raw instead. xterm.js cannot rewrite a row above the end, so the view keeps its lines and writes the screen again at the same scroll
-  position, as it does when the box's width changes. A log of over 50,000 lines or 256 MiB
-  shows Raw. Rows open by mouse alone; Raw and the link to the log as text are the way to
-  read all of it by keyboard. Download is the same in both views.
-- **Decoded text is not the log's bytes.** JSON escapes control characters, so a decoded
-  value can contain a live escape sequence that the raw line does not. Every decoded value
-  in a row has its C0, C1 and DEL characters removed, a `type` or `subtype` keeps only
-  `[A-Za-z0-9_.:-]`, 40 characters at most, and the printed object has all of them escaped.
-  Nothing of the log touches the DOM outside xterm.js.
-- **The bar**: the stream, the view, search (`/`), follow (End), wrap, the **text size** (A−, A+,
-  11 to 18 px, and Fit, the largest size at which a recorded screen's columns fit), a
-  reading preference kept in `localStorage`; download; **Focus** (`f` outside a field;
-  Escape leaves), a class on the root that folds the shell, the header, the tabs and the
-  rail away so the box takes the window; and **Full screen**, the browser's, on the box,
-  shown only where the browser has it. A narrow box names its buttons on hover only
-  (a container query), so the bar never wraps. Search reads the screen, and a collapsed
-  row hides its words, so typing in it shows Raw, the segment with it, without changing
-  the reader's choice.
-- **No output.** A run with no output says so in the column instead of the box, as an
-  empty state.
+- **The bar**: the view, then Raw's stream (stdout, stderr or both), search (`/`), follow
+  (End) and wrap, which show only in Raw; the **text size** (A−, A+, 11 to 18 px, and Fit,
+  the largest size at which a recorded screen's columns fit), a reading preference kept in
+  `localStorage` for both views; download; **Focus** (`f` outside a field; Escape
+  leaves), a class on the root that folds the shell, the header, the tabs and the rail
+  away so the box takes the window; and **Full screen**, the browser's, on the box, shown
+  only where the browser has it. A narrow box names its buttons on hover only (a
+  container query), so the bar never wraps. Search reads Raw's screen, so typing in it
+  shows Raw ("Search the log. Searching shows the Raw view."); with no match, an ended run
+  shows the start of its log.
+- **Access and retention.** The tab is `run.read_log`'s, as tool results are log content.
+  The Transcript follows the events' retention and Raw the log's, and the log goes first:
+  a run whose log was pruned shows the log's pruned notice and the Transcript alone.
+- **No output.** A run with neither a log nor runtime events says so in the column
+  instead of the box, as an empty state.
 
 ## Words
 
