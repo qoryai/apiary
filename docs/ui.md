@@ -1639,9 +1639,9 @@ workspace; a number or `rn_` id of no run of the workspace, the run id on the ma
 any other value are not found, the same page for each. The header, the breadcrumb, the
 lists and the titles name a run "Run 14"; Details' Record shows "Run number" with Copy,
 the run id on the machine on the next row, "Run id on the machine", and the search finds
-a run by its `rn_` id or the run id on the machine. No page shows the `rn_` id. Details and the runs list's preview
-show the instance id Forager claimed for the run, when it claimed one, under "Machine
-id".
+a run by its `rn_` id or the run id on the machine. The run page, the lists and the
+titles show no `rn_` id. Details and the runs list's preview show the instance id
+Forager claimed for the run, when it claimed one, under "Machine id".
 
 - **The header** is "Run" and the run's number, `Run 14`, alone; then the title the run
   gave in its `about`, when it gave one, on the next line; then, when the run names a kind or

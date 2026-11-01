@@ -11,8 +11,9 @@ defmodule Apiary.Repo.Migrations.NumberEveryRun do
   # table), and is the column's default, so an insert that names no number takes the next.
   # A number an insert took is not given back when the insert rolls back or does nothing.
   #
-  # All of it runs in the migration's one transaction, which first locks `runs` against
-  # writes: code still serving during a deploy cannot insert a run without a number between
+  # All of it runs in the migration's one transaction. It first locks `runs` against
+  # writes, and adding the column then locks it against reads too, until the transaction
+  # ends: code still serving during a deploy cannot insert a run without a number between
   # the numbering and NOT NULL.
   def up do
     execute "LOCK TABLE runs IN SHARE ROW EXCLUSIVE MODE"

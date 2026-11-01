@@ -115,8 +115,8 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by its `public_id`, `rn_…`, the id the run's URL
-  carries; raises `Ecto.NoResultsError` when the workspace has none such, which a run of
+  One run of the scope's workspace by its `public_id`, `rn_…`, the id the API gives;
+  raises `Ecto.NoResultsError` when the workspace has none such, which a run of
   another workspace and a malformed id both are, the node's run id among them.
   """
   def get_run_by_public_id!(%Scope{} = scope, public_id) do

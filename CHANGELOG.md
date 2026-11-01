@@ -678,7 +678,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
   value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
   in the order they started, then the sequence goes on from the highest number. The
-  migration locks `runs` against writes while it runs.
+  migration locks `runs` against reads and writes while it runs.
 - `stacks`: two nullable columns, `version_kind` and `version_name`, with a check on their
   combinations. Each saved Qory harness choice at the commit `fe3b3ab` becomes **Always
   the latest version**. Other rows keep their pin.
