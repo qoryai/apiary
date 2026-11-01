@@ -52,7 +52,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       scope: scope
     } do
       run = run_with_log(scope)
-      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log")
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log")
 
       assert conn.status == 200
       assert conn.state == :chunked
@@ -70,7 +70,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       conn =
         conn
         |> put_req_header("accept", "*/*")
-        |> get(~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log")
+        |> get(~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log")
 
       assert conn.status == 200
       assert [_] = get_resp_header(conn, "x-qory-log-through")
@@ -80,13 +80,13 @@ defmodule ApiaryWeb.RunLogControllerTest do
       run = run_with_log(scope)
 
       conn1 =
-        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?after=6")
+        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log?after=6")
 
       assert conn1.resp_body == <<255, 0, 10>>
       assert get_resp_header(conn1, "x-qory-log-through") == ["10"]
 
       conn2 =
-        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?limit=1")
+        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log?limit=1")
 
       assert conn2.resp_body == "building\n"
       assert get_resp_header(conn2, "x-qory-log-through") == ["6"]
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       conn3 =
         get(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?stream=stderr"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log?stream=stderr"
         )
 
       assert conn3.resp_body == <<255, 0, 10>>
@@ -102,7 +102,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       conn4 =
         get(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?after=10"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log?after=10"
         )
 
       assert conn4.status == 200
@@ -116,7 +116,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
     } do
       run = sized_run(scope)
       assert %{terminal_cols: 80, terminal_rows: 24} = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
-      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log"
 
       # From the start: the chunks before the first resize, at the session's start's size,
       # and the answer reaches the resize itself.
@@ -177,7 +177,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       ])
 
       {:ok, run} = Projector.project(run)
-      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log"
 
       # Session 1's chunks at its size, up to session 2's start.
       first = get(conn, path)
@@ -219,7 +219,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       ])
 
       {:ok, run} = Projector.project(run)
-      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log"
 
       # Session 1 at its size, stopping at session 2's start.
       first = get(conn, path)
@@ -239,11 +239,11 @@ defmodule ApiaryWeb.RunLogControllerTest do
       scope: scope
     } do
       run = run_with_log(scope)
-      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log")
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log")
       assert {through(conn), size(conn)} == {"10", nil}
     end
 
-    test "download=1 is every chunk as an attachment named after the short id", %{
+    test "download=1 is every chunk as an attachment named after the run's number", %{
       conn: conn,
       scope: scope
     } do
@@ -252,13 +252,24 @@ defmodule ApiaryWeb.RunLogControllerTest do
       conn =
         get(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?download=1&limit=1"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log?download=1&limit=1"
         )
 
       assert conn.resp_body == "building\n" <> <<255, 0, 10>>
 
       assert get_resp_header(conn, "content-disposition") ==
-               [~s(attachment; filename="#{run.public_id}.log")]
+               [~s(attachment; filename="run-#{run.number}.log")]
+    end
+
+    test "the run's rn_ address sends on to its number, with the query", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = run_with_log(scope)
+      path = "#{workspace_path(scope)}/runs"
+
+      conn = get(conn, "#{path}/#{run.public_id}/log?download=1&limit=1")
+      assert redirected_to(conn) == "#{path}/#{run.number}/log?download=1&limit=1"
     end
 
     test "a parameter that is not what it should be is a 400", %{conn: conn, scope: scope} do
@@ -272,7 +283,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
             "stream=stdin",
             "after=99999999999"
           ] do
-        conn = get(conn, "#{workspace_path(scope)}/runs/#{run.public_id}/log?" <> query)
+        conn = get(conn, "#{workspace_path(scope)}/runs/#{run.number}/log?" <> query)
         assert conn.status == 400, query
       end
     end
@@ -283,6 +294,10 @@ defmodule ApiaryWeb.RunLogControllerTest do
     } do
       theirs = run_with_log(scope_fixture())
 
+      assert get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{theirs.number}/log").status ==
+               404
+
+      # Its rn_ id is not sent on to its number: it is not found either.
       assert get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{theirs.public_id}/log").status ==
                404
 
@@ -309,7 +324,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
     test "where the run's Terminal is hidden from the reader, every stream and the download are not found",
          %{conn: conn, scope: scope} do
       run = sized_run(scope)
-      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/log"
 
       queries =
         ~w(? ?stream=terminal ?stream=stdout ?stream=stderr ?download=1 ?after=3&limit=1
@@ -336,7 +351,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       theirs = scope_fixture()
       run = run_with_log(theirs)
 
-      conn = get(conn, ~p"/#{theirs.organisation}/#{theirs.workspace}/runs/#{run.public_id}/log")
+      conn = get(conn, ~p"/#{theirs.organisation}/#{theirs.workspace}/runs/#{run.number}/log")
 
       assert conn.status == 404
       refute conn.resp_body =~ "building"
@@ -359,7 +374,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
     run = run_with_log(owner)
     %{user: user, membership: membership} = member_fixture(owner, :member)
     conn = log_in_user(conn, user)
-    path = ~p"/#{owner.organisation}/#{owner.workspace}/runs/#{run.public_id}/log"
+    path = ~p"/#{owner.organisation}/#{owner.workspace}/runs/#{run.number}/log"
 
     assert conn |> get(path) |> response(200)
 

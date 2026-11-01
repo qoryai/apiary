@@ -303,8 +303,23 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       user_id = ctx.scope.user.id
       here = ctx.scope.workspace.id
-      first_ref = %{id: first.public_id, workspace_id: here, attempt: 1, of: 3}
-      second_ref = %{id: second.public_id, workspace_id: here, attempt: 2, of: 3}
+
+      first_ref = %{
+        id: first.public_id,
+        number: first.number,
+        workspace_id: here,
+        attempt: 1,
+        of: 3
+      }
+
+      second_ref = %{
+        id: second.public_id,
+        number: second.number,
+        workspace_id: here,
+        attempt: 2,
+        of: 3
+      }
+
       first_instruction = item.first_instruction
 
       assert [
@@ -358,7 +373,13 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         set: [updated_at: ago(now, 2)]
       )
 
-      first_ref = %{id: first.public_id, workspace_id: ctx.scope.workspace.id, attempt: 1, of: 3}
+      first_ref = %{
+        id: first.public_id,
+        number: first.number,
+        workspace_id: ctx.scope.workspace.id,
+        attempt: 1,
+        of: 3
+      }
 
       assert [
                %{kind: :taken_in},

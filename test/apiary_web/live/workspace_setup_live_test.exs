@@ -3422,7 +3422,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Test run passed: the agent answered on a machine. See the run"
 
       assert href(lv, "#set-up-test-passed a") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       assert words(lv, "#set-up-go") == "Go to #{scope.workspace.name}"
     end
@@ -3531,7 +3531,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert has_element?(lv, "#set-up-test-failed[data-cause=silent]")
 
         assert words(lv, "#set-up-test-failed") ==
-                 String.replace(line, "RUN_ID", run.public_id),
+                 String.replace(line, "RUN_ID", Integer.to_string(run.number)),
                node.name
       end
     end
@@ -3587,7 +3587,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-test-run-link") == "See the run"
 
       assert href(lv, "#set-up-test-run-link") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
     end
 
     test "passed on a pool of the workspace, or on the instance's pool, says which", %{
@@ -3611,7 +3611,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Test run passed: the agent answered on a machine of build-pool. See the run"
 
       assert href(lv, "#set-up-test-passed a") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       Repo.update_all(from(r in Run, where: r.id == ^run.id),
         set: [node_id: instance_pool_fixture().id]
@@ -3666,7 +3666,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         {:ok, lv, _html} = live(conn, test_path(scope))
 
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
-        assert words(lv, "#set-up-test-failed") == String.replace(line, "RUN_ID", run.public_id)
+
+        assert words(lv, "#set-up-test-failed") ==
+                 String.replace(line, "RUN_ID", Integer.to_string(run.number))
+
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
@@ -3811,7 +3814,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert words(lv, "#set-up-test-failed") == line <> " See the run"
 
         assert href(lv, "#set-up-test-failed a") ==
-                 ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+                 ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
@@ -3852,7 +3855,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-test-preparation") == "Open the run's Prepare machine section"
 
       assert href(lv, "#set-up-test-preparation") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <>
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <>
                  "#prepare-machine"
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
@@ -3897,7 +3900,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "of build-pool on its host. Open the run's Prepare machine section"
 
       assert href(lv, "#set-up-test-preparation") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <>
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <>
                  "#prepare-machine"
     end
 

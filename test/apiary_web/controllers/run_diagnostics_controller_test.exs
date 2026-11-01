@@ -32,7 +32,7 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
 
     %{
       run: run,
-      path: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/diagnostics"
+      path: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}/diagnostics"
     }
   end
 
@@ -87,11 +87,23 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
     theirs = run_fixture(scope_fixture(), %{public_id: Run.new_public_id()})
     base = ~p"/#{scope.organisation}/#{scope.workspace}/runs"
 
-    for id <- [theirs.public_id, Run.new_public_id(), "not-a-run", theirs.id] do
+    for id <- [
+          Integer.to_string(theirs.number),
+          theirs.public_id,
+          Run.new_public_id(),
+          "not-a-run",
+          theirs.id
+        ] do
       conn = get(conn, "#{base}/#{id}/diagnostics")
       assert conn.status == 404, id
       assert conn.resp_body == "not found"
     end
+  end
+
+  test "the run's rn_ address sends on to its number", %{conn: conn, scope: scope, run: run} do
+    base = ~p"/#{scope.organisation}/#{scope.workspace}/runs"
+    conn = get(conn, "#{base}/#{run.public_id}/diagnostics")
+    assert redirected_to(conn) == "#{base}/#{run.number}/diagnostics"
   end
 
   test "signed out, it redirects to the log-in page", %{path: path} do

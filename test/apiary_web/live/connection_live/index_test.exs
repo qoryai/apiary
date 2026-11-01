@@ -347,20 +347,20 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       # Each run names its target by its path, with its system where another system shares
       # the path: acme/shop is on two systems.
-      first = view |> text("##{id}-run-#{b.public_id}") |> String.replace(" / ", "/")
+      first = view |> text("##{id}-run-#{b.number}") |> String.replace(" / ", "/")
       assert first =~ "Running"
       assert first =~ "gitlab.example/acme/shop"
       assert first =~ "1 denied"
 
-      second = text(view, "##{id}-run-#{a.public_id}")
-      assert second =~ "checkout-tax #{String.slice(a.public_id, 0, 11)}"
+      second = text(view, "##{id}-run-#{a.number}")
+      assert second =~ "checkout-tax Run #{a.number}"
       # The run's title, cut to the line, is whole in its title.
-      assert has_element?(view, "##{id}-run-#{a.public_id} > span.truncate[title='checkout-tax']")
+      assert has_element?(view, "##{id}-run-#{a.number} > span.truncate[title='checkout-tax']")
       assert second =~ "1 allowed"
 
       assert has_element?(
                view,
-               "##{id}-run-#{a.public_id}[href='#{workspace_path(scope)}/runs/#{a.public_id}/network']"
+               "##{id}-run-#{a.number}[href='#{workspace_path(scope)}/runs/#{a.number}/network']"
              )
 
       view |> element("##{id}-toggle") |> render_click()
@@ -374,7 +374,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       view = open(conn, scope)
       view |> element("##{id}-toggle") |> render_click()
-      named = text(view, "##{id}-run-#{api.public_id}")
+      named = text(view, "##{id}-run-#{api.number}")
       assert named =~ "acme/api"
       refute named =~ "github.example"
     end
@@ -656,9 +656,9 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       id = dst(host)
       view |> element("##{id}-toggle") |> render_click()
-      assert text(view, "##{id}-run-#{run.public_id}") =~ "acme/shop"
+      assert text(view, "##{id}-run-#{run.number}") =~ "acme/shop"
       # A path sent with nothing left to show is marked, never Unassigned.
-      blank_hit = text(view, "##{id}-run-#{blank.public_id}")
+      blank_hit = text(view, "##{id}-run-#{blank.number}")
       assert blank_hit =~ "\uFFFD"
       refute blank_hit =~ "Unassigned"
 

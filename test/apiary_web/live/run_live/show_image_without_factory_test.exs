@@ -27,7 +27,7 @@ defmodule ApiaryWeb.RunLive.ShowImageWithoutFactoryTest do
       })
 
     {:ok, lv, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
     assert has_element?(lv, ~s(#run-image[title="#{@reported}"] > bdi), @reported)
     refute has_element?(lv, "#run-image", @prebuilt)

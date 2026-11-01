@@ -69,22 +69,22 @@ defmodule ApiaryWeb.ActivityDispatchReleaseTest do
   test "after the handover: the sentence, and the run as its subject" do
     %{scope: scope} = sign_up_fixture()
     id = Ecto.UUID.generate()
-    public_id = "rn_0123456789abcdef"
+    number = 14
     entry = entry(true, "run", id)
 
     assert shown(entry) == "Gave back a run handed over to its machine"
     assert changed(entry) == nil
 
-    assert %{text: "rn_01234567", mono: true, href: href} =
+    assert %{text: "Run 14", mono: false, href: href} =
              Core.subject(
                entry,
                :"dispatch.release",
-               %{runs: %{id => public_id}},
+               %{runs: %{id => number}},
                scope,
                scope.workspace
              )
 
-    assert href == "/#{scope.organisation.slug}/#{scope.workspace.slug}/runs/#{public_id}"
+    assert href == "/#{scope.organisation.slug}/#{scope.workspace.slug}/runs/#{number}"
   end
 
   test "the reason is in no sentence, subject or change" do

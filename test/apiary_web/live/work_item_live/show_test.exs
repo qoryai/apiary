@@ -126,7 +126,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-run", "Run 1 of 3")
+      assert has_element?(view, "#work-item-explore-run", "Attempt 1 of 3")
       assert has_element?(view, "#work-item-explore-run", "Queued")
     end
 
@@ -433,7 +433,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     test "for want of a model key: each tab puts the fix first, none says it ended with an error",
          %{conn: conn, scope: scope} do
       {work_item, run} = refused(scope, "model_key_missing")
-      short = String.slice(run.public_id, 0, 11)
+      short = Integer.to_string(run.number)
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -461,10 +461,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute html =~ "ended with an error"
     end
 
-    test "at run 3 of 3: the step card puts the fix first and keeps that no run is left",
+    test "at attempt 3 of 3: the step card puts the fix first and keeps that no run is left",
          %{conn: conn, scope: scope} do
       {work_item, run} = refused(scope, "model_key_missing", 3)
-      short = String.slice(run.public_id, 0, 11)
+      short = Integer.to_string(run.number)
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -472,7 +472,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
                view,
                "#work-item-step-line",
                @key_fix <>
-                 " The gateway had no model key for run #{short}. That run was run 3 of 3, the most one take in has, so Qory cannot explore again in this take in."
+                 " The gateway had no model key for run #{short}. That run was attempt 3 of 3, the most one take in has, so Qory cannot explore again in this take in."
              )
 
       refute html =~ "ended without a result, so Qory cannot explore again"
@@ -675,12 +675,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
-      href = ~p"/#{org}/#{ctx.here}/runs/#{ctx.run.public_id}"
+      href = ~p"/#{org}/#{ctx.here}/runs/#{ctx.run.number}"
       assert has_element?(view, ~s(a[href="#{href}"]))
       assert html =~ "At checkout."
     end
 
-    test "its short id alone where the reader reads only the workspace it is in now", ctx do
+    test "its number alone where the reader reads only the workspace it is in now", ctx do
       EditionStubs.MembersReachNamed.put([ctx.there.id])
       conn = log_in_user(ctx.conn, ctx.member)
       org = ctx.scope.organisation
@@ -688,7 +688,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
-      short = String.slice(ctx.run.public_id, 0, 11)
+      short = Integer.to_string(ctx.run.number)
       refute has_element?(view, ~s(a[href*="/runs/"]))
       assert has_element?(view, ".q-wi-run-id", short)
       assert html =~ "At checkout."

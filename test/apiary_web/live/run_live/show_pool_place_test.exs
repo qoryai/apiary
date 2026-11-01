@@ -59,10 +59,10 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
   end
 
   defp run_page(conn, scope, run),
-    do: open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+    do: open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
   defp preview(conn, scope, run) do
-    lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?run=#{run.public_id}")
+    lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?run=#{run.number}")
     render_hook(lv, "viewport", %{"wide" => true})
     render_async(lv)
     lv |> element("#runs-preview .q-pv-m") |> render()
@@ -252,11 +252,11 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
        %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run} do
     lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
-    pool_cell = lv |> element("#run-#{pool_run.public_id} .q-rl-host") |> render()
+    pool_cell = lv |> element("#run-#{pool_run.number} .q-rl-host") |> render()
     assert pool_cell =~ "mac-pool"
     refute pool_cell =~ @machine
 
-    local_cell = lv |> element("#run-#{local_run.public_id} .q-rl-host") |> render()
+    local_cell = lv |> element("#run-#{local_run.number} .q-rl-host") |> render()
     assert local_cell =~ @laptop
     refute local_cell =~ "mac-pool"
   end
@@ -327,8 +327,8 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
     assert Runs.matching_ids(scope, %Filters{host: "pool"}, ids) == []
 
     lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?host=Qory+Pool")
-    assert has_element?(lv, "#run-#{pool_run.public_id}")
-    refute has_element?(lv, "#run-#{local_run.public_id}")
+    assert has_element?(lv, "#run-#{pool_run.number}")
+    refute has_element?(lv, "#run-#{local_run.number}")
 
     target = Apiary.Repo.get!(Apiary.Runs.Target, pool_run.target_id)
 

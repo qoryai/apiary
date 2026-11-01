@@ -43,7 +43,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         first_instruction:
           "Check the rounding in the basket and in the order total; the tax line may round separately.",
         runs: %{
-          latest: %{id: "01a97b20", path: "/8wonders/main/runs/01a97b20"},
+          latest: %{id: "01a97b20", number: 14, path: "/8wonders/main/runs/14"},
           count: 1,
           running: 0
         },
@@ -346,8 +346,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   end
 
   describe "step_card/1, Explore running" do
-    test "a first run, and when it started; the run's id links its page" do
-      run = %{id: "01a9e3c7", path: "/8wonders/main/runs/01a9e3c7", started_at: ago(6 * 60)}
+    test "a first run, and when it started; the run's number links its page" do
+      run = %{id: "01a9e3c7", number: 15, path: "/8wonders/main/runs/15", started_at: ago(6 * 60)}
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, "h2") == "Explore"
@@ -356,20 +356,27 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-bee-line") ==
                "Qory is exploring. It reads the ticket and the code, and proposes how to build it."
 
-      assert text(html, "#work-item-step-run") == "Run 01a9e3c7 started 6 minutes ago."
-      assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/01a9e3c7"]
+      assert text(html, "#work-item-step-run") == "Run 15 started 6 minutes ago."
+      assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/15"]
       assert count(html, "button") == 0
     end
 
-    test "again, with a member's answers; a run without a page is its id" do
-      run = %{id: "rn_01a9e3c7", path: nil, started_at: ago(6 * 60), answers_by: [@priya]}
+    test "again, with a member's answers; a run without a page is its number" do
+      run = %{
+        id: "rn_01a9e3c7",
+        number: 15,
+        path: nil,
+        started_at: ago(6 * 60),
+        answers_by: [@priya]
+      }
+
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, ".q-wi-bee-line") ==
                "Qory is exploring again, with Priya's answers. It reads the ticket and the code, and proposes how to build it."
 
       assert count(html, "#work-item-step-run a") == 0
-      assert text(html, "#work-item-step-run .q-wi-run-id") == "rn_01a9e3c7"
+      assert text(html, "#work-item-step-run .q-wi-run-id") == "15"
     end
   end
 
@@ -740,8 +747,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-details-repository") == "acme/shop"
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by Lea"
       assert text(html, "#work-item-details-instruction") =~ "Check the rounding in the basket"
-      assert text(html, "#work-item-details-runs") == "01a97b20 · 1 run, ended"
-      assert attr(html, "#work-item-details-runs a", "href") == ["/8wonders/main/runs/01a97b20"]
+      assert text(html, "#work-item-details-runs") == "Run 14 · 1 run, ended"
+      assert attr(html, "#work-item-details-runs a", "href") == ["/8wonders/main/runs/14"]
     end
 
     test "another owner; taken in by the reader; no instruction; runs, one running" do
@@ -750,7 +757,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           owner: @priya,
           taken_in_by: @dana,
           first_instruction: nil,
-          runs: %{latest: %{id: "01a9e3c7", path: nil}, count: 2, running: 1}
+          runs: %{latest: %{id: "01a9e3c7", number: 15, path: nil}, count: 2, running: 1}
         })
 
       html = details(w)
@@ -764,7 +771,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by you"
       assert text(html, "#work-item-details-instruction") == "None"
-      assert text(html, "#work-item-details-runs") == "01a9e3c7 · 2 runs, 1 running"
+      assert text(html, "#work-item-details-runs") == "Run 15 · 2 runs, 1 running"
     end
 
     test "Taken in and the end row are one line: the time and the words after it in one element" do

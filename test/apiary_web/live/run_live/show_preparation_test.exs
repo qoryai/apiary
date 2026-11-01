@@ -67,7 +67,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
   defp open(conn, scope, run) do
     {:ok, lv, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
     lv
   end
