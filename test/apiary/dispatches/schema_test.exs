@@ -1062,6 +1062,10 @@ defmodule Apiary.Dispatches.SchemaTest do
          %{scope: scope} do
       run = run_fixture(scope)
 
+      # The artifacts migration rolls back only while no custom type is kept, and a
+      # sign-up's workspace has the custom type of the Qory template.
+      Repo.query!("DELETE FROM artifact_types")
+
       down!()
       refute tables?()
       refute column?()

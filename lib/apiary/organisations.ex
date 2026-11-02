@@ -1284,6 +1284,8 @@ defmodule Apiary.Organisations do
     changes, the caller's among them: it names the workspace, and the membership and its
     person by id, with `details:` beside, a map or a function of the caller's changes
     that gives it;
+  - `:template_types`, the artifact types of the Qory template in a workspace made from
+    it (Apiary.Artifacts.TemplateTypes.apply/3), each custom type with its entry;
   - `:created`, a map of the organisation and its workspace as the database has them once
     the edition's steps are done, and its membership.
 
@@ -1327,12 +1329,10 @@ defmodule Apiary.Organisations do
             |> PublicId.Insert.insert(),
           else: {:ok, nil}
       end)
-      |> Ecto.Multi.run(:process, fn _repo, %{workspace: workspace} = changes ->
-        start = qory_start(domain)
-
+      |> Ecto.Multi.run(:process, fn _repo, %{workspace: workspace} ->
         cond do
           is_nil(workspace) -> {:ok, nil}
-          start -> qory_process(scope.(Map.merge(outer, changes)), workspace, start)
+          qory_start(domain) -> Apiary.Processes.copy_qory_template(workspace)
           true -> Apiary.Processes.copy_default(workspace)
         end
       end)
@@ -1348,6 +1348,13 @@ defmodule Apiary.Organisations do
         & &1.organisation,
         &organisation_entry(&1, details)
       )
+      |> Ecto.Multi.run(:template_types, fn _repo, %{workspace: workspace} = changes ->
+        start = workspace && qory_start(domain)
+
+        if start,
+          do: TemplateTypes.apply(workspace, start.template, scope.(Map.merge(outer, changes))),
+          else: {:ok, nil}
+      end)
       |> Ecto.Multi.run(:created, fn repo, changes ->
         {:ok,
          %{
@@ -1889,7 +1896,12 @@ defmodule Apiary.Organisations do
   """
   @spec create_first_workspace(Scope.t(), map) ::
           {:ok, %Workspace{}}
-          | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
+          | {:error,
+             Ecto.Changeset.t()
+             | :exists
+             | :limit
+             | Access.reason()
+             | {:invalid, String.t(), term}}
   def create_first_workspace(%Scope{organisation: %Organisation{}} = scope, attrs) do
     domain = Map.get(attrs, "domain") || Map.get(attrs, :domain)
     name = Map.get(attrs, "name") || Map.get(attrs, :name) || @default_workspace_name

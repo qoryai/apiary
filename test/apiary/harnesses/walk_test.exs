@@ -369,6 +369,16 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, _walked} = Walk.run(%{ctx.input | workspace: workspace})
     end
 
+    test "a shared source whose ref differs from the live row's keeps the live row's", ctx do
+      through_the_instance(ctx, [{@harness, "main"}, {@tools, "v2"}])
+
+      source = %{shared!(ctx, {:branch, "main"}, "main") | ref: "v1"}
+      workspace = from_template(ctx, source)
+
+      assert row_ref(workspace) == "main"
+      assert {:ok, _walked} = Walk.run(%{ctx.input | workspace: workspace})
+    end
+
     test "a shared source no assignment covers keeps the commit, and walks by the grant", ctx do
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),

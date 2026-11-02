@@ -93,7 +93,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
 
       assert {Processes.default_version("software"), :crypto.hash(:sha256, bytes)} ==
                {2,
-                Base.decode16!("392309098E8BE0DCCC99A08330ECA602104EF97336815EFFB753C223B884FAA7")}
+                Base.decode16!("0DD02CF172A414C21AD52F52FF70B668517BB004B6FC1FC74D7579D5C44915C4")}
     end
 
     @tag needs: :workflow_model

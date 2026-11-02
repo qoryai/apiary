@@ -22,10 +22,24 @@ defmodule Apiary.ArtifactsTest do
     Application.put_env(:apiary, :artifacts_dir, root)
     on_exit(fn -> Application.put_env(:apiary, :artifacts_dir, previous) end)
 
-    scope = scope_fixture()
+    scope = without_template_types(scope_fixture())
     work_item = work_item_fixture(scope)
     %{dispatch_run: run} = explore_run_fixture(work_item)
     %{root: root, scope: scope, work_item: work_item, run: run}
+  end
+
+  # A sign-up's workspace has the Qory template's types. These tests start from a workspace
+  # with no list and no custom type, as one made before the template listed types.
+  defp without_template_types(%{workspace: %{id: id}} = scope) do
+    Repo.delete_all(from t in Type, where: t.workspace_id == ^id)
+    Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [shown_standard_types: nil])
+    %{scope | workspace: Repo.get!(Workspace, id)}
+  end
+
+  # The audit entries of a change of a type, but the one of the sign-up's custom type.
+  defp type_entries do
+    Repo.all(from e in Entry, where: e.action == "artifact_type.edit")
+    |> Enum.reject(&(&1.details["type"] == "branch"))
   end
 
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
@@ -319,7 +333,7 @@ defmodule Apiary.ArtifactsTest do
       refute type.standard
 
       assert [%Entry{details: %{"change" => "create", "type" => "demo-findings"}}] =
-               Repo.all(from e in Entry, where: e.action == "artifact_type.edit")
+               type_entries()
     end
 
     test "takes a structured type's schema as a map or as JSON text", %{scope: scope} do
@@ -516,7 +530,7 @@ defmodule Apiary.ArtifactsTest do
 
     defp stored(scope), do: Repo.get!(Workspace, scope.workspace.id).shown_standard_types
 
-    defp switches, do: Repo.all(from e in Entry, where: e.action == "artifact_type.edit")
+    defp switches, do: type_entries()
 
     test "off stores the other names that can be hidden, in the standard order", ctx do
       assert {:ok, %Type{name: "mockup", shown: false}} =
@@ -770,7 +784,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "is not found for a workspace other than the scope's", ctx do
-      other = scope_fixture()
+      other = without_template_types(scope_fixture())
 
       assert {:error, :not_found} =
                Artifacts.switch_type(ctx.scope, other.workspace, "mockup", false)

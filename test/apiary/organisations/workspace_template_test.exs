@@ -708,31 +708,21 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
     assert [%Version{template: %{"source" => "qory"}}] = Processes.list_versions(workspace)
   end
 
-  describe "a Qory template with artifact types" do
-    # The copied template at this pin has no `artifact_types`. This test module is not
-    # async, so no other test reads the template while the kept value is replaced.
-    setup do
-      key = {QoryCopy, :template}
-      kept = QoryCopy.template()
-      type = %{"name" => "reply-draft", "base_view" => "document"}
-      type = Map.merge(type, %{"size_limit" => 65_536, "max_files" => 1})
+  describe "the Qory template's artifact types" do
+    @standard ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video change)
 
-      :persistent_term.put(key, %{kept | artifact_types: [%{"name" => "mockup"}, type]})
-      on_exit(fn -> :persistent_term.put(key, kept) end)
-      :ok
-    end
-
-    test "create_workspace_of_kind/3 gives the workspace the types" do
+    test "the copy lists types, and create_workspace_of_kind/3 gives the workspace them" do
       scope = scope_fixture()
+      assert [_type | _more] = QoryCopy.template().artifact_types
 
-      assert {:ok, %Workspace{shown_standard_types: ["mockup"]} = workspace} =
+      assert {:ok, %Workspace{shown_standard_types: @standard} = workspace} =
                Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
 
-      assert [%Type{name: "reply-draft"}] =
+      assert [%Type{name: "branch", standard: false, base_view: :structured}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
     end
 
-    test "the first workspace of a sign-up gets the types, and the entry of each" do
+    test "a sign-up's first workspace gets them, after the entry that begins the trail" do
       user = User.email_changeset(%User{}, %{email: unique_user_email()})
 
       scope = fn %{user: user, organisation: organisation, workspace: workspace} ->
@@ -749,18 +739,17 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
                )
                |> Repo.transaction()
 
-      assert workspace.shown_standard_types == ["mockup"]
+      assert workspace.shown_standard_types == @standard
 
-      assert [%Type{name: "reply-draft"}] =
+      assert [%Type{name: "branch"}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
 
-      assert [%Entry{}] =
-               Repo.all(
-                 from e in Entry,
-                   where:
-                     e.organisation_id == ^workspace.organisation_id and
-                       e.action == "artifact_type.edit"
-               )
+      assert Repo.all(
+               from e in Entry,
+                 where: e.organisation_id == ^workspace.organisation_id,
+                 order_by: [asc: e.inserted_at],
+                 select: e.action
+             ) == ["organisation.create", "artifact_type.edit"]
     end
   end
 

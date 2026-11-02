@@ -165,7 +165,10 @@ defmodule Apiary.AuditChanges do
       Organisations.sign_up_user(valid_user_attributes(%{}), nil, open: true)
 
     scope = %Scope{user: user, organisation: organisation, workspace: signed_up.workspace}
-    %{scope: scope, subject: {"organisation", organisation.id}, before: before}
+
+    # The custom type of the Qory template leaves its entry beside the one looked for.
+    types = Enum.filter(entries(), &(&1.action == "artifact_type.edit"))
+    %{scope: scope, subject: {"organisation", organisation.id}, before: before ++ types}
   end
 
   def make(:"organisation.rename", %{scope: scope}) do
