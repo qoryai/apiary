@@ -278,7 +278,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-state", "Waits for answers")
+      assert has_element?(view, "#work-item-stage-state", "Needs answers")
 
       assert has_element?(
                view,
@@ -1130,7 +1130,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     for {state, words} <- [
           {:running, "Build · Running"},
           {:waiting_inputs, "Build · Waits for inputs"},
-          {:waiting_answers, "Build · Waits for answers"},
+          {:waiting_answers, "Build · Needs answers"},
           {:waiting_workflow, "Build · Waits for a workflow"},
           {:escalated, "Build · Waits for a person"},
           {:at_gate, "Build · At the gate"},
@@ -1161,8 +1161,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       for {work_item, words} <- [
             {taken_in_fixture(scope), "Explore is queued"},
-            {scope |> taken_in_fixture() |> end_run!(questions_result()), "Waits for answers"},
-            {explore_gate_fixture(scope), "Waits for you to confirm"}
+            {scope |> taken_in_fixture() |> end_run!(questions_result()), "Needs answers"},
+            {explore_gate_fixture(scope), "You confirm next"}
           ] do
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
         assert has_element?(view, "#work-item-head-meta", words)

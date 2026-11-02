@@ -1,33 +1,36 @@
 // The Stages canvas's layout and order (assets/js/hooks/stages_canvas.js): the stages in a
-// line joined by arrows, a "+" in each gap and after the last card, loops as groups, text
-// props only, the order a drag leaves, the canvas's height and the "more" pans.
-// `node --test 'assets/js/test/*.test.mjs'` (no npm).
+// column, top to bottom, joined by arrows, a "+" in each gap and after the last card,
+// loops as groups, text props only, the order a drag or the arrow keys leave, the
+// viewport's bounds, and no "more" control. `node --test 'assets/js/test/*.test.mjs'` (no
+// npm).
 
 import {test} from "node:test"
 import assert from "node:assert/strict"
+import {readFileSync} from "node:fs"
 
-import {
+import * as canvas from "../hooks/stages_canvas.js"
+
+const {
   ADD_SIZE,
-  CARD_GAP,
   CARD_WIDTH,
+  GAP,
   MARGIN_BOTTOM,
   MARGIN_TOP,
+  SIDE,
   ZOOM,
-  cardX,
-  clampX,
-  dropX,
+  column,
+  dropY,
+  estimateHeight,
+  fitViewport,
   isStage,
   keyMove,
   layout,
-  lineWidth,
   orderByDrop,
-  outside,
-  panLeft,
-  panRight,
+  panExtent,
   paneHeight,
-  revealX,
+  revealY,
   sameOrder,
-} from "../hooks/stages_canvas.js"
+} = canvas
 
 const view = {
   editable: true,
@@ -48,28 +51,55 @@ const view = {
   ],
 }
 
-const stages = v => layout(v).nodes.filter(isStage)
+// Measured heights: Explore 160, Build 150, Release 120.
+const heights = {st_a: 160, st_b: 150, st_c: 120}
 
-test("stages lie in a line, left to right, and the selected one is selected", () => {
-  const nodes = stages(view)
+const stages = (v, h = heights) => layout(v, h).nodes.filter(isStage)
+
+test("stages lie in a column, top to bottom, at their measured heights", () => {
+  const g = GAP.edit
   assert.deepEqual(
-    nodes.map(n => [n.id, n.position.x, n.position.y, n.selected]),
+    stages(view).map(n => [n.id, n.position.x, n.position.y, n.selected]),
     [
-      ["st_a", CARD_GAP, 0, false],
-      ["st_b", CARD_GAP + CARD_WIDTH + CARD_GAP, 0, true],
-      ["st_c", CARD_GAP + 2 * (CARD_WIDTH + CARD_GAP), 0, false],
+      ["st_a", 0, g, false],
+      ["st_b", 0, g + 160 + g, true],
+      ["st_c", 0, g + 160 + g + 150 + g, false],
+    ],
+  )
+  // The column ends with a gap after the last card, for its "+".
+  assert.equal(layout(view, heights).length, g + 160 + g + 150 + g + 120 + g)
+})
+
+test("a view-only column has no gap before the first card or after the last", () => {
+  const v = {...view, editable: false}
+  assert.deepEqual(
+    stages(v).map(n => n.position.y),
+    [0, 160 + GAP.view, 160 + GAP.view + 150 + GAP.view],
+  )
+  assert.equal(layout(v, heights).length, 160 + GAP.view + 150 + GAP.view + 120)
+  assert.deepEqual(column([], false), {tops: [], length: 0})
+})
+
+test("a card React Flow has not measured has its estimated height", () => {
+  const nodes = stages(view, {})
+  assert.equal(nodes[1].position.y - nodes[0].position.y, estimateHeight(nodes[0].data) + GAP.edit)
+  // A loop's card is taller than a card with one workflow, and an alert adds a line.
+  assert.ok(estimateHeight(nodes[0].data) > estimateHeight({...nodes[1].data, alerts: []}))
+  assert.ok(estimateHeight(nodes[1].data) > estimateHeight({...nodes[1].data, alerts: []}))
+})
+
+test("each stage is joined to the next, and only to the next, by a straight arrow", () => {
+  assert.deepEqual(
+    layout(view).edges.map(e => [e.source, e.target, e.type]),
+    [
+      ["st_a", "st_b", "straight"],
+      ["st_b", "st_c", "straight"],
     ],
   )
 })
 
-test("each stage is joined to the next, and only to the next", () => {
-  assert.deepEqual(
-    layout(view).edges.map(e => [e.source, e.target]),
-    [
-      ["st_a", "st_b"],
-      ["st_b", "st_c"],
-    ],
-  )
+test("cards are 360 px wide", () => {
+  assert.equal(CARD_WIDTH, 360)
 })
 
 test("names reach the card as text, unchanged, with the full label for a screen reader", () => {
@@ -105,14 +135,16 @@ test("each workflow's mark reaches the card as text, and a card with none has no
   assert.deepEqual(stages(listed)[0].data.marks, {})
 })
 
-test("a loop is a group of its workflows with its label; a workflow is a step", () => {
+test("a loop is a group of its workflows with its label inside one card; a workflow is a step", () => {
   assert.deepEqual(stages(view)[0].data.sequence, [{loop: "at most 3 rounds", workflows: ["explore-a-ticket"]}])
   assert.deepEqual(stages(view)[1].data.sequence, [{workflow: "build"}])
   assert.deepEqual(stages(view)[2].data.sequence, [])
+  assert.equal(stages(view).length, 3)
 })
 
-test("a + sits before the first card, in each gap and after the last, and adds a stage there", () => {
-  const adds = layout(view).nodes.filter(n => n.type === "add")
+test("a + sits above the first card, in each gap and below the last, and adds a stage there", () => {
+  const nodes = layout(view, heights).nodes
+  const adds = nodes.filter(n => n.type === "add")
   assert.deepEqual(
     adds.map(n => [n.data.at, n.data.label]),
     [
@@ -125,10 +157,15 @@ test("a + sits before the first card, in each gap and after the last, and adds a
   assert.ok(adds.every(n => n.draggable === false && n.selectable === false))
   // A click reaches the button: React Flow gives such a node no pointer events of its own.
   assert.ok(adds.every(n => n.style.pointerEvents === "all"))
-  // In its gap: after the card before it, before the card after it.
+  // Centred on the cards, and in its gap: below the card before it, above the card after.
+  const cards = stages(view)
   for (const n of adds) {
-    if (n.data.at > 0) assert.ok(n.position.x >= cardX(n.data.at - 1) + CARD_WIDTH)
-    assert.ok(n.position.x + ADD_SIZE <= cardX(n.data.at))
+    assert.equal(n.position.x + ADD_SIZE / 2, CARD_WIDTH / 2)
+    const above = cards[n.data.at - 1]
+    const below = cards[n.data.at]
+    if (above) assert.ok(n.position.y >= above.position.y + heights[above.id])
+    if (below) assert.ok(n.position.y + ADD_SIZE <= below.position.y)
+    else assert.ok(n.position.y + ADD_SIZE <= layout(view, heights).length)
   }
 })
 
@@ -146,104 +183,114 @@ test("a member's canvas has no card to drag and no +", () => {
 })
 
 test("no view draws nothing", () => {
-  assert.deepEqual(layout(undefined), {nodes: [], edges: []})
+  assert.deepEqual(layout(undefined), {nodes: [], edges: [], length: 0})
 })
 
+// Four cards, 100 units tall, 72 apart: they start at 72, 244, 416 and 588.
+const tops = [72, 244, 416, 588]
+const ids = ["st_a", "st_b", "st_c", "st_d"]
+const middle = n => tops[n] + 50
+
 test("a card dropped with the pointer on another card takes that card's place", () => {
-  const ids = ["st_a", "st_b", "st_c", "st_d"]
-  const slot = n => cardX(n) + CARD_WIDTH / 2
   // Across two cards: from the first place to the third.
-  assert.deepEqual(orderByDrop(ids, "st_a", slot(2)), ["st_b", "st_c", "st_a", "st_d"])
-  assert.deepEqual(orderByDrop(ids, "st_d", slot(0)), ["st_d", "st_a", "st_b", "st_c"])
-  assert.deepEqual(orderByDrop(ids, "st_b", slot(1)), ids)
+  assert.deepEqual(orderByDrop(ids, "st_a", middle(2), tops, 72), ["st_b", "st_c", "st_a", "st_d"])
+  assert.deepEqual(orderByDrop(ids, "st_d", middle(0), tops, 72), ["st_d", "st_a", "st_b", "st_c"])
+  assert.deepEqual(orderByDrop(ids, "st_b", middle(1), tops, 72), ids)
+  // A slot reaches to the middle of the gap: just above the third card is still its slot.
+  assert.deepEqual(orderByDrop(ids, "st_a", tops[2] - 30, tops, 72), ["st_b", "st_c", "st_a", "st_d"])
+  assert.deepEqual(orderByDrop(ids, "st_a", tops[2] - 40, tops, 72), ["st_b", "st_a", "st_c", "st_d"])
   // Beyond either end: the first or the last place.
-  assert.deepEqual(orderByDrop(ids, "st_b", -500), ["st_b", "st_a", "st_c", "st_d"])
-  assert.deepEqual(orderByDrop(ids, "st_a", 5000), ["st_b", "st_c", "st_d", "st_a"])
-  assert.equal(sameOrder(orderByDrop(ids, "st_a", slot(2)), ids), false)
+  assert.deepEqual(orderByDrop(ids, "st_b", -500, tops, 72), ["st_b", "st_a", "st_c", "st_d"])
+  assert.deepEqual(orderByDrop(ids, "st_a", 5000, tops, 72), ["st_b", "st_c", "st_d", "st_a"])
+  assert.equal(sameOrder(orderByDrop(ids, "st_a", middle(2), tops, 72), ids), false)
   assert.equal(sameOrder(["st_a"], ["st_a"]), true)
 })
 
 test("a drop with no point keeps the order", () => {
-  const ids = ["st_a", "st_b", "st_c"]
-  assert.deepEqual(orderByDrop(ids, "st_c", NaN), ids)
-  assert.deepEqual(orderByDrop(ids, "st_c", undefined), ids)
+  assert.deepEqual(orderByDrop(ids, "st_c", NaN, tops, 72), ids)
+  assert.deepEqual(orderByDrop(ids, "st_c", undefined, tops, 72), ids)
 })
 
-test("a drop reads the pointer of a mouse or a touch, else the card's middle", () => {
-  const toFlow = ({x, y}) => ({x: x - 100, y})
-  const node = {position: {x: 2 * (CARD_WIDTH + CARD_GAP), y: 0}}
-  assert.equal(dropX({clientX: 400, clientY: 50}, node, toFlow), 300)
-  // A touch drag: a TouchEvent has no clientX; the touch that ended has.
-  const touch = {clientX: undefined, changedTouches: [{clientX: 250, clientY: 50}]}
-  assert.equal(dropX(touch, node, toFlow), 150)
+test("a drop reads the pointer's y from a mouse or a touch, else the card's middle", () => {
+  const toFlow = ({x, y}) => ({x, y: y - 100})
+  const node = {position: {x: 0, y: tops[2]}, measured: {height: 100}, data: {}}
+  assert.equal(dropY({clientX: 10, clientY: 400}, node, toFlow), 300)
+  // A touch drag: a TouchEvent has no clientY; the touch that ended has.
+  const touch = {clientX: undefined, changedTouches: [{clientX: 10, clientY: 250}]}
+  assert.equal(dropY(touch, node, toFlow), 150)
   // No point at all: the card's middle, so the card stays where it was dropped.
-  const middle = node.position.x + CARD_WIDTH / 2
-  assert.equal(dropX({changedTouches: []}, node, toFlow), middle)
-  assert.equal(dropX({clientX: 10, clientY: 10}, node, () => ({x: NaN})), middle)
-  assert.deepEqual(orderByDrop(["st_a", "st_b", "st_c"], "st_c", middle), ["st_a", "st_b", "st_c"])
+  assert.equal(dropY({changedTouches: []}, node, toFlow), middle(2))
+  assert.equal(dropY({clientX: 10, clientY: 10}, node, () => ({y: NaN})), middle(2))
+  assert.deepEqual(orderByDrop(ids, "st_c", middle(2), tops, 72), ids)
 })
 
-test("left and right move a card one place; up and down move nothing", () => {
-  assert.equal(keyMove("ArrowLeft"), "-1")
-  assert.equal(keyMove("ArrowRight"), "1")
-  assert.equal(keyMove("ArrowUp"), null)
+test("up and down move a card one place; left and right move nothing", () => {
+  assert.equal(keyMove("ArrowUp"), "-1")
+  assert.equal(keyMove("ArrowDown"), "1")
+  assert.equal(keyMove("ArrowLeft"), null)
+  assert.equal(keyMove("ArrowRight"), null)
   assert.equal(keyMove("Enter"), null)
 })
 
 test("the cards start at zoom 1, and a pinch or the buttons zoom from 0.75 to 1.5", () => {
   assert.deepEqual(ZOOM, {start: 1, min: 0.75, max: 1.5})
-  assert.equal(lineWidth(5), CARD_GAP + 5 * (CARD_WIDTH + CARD_GAP))
 })
 
-test("the canvas is as tall as the tallest card at its zoom, with the margins", () => {
-  assert.equal(MARGIN_TOP + MARGIN_BOTTOM, 56)
-  // The top margin holds the "more" and zoom buttons (24 px, 4 px from the top) above the
-  // cards and the "+" buttons, so they cover none of them.
-  assert.ok(MARGIN_TOP >= 4 + 24 + 4)
-  assert.equal(paneHeight(110, 1), 166)
-  assert.equal(paneHeight(110, 1.5), 221)
-  assert.equal(paneHeight(110, 0.75), 139)
+test("outside a filling box the canvas is as tall as the column at its zoom, with the margins", () => {
+  // The top margin has the zoom, Focus and Full screen buttons (28 px, 12 px from the
+  // top) above the column, so they cover none of it.
+  assert.ok(MARGIN_TOP >= 12 + 28 + 8)
+  assert.equal(paneHeight(500, 1), 500 + MARGIN_TOP + MARGIN_BOTTOM)
+  assert.equal(paneHeight(500, 1.5), 750 + MARGIN_TOP + MARGIN_BOTTOM)
+  assert.equal(paneHeight(500, 0.75), 375 + MARGIN_TOP + MARGIN_BOTTOM)
 })
 
-// Five cards at zoom 1 in a 960 px canvas: the cards start at 44, 264, 484, 704 and 924,
-// so four are whole and Release is cut at the right edge.
-test("whole cards out of view are counted on each side, a cut card with them", () => {
-  assert.deepEqual(outside(5, {x: 0, zoom: 1}, 960), {left: 0, right: 1})
-  assert.deepEqual(outside(5, {x: 0, zoom: 1}, 1200), {left: 0, right: 0})
-  assert.deepEqual(outside(8, {x: 0, zoom: 1}, 960), {left: 0, right: 4})
-  assert.deepEqual(outside(8, {x: -844, zoom: 1}, 960), {left: 4, right: 0})
-  assert.deepEqual(outside(8, {x: -400, zoom: 1}, 960), {left: 2, right: 2})
-  assert.deepEqual(outside(0, {x: 0, zoom: 1}, 960), {left: 0, right: 0})
+test("the card is centred, and a short column starts at the top margin", () => {
+  const size = {width: 900, height: 800}
+  assert.deepEqual(fitViewport({x: 0, y: -300, zoom: 1}, size, 500), {x: 270, y: MARGIN_TOP, zoom: 1})
+  assert.deepEqual(fitViewport({x: 0, y: 0, zoom: 1.5}, size, 400), {x: 180, y: MARGIN_TOP, zoom: 1.5})
 })
 
-test("→ more brings the first cut card in first, and ← more the last one in last", () => {
-  // The line ends at the right edge: five cards move only 184 px.
-  assert.equal(panRight(5, {x: 0, zoom: 1}, 960), 960 - lineWidth(5))
-  assert.deepEqual(outside(5, {x: panRight(5, {x: 0, zoom: 1}, 960), zoom: 1}, 960), {left: 1, right: 0})
-  // Eight cards: the fifth card (cut) becomes the first in view, clamped at the line's end.
-  assert.equal(panRight(8, {x: 0, zoom: 1}, 960), -844)
-  assert.equal(panRight(12, {x: 0, zoom: 1}, 960), -(cardX(4) - CARD_GAP))
-  assert.deepEqual(outside(12, {x: -880, zoom: 1}, 960), {left: 4, right: 4})
-  // Back to the start.
-  assert.equal(panLeft(5, {x: -184, zoom: 1}, 960), 0)
-  assert.equal(panLeft(12, {x: -880, zoom: 1}, 960), 0)
-  // Card 8 (index 7) is the last before the left edge; it ends at the right edge after.
-  assert.equal(panLeft(12, {x: -1716, zoom: 1}, 960), 960 - (cardX(7) + CARD_WIDTH + CARD_GAP))
-  // Nothing out of view: no move.
-  assert.equal(panRight(3, {x: 0, zoom: 1}, 960), 0)
-  assert.equal(panLeft(3, {x: 0, zoom: 1}, 960), 0)
-  // At zoom 0.75 the cards are smaller.
-  assert.equal(panRight(8, {x: 0, zoom: 0.75}, 960), 960 - lineWidth(8) * 0.75)
+test("a long column scrolls between its top and its end, and no further", () => {
+  const size = {width: 900, height: 800}
+  const end = 800 - MARGIN_BOTTOM - 2000
+  assert.equal(fitViewport({x: 270, y: -500, zoom: 1}, size, 2000).y, -500)
+  assert.equal(fitViewport({x: 270, y: 200, zoom: 1}, size, 2000).y, MARGIN_TOP)
+  assert.equal(fitViewport({x: 270, y: -5000, zoom: 1}, size, 2000).y, end)
 })
 
-test("a card that takes the focus is panned into view as little as it can", () => {
-  const end = cardX(4) + CARD_WIDTH
-  assert.equal(revealX(cardX(4), end, 5, {x: 0, zoom: 1}, 960), 960 - (end + CARD_GAP / 2))
-  assert.equal(revealX(cardX(1), cardX(1) + CARD_WIDTH, 5, {x: 0, zoom: 1}, 960), 0)
-  assert.equal(revealX(cardX(0), cardX(0) + CARD_WIDTH, 5, {x: -184, zoom: 1}, 960), -(cardX(0) - CARD_GAP / 2))
-  assert.equal(clampX(-500, 5, 1, 960), -184)
-  assert.equal(clampX(40, 5, 1, 960), 0)
-  assert.equal(clampX(-100, 3, 1, 960), 0)
+test("a card wider than the canvas scrolls sideways within its edges", () => {
+  const size = {width: 320, height: 800}
+  assert.equal(fitViewport({x: 100, y: 0, zoom: 1}, size, 300).x, SIDE)
+  assert.equal(fitViewport({x: -500, y: 0, zoom: 1}, size, 300).x, 320 - CARD_WIDTH - SIDE)
+  assert.equal(fitViewport({x: -10, y: 0, zoom: 1}, size, 300).x, -10)
+})
+
+test("the pan bounds stop a pan or the wheel where the fit does", () => {
+  const size = {width: 900, height: 800}
+  const zoom = 1
+  const [[left, top], [right, bottom]] = panExtent(size, 2000, zoom)
+  // The view's edges, in the canvas's units, at each end of the fit's range.
+  const fitTop = fitViewport({x: 0, y: 1e6, zoom}, size, 2000)
+  const fitEnd = fitViewport({x: 0, y: -1e6, zoom}, size, 2000)
+  assert.equal(-fitTop.y / zoom, top)
+  assert.equal((size.height - fitEnd.y) / zoom, bottom)
+  assert.equal(-fitTop.x / zoom, left)
+  assert.equal((size.width - fitTop.x) / zoom, right)
+  // A short column: the bounds are the view itself, so nothing scrolls.
+  const [[, shortTop], [, shortBottom]] = panExtent(size, 300, zoom)
+  assert.equal((shortBottom - shortTop) * zoom, size.height)
+})
+
+test("a card that takes the focus is scrolled into view as little as it can", () => {
+  const size = {width: 900, height: 600}
+  const length = 2000
+  // Below the view: its end comes to the bottom margin.
+  assert.equal(revealY(1000, 1150, {x: 0, y: MARGIN_TOP, zoom: 1}, size, length), 600 - MARGIN_BOTTOM - 1150)
+  // In view: no move.
+  assert.equal(revealY(100, 250, {x: 0, y: MARGIN_TOP, zoom: 1}, size, length), MARGIN_TOP)
+  // Above the view: its top comes to the top margin.
+  assert.equal(revealY(300, 450, {x: 0, y: -800, zoom: 1}, size, length), MARGIN_TOP - 300)
 })
 
 test("each card has a ring on keyboard focus", () => {
@@ -259,6 +306,25 @@ test("a canvas whose cards open nothing draws cards a click does not select", ()
   assert.ok(stages(preview).every(node => node.focusable === false))
   assert.ok(stages(view).every(node => node.focusable === true))
   assert.ok([...stages(view), ...stages(preview)].every(n => n.ariaRole === "group" && n.ariaLabel))
-  // View only: no "+" either.
+  // View only: no "+", and no card to drag.
   assert.equal(layout(preview).nodes.filter(node => node.type === "add").length, 0)
+  assert.ok(layout(preview).nodes.every(node => node.draggable === false))
+})
+
+test("there is no \"more\" control and no edge fade: extra stages are reached by scrolling", () => {
+  for (const name of ["outside", "panLeft", "panRight", "clampX", "lineWidth"]) {
+    assert.equal(name in canvas, false, name)
+  }
+  const bundle = readFileSync(new URL("../canvas.js", import.meta.url), "utf8")
+  assert.doesNotMatch(bundle, /moreButton|more\(|fade|words\.(left|right)/)
+  const component = readFileSync(
+    new URL("../../../lib/apiary_web/live/stages_live/canvas.ex", import.meta.url),
+    "utf8",
+  )
+  assert.doesNotMatch(component, /more stage|%\{count\} more/)
+})
+
+test("the canvas draws a dotted ground, 20 px apart, 1 px dots", () => {
+  const bundle = readFileSync(new URL("../canvas.js", import.meta.url), "utf8")
+  assert.match(bundle, /h\(Background, \{variant: "dots", gap: 20, size: 1\}\)/)
 })

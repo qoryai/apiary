@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.StagesLive.Canvas do
   # The Stages canvas as one component: a process document (`Apiary.Processes`) drawn as
-  # its stages in a line, in one of two modes.
+  # its stages in a column, top to bottom, on dots, in one of two modes.
   #
   #   * `:edit`: the person drags a card, moves it with the arrow keys and adds a stage at
   #     a "+"; the canvas sends "reorder", "move" and "add_stage" to the page, which
@@ -15,8 +15,13 @@ defmodule ApiaryWeb.StagesLive.Canvas do
   # below; it reads `data-view` once, then each "stages:view" event the page pushes with
   # `view/3`. Its inputs are plain data: the document, the mode, and optionally the
   # selected stage's id, the names of named approvers, each stage's alert lines and the
-  # workflows the harness lists, which mark each workflow on a card with a check or a
-  # cross.
+  # workflows a stage may run, which mark each workflow on a card with a check or a cross.
+  #
+  # In both modes the canvas has, at its top right, Zoom out, Zoom in, Focus (`f`: the box
+  # takes the window until Escape) and Full screen. Put it first in a `.q-canvas-fill` box, with
+  # the inspector or a side panel in a `.q-canvas-side` after it, and the box takes the
+  # rest of the window with the side beside the canvas (app.css); Focus and Full screen
+  # then show the canvas and the side. Elsewhere the canvas is as tall as its column.
   @moduledoc false
 
   use ApiaryWeb, :html
@@ -63,10 +68,10 @@ defmodule ApiaryWeb.StagesLive.Canvas do
         )
       }
       data-words={Jason.encode!(words())}
-      class="min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-200"
+      class="q-canvas"
     >
-      <%!-- The canvas sets its height to the tallest card's, with margins. --%>
-      <div data-canvas class="h-44 w-full"></div>
+      <%!-- Outside a `.q-canvas-fill` box the canvas sets its height to its column's. --%>
+      <div data-canvas></div>
       <p data-canvas-failed hidden class="p-4 text-[13px]/5 text-muted">
         {failed_line(@mode)}
       </p>
@@ -143,22 +148,19 @@ defmodule ApiaryWeb.StagesLive.Canvas do
       label: gettext("Stages, in order"),
       node:
         gettext(
-          "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
+          "Press Enter to open the stage beside the canvas. Move it with the up and down arrow keys."
         ),
-      node_read: gettext("Press Enter to open the stage under the canvas."),
+      node_read: gettext("Press Enter to open the stage beside the canvas."),
       node_view: gettext("View only: the stage's workflows and gate."),
       moved: gettext("Moved the selected stage."),
       no_workflow: gettext("No workflow"),
       zoom_in: gettext("Zoom in"),
       zoom_out: gettext("Zoom out"),
       controls: gettext("Canvas controls"),
-      # The canvas fills in each number of cards: the binding keeps "%{count}" in the text.
-      left: gettext("← %{count} more", count: "%{count}"),
-      right: gettext("→ %{count} more", count: "%{count}"),
-      left_label_one: gettext("Show 1 more stage on the left"),
-      left_label: gettext("Show %{count} more stages on the left", count: "%{count}"),
-      right_label_one: gettext("Show 1 more stage on the right"),
-      right_label: gettext("Show %{count} more stages on the right", count: "%{count}")
+      focus: gettext("Focus"),
+      focus_title: gettext("Focus: the canvas takes the window (f)"),
+      full_screen: gettext("Full screen"),
+      leave_full_screen: gettext("Leave full screen")
     }
   end
 end

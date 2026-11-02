@@ -1,9 +1,9 @@
-// The canvas of Workspace settings › Stages (ApiaryWeb.StagesLive.Index), registered as the
-// page's colocated hook. The canvas is the page's editor, and the page owns the process
-// document: this hook only draws the view the page sends (data-view on mount, then
-// "stages:view" events) and sends back a selection ("select"), an order of stages
-// ("reorder"), a move by the arrow keys ("move") and a new stage at a place
-// ("add_stage"). The inspector under the canvas edits the selected stage.
+// The Stages canvas (ApiaryWeb.StagesLive.Canvas), registered as the component's colocated
+// hook, on Workspace settings › Stages, Instance settings › Workspace types and a
+// workspace type's page. The page owns the process document: this hook only draws the view the page
+// sends (data-view on mount, then "stages:view" events) and sends back a selection
+// ("select"), an order of stages ("reorder"), a move by the arrow keys ("move") and a new
+// stage at a place ("add_stage"). The inspector beside the canvas edits the selected stage.
 //
 // React and React Flow are vendored (assets/vendor/flow) and built as their own bundle,
 // assets/js/canvas.js, fetched on the first mount of this hook and by no other page. If
@@ -11,80 +11,101 @@
 //
 // Names and lines reach React as text props only; nothing here writes markup.
 
-// The width of a stage card and the gap after it, in the canvas's units: the gap holds the
-// "+" that adds a stage there. Workflow names longer than a card show in full in their
-// title and the card's label.
-export const CARD_WIDTH = 176
-export const CARD_GAP = 44
-// The "+" button's size, and its distance from the top of the line.
+// The stages lie in a column, top to bottom, each card CARD_WIDTH wide at x 0. A card is as
+// tall as its lines; React Flow measures it, and until then its height is estimated. Where
+// the person may edit, a gap with a "+" sits before the first card and after the last.
+export const CARD_WIDTH = 360
+// The gap between two cards, in the canvas's units: wider where it has a "+".
+export const GAP = {edit: 72, view: 56}
+// The "+" button's size.
 export const ADD_SIZE = 28
-export const ADD_TOP = 8
 
 // The canvas draws the cards at zoom 1, so their text matches the page's; a pinch or the
-// zoom buttons change it within these bounds. Its height is the tallest card's at that
-// zoom, with a margin above, where the zoom and "more" buttons sit, so they cover no card,
-// and one below.
+// zoom buttons change it within these bounds. Above the column is a margin, where the
+// zoom, Focus and Full screen buttons sit, and below it a smaller one. A card wider than
+// the canvas keeps SIDE px of air at each edge.
 export const ZOOM = {start: 1, min: 0.75, max: 1.5}
-export const MARGIN_TOP = 32
+export const MARGIN_TOP = 56
 export const MARGIN_BOTTOM = 24
+export const SIDE = 16
 
-// The canvas's height for a tallest card of `tallest` units at `zoom`.
-export const paneHeight = (tallest, zoom) => Math.ceil(tallest * zoom) + MARGIN_TOP + MARGIN_BOTTOM
+// A card's lines, in px: the padding and border, the name, and each line under it with
+// the gap before it. Only for the height of a card React Flow has not measured yet.
+const CARD_FRAME = 34
+const NAME_LINE = 26
+const LINE = 24
+const ROW_GAP = 8
+const LOOP_FRAME = 38
 
-// The left edge of the card at place `index`: a gap, with its "+", before the first card.
-export const cardX = index => CARD_GAP + index * (CARD_WIDTH + CARD_GAP)
-
-// The width of the line of `count` cards, with a "+" before each card and after the last.
-export const lineWidth = count => CARD_GAP + count * (CARD_WIDTH + CARD_GAP)
-
-// The cards of a line of `count` that are not whole in a canvas `width` px wide at
-// `viewport` ({x, zoom}): `left` before its left edge, `right` past its right edge, each
-// counted as whole cards; a card cut by an edge counts on that side.
-export const outside = (count, {x, zoom}, width) => {
-  let left = 0
-  let right = 0
-  for (let index = 0; index < count; index++) {
-    const start = cardX(index) * zoom + x
-    if (start < -0.5) left++
-    else if (start + CARD_WIDTH * zoom > width + 0.5) right++
-  }
-  return {left, right}
+// The estimated height of a card with `data` (layout's card data).
+export const estimateHeight = data => {
+  const sequence = data?.sequence || []
+  const steps =
+    sequence.length === 0
+      ? [LINE]
+      : sequence.map(item => ("loop" in item ? LOOP_FRAME + item.workflows.length * LINE : LINE))
+  const rows = [...steps, LINE, ...(data?.alerts || []).map(() => LINE)]
+  return CARD_FRAME + NAME_LINE + rows.reduce((sum, row) => sum + ROW_GAP + row, 0)
 }
 
-// The viewport's x for `x`, kept so the line neither starts right of the canvas's left edge
-// nor ends left of its right edge.
-export const clampX = (x, count, zoom, width) => Math.min(0, Math.max(x, width - lineWidth(count) * zoom))
+const gapOf = editable => (editable ? GAP.edit : GAP.view)
 
-// The viewport's x after "→ more": the first card past the right edge becomes the first
-// card in view.
-export const panRight = (count, viewport, width) => {
-  const {x, zoom} = viewport
-  const index = Array.from({length: count}, (_, i) => i).find(
-    i => cardX(i) * zoom + x >= -0.5 && (cardX(i) + CARD_WIDTH) * zoom + x > width + 0.5,
-  )
-  if (index === undefined) return x
-  return clampX(-(cardX(index) - CARD_GAP) * zoom, count, zoom, width)
+// The column for cards of `heights` (in order): each card's top, and the column's length,
+// with the gap before the first card and after the last where the person may edit.
+export const column = (heights, editable) => {
+  const gap = gapOf(editable)
+  const lead = editable ? gap : 0
+  const tops = []
+  let y = lead
+  heights.forEach((height, index) => {
+    if (index > 0) y += gap
+    tops.push(y)
+    y += height
+  })
+  return {tops, length: heights.length === 0 ? 0 : y + lead}
 }
 
-// The viewport's x after "← more": the last card before the left edge becomes the last
-// card in view.
-export const panLeft = (count, viewport, width) => {
-  const {x, zoom} = viewport
-  let index = -1
-  for (let i = 0; i < count; i++) if (cardX(i) * zoom + x < -0.5) index = i
-  if (index < 0) return x
-  return clampX(width - (cardX(index) + CARD_WIDTH + CARD_GAP) * zoom, count, zoom, width)
+// The canvas's height outside a filling box: the whole column at `zoom`, with the margins.
+export const paneHeight = (length, zoom) => Math.ceil(length * zoom) + MARGIN_TOP + MARGIN_BOTTOM
+
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+
+// The viewport for `viewport` ({x, y, zoom}) in a canvas of `size` ({width, height}) px
+// showing a column `length` units long. The card is centred when it fits the width, and
+// otherwise kept within SIDE px of each edge. The column starts at the top margin when it
+// fits the height, and otherwise scrolls between its top at the top margin and its end at
+// the bottom margin.
+export const fitViewport = ({x, y, zoom}, {width, height}, length) => {
+  const card = CARD_WIDTH * zoom
+  const nextX = card + 2 * SIDE <= width ? (width - card) / 2 : clamp(x, width - card - SIDE, SIDE)
+  const end = height - MARGIN_BOTTOM - length * zoom
+  const nextY = end >= MARGIN_TOP ? MARGIN_TOP : clamp(y, end, MARGIN_TOP)
+  return {x: nextX, y: nextY, zoom}
 }
 
-// The viewport's x that shows the node from `start` to `end` (in the canvas's units) whole,
-// with half a gap beside it, moving the line as little as it can.
-export const revealX = (start, end, count, viewport, width) => {
-  const {x, zoom} = viewport
-  const pad = CARD_GAP / 2
-  let next = x
-  if (start * zoom + x < 0) next = -(start - pad) * zoom
-  else if (end * zoom + x > width) next = width - (end + pad) * zoom
-  return clampX(next, count, zoom, width)
+// React Flow's translateExtent for the same canvas at `zoom`: the area, in the canvas's
+// units, that a pan or the wheel keeps the view inside, so they stop where fitViewport
+// does.
+export const panExtent = ({width, height}, length, zoom) => {
+  const fits = CARD_WIDTH * zoom + 2 * SIDE <= width
+  const left = fits ? CARD_WIDTH / 2 - width / (2 * zoom) : -SIDE / zoom
+  const right = fits ? CARD_WIDTH / 2 + width / (2 * zoom) : CARD_WIDTH + SIDE / zoom
+  const top = -MARGIN_TOP / zoom
+  const bottom = Math.max(length + MARGIN_BOTTOM / zoom, (height - MARGIN_TOP) / zoom)
+  return [
+    [left, top],
+    [right, bottom],
+  ]
+}
+
+// The viewport's y that shows the node from `start` to `end` (in the canvas's units)
+// whole, between the margins, moving the column as little as it can.
+export const revealY = (start, end, viewport, size, length) => {
+  const {y, zoom} = viewport
+  let next = y
+  if (start * zoom + y < MARGIN_TOP) next = MARGIN_TOP - start * zoom
+  else if (end * zoom + y > size.height - MARGIN_BOTTOM) next = size.height - MARGIN_BOTTOM - end * zoom
+  return fitViewport({...viewport, y: next}, size, length).y
 }
 
 const text = value => String(value ?? "")
@@ -107,18 +128,29 @@ const marks = value =>
       )
     : {}
 
-// The nodes and edges React Flow draws for `view`: the stages in a line, left to right,
-// each joined to the next by an arrow; where the person may edit, a "+" node before the
-// first card, in each gap and after the last card, which adds a stage at that place. The
-// nodes are in the line's order, a "+" between the cards it sits between, so Tab reaches
-// them in that order.
-export const layout = view => {
+// The nodes and edges React Flow draws for `view`, and the column's length: the stages in
+// a column, top to bottom, each joined to the next by an arrow; where the person may edit,
+// a "+" node before the first card, in each gap and after the last card, which adds a
+// stage at that place. `heights` maps a stage id to its card's measured height; a card
+// with none has its estimated height. The nodes are in the column's order, a "+" between
+// the cards it sits between, so Tab reaches them in that order.
+export const layout = (view, heights = {}) => {
   const stages = Array.isArray(view?.stages) ? view.stages : []
   const editable = view?.editable === true
+  const data = stages.map(stage => ({
+    name: text(stage.name),
+    sequence: (stage.sequence || []).map(step),
+    gate: text(stage.gate),
+    alerts: (stage.alerts || []).map(text),
+    marks: marks(stage.marks),
+  }))
+  const sizes = stages.map((stage, index) => heights[String(stage.id)] || estimateHeight(data[index]))
+  const {tops, length} = column(sizes, editable)
+  const gap = gapOf(editable)
   const cards = stages.map((stage, index) => ({
     id: String(stage.id),
     type: "stage",
-    position: {x: cardX(index), y: 0},
+    position: {x: 0, y: tops[index]},
     selected: stage.id === view.selected,
     // A card of a canvas whose cards open nothing is not selected by a click, and Tab
     // passes it by (no tabindex). It stays a labelled group, with the canvas's card
@@ -131,21 +163,18 @@ export const layout = view => {
     className:
       "rounded-box focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-primary",
     ariaLabel: text(stage.label || stage.name),
-    data: {
-      name: text(stage.name),
-      sequence: (stage.sequence || []).map(step),
-      gate: text(stage.gate),
-      alerts: (stage.alerts || []).map(text),
-      marks: marks(stage.marks),
-    },
+    data: data[index],
   }))
-  // A "+" at place `at`: before the card there, or after the last. Its node is neither
-  // dragged nor selected, so React Flow gives it no pointer events; the style gives them
-  // back, so a click reaches the button.
+  // A "+" at place `at`: in the middle of the gap before the card there, or of the gap
+  // after the last. Its node is neither dragged nor selected, so React Flow sets its
+  // pointer events to none; the style sets them to all, so a click reaches the button.
   const add = at => ({
     id: `add:${at}`,
     type: "add",
-    position: {x: at * (CARD_WIDTH + CARD_GAP) + (CARD_GAP - ADD_SIZE) / 2, y: ADD_TOP},
+    position: {
+      x: (CARD_WIDTH - ADD_SIZE) / 2,
+      y: (at < cards.length ? tops[at] - gap / 2 : length - gap / 2) - ADD_SIZE / 2,
+    },
     draggable: false,
     selectable: false,
     focusable: false,
@@ -160,41 +189,43 @@ export const layout = view => {
     id: `${cards[index].id}->${card.id}`,
     source: cards[index].id,
     target: card.id,
+    type: "straight",
     focusable: false,
     selectable: false,
   }))
-  return {nodes, edges}
+  return {nodes, edges, length}
 }
 
 // Whether a node is a stage card, not a "+".
 export const isStage = node => node?.type === "stage"
 
-// The stage ids after the card `id` is dropped with the pointer at `x`, in the canvas's
-// units: the card takes the place of the slot under the pointer, the first or the last
-// one beyond either end.
-export const orderByDrop = (ids, id, x) => {
-  if (!Number.isFinite(x)) return ids
+// The stage ids after the card `id` is dropped with the pointer at `y`, in the canvas's
+// units, on a column whose cards start at `tops` (in the order `ids`) with `gap` between
+// them: the card takes the place of the slot under the pointer, the first or the last
+// one beyond either end. A slot reaches from the middle of the gap before its card to
+// the middle of the gap after it.
+export const orderByDrop = (ids, id, y, tops, gap) => {
+  if (!Number.isFinite(y)) return ids
   const rest = ids.filter(other => other !== id)
   if (rest.length === ids.length) return ids
-  const slot = Math.floor((x - CARD_GAP / 2) / (CARD_WIDTH + CARD_GAP))
-  const at = Math.min(Math.max(slot, 0), ids.length - 1)
+  const at = tops.slice(1).filter(top => y >= top - gap / 2).length
   return [...rest.slice(0, at), id, ...rest.slice(at)]
 }
 
-// Where a card was dropped, in the canvas's units: the pointer's x, from a mouse event or
+// Where a card was dropped, in the canvas's units: the pointer's y, from a mouse event or
 // the touch that ended (`changedTouches`), through `toFlow` (React Flow's
 // screenToFlowPosition); the dropped card's middle when the event has no point.
-export const dropX = (event, node, toFlow) => {
+export const dropY = (event, node, toFlow) => {
   const point = event?.changedTouches?.[0] ?? event
   if (Number.isFinite(point?.clientX) && Number.isFinite(point?.clientY)) {
-    const {x} = toFlow({x: point.clientX, y: point.clientY})
-    if (Number.isFinite(x)) return x
+    const {y} = toFlow({x: point.clientX, y: point.clientY})
+    if (Number.isFinite(y)) return y
   }
-  return node.position.x + CARD_WIDTH / 2
+  return node.position.y + (node.measured?.height ?? estimateHeight(node.data)) / 2
 }
 
 // The arrow key's move of a card: one place earlier ("-1") or later ("1"), or nil.
-export const keyMove = key => ({ArrowLeft: "-1", ArrowRight: "1"})[key] ?? null
+export const keyMove = key => ({ArrowUp: "-1", ArrowDown: "1"})[key] ?? null
 
 // Whether two orders differ.
 export const sameOrder = (a, b) => a.length === b.length && a.every((id, i) => id === b[i])

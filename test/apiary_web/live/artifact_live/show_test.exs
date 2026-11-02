@@ -93,12 +93,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#artifact-header-title", "explainer v2")
       assert has_element?(view, "#artifact-type", "explainer")
       assert has_element?(view, "#artifact-number", "2")
-      short = String.slice(ctx.claimed.public_id, 0, 11)
+      short = "Run #{ctx.claimed.number}"
       run_page = "/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/"
 
       assert has_element?(
                view,
-               ~s(#artifact-writer a[href="#{run_page}#{ctx.claimed.public_id}"]),
+               ~s(#artifact-writer a[href="#{run_page}#{ctx.claimed.number}"]),
                short
              )
 
@@ -214,9 +214,9 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
-      short = String.slice(ctx.claimed.public_id, 0, 11)
+      short = "Run #{ctx.claimed.number}"
       assert has_element?(view, "#artifact-writer a", "#{short} · round 2")
-      assert has_element?(view, "#artifact-history a.font-mono", "#{short} · round 2")
+      assert has_element?(view, "#artifact-history a", "#{short} · round 2")
 
       %{dispatch_run: unclaimed} =
         explore_run_fixture(ctx.work_item, state: :waiting, registered: false)
@@ -234,7 +234,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     test "names the run without a link for a reader who may not read runs", ctx do
       pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       [%{versions: [version]}] = Artifacts.list(ctx.work_item)
-      short = String.slice(ctx.claimed.public_id, 0, 11)
+      short = "Run #{ctx.claimed.number}"
 
       # A person of another organisation may not read this workspace's runs (`run.read`).
       %{scope: stranger} = sign_up_fixture()

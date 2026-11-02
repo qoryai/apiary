@@ -33,22 +33,22 @@ defmodule ApiaryWeb.ActivityDispatchHandoverTest do
   test "the sentence, and the run as its subject" do
     %{scope: scope} = sign_up_fixture()
     id = Ecto.UUID.generate()
-    public_id = "rn_0123456789abcdef"
+    number = 14
     entry = entry(id)
 
     assert shown(entry) == "Handed a claimed run over to the machine that runs it"
     refute shown(entry) == "Made a change"
 
-    assert %{text: "rn_01234567", mono: true, href: href} =
+    assert %{text: "Run 14", mono: false, href: href} =
              Core.subject(
                entry,
                :"dispatch.handover",
-               %{runs: %{id => public_id}},
+               %{runs: %{id => number}},
                scope,
                scope.workspace
              )
 
-    assert href == "/#{scope.organisation.slug}/#{scope.workspace.slug}/runs/#{public_id}"
+    assert href == "/#{scope.organisation.slug}/#{scope.workspace.slug}/runs/#{number}"
 
     assert %{text: "A run"} =
              Core.subject(entry, :"dispatch.handover", %{runs: %{}}, scope, scope.workspace)

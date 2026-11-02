@@ -172,25 +172,23 @@ defmodule Apiary.Runs.Record do
   ## The run
 
   @doc """
-  The run of the scope's workspace whose `public_id` is `public_id`, `rn_…`, the id the
-  run's URL carries, with its access key, its node (a deleted node's too) and, for a run
-  whose start failed, its dispatch (`Apiary.Runs.Run`, `dispatch_id`), and, for a run
-  that ended `workflow_not_in_harness`, its run of the queue with that run's harness walk
-  and work item. `:error` for an id the workspace has not got and for anything that is not
-  of that shape, the node's run id among them.
+  The run of the scope's workspace that `param` names, with its access key, its node (a
+  deleted node's too), for a run whose start failed, its dispatch (`Apiary.Runs.Run`,
+  `dispatch_id`), and, for a run that ended `workflow_not_in_harness`, its run of the
+  queue with that run's harness walk and work item. `param` is the run's number, as the
+  run's URL carries it (`Apiary.Runs.Run.parse_number/1`), or its `public_id`, `rn_…`, as
+  the API and older links carry it. `:error` for a run the workspace has not got, a run
+  of another workspace among them, and for anything of neither shape, the node's run id
+  among them.
   """
-  def fetch_run(%Scope{} = scope, public_id) do
-    if Run.public_id?(public_id) do
-      {:ok,
-       scope
-       |> Runs.get_run_by_public_id!(public_id)
-       |> Repo.preload([:access_key, :node, :dispatch])
-       |> WorkflowGap.preload()}
-    else
-      :error
+  def fetch_run(%Scope{} = scope, param) do
+    case Runs.get_run_by_param(scope, param) do
+      %Run{} = run ->
+        {:ok, run |> Repo.preload([:access_key, :node, :dispatch]) |> WorkflowGap.preload()}
+
+      nil ->
+        :error
     end
-  rescue
-    Ecto.NoResultsError -> :error
   end
 
   @doc """

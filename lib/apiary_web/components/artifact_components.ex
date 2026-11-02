@@ -17,7 +17,7 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Type, Version}
   alias Apiary.Runs.Run
-  alias ApiaryWeb.{People, RunComponents}
+  alias ApiaryWeb.People
 
   # The content types an image view shows inline: raster formats only.
   @inline_images ~w(image/png image/jpeg image/gif image/webp)
@@ -208,10 +208,9 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   @doc """
   writer/1 is who made a version, in words: a person's email address, "Former member"
-  for an account that is gone; for a run, the short public id of the run its claim
-  registered (`Apiary.Runs.Run`, `ApiaryWeb.RunComponents.short_id/1`) and the round
-  where the run of the queue has one, such as "rn_01234567 · round 2", or "A run" where
-  no run is registered or read.
+  for an account that is gone; for a run, "Run" and the number of the run its claim
+  registered (`Apiary.Runs.Run`) and the round where the run of the queue has one, such
+  as "Run 14 · round 2", or "A run" where no run is registered or read.
   """
   @spec writer(Version.t()) :: String.t()
   def writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}),
@@ -219,16 +218,16 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   def writer(%Version{writer: :person}), do: People.former_member()
 
-  def writer(%Version{writer: :run, run: %{run: %Run{public_id: id}, round: round}})
-      when is_binary(id) and is_integer(round),
+  def writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}})
+      when is_integer(number) and is_integer(round),
       do:
-        gettext("%{run} · round %{round}",
-          run: RunComponents.short_id(id),
+        gettext("Run %{run} · round %{round}",
+          run: number,
           round: Format.number(round)
         )
 
-  def writer(%Version{writer: :run, run: %{run: %Run{public_id: id}}}) when is_binary(id),
-    do: RunComponents.short_id(id)
+  def writer(%Version{writer: :run, run: %{run: %Run{number: number}}}) when is_integer(number),
+    do: gettext("Run %{run}", run: number)
 
   def writer(%Version{writer: :run}), do: gettext("A run")
 
@@ -241,9 +240,10 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :scope, :any, default: nil
 
   def made_by(
-        %{version: %Version{writer: :run, run: %{run: %Run{public_id: id}}}, scope: %{}} = assigns
+        %{version: %Version{writer: :run, run: %{run: %Run{number: number}}}, scope: %{}} =
+          assigns
       )
-      when is_binary(id) do
+      when is_integer(number) do
     assigns =
       assign(
         assigns,
@@ -252,11 +252,11 @@ defmodule ApiaryWeb.ArtifactComponents do
       )
 
     ~H"""
-    <span :if={!@link?} class="font-mono">{writer(@version)}</span>
+    <span :if={!@link?}>{writer(@version)}</span>
     <.link
       :if={@link?}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@version.run.run.public_id}"}
-      class="font-mono text-accent"
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@version.run.run}"}
+      class="text-accent"
     >
       {writer(@version)}
     </.link>

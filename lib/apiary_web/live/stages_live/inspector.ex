@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.StagesLive.Inspector do
   # The inspector of the Stages canvas: the selected stage's form, its name, sequence,
   # inputs, outputs and gate, or its details read-only (`may` false). The Stages page and
-  # Instance settings › Workspace types show it under the canvas; each sends its form's
+  # Instance settings › Workspace types show it beside the canvas; each sends its form's
   # events to `ApiaryWeb.StagesLive.Editor`.
   @moduledoc false
 
@@ -63,7 +63,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     <section
       id="stage-panel"
       aria-labelledby="stage-panel-title"
-      class="grid gap-3 rounded-box border border-base-300 p-4"
+      class="grid gap-3"
     >
       <h2 id="stage-panel-title" class="text-[15px]/6 font-semibold">{@stage["name"]}</h2>
       <.alerts stage={@stage} problems={@problems} harness={@harness} />
@@ -91,7 +91,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     <section
       id="stage-panel"
       aria-labelledby="stage-panel-title"
-      class="grid gap-4 rounded-box border border-base-300 p-4"
+      class="grid gap-4"
     >
       <div class="flex items-start justify-between gap-3">
         <h2 id="stage-panel-title" class="min-w-0 break-words text-[15px]/6 font-semibold">

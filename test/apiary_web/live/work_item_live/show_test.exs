@@ -126,7 +126,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-run", "Run 1 of 3")
+      assert has_element?(view, "#work-item-explore-run", "Attempt 1 of 3")
       assert has_element?(view, "#work-item-explore-run", "Queued")
     end
 
@@ -340,14 +340,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
             {:variables_invalid,
              "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
             {:ticket_gone,
-             "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."},
+             "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
             {:inputs_invalid,
              "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."},
             # A software workspace's word for the target.
             {:target_access_gone,
-             "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its repository, because the integration no longer reaches it or the repository's path has a character that Qory Apiary does not put in an access rule."},
+             "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. The run had no access to its repository: the integration no longer reaches it, or the repository's path has a character that access rules do not allow."},
             {:build_failed,
-             "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."}
+             "Check why the build failed on the repository's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."}
           ] do
         work_item = work_item_fixture(scope)
         explore_run_fixture(work_item, end_cause: cause)
@@ -357,12 +357,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         assert has_element?(
                  view,
                  "#work-item-explore-none-h",
-                 "The run ended before it started."
+                 "The run did not start."
                )
 
         assert has_element?(view, "#work-item-explore-none p", body)
         refute html =~ "ended with an error"
-        refute html =~ "Its last result was an error"
+        refute html =~ "The run&#39;s last result was an error"
 
         {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
         refute html =~ "ended with an error"
@@ -390,7 +390,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(
                view,
                "#work-item-explore-none-adapter",
-               "Ask an instance admin to check that #{name} is running and that its host name resolves. The run stopped before it started: the call to #{name} for the harness sources did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."
+               "Ask an instance admin to check that #{name} is running and that its host name resolves. The run did not start: the call to #{name} for the harness sources failed to connect, found no address for the host name, or got 502, 503 or 504 from the reverse proxy."
              )
     end
 
@@ -433,7 +433,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     test "for want of a model key: each tab puts the fix first, none says it ended with an error",
          %{conn: conn, scope: scope} do
       {work_item, run} = refused(scope, "model_key_missing")
-      short = String.slice(run.public_id, 0, 11)
+      short = Integer.to_string(run.number)
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -446,7 +446,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute html =~ "ended with an error"
 
       {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-none-h", "The run ended before it started.")
+      assert has_element?(view, "#work-item-explore-none-h", "The run did not start.")
 
       assert has_element?(
                view,
@@ -461,10 +461,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute html =~ "ended with an error"
     end
 
-    test "at run 3 of 3: the step card puts the fix first and keeps that no run is left",
+    test "at attempt 3 of 3: the step card puts the fix first and keeps that no run is left",
          %{conn: conn, scope: scope} do
       {work_item, run} = refused(scope, "model_key_missing", 3)
-      short = String.slice(run.public_id, 0, 11)
+      short = Integer.to_string(run.number)
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -472,10 +472,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
                view,
                "#work-item-step-line",
                @key_fix <>
-                 " The gateway had no model key for run #{short}. That run was run 3 of 3, the most one take in has, so Qory cannot explore again in this take in."
+                 " The gateway had no model key for run #{short}. That was attempt 3 of 3, the last attempt of this take in."
              )
 
-      refute html =~ "ended without a result, so Qory cannot explore again"
+      refute html =~ "ended without a result. That was run"
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
 
@@ -675,12 +675,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
-      href = ~p"/#{org}/#{ctx.here}/runs/#{ctx.run.public_id}"
+      href = ~p"/#{org}/#{ctx.here}/runs/#{ctx.run.number}"
       assert has_element?(view, ~s(a[href="#{href}"]))
       assert html =~ "At checkout."
     end
 
-    test "its short id alone where the reader reads only the workspace it is in now", ctx do
+    test "its number alone where the reader reads only the workspace it is in now", ctx do
       EditionStubs.MembersReachNamed.put([ctx.there.id])
       conn = log_in_user(ctx.conn, ctx.member)
       org = ctx.scope.organisation
@@ -688,7 +688,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
-      short = String.slice(ctx.run.public_id, 0, 11)
+      short = Integer.to_string(ctx.run.number)
       refute has_element?(view, ~s(a[href*="/runs/"]))
       assert has_element?(view, ".q-wi-run-id", short)
       assert html =~ "At checkout."

@@ -7,13 +7,17 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
 
   `/instance/workspace-types` lists each workspace type with its newest version.
   `/instance/workspace-types/:type` edits one type's default process, the stages a new
-  workspace of that type starts with (`Apiary.Processes.TypeTemplates`), on the Stages
-  page's canvas and inspector. Save makes a new version at once, with its author;
-  there are no trials and no work items. A stage's workflow is a text field that
-  suggests the Qory harness's workflows (`Apiary.Processes.TypeTemplates.workflows/0`)
-  and takes any name the schema's pattern allows; each workflow has a check when the Qory
-  harness lists it, else a cross. A gate is none or any member, since a type has no
-  members to name. The history lists every version with
+  workspace of that type starts with (`Apiary.Processes.TypeTemplates`), in two tabs
+  (`ApiaryWeb.PageComponents.page_tabs/1`): Stages, at that address, has the Stages
+  page's canvas and inspector; Details, at `?tab=details`, has the type's name, summary
+  and "How it works" text (`Apiary.Processes.type_texts/1`), the default machine type and
+  the history. The version line, Save and Discard changes are beside the tabs, on both:
+  one draft has the edits of both tabs, and a switch of tabs keeps it. Save makes a new
+  version at once, with its author; there are no trials and no work items. A stage's
+  workflow is a text field that suggests the Qory harness's workflows
+  (`Apiary.Processes.TypeTemplates.workflows/0`) and takes any name the schema's pattern
+  allows; each workflow has a check when the Qory harness lists it, else a cross. A gate
+  is none or any member, since a type has no members to name. The history lists every version with
   its changes against the version it started from. A type key no type has is a path that
   does not exist.
   """
@@ -45,7 +49,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
     )
   end
 
-  defp apply_action(socket, :edit, %{"type" => type}) do
+  # A switch of tabs keeps the draft: only the tab changes.
+  defp apply_action(%{assigns: %{type: type}} = socket, :edit, %{"type" => type} = params),
+    do: assign(socket, tab: tab(params))
+
+  defp apply_action(socket, :edit, %{"type" => type} = params) do
     case Enum.find(TypeTemplates.list(), &(&1.type == type)) do
       nil ->
         raise ApiaryWeb.NotFound
@@ -53,9 +61,8 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
       entry ->
         socket
         |> assign(
-          page_title: title(socket, [entry.name]),
+          tab: tab(params),
           type: type,
-          name: entry.name,
           declared: TypeTemplates.workflows(),
           types: TypeTemplates.artifact_types(),
           notice: nil,
@@ -63,11 +70,15 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
           save_note: nil,
           stage_errors: %{},
           rounds_errors: %{},
-          workflow_errors: %{}
+          workflow_errors: %{},
+          text_error: nil
         )
         |> load(entry.newest)
     end
   end
+
+  defp tab(%{"tab" => "details"}), do: :details
+  defp tab(_params), do: :stages
 
   defp title(socket, parts),
     do:
@@ -77,12 +88,19 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
         [gettext("Workspace types") | parts]
       )
 
-  # The editor on `version`, the newest: its document as the draft, its first stage
-  # selected.
+  # The editor on `version`, the newest: its document and its texts as the draft, its
+  # first stage selected.
   defp load(socket, %TypeTemplate{} = version) do
+    texts = Processes.type_texts(version)
+
     socket
     |> assign(
+      page_title: title(socket, [texts.name]),
+      name: texts.name,
       base: version,
+      base_texts: texts,
+      texts: texts,
+      text_error: nil,
       draft: version.document,
       selected: Editor.first_id(version.document),
       versions: TypeTemplates.versions(socket.assigns.type),
@@ -136,14 +154,28 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
       when event in @edits,
       do: {:noreply, Editor.edit_event(event, params, socket, &refresh/1)}
 
+  def handle_event("edit_texts", %{"texts" => params}, %{assigns: %{live_action: :edit}} = socket)
+      when is_map(params) do
+    texts =
+      Map.new(socket.assigns.texts, fn {text, value} ->
+        # A browser sends a textarea's line ends as "\r\n"; the texts keep "\n".
+        case params[Atom.to_string(text)] do
+          new when is_binary(new) -> {text, String.replace(new, "\r\n", "\n")}
+          _none -> {text, value}
+        end
+      end)
+
+    {:noreply, assign(socket, texts: texts, text_error: nil)}
+  end
+
   def handle_event("discard", _params, %{assigns: %{live_action: :edit}} = socket),
     do: {:noreply, socket |> fresh() |> load(socket.assigns.base)}
 
   def handle_event("save", _params, %{assigns: %{live_action: :edit}} = socket) do
     socket = fresh(socket)
-    %{current_scope: scope, type: type, draft: draft, base: base} = socket.assigns
+    %{current_scope: scope, type: type, draft: draft, base: base, texts: texts} = socket.assigns
 
-    case TypeTemplates.save(scope, type, draft, based_on: base.number) do
+    case TypeTemplates.save(scope, type, draft, based_on: base.number, texts: texts) do
       {:ok, version} ->
         notice =
           gettext("Saved as version %{number}. New workspaces of this type start with it.",
@@ -159,6 +191,13 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
          socket
          |> assign(save_errors: [stale(newest.number)], versions: TypeTemplates.versions(type))
          |> refresh()}
+
+      # A text too long shows under its field, on Details.
+      {:error, {too_long, text, limit}} when too_long in [:too_long, :too_many_words] ->
+        {:noreply,
+         socket
+         |> assign(text_error: {text, too_long_line(too_long, limit)})
+         |> push_patch(to: ~p"/instance/workspace-types/#{type}?tab=details")}
 
       {:error, errors} when is_list(errors) ->
         {:noreply, Editor.refused_document(socket, errors, &refresh/1)}
@@ -223,7 +262,9 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
     assigns =
       assign(assigns,
         stage: Processes.stage(assigns.draft, assigns.selected),
-        dirty: assigns.draft != assigns.base.document
+        dirty: assigns.draft != assigns.base.document or assigns.texts != assigns.base_texts,
+        limits: TypeTemplate.limits(),
+        path: ~p"/instance/workspace-types/#{assigns.type}"
       )
 
     ~H"""
@@ -238,40 +279,49 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
       <:crumb>{@name}</:crumb>
 
       <.settings_page section={:workspace_types} title={@name} measure="list">
-        <:subtitle>
-          {gettext(
-            "New workspaces of this type start with these stages. Each save makes a new version; workspaces that exist keep their stages."
-          )}
-        </:subtitle>
-
-        <div id="type-stages" class="grid gap-6">
-          <div id="type-version" class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p class="text-[13.5px]/5">
-              {gettext("Editing version %{number}.", number: @base.number)}
-              <span :if={@dirty} id="type-dirty" class="badge badge-sm badge-warning ml-2">
-                {gettext("Unsaved changes")}
-              </span>
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <.button id="type-save" variant="primary" phx-click="save" disabled={!@dirty}>
-                {gettext("Save")}
-              </.button>
-              <.button id="type-discard" variant="ghost" phx-click="discard" disabled={!@dirty}>
-                {gettext("Discard changes")}
-              </.button>
-              <p :if={@save_note} id="type-save-note" class="self-center text-[13px]/5 text-error">
+        <div id="type-stages" class={["grid", @tab == :details && "gap-6"]}>
+          <%!-- One row: the tabs, then the version line and the buttons at its right end. One
+          draft has the edits of both tabs, so the buttons are on both. --%>
+          <div class="flex max-w-[60rem] flex-wrap items-end justify-between gap-x-6 border-b border-line [&>.q-tabs]:border-b-0">
+            <.page_tabs id="type-tabs" label={@name} current={@tab} place="section">
+              <:tab key={:stages} patch={@path}>{gettext("Stages")}</:tab>
+              <:tab key={:details} patch={"#{@path}?tab=details"}>{gettext("Details")}</:tab>
+            </.page_tabs>
+            <div id="type-version" class="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-2 py-1">
+              <p class="text-[13.5px]/5">
+                {gettext("Editing version %{number}.", number: @base.number)}
+                <span :if={@dirty} id="type-dirty" class="badge badge-sm badge-warning ml-2">
+                  {gettext("Unsaved changes")}
+                </span>
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <.button id="type-save" variant="primary" phx-click="save" disabled={!@dirty}>
+                  {gettext("Save")}
+                </.button>
+                <.button id="type-discard" variant="ghost" phx-click="discard" disabled={!@dirty}>
+                  {gettext("Discard changes")}
+                </.button>
+              </div>
+              <p :if={@save_note} id="type-save-note" class="text-[13px]/5 text-error">
                 {@save_note}
               </p>
             </div>
           </div>
-          <.notice :if={@notice} kind={:success}>
-            <span id="type-notice">{@notice}</span>
-          </.notice>
-          <.notice :if={@save_errors != []} kind={:error}>
-            <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
-          </.notice>
+          <div
+            :if={@notice != nil or @save_errors != []}
+            class={["grid gap-3", @tab == :stages && "py-4"]}
+          >
+            <.notice :if={@notice} kind={:success}>
+              <span id="type-notice">{@notice}</span>
+            </.notice>
+            <.notice :if={@save_errors != []} kind={:error}>
+              <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
+            </.notice>
+          </div>
 
-          <div id="type-editor" class="grid items-start gap-4">
+          <%!-- The box takes the rest of the window (`.q-canvas-fill`), with the inspector
+          beside the canvas and no gap under the tabs. --%>
+          <div :if={@tab == :stages} id="type-editor" class="q-canvas-fill">
             <Canvas.canvas
               id="type-canvas"
               document={@draft}
@@ -280,76 +330,143 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
               alerts={canvas_alerts(assigns)}
               marks={@declared}
             />
-
-            <Inspector.stage_panel
-              :if={@stage}
-              stage={@stage}
-              may={true}
-              named={false}
-              last={length(@draft["stages"]) == 1}
-              declared={@declared}
-              types={@types}
-              members={[]}
-              people={%{}}
-              stage_errors={@stage_errors}
-              rounds_errors={@rounds_errors}
-              workflow_errors={@workflow_errors}
-              problems={@problems}
-              machine={@draft["machine"]}
-              marks={@declared}
-              harness={:qory}
-            />
+            <div class="q-canvas-side">
+              <Inspector.stage_panel
+                :if={@stage}
+                stage={@stage}
+                may={true}
+                named={false}
+                last={length(@draft["stages"]) == 1}
+                declared={@declared}
+                types={@types}
+                members={[]}
+                people={%{}}
+                stage_errors={@stage_errors}
+                rounds_errors={@rounds_errors}
+                workflow_errors={@workflow_errors}
+                problems={@problems}
+                machine={@draft["machine"]}
+                marks={@declared}
+                harness={:qory}
+              />
+            </div>
           </div>
 
-          <.form
-            for={%{}}
-            as={:process}
-            id="type-process-form"
-            phx-change="edit_process"
-            novalidate
-            class="max-w-md"
-          >
-            <.input
-              id="type-machine"
-              name="process[machine]"
-              value={@draft["machine"]}
-              label={gettext("Default machine type")}
-              hint={Inspector.machine_hint()}
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </.form>
+          <div :if={@tab == :details} id="type-details" class="grid gap-6">
+            <p id="type-details-line" class="max-w-[45rem] text-[13.5px]/5 text-muted">
+              {gettext(
+                "New workspaces of this type start with these stages. Each save makes a new version; workspaces that exist keep their stages."
+              )}
+            </p>
 
-          <section id="type-history" aria-labelledby="type-history-title" class="grid gap-2">
-            <h2 id="type-history-title" class="text-[15px]/6 font-semibold">
-              {gettext("History")}
-            </h2>
-            <ol class="grid gap-3">
-              <li
-                :for={{version, older} <- with_older(@versions)}
-                id={"type-version-#{version.number}"}
-                class="grid gap-1"
-              >
-                <p class="text-[13.5px]/5">
-                  <span class="font-medium">
-                    {gettext("Version %{number}", number: version.number)}
-                  </span>
-                  <span :if={version.number == hd(@versions).number} class="ml-2 badge badge-sm">
-                    {gettext("Newest")}
-                  </span>
-                  <span class="ml-2 text-muted">{author_line(version)}</span>
-                </p>
-                <ul class="grid gap-0.5 text-[13px]/5 text-muted">
-                  <li :for={line <- change_lines(older, version)}>{line}</li>
-                </ul>
-              </li>
-            </ol>
-          </section>
+            <.form
+              for={%{}}
+              as={:texts}
+              id="type-texts-form"
+              phx-change="edit_texts"
+              novalidate
+              class="grid max-w-[45rem] gap-1"
+            >
+              <.input
+                id="type-name"
+                name="texts[name]"
+                value={@texts.name}
+                label={gettext("Name")}
+                maxlength={@limits.name}
+                errors={text_errors(@text_error, :name)}
+                autocomplete="off"
+              />
+              <.input
+                id="type-summary"
+                name="texts[summary]"
+                value={@texts.summary}
+                label={gettext("Summary")}
+                hint={
+                  gettext(
+                    "One or two sentences, on the card on New workspace and at the top of the type's page."
+                  )
+                }
+                maxlength={@limits.summary}
+                errors={text_errors(@text_error, :summary)}
+                autocomplete="off"
+              />
+              <.input
+                id="type-description"
+                type="textarea"
+                name="texts[description]"
+                value={@texts.description}
+                label={gettext("How it works")}
+                hint={
+                  gettext(
+                    "At most 80 words, on the type's page. A blank line starts a new paragraph."
+                  )
+                }
+                maxlength={@limits.description}
+                rows="5"
+                errors={text_errors(@text_error, :description)}
+              />
+            </.form>
+
+            <.form
+              for={%{}}
+              as={:process}
+              id="type-process-form"
+              phx-change="edit_process"
+              novalidate
+              class="max-w-md"
+            >
+              <.input
+                id="type-machine"
+                name="process[machine]"
+                value={@draft["machine"]}
+                label={gettext("Default machine type")}
+                hint={Inspector.machine_hint()}
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </.form>
+
+            <section id="type-history" aria-labelledby="type-history-title" class="grid gap-2">
+              <h2 id="type-history-title" class="text-[15px]/6 font-semibold">
+                {gettext("History")}
+              </h2>
+              <ol class="grid gap-3">
+                <li
+                  :for={{version, older} <- with_older(@versions)}
+                  id={"type-version-#{version.number}"}
+                  class="grid gap-1"
+                >
+                  <p class="text-[13.5px]/5">
+                    <span class="font-medium">
+                      {gettext("Version %{number}", number: version.number)}
+                    </span>
+                    <span :if={version.number == hd(@versions).number} class="ml-2 badge badge-sm">
+                      {gettext("Newest")}
+                    </span>
+                    <span class="ml-2 text-muted">{author_line(version)}</span>
+                  </p>
+                  <ul class="grid gap-0.5 text-[13px]/5 text-muted">
+                    <li :for={line <- change_lines(older, version)}>{line}</li>
+                  </ul>
+                </li>
+              </ol>
+            </section>
+          </div>
         </div>
       </.settings_page>
     </Layouts.app>
     """
   end
+
+  # The line under a text that the save found too long.
+  defp text_errors({text, line}, text), do: [line]
+  defp text_errors(_error, _text), do: []
+
+  defp too_long_line(:too_long, limit),
+    do: gettext("Write at most %{number} characters.", number: limit)
+
+  defp too_long_line(:too_many_words, limit),
+    do: gettext("Write at most %{count} words.", count: limit)
 
   # A type's key in an element id: `qory.software` as `qory-software`.
   defp slug(type), do: String.replace(type, ~r/[^a-z0-9_-]/, "-")
@@ -389,9 +506,23 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   defp change_lines(nil, _version), do: [gettext("The first version.")]
 
   defp change_lines(older, version) do
-    case Processes.diff(older.document, version.document) do
+    stages =
+      older.document
+      |> Processes.diff(version.document)
+      |> Enum.map(&Words.change(&1, older.document, version.document, %{}))
+
+    texts =
+      for text <- [:name, :summary, :description],
+          Map.get(older, text) != Map.get(version, text),
+          do: text_changed(text)
+
+    case stages ++ texts do
       [] -> [gettext("No change.")]
-      changes -> Enum.map(changes, &Words.change(&1, older.document, version.document, %{}))
+      lines -> lines
     end
   end
+
+  defp text_changed(:name), do: gettext("Changed the name.")
+  defp text_changed(:summary), do: gettext("Changed the summary.")
+  defp text_changed(:description), do: gettext("Changed How it works.")
 end

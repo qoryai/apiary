@@ -7,6 +7,9 @@ defmodule ApiaryWeb.RunLogController do
       GET /:org/:workspace/runs/:run_id/log
           ?after=<sequence>&limit=<chunks>&stream=<name>&download=1
 
+  `:run_id` is the run's number. An address with the run's `rn_` id is redirected to the
+  same address with its number, once the run is found and may be read.
+
   `after` defaults to 0 and `limit` to 2,000 chunks (at most 10,000); `stream` keeps one of
   `terminal`, `stdout` and `stderr`; `download=1` sends every chunk as an attachment. The
   answer is `application/octet-stream`, chunked, and `x-qory-log-through` names the
@@ -46,9 +49,13 @@ defmodule ApiaryWeb.RunLogController do
          # The pipeline loaded the scope from the database for this request, as fresh as
          # `authorize/3` would read it: `can?/3` asks it without a second read.
          true <- Access.can?(scope, :"run.read_log", run) || :error,
+         :numbered <- ApiaryWeb.RunAddress.numbered(conn, run_id, run),
          {:ok, opts} <- options(params) do
       send_log(conn, scope, run, opts)
     else
+      {:redirect, to} ->
+        redirect(conn, to: to)
+
       :error ->
         send_plain(conn, 404, gettext("not found"))
 
@@ -144,13 +151,12 @@ defmodule ApiaryWeb.RunLogController do
 
   defp size_header(conn, nil), do: conn
 
-  # The file name is the run's `public_id`, which the database matched and holds to its
-  # shape, `rn_` and sixteen characters of an alphabet that needs no quoting.
+  # The file name is "run-" and the run's number, digits that need no quoting.
   defp disposition(conn, run, %{download?: true}) do
     put_resp_header(
       conn,
       "content-disposition",
-      ~s(attachment; filename="#{run.public_id}.log")
+      ~s(attachment; filename="run-#{run.number}.log")
     )
   end
 

@@ -43,7 +43,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         first_instruction:
           "Check the rounding in the basket and in the order total; the tax line may round separately.",
         runs: %{
-          latest: %{id: "01a97b20", path: "/8wonders/main/runs/01a97b20"},
+          latest: %{id: "01a97b20", number: 14, path: "/8wonders/main/runs/14"},
           count: 1,
           running: 0
         },
@@ -92,9 +92,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   describe "work_item_status/1" do
     for {status, owner, ended_by, words, mark} <- [
           {:queued, :dana, nil, "Explore is queued", "todo"},
-          {:running, :dana, nil, "Qory is exploring", "run"},
-          {:confirm, :dana, nil, "Waits for you to confirm", "wait"},
-          {:confirm, :priya, nil, "Waits for Priya to confirm", "wait_other"},
+          {:running, :dana, nil, "Explore is running", "run"},
+          {:confirm, :dana, nil, "You confirm next", "wait"},
+          {:confirm, :priya, nil, "Priya confirms next", "wait_other"},
           {:shape, :priya, nil, "Ready for Shape", "ready"},
           {:declined, :lea, :priya, "Declined by Priya", "declined"},
           {:declined, :lea, :dana, "Declined by you", "declined"},
@@ -152,7 +152,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "h1") == "Checkout totals are a cent off when a discount applies#88"
       assert text(html, "h1 .q-wi-no") == "#88"
-      assert text(html, ".q-wi-meta .q-wi-st") == "Waits for you to confirm"
+      assert text(html, ".q-wi-meta .q-wi-st") == "You confirm next"
 
       assert attr(html, "a.q-wi-ref", "href") == [@url]
       assert attr(html, "a.q-wi-ref", "title") == ["Open acme/shop#1204 on GitHub"]
@@ -182,7 +182,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-meta > span:last-child") == "Ppriya@example.com owns it"
       assert attr(html, ".q-wi-meta abbr", "data-tip") == ["priya@example.com"]
       assert attr(html, ".q-wi-meta abbr", "tabindex") == ["0"]
-      assert text(html, ".q-wi-meta .q-wi-st") == "Waits for Priya to confirm"
+      assert text(html, ".q-wi-meta .q-wi-st") == "Priya confirms next"
       assert count(html, "#work-item-head-close") == 0
       assert count(html, "#work-item-head-copy") == 1
     end
@@ -287,10 +287,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+               "When the run starts, Qory reads the ticket and the code, and writes a proposal for how to build it."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
       assert attr(html, "#work-item-step-undo button", "phx-click") == ["undo"]
@@ -301,24 +301,24 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@priya, ago(20 * 60)))
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
     end
 
     test "after the uninstall: the reader's line says nothing changes on the ticket" do
       html = card(queued(@dana, ago(20 * 60)), uninstalled: true)
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+               "When the run starts, Qory reads the ticket and the code, and writes a proposal for how to build it."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in 20 minutes ago. Until a run starts, you can undo this. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "You took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
     end
 
     test "after the uninstall, another's take in: who and when, nothing changes, and Undo" do
       html = card(queued(@priya, ago(20 * 60)), uninstalled: true)
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo this. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
     end
@@ -334,7 +334,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           ] do
         html = card(queued(by, ago(5)), can_undo: false, uninstalled: uninstalled)
         assert text(html, "#work-item-step-undo-line") == line
-        refute html =~ "undo this"
+        refute html =~ "undo the take in"
         assert count(html, "#work-item-step-undo button") == 0
       end
     end
@@ -346,43 +346,57 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   end
 
   describe "step_card/1, Explore running" do
-    test "a first run, and when it started; the run's id links its page" do
-      run = %{id: "01a9e3c7", path: "/8wonders/main/runs/01a9e3c7", started_at: ago(6 * 60)}
+    test "a first run, and when it started; the run's number links its page" do
+      run = %{id: "01a9e3c7", number: 15, path: "/8wonders/main/runs/15", started_at: ago(6 * 60)}
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Running"
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory is exploring. It reads the ticket and the code, and proposes how to build it."
+               "Qory reads the ticket and the code, and writes a proposal for how to build it."
 
-      assert text(html, "#work-item-step-run") == "Run 01a9e3c7 started 6 minutes ago."
-      assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/01a9e3c7"]
+      assert text(html, "#work-item-step-run") == "Run 15 started 6 minutes ago."
+      assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/15"]
       assert count(html, "button") == 0
     end
 
-    test "again, with a member's answers; a run without a page is its id" do
-      run = %{id: "rn_01a9e3c7", path: nil, started_at: ago(6 * 60), answers_by: [@priya]}
+    test "again, with a member's answers; a run without a page is its number" do
+      run = %{
+        id: "rn_01a9e3c7",
+        number: 15,
+        path: nil,
+        started_at: ago(6 * 60),
+        answers_by: [@priya]
+      }
+
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory is exploring again, with Priya's answers. It reads the ticket and the code, and proposes how to build it."
+               "Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."
 
       assert count(html, "#work-item-step-run a") == 0
-      assert text(html, "#work-item-step-run .q-wi-run-id") == "rn_01a9e3c7"
+      assert text(html, "#work-item-step-run .q-wi-run-id") == "15"
+    end
+
+    test "a run with no number reads n/a" do
+      run = %{id: "rn_01a9e3c7", number: nil, path: nil, started_at: ago(6 * 60)}
+      html = card(work_item(%{status: :running, run: run}))
+
+      assert text(html, "#work-item-step-run .q-wi-run-id") == "n/a"
     end
   end
 
   describe "step_card/1, Confirm" do
-    test "the reader's: Waits for you, the line, Confirm and Decline" do
+    test "the reader's: Your turn, the line, Confirm and Decline" do
       html = card(work_item())
 
       assert text(html, "h2") == "Confirm"
-      assert text(html, ".q-wi-badge") == "Waits for you"
+      assert text(html, ".q-wi-badge") == "Your turn"
       assert count(html, ".q-wi-step-ask") == 1
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
+               "Confirm Qory's proposal, change it first, or decline the work item."
 
       refute html =~ "Mock-up"
       assert text(html, "#work-item-step-confirm") == "Confirm"
@@ -407,14 +421,14 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-step-decline-question") == "Decline work item #88?"
 
       assert text(html, "#work-item-step-decline-sub") ==
-               "The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
+               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog."
 
       assert text(html, "#work-item-step-decline-go") == "Decline"
       assert attr(html, "#work-item-step-decline-go", "phx-click") == ["decline"]
       assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["88"]
       assert text(html, "#work-item-step-decline-cancel") == "Cancel"
       assert count(html, "#work-item-step-confirm") == 0
-      refute html =~ "Qory proposed"
+      refute html =~ "Confirm Qory&#39;s proposal"
     end
 
     test "without the right to act: whose turn it is, no Confirm, no Decline, no question" do
@@ -422,10 +436,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         html = card(work_item(%{owner: @priya}), can_act: false, asking: asking)
 
         assert text(html, ".q-wi-bee-line") ==
-                 "Waits for Priya to confirm Qory's proposal or decline the work item."
+                 "Next, Priya confirms Qory's proposal or declines the work item."
 
         assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
-        refute html =~ "Qory proposed how to build it"
+        refute html =~ "Confirm Qory&#39;s proposal"
         assert count(html, "button") == 0
         assert count(html, "[role=group]") == 0
         refute html =~ "Decline work item"
@@ -434,7 +448,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       acts = card(work_item(%{owner: @priya}), can_act: true)
 
       assert text(acts, ".q-wi-bee-line") ==
-               "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
+               "Confirm Qory's proposal, change it first, or decline the work item."
 
       assert count(acts, "#work-item-step-confirm") == 1
     end
@@ -443,7 +457,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       mine = card(work_item(), can_act: false)
 
       assert text(mine, ".q-wi-bee-line") ==
-               "Waits for you to confirm Qory's proposal or decline the work item."
+               "Next, you confirm Qory's proposal or decline the work item."
 
       html =
         card(
@@ -453,7 +467,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           can_act: false
         )
 
-      assert html =~ "Waits for &lt;b&gt;Ana&lt;/b&gt; to confirm"
+      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms Qory&#39;s proposal"
       assert count(html, ".q-wi-bee-line b") == 0
     end
 
@@ -468,7 +482,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(work_item(), asking: :decline, backlog_off: true)
 
       assert text(html, "#work-item-step-decline-sub") ==
-               "The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there."
+               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there."
 
       refute html =~ "Take in again"
     end
@@ -541,7 +555,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-close-question") == "Close work item #88?"
 
       assert text(html, "#work-item-close-sub") ==
-               "Closing ends the work on it in Qory Apiary. The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
+               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog."
 
       assert text(html, "#work-item-close-go") == "Close work item"
       assert attr(html, "#work-item-close-go", "phx-click") == ["close"]
@@ -556,7 +570,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert text(gone, "#work-item-close-sub") ==
-               "Closing ends the work on it in Qory Apiary. GitHub is no longer connected, so nothing changes on the ticket."
+               "GitHub is no longer connected, so nothing changes on the ticket. The work item stays in Qory Apiary, closed."
 
       off =
         render_component(&WorkItemComponents.close_question/1,
@@ -566,7 +580,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert text(off, "#work-item-close-sub") ==
-               "Closing ends the work on it in Qory Apiary. The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there."
+               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there."
     end
 
     defp ended(status, by, at, extra \\ []) do
@@ -604,7 +618,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-ended-line") == "Mirek closed this work item on 12 Oct."
 
       assert words(html) =~
-               "The ticket is still open on GitHub and keeps Qory's label. In the Backlog, Take in again brings this work item back."
+               "The ticket is still open on GitHub with Qory's label. To bring the work item back, use Take in again."
 
       assert text(html, "#work-item-ended-again") == "Take in again"
 
@@ -622,7 +636,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-ended-line") ==
                "Priya declined this work item 3 hours ago, at Confirm."
 
-      assert words(html) =~ "The ticket is still open on GitHub and keeps Qory's label."
+      assert words(html) =~ "The ticket is still open on GitHub with Qory's label."
       assert count(html, "#work-item-ended-again") == 1
 
       mine = ended(:declined, @dana, ago(3 * 3600))
@@ -635,10 +649,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = ended(:undone, @dana, ago(5))
 
       assert text(html, "#work-item-ended-line") ==
-               "You undid this just now, before a run started."
+               "You undid the take in just now, before a run started."
 
       assert words(html) =~
-               "Qory took its label off the ticket, and its comment stays there. In the Backlog, Take in again brings this work item back."
+               "Qory removed its label from the ticket and left its comment. To bring the work item back, use Take in again."
 
       assert count(html, "#work-item-ended-again") == 1
     end
@@ -647,10 +661,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = ended(:undone, @priya, ago(5))
 
       assert text(html, "#work-item-ended-line") ==
-               "Priya undid this just now, before a run started."
+               "Priya undid the take in just now, before a run started."
 
       assert words(html) =~
-               "Qory took its label off the ticket, and its comment stays there. In the Backlog, Take in again brings this work item back."
+               "Qory removed its label from the ticket and left its comment. To bring the work item back, use Take in again."
 
       assert count(html, "#work-item-ended-again") == 1
     end
@@ -660,8 +674,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
              "Mirek closed this work item on 12 Oct."},
             {:declined, @priya, "Priya declined this work item"},
-            {:undone, @dana, "You undid this"},
-            {:undone, @priya, "Priya undid this"}
+            {:undone, @dana, "You undid the take in 5 days ago, before a run started."},
+            {:undone, @priya, "Priya undid the take in"}
           ] do
         html = ended(status, by, ~U[2026-10-12 10:07:00Z], uninstalled: true)
         assert text(html, "#work-item-ended-line") =~ line
@@ -676,7 +690,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
              "Mirek closed this work item on 12 Oct."},
             {:declined, @priya, "Priya declined this work item"},
-            {:undone, @dana, "You undid this"}
+            {:undone, @dana, "You undid the take in 5 days ago, before a run started."}
           ] do
         html =
           ended(status, by, ~U[2026-10-12 10:07:00Z],
@@ -740,8 +754,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-details-repository") == "acme/shop"
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by Lea"
       assert text(html, "#work-item-details-instruction") =~ "Check the rounding in the basket"
-      assert text(html, "#work-item-details-runs") == "01a97b20 · 1 run, ended"
-      assert attr(html, "#work-item-details-runs a", "href") == ["/8wonders/main/runs/01a97b20"]
+      assert text(html, "#work-item-details-runs") == "Run 14 · 1 run, ended"
+      assert attr(html, "#work-item-details-runs a", "href") == ["/8wonders/main/runs/14"]
     end
 
     test "another owner; taken in by the reader; no instruction; runs, one running" do
@@ -750,7 +764,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           owner: @priya,
           taken_in_by: @dana,
           first_instruction: nil,
-          runs: %{latest: %{id: "01a9e3c7", path: nil}, count: 2, running: 1}
+          runs: %{latest: %{id: "01a9e3c7", number: 15, path: nil}, count: 2, running: 1}
         })
 
       html = details(w)
@@ -764,7 +778,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by you"
       assert text(html, "#work-item-details-instruction") == "None"
-      assert text(html, "#work-item-details-runs") == "01a9e3c7 · 2 runs, 1 running"
+      assert text(html, "#work-item-details-runs") == "Run 15 · 2 runs, 1 running"
     end
 
     test "Taken in and the end row are one line: the time and the words after it in one element" do
@@ -931,7 +945,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = ticket_tab(uninstalled: true, ticket: ticket(%{received_at: ago(120)}))
 
       assert text(html, "#work-item-ticket-stale") ==
-               "The ticket as GitHub last sent it, 2 minutes ago. It is no longer kept current."
+               "GitHub last sent this ticket 2 minutes ago. Qory Apiary no longer updates it."
     end
   end
 
@@ -1043,10 +1057,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "You declined this work item at Confirm"
 
       assert text(event(kind: :undone, actor: @dana), "p") =~
-               "You undid this, before a run started"
+               "You undid the take in, before a run started"
 
       assert text(event(kind: :undone, actor: @priya), "p") =~
-               "Priya undid this, before a run started"
+               "Priya undid the take in, before a run started"
     end
   end
 
@@ -1097,7 +1111,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(mine, "#comment-cm_01-confirm-question") == "Delete your comment?"
 
       assert text(mine, "#comment-cm_01-confirm-sub") ==
-               "It leaves the Thread for everyone. The Thread keeps a line that you deleted it."
+               "The comment leaves the Thread for everyone. A line in its place shows that you deleted it."
 
       assert text(mine, "#comment-cm_01-confirm-go") == "Delete comment"
       assert attr(mine, "#comment-cm_01-confirm-go", "phx-click") == ["delete_comment"]
@@ -1133,7 +1147,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "label") == "Comment on work item #88"
       assert attr(html, "textarea", "placeholder") == ["Comment on work item #88"]
       assert attr(html, "textarea", "name") == ["body"]
-      assert html =~ "Members of Main see this. Nothing is posted on the ticket."
+      assert html =~ "Members of Main see this. Qory posts nothing to the ticket."
       assert text(html, "button[type=submit]") == "Comment"
       assert attr(html, "textarea", "maxlength") == ["4000"]
       assert attr(html, "textarea", "aria-invalid") == []
@@ -1359,15 +1373,15 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@dana, ago(5)), item_noun: @bug)
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the bug and the code when the run starts, and proposes how to build it."
+               "When the run starts, Qory reads the bug and the code, and writes a proposal for how to build it."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo this: Qory takes its label off the bug, and the comment stays."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the bug and leaves its comment."
 
       asking = card(work_item(), item_noun: @bug, asking: :decline, backlog_off: true)
 
       assert words(asking) =~
-               "The bug stays open on GitHub and keeps Qory's label, and nothing new is posted there."
+               "The bug stays open on GitHub with Qory's label, and Qory posts nothing more there."
     end
 
     test "the notices, the close question and the end notice" do
@@ -1390,7 +1404,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert text(close, "#work-item-close-sub") ==
-               "Closing ends the work on it in Qory Apiary. The bug stays open on GitHub and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
+               "The bug stays open on GitHub with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog."
 
       ended =
         ended(
@@ -1401,7 +1415,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert words(ended) =~
-               "The bug is still open on GitHub and keeps Qory's label. In the Backlog, Take in again brings this work item back."
+               "The bug is still open on GitHub with Qory's label. To bring the work item back, use Take in again."
     end
 
     test "Details names its collection by its source's word, its first letter in upper case" do
@@ -1437,7 +1451,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert html =~ "The bug has no description."
 
       stale = ticket_tab(item_noun: @bug, uninstalled: true)
-      assert text(stale, "#work-item-ticket-stale") =~ "The bug as GitHub last sent it,"
+      assert text(stale, "#work-item-ticket-stale") =~ "GitHub last sent this bug "
 
       composer =
         render_component(&WorkItemComponents.composer/1,
@@ -1447,7 +1461,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           item_noun: @bug
         )
 
-      assert composer =~ "Members of Main see this. Nothing is posted on the bug."
+      assert composer =~ "Members of Main see this. Qory posts nothing to the bug."
     end
   end
 
@@ -1484,7 +1498,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert text(notice, "#work-item-ended-line") ==
-               "This work item was closed on 12 Oct, when its integration was removed."
+               "Qory Apiary closed this work item on 12 Oct, when its integration was removed."
 
       assert count(notice, "#work-item-ended-again") == 0
 

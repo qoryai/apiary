@@ -126,10 +126,10 @@ defmodule ApiaryWeb.WorkItemLive.View do
     end
   end
 
-  defp run_path(ctx, %{id: id, workspace_id: workspace_id}) when is_binary(id) do
+  defp run_path(ctx, %{number: number, workspace_id: workspace_id}) when is_integer(number) do
     case Map.get(ctx.readable, workspace_id) do
       nil -> nil
-      workspace -> ~p"/#{ctx.scope.organisation}/#{workspace}/runs/#{id}"
+      workspace -> ~p"/#{ctx.scope.organisation}/#{workspace}/runs/#{number}"
     end
   end
 
@@ -190,7 +190,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
         latest = List.last(runs)
 
         %{
-          latest: %{id: latest.id, path: run_path(ctx, latest)},
+          latest: %{id: latest.id, number: latest.number, path: run_path(ctx, latest)},
           count: length(runs),
           running: Enum.count(runs, &(&1.state in [:pending, :running]))
         }
@@ -208,6 +208,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp no_run do
     %{
       id: nil,
+      number: nil,
       path: nil,
       workspace_id: nil,
       attempt: 1,
@@ -333,7 +334,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp event_fields(_entry, _row, _names, _ctx), do: %{}
 
   defp run_ref(run, ctx) do
-    %{id: run.id, path: run_path(ctx, run), attempt: run.attempt, of: run.of}
+    %{id: run.id, number: run.number, path: run_path(ctx, run), attempt: run.attempt, of: run.of}
   end
 
   defp duration(ms) when is_integer(ms), do: RunComponents.format_duration_ms(ms)
