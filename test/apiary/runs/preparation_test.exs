@@ -270,10 +270,12 @@ defmodule Apiary.Runs.PreparationTest do
                fixer: :support,
                text:
                  "The machine did not start the run within 15 minutes of the request. " <>
-                   "Contact support with run #{run.public_id}.",
+                   "Contact support with run #{run.number}.",
                what: "The machine did not start the run within 15 minutes of the request.",
-               fix: "Contact support with run #{run.public_id}."
+               fix: "Contact support with run #{run.number}."
              }
+
+      refute stopped.fix =~ run.public_id
 
       # Version 1 of the diagnostics contract has `instance_admin` for this fixer.
       document = Apiary.Runs.Diagnostics.document(run, :instance)
@@ -371,7 +373,7 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert stopped.text ==
                "Fetch image registry.example/agent failed with exit code 0. " <>
-                 "Contact support with run #{run.public_id}."
+                 "Contact support with run #{run.number}."
     end
 
     test "a refused join has no exit status: its line shows no exit code", ctx do

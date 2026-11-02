@@ -464,7 +464,7 @@ defmodule Apiary.Runs.Preparation do
   # Who fixes a cause in the pool: support for the instance's pool, an admin of the
   # operator for an operator's, an admin of the workspace for the workspace's and for a
   # pool that is not known.
-  defp pool_fixer(_scope, %{place: :instance}, %Run{public_id: run}),
+  defp pool_fixer(_scope, %{place: :instance}, %Run{number: run}),
     do: {:support, {:support, gettext("Contact support with run %{run}.", run: run)}}
 
   defp pool_fixer(_scope, %{place: :operator, operator: operator}, _run),

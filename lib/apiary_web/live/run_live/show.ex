@@ -492,7 +492,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 rich_gettext(
                   "Copy again in a minute. If it fails again, %{contact_support} with run %{run}. Qory Apiary could not build the diagnostics.",
                   contact_support: ApiaryWeb.Support.plain(mid_sentence: true),
-                  run: @run.public_id
+                  run: @run.number
                 )
               )
             }

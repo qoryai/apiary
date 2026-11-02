@@ -346,7 +346,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             {"signed-out", "Sign in again, then copy again. Your session ended."},
             {"server",
              "Copy again in a minute. If it fails again, contact support with run " <>
-               "#{run.public_id}. Qory Apiary could not build the diagnostics."},
+               "#{run.number}. Qory Apiary could not build the diagnostics."},
             {"clipboard",
              "Allow this page to use the clipboard, then copy again. " <>
                "The browser did not allow the copy."}
@@ -354,6 +354,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert has_element?(lv, ~s(#run-menu-diagnostics[data-failed-#{cause}="#{line}"])),
                cause
       end
+
+      refute has_element?(lv, ~s(#run-menu-diagnostics[data-failed-server*="#{run.public_id}"]))
 
       ids =
         lv
