@@ -2011,10 +2011,12 @@ defmodule ApiaryWeb.RunLive.Show do
   # whose image was missing from the registry and whose work was queued again
   # (`Apiary.Dispatches.requeued_for_image?/1`), that, with the way to its exit; else the
   # last of its timeline's results that was no success, failed turns and failed tools,
-  # read whole, with the way to that item. A run with a failed push step has no failed
-  # tool here: the push is what failed last, and it is no item of the timeline. Nothing
-  # for a run that is alive or ended well, or whose timeline says no more than its state.
-  # Read after the preparation, which has the push steps.
+  # read whole, with the way to that item. A run with a failed push step looks only at
+  # the newest of its results and failed turns, and shows it only if that item is a
+  # failure: an earlier failure that the session went on from did not end the run, and the
+  # push that did is no item of the timeline. Nothing for a run that is alive or ended
+  # well, or whose timeline says no more than its state. Read after the preparation, which
+  # has the push steps.
   defp assign_ending(%{assigns: %{run: %Run{state: state} = run, index: index}} = socket) do
     exited = Enum.find(index.items, &(&1.kind == :run_exited))
 
@@ -2037,15 +2039,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp assign_ending(socket, state, run, index) do
     if state in Run.ended_badly_states() do
-      kinds =
-        if Preparation.push_failed?(socket.assigns.preparation),
-          do: [:result, :turn_failed],
-          else: [:result, :turn_failed, :tool]
-
-      candidates =
-        index.items
-        |> Enum.filter(&(&1.kind in kinds))
-        |> Enum.take(-12)
+      candidates = ending_candidates(index, socket.assigns.preparation)
 
       ending =
         if candidates != [],
@@ -2059,6 +2053,15 @@ defmodule ApiaryWeb.RunLive.Show do
     else
       assign(socket, ending: nil)
     end
+  end
+
+  defp ending_candidates(index, preparation) do
+    {kinds, last} =
+      if Preparation.push_failed?(preparation),
+        do: {[:result, :turn_failed], 1},
+        else: {[:result, :turn_failed, :tool], 12}
+
+    index.items |> Enum.filter(&(&1.kind in kinds)) |> Enum.take(-last)
   end
 
   defp ending_of(%{kind: :result, outcome: outcome, text: text} = item)

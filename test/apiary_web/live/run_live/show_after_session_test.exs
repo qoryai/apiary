@@ -238,7 +238,43 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
       refute has_element?(lv, "#run-why")
     end
 
-    test "a failed result, then a failed push, still shows its ending", ctx do
+    test "a failed turn, a success, then a failed push: no line", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          session_started() ++
+            [
+              {4, "runtime.turn_failed", %{"error" => "rate_limit", "agent_id" => "agent-1"}},
+              {5, "runtime.result", %{"outcome" => "success", "result" => "done"}},
+              {6, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
+            ] ++ failed_push(7) ++ [failed_exit(9)]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      refute has_element?(lv, "#run-why")
+    end
+
+    test "an earlier session's failed result, a success, then a failed push: no line", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          session_ended("runtime.result", %{"outcome" => "error", "result" => "the tests fail"}) ++
+            [
+              {6, "session.started", session_started_data(%{"session" => 2})},
+              {7, "runtime.result", %{"outcome" => "success", "result" => "done"}},
+              {8, "session.exited", %{"session" => 2, "state" => "succeeded", "exit_code" => 0}}
+            ] ++ failed_push(9) ++ [failed_exit(11)]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      refute has_element?(lv, "#run-why")
+    end
+
+    test "a failed newest result, then a failed push, shows it", ctx do
       run =
         project!(
           run_fixture(ctx.scope),
@@ -253,7 +289,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
       assert has_element?(lv, "#run-why", "the tests still fail")
     end
 
-    test "a failed turn, then a failed push, still shows its ending", ctx do
+    test "a failed newest turn, then a failed push, shows it", ctx do
       run =
         project!(
           run_fixture(ctx.scope),
@@ -264,6 +300,23 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert has_element?(lv, "#run-why", "the turn stopped")
+    end
+
+    test "a failed turn, a success, and no failed push still shows the turn", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          session_started() ++
+            [
+              {4, "runtime.turn_failed", %{"error" => "rate_limit", "agent_id" => "agent-1"}},
+              {5, "runtime.result", %{"outcome" => "success", "result" => "done"}},
+              failed_exit(6)
+            ]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-why", "rate_limit")
     end
 
     test "a failed tool with no push step still shows its ending", ctx do
