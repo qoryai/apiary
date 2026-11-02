@@ -198,7 +198,7 @@ defmodule Apiary.Processes.TypeTemplates do
 
   @doc """
   offered_types/0 is the artifact types a type's process may place: the standard types and
-  the custom types of the copied template (`Apiary.Harnesses.QoryCopy.template/0`). That
+  the custom types of the copied template (Apiary.Harnesses.QoryCopy.template/0). That
   template is the default process of every type (`Apiary.Processes.default_document/1`).
   """
   @spec offered_types() :: [%{name: String.t(), base_view: atom}]
