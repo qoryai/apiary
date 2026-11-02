@@ -11,7 +11,7 @@ defmodule Apiary.Runs.Diagnostics do
   workflow, work item, target, gateway and the names of its variables; `queue`, the
   state and end cause of the run's row in its workspace's queue; `dispatches`, the
   dispatch whose claim registered the run, at most one, with the starter's release
-  reason; `preparation`, the steps from the machine's start to the session's
+  reason; `preparation`, the run's steps from the machine's start on
   (`Apiary.Runs.Preparation`), each with its output, and why it stopped; `events`, the
   run's last events, at most `max_events/0`, with `events_omitted`; `log`, the run's
   output that belongs to no step, its last `max_log_bytes/0` bytes, with `truncated`;
@@ -287,11 +287,13 @@ defmodule Apiary.Runs.Diagnostics do
   end
 
   # The preparation (`Apiary.Runs.Preparation`), read under `scope` with the steps'
-  # output.
+  # output. Its `steps` have every step of the run in number order, push steps too.
   defp preparation(%Scope{} = scope, %Run{} = run) do
     preparation = Preparation.read(scope, run, log: true, release_reason: :as_stored)
 
-    %{"steps" => Enum.map(preparation.steps, &step_member/1)}
+    steps = Enum.sort_by(preparation.steps ++ preparation.after_session, & &1.number)
+
+    %{"steps" => Enum.map(steps, &step_member/1)}
     |> put("session_started_at", time(preparation.session_started_at))
     |> put("stopped", stopped_member(preparation.stopped))
   end

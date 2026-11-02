@@ -190,6 +190,92 @@ defmodule Apiary.Runs.PreparationTest do
     end
   end
 
+  describe "a run's steps after the session" do
+    # A run whose session started and exited, then a step of `kind` ended in `state`.
+    defp after_session!(ctx, kind, state, exit_code) do
+      ctx.scope
+      |> run_fixture()
+      |> project!([
+        {1, "run.started", started_data()},
+        step_started(2, 1, "fetch git.example.com/acme/web-shop", "fetch"),
+        step_exited(3, 1),
+        step_started(4, 2, "build the environment image", "build"),
+        step_exited(5, 2),
+        {6, "session.started", session_started_data()},
+        {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+        step_started(8, 3, "push work to git.example.com/acme/web-shop", kind),
+        {9, "run.log", step_log_data(3, "To https://git.example.com/acme/web-shop.git\n")},
+        step_exited(10, 3, state, exit_code),
+        {11, "run.exited", %{"state" => state, "exit_code" => exit_code, "duration_ms" => 1000}}
+      ])
+    end
+
+    test "a push leaves `steps` for `after_session`, in the same shape; a build stays", ctx do
+      run = after_session!(ctx, "push", "succeeded", 0)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [%{number: 1, kind: "fetch"}, %{number: 2, kind: "build"}] = preparation.steps
+
+      assert [
+               %{
+                 number: 3,
+                 name: "Push work to git.example.com/acme/web-shop",
+                 kind: "push",
+                 state: "succeeded",
+                 exit_code: 0,
+                 duration_ms: 100,
+                 output: %{
+                   text: "To https://git.example.com/acme/web-shop.git",
+                   truncated: false
+                 }
+               }
+             ] = preparation.after_session
+
+      assert preparation.stopped == nil
+    end
+
+    test "a failed push is no stop, and no step name to stop at", ctx do
+      run = after_session!(ctx, "push", "failed", 1)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [%{number: 3, state: "failed"}] = preparation.after_session
+      assert preparation.stopped == nil
+      assert Preparation.stopped_step(preparation) == nil
+    end
+
+    test "a failed setup step still is one, in the same place of the run", ctx do
+      run = after_session!(ctx, "setup", "failed", 1)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert preparation.after_session == []
+      assert %{cause: :step_failed, step: 3} = preparation.stopped
+      assert Preparation.stopped_step(preparation) =~ "Push work"
+    end
+
+    test "a reader who may not read the log has the step, with no output", ctx do
+      run = after_session!(ctx, "push", "failed", 1)
+
+      assert %{after_session: [%{number: 3, output: nil}]} =
+               Preparation.read(ctx.scope, run, log: false)
+    end
+
+    test "the machine's start does not depend on the push", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          step_started(3, 1, "push work to git.example.com/acme/web-shop", "push")
+        ])
+
+      assert %{steps: [], after_session: [%{state: "running"}], machine: %{started: started}} =
+               Preparation.read(ctx.scope, run)
+
+      assert started.state == "succeeded"
+    end
+  end
+
   describe "each cause of a failed preparation" do
     test "a release: no machine was made, with the starter's reason", ctx do
       %{dispatch: dispatch, registered: registered} = claimed!(ctx)
