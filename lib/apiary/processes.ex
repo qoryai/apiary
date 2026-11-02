@@ -121,7 +121,7 @@ defmodule Apiary.Processes do
   @doc """
   default_document/1 is the default process of a workspace type, given as its domain
   (`Apiary.Lingo.Domain`, a module or its name) or a workspace: the process of the copied
-  template (`Apiary.Harnesses.QoryCopy.template/0`). Every domain takes that one.
+  template (Apiary.Harnesses.QoryCopy.template/0). Every domain takes that one.
   """
   @spec default_document(module | String.t() | %Workspace{}) :: document
   def default_document(_domain_or_workspace), do: QoryCopy.template().process
@@ -164,7 +164,7 @@ defmodule Apiary.Processes do
   @doc """
   type_text_defaults/1 is the texts the release ships for the workspace type with the key
   `type`, translated in the locale of the caller's process: the copied template's texts
-  for its type (`Apiary.Harnesses.QoryCopy.texts/0`). Another domain's name is its
+  for its type (Apiary.Harnesses.QoryCopy.texts/0). Another domain's name is its
   `c:Apiary.Lingo.Domain.type_name/0` and its summary its
   `c:Apiary.Lingo.Domain.type_line/0`, with no description. For a key no type has, the
   name is the key, with no summary or description.
@@ -184,7 +184,7 @@ defmodule Apiary.Processes do
 
   @doc """
   qory_workflows/0 is the workflows the Qory harness declares: the names of the copied
-  `software` stack (`Apiary.Harnesses.QoryCopy.workflows/1`). It does not follow
+  `software` stack (Apiary.Harnesses.QoryCopy.workflows/1). It does not follow
   `Apiary.Lingo.Domain.Definition.qory_harness/0`, whose stack `core` lists no workflows.
   """
   @spec qory_workflows() :: [String.t()]

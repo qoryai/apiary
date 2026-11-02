@@ -6,7 +6,7 @@ defmodule Apiary.Harnesses.QoryCopy do
   # stops. The templates' texts are in `Apiary.Harnesses.QoryCopy.Texts`.
   #
   # `template/0` and `workflows/1` decode the bytes on first use and keep the result in
-  # `:persistent_term`. They cannot run when this module is compiled, because
+  # `:persistent_term`. `template/0` cannot run when this module is compiled, because
   # `Reader.template/1` reads its schema from the application's priv folder.
   @moduledoc false
 
