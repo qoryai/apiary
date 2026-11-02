@@ -491,6 +491,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
+  step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
+  the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
+  of a flat key fails with “Write bind by kind, then by role, such as bind: {agents:
+  {developer: web-developer}}: agents/developer is a flat key.”, of another kind with
+  “Use agents, commands or skills under bind: tools is not a kind.”, and of a list of
+  names with “Give one name per role: bind.agents.reviewer is a list.”
 - The Runs list shows, for each run, the workflow it ran (such as `explore-a-ticket`,
   with the stage and round that placed it), its work item as a link, and how it started,
   such as "Taken in by dana". The Host column is gone, and the Target column and the

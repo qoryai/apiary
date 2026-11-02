@@ -362,20 +362,38 @@ defmodule Apiary.StacksTest do
                Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
     end
 
-    test "refuse a flat bind, an unknown kind and a list of names in bind", ctx do
+    test "refuse a flat bind, an unknown kind and a list of names in bind, fix first", ctx do
+      base = "extends: {git: #{@stacks}, ref: v2}\n"
+
+      for {bind, message} <- [
+            {"{agents/developer: web-developer}",
+             "Write bind by kind, then by role, such as " <>
+               "bind: {agents: {developer: web-developer}}: agents/developer is a flat key."},
+            {"{skills: {review: brand-review}, commands/ship: web-ship}",
+             "Write bind by kind, then by role, such as " <>
+               "bind: {agents: {developer: web-developer}}: commands/ship is a flat key."},
+            {"{tools: {developer: web-developer}}",
+             "Use agents, commands or skills under bind: tools is not a kind."},
+            {"{agents: {reviewer: [web-reviewer, brand-review]}}",
+             "Give one name per role: bind.agents.reviewer is a list."},
+            {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."}
+          ] do
+        assert refused(ctx, base <> "bind: #{bind}\n") == [message], bind
+      end
+    end
+
+    test "refuse any other bind the run contract refuses in the schema's words", ctx do
       base = "extends: {git: #{@stacks}, ref: v2}\n"
 
       for {bind, place} <- [
-            {"{agents/developer: web-developer}", "#/bind/agents~1developer"},
-            {"{tools: {developer: web-developer}}", "#/bind/tools"},
-            {"{agents: {developer: [web-developer, web-reviewer]}}", "#/bind/agents/developer"},
             {"{agents: [web-developer]}", "#/bind/agents"},
             {"{agents: {developer: team/web-developer}}", "#/bind/agents/developer"},
-            {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"}
+            {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"},
+            {"{agents: {developer: {name: web-developer}}}", "#/bind/agents/developer"},
+            {"[agents]", "#/bind"}
           ] do
-        document = base <> "bind: #{bind}\n"
-        assert [error] = refused(ctx, document), document
-        assert error =~ "does not follow the harness format at #{place}: ", document
+        assert [error] = refused(ctx, base <> "bind: #{bind}\n"), bind
+        assert error =~ "does not follow the harness format at #{place}: ", bind
       end
     end
 
@@ -676,8 +694,7 @@ defmodule Apiary.StacksTest do
             {base <> "modules: [{name: lint}]\n", "#/modules/0"},
             {base <> "modules: [{source: {path: ./m}}]\n", "#/modules/0"},
             {base <> "modules: [{source: {git: #{@stacks}, ref: v1}, link: m}]\n", "#/modules/0"},
-            {base <> "modules: []\n", "#/modules"},
-            {base <> "bind: {coder: x}\n", "#/bind"}
+            {base <> "modules: []\n", "#/modules"}
           ] do
         assert [error] = refused(ctx, document), document
         assert error =~ "does not follow the harness format at #{place}", document
