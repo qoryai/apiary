@@ -104,13 +104,13 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       assert has_element?(
                view,
                "#work-item-step-undo-line",
-               "Until a run starts, you can undo this."
+               "Until a run starts, you can undo the take in."
              )
 
       assert has_element?(
                view,
                "#work-item-step",
-               "The agent answers the line when the run starts."
+               "When the run starts, the agent writes a reply to the line."
              )
 
       assert has_element?(view, "#work-item-explore-wait", "The agent answers the line in it.")
@@ -163,7 +163,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
       view |> element("#work-item-head-close") |> render_click()
-      assert has_element?(view, "#work-item-close", "Closing ends the work on it in Qory Apiary.")
+      assert has_element?(view, "#work-item-close", "The work item stays in Qory Apiary, closed.")
       refute has_element?(view, "#work-item-close", "label")
 
       view |> element("#work-item-close-go") |> render_click()
@@ -183,7 +183,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       assert has_element?(
                view,
                "#work-item-explore-questions",
-               "Qory runs Explore again from the start, with the line and the answers of this take in."
+               "Sending starts run 2 of 3, which reads the line and every answer of this take in."
              )
 
       refute has_element?(view, "#work-item-explore-questions", "its comments")

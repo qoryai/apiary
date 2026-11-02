@@ -67,7 +67,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   @doc """
   Where the work is: the three stages side by side, each a link to the list of that stage
   alone (`paths`, by stage), with its count, what it is, and what in it needs a look: how
-  many Qory is exploring, how many wait for answers and how many Explore left without a
+  many Explore is running on, how many wait for answers and how many Explore left without a
   result, how many wait at Confirm and for whom (`waiting`), and how many are ready for
   Shape.
   """
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
     required: true,
     doc: "the work items in each stage: `%{explore:, confirm:, shape:}`"
 
-  attr :exploring, :integer, default: 0, doc: "how many Qory is exploring"
+  attr :exploring, :integer, default: 0, doc: "how many Explore is running on"
   attr :answers, :integer, default: 0, doc: "how many wait for answers to Qory's questions"
   attr :no_result, :integer, default: 0, doc: "how many Explore left without a result"
   attr :waiting, :map, default: nil, doc: "what waits at Confirm, `%{count:, for:}`"
@@ -123,7 +123,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   def stage_line(:shape, _item_noun), do: gettext("The plan and its acceptance criteria")
 
   @doc """
-  What in a stage needs a look, with its mark: how many Qory is exploring, how many wait
+  What in a stage needs a look, with its mark: how many Explore is running on, how many wait
   for answers and how many are without a result (Explore), how many wait and for whom
   (Confirm), how many are ready (Shape). With `none`, the words for none of them;
   without, nothing.
@@ -493,7 +493,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   again where the title has nothing left to show, as a text from an external system is
   shown), the mark Test for a test work item (`:test`), its ticket's key with the
   integration's mark (the mark alone without a key; neither for a test work item),
-  its status in words (Waits for you to confirm the one strong status), its owner's
+  its status in words (You confirm next the one strong status), its owner's
   mark, and when it last changed. The whole row is a link to
   the work item (`navigate`). In a narrow list the number and the status go under the
   title. Questions, and a take in that used its runs, wait for the reader with `can_act`.
