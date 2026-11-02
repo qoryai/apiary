@@ -88,14 +88,14 @@ test("each workflow's mark reaches the card as text, and a card with none has no
         ...view.stages[1],
         marks: {
           build: {listed: false, label: "build: not in the harness"},
-          constructor: {listed: true, label: "<b>constructor</b>: in the harness"},
+          constructor: {listed: true, label: "<b>constructor</b>: a stage can run it"},
         },
       },
     ],
   }
   assert.deepEqual(stages(marked)[0].data.marks, {
     build: {listed: false, label: "build: not in the harness"},
-    constructor: {listed: true, label: "<b>constructor</b>: in the harness"},
+    constructor: {listed: true, label: "<b>constructor</b>: a stage can run it"},
   })
   // Only `true` lists a workflow; anything else is a cross.
   const odd = {...view, stages: [{...view.stages[1], marks: {build: {listed: "yes", label: 1}}}]}

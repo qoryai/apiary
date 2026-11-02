@@ -189,6 +189,23 @@ defmodule Apiary.StagesTest do
       assert Stages.check_workflows(other, work_item, read.([])) == {:error, :not_found}
     end
 
+    test "Check again on the Qory harness reads nothing and records the Qory names", %{
+      scope: scope
+    } do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_workflow
+
+      # No adapter and no public host is called: the default read takes the Qory names.
+      for stub <- [Apiary.Adapters.Calls, Apiary.Harnesses.PublicGit] do
+        Req.Test.stub(stub, fn _conn -> raise "the Qory harness was read" end)
+      end
+
+      assert Stages.check_workflows(scope, work_item) == {:error, :still_missing}
+      assert %{names: ["explore-a-ticket"]} = Processes.declared_snapshot(scope.workspace)
+    end
+
     test "passes through a stage with no workflow and no gate", %{scope: scope} do
       save!(scope, [
         stage("st_aaaaaaaaaa", "Intake", [], %{"gate" => %{"kind" => "none"}}),

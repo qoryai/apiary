@@ -57,6 +57,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         sections: SettingsComponents.sections(scope, :workspace),
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         harness: harness_name(Sources.chosen(workspace)),
+        cross: cross(Sources.chosen(workspace)),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
         snapshot: Processes.declared_snapshot(workspace),
@@ -223,7 +224,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp canvas_alerts(assigns) do
     Map.new(assigns.draft["stages"], fn stage ->
       {stage["id"],
-       Inspector.stage_alerts(assigns.problems, stage) ++
+       Inspector.stage_alerts(assigns.problems, stage, assigns.cross) ++
          Map.get(assigns.stage_errors, stage["id"], [])}
     end)
   end
@@ -611,6 +612,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               rounds_errors={@rounds_errors}
               workflow_errors={@workflow_errors}
               problems={@problems}
+              harness={@cross}
               machine={@draft["machine"]}
               marks={marks(assigns)}
             />
@@ -648,7 +650,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             </p>
             <ul :if={@problems != []} class="grid gap-1 text-[13.5px]/5">
               <li :for={problem <- @problems} data-problem={elem(problem, 0)}>
-                {problem_words(problem, @draft)}
+                {problem_words(problem, @draft, @cross)}
                 <.link
                   :if={elem(problem, 0) == :missing_type and @may}
                   navigate={
@@ -818,8 +820,15 @@ defmodule ApiaryWeb.StagesLive.Index do
         "Every workflow is declared, every type exists, and every input is an output of an earlier stage."
       )
 
-  defp problem_words({:missing_workflow, id, name}, doc),
-    do: Words.undeclared(stage_name(doc, id), name)
+  # The cross's line for the workspace's harness: the Qory harness, whose workflows the
+  # workspace cannot add to, or a harness repository (`Words.undeclared/3`).
+  defp cross(%{choice: :qory}), do: :qory_workspace
+  defp cross(_chosen), do: :workspace
+
+  defp problem_words({:missing_workflow, id, name}, doc, cross),
+    do: Words.undeclared(stage_name(doc, id), name, cross)
+
+  defp problem_words(problem, doc, _cross), do: problem_words(problem, doc)
 
   defp problem_words({:missing_type, id, type}, doc),
     do: Words.missing_type(stage_name(doc, id), type)

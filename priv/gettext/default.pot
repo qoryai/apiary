@@ -3009,7 +3009,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "%{workflow}: in the harness"
+msgid "%{workflow}: a stage can run it"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -3559,6 +3559,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "A stage"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "A stage can run it"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6103,7 +6108,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}, so a workspace that uses it waits at %{stage}."
+msgid "Choose another workflow for %{stage}, or choose a harness that lists %{workflow} under workflows on the Workflow page. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once its harness has been read, on its Stages or Workflow page or by Check again."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -9655,11 +9665,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "In the composer, save the rule once it reads back"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "In the harness"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

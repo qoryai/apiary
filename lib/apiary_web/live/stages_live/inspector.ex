@@ -50,8 +50,9 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   attr :harness, :atom,
     default: :workspace,
-    values: [:workspace, :qory],
-    doc: "the harness the alerts name: the workspace's, or the Qory harness"
+    values: [:workspace, :qory_workspace, :qory],
+    doc:
+      "the harness the alerts name: the workspace's harness repository, the workspace's Qory harness, or the Qory harness of a workspace type"
 
   attr :named, :boolean,
     default: true,

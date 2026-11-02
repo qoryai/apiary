@@ -84,7 +84,7 @@ defmodule ApiaryWeb.StagesLive.CanvasTest do
     assert hd(view["stages"])["marks"] == %{
              "explore-a-ticket" => %{
                "listed" => true,
-               "label" => "explore-a-ticket: in the harness"
+               "label" => "explore-a-ticket: a stage can run it"
              },
              "constructor" => %{"listed" => false, "label" => "constructor: not in the harness"}
            }

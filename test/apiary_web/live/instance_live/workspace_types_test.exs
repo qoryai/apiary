@@ -112,7 +112,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert has_element?(
                view,
                ~s{#stage-entry-0-0-workflow-mark[data-mark="listed"]},
-               "In the harness"
+               "A stage can run it"
              )
 
       view
@@ -128,7 +128,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
              )
 
       alert =
-        "Choose another workflow for Explore, or list triage in the harness of each workspace of this type. The Qory harness does not list triage, so a workspace that uses it waits at Explore."
+        "Choose another workflow for Explore, or list triage in the harness of each workspace of this type. The Qory harness does not list triage. A workspace on the Qory harness waits at Explore once its harness has been read, on its Stages or Workflow page or by Check again."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", alert)
 

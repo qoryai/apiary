@@ -135,8 +135,9 @@ defmodule ApiaryWeb.StagesLive.Words do
   def add_before(name), do: gettext("Add a stage before %{stage}", stage: name)
 
   # A workflow the harness does not list under `workflows` (spec addition 2): the red
-  # cross's line. `:workspace` for the workspace's harness on the Stages page; `:qory` for
-  # the Qory harness on Instance settings › Workspace types.
+  # cross's line. On the Stages page, `:workspace` for a harness repository and
+  # `:qory_workspace` for the Qory harness; `:qory` for the Qory harness on Instance
+  # settings › Workspace types.
   @doc false
   def undeclared(stage_name, workflow, harness \\ :workspace)
 
@@ -148,24 +149,34 @@ defmodule ApiaryWeb.StagesLive.Words do
         workflow: workflow
       )
 
-  def undeclared(stage_name, workflow, :qory),
+  def undeclared(stage_name, workflow, :qory_workspace),
     do:
       gettext(
-        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}, so a workspace that uses it waits at %{stage}.",
+        "Choose another workflow for %{stage}, or choose a harness that lists %{workflow} under workflows on the Workflow page. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run.",
         stage: stage_name,
         workflow: workflow
       )
 
-  # A workflow's mark: whether the harness lists it under `workflows`, in words beside the
-  # check or the cross.
+  def undeclared(stage_name, workflow, :qory),
+    do:
+      gettext(
+        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once its harness has been read, on its Stages or Workflow page or by Check again.",
+        stage: stage_name,
+        workflow: workflow
+      )
+
+  # A workflow's mark, in words beside the check or the cross: a check for a name a stage
+  # may run (`Apiary.Processes.declared_workflows/1`: explore-a-ticket, the names the
+  # harness listed at its last read, and the workflows saved on the Workflow page), a
+  # cross for any other.
   @doc false
-  def mark_text(true), do: gettext("In the harness")
+  def mark_text(true), do: gettext("A stage can run it")
   def mark_text(false), do: gettext("Not in the harness")
 
   # The same with the workflow's name, for a mark on a card.
   @doc false
   def mark_label(workflow, true),
-    do: gettext("%{workflow}: in the harness", workflow: workflow)
+    do: gettext("%{workflow}: a stage can run it", workflow: workflow)
 
   def mark_label(workflow, false),
     do: gettext("%{workflow}: not in the harness", workflow: workflow)
