@@ -46,6 +46,7 @@ defmodule Apiary.Processes.TypeTemplates do
   alias Apiary.{Access, Audit, Features, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Artifacts.Type
+  alias Apiary.Harnesses.QoryCopy
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Organisation
   alias Apiary.Processes.TypeTemplate
@@ -194,6 +195,14 @@ defmodule Apiary.Processes.TypeTemplates do
   end
 
   defp base_view(view), do: Enum.find(Type.base_views(), &(Atom.to_string(&1) == view))
+
+  @doc """
+  offered_types/0 is the artifact types a type's process may place: the standard types and
+  the custom types of the copied template (`Apiary.Harnesses.QoryCopy.template/0`). That
+  template is the default process of every type (`Apiary.Processes.default_document/1`).
+  """
+  @spec offered_types() :: [%{name: String.t(), base_view: atom}]
+  def offered_types, do: artifact_types(QoryCopy.template().artifact_types)
 
   @doc """
   may_edit?/1 says whether the person of `scope` may save a version of a type's default
