@@ -527,8 +527,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary reads a harness source's templates: `process.yaml` in each of the first 20
   modules that the root `qory.yaml` or `harness.yaml` lists under `exports`, as one of
   the 10 reads of a source a person has each minute. A module with no such file is left
-  out, and a file that is not a usable template is listed with the reason. No page
-  changes.
+  out, and a file that is not a usable template is listed with the reason. A source
+  narrowed to a stack or a folder has no templates, and its modules are not read. No
+  page changes.
 <!-- /feature -->
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an

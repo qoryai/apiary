@@ -39,17 +39,22 @@ defmodule Apiary.Stacks.Sources do
   #
   # ## Reading a source's templates
   #
-  # `templates/2` reads the templates of one source, as `exports/2` reads the source: from
-  # its root harness file, whatever stack or folder the source is narrowed to. A template
-  # is the `process.yaml` of a module the file's `exports` list, read at the commit of the
-  # root file, in the module's folder (`Apiary.Harnesses.Reader.module_file/3`). A module
-  # with no such file is in neither of the result's lists. A module whose file has a
-  # `stack` the `exports` do not list or a `process` that does not pass
-  # `Apiary.Processes.validate/1`, and a module whose file is not read, is in
-  # `not_readable` with the reason (`t:not_readable/0`), and the other modules are read.
+  # `templates/2` reads the templates of a source with no narrowing, from its root harness
+  # file, as `exports/2` reads the source. A template is the `process.yaml` of a module the
+  # file's `exports` list, read at the commit of the root file, in the module's folder
+  # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
+  # the result's lists. A module whose file has a `stack` the `exports` do not list or a
+  # `process` that does not pass `Apiary.Processes.validate/1`, and a module whose file is
+  # not read, is in `not_readable` with the reason (`t:not_readable/0`), and the other
+  # modules are read.
   # A failed read of one file fails the source only where the failure is about the
   # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
   # listed twice counts once.
+  #
+  # A source narrowed to a stack or a folder has no template. An assignment narrowed that
+  # way limits what the organisation may read (`Apiary.Harnesses.allowed?/3`), and the
+  # root file may list modules outside that limit. A read of such a source reads
+  # `harness.yaml` for its commit, and no `qory.yaml` and no module's file.
   #
   # ## Limits
   #
@@ -61,9 +66,10 @@ defmodule Apiary.Stacks.Sources do
   # system it reaches under credentials every organisation shares, so a person's reads
   # stay a few. A read of a source makes one resolve per adapter and at most 3 reads to
   # find its stacks, then, for `read/2`, reads the first 20 stacks it has, in the order
-  # its harness file exports them, or, for `templates/2`, the file of each of the first 20
-  # modules it lists; its calls, and its requests to a public repository's host, take at
-  # most 30 seconds together, and one past that makes the source not read.
+  # its harness file exports them, or, for `templates/2` of a source with no narrowing,
+  # the file of each of the first 20 modules it lists; its calls, and its requests to a
+  # public repository's host, take at most 30 seconds together, and one past that makes
+  # the source not read.
   #
   # ## The save
   #
@@ -625,8 +631,9 @@ defmodule Apiary.Stacks.Sources do
   # templates/2 is the templates `source` offers (the moduledoc), read at the source's
   # `ref` as one of the person's reads, whatever the number of its modules: `{:ok,
   # templates}` (`t:templates/0`), or `{:error, reason}` as `read/2` has it. A source with
-  # no root harness file or no `exports` has no template. It calls the adapters, so a
-  # page runs it outside its process.
+  # no root harness file or no `exports` has no template. A source narrowed to a stack or
+  # a folder has no template either: `templates/2` reads `harness.yaml` for `commit`, and
+  # no module's file. It calls the adapters, so a page runs it outside its process.
   @spec templates(Scope.t(), source) :: {:ok, templates} | {:error, reason}
   def templates(%Scope{} = scope, %{} = source) do
     deadline = now() + @read_time
@@ -644,11 +651,26 @@ defmodule Apiary.Stacks.Sources do
     harness_source = Map.merge(source.narrowing, %{"git" => source.git, "ref" => source.ref})
 
     with :ok <- spend(scope, :read, @reads_a_minute),
-         {:ok, location} <- locate(organisation, harness_source, deadline),
-         {:ok, version, exports} <- root_exports(location, source.ref, deadline) do
-      module_templates(location, exports, version, deadline)
+         {:ok, location} <- locate(organisation, harness_source, deadline) do
+      if narrowed?(source.narrowing) do
+        narrowed_templates(location, source.ref, deadline)
+      else
+        with {:ok, version, exports} <- root_exports(location, source.ref, deadline),
+             do: module_templates(location, exports, version, deadline)
+      end
     end
   end
+
+  defp narrowed?(narrowing), do: is_map_key(narrowing, "path") or is_map_key(narrowing, "stack")
+
+  # The templates of a narrowed source (the moduledoc): none, at the commit one read of
+  # the root gives.
+  defp narrowed_templates(location, at, deadline) do
+    with {:ok, _harness, version} <- read_file(location, "harness.yaml", at, deadline),
+         do: {:ok, no_templates(version)}
+  end
+
+  defp no_templates(version), do: %{commit: version, templates: [], not_readable: [], more: 0}
 
   # The `exports` of the root harness file at `location`, read at `at`: `{:ok, version,
   # exports}`, with `:none` for a source with neither file or with no `exports`, or
@@ -674,11 +696,10 @@ defmodule Apiary.Stacks.Sources do
   end
 
   defp module_templates(_location, :none, version, _deadline),
-    do: {:ok, %{commit: version, templates: [], not_readable: [], more: 0}}
+    do: {:ok, no_templates(version)}
 
   defp module_templates(_location, %{modules: :invalid}, version, _deadline) do
-    not_readable = [%{module: nil, reason: :modules_invalid}]
-    {:ok, %{commit: version, templates: [], not_readable: not_readable, more: 0}}
+    {:ok, %{no_templates(version) | not_readable: [%{module: nil, reason: :modules_invalid}]}}
   end
 
   defp module_templates(location, %{modules: modules} = exports, version, deadline) do

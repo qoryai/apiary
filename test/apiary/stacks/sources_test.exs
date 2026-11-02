@@ -118,6 +118,26 @@ defmodule Apiary.Stacks.SourcesTest do
 
   defp module_path(name), do: "modules/#{name}/process.yaml"
 
+  # `@harness` narrowed by `narrowing`, whose root file lists a module with a template:
+  # no template, one read of `harness.yaml`, and one of the person's reads.
+  defp assert_narrowed_has_no_template(ctx, narrowing) do
+    source =
+      template_source(ctx, root("[a]"), %{"a" => template_file()},
+        versions: %{"R_harness" => @commit}
+      )
+
+    source = %{source | narrowing: narrowing}
+    calls()
+
+    assert Sources.templates(ctx.scope, source) ==
+             {:ok, %{commit: @commit, templates: [], not_readable: [], more: 0}}
+
+    assert read_paths() == ["harness.yaml"]
+
+    for _n <- 2..10, do: assert({:ok, _read} = Sources.templates(ctx.scope, source))
+    assert {:error, {:limited, _seconds}} = Sources.templates(ctx.scope, source)
+  end
+
   # The paths of the reads so far, in order.
   defp read_paths do
     calls()
@@ -911,13 +931,29 @@ defmodule Apiary.Stacks.SourcesTest do
                {:error, {:invalid_section, "qory.yaml", :exports}}
     end
 
-    test "a narrowed source reads the root, with no filter", ctx do
-      source = template_source(ctx, root("[a]"), %{"a" => template_file()})
+    test "a source narrowed to a folder has no template", ctx do
+      assert_narrowed_has_no_template(ctx, %{"path" => "stacks/other"})
+    end
 
-      for narrowing <- [%{"stack" => "other"}, %{"path" => "stacks/other"}] do
-        assert {:ok, %{templates: [%{module: "a"}]}} =
-                 Sources.templates(ctx.scope, %{source | narrowing: narrowing})
-      end
+    test "a source narrowed to a stack has no template", ctx do
+      assert_narrowed_has_no_template(ctx, %{"stack" => "other"})
+    end
+
+    test "a narrowed source does not read the exports of its root", ctx do
+      source = template_source(ctx, "exports: 1\n", %{})
+
+      assert {:ok, %{commit: "c-R_harness", templates: [], not_readable: []}} =
+               Sources.templates(ctx.scope, %{source | narrowing: %{"stack" => "other"}})
+    end
+
+    test "a narrowed source whose read fails returns the error of read/2", ctx do
+      source =
+        template_source(ctx, root("[a]"), %{},
+          refuse_path: %{"harness.yaml" => "resource_not_covered"}
+        )
+
+      assert Sources.templates(ctx.scope, %{source | narrowing: %{"path" => "stacks/other"}}) ==
+               {:error, :not_covered}
     end
 
     test "commit is the full commit, and every file is read at it", ctx do
