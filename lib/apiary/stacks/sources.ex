@@ -43,10 +43,11 @@ defmodule Apiary.Stacks.Sources do
   # file, as `exports/2` reads the source. A template is the `process.yaml` of a module the
   # file's `exports` list, read at the commit of the root file, in the module's folder
   # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
-  # the result's lists. A module whose file has a `stack` the `exports` do not list or a
-  # `process` that does not pass `Apiary.Processes.validate/1`, and a module whose file is
-  # not read, is in `not_readable` with the reason (`t:not_readable/0`), and the other
-  # modules are read.
+  # the result's lists. A module whose file has a `stack` the `exports` do not list, a
+  # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
+  # does not pass `Apiary.Artifacts.TemplateTypes.check/1`, and a module whose file is not
+  # read, is in `not_readable` with the reason (`t:not_readable/0`), and the other modules
+  # are read. The file's checks run in that order, the costly check of the types last.
   # A failed read of one file fails the source only where the failure is about the
   # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
   # listed twice counts once.
@@ -130,6 +131,7 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.{Access, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
+  alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Harnesses.{Assignment, PublicGit, Reader, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Lingo.Domain.Definition
@@ -184,7 +186,8 @@ defmodule Apiary.Stacks.Sources do
           description: String.t(),
           type: String.t(),
           stack: String.t(),
-          process: map
+          process: map,
+          artifact_types: [map] | nil
         }
 
   @typedoc """
@@ -193,6 +196,8 @@ defmodule Apiary.Stacks.Sources do
 
     * `:stack_not_exported`: the file's `stack` is not among the stacks of `exports`;
     * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
+    * `{:types, refusals}`: its `artifact_types` do not pass the check of a template's
+      types; `TemplateTypes.message/1` gives each refusal's text;
     * `:unreadable`: the module's folder is at no path a read takes, a read of the file
       failed, or the file does not pass `Apiary.Harnesses.Reader.template/1`;
     * `:modules_invalid`: the `modules` of `exports` are not a list of text.
@@ -202,6 +207,7 @@ defmodule Apiary.Stacks.Sources do
           reason:
             :stack_not_exported
             | {:invalid, [Apiary.Processes.error()]}
+            | {:types, [TemplateTypes.refusal()]}
             | :unreadable
             | :modules_invalid
         }
@@ -757,14 +763,17 @@ defmodule Apiary.Stacks.Sources do
     if source_failed?(reason), do: {:error, reason}, else: {:not_readable, :unreadable}
   end
 
-  # `content`, a module's file, as a template of `name`: its `stack` is checked first.
+  # `content`, a module's file, as a template of `name`: its `stack` is checked first, and
+  # its types, whose check is the costly one, last.
   defp checked_template(content, name, %{stacks: stacks}) do
     with {:ok, template} <- Reader.template(content),
          true <- template.stack in stacks,
-         :ok <- Apiary.Processes.validate(template.process) do
+         :ok <- Apiary.Processes.validate(template.process),
+         {:types, :ok} <- {:types, TemplateTypes.check(template)} do
       {:ok, Map.put(template, :module, name)}
     else
       false -> {:not_readable, :stack_not_exported}
+      {:types, {:error, refusals}} -> {:not_readable, {:types, refusals}}
       {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
       {:error, _file_reason} -> {:not_readable, :unreadable}
     end

@@ -18,10 +18,11 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      the base view for a limit. The check stops at the first such definition.
   #
   # A nil list is `:ok` with no check, so a template written before the key works
-  # unchanged. A template's `process` has passed a loose schema only, and `check/1` runs
-  # before `Apiary.Processes.validate/1`: it skips a stage that is not a map, a stage
-  # whose name is not text, and an `inputs` or `outputs` that is not a list, and
-  # `Apiary.Processes.validate/1` returns an error for each of those.
+  # unchanged. `Apiary.Stacks.Sources` calls `check/1` on each template it reads, last,
+  # after `Apiary.Harnesses.Reader.template/1`, the check of the stack and
+  # `Apiary.Processes.validate/1`. A caller that has not validated the process gets no
+  # crash: `check/1` skips a stage that is not a map, a stage whose name is not text, and
+  # an `inputs` or `outputs` that is not a list.
   #
   # `message/1` is a refusal's text, translated in the locale of the caller's process.
   # For `{:invalid, type, error}`, the text ends with the line the Artifact types form

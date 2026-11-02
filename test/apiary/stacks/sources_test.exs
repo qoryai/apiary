@@ -12,6 +12,7 @@ defmodule Apiary.Stacks.SourcesTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Harnesses.{Assignment, PublicGit, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
@@ -774,6 +775,66 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert reason ==
                {:invalid, [%{path: "#/stages/1/name", error: :duplicate_stage_name, detail: nil}]}
+    end
+
+    test "artifact_types that do not pass the check are not readable, with the refusals", ctx do
+      file = template_file() <> "artifact_types:\n  - name: reply-draft\n"
+      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+      assert {:ok, read} = Sources.templates(ctx.scope, source)
+      assert [%{module: "b"}] = read.templates
+
+      assert [%{module: "a", reason: {:types, [refusal]}}] = read.not_readable
+      assert refusal == {:not_standard, "reply-draft"}
+
+      assert TemplateTypes.message(refusal) ==
+               "reply-draft is not a standard type, so it needs a definition"
+    end
+
+    test "the process is checked before the types", ctx do
+      file =
+        String.replace(template_file(), "name: Check", "name: Answer") <>
+          "artifact_types:\n  - name: reply-draft\n"
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{not_readable: [%{module: "a", reason: {:invalid, _errors}}]}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "artifact_types that pass reach the template", ctx do
+      file =
+        template_file() <>
+          """
+          artifact_types:
+            - name: screenshot
+            - name: reply-draft
+              base_view: document
+              size_limit: 65536
+              max_files: 1
+          """
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [template], not_readable: []}} =
+               Sources.templates(ctx.scope, source)
+
+      assert template.artifact_types == [
+               %{"name" => "screenshot"},
+               %{
+                 "name" => "reply-draft",
+                 "base_view" => "document",
+                 "size_limit" => 65_536,
+                 "max_files" => 1
+               }
+             ]
+    end
+
+    test "a file without artifact_types is a template with nil for them", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => template_file()})
+
+      assert {:ok, %{templates: [%{module: "a", artifact_types: nil}], not_readable: []}} =
+               Sources.templates(ctx.scope, source)
     end
 
     test "a file Reader.template/1 does not pass is unreadable", ctx do
