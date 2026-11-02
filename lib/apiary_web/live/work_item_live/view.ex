@@ -106,8 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
     %{
       scope: scope,
       people: people(scope, ids),
-      readable: readable(scope, workspace_ids),
-      all_runs: all_runs
+      readable: readable(scope, workspace_ids)
     }
   end
 
@@ -153,7 +152,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       taken_in_by: person(ctx.people, row.taken_in_by_id),
       taken_in_at: row.taken_in_at,
       first_instruction: first_instruction(row, row.first_instruction),
-      runs: runs_summary(ctx),
+      runs: runs_summary(explore, ctx),
       run: latest,
       confirmed_by: explore.confirmed_at && person(ctx.people, explore.confirmed_by_id),
       confirmed_at: explore.confirmed_at
@@ -179,10 +178,11 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp reason("adapter_removed"), do: :adapter_removed
   defp reason(_other), do: nil
 
-  # Details' runs: those handed over, of every take in, the latest of them, and how many
-  # are not ended; nil before any.
-  defp runs_summary(ctx) do
-    case Enum.filter(ctx.all_runs, &is_binary(&1.id)) do
+  # Details' runs: those of the current take in handed over, the latest of them, and how
+  # many are not ended; nil before any. Attempts start at 1 in each take in, so a count
+  # across take ins would not match the attempt shown beside it.
+  defp runs_summary(explore, ctx) do
+    case Enum.filter(explore.earlier_runs ++ List.wrap(explore.run), &is_binary(&1.id)) do
       [] ->
         nil
 
@@ -190,7 +190,12 @@ defmodule ApiaryWeb.WorkItemLive.View do
         latest = List.last(runs)
 
         %{
-          latest: %{id: latest.id, number: latest.number, path: run_path(ctx, latest)},
+          latest: %{
+            id: latest.id,
+            number: latest.number,
+            attempt: latest.attempt,
+            path: run_path(ctx, latest)
+          },
           count: length(runs),
           running: Enum.count(runs, &(&1.state in [:pending, :running]))
         }

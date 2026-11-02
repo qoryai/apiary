@@ -189,7 +189,7 @@ defmodule Apiary.Runs.Fold do
   @outcome_states ~w(succeeded failed cancelled)
   # The states a step's exit says, and the kinds of step the contract lists.
   @step_states ~w(succeeded failed cancelled)
-  @step_kinds ~w(fetch compose image setup join wall)
+  @step_kinds ~w(fetch compose image build setup join wall push)
 
   defstruct run: %{},
             latest: %{},

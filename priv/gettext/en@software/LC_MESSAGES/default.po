@@ -1094,12 +1094,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} confirmed this proposal %{when}, with their changes. Run %{run} wrote the rest, and Qory shows it as plain text."
+msgid "%{name} confirmed this proposal %{when}, with their changes. Attempt %{attempt} wrote the rest, and Qory shows it as plain text."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text."
+msgid "%{name} confirmed this proposal %{when}. Attempt %{attempt} wrote it, and Qory shows it as plain text."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -4109,17 +4109,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}"
+msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}."
+msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That was attempt %{attempt} of %{of}, the last attempt of this take in."
+msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}. That was attempt %{number} of %{of}, the last attempt of this take in."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -4484,6 +4484,11 @@ msgstr ""
 msgid "Admin"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "After the session"
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "After you save, choose the model for %{workspace} in Workspace settings › Model."
@@ -4496,6 +4501,7 @@ msgstr ""
 msgid "Agent"
 msgstr ""
 
+#: lib/apiary/harnesses/qory_copy/texts.ex
 #: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
@@ -5305,6 +5311,31 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} ended with an error, so Explore has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} ended with an error, so Explore has no result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} ended without a result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} ended without a result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} ended without a result. That was attempt %{number} of %{of}, the last attempt of this take in."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of}"
 msgstr ""
 
@@ -5338,6 +5369,58 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of}, after answers from %{name}"
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} returned a result that did not pass Qory's check"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} returned a result that did not pass Qory's check, so Explore has no result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} started %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} was cancelled before it ended, so Explore has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} was cancelled before it ended, so Explore has no result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} was lost before it ended, so Explore has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} was lost before it ended, so Explore has no result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} wrote these questions. Qory shows them as plain text."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} wrote this. Qory shows it as plain text."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} · %{count} run, %{state}"
+msgid_plural "Attempt %{attempt} · %{count} runs, %{state}"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -7953,6 +8036,7 @@ msgstr ""
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
 msgstr ""
 
+#: lib/apiary/harnesses/qory_copy/texts.ex
 #: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
@@ -14857,17 +14941,17 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory started Explore again in run %{run}"
+msgid "Qory started Explore again in attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory started Explore again, with the answers, in run %{run}"
+msgid "Qory started Explore again, with the answers, in attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory started Explore in run %{run}"
+msgid "Qory started Explore in attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15842,89 +15926,11 @@ msgstr ""
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run %{run}"
 msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} ended with an error, so Explore has no result"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} ended with an error, so Explore has no result."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} ended without a result"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} ended without a result."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} ended without a result. That was attempt %{attempt} of %{of}, the last attempt of this take in."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} returned a result that did not pass Qory's check"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} returned a result that did not pass Qory's check, so Explore has no result."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} started %{when}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} was cancelled before it ended, so Explore has no result"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} was cancelled before it ended, so Explore has no result."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} was lost before it ended, so Explore has no result"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} was lost before it ended, so Explore has no result."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} wrote these questions. Qory shows them as plain text."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} wrote this. Qory shows it as plain text."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} · %{count} run, %{state}"
-msgid_plural "Run %{run} · %{count} runs, %{state}"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
@@ -17317,6 +17323,7 @@ msgstr ""
 msgid "Smaller text"
 msgstr ""
 
+#: lib/apiary/harnesses/qory_copy/texts.ex
 #: lib/apiary/lingo/domain/software.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
@@ -18974,7 +18981,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "The page of run %{run} shows what it did."
+msgid "The page of attempt %{attempt} shows what it did."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -21987,12 +21994,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You confirmed this proposal %{when}, with your changes. Run %{run} wrote the rest, and Qory shows it as plain text."
+msgid "You confirmed this proposal %{when}, with your changes. Attempt %{attempt} wrote the rest, and Qory shows it as plain text."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text."
+msgid "You confirmed this proposal %{when}. Attempt %{attempt} wrote it, and Qory shows it as plain text."
 msgstr ""
 
 #: lib/apiary_web/live/setup_live.ex

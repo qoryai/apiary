@@ -527,6 +527,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   out, and a file that is not a usable template is listed with the reason. No page
   changes.
 <!-- /feature -->
+- A run page shows a run's `push` steps in a section **After the session**, under the
+  timeline, as they happen. A failed push opens its row with the step's output, and it
+  does not count as a failed preparation.
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an
   organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
@@ -766,6 +769,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `run_steps`: the check on `kind` also allows `build` and `push`. The check is added
+  without a scan, and a second migration then validates it with a scan that does not
+  block writes. It changes no existing row.
 - `workspaces`: a nullable `shown_standard_types` column, `text[]`. It changes no existing
   row, and every workspace keeps every standard type.
 - `dispatches`: two nullable columns, `machine_end_state` and `machine_end_at`, with a

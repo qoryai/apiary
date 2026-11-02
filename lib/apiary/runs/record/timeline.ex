@@ -68,6 +68,10 @@ defmodule Apiary.Runs.Record.Timeline do
   # last one (`run_started/2`).
   @session_started "session.started"
 
+  # A step's start and exit make no item: they reach the run page in the rows of an
+  # extension, and the page reads the steps again (`ApiaryWeb.RunLive.Show`).
+  @steps ~w(run.step_started run.step_exited)
+
   # The session reads these from the runtime's output; every other `runtime.` event comes
   # from a hook.
   @not_from_a_hook ~w(runtime.result runtime.text runtime.tool_result runtime.tool_denied)
@@ -113,7 +117,7 @@ defmodule Apiary.Runs.Record.Timeline do
   def max_argument, do: @max_argument
 
   @doc "The event types the index needs, with the `dev.qory.` prefix."
-  def types, do: Enum.map([@session_started | Map.keys(@kinds)], &(@prefix <> &1))
+  def types, do: Enum.map([@session_started | @steps] ++ Map.keys(@kinds), &(@prefix <> &1))
 
   @doc "The kind of item an event type makes, or nil when it makes none."
   def kind(@prefix <> type), do: Map.get(@kinds, type)

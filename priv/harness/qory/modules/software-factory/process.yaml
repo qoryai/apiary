@@ -1,0 +1,49 @@
+apiVersion: qory.dev/v1alpha1
+name: Software factory
+summary: Agents change code in your repositories. Each ticket needs a repository.
+description: |-
+  Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.
+
+  You connect: where work comes from, where changes go, and a model.
+type: qory.software
+stack: software
+process:
+  schema: qory.process/v1
+  machine: default
+  stages:
+    - id: st_r79kph11eg
+      name: Explore
+      inputs: []
+      sequence:
+        - loop:
+            rounds: 3
+            body:
+              - workflow: explore-a-ticket
+      outputs:
+        - type: proposal
+          required: true
+      gate: {kind: person, approvers: members}
+    - id: st_p9w5cvh311
+      name: Shape
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+    - id: st_6ns22c4pav
+      name: Build
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+    - id: st_m1mqbeywdg
+      name: Verify
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+    - id: st_k9kpv17xmy
+      name: Release
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}

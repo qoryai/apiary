@@ -1,15 +1,15 @@
 defmodule ApiaryWeb.PreparationComponents do
   @moduledoc """
-  The Prepare machine section of a run's Timeline (`docs/ui.md`, The run page): how the
-  run's machine was prepared, from `Apiary.Runs.Preparation`. One row per step, in the
-  order the steps ran: Machine requested and Machine started for a run a node pool
-  claimed, then the run's steps, then Session started. Each row has its state, its start
-  time and its duration, and opens on a click to its output; a failed row is open, with
-  the cause line under its output. Under Machine started the line is its second sentence
-  alone, who fixes the cause: the run's header shows the first as the run's reason. While
-  the run is alive, a running row has a clock that ticks in the browser, and the heading
-  has the time so far; with no row running, the heading has the time to the end of the
-  last row that ended.
+  The Prepare machine and After the session sections of a run's Timeline (`docs/ui.md`,
+  The run page). Prepare machine shows how the run's machine was prepared, from
+  `Apiary.Runs.Preparation`. One row per step, in the order the steps ran: Machine
+  requested and Machine started for a run a node pool claimed, then the run's steps, then
+  Session started. Each row has its state, its start time and its duration, and opens on
+  a click to its output; a failed row is open, with the cause line under its output. Under
+  Machine started the line is its second sentence alone, who fixes the cause: the run's
+  header shows the first as the run's reason. While the run is alive, a running row has a
+  clock that ticks in the browser, and the heading has the time so far; with no row
+  running, the heading has the time to the end of the last row that ended.
 
   The last row, Clean up, shows what the pool's starter reported about the removal of the
   machine (`clean_up/3`): the report's state and time as soon as a report exists; else,
@@ -18,6 +18,10 @@ defmodule ApiaryWeb.PreparationComponents do
   machine, once it has ended, that the machine stays registered. The 15 minutes are
   counted at render, against the time the caller gives (`now`); the caller renders again
   when they pass (`clean_up_due/3`).
+
+  After the session has one row per push step, the same row as a step's above, with no
+  total, no cause line and no Clean up row (`after_session/1`). A failed push is no failed
+  preparation (`Apiary.Runs.Preparation`), and its row opens when it fails on an open page.
 
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
@@ -64,9 +68,9 @@ defmodule ApiaryWeb.PreparationComponents do
   def shown?(nil), do: false
 
   @doc """
-  Whether the page reads a preparation no more: it was read once the run had ended, or
-  once its session had started with no step running. A step that starts after that, the
-  join of a later session, shows when the page is opened again.
+  Whether the page stops reading a preparation at each flush: it was read once the run had
+  ended, or once its session had started with no step running. A step's start or exit
+  and the run's exit still read it, once each (`ApiaryWeb.RunLive.Show`).
   """
   @spec settled?(Preparation.t() | nil, boolean) :: boolean
   def settled?(nil, _alive), do: false
@@ -74,6 +78,11 @@ defmodule ApiaryWeb.PreparationComponents do
 
   def settled?(%{session_started_at: at, steps: steps}, true),
     do: at != nil and not Enum.any?(steps, &(&1.state == "running"))
+
+  @doc "Whether a preparation has a step for the After the session section."
+  @spec after_session?(Preparation.t() | nil) :: boolean
+  def after_session?(%{after_session: [_ | _]}), do: true
+  def after_session?(_preparation), do: false
 
   @doc """
   What the Clean up row of `preparation` shows at `now` (`t:clean_up/0`), or nil for no
@@ -207,28 +216,18 @@ defmodule ApiaryWeb.PreparationComponents do
           </.row>
         </li>
         <li :for={step <- @preparation.steps}>
-          <.row
+          <.step_row
             id={"#{@id}-step-#{step.number}"}
-            state={step.state}
-            name={Preparation.step_name(step)}
-            at={step.started_at}
-            since={step.started_at}
+            step={step}
             alive={@alive}
-            duration_ms={step.duration_ms}
-            sent
+            pruned_at={@preparation.log_pruned_at}
           >
-            <.output
-              :if={step.output}
-              id={"#{@id}-step-#{step.number}-output"}
-              output={step.output}
-              pruned_at={@preparation.log_pruned_at}
-            />
             <.cause
               :if={@preparation.stopped && @preparation.stopped.step == step.number}
               id={"#{@id}-cause"}
               text={[@preparation.stopped.what, " ", Support.stored_line(@preparation.stopped.fix)]}
             />
-          </.row>
+          </.step_row>
         </li>
         <li :if={@preparation.session_started_at}>
           <div id={"#{@id}-session"} class="q-hd q-prep-row">
@@ -245,6 +244,74 @@ defmodule ApiaryWeb.PreparationComponents do
         </li>
       </ol>
     </section>
+    """
+  end
+
+  @doc """
+  The After the session section: the run's push steps (`after_session` of `preparation`).
+  `alive` is whether the run is alive: nothing ticks once it has ended.
+  """
+  attr :id, :string, default: "after-session"
+  attr :preparation, :map, required: true
+  attr :alive, :boolean, required: true
+
+  def after_session(assigns) do
+    ~H"""
+    <section id={@id} class="q-prep" aria-labelledby={"#{@id}-h"}>
+      <div class="q-prep-hd">
+        <h2 id={"#{@id}-h"}>{gettext("After the session")}</h2>
+      </div>
+      <.time_legend first={gettext("Started")} second={gettext("Took")} />
+      <ol class="q-prep-steps">
+        <li :for={step <- @preparation.after_session}>
+          <.step_row
+            id={after_session_row(@id, step)}
+            step={step}
+            alive={@alive}
+            pruned_at={@preparation.log_pruned_at}
+          />
+        </li>
+      </ol>
+    </section>
+    """
+  end
+
+  # A row's `id` changes when the step fails, as a push fails on an open page. `row/1` keeps
+  # the `open` a row mounted with, so only a new row opens; after that, a person's open or
+  # close stays.
+  defp after_session_row(id, %{state: "failed", number: number}),
+    do: "#{id}-step-#{number}-failed"
+
+  defp after_session_row(id, %{number: number}), do: "#{id}-step-#{number}"
+
+  attr :id, :string, required: true
+  attr :step, :map, required: true
+  attr :alive, :boolean, required: true
+  attr :pruned_at, :any, default: nil, doc: "when retention deleted the run's log lines"
+  slot :inner_block, doc: "what follows the step's output"
+
+  # A step's row: its name came from the run, and its output is there for a reader who may
+  # read the run's log.
+  defp step_row(assigns) do
+    ~H"""
+    <.row
+      id={@id}
+      state={@step.state}
+      name={Preparation.step_name(@step)}
+      at={@step.started_at}
+      since={@step.started_at}
+      alive={@alive}
+      duration_ms={@step.duration_ms}
+      sent
+    >
+      <.output
+        :if={@step.output}
+        id={"#{@id}-output"}
+        output={@step.output}
+        pruned_at={@pruned_at}
+      />
+      {render_slot(@inner_block)}
+    </.row>
     """
   end
 

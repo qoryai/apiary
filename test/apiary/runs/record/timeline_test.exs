@@ -971,6 +971,13 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert Timeline.kind("dev.qory.session.started") == nil
     end
 
+    test "a step's start and exit are read and make no item" do
+      for type <- ~w(dev.qory.run.step_started dev.qory.run.step_exited) do
+        assert type in Timeline.types()
+        assert Timeline.kind(type) == nil
+      end
+    end
+
     test "data of the wrong shape reads as absent, never as a crash" do
       assert [%{kind: :tool, tool: "tool", summary: nil, wells: []}] =
                build([
