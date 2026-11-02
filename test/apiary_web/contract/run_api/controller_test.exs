@@ -1209,5 +1209,24 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert json_response(conn, 413) == %{"error" => "payload_too_large"}
       assert RunApiStubs.pushed() == []
     end
+
+    test "a key id that is not of the form of a key id is 413, never looked up", ctx do
+      body = String.duplicate("x", 1_000_000)
+      nul = "ak_" <> <<0>> <> String.duplicate("a", 15)
+      assert byte_size(nul) == 19
+
+      for key_id <- [<<0xFF>>, nul], path <- ["artifacts", "verdict"] do
+        conn =
+          build_conn(:post, "/v1/runs/#{ctx.run.node_run_id}/#{path}", body)
+          |> put_req_header("x-qory-access-key-id", key_id)
+          |> RawBody.call([])
+
+        assert conn.halted, inspect({key_id, path})
+        assert json_response(conn, 413) == %{"error" => "payload_too_large"}
+        assert {_state, rest, _conn} = Plug.Conn.read_body(conn, length: 2_000_000)
+        assert byte_size(rest) > 900_000
+        refute conn.assigns[:raw_body]
+      end
+    end
   end
 end

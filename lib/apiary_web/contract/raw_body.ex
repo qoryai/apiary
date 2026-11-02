@@ -63,6 +63,10 @@ defmodule ApiaryWeb.Contract.RawBody do
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release` and `/machine-log`. Read the same way where `served?/1` holds, as below.
   @pool_max_bytes 1024 * 1024
+  # The form of an access key id, as `ApiaryWeb.Contract.SignedRequest` checks it
+  # (`valid_key_id?/1`). The lookup runs only for an id of this form: an id with an invalid
+  # UTF-8 byte or a NUL fails in the database query.
+  @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   @pool_claim_path ["v1", "pools", "claim"]
   @dispatch_actions ["dispatched", "release", "machine-log"]
   # The integration contract's paths and the provisioner contract's belong to one feature.
@@ -233,8 +237,11 @@ defmodule ApiaryWeb.Contract.RawBody do
     end
   end
 
+  # Whether the request's key id is an active access key of a gateway. An id that is not of
+  # the form of a key id is not one.
   defp gateway_key?(conn) do
     with [key_id] <- get_req_header(conn, "x-qory-access-key-id"),
+         true <- String.valid?(key_id) and Regex.match?(@key_id_format, key_id),
          {:ok, %Apiary.AccessKeys.AccessKey{node: %Apiary.Nodes.Node{kind: :gateway}}} <-
            Apiary.AccessKeys.fetch_for_verification(key_id) do
       true
