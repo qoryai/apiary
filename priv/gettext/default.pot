@@ -10964,6 +10964,11 @@ msgstr ""
 msgid "List %{workflow} under workflows in the harness's qory-stack.yaml, or choose another workflow for %{stage}. Until then, %{stage} waits and starts no run."
 msgstr ""
 
+#: lib/apiary/artifacts/type_rules.ex
+#, elixir-autogen, elixir-format
+msgid "List this name once."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Listening for the first bytes."

@@ -150,8 +150,35 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                 ]}
     end
 
-    test "does not see a custom name listed twice" do
-      assert :ok = TemplateTypes.check(template([@document, @document]))
+    test "refuses a custom name listed more than once, one refusal per name" do
+      listed = [@document, @structured, @document, @document]
+
+      assert TemplateTypes.check(template(listed)) ==
+               {:error, [{:invalid, "reply-draft", :repeated}]}
+    end
+
+    test "refuses a repeated name after the stages and before the definitions" do
+      bad = %{@structured | "json_schema" => %{"type" => 5}}
+      listed = [@document, @document, bad]
+
+      assert TemplateTypes.check(template(listed, [stage("Answer", ["explainer"], [])])) ==
+               {:error,
+                [
+                  {:not_listed, "Answer", "explainer"},
+                  {:invalid, "reply-draft", :repeated},
+                  {:invalid, "customer-facts", :json_schema}
+                ]}
+    end
+
+    test "takes a standard name listed twice" do
+      assert :ok = TemplateTypes.check(template(names(["mockup", "mockup"])))
+    end
+
+    test "a repeated custom type with a standard name is only that refusal" do
+      entry = %{@document | "name" => "mockup"}
+
+      assert TemplateTypes.check(template([entry, entry])) ==
+               {:error, [{:standard_name, "mockup"}]}
     end
 
     test "does not raise on odd shapes of the process" do
@@ -200,7 +227,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       for {error, line} <- [
             {:name,
              "Use lowercase letters and digits, in groups joined by single hyphens, at most 64 characters."},
-            {:name_taken, "Choose another name: this workspace has a type called reply-draft."},
+            {:repeated, "List this name once."},
             {{:size_limit, :document}, "Set a size limit above 0 and at most 10 MiB."},
             {{:size_limit, :video}, "Set a size limit above 0 and at most 2,048 MiB."},
             {{:max_files, :image}, "Set most files to a whole number from 1 to 20."},
@@ -321,7 +348,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       listed = [%{"name" => "mockup"}, @document, @structured, @document]
 
       assert applied(ctx.workspace, template(listed), ctx.scope) ==
-               {:error, {:invalid, "reply-draft", :name_taken}}
+               {:error, {:invalid, "reply-draft", :repeated}}
 
       assert Artifacts.type(ctx.workspace, "reply-draft") == nil
       assert Artifacts.type(ctx.workspace, "customer-facts") == nil

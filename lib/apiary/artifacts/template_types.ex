@@ -10,7 +10,10 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #   2. `{:standard_name, type}`: a custom type has a standard type's name;
   #   3. `{:not_listed, stage, type}`: a stage has a type in its inputs or outputs that
   #      the list does not have and that is not always on (`Type.always_on/0`);
-  #   4. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2` or
+  #   4. `{:invalid, type, :repeated}`: the list has a custom name more than once, one
+  #      refusal per name. A standard name may be listed twice, and a custom type with a
+  #      standard name is only `{:standard_name, type}`;
+  #   5. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2` or
   #      `Apiary.Artifacts.CustomSchema.check/1`. `error` is the field that failed, with
   #      the base view for a limit. The check stops at the first such definition.
   #
@@ -19,9 +22,6 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # before `Apiary.Processes.validate/1`: it skips a stage that is not a map, a stage
   # whose name is not text, and an `inputs` or `outputs` that is not a list, and
   # `Apiary.Processes.validate/1` returns an error for each of those.
-  #
-  # `check/1` does not see a custom name listed twice. The second insert of `apply/3`
-  # fails with `{:error, {:invalid, type, :name_taken}}`.
   #
   # `message/1` is a refusal's text, translated in the locale of the caller's process.
   # For `{:invalid, type, error}`, the text ends with the line the Artifact types form
@@ -35,7 +35,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # every standard type. Any other list inserts each custom type with one audit entry and
   # writes `shown_standard_types`: the listed standard types less the always-on ones, in
   # the order of `Type.standard/0`. An `{:error, reason}` leaves rows written, so the
-  # caller rolls back.
+  # caller rolls back. Given a list `check/1` did not pass, the second insert of a repeated
+  # name fails with `{:error, {:invalid, type, :repeated}}`.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -56,7 +57,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   @typedoc "What is wrong with a custom type's definition."
   @type error ::
           :name
-          | :name_taken
+          | :repeated
           | :base_view
           | {:size_limit | :max_files, Type.base_view()}
           | :json_schema
@@ -78,7 +79,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
 
     case Enum.uniq(
            not_standard(alone) ++
-             standard_names(custom) ++ not_listed(process, listed) ++ invalid(custom)
+             standard_names(custom) ++
+             not_listed(process, listed) ++ repeated(custom) ++ invalid(custom)
          ) do
       [] -> :ok
       refusals -> {:error, refusals}
@@ -115,6 +117,12 @@ defmodule Apiary.Artifacts.TemplateTypes do
 
   defp types_in(_entries), do: []
 
+  # One refusal per custom name listed more than once.
+  defp repeated(custom) do
+    names = custom |> Enum.map(& &1["name"]) |> Enum.reject(&(&1 in Type.standard_names()))
+    for name <- Enum.uniq(names -- Enum.uniq(names)), do: {:invalid, name, :repeated}
+  end
+
   # The first failing definition. A later definition is not checked, as each check of a
   # schema can use a budget of up to 10 s.
   defp invalid(custom) do
@@ -140,7 +148,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   defp error(%Ecto.Changeset{errors: errors} = changeset) do
     case Enum.find(@fields, :json_schema, &Keyword.has_key?(errors, &1)) do
       :name ->
-        if unique?(errors[:name]), do: :name_taken, else: :name
+        if unique?(errors[:name]), do: :repeated, else: :name
 
       field when field in [:size_limit, :max_files] ->
         {field, Ecto.Changeset.get_field(changeset, :base_view)}
@@ -172,15 +180,15 @@ defmodule Apiary.Artifacts.TemplateTypes do
     do:
       gettext("the custom type %{type} is not valid: %{error}",
         type: type,
-        error: line(error, type)
+        error: line(error)
       )
 
-  defp line(:name, _type), do: TypeRules.name()
-  defp line(:name_taken, type), do: TypeRules.taken(type)
-  defp line(:base_view, _type), do: TypeRules.base_view()
-  defp line({:size_limit, base_view}, _type), do: TypeRules.size(base_view)
-  defp line({:max_files, base_view}, _type), do: TypeRules.files(base_view)
-  defp line(:json_schema, _type), do: TypeRules.schema()
+  defp line(:name), do: TypeRules.name()
+  defp line(:repeated), do: TypeRules.repeated()
+  defp line(:base_view), do: TypeRules.base_view()
+  defp line({:size_limit, base_view}), do: TypeRules.size(base_view)
+  defp line({:max_files, base_view}), do: TypeRules.files(base_view)
+  defp line(:json_schema), do: TypeRules.schema()
 
   # apply/3: see the head of this module.
   @doc false

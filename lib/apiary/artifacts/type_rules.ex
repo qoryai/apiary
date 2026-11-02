@@ -27,6 +27,11 @@ defmodule Apiary.Artifacts.TypeRules do
   def taken(name),
     do: gettext("Choose another name: this workspace has a type called %{name}.", name: name)
 
+  # repeated/0 is the line for a custom name a template lists more than once.
+  @doc false
+  @spec repeated() :: String.t()
+  def repeated, do: gettext("List this name once.")
+
   @doc false
   @spec base_view() :: String.t()
   def base_view, do: gettext("Choose a base view.")
