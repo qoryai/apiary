@@ -519,10 +519,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on. A type stays on while an artifact of the workspace has it, or while the current
   process or a process version in use includes it. A workspace keeps every standard
   type until a person switches one off.
+<!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
   timeline, as they happen. A failed push opens its row with the step's output, and it
   does not count as a failed preparation.
-<!-- /feature -->
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an
   organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
