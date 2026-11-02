@@ -49,6 +49,7 @@ defmodule ApiaryWeb.RunComponents do
 
   alias Apiary.Runs
   alias Apiary.Dispatches.Dispatch
+  alias Apiary.Harnesses.WorkflowGap
   alias Apiary.Runs.Run
   alias Phoenix.LiveView.JS
 
@@ -178,9 +179,15 @@ defmodule ApiaryWeb.RunComponents do
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer". A reason stored
   under its earlier name reads as the new one. A run whose starter sent its outcome with
-  no state, stored as cancelled and `stopped`, reads "the starter gave no outcome". Any
-  other code is the one the run's starter gave, shown as given with spaces for
-  underscores: `no_longer_needed` reads "no longer needed".
+  no state, stored as cancelled and `stopped`, reads "the starter gave no outcome".
+  `workflow_not_in_harness`, which qory gives when the harness it composed for the run
+  has no skill with the name of the run's workflow, reads two sentences: "The run's
+  harness has no skill named explore-a-ticket.", then where the harness came from, such
+  as "The harness is the Qory harness.", none for a hidden harness. They need the run's
+  run of the queue with its harness walk and work item loaded, as
+  `Apiary.Runs.Record.fetch_run/2` loads them; without them the first sentence says "the
+  name of the run's workflow". Any other code is the one the run's starter gave, shown as
+  given with spaces for underscores: `no_longer_needed` reads "no longer needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one. A code of a check of the
@@ -295,6 +302,14 @@ defmodule ApiaryWeb.RunComponents do
   # leaves out.
   defp given_words(%{reason: "released", released_at: %DateTime{}, outcome_state: nil}),
     do: gettext("the starter released it")
+
+  # The run's harness had no skill for the run's workflow: the workflow and where the
+  # harness came from, read from the run of the queue the caller loaded
+  # (`Apiary.Harnesses.WorkflowGap.preload/1`), else the sentence with neither.
+  defp given_words(%{reason: "workflow_not_in_harness"} = run) do
+    facts = WorkflowGap.of_run(run) || %{workflow: nil, source: nil}
+    ApiaryWeb.HarnessComponents.workflow_gap_words(facts)
+  end
 
   defp given_words(%{reason: reason} = run) when is_binary(reason) do
     if reason =~ @reason_code, do: words_of(Map.get(@earlier_reasons, reason, reason), run)

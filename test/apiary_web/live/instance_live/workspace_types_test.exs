@@ -69,16 +69,20 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       refute has_element?(view, "#stages-save-trial")
       refute has_element?(view, "#stages-assign-form")
 
-      # The workflow picker offers the Qory harness's workflows alone.
+      # The workflow field suggests the Qory harness's workflows alone.
       options =
         view
-        |> element("#stage-entry-0-0-workflow")
         |> render()
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("option")
-        |> Enum.map(&LazyHTML.text/1)
+        |> LazyHTML.query("datalist#stage-entry-0-0-workflow-names option")
+        |> LazyHTML.attribute("value")
 
       assert options == TypeTemplates.workflows()
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-0-workflow[type="text"][value="explore-a-ticket"]}
+             )
 
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
       assert has_element?(view, "#type-dirty", "Unsaved changes")
@@ -99,6 +103,65 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       refute LazyHTML.text(history(view, 1)) =~ "Newest"
       assert LazyHTML.text(history(view, 1)) =~ "Qory Apiary default"
       assert LazyHTML.text(history(view, 1)) =~ "The first version."
+    end
+
+    test "a typed workflow: any name the pattern allows, marked against the Qory harness's workflows",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit)
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-0-workflow-mark[data-mark="listed"]},
+               "In the harness"
+             )
+
+      view
+      |> form("#stage-form",
+        stage: %{sequence: %{"0" => %{body: %{"0" => %{workflow: "triage"}}}}}
+      )
+      |> render_change()
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-0-workflow-mark[data-mark="missing"]},
+               "Not in the harness"
+             )
+
+      alert =
+        "Choose another workflow for Explore, or list triage in the harness of each workspace of this type. The Qory harness does not list triage, so a workspace that uses it waits at Explore."
+
+      assert has_element?(view, "#stage-panel [data-stage-alert]", alert)
+
+      [json] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#type-canvas")
+        |> LazyHTML.attribute("data-view")
+
+      explore = hd(Jason.decode!(json)["stages"])
+
+      assert explore["marks"]["triage"] == %{
+               "listed" => false,
+               "label" => "triage: not in the harness"
+             }
+
+      assert alert in explore["alerts"]
+
+      # A name the pattern refuses keeps triage, with the error at the field.
+      view
+      |> form("#stage-form",
+        stage: %{sequence: %{"0" => %{body: %{"0" => %{workflow: "Triage!"}}}}}
+      )
+      |> render_change()
+
+      assert has_element?(view, "#stage-entry-0-0", "Write a workflow name")
+      assert has_element?(view, ~s{#stage-entry-0-0-workflow-mark[data-mark="missing"]})
+
+      view |> element("#type-save") |> render_click()
+
+      assert [%{"loop" => %{"body" => [%{"workflow" => "triage"}]}}] =
+               hd(TypeTemplates.newest(@type_key).document["stages"])["sequence"]
     end
 
     test "a gate is none or any member: no named approvers", %{conn: conn} do

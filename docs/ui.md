@@ -1803,7 +1803,17 @@ id".
   and the code in mono ("did not start: image_missing"); with no code, "did not start". A run whose starter sent its outcome
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
-  None names who or what ended the run. Any other code is the run's starter's,
+  None names who or what ended the run. `workflow_not_in_harness`, which qory gives
+  when the harness it composed for the run has no skill with the name of the run's
+  workflow, reads two sentences: "The run's harness has no skill named
+  explore-a-ticket.", then where the harness came from, from the run's harness walk:
+  "The harness comes from the harness file at the root of target acme/web-shop."
+  ("repository" in a software workspace), "The harness comes from
+  https://git.example.com/acme/harness, stack core." (or "folder" and the path, or the
+  address alone), "The harness is the workspace's harness." for a harness section that
+  lists modules alone, or "The harness is the Qory harness."; a hidden harness has the
+  first sentence alone. The work item shows the same under "The run ended before it
+  started.". Any other code is the run's starter's,
   shown as given with spaces for underscores: "no longer needed".
   A run a pool's claim registered whose machine never started it reads its cause in
   the meta line, the rail and the preview: "No machine was made: <the starter's reason>."

@@ -2621,11 +2621,6 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "%{stage} uses %{workflow}, which the harness no longer declares. Add it to the harness, or choose another workflow for %{stage}."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
 msgid "%{stage} uses the type %{type}, which this workspace does not have."
 msgstr ""
 
@@ -3010,6 +3005,16 @@ msgstr[1] ""
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow}, machine type %{machine}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow}: in the harness"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow}: not in the harness"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -6096,6 +6101,11 @@ msgstr ""
 msgid "Choose another runtime: no model provider of %{organisation} serves %{runtime}."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}, so a workspace that uses it waits at %{stage}."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Choose it when %{name} runs in a CI job, or on a machine you can't open a terminal on."
@@ -8260,6 +8270,11 @@ msgstr "Every repository of %{workspace}."
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Every type exists, and every input is an output of an earlier stage. The workflows are checked once the harness is read."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version."
 msgstr ""
 
@@ -9642,6 +9657,11 @@ msgstr ""
 msgid "In the composer, save the rule once it reads back"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "In the harness"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "In the last 14 days %{attempts} to %{destinations} had no rule, in the %{number} target that follows it."
@@ -10685,6 +10705,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Linked repositories"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "List %{workflow} under workflows in the harness's qory-stack.yaml, or choose another workflow for %{stage}. Until then, %{stage} waits and starts no run."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -12684,6 +12709,11 @@ msgstr "Not in force: a rule on this repository decides it"
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Not in the harness"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
@@ -18307,14 +18337,49 @@ msgstr ""
 msgid "The gateway's name, its kind and its URL."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness comes from %{address}, folder %{path}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness comes from %{address}, stack %{stack}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness comes from %{address}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness comes from the harness file at the root of target %{target}."
+msgstr "The harness comes from the harness file at the root of repository %{target}."
+
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The harness could not be read"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The harness has not been read yet."
+msgstr ""
+
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The harness is not read yet"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness is the Qory harness."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The harness is the workspace's harness."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -18978,6 +19043,16 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run's end was not recorded; how it went is not known."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's harness has no skill named %{workflow}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's harness has no skill with the name of the run's workflow."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -21189,11 +21264,6 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Workflows a stage can run: %{names}."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
 msgid "Workflows the harness listed %{time}: %{names}."
 msgstr ""
 
@@ -21338,6 +21408,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Write a machine type with letters, digits, dots, hyphens and underscores, starting with a letter or a digit."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 64 characters."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

@@ -44,7 +44,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   alias Apiary.Access
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.MachineLogs
+  alias Apiary.Dispatches.{DispatchRun, MachineLogs}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -1865,8 +1865,20 @@ defmodule ApiaryWeb.RunLive.Show do
     |> Record.items(run, light, full: MapSet.to_list(full))
     |> with_versions(socket)
     |> with_pool(run)
+    |> with_dispatch_run(run)
     |> Enum.map(&Map.put(&1, :open, MapSet.member?(opened, &1.seq)))
   end
+
+  # The run's end item reads the words of `workflow_not_in_harness` from the run of the
+  # queue `Record.fetch_run/2` loaded with it (`Apiary.Harnesses.WorkflowGap.preload/1`).
+  defp with_dispatch_run(items, %Run{dispatch_run: %DispatchRun{} = dispatch_run}) do
+    Enum.map(items, fn
+      %{kind: :run_exited} = item -> Map.put(item, :dispatch_run, dispatch_run)
+      item -> item
+    end)
+  end
+
+  defp with_dispatch_run(items, _run), do: items
 
   defp transcript_fold(socket, seq, open?) do
     with seq when is_integer(seq) <- sequence(seq),

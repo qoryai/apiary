@@ -1895,7 +1895,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       ended at its claim, before it started (`:end_cause` `:variables_invalid`,
       `:ticket_gone`, `:inputs_invalid` or `:target_access_gone`), while it waited for its environment
       image's build, which failed (`:build_failed`), or because its harness walk failed
-      (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why;
+      (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why; for
+      a run whose harness had no skill for its workflow (`:workflow_gap`), that workflow
+      and where the harness came from;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
       with Qory's words under Show Qory's words;
@@ -2827,6 +2829,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
        unstarted_words(cause)}
+
+  defp no_result_words(%{workflow_gap: %{} = gap}),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+       ApiaryWeb.HarnessComponents.workflow_gap_words(gap)}
 
   defp no_result_words(%{outcome: :none}),
     do:

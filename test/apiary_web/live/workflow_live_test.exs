@@ -279,7 +279,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
         assert render(view) =~ "acme/harness"
       end
 
-      assert calls() == []
+      # Each load reads the workspace's harness, the Qory harness here, and nothing else.
+      qory = Apiary.Lingo.Domain.Definition.qory_harness().git
+      assert calls() == List.duplicate({"resolve", %{"addresses" => [qory]}}, 3)
     end
 
     test "with no connected repository, the group is empty and the address stays",
@@ -329,8 +331,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       change(view, %{source: linked_id, workflow: "0/triage"})
       view |> form("#workflow-form", workflow: %{workflow: "0/triage"}) |> render_submit()
 
-      # Saved, it is: the workflows of its stack are the snapshot.
-      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
+      # Saved, it changes no snapshot: the snapshot is of the workspace's harness choice.
+      assert Processes.declared_snapshot(scope.workspace) == nil
 
       assert render(view) =~ "Runs of #{scope.workspace.name} now follow the workflow triage."
 
@@ -390,7 +392,22 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"][selected]))
 
-      # The saved source, read, is the workspace's snapshot.
+      # The saved source, read, is no snapshot: the workspace chose no harness repository.
+      assert Processes.declared_snapshot(scope.workspace) == nil
+    end
+
+    test "the page reads the workspace's harness choice when it opens, as Check again does, and keeps its workflows",
+         %{conn: conn, scope: scope, adapter: adapter, covered: covered} do
+      # A branch is chosen at the commit it points to.
+      pin = String.duplicate("c3", 20)
+      serve_calls([adapter], covered: covered, files: @files, versions: %{"R_harness" => pin})
+
+      {:ok, _choice} =
+        Sources.choose(scope, {:repository, %{git: @harness}, "triage", {:branch, "main"}})
+
+      assert Processes.declared_snapshot(scope.workspace) == nil
+      open(conn, workspace_path(scope, "/settings/workflow"))
+
       assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
     end
 
@@ -882,11 +899,18 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, ~s(#harness-stack input[value="triage"][checked]))
       refute has_element?(view, "#harness-ref-hint")
 
+      # The Qory harness, read when the page opened, is not served here: no snapshot.
+      assert Processes.declared_snapshot(scope.workspace) == nil
+
       view
       |> form("#workflow-harness-form", harness: %{version: "fixed", fixed: "v2"})
       |> render_submit()
 
       render_async(view, 2_000)
+      render_async(view, 2_000)
+
+      # The choice saved, its stack is read again: it lists no workflows.
+      assert %{names: []} = Processes.declared_snapshot(scope.workspace)
 
       assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
 

@@ -45,7 +45,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # harness walk failed, nil for none (`%{code: code, source: source or nil, rule: rule or
   # nil, adapter: title, the name the walk kept, or nil, organisation: name, workspace:
   # name}`, `Apiary.Harnesses.RunHarness`, the names of the run's organisation and
-  # workspace),
+  # workspace), `workflow_gap`, for a run that ended `workflow_not_in_harness`, the
+  # workflow its harness had no skill for and where that harness came from
+  # (`Apiary.Harnesses.WorkflowGap`), nil for any other run,
   # and by what it gave: `proposal`
   # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none; `understanding` and
   # `questions`, each `%{public_id: position, text: question, answer: answer or nil}`, for
@@ -84,7 +86,7 @@ defmodule Apiary.WorkItems.ExploreView do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  alias Apiary.Harnesses.RunHarness
+  alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
@@ -102,7 +104,7 @@ defmodule Apiary.WorkItems.ExploreView do
     events = Explore.events(id)
     live? = State.live?(work_item.state)
     taken = take_ins(events)
-    runs = Enum.map(current, &run_view(&1, answers, confirmation))
+    runs = Enum.map(current, &run_view(&1, answers, confirmation, work_item))
 
     %{
       status:
@@ -115,7 +117,7 @@ defmodule Apiary.WorkItems.ExploreView do
       previous: previous(taken, take_in),
       run: List.last(runs),
       earlier_runs: Enum.drop(runs, -1),
-      earlier_take_ins: earlier_take_ins(id, taken, by_take_in, answers, take_in),
+      earlier_take_ins: earlier_take_ins(work_item, taken, by_take_in, answers, take_in),
       answers_by_ids:
         answers
         |> Enum.filter(fn {{answered_in, _attempt}, _rows} -> answered_in == take_in end)
@@ -165,7 +167,18 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp walk_adapter(%RunHarness{failure_adapter: name}), do: name
 
-  defp run_view(step, answers, confirmation) do
+  # A run whose harness had no skill for its workflow: the workflow and where the harness
+  # came from (`Apiary.Harnesses.WorkflowGap`), nil for any other run.
+  defp workflow_gap(%{run: %{} = run, dispatch_run: dispatch_run}, work_item),
+    do:
+      WorkflowGap.of_run(%{
+        reason: run.reason,
+        dispatch_run: %{dispatch_run | work_item: work_item}
+      })
+
+  defp workflow_gap(_step, _work_item), do: nil
+
+  defp run_view(step, answers, confirmation, work_item) do
     rows = Map.get(answers, {step.take_in, step.attempt}, [])
 
     ended_at = Explore.ended_at(step)
@@ -185,6 +198,7 @@ defmodule Apiary.WorkItems.ExploreView do
       end_detail: step.dispatch_run.end_detail,
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
+      workflow_gap: workflow_gap(step, work_item),
       proposal: nil,
       understanding: nil,
       questions: [],
@@ -310,7 +324,7 @@ defmodule Apiary.WorkItems.ExploreView do
   # The take ins before the current one: each `:taken_in` event and the end that followed
   # it, before the next take in, with its runs as the current take in's are drawn, each
   # read with that take in's confirmation.
-  defp earlier_take_ins(id, taken, by_take_in, answers, current) do
+  defp earlier_take_ins(%WorkItem{id: id} = work_item, taken, by_take_in, answers, current) do
     taken
     |> Enum.filter(fn {take_in, _taken, _end} -> take_in < current end)
     |> Enum.map(fn {take_in, taken, ended} ->
@@ -324,7 +338,11 @@ defmodule Apiary.WorkItems.ExploreView do
         ended_by_id: ended && ended.actor_id,
         ended_at: ended && ended.at,
         ended_reason: close_reason(ended),
-        runs: Enum.map(Map.get(by_take_in, take_in, []), &run_view(&1, answers, confirmation))
+        runs:
+          Enum.map(
+            Map.get(by_take_in, take_in, []),
+            &run_view(&1, answers, confirmation, work_item)
+          )
       }
     end)
   end

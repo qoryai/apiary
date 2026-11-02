@@ -1505,6 +1505,34 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
 
+    test "a run whose harness has no skill for its workflow: the workflow and where the harness comes from" do
+      for {source, line} <- [
+            {{:target, "acme/web-shop"},
+             "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of repository acme/web-shop."},
+            {:qory,
+             "The run's harness has no skill named explore-a-ticket. The harness is the Qory harness."},
+            {nil, "The run's harness has no skill named explore-a-ticket."}
+          ] do
+        r =
+          run(%{
+            state: :failed,
+            outcome: :error,
+            end_cause: :run_ended,
+            workflow_gap: %{workflow: "explore-a-ticket", source: source},
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+
+        assert Enum.take(texts(html, "#work-item-explore-none p"), 2) ==
+                 ["The run ended before it started.", line]
+      end
+    end
+
     test "a run whose last result was an error keeps its words, here and in the folds" do
       r =
         run(%{

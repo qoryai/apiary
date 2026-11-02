@@ -578,7 +578,7 @@ defmodule Apiary.Stages do
   @doc false
   @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
           {:ok, WorkItem.t()} | {:error, term}
-  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &read_declared/2) do
+  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &Sources.chosen_workflows/2) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
          %WorkItem{} <- in_workspace(workspace, id) || {:error, :not_found},
@@ -614,21 +614,6 @@ defmodule Apiary.Stages do
         {:error, :not_live} = refused -> refused
       end
     end)
-  end
-
-  # The workflow names the harness the workspace chose lists, read at its pin, or at
-  # `HEAD` with none: of its stack, or of every stack where it names none.
-  defp read_declared(scope, workspace) do
-    chosen = Sources.chosen(workspace)
-
-    with {:ok, source} <- Sources.address(chosen.git || ""),
-         {:ok, stacks} <- Sources.read(scope, %{source | ref: chosen.pin || source.ref}) do
-      {:ok,
-       stacks
-       |> Enum.filter(&(is_nil(chosen.stack) or &1.name == chosen.stack))
-       |> Enum.flat_map(& &1.workflows)
-       |> Enum.uniq()}
-    end
   end
 
   # approve/3 approves the gate of the work item's stage, with the scope's person's

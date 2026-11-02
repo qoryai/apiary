@@ -178,12 +178,13 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   defp merge_sequence(sequence, _params), do: sequence
 
+  # A workflow name that breaks the schema's pattern keeps the entry's workflow, and the
+  # page shows an error under the field (`workflow_name?/1`).
   defp merge_entry(entry, %{} = p) do
     entry =
-      case p["workflow"] do
-        name when is_binary(name) and name != "" -> %{entry | "workflow" => name}
-        _other -> entry
-      end
+      if workflow_name?(p["workflow"]),
+        do: %{entry | "workflow" => p["workflow"]},
+        else: entry
 
     case p["machine"] do
       nil ->
@@ -197,6 +198,13 @@ defmodule ApiaryWeb.StagesLive.Draft do
   end
 
   defp merge_entry(entry, _p), do: entry
+
+  # Whether `text` is a workflow name the process schema takes
+  # (`priv/schemas/process/v1.schema.json`, `workflow_name`): a lower-case letter, then up
+  # to 63 lower-case letters, digits and hyphens.
+  @doc false
+  def workflow_name?(text) when is_binary(text), do: text =~ ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  def workflow_name?(_text), do: false
 
   defp rounds(text, previous), do: if(rounds?(text), do: String.to_integer(text), else: previous)
 

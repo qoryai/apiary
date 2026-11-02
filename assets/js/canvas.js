@@ -64,10 +64,32 @@ const Page = createContext({push: () => {}, words: {}, add: () => {}})
 const line = (text, key, className) => h("p", {key, className, title: text}, text)
 
 // A workflow's name on one line, cut with an ellipsis, in full in its title and label.
-const workflow = (name, key) =>
-  h("p", {key, className: "truncate font-mono text-[13px]/[18px]", title: name, "aria-label": name}, name)
+// Where the page has the harness's list, a check or a cross before it: a different shape,
+// not only a different colour, with the mark's words in the title and the label.
+const workflow = (name, key, mark) =>
+  mark
+    ? h(
+        "p",
+        {
+          key,
+          className: "flex min-w-0 items-center gap-1 text-[13px]/[18px]",
+          title: mark.label,
+          "aria-label": mark.label,
+          "data-mark": mark.listed ? "listed" : "missing",
+        },
+        h(
+          "span",
+          {"aria-hidden": "true", className: mark.listed ? "shrink-0 text-success" : "shrink-0 text-error"},
+          mark.listed ? "\u2713" : "\u2717",
+        ),
+        h("span", {className: "truncate font-mono", "aria-hidden": "true"}, name),
+      )
+    : h("p", {key, className: "truncate font-mono text-[13px]/[18px]", title: name, "aria-label": name}, name)
 
-const steps = (sequence, words) =>
+// The mark set for `name`, read with hasOwn: a name such as "constructor" is a key of every object.
+const markOf = (marks, name) => (marks && Object.hasOwn(marks, name) ? marks[name] : undefined)
+
+const steps = (sequence, words, marks) =>
   sequence.length === 0
     ? [line(words.no_workflow, "none", "text-muted")]
     : sequence.map((item, i) =>
@@ -82,9 +104,9 @@ const steps = (sequence, words) =>
                 className: "grid gap-0.5 rounded-[6px] border border-dashed border-base-content/35 px-2 pb-1.5 pt-1",
               },
               h("p", {className: "text-[12px]/4 text-muted", "aria-hidden": "true"}, item.loop),
-              ...item.workflows.map((name, j) => workflow(name, `w${j}`)),
+              ...item.workflows.map((name, j) => workflow(name, `w${j}`, markOf(marks, name))),
             )
-          : workflow(item.workflow, `s${i}`),
+          : workflow(item.workflow, `s${i}`, markOf(marks, item.workflow)),
       )
 
 const StageCard = memo(({data, selected}) => {
@@ -100,7 +122,7 @@ const StageCard = memo(({data, selected}) => {
     },
     h(Handle, {type: "target", position: Position.Left, isConnectable: false, className: "!opacity-0"}),
     line(data.name, "name", "truncate text-[14px]/5 font-semibold text-base-content"),
-    ...steps(data.sequence, words),
+    ...steps(data.sequence, words, data.marks),
     line(data.gate, "gate", "text-muted"),
     ...data.alerts.map((text, i) => line(text, `a${i}`, "text-error")),
     h(Handle, {type: "source", position: Position.Right, isConnectable: false, className: "!opacity-0"}),

@@ -1046,6 +1046,45 @@ defmodule Apiary.Stacks.Sources do
   end
 
   @doc false
+  # chosen_source/1 is where the workspace's harness is read from: the address of its
+  # choice (`chosen/1`) at its pin, or at `HEAD` with none, as a source `read/2` takes,
+  # with the stack the choice names, nil for every stack: `{:ok, source, stack}`, or
+  # `{:error, reason}` for an address `address/1` refuses.
+  @spec chosen_source(Workspace.t()) :: {:ok, source, String.t() | nil} | {:error, atom}
+  def chosen_source(%Workspace{} = workspace) do
+    chosen = chosen(workspace)
+
+    with {:ok, source} <- address(chosen.git || "") do
+      {:ok, %{source | ref: chosen.pin || source.ref}, chosen.stack}
+    end
+  end
+
+  @doc false
+  # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
+  # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
+  # where the choice names none. The Stages page, the Workflow page and Check again on a
+  # work item read the snapshot (`Apiary.Processes.record_declared/2`) from here.
+  # `{:ok, names}`, or the read's `{:error, reason}`.
+  @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
+  def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
+    with {:ok, source, stack} <- chosen_source(workspace),
+         {:ok, stacks} <- read(scope, source) do
+      {:ok, workflows_of(stacks, stack)}
+    end
+  end
+
+  @doc false
+  # workflows_of/2 is the workflow names of `stacks`, as `read/2` returns them: of the
+  # stack named `stack`, or of every stack for nil.
+  @spec workflows_of([map], String.t() | nil) :: [String.t()]
+  def workflows_of(stacks, stack) do
+    stacks
+    |> Enum.filter(&(is_nil(stack) or &1.name == stack))
+    |> Enum.flat_map(& &1.workflows)
+    |> Enum.uniq()
+  end
+
+  @doc false
   # shared/1 is the harness `organisation` shares, as `chosen/1` shows it to a workspace
   # that reuses it (`t:chosen/0`, `shared: true`); nil for none.
   @spec shared(Organisation.t()) :: chosen | nil
