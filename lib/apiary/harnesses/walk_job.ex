@@ -114,12 +114,15 @@ defmodule Apiary.Harnesses.WalkJob do
       nil ->
         :ok
 
-      {row, target} ->
+      {row, run, target} ->
         input = %{
           organisation: scope.organisation,
           workspace: scope.workspace,
           target: target,
-          workflow: row.workflow
+          workflow: row.workflow,
+          # Hand-over: with the workflow model, a run that `queue/2` gave its stage entry's
+          # workflow (`Apiary.Stages.run_workflow/1`).
+          stage_run?: Apiary.Stages.run_workflow(run) != nil
         }
 
         case Walk.run(input) do
@@ -139,7 +142,7 @@ defmodule Apiary.Harnesses.WalkJob do
     end
   end
 
-  # The pending row of the run `id` while the run waits, and the run's target; nil for
+  # The pending row of the run `id` while the run waits, the run, and its target; nil for
   # none.
   defp pending(id) do
     Repo.one(
@@ -149,14 +152,15 @@ defmodule Apiary.Harnesses.WalkJob do
         join: w in WorkItem,
         on: w.id == r.work_item_id,
         where: h.dispatch_run_id == ^id and h.state == :pending and r.state == :waiting,
-        select: {h, %{system: w.target_system, path: w.target_path}}
+        select: {h, r, %{system: w.target_system, path: w.target_path}}
     )
     |> case do
-      {row, %{system: system, path: path} = target} when is_binary(system) and is_binary(path) ->
-        {row, target}
+      {row, run, %{system: system, path: path} = target}
+      when is_binary(system) and is_binary(path) ->
+        {row, run, target}
 
-      {row, _no_target} ->
-        {row, nil}
+      {row, run, _no_target} ->
+        {row, run, nil}
 
       nil ->
         nil

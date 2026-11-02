@@ -2321,6 +2321,129 @@ defmodule Apiary.Harnesses.WalkTest do
                Repo.get_by!(RunHarness, dispatch_run_id: run.id)
     end
 
+    # The workspace's harness choice with `@setting`, with no row with a workflow, and its
+    # base's stack declaring `declared`.
+    defp declared!(ctx, declared) do
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting, choice: :qory)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring(declared)
+      )
+    end
+
+    # The workspace's process: one stage, with `entry` as its one entry.
+    defp process!(ctx, entry) do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Build",
+        "inputs" => [],
+        "sequence" => [entry],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+    end
+
+    # The access level `run`'s walk writes on its row.
+    defp walked_level(run) do
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, access_level: level} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      level
+    end
+
+    # The access level of the documents of the next run a machine claims. The workspace's
+    # collections lose their environments, so the claim takes that run and no prebuild.
+    defp claimed_level(ctx) do
+      workspace_id = ctx.scope.workspace.id
+
+      {_count, _rows} =
+        Repo.update_all(from(c in Collection, where: c.workspace_id == ^workspace_id),
+          set: [environment_ref: nil]
+        )
+
+      place = handover_place_fixture(ctx.scope)
+      body = ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+
+      {:ok, %{documents: documents}} = Dispatches.claim(place.key, Dispatches.now(), body)
+      documents.harness.access
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a stage workflow declared write stays write, with no row", ctx do
+      declared!(ctx, "  build: {access: write}\n")
+      process!(ctx, %{"workflow" => "build"})
+
+      assert walked_level(queued(ctx)) == :write
+      assert claimed_level(ctx) == :write
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a row of another workflow lowers nothing on a stage's run", ctx do
+      declared!(ctx, "  build: {access: write}\n")
+      recording(ctx, "explore", :read)
+      process!(ctx, %{"workflow" => "build"})
+
+      assert walked_level(queued(ctx)) == :write
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a row with a stage's workflow still lowers its run", ctx do
+      declared!(ctx, "  build: {access: write}\n")
+      recording(ctx, "build", :read)
+      process!(ctx, %{"workflow" => "build"})
+
+      assert walked_level(queued(ctx)) == :read
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a stage workflow with no declaration stays read, with no row", ctx do
+      declared!(ctx, "  review: {access: write}\n")
+      process!(ctx, %{"workflow" => "build"})
+
+      assert walked_level(queued(ctx)) == :read
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a lowered stage entry gets read", ctx do
+      declared!(ctx, "  build: {access: write}\n")
+      process!(ctx, %{"workflow" => "build", "access" => "read"})
+
+      assert walked_level(queued(ctx)) == :write
+      assert claimed_level(ctx) == :read
+    end
+
+    test "a changed or removed row on an explore run stays read", ctx do
+      declared!(ctx, "  explore: {access: write}\n")
+      recording(ctx, "explore", nil)
+      removed = queued(ctx)
+      changed = queued(ctx)
+
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "explore"})
+      assert walked_level(removed) == :read
+
+      recording(ctx, "review", :write)
+      assert walked_level(changed) == :read
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a stage's explore-a-ticket entry keeps the rule of an explore run", ctx do
+      declared!(ctx, "  explore: {access: write}\n")
+      recording(ctx, "explore", nil)
+      process!(ctx, %{"workflow" => "explore-a-ticket"})
+      run = queued(ctx)
+      assert %DispatchRun{stage_id: "st_r79kph11eg"} = run
+
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "explore"})
+      assert walked_level(run) == :read
+    end
+
     test "an adapter that answers no one is tried again, then fails adapter_unavailable", ctx do
       setting(ctx.scope, @setting)
       run = queued(ctx)

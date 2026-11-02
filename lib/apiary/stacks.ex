@@ -108,17 +108,43 @@ defmodule Apiary.Stacks do
   end
 
   @doc false
-  # recorded_access/3 is the access level recorded for an explore run of `workflow` of
-  # `workspace` at `target`, the work item's `%{system, path}`, nil for none: the
-  # `access` of the row `workflow/2` reads, nil where that row records none. `:read`
-  # where that row's workflow is no longer `workflow`, or where no such row is left, so
-  # a row of another workflow, or none, never gives this run's level. Read without a
-  # lock, when the walk runs.
+  # recorded_access/3 is the access level recorded for a run of `workspace` at `target`,
+  # the work item's `%{system, path}`, nil for none. Read without a lock, when the walk
+  # runs.
+  #
+  # For an explore run, `workflow` is the name its walk reads by: the `access` of the row
+  # `workflow/2` reads, nil where that row records none. `:read` where that row's
+  # workflow is no longer `workflow`, or where no such row is left, so a row of another
+  # workflow, or none, never gives this run's level.
+  #
+  # For a stage's run, `{:stage, workflow}`, with the workflow of its stage entry, which
+  # needs no row: the lower level of the rows with that workflow at the run's places, nil
+  # where no such row records a level or there is no such row. A row of another workflow
+  # counts for nothing. The stage entry's `access` lowers the run's level at its claim
+  # (`Apiary.Stages.limits/1`), not here.
   @spec recorded_access(
           Workspace.t(),
           %{system: String.t(), path: String.t()} | nil,
-          String.t()
+          String.t() | {:stage, String.t()}
         ) :: :read | :write | nil
+  def recorded_access(%Workspace{} = workspace, target, {:stage, workflow})
+      when is_binary(workflow) do
+    levels =
+      Repo.all(
+        from s in Stack,
+          where: s.organisation_id == ^workspace.organisation_id,
+          where: s.workspace_id == ^workspace.id and s.workflow == ^workflow,
+          where: ^in_place(target_row(workspace, target)),
+          select: s.access
+      )
+
+    cond do
+      :read in levels -> :read
+      :write in levels -> :write
+      true -> nil
+    end
+  end
+
   def recorded_access(%Workspace{} = workspace, target, workflow) when is_binary(workflow) do
     case workflow_row(workspace, target_row(workspace, target)) do
       %{workflow: ^workflow, access: access} -> access
@@ -129,17 +155,11 @@ defmodule Apiary.Stacks do
   # The workflow and the access level of the one row with a workflow at the run's
   # places (`workflow/2`), nil for none or for two or more.
   defp workflow_row(%Workspace{} = workspace, target) do
-    in_place =
-      case target do
-        %Target{id: id} -> dynamic([s], is_nil(s.target_id) or s.target_id == ^id)
-        nil -> dynamic([s], is_nil(s.target_id))
-      end
-
     Repo.all(
       from s in Stack,
         where: s.organisation_id == ^workspace.organisation_id,
         where: s.workspace_id == ^workspace.id and not is_nil(s.workflow),
-        where: ^in_place,
+        where: ^in_place(target),
         select: %{workflow: s.workflow, access: s.access},
         limit: 2
     )
@@ -148,6 +168,10 @@ defmodule Apiary.Stacks do
       _none_or_several -> nil
     end
   end
+
+  # The rows at a run's places: its workspace and `target`, a target row or nil for none.
+  defp in_place(%Target{id: id}), do: dynamic([s], is_nil(s.target_id) or s.target_id == ^id)
+  defp in_place(nil), do: dynamic([s], is_nil(s.target_id))
 
   @doc false
   # choice/1 is the row of `workspace`'s harness choice (the moduledoc), nil for none.

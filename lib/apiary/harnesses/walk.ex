@@ -212,12 +212,17 @@ defmodule Apiary.Harnesses.Walk do
   @scp ~r/\A[^\/:@\s]+@[^\/:@\s]+:/
   @commit ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
 
-  @typedoc "What a walk reads: the run's organisation, workspace, target and workflow."
+  @typedoc """
+  What a walk reads: the run's organisation, workspace, target and workflow, and
+  `stage_run?`, true where the workflow is the one of the run's stage entry. Absent is
+  false.
+  """
   @type input :: %{
-          organisation: Organisation.t(),
-          workspace: Workspace.t(),
-          target: %{system: String.t(), path: String.t()} | nil,
-          workflow: String.t()
+          required(:organisation) => Organisation.t(),
+          required(:workspace) => Workspace.t(),
+          required(:target) => %{system: String.t(), path: String.t()} | nil,
+          required(:workflow) => String.t(),
+          optional(:stage_run?) => boolean
         }
 
   @typedoc "A walk that resolved."
@@ -428,9 +433,13 @@ defmodule Apiary.Harnesses.Walk do
 
   # The run's access level, once the sources are walked (the moduledoc).
   defp access_level(input) do
-    recorded = Stacks.recorded_access(input.workspace, input.target, input.workflow)
+    recorded = Stacks.recorded_access(input.workspace, input.target, recorded_for(input))
     lower(get(:declared), recorded)
   end
+
+  # The run, as `Apiary.Stacks.recorded_access/3` takes it.
+  defp recorded_for(%{stage_run?: true, workflow: workflow}), do: {:stage, workflow}
+  defp recorded_for(%{workflow: workflow}), do: workflow
 
   # The lower of the declared level and the recorded one, nil for none recorded.
   defp lower(:write, recorded) when recorded in [nil, :write], do: :write
