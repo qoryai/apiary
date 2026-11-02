@@ -48,7 +48,7 @@ defmodule Apiary.Processes do
 
   `export/1` writes the current version, with the workspace type's texts and the
   workspace's artifact types, as a `process.yaml` (`Apiary.Processes.Export`). Its caller
-  checks `process.edit`. A download changes nothing, so it leaves no audit entry.
+  checks `process.edit`. A download writes no audit entry.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext

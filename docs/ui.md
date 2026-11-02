@@ -2020,9 +2020,10 @@ Stages, Instance settings › Workspace types and a workspace type's page use it
   as trial** (Workspace settings only) and **Discard changes** are at the right end of the tabs' row
   on both tabs: one draft has the edits of both, and a switch of tabs keeps it. Workspace
   settings adds a row under the tabs for owners and admins (`process.edit`), on both tabs:
-  **Export process.yaml** downloads the current version, with no draft or trial, and the
-  line beside it says where the file goes. The line adds "Gates that list people export as
-  all members." when a gate of the current version lists people.
+  **Export process.yaml** downloads the current version, with no draft or trial. The text
+  beside the button is "Commit this file to a harness repository. Only new workspaces made
+  from it use it.", and "Gates that list people export as all members." follows it when a
+  gate of the current version lists people.
 
 ## Words
 
