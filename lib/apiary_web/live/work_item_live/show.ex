@@ -941,16 +941,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Details' Runs under the workflow model, while the newest run waits for a machine and
-  # none has started: that run, as the step card says it, in place of None yet.
-  defp queued_run(%{runs: [%{shows: :queued} | _]}, %{run: %{attempt: attempt, of: of}})
+  # none has started: that run, in place of None yet. The runner applies the round limit
+  # of the work item's version, so the count follows the stage card's rounds: a run
+  # queued under a version with a higher limit keeps its stored `of`.
+  defp queued_run(%{runs: [%{shows: :queued} | _]} = flow, %{run: %{attempt: attempt, of: of}})
        when is_integer(attempt) and is_integer(of),
        do:
          gettext("Run %{attempt} of %{of} is queued.",
            attempt: Format.number(attempt),
-           of: Format.number(of)
+           of: Format.number(runs_of(flow, attempt, of))
          )
 
   defp queued_run(_flow, _item), do: nil
+
+  defp runs_of(%{rounds: rounds} = flow, attempt, _of) when is_integer(rounds),
+    do: attempt + max(rounds - (Map.get(flow, :round) || 1), 0)
+
+  defp runs_of(_flow, _attempt, of), do: of
 
   # Today's step card, beside the stage card at Explore. At the run limit it says Explore
   # cannot run again in this take in, which is false while the escalation card offers Run

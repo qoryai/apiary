@@ -270,6 +270,40 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-details-runs", "None yet")
     end
 
+    test "a queued run moved to a version with fewer rounds counts that version's limit", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = taken_in_fixture(scope)
+      assert %DispatchRun{attempt: 1, of: 3} = newest_run(work_item)
+
+      document =
+        Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+          Enum.map(stages, fn
+            %{"id" => @explore} = stage ->
+              Map.update!(stage, "sequence", fn sequence ->
+                Enum.map(sequence, fn
+                  %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
+                  entry -> entry
+                end)
+              end)
+
+            stage ->
+              stage
+          end)
+        end)
+
+      {:ok, trial} = Processes.save(scope, scope.workspace, document, trial: true)
+      {:ok, _work_item} = Processes.assign(scope, Repo.get!(WorkItem, work_item.id), trial)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # The runner stops after round 2 of the version the work item is on, whatever the
+      # stored run says.
+      assert has_element?(view, "#work-item-stage-round", "Round 1 of 2")
+      assert has_element?(view, "#work-item-details-runs", "Run 1 of 2 is queued.")
+      refute render(view) =~ "Run 1 of 3 is queued."
+    end
+
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
       work_item = taken_in_fixture(scope)
 
@@ -1159,6 +1193,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # The step card's "cannot explore again in this take in" is false while Run another
       # round is on the escalation card: the step card is not shown.
       assert has_element?(view, "#work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-stage-escalation-accept")
       refute has_element?(view, "#work-item-step")
       refute render(view) =~ "cannot explore again"
 
