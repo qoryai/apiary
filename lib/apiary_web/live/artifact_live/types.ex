@@ -1,13 +1,15 @@
 defmodule ApiaryWeb.ArtifactLive.Types do
   # Workspace settings › Artifact types, `/:org/:workspace/settings/artifact-types`, under
   # the feature `workflow_model`, for owners and admins (`artifact_type.edit`): the
-  # standard types, read only, each with its base view, size limit and most files, and
-  # the mark Always on for a type no workspace can hide (`Type.always_on/0`); then the
-  # workspace's custom types (`Apiary.Artifacts.all_types/1`), with Add a type (`…/new`),
-  # Edit (`…/:type_id/edit`: size limit, most files and, for a structured type, the JSON
+  # standard types, each with its base view, size limit and most files, and a switch
+  # (`Apiary.Artifacts.switch_type/4`), or the mark Always on for a type no workspace can
+  # hide (`Type.always_on/0`); then the workspace's custom types
+  # (`Apiary.Artifacts.all_types/1`), with Add a type (`…/new`), Edit
+  # (`…/:type_id/edit`: size limit, most files and, for a structured type, the JSON
   # Schema) and Delete, confirmed in its row (`…/:type_id/delete`). A custom type's name
   # and base view are fixed once it is made. A type that artifacts of the workspace have
-  # is kept, and a line under the table says why (`:in_use`).
+  # is kept, and a line under the table says why (`:in_use`). A type in use stays on, and
+  # a line under the standard types shows why.
   #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.
@@ -168,8 +170,24 @@ defmodule ApiaryWeb.ArtifactLive.Types do
               </:col>
               <:col :let={type} label={gettext("On")}>
                 <.badge :if={type.name in Type.always_on()}>{gettext("Always on")}</.badge>
+                <.switch
+                  :if={type.name not in Type.always_on()}
+                  id={"artifact-type-#{type.name}-switch"}
+                  label={gettext("Use %{name} in this workspace", name: type.name)}
+                  checked={type.shown}
+                  phx-click="switch"
+                  phx-value-id={type.name}
+                />
               </:col>
             </.table>
+            <p
+              :if={@switch_refused}
+              id="artifact-type-switch-refused"
+              class="text-[13px]/5 text-error"
+              role="alert"
+            >
+              {switch_line(@switch_refused)}
+            </p>
           </SettingsComponents.part>
         <% end %>
       </SettingsComponents.layout>
@@ -274,6 +292,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
        mode: :index,
        deleting: nil,
        in_use: nil,
+       switch_refused: nil,
        editing: nil,
        base_view: :document,
        form: nil
@@ -321,7 +340,14 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     }
 
     socket
-    |> assign(mode: :new, deleting: nil, editing: nil, in_use: nil, base_view: :document)
+    |> assign(
+      mode: :new,
+      deleting: nil,
+      editing: nil,
+      in_use: nil,
+      switch_refused: nil,
+      base_view: :document
+    )
     |> assign_form(params, [])
   end
 
@@ -341,6 +367,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
           deleting: nil,
           editing: type,
           in_use: nil,
+          switch_refused: nil,
           base_view: type.base_view
         )
         |> assign_form(params, [])
@@ -353,7 +380,14 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp apply_action(socket, :delete, %{"type_id" => id}) do
     case custom(socket, id) do
       %Type{} = type ->
-        assign(socket, mode: :index, deleting: type, editing: nil, in_use: nil, form: nil)
+        assign(socket,
+          mode: :index,
+          deleting: type,
+          editing: nil,
+          in_use: nil,
+          switch_refused: nil,
+          form: nil
+        )
 
       nil ->
         gone(socket)
@@ -438,6 +472,27 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     end
   end
 
+  # The switch's new state is the opposite of what the page shows. Every outcome reads the
+  # list from the database again.
+  def handle_event("switch", %{"id" => name}, socket) do
+    scope = socket.assigns.current_scope
+    on? = not Enum.any?(socket.assigns.standard, &(&1.name == name and &1.shown))
+
+    case Artifacts.switch_type(scope, scope.workspace, name, on?) do
+      {:ok, _type} ->
+        {:noreply, socket |> assign(in_use: nil, switch_refused: nil) |> load()}
+
+      {:error, reason} when reason in [:has_artifacts, :current_process, :version_in_use] ->
+        {:noreply, socket |> assign(in_use: nil, switch_refused: {reason, name}) |> load()}
+
+      {:error, :forbidden} ->
+        {:noreply, socket |> load() |> not_allowed()}
+
+      {:error, _refused} ->
+        {:noreply, socket |> load() |> gone()}
+    end
+  end
+
   defp saved(socket, _params, {:ok, type}) do
     message =
       if socket.assigns.editing,
@@ -462,6 +517,20 @@ defmodule ApiaryWeb.ArtifactLive.Types do
 
   defp saved(socket, _params, {:error, :forbidden}), do: {:noreply, not_allowed(socket)}
   defp saved(socket, _params, {:error, _refused}), do: {:noreply, gone(socket)}
+
+  defp switch_line({:has_artifacts, name}),
+    do:
+      gettext(
+        "%{name} cannot be switched off: work items of this workspace have artifacts of this type.",
+        name: name
+      )
+
+  defp switch_line({:current_process, name}),
+    do: gettext("%{name} cannot be switched off: the current process uses it.", name: name)
+
+  defp switch_line({:version_in_use, name}),
+    do:
+      gettext("%{name} cannot be switched off: a process version in use includes it.", name: name)
 
   defp form_field(:size_limit), do: :size_mib
   defp form_field(field), do: field

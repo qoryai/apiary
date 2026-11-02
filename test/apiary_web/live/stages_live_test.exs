@@ -483,7 +483,11 @@ defmodule ApiaryWeb.StagesLiveTest do
                Words.missing_type("Explore", "explainer")
              )
 
-      assert has_element?(view, ~s(#stages-check [data-problem="missing_type"] a), "Define it")
+      assert has_element?(
+               view,
+               ~s(#stages-check [data-problem="missing_type"] a[href="#{workspace_path(scope, "/settings/artifact-types")}"]),
+               "Switch it on"
+             )
 
       {:ok, view, _html} = live(conn, path)
 

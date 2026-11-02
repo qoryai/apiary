@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.ArtifactLive.TypesTest do
   # Workspace settings › Artifact types (`ApiaryWeb.ArtifactLive.Types`): listed for
-  # owners and admins, not for members; the standard types read only, the always-on ones
-  # marked; a custom type added, edited and deleted, a type in use kept with a line why; the add form filled
-  # from `?name=` when the name is free and well formed; and the section absent with
-  # `workflow_model` off. Not async: a test sets the store's folder in the application's
-  # environment, which every test reads.
+  # owners and admins, not for members; the standard types with a switch, the always-on
+  # ones marked instead; a type in use kept on with a line why; a custom type added,
+  # edited and deleted, one in use kept with a line why; the add form filled from `?name=`
+  # when the name is free and well formed; and the section absent with `workflow_model`
+  # off. Not async: a test sets the store's folder in the application's environment,
+  # which every test reads.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -12,7 +13,8 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Artifacts
+  alias Apiary.{Artifacts, Processes}
+  alias Apiary.Artifacts.Type
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
 
@@ -43,7 +45,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     type
   end
 
-  test "lists the standard types read only and the custom types with their menu", ctx do
+  test "lists the standard types without a menu and the custom types with their menu", ctx do
     type =
       custom!(ctx.scope, %{
         "name" => "bid-set",
@@ -79,7 +81,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     for name <- ~w(proposal questions verdict),
         do: assert(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
 
-    for name <- Apiary.Artifacts.Type.standard_names() -- ~w(proposal questions verdict),
+    for name <- Type.standard_names() -- ~w(proposal questions verdict),
         do: refute(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
 
     assert render(view) =~
@@ -87,11 +89,105 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
                "Forms and the stage editor offer only the types that are on."
   end
 
+  defp stored(scope), do: Repo.get!(Workspace, scope.workspace.id).shown_standard_types
+
+  # The default process with `type` among the outputs of its first stage.
+  defp with_type(type) do
+    document = Processes.default_document("software")
+    [first | rest] = document["stages"]
+    first = Map.update!(first, "outputs", &(&1 ++ [%{"type" => type, "required" => true}]))
+    %{document | "stages" => [first | rest]}
+  end
+
+  defp click_switch(view, name),
+    do: view |> element("#artifact-type-#{name}-switch") |> render_click()
+
+  test "shows a switch for every standard type but the three marked Always on", ctx do
+    show!(ctx.scope, ["mockup"])
+    {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+
+    assert has_element?(view, "#artifact-types-standard th", "On")
+
+    for name <- ~w(proposal questions verdict),
+        do: refute(has_element?(view, "#artifact-type-#{name}-switch"), name)
+
+    assert has_element?(view, ~s(#artifact-type-mockup-switch[aria-checked="true"]))
+    assert has_element?(view, ~s(#artifact-type-explainer-switch[aria-checked="false"]))
+
+    assert has_element?(
+             view,
+             ~s(label[for="artifact-type-explainer-switch"]),
+             "Use explainer in this workspace"
+           )
+  end
+
+  test "a click switches a type off and on, and the page shows what is stored", ctx do
+    {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+
+    click_switch(view, "mockup")
+
+    assert has_element?(view, ~s(#artifact-type-mockup-switch[aria-checked="false"]))
+    refute "mockup" in stored(ctx.scope)
+
+    click_switch(view, "mockup")
+
+    assert has_element?(view, ~s(#artifact-type-mockup-switch[aria-checked="true"]))
+    assert "mockup" in stored(ctx.scope)
+  end
+
+  test "keeps a type in use on with a line why, until a change clears the line", ctx do
+    {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("mockup"))
+
+    {:ok, _trial} =
+      Processes.save(ctx.scope, ctx.scope.workspace, with_type("screenshot"), trial: true)
+
+    work_item = work_item_fixture(ctx.scope)
+    %{dispatch_run: run} = explore_run_fixture(work_item)
+
+    store =
+      Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")
+
+    previous = Application.get_env(:apiary, :artifacts_dir)
+    Application.put_env(:apiary, :artifacts_dir, store)
+
+    try do
+      {:ok, _version} =
+        Artifacts.push({:run, run}, work_item, "explainer", [
+          %{filename: "notes.md", content_type: "text/markdown", binary: "# Notes"}
+        ])
+    after
+      Application.put_env(:apiary, :artifacts_dir, previous)
+      File.rm_rf!(store)
+    end
+
+    {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+
+    for {name, line} <- [
+          {"explainer",
+           "explainer cannot be switched off: work items of this workspace have artifacts of this type."},
+          {"mockup", "mockup cannot be switched off: the current process uses it."},
+          {"screenshot",
+           "screenshot cannot be switched off: a process version in use includes it."}
+        ] do
+      click_switch(view, name)
+
+      assert has_element?(view, ~s(#artifact-type-switch-refused[role="alert"]), line)
+      assert has_element?(view, ~s(#artifact-type-#{name}-switch[aria-checked="true"]))
+    end
+
+    assert stored(ctx.scope) == nil
+
+    click_switch(view, "demo-video")
+
+    refute has_element?(view, "#artifact-type-switch-refused")
+    assert has_element?(view, ~s(#artifact-type-demo-video-switch[aria-checked="false"]))
+  end
+
   test "keeps listing a standard type the workspace hides", ctx do
     show!(ctx.scope, ["mockup"])
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
 
-    for name <- Apiary.Artifacts.Type.standard_names(),
+    for name <- Type.standard_names(),
         do: assert(has_element?(view, "#artifact-type-#{name}"), name)
   end
 

@@ -9,14 +9,17 @@ defmodule Apiary.ArtifactsRacesTest do
   # to one work item take turns, and the numbers of an artifact are 1, 2, … with no gap.
   # Before that lock, a push of a standard type a workspace can hide takes the workspace
   # `FOR SHARE`, the core's lock order; a push of an always-on type takes no such lock.
+  # A switch of a standard type (`Apiary.Artifacts.switch_type/4`) holds the workspace
+  # `FOR NO KEY UPDATE`, so it runs before or after such a push or a change of the
+  # process.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.Races
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Artifacts, Repo}
-  alias Apiary.Artifacts.{Artifact, Version}
+  alias Apiary.{Artifacts, Processes, Repo}
+  alias Apiary.Artifacts.{Artifact, Type, Version}
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
@@ -67,7 +70,7 @@ defmodule Apiary.ArtifactsRacesTest do
       Ecto.Adapters.SQL.Sandbox.checkin(Repo)
     end)
 
-    %{work_item: work_item, run: run}
+    %{scope: scope, work_item: work_item, run: run}
   end
 
   test "pushes at once to an artifact that is not there yet number its versions with no gap",
@@ -153,5 +156,64 @@ defmodule Apiary.ArtifactsRacesTest do
 
     assert {:ok, %Version{}} = Task.await(push.task, 15_000)
     commit(held)
+  end
+
+  defp plan, do: [%{filename: "plan.md", content_type: "text/markdown", binary: "# Plan"}]
+
+  @tag needs: :workflow_model
+  test "a push that comes after a switch off waits for it, and then finds the type hidden",
+       %{scope: scope, work_item: work_item, run: run} do
+    {held, holder} =
+      hold(fn -> Artifacts.switch_type(scope, scope.workspace, "explainer", false) end)
+
+    assert {:ok, %Type{shown: false}} = held.result
+
+    push = start(fn -> Artifacts.push({:run, run}, work_item, "explainer", plan()) end)
+
+    await_blocked(push.backend, holder)
+    commit(held)
+
+    assert {:error, {:unknown_type, "explainer"}} = Task.await(push.task, 15_000)
+    assert Repo.all(from a in Artifact, where: a.work_item_id == ^work_item.id) == []
+  end
+
+  @tag needs: :workflow_model
+  test "a switch off that comes after a push waits for it, and then finds the artifact",
+       %{scope: scope, work_item: work_item, run: run} do
+    {held, holder} =
+      hold(fn -> Artifacts.push({:run, run}, work_item, "explainer", plan()) end)
+
+    assert {:ok, %Version{}} = held.result
+
+    switch = start(fn -> Artifacts.switch_type(scope, scope.workspace, "explainer", false) end)
+
+    await_blocked(switch.backend, holder)
+    commit(held)
+
+    assert {:error, :has_artifacts} = Task.await(switch.task, 15_000)
+    assert Repo.get!(Workspace, scope.workspace.id).shown_standard_types == nil
+  end
+
+  @tag needs: :workflow_model
+  test "a switch off that comes after a process save waits for it, and then finds the type",
+       %{scope: scope} do
+    document = Processes.default_document("software")
+    [first | rest] = document["stages"]
+    output = %{"type" => "explainer", "required" => true}
+    first = Map.update!(first, "outputs", &(&1 ++ [output]))
+
+    {held, holder} =
+      hold(fn ->
+        Processes.save(scope, scope.workspace, %{document | "stages" => [first | rest]})
+      end)
+
+    assert {:ok, %Processes.Version{}} = held.result
+
+    switch = start(fn -> Artifacts.switch_type(scope, scope.workspace, "explainer", false) end)
+
+    await_blocked(switch.backend, holder)
+    commit(held)
+
+    assert {:error, :current_process} = Task.await(switch.task, 15_000)
   end
 end

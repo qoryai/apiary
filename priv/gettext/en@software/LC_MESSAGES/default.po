@@ -1052,6 +1052,21 @@ msgstr[1] ""
 msgid "%{name} cannot be deleted: work items of this workspace have artifacts of this type."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} cannot be switched off: a process version in use includes it."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} cannot be switched off: the current process uses it."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} cannot be switched off: work items of this workspace have artifacts of this type."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} changed Qory's proposal and confirmed it. Ready for Shape"
@@ -17665,6 +17680,11 @@ msgstr ""
 msgid "Suspend…"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Switch it on"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch organisation"
@@ -17683,6 +17703,16 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Switched off artifact type %{type}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Switched on artifact type %{type}"
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -20614,6 +20644,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Use %{host} with the path %{path}"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Use %{name} in this workspace"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex

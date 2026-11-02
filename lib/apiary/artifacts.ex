@@ -25,6 +25,25 @@ defmodule Apiary.Artifacts do
   # type's name and base view are fixed once it is made. A type is deleted only while no
   # artifact of the workspace has its name, else `:in_use`.
   #
+  # `switch_type/4` switches a standard type on or off in a workspace, under the same
+  # action: `{:ok, type}`, with `shown` set. An always-on type is `{:error, :always_on}`.
+  # A name that is no standard type is `{:error, :not_found}`, as a custom type has no
+  # switch. Switching a type to the state it has writes no row and no audit entry.
+  # Switching off stops at the first of these, as `{:error, reason}`:
+  #
+  #   1. `:has_artifacts`: an artifact of the workspace has the type;
+  #   2. `:current_process`: a stage of the current process has the type in its inputs
+  #      or outputs;
+  #   3. `:version_in_use`: a stage of a version in use has the type there. A version is
+  #      in use while it is a trial, or while a work item that has not ended keeps it. An
+  #      ended work item has no more runs, and a take in again places it under the
+  #      current version (`Apiary.Stages.take_in/2`).
+  #
+  # A switch holds the scope's places and the workspace's row as `Apiary.Processes` holds
+  # them, `FOR NO KEY UPDATE`, and reads the list and the scope again under that lock. So
+  # a switch runs before or after a change of the process and a push of a type that can
+  # be hidden, never between their checks and their rows.
+  #
   # ## A push
   #
   # `push(actor, work_item, type, files, opts)` stores a new version of the work item's
@@ -121,7 +140,9 @@ defmodule Apiary.Artifacts do
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.Processes
+  alias Apiary.Processes.Version, as: ProcessVersion
+  alias Apiary.WorkItems.{State, WorkItem}
 
   require Logger
 
@@ -149,6 +170,10 @@ defmodule Apiary.Artifacts do
             optional(:path) => Path.t(),
             optional(:binary) => binary
           }
+
+  @typedoc "Why a standard type stays in the state it has."
+  @type switch_refusal ::
+          :always_on | :has_artifacts | :current_process | :version_in_use
 
   @typedoc "Why a push is refused."
   @type refusal ::
@@ -251,7 +276,7 @@ defmodule Apiary.Artifacts do
     Repo.transact(fn ->
       with :ok <- authorize(scope, @edit_types, type),
            %Type{} = held <- held_type(type),
-           false <- in_use?(held),
+           false <- in_use?(held.workspace_id, held.name),
            {:ok, deleted} <- Repo.delete(held),
            {:ok, _entry} <- audit_type(scope, workspace_of(held), :delete, held) do
         {:ok, deleted}
@@ -265,6 +290,109 @@ defmodule Apiary.Artifacts do
 
   def delete_type(%Scope{}, %Type{}), do: {:error, :not_found}
 
+  # switch_type/4 switches the standard type `name` on or off in `workspace`: see Types
+  # at the head of this module.
+  @doc false
+  @spec switch_type(Scope.t(), Workspace.t(), term, boolean) ::
+          {:ok, Type.t()} | {:error, switch_refusal | Access.reason()}
+  def switch_type(%Scope{} = scope, %Workspace{} = workspace, name, on?) when is_boolean(on?) do
+    Repo.transact(fn ->
+      with {:ok, scope, held} <- held_workspace(scope, workspace),
+           :ok <- Access.check(scope, @edit_types, held),
+           {:ok, type} <- switchable(name) do
+        if shown?(name, held.shown_standard_types) == on?,
+          do: {:ok, %{type | shown: on?}},
+          else: switch(scope, held, type, on?)
+      end
+    end)
+  end
+
+  # The scope's places and the workspace held, the workspace `FOR NO KEY UPDATE`, and the
+  # scope read again, in the order of `Apiary.Processes`: `{:ok, scope, workspace}`, or
+  # `{:error, :not_found}` for a workspace other than the scope's.
+  defp held_workspace(%Scope{} = scope, %Workspace{id: id}) do
+    :ok = Access.lock_places(scope)
+
+    with %Workspace{id: ^id} <- scope.workspace,
+         %Workspace{} = workspace <-
+           Repo.one(
+             from w in Workspace,
+               where: w.id == ^id and w.organisation_id == ^scope.organisation.id,
+               lock: "FOR NO KEY UPDATE"
+           ) do
+      {:ok, Access.reload(scope, lock: :share), workspace}
+    else
+      _other -> {:error, :not_found}
+    end
+  end
+
+  defp switchable(name) do
+    cond do
+      name in Type.always_on() -> {:error, :always_on}
+      type = Enum.find(Type.standard(), &(&1.name == name)) -> {:ok, type}
+      true -> {:error, :not_found}
+    end
+  end
+
+  defp switch(scope, workspace, %Type{name: name} = type, on?) do
+    with :ok <- if(on?, do: :ok, else: not_in_use(workspace, name)),
+         {:ok, _workspace} <-
+           workspace
+           |> Ecto.Changeset.change(
+             shown_standard_types: switched(workspace.shown_standard_types, name, on?)
+           )
+           |> Repo.update(),
+         {:ok, _entry} <- audit_type(scope, workspace, if(on?, do: :show, else: :hide), type) do
+      {:ok, %{type | shown: on?}}
+    end
+  end
+
+  # The list after a switch: the names that can be hidden and stay shown, in the order of
+  # `Type.standard/0`.
+  defp switched(shown, name, on?) do
+    Enum.filter(Type.standard_names() -- Type.always_on(), fn candidate ->
+      if candidate == name, do: on?, else: shown?(candidate, shown)
+    end)
+  end
+
+  defp not_in_use(%Workspace{id: workspace_id} = workspace, name) do
+    cond do
+      in_use?(workspace_id, name) -> {:error, :has_artifacts}
+      has_type?(Processes.current(workspace).document, name) -> {:error, :current_process}
+      Enum.any?(documents_in_use(workspace_id), &has_type?(&1, name)) -> {:error, :version_in_use}
+      true -> :ok
+    end
+  end
+
+  # The documents of the workspace's trial versions and of the versions its work items
+  # keep, a work item that ended left out: a take in again places it under the current
+  # version.
+  defp documents_in_use(workspace_id) do
+    kept =
+      from w in WorkItem,
+        where:
+          w.workspace_id == ^workspace_id and w.state not in ^State.ended_states() and
+            not is_nil(w.process_version_id),
+        select: w.process_version_id
+
+    Repo.all(
+      from v in ProcessVersion,
+        where: v.workspace_id == ^workspace_id and (v.status == :trial or v.id in subquery(kept)),
+        select: v.document
+    )
+  end
+
+  # Whether a stage of `document` has the type among its inputs or outputs, the entries
+  # `Apiary.Processes.placement_check/3` reads.
+  defp has_type?(document, name) do
+    document
+    |> Map.get("stages", [])
+    |> Enum.any?(fn stage ->
+      entries = Map.get(stage, "inputs", []) ++ Map.get(stage, "outputs", [])
+      Enum.any?(entries, &(&1["type"] == name))
+    end)
+  end
+
   # The type's row, locked `FOR UPDATE` until the change commits; nil once it is gone.
   defp held_type(%Type{id: id, workspace_id: workspace_id}) do
     Repo.one(
@@ -274,7 +402,7 @@ defmodule Apiary.Artifacts do
     )
   end
 
-  defp in_use?(%Type{workspace_id: workspace_id, name: name}) do
+  defp in_use?(workspace_id, name) do
     Repo.exists?(from a in Artifact, where: a.workspace_id == ^workspace_id and a.type == ^name)
   end
 
@@ -448,7 +576,7 @@ defmodule Apiary.Artifacts do
 
   defp writer(_actor, _work_item), do: {:error, :not_found}
 
-  # The one call site of `Apiary.Access` for this module's actions.
+  # The one call site of `Apiary.Access.authorize/3` for this module's actions.
   defp authorize(scope, action, subject), do: Access.authorize(scope, action, subject)
 
   defp push_type(work_item, name) do
@@ -678,8 +806,9 @@ defmodule Apiary.Artifacts do
 
   # A standard type a workspace can hide: the row of the workspace the push read, locked
   # `FOR SHARE` until the push commits, and its list read again. A standard type has no
-  # row to lock, so a change of the list, which locks the workspace's row `FOR UPDATE`,
-  # runs before or after the push and not between its check and its rows. A work item
+  # row to lock, so a change of the list, which locks the workspace's row
+  # `FOR NO KEY UPDATE`, runs before or after the push and not between its check and its
+  # rows. A work item
   # moved since the read fails `held_work_item/1`. nil once the workspace is gone.
   defp shown_kept(%WorkItem{workspace_id: workspace_id}, %Type{standard: true, name: name}) do
     if name in Type.always_on() do
