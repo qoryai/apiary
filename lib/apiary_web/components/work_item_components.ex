@@ -20,7 +20,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:repository` - the title of the collection that holds the ticket, `"acme/shop"`.
   #     The ticket's full form is this title followed by its key (`"acme/shop#1204"`), or
   #     the title alone without a key (`BacklogComponents.full_form/1`);
-  #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory asked), `:used_up`
+  #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory wrote some), `:used_up`
   #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
   #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
@@ -142,8 +142,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## The status and its mark
 
   @doc """
-  A work item's status: its mark and its words, the row's and the meta line's. Waits for
-  you to confirm is the one strong status (`q-wi-hot`). Questions and a take in that used
+  A work item's status: its mark and its words, the row's and the meta line's. You confirm
+  next is the one strong status (`q-wi-hot`). Questions and a take in that used
   its runs wait for any member who may act: their mark is the reader's with `can_act`,
   another member's without. Questions or a run without a result at the take in's last
   run read as the run limit, here as on the step card and the tab.
@@ -170,8 +170,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc """
-  A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Qory is
-  exploring), `:wait` (waits for the reader), `:wait_other` (waits for another member),
+  A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Explore
+  is running), `:wait` (waits for the reader), `:wait_other` (waits for another member),
   `:err` (Explore's run gave no result: a red ring), `:ready` (Ready for Shape),
   `:declined` and `:closed` (closed or undone). Decorative: its words are always beside
   it.
@@ -192,15 +192,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   def status_words(work_item), do: words_of(at_limit(work_item))
 
   defp words_of(%{status: :queued}), do: gettext("Explore is queued")
-  defp words_of(%{status: :running}), do: gettext("Qory is exploring")
+  defp words_of(%{status: :running}), do: gettext("Explore is running")
 
   defp words_of(%{status: :confirm, owner: owner}) do
     if you?(owner),
-      do: gettext("Waits for you to confirm"),
-      else: gettext("Waits for %{name} to confirm", name: owner.name)
+      do: gettext("You confirm next"),
+      else: gettext("%{name} confirms next", name: owner.name)
   end
 
-  defp words_of(%{status: :questions}), do: gettext("Waits for answers")
+  defp words_of(%{status: :questions}), do: gettext("Needs answers")
 
   defp words_of(%{status: :used_up, run: %{of: of}}),
     do:
@@ -543,7 +543,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Explore, running: what Qory does, and with whose answers from a second run (`:run`,
       `%{id:, path:, started_at:, answers_by:}`), and when the run started; the run's id
       links its page where `path` is given.
-    * Explore, questions (`:questions`): how many questions Qory asked; with `can_act`,
+    * Explore, questions (`:questions`): how many questions Qory wrote; with `can_act`,
       that answering them explores again, Answer the questions (a link to Explore's tab,
       `explore_path`, where it is given) and Decline (`"ask_decline"`); without, that it
       waits for a member to answer.
@@ -680,7 +680,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: ~H|<.badge color="success" class="q-wi-badge">{gettext("Running")}</.badge>|
 
   defp step_badge(%{status: :questions} = assigns),
-    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for answers")}</.badge>|
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Needs answers")}</.badge>|
 
   defp step_badge(%{status: :used_up} = assigns) do
     ~H"""
@@ -703,7 +703,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: ~H|<.badge color="error" class="q-wi-badge">{gettext("Cancelled")}</.badge>|
 
   defp step_badge(%{status: :confirm, mine: true} = assigns),
-    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for you")}</.badge>|
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Your turn")}</.badge>|
 
   defp step_badge(%{status: :shape} = assigns),
     do: ~H|<.badge color="info" class="q-wi-badge">{gettext("Ready")}</.badge>|
@@ -749,13 +749,13 @@ defmodule ApiaryWeb.WorkItemComponents do
           )}
         <% @backlog_off -> %>
           {gettext(
-            "The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
+            "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there.",
             integration: @integration,
             item: @item
           )}
         <% true -> %>
           {gettext(
-            "The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
+            "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog.",
             integration: @integration,
             item: @item
           )}
@@ -790,26 +790,26 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             :none ->
               gettext(
-                "Qory reads the %{item} when the run starts, and proposes what to do.",
+                "When the run starts, Qory reads the %{item} and writes a proposal.",
                 item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory reads the %{item} and your answers when the run starts, and proposes what to do.",
+                "When the run starts, Qory reads the %{item} and your answers, and writes a proposal.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory reads the %{item} and %{name}'s answers when the run starts, and proposes what to do.",
+                "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory reads the %{item} and the answers of this take in when the run starts, and proposes what to do.",
+                "When the run starts, Qory reads the %{item} and the answers of this take in, and writes a proposal.",
                 item: assigns.item
               )
           end,
@@ -832,7 +832,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         undo_line: undo_line(assigns),
         line:
           test_line(assigns) ||
-            gettext("Qory reads the %{item} when the run starts, and proposes what to do.",
+            gettext("When the run starts, Qory reads the %{item} and writes a proposal.",
               item: assigns.item
             )
       )
@@ -862,26 +862,26 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             :none ->
               gettext(
-                "Qory is exploring. It reads the %{item} and proposes what to do.",
+                "Qory reads the %{item} and writes a proposal.",
                 item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory is exploring again, with your answers. It reads the %{item} and proposes what to do.",
+                "Qory reads the %{item} and your answers, and writes a proposal.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory is exploring again, with %{name}'s answers. It reads the %{item} and proposes what to do.",
+                "Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory is exploring again, with the answers of this take in. It reads the %{item} and proposes what to do.",
+                "Qory reads the %{item} and the answers of this take in, and writes a proposal.",
                 item: assigns.item
               )
           end,
@@ -908,23 +908,23 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(assigns.can_act,
             do:
               ngettext(
-                "Qory asked %{number} question before it can propose what to do. Answer it, and Qory explores again with your answer. Or decline the work item.",
-                "Qory asked %{number} questions before it can propose what to do. Answer them, and Qory explores again with your answers. Or decline the work item.",
+                "Answer Qory's question, and Explore runs again with your answer. Or decline the work item.",
+                "Answer Qory's %{number} questions, and Explore runs again with your answers. Or decline the work item.",
                 n,
                 number: number
               ),
             else:
               ngettext(
-                "Qory asked %{number} question before it can propose what to do.",
-                "Qory asked %{number} questions before it can propose what to do.",
+                "Qory returned %{number} question instead of a proposal.",
+                "Qory returned %{number} questions instead of a proposal.",
                 n,
                 number: number
               )
           ),
         waits:
           ngettext(
-            "Waits for a member to answer Qory's question.",
-            "Waits for a member to answer Qory's questions.",
+            "Next, a member answers Qory's question.",
+            "Next, a member answers Qory's questions.",
             n
           ),
         go: ngettext("Answer the question", "Answer the questions", n)
@@ -949,8 +949,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(run[:outcome] == :questions,
             do:
               ngettext(
-                "Qory still has %{number} question after run %{attempt} of %{of}, the most one take in has, so it cannot explore again in this take in.",
-                "Qory still has %{number} questions after run %{attempt} of %{of}, the most one take in has, so it cannot explore again in this take in.",
+                "Qory still has %{number} question after run %{attempt} of %{of}, the last run of this take in.",
+                "Qory still has %{number} questions after run %{attempt} of %{of}, the last run of this take in.",
                 length(run.questions),
                 number: Format.number(length(run.questions)),
                 attempt: Format.number(run.attempt),
@@ -963,11 +963,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <p :if={@line} id={"#{@id}-line"}><.rich text={@line} /></p>
     <p :if={@can_act && @backlog_off} id={"#{@id}-ways"}>
-      {gettext("Decline the work item if it is not wanted, or close it.")}
+      {gettext("If the work item is not wanted, decline it. Otherwise, close it.")}
     </p>
     <p :if={@can_act && !@backlog_off} id={"#{@id}-ways"}>
       {gettext(
-        "Decline the work item if it is not wanted. To explore again, close it: Take in again from the Backlog then starts a fresh count, and answers from this take in are not carried over."
+        "If the work item is not wanted, decline it. To explore again, close it and use Take in again in the Backlog: the run count starts again, without this take in's answers."
       )}
     </p>
     <div :if={@can_act} class="q-wi-acts">
@@ -1001,7 +1001,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         line: no_result_line(status, run),
         next:
           next_run?(run) &&
-            gettext("It starts run %{attempt} of %{of} of this take in.",
+            gettext("Run Explore again starts run %{attempt} of %{of}.",
               attempt: Format.number(run.attempt + 1),
               of: Format.number(run.of)
             )
@@ -1035,15 +1035,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         line:
           cond do
             assigns.can_act ->
-              gettext(
-                "Qory proposed what to do. Confirm it, change it first, or decline the work item."
-              )
+              gettext("Confirm Qory's proposal, change it first, or decline the work item.")
 
             you?(owner) ->
-              gettext("Waits for you to confirm Qory's proposal or decline the work item.")
+              gettext("Next, you confirm Qory's proposal or decline the work item.")
 
             owner ->
-              gettext("Waits for %{name} to confirm Qory's proposal or decline the work item.",
+              gettext("Next, %{name} confirms Qory's proposal or declines the work item.",
                 name: owner.name
               )
 
@@ -1141,10 +1139,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   # A test work item's run answers its line, in words that no workspace's words change,
   # while its run waits or runs; nil for any other work item.
   defp test_line(%{work_item: %{test: true}, status: :queued}),
-    do: gettext("The agent answers the line when the run starts.")
+    do: gettext("When the run starts, the agent writes a reply to the line.")
 
   defp test_line(%{work_item: %{test: true}, status: :running}),
-    do: gettext("The agent is answering the line.")
+    do: gettext("The agent is writing a reply to the line.")
 
   defp test_line(_assigns), do: nil
 
@@ -1197,7 +1195,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp used_up_line(%{end_cause: :run_refused, end_detail: "model_key_missing"} = run),
     do:
       rich_gettext(
-        "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That run was run %{attempt} of %{of}, the most one take in has, so Qory cannot explore again in this take in.",
+        "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That was run %{attempt} of %{of}, the last run of this take in.",
         run: run_ref(run),
         attempt: Format.number(run.attempt),
         of: Format.number(run.of)
@@ -1206,7 +1204,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp used_up_line(run),
     do:
       rich_gettext(
-        "Run %{run} was run %{attempt} of %{of}, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in.",
+        "Run %{run} ended without a result. That was run %{attempt} of %{of}, the last run of this take in.",
         run: run_ref(run),
         attempt: Format.number(run.attempt),
         of: Format.number(run.of)
@@ -1225,7 +1223,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     case {you?(by), assigns.can_undo} do
       {true, true} ->
-        rich_gettext("You took this in %{when}. Until a run starts, you can undo this.",
+        rich_gettext("You took this in %{when}. Until a run starts, you can undo the take in.",
           when: at
         )
 
@@ -1233,7 +1231,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         rich_gettext("You took this in %{when}.", when: at)
 
       {false, true} ->
-        rich_gettext("%{name} took this in %{when}. Until a run starts, you can undo this.",
+        rich_gettext(
+          "%{name} took this in %{when}. Until a run starts, you can undo the take in.",
           name: by.name,
           when: at
         )
@@ -1251,14 +1250,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {previous, you?(by), assigns.can_undo} do
       {:declined, true, true} ->
         rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the %{item}, so its label stays as it was.",
+          "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}.",
           when: at,
           item: assigns.item
         )
 
       {:declined, false, true} ->
         rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the %{item}, so its label stays as it was.",
+          "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}.",
           name: by.name,
           when: at,
           item: assigns.item
@@ -1266,14 +1265,14 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {:closed, true, true} ->
         rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the %{item}, so its label stays as it was.",
+          "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
           when: at,
           item: assigns.item
         )
 
       {:closed, false, true} ->
         rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the %{item}, so its label stays as it was.",
+          "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
           name: by.name,
           when: at,
           item: assigns.item
@@ -1295,7 +1294,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {assigns.uninstalled, you?(by), assigns.can_undo} do
       {true, true, true} ->
         rich_gettext(
-          "You took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
+          "You took this in %{when}. Until a run starts, you can undo the take in. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
           when: at,
           integration: integration,
           item: assigns.item
@@ -1311,7 +1310,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {true, false, true} ->
         rich_gettext(
-          "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
+          "%{name} took this in %{when}. Until a run starts, you can undo the take in. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
           name: by.name,
           when: at,
           integration: integration,
@@ -1329,7 +1328,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {false, true, true} ->
         rich_gettext(
-          "You took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the %{item}, and the comment stays.",
+          "You took this in %{when}. Until a run starts, you can undo the take in: Qory removes its label from the %{item} and leaves its comment.",
           when: at,
           item: assigns.item
         )
@@ -1339,7 +1338,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {false, false, true} ->
         rich_gettext(
-          "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the %{item}, and the comment stays.",
+          "%{name} took this in %{when}. Until a run starts, you can undo the take in: Qory removes its label from the %{item} and leaves its comment.",
           name: by.name,
           when: at,
           item: assigns.item
@@ -1464,22 +1463,22 @@ defmodule ApiaryWeb.WorkItemComponents do
       >
         <%= cond do %>
           <% @test -> %>
-            {gettext("Closing ends the work on it in Qory Apiary.")}
+            {gettext("The work item stays in Qory Apiary, closed.")}
           <% @uninstalled -> %>
             {gettext(
-              "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the %{item}.",
+              "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, closed.",
               integration: @integration,
               item: SourceComponents.item(@item_noun)
             )}
           <% @backlog_off -> %>
             {gettext(
-              "Closing ends the work on it in Qory Apiary. The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
+              "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there.",
               integration: @integration,
               item: SourceComponents.item(@item_noun)
             )}
           <% true -> %>
             {gettext(
-              "Closing ends the work on it in Qory Apiary. The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
+              "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog.",
               integration: @integration,
               item: SourceComponents.item(@item_noun)
             )}
@@ -1571,7 +1570,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     if instance_removed?(work_item),
       do:
         rich_gettext(
-          "This work item was closed on %{date}, when its integration was removed.",
+          "Qory Apiary closed this work item on %{date}, when its integration was removed.",
           date: day(work_item.ended_at, now)
         )
   end
@@ -1612,9 +1611,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     at = inline_ago(work_item.ended_at, now)
 
     if you?(by),
-      do: rich_gettext("You undid this %{when}, before a run started.", when: at),
+      do: rich_gettext("You undid the take in %{when}, before a run started.", when: at),
       else:
-        rich_gettext("%{name} undid this %{when}, before a run started.",
+        rich_gettext("%{name} undid the take in %{when}, before a run started.",
           name: by.name,
           when: at
         )
@@ -1623,14 +1622,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp end_second(:undone, _integration, item),
     do:
       gettext(
-        "Qory took its label off the %{item}, and its comment stays there. In the Backlog, Take in again brings this work item back.",
+        "Qory removed its label from the %{item} and left its comment. To bring the work item back, use Take in again.",
         item: item
       )
 
   defp end_second(_closed_or_declined, integration, item),
     do:
       gettext(
-        "The %{item} is still open on %{integration} and keeps Qory's label. In the Backlog, Take in again brings this work item back.",
+        "The %{item} is still open on %{integration} with Qory's label. To bring the work item back, use Take in again.",
         integration: integration,
         item: item
       )
@@ -1885,7 +1884,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * queued or running: what Qory does next, with whose answers from a second run, and
       the answers that run reads, grouped by the run that asked them;
     * questions: Qory's questions, with the form for a reader who may act (`can_act`):
-      one answer for each, Answer and explore again (`"answer"`);
+      one answer for each, Send answers (`"answer"`);
     * the run limit, and questions or a run without a result at the last run of the take
       in: the note that the take in used its runs over the last questions, read-only, and
       that Take in again from the Backlog starts the count again, unless its ticket's
@@ -2006,16 +2005,16 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-exclamation-triangle-micro" class="q-xp-note-i size-4" />
         <p :if={@backlog_off}>
           {ngettext(
-            "This take in has used its %{of} run, so Qory runs no more for these questions here.",
-            "This take in has used its %{of} runs, so Qory runs no more for these questions here.",
+            "This take in used its %{of} run, so Explore cannot run again for these questions.",
+            "This take in used all %{of} runs, so Explore cannot run again for these questions.",
             @run.of,
             of: Format.number(@run.of)
           )}
         </p>
         <p :if={!@backlog_off}>
           {ngettext(
-            "This take in has used its %{of} run, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again.",
-            "This take in has used its %{of} runs, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again.",
+            "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog.",
+            "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog.",
             @run.of,
             of: Format.number(@run.of)
           )}
@@ -2175,8 +2174,8 @@ defmodule ApiaryWeb.WorkItemComponents do
            )}
 
         {:running, _whose} when assigns.test ->
-          {gettext("Qory is exploring."),
-           gettext("The agent answers the line in run %{attempt} of %{of}.",
+          {gettext("Explore is running."),
+           gettext("In run %{attempt} of %{of}, the agent writes a reply to the line.",
              attempt: attempt,
              of: of
            )}
@@ -2200,9 +2199,9 @@ defmodule ApiaryWeb.WorkItemComponents do
            )}
 
         {:running, :none} ->
-          {gettext("Qory is exploring."),
+          {gettext("Explore is running."),
            gettext(
-             "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know.",
+             "Run %{attempt} of %{of} reads the %{item}, then returns a proposal or questions.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2211,7 +2210,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:running, whose} ->
           {running_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} reads the %{item} and these answers, from the start. It proposes what to do, or asks what it still needs to know.",
+             "Run %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2239,13 +2238,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp queued_heading(:several),
     do: gettext("Explore is queued again, with the answers of this take in.")
 
-  defp running_heading(:you), do: gettext("Qory is exploring again, with your answers.")
+  defp running_heading(:you), do: gettext("Explore is running again, with your answers.")
 
   defp running_heading({:name, name}),
-    do: gettext("Qory is exploring again, with %{name}'s answers.", name: name)
+    do: gettext("Explore is running again, with the answers of %{name}.", name: name)
 
   defp running_heading(:several),
-    do: gettext("Qory is exploring again, with the answers of this take in.")
+    do: gettext("Explore is running again, with the answers of this take in.")
 
   attr :id, :string, required: true
   attr :run, :map, required: true
@@ -2260,11 +2259,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         heading:
-          gettext("The answers run %{attempt} reads", attempt: Format.number(assigns.run.attempt)),
+          gettext("Answers for run %{attempt}", attempt: Format.number(assigns.run.attempt)),
         caption:
           ngettext(
-            "Explore asked these in %{number} earlier run of this take in, shown as plain text.",
-            "Explore asked these in %{number} earlier runs of this take in, shown as plain text.",
+            "These questions come from %{number} earlier run of this take in. Qory shows them as plain text.",
+            "These questions come from %{number} earlier runs of this take in. Qory shows them as plain text.",
             n,
             number: Format.number(n)
           )
@@ -2362,13 +2361,13 @@ defmodule ApiaryWeb.WorkItemComponents do
             if(assigns.test,
               do:
                 gettext(
-                  "Qory runs Explore again from the start, with the line and the answers of this take in. It is run %{attempt} of %{of}.",
+                  "Sending starts run %{attempt} of %{of}, which reads the line and every answer of this take in.",
                   attempt: Format.number(run.attempt + 1),
                   of: Format.number(run.of)
                 ),
               else:
                 gettext(
-                  "Qory runs Explore again from the start, with the %{item}, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
+                  "Sending starts run %{attempt} of %{of}, which reads the %{item}, its comments, the first instruction and every answer of this take in.",
                   attempt: Format.number(run.attempt + 1),
                   of: Format.number(run.of),
                   item: assigns.item
@@ -2385,11 +2384,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.wrote_caption run={@run} />
       <div class="q-xp-body">
         <div :if={present?(@run[:understanding])} class="q-xp-sec">
-          <h3>{gettext("What Qory understood so far")}</h3>
+          <h3>{gettext("Understanding so far")}</h3>
           <div class="q-xp-val" phx-no-format>{@run.understanding}</div>
         </div>
         <div class="q-xp-sec">
-          <h3>{gettext("What Qory needs to know")}</h3>
+          <h3>{gettext("Questions")}</h3>
           <%= if @mode == :form do %>
             <form
               id={"#{@id}-form"}
@@ -2417,9 +2416,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               <div class="q-xp-form-foot">
                 <p :if={@next} id={"#{@id}-next"}>{@next}</p>
                 <.button id={"#{@id}-go"} type="submit" variant="primary">
-                  <.icon name="hero-paper-airplane-micro" class="size-3.5" />{gettext(
-                    "Answer and explore again"
-                  )}
+                  <.icon name="hero-paper-airplane-micro" class="size-3.5" />{gettext("Send answers")}
                 </.button>
               </div>
             </form>
@@ -2508,7 +2505,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <span>
         <.rich text={
           rich_gettext(
-            "Explore wrote this in run %{run}. Qory shows it as plain text, as the run wrote it.",
+            "Run %{run} wrote this. Qory shows it as plain text.",
             run: run_ref(@run)
           )
         } />
@@ -2606,7 +2603,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </ul>
         </div>
         <div id={"#{@id}-knowledge"} class="q-xp-sec">
-          <h3>{gettext("What Qory learned, and where")}</h3>
+          <h3>{gettext("Facts and sources")}</h3>
           <ul :if={(@proposal[:knowledge] || []) != []} class="q-xp-know">
             <li :for={item <- @proposal[:knowledge] || []}>
               <div class="q-xp-val" phx-no-format>{item.text}</div>
@@ -2634,14 +2631,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {you?(by), changed} do
       {true, true} ->
         rich_gettext(
-          "You confirmed it %{when}, with your changes. Explore wrote the rest in run %{run}, shown as plain text.",
+          "You confirmed this proposal %{when}, with your changes. Run %{run} wrote the rest, and Qory shows it as plain text.",
           when: at,
           run: run
         )
 
       {false, true} ->
         rich_gettext(
-          "%{name} confirmed it %{when}, with their changes. Explore wrote the rest in run %{run}, shown as plain text.",
+          "%{name} confirmed this proposal %{when}, with their changes. Run %{run} wrote the rest, and Qory shows it as plain text.",
           name: by.name,
           when: at,
           run: run
@@ -2649,14 +2646,14 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {true, false} ->
         rich_gettext(
-          "You confirmed it %{when}. Explore wrote it in run %{run}, shown as plain text.",
+          "You confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text.",
           when: at,
           run: run
         )
 
       {false, false} ->
         rich_gettext(
-          "%{name} confirmed it %{when}. Explore wrote it in run %{run}, shown as plain text.",
+          "%{name} confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text.",
           name: by.name,
           when: at,
           run: run
@@ -2800,54 +2797,46 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp no_result_words(%{state: :lost}),
     do:
       {"hero-signal-slash-micro", gettext("The run was lost."),
-       gettext(
-         "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."
-       )}
+       gettext("Qory Apiary has no result from the run. There is nothing to show or confirm.")}
 
   defp no_result_words(%{state: :cancelled}),
     do:
       {"hero-stop-circle-micro", gettext("The run was cancelled."),
-       gettext(
-         "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."
-       )}
+       gettext("There is nothing to show or confirm.")}
 
   defp no_result_words(%{end_cause: :harness_unresolved} = run),
     do:
-      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        harness_failure_words(run[:harness_failure])}
 
   defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}),
     do:
-      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
   defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
     do:
-      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        unstarted_words(cause)}
 
   defp no_result_words(%{outcome: :none}),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
-       gettext(
-         "It sent no result, so there is nothing for Qory to show or for a member to confirm."
-       )}
+       gettext("There is nothing to show or confirm.")}
 
   defp no_result_words(%{outcome: :refused}),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run's result did not pass Qory's check."),
        gettext(
-         "Qory reads a result only in the format Explore uses, and at most 128 KiB. This one was not, so Qory does not show it."
+         "Qory accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so Qory does not show it."
        )}
 
   defp no_result_words(_error),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended with an error."),
-       gettext(
-         "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
-       )}
+       gettext("The run's last result was an error. There is nothing to show or confirm.")}
 
   # What a member does about a run that stopped at a call to an adapter
   # (`Apiary.Adapters.Calls`), and what happened to the call, by its cause.
@@ -2857,7 +2846,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     case cause do
       :timeout ->
         rich_gettext(
-          "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time.",
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} timed out.",
           contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
@@ -2865,7 +2854,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :unreachable ->
         rich_gettext(
-          "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} did not reach it.",
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} did not reach it.",
           contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
@@ -2873,7 +2862,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :refused ->
         rich_gettext(
-          "%{contact_support}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}.",
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}.",
           contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what,
@@ -2882,28 +2871,28 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :invalid_answer ->
         rich_gettext(
-          "%{contact_support}. The run stopped before it started: the answer of %{adapter} failed its signature check or its format check, or was over 1 MiB.",
+          "%{contact_support}. The run did not start: the response of %{adapter} failed its signature check or format check, or was over 1 MiB.",
           contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter
         )
 
       :no_address ->
         rich_gettext(
-          "%{contact_support}. The run stopped before it started: %{adapter} has no call address.",
+          "%{contact_support}. The run did not start: %{adapter} has no call address.",
           contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter
         )
 
       :not_allowed ->
         rich_gettext(
-          "%{contact_support}. The run stopped before it started: Qory Apiary does not call the call address of %{adapter}.",
+          "%{contact_support}. The run did not start: Qory Apiary does not call the call address of %{adapter}.",
           contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter
         )
 
       :too_large ->
         gettext(
-          "Remove harness sources or files, then start the run again. The run stopped before it started: the call to %{adapter} for %{what} was over 256 KiB.",
+          "Remove harness sources or files, then run Explore again. The run did not start: the call to %{adapter} for %{what} was over 256 KiB.",
           adapter: adapter,
           what: what
         )
@@ -2932,7 +2921,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       "invalid" ->
         gettext(
-          "Correct %{source}, then run Explore again. It breaks the harness format: %{rule}.",
+          "Correct %{source}, then run Explore again. The source breaks the harness format: %{rule}.",
           source: source,
           rule: harness_rule_words(failure.rule)
         )
@@ -2950,7 +2939,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       "not_allowed" ->
         gettext(
-          "Ask the owner of %{source} to assign it to this organisation, then run Explore again. Another owner keeps that harness source and has not assigned it here.",
+          "Ask the owner of %{source} to assign it to this organisation, then run Explore again. That harness source belongs to another owner, who has not assigned it here.",
           source: source
         )
 
@@ -2974,14 +2963,14 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       "adapter_unavailable" ->
         rich_gettext(
-          "Run Explore again. If it ends the same way, %{contact_support}. The adapter %{adapter} did not answer three times.",
+          "Run Explore again. If the run ends the same way, %{contact_support}. Three calls to the adapter %{adapter} failed.",
           contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
           adapter: failure.adapter
         )
 
       "walk_error" ->
         rich_gettext(
-          "Run Explore again. If it ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary.",
+          "Run Explore again. If the run ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary.",
           contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
         )
 
@@ -3111,7 +3100,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:ticket_gone),
     do:
       gettext(
-        "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."
+        "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."
       )
 
   defp unstarted_words(:inputs_invalid),
@@ -3123,13 +3112,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:target_access_gone),
     do:
       gettext(
-        "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its target, because the integration no longer reaches it or the target's path has a character that Qory Apiary does not put in an access rule."
+        "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. The run had no access to its target: the integration no longer reaches it, or the target's path has a character that access rules do not allow."
       )
 
   defp unstarted_words(:build_failed),
     do:
       gettext(
-        "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
+        "Check why the build failed on the target's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."
       )
 
   attr :id, :string, required: true
@@ -3175,10 +3164,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   # What a run gave, in a fold's summary.
   defp run_gave(%{outcome: :questions, questions: questions}) do
     n = length(questions)
-    ngettext("Asked %{number} question", "Asked %{number} questions", n, number: Format.number(n))
+    ngettext("Wrote %{number} question", "Wrote %{number} questions", n, number: Format.number(n))
   end
 
-  defp run_gave(%{outcome: :proposal}), do: gettext("Proposed what to do")
+  defp run_gave(%{outcome: :proposal}), do: gettext("Wrote a proposal")
   defp run_gave(%{state: state}), do: RunComponents.state_label(state)
 
   attr :id, :string, required: true
@@ -3208,7 +3197,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
         <span>
           <.rich text={
-            rich_gettext("Explore asked these in run %{run}, shown as plain text.",
+            rich_gettext("Run %{run} wrote these questions. Qory shows them as plain text.",
               run: run_ref(@run)
             )
           } />
@@ -3265,7 +3254,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </span>
         </summary>
         <div class="q-xp-inner">
-          <p>{gettext("Its runs counted apart from this take in.")}</p>
+          <p>{gettext("These runs do not count toward the run limit of this take in.")}</p>
           <%= for run <- take_in.runs do %>
             <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
             <.run_body
@@ -3326,7 +3315,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   level and why), Understanding, In scope and Out of scope (one line for each entry; a
   line break inside an entry shows as a space), and Approach. A field whose value differs
   from the run's words says Changed, in its description. Then that what Qory did not
-  choose and what it learned stay as Qory wrote them, and Confirm with your changes
+  choose and what it learned stay as Qory wrote them, and Confirm changes
   (`"confirm_changes"`) and Cancel, back to Explore's tab.
 
   The form sends `"change_proposal"` as a member types and `"confirm_changes"` to
@@ -3452,7 +3441,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           id={"#{@id}-scope-in"}
           name="scope_in"
           label={gettext("In scope")}
-          hint={gettext("One line for each.")}
+          hint={gettext("One entry per line.")}
           value={@values.scope_in}
           rows="4"
           changed={MapSet.member?(@changed, :scope_in)}
@@ -3462,7 +3451,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           id={"#{@id}-scope-out"}
           name="scope_out"
           label={gettext("Out of scope")}
-          hint={gettext("One line for each. Leave it empty when nothing is left out.")}
+          hint={gettext("One entry per line. Leave it empty if nothing is out of scope.")}
           value={@values.scope_out}
           rows="4"
           changed={MapSet.member?(@changed, :scope_out)}
@@ -3486,9 +3475,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <p class="q-xp-kept">
           <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
           <span>
-            {gettext(
-              "The approaches Qory did not choose, and what it learned, stay as Qory wrote them."
-            )}
+            {gettext("Not chosen, and Facts and sources, stay as Qory wrote them.")}
           </span>
         </p>
         <div class="q-xp-foot">
@@ -3497,7 +3484,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </p>
           <div class="q-wi-acts">
             <.button id={"#{@id}-go"} type="submit" variant="primary">
-              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm with your changes")}
+              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm changes")}
             </.button>
             <.button id={"#{@id}-cancel"} variant="ghost" navigate={@explore_path}>
               {gettext("Cancel")}
@@ -3652,7 +3639,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   than are given.
 
   After the integration's uninstall (`uninstalled`) a line above it says when the
-  integration last sent it (`ticket.received_at`), and that it is no longer kept current.
+  integration last sent it (`ticket.received_at`), and that Qory Apiary no longer updates it.
 
   `ticket` is a map with `:filer` (`%{name:}`), `:filed_at`, `:updated_at`, `:labels` (a
   list of strings), `:body` and `:format` (as `SourceComponents.body/1` takes them),
@@ -3698,7 +3685,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         stale:
           assigns.uninstalled &&
             rich_gettext(
-              "The %{item} as %{integration} last sent it, %{when}. It is no longer kept current.",
+              "%{integration} last sent this %{item} %{when}. Qory Apiary no longer updates it.",
               integration: assigns.integration,
               when: inline_ago(ticket[:received_at] || ticket.updated_at, now),
               item: SourceComponents.item(assigns.item_noun)
@@ -3807,16 +3794,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:started` - Qory started Explore in a run (`run`), its first, again with the
       answers (`start: :answers`), or again after Run Explore again or a retry
       (`start: :again`), with the run's place in the take in beside it;
-    * `:asked` - how many questions Qory asked and after how long (`questions`,
+    * `:asked` - how many questions Qory wrote and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
-    * `:proposed` - Qory proposed what to do, after how long, and whose turn it is
+    * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
       (`outcome`: `:error`, `:none` or `:refused`); for a run the gateway refused for
       want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
       what a member fixes;
-    * `:explore_again` - who asked Qory to explore again;
+    * `:explore_again` - who ran Explore again;
     * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
     * `:closed`, `:declined` - who closed or declined it, and where it was declined
       (`stage`); a close by the instance has no `actor`, and says why (`reason`), where
@@ -4050,8 +4037,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     n = length(questions)
 
     ngettext(
-      "Qory asked %{number} question, after %{duration}",
-      "Qory asked %{number} questions, after %{duration}",
+      "Qory wrote %{number} question, after %{duration}",
+      "Qory wrote %{number} questions, after %{duration}",
       n,
       number: Format.number(n),
       duration: duration
@@ -4070,18 +4057,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp event_line(%{kind: :proposed, owner: nil, duration: duration}),
-    do: rich_gettext("Qory proposed what to do, after %{duration}.", duration: duration)
+    do: rich_gettext("Qory wrote a proposal, after %{duration}.", duration: duration)
 
   defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
     if you?(owner),
       do:
         rich_gettext(
-          "Qory proposed what to do, after %{duration}. It waits for you to confirm",
+          "Qory wrote a proposal, after %{duration}. You confirm next",
           duration: duration
         ),
       else:
         rich_gettext(
-          "Qory proposed what to do, after %{duration}. It waits for %{name} to confirm",
+          "Qory wrote a proposal, after %{duration}. %{name} confirms next",
           duration: duration,
           name: {:b, owner.name}
         )
@@ -4126,8 +4113,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :explore_again, actor: actor}) do
     if you?(actor),
-      do: gettext("You asked Qory to explore again"),
-      else: rich_gettext("%{name} asked Qory to explore again", name: {:b, actor.name})
+      do: gettext("You ran Explore again"),
+      else: rich_gettext("%{name} ran Explore again", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :confirmed, changed: true, actor: actor}) do
@@ -4169,8 +4156,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :undone, actor: actor}) do
     if you?(actor),
-      do: gettext("You undid this, before a run started"),
-      else: rich_gettext("%{name} undid this, before a run started", name: {:b, actor.name})
+      do: gettext("You undid the take in, before a run started"),
+      else:
+        rich_gettext("%{name} undid the take in, before a run started", name: {:b, actor.name})
   end
 
   # The same person: the reader both times, or the same id. Never by name: two people may
@@ -4286,7 +4274,9 @@ defmodule ApiaryWeb.WorkItemComponents do
           question={@question}
           cancel={@cancel}
         >
-          {gettext("It leaves the Thread for everyone. The Thread keeps a line that you deleted it.")}
+          {gettext(
+            "The comment leaves the Thread for everyone. A line in its place shows that you deleted it."
+          )}
           <:action>
             <.button
               id={"#{@id}-confirm-go"}
@@ -4352,7 +4342,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </p>
         <div class="q-wi-composer-foot">
           <span class="q-wi-grow">
-            {gettext("Members of %{workspace} see this. Nothing is posted on the %{item}.",
+            {gettext("Members of %{workspace} see this. Qory posts nothing to the %{item}.",
               workspace: @workspace,
               item: SourceComponents.item(@item_noun)
             )}
