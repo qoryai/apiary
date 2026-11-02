@@ -43,6 +43,12 @@ defmodule Apiary.Processes do
   the last read of its harness source (`record_declared/2`, `declared_snapshot/1`). A
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
+
+  ## Export
+
+  `export/1` writes the current version, with the workspace type's texts and the
+  workspace's artifact types, as a `process.yaml` (`Apiary.Processes.Export`). Its caller
+  checks `process.edit`. A download changes nothing, so it leaves no audit entry.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -57,7 +63,7 @@ defmodule Apiary.Processes do
   alias Apiary.Lingo.Domain
   alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Workspace
-  alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
+  alias Apiary.Processes.{Export, TypeTemplate, TypeTemplates, Version}
   alias Apiary.Stacks.{Sources, Stack}
   alias Apiary.WorkItems.WorkItem
 
@@ -314,6 +320,13 @@ defmodule Apiary.Processes do
     query = if lock == :update, do: lock(query, "FOR UPDATE"), else: query
     Repo.one(query)
   end
+
+  @doc """
+  export/1 is the bytes of the workspace's `process.yaml`, from its current version
+  (`Apiary.Processes.Export`). It checks no access, as `current/1` checks none.
+  """
+  @spec export(%Workspace{}) :: binary
+  def export(%Workspace{} = workspace), do: Export.file(workspace)
 
   @doc """
   copy_default/1 inserts the workspace's version 1, a copy of the newest version of its

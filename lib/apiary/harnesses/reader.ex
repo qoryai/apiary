@@ -161,6 +161,11 @@ defmodule Apiary.Harnesses.Reader do
   @spec machine_keys() :: [String.t()]
   def machine_keys, do: @machine_keys
 
+  @doc false
+  # control_character?/1 is whether `text` has a control character no file may contain.
+  @spec control_character?(String.t()) :: boolean
+  def control_character?(text) when is_binary(text), do: Regex.match?(@control, text)
+
   @doc """
   harness/1 is the harness section of a `qory.yaml` or `harness.yaml`: `{:ok, section}`,
   `:none` for a file with no `harness` section or one with the machine's keys alone, or
