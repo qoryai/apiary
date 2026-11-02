@@ -15,13 +15,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An organisation with no workspace shows the kind cards on its overview,
   `/<organisation>`, under “What will your first workspace do?”, and
   `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
-  **Choose** on a card creates the workspace at once, named after its kind, such as
-  “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its
-  step **Name**. A workspace's address follows its name: a rename, on **Name** or in
+  Each card is a link to the kind's page, such as `/acme/workspaces/new/qory.software`,
+  which shows the kind's stages, its summary and how it works. **Create workspace** on
+  that page creates the workspace, named after its kind, such as “Software factory” at
+  `/acme/software-factory`, then “Software factory 2”, and opens its step **Name**. A
+  workspace's address follows its name: a rename, on **Name** or in
   Workspace settings, changes it, and links to the old address stop working, with no
   redirect. A name whose address another workspace has, or Qory Apiary keeps, is
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
+- An instance admin can change the name, summary and “How it works” of each workspace
+  type in Instance settings › Workspace types › **Details**. Each save makes a new version
+  and an audit entry. A blank field shows the text that Qory Apiary ships.
+<!-- feature: workflow_model -->
+- The stages canvas lays the stages out from top to bottom on a dotted background, and
+  fills the window beside its side panel. **Focus** (`f`) and **Full screen** enlarge it.
+  On a workspace type's page the canvas is view-only. Workspace settings › Stages and
+  Instance settings › Workspace types show the canvas on a **Stages** tab and the other
+  settings on a **Details** tab.
+<!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
   have no workspace at this address in Acme. Its address changes when the workspace is
@@ -669,6 +681,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `type_template_versions`: three nullable columns, `name`, `summary` and `description`,
+  with a check on their lengths (1 to 60, 200 and 1,200 characters) that scans the table
+  under a lock that blocks writes. It changes no existing row.
 - `stacks`: two nullable columns, `version_kind` and `version_name`, with a check on their
   combinations. Each saved Qory harness choice at the commit `fe3b3ab` becomes **Always
   the latest version**. Other rows keep their pin.
