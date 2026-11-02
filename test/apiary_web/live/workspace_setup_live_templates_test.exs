@@ -364,7 +364,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       lv = open(ctx)
 
       assert texts(lv, "#set-up-group-connected p") == [
-               "Change `modules` in acme/harness to a list of names. Qory Apiary cannot read the templates of that repository until then."
+               "Change modules under exports in the qory.yaml or harness.yaml of acme/harness to a list of names. Qory Apiary cannot read the templates of that repository until then."
              ]
     end
 

@@ -1101,7 +1101,7 @@ defmodule ApiaryWeb.SetUpComponents do
     [
       pgettext(
         "plain",
-        "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
+        "Change modules under exports in the qory.yaml or harness.yaml of %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
         repository: source.label
       )
     ]
@@ -1328,7 +1328,8 @@ defmodule ApiaryWeb.SetUpComponents do
             Phoenix.LiveView.put_flash(
               socket,
               :error,
-              gettext("Change `name` in the process.yaml of %{module} in %{repository}. %{error}",
+              gettext(
+                "Change the name in the process.yaml of %{module} in %{repository}. %{error}",
                 module: start.template.module,
                 repository: named(place).label,
                 error: translate_error(error)
@@ -1347,7 +1348,7 @@ defmodule ApiaryWeb.SetUpComponents do
       socket,
       :error,
       gettext(
-        "Save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
+        "Choose another template, or save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
       )
     )
   end

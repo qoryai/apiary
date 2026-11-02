@@ -700,7 +700,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
 
       assert flash_error(view) =~
                squash(
-                 "Save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
+                 "Choose another template, or save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
                )
 
       assert workspaces(organisation) == []
@@ -832,7 +832,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       view |> element("#workspace-type-create") |> render_click()
 
       assert flash_error(view) =~
-               squash("Change `name` in the process.yaml of support-desk in acme/harness.")
+               squash("Change the name in the process.yaml of support-desk in acme/harness.")
 
       assert workspaces(organisation) == []
     end
