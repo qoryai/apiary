@@ -8,8 +8,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #
   # **New workspace.** A page of the organisation, in its sidebar: the kind cards
   # (`ApiaryWeb.SetUpComponents.kind_cards/1`) under "What will this workspace do?", which
-  # the empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Choose creates
-  # the workspace at once, named after its type, and opens its Name step
+  # the empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Each card
+  # leads to its type's page (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace
+  # creates the workspace at once, named after its type, and opens its Name step
   # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The page is only for a person
   # `workspace.create` allows (`Apiary.Access`); where the organisation has as many
   # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page is headed
@@ -320,9 +321,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           do: gettext("New workspace"),
           else: gettext("What will this workspace do?")
         ),
-      limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation)),
-      # With `workflow_model`, the stages each type's workspace starts with.
-      previews: if(at_limit, do: %{}, else: SetUpComponents.previews(scope))
+      limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
   end
 
@@ -1208,9 +1207,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  def handle_event("choose_kind", %{"type" => type}, %{assigns: %{view: :cards}} = socket),
-    do: {:noreply, SetUpComponents.choose_kind(socket, type, :any)}
-
   def handle_event(
         "validate_name",
         %{"workspace" => params},
@@ -1827,7 +1823,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:organisation}
     >
       <:crumb>{gettext("New workspace")}</:crumb>
-      <SetUpComponents.kind_cards title={@page_title} limit={@limit} previews={@previews} />
+      <SetUpComponents.kind_cards
+        title={@page_title}
+        limit={@limit}
+        organisation={@current_scope.organisation}
+      />
     </Layouts.app>
     """
   end

@@ -1246,10 +1246,11 @@ The set-up is the pages a person goes through before the console: the set-up lin
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
 (`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: the kind cards, on
 the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces/new`,
-whose Choose creates the workspace, then each step a page of the workspace,
+each a link to its type's page `/<org>/workspaces/new/<type key>`, whose Create workspace
+creates the workspace, then each step a page of the workspace,
 `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
-sidebar, but for the kind cards, which show the organisation's sidebar, and the steps of
+sidebar, but for the kind cards and the type's page, which show the organisation's sidebar, and the steps of
 a workspace that exists, which show the workspace's sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
 mark and the theme menu.
 
@@ -1257,16 +1258,29 @@ mark and the theme menu.
   on the organisation's overview (`/<org>`) while it has no workspace, under "What will
   your first workspace do?", and on `/<org>/workspaces/new`, under "What will this
   workspace do?". There is one card per type of workspace, "Software factory" the one,
-  each with what you do there, what you connect, and **Choose** at its foot. Each card is
-  20rem wide, or the column's width where the column is narrower, and a further card
-  wraps to the next line. **Choose** creates the workspace, named after the type ("Software factory", then "Software factory 2"), and
-  opens its step Name. A person who may not create the first workspace sees "An owner of
+  each with the type's name, its summary and an arrow, as the type's newest version shows
+  them (`Apiary.Processes.type_texts/1`). The whole card is one link to the type's page,
+  named after the type. Each card is 20rem wide, or the column's width where the column
+  is narrower, and a further card wraps to the next line. A person who may not create the first workspace sees "An owner of
   Acme creates the first workspace." in place of the cards. Where the organisation has as
   many workspaces as the edition allows, New workspace is headed "New workspace", with no
   question, and shows the edition's line in an information notice in place of the cards:
   "Qory Apiary Community allows one workspace per organisation, and Acme has it." The
   cards show no indicator:
   the count starts at the step Name, in the sidebar's group Set up.
+- **The type's page** (`WorkspaceTypeLive`, `/<org>/workspaces/new/qory.software`), for
+  the people New workspace is for; its breadcrumb is the organisation, New workspace,
+  then the type's name. With `workflow_model`, the stages a new workspace starts with fill
+  the window on the view-only canvas (The stages canvas), and a 24rem side panel beside it
+  has the type's name as the page's heading, its summary, "How it works" with its
+  description, "Stages" with "The workspace starts with the stages shown. After you
+  create it, owners and admins can change them in Workspace settings › Stages.", and
+  **Create workspace** under the text. Without the feature there is no canvas: "How it
+  works" takes the main area, and the side panel has the name, the summary and Create
+  workspace. **Create workspace** creates the workspace, named after the type ("Software
+  factory", then "Software factory 2"), and opens its step Name. The page says nothing of
+  the workspace limit; at the limit, Create workspace shows the edition's line as
+  information. A key of no type with a card is a page that does not exist.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
   settings page's column **About this step** (`.q-context`): the muted colour, no box.
@@ -1918,7 +1932,7 @@ start when the run has both.
 
 `<Canvas.canvas>` in `ApiaryWeb.StagesLive.Canvas` draws a process's stages with React
 Flow (`assets/js/canvas.js`, a separate bundle loaded on first mount). Workspace settings ›
-Stages, Instance settings › Workspace types and New workspace use it.
+Stages, Instance settings › Workspace types and a workspace type's page use it.
 
 - **The column.** The stages lie top to bottom on a dotted ground (dots 20 px apart, the
   theme's text colour at 22 %), each a 360 px card with its name (18 px), its workflows and
@@ -1941,7 +1955,17 @@ Stages, Instance settings › Workspace types and New workspace use it.
   after the canvas in that box (the inspector, or a side panel) sits beside it, 30rem wide
   unless `--q-canvas-side` sets another width, and scrolls; below 1024 px it goes under
   the canvas, which is then 70 % of the window tall. Focus and Full screen show the whole
-  box, the side too. Outside such a box the canvas is as tall as its column.
+  box, the side too. Outside such a box the canvas is as tall as its column. A box that
+  is the page's first element, or comes right after the shell's notices while no notice
+  shows, starts at the top bar, with no page padding above it.
+- **The settings pages.** Workspace settings › Stages and Instance settings › Workspace
+  types each have two tabs under the page's title (`page_tabs/1`, `place="section"`):
+  **Stages**, at the page's address, is the canvas with the inspector beside it in a
+  `.q-canvas-fill` box, right under the tabs; **Details**, at `?tab=details`, starts with
+  the page's sentence, then every other setting (on Workspace types the type's Name,
+  Summary and How it works first) and the history. The version line, **Save**, **Save
+  as trial** (Workspace settings only) and **Discard changes** are at the right end of the tabs' row
+  on both tabs: one draft has the edits of both, and a switch of tabs keeps it.
 
 ## Words
 

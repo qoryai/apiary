@@ -4325,12 +4325,6 @@ msgstr ""
 msgid "Agent"
 msgstr ""
 
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "Agents change code in your repositories."
-msgstr ""
-
 #: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
@@ -6018,7 +6012,6 @@ msgid "Checking the organisations you own"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
-#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose"
 msgstr ""
@@ -6927,6 +6920,11 @@ msgstr ""
 msgid "Create invitation link"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "Create workspace"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Create your account"
@@ -6973,8 +6971,8 @@ msgstr ""
 msgid "Created the workspace"
 msgstr ""
 
-#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/user_live/registration.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "Creating"
 msgstr ""
@@ -9475,6 +9473,7 @@ msgid "How it ended"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/workspace_types.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "How it works"
 msgstr ""
@@ -11819,6 +11818,7 @@ msgstr ""
 
 #: lib/apiary_web/dead_end.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "New workspace"
 msgstr ""
@@ -17197,6 +17197,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "Stages"
 msgstr ""
@@ -19337,6 +19338,11 @@ msgstr ""
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{stages}."
+msgstr ""
+
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}."
@@ -21387,6 +21393,11 @@ msgid_plural "Write at most %{count} lines."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Write at most %{count} words."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
@@ -21739,11 +21750,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You confirmed it %{when}. Explore wrote it in run %{run}, shown as plain text."
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "You connect: where work comes from, where changes go, a model."
 msgstr ""
 
 #: lib/apiary_web/live/setup_live.ex

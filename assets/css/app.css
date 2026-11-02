@@ -14397,6 +14397,11 @@
     .q-page:has(> * > .q-canvas-fill:first-child) {
       padding-top: 0;
     }
+    /* A box under the shell's notices, while no notice shows, starts at the bar too: it
+       rises by the page's top padding. */
+    .q-page > * > #shell-notices:first-child:not(:has(*)) + .q-canvas-fill {
+      margin-top: -1.5rem;
+    }
     .q-page:has(.q-canvas-fill) :has(.q-canvas-fill) {
       display: flex;
       min-height: 0;
