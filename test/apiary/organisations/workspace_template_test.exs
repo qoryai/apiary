@@ -409,6 +409,30 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert Sources.template_key(source(:shared, "shared"), "a.b") == "shared.a.b"
     end
 
+    test "the domain is the one whose type is the template's: its type, rules and record" do
+      scope = scope_fixture()
+      source = linked!(scope)
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{type: "qory.example"})
+               )
+
+      assert %Workspace{domain: "example", type: "qory.example"} = Repo.reload!(workspace)
+      assert Domain.for_workspace(workspace) == Domain.Example
+      assert first_version(workspace).template["type"] == "qory.example"
+
+      assert Domain.target_labels(workspace) == ["platform", "account"]
+      assert Domain.target_required?(workspace) == false
+      assert Domain.check_target(workspace, nil) == :ok
+
+      # A path with no owner: the example domain takes it, and the software domain does not.
+      target = %{system: "desk.example.com", path: "account-1"}
+      assert Domain.check_target(workspace, target) == :ok
+      assert Domain.Software.check_target(target) == {:error, :target_invalid}
+    end
+
     test "the name is the template's, numbered where it is taken" do
       scope = scope_fixture()
       source = linked!(scope)

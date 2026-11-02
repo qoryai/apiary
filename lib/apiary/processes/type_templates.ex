@@ -197,14 +197,19 @@ defmodule Apiary.Processes.TypeTemplates do
   defp base_view(view), do: Enum.find(Type.base_views(), &(Atom.to_string(&1) == view))
 
   @doc """
-  offered_types/0 is the artifact types the page of a type offers for a stage's inputs and
-  outputs, and the list `Apiary.Processes.placement_check/3` checks them against on that
-  page: the standard types and the custom types of the copied template
-  (Apiary.Harnesses.QoryCopy.template/0). That template is the default process of every
-  type (`Apiary.Processes.default_document/1`).
+  offered_types/1 is the artifact types the page of the type with the key `type` offers
+  for a stage's inputs and outputs, and the list `Apiary.Processes.placement_check/3`
+  checks them against on that page: the standard types, and, where `type` is the `type` of
+  the copied template (Apiary.Harnesses.QoryCopy.template/0), that template's custom types.
   """
-  @spec offered_types() :: [%{name: String.t(), base_view: atom}]
-  def offered_types, do: artifact_types(QoryCopy.template().artifact_types)
+  @spec offered_types(String.t()) :: [%{name: String.t(), base_view: atom}]
+  def offered_types(type) when is_binary(type) do
+    template = QoryCopy.template()
+
+    if template.type == type,
+      do: artifact_types(template.artifact_types),
+      else: artifact_types()
+  end
 
   @doc """
   may_edit?/1 says whether the person of `scope` may save a version of a type's default

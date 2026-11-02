@@ -157,6 +157,16 @@ defmodule Apiary.Lingo.DomainTest do
       refute Domain.known_type?("software")
     end
 
+    test "for_type/1 is the domain with the key of each definition, and nil for any other" do
+      for {_name, domain} <- Domain.domains() do
+        assert Domain.for_type(Domain.definition(domain).key) == domain
+      end
+
+      assert Domain.for_type("qory.example") == Example
+      assert Domain.for_type("customer-care") == nil
+      assert Domain.for_type("software") == nil
+    end
+
     test "every domain there is has a definition, and no two share a key" do
       keys = for {_name, domain} <- Domain.domains(), do: Domain.definition(domain).key
       assert length(keys) == map_size(Domain.domains())

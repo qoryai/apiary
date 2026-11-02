@@ -64,7 +64,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
           tab: tab(params),
           type: type,
           declared: TypeTemplates.workflows(),
-          types: TypeTemplates.offered_types(),
+          types: TypeTemplates.offered_types(type),
           notice: nil,
           save_errors: [],
           save_note: nil,
@@ -111,7 +111,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   end
 
   # The draft checked against the Qory harness's workflows and the artifact types of
-  # `TypeTemplates.offered_types/0`, and the canvas's view pushed.
+  # `TypeTemplates.offered_types/1`, and the canvas's view pushed.
   defp refresh(socket) do
     %{draft: draft, declared: declared, types: types} = socket.assigns
 
