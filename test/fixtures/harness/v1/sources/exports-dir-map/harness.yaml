@@ -2,3 +2,4 @@
 exports:
   dir: {stacks: delivered/stacks, modules: delivered/modules}
   stacks: [web]
+  modules: [core]

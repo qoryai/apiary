@@ -1,0 +1,6 @@
+# The root file of a harness source with one factory: the module support-desk, whose
+# process.yaml runs on the stack support.
+apiVersion: qory.dev/v1alpha1
+exports:
+  stacks: [support]
+  modules: [support-desk]

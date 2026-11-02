@@ -228,7 +228,7 @@ Checks, in order, after the checks of every request:
 1. A body that is not this object, or has a member it does not define: `400`
    `invalid_request`, with the first member that failed in `names`, such as
    `files[0].filename`.
-2. A type the workspace does not have: `422` `unknown_type`.
+2. A type the workspace does not have, or a standard type it hides: `422` `unknown_type`.
 3. A type the run's workflow may not write: `403` `type_not_writable`. A workflow may
    write the types in the `writes` list of its declaration in the stack, and always
    `verdict` and `questions`. A workflow whose declaration has no `writes` list, or that
@@ -276,7 +276,7 @@ is `400` `invalid_request`.
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
-| `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type |
+| `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, or a video version has no video |
@@ -285,8 +285,10 @@ is `400` `invalid_request`.
 The messages:
 
 - `run_ended`: "The run has ended, so it can no longer push artifacts or give a verdict."
-- `unknown_type`: "Define the artifact type demo-findings in the workspace's Artifact
-  types, then run the round again."
+- `unknown_type`, for a custom name: "Define the artifact type demo-findings in the
+  workspace's Artifact types, then run the round again."
+- `unknown_type`, for a standard type the workspace hides: "Switch on the artifact type
+  mockup in the workspace's Artifact types, then run the round again."
 - `type_not_writable`: "Add the artifact type explainer to the writes list of the
   workflow capture-demo, or push a type that the workflow writes."
 - `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a
