@@ -91,6 +91,8 @@ defmodule ApiaryWeb.ActivityStagesTest do
     assert said.("create") == "Added artifact type brief"
     assert said.("update") == "Saved artifact type brief"
     assert said.("delete") == "Deleted artifact type brief"
+    assert said.("show") == "Switched on artifact type brief"
+    assert said.("hide") == "Switched off artifact type brief"
   end
 
   test "the sentence of a change to a workspace type's default" do

@@ -13,6 +13,7 @@ defmodule ApiaryWeb.StagesLiveTest do
   """
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.HarnessReadsFixtures
   import Apiary.NodesFixtures
@@ -455,6 +456,44 @@ defmodule ApiaryWeb.StagesLiveTest do
                ~s(#stages-check [data-problem="missing_type"] a[href="#{workspace_path(scope, "/settings/artifact-types")}"]),
                "Define it"
              )
+    end
+
+    test "a hidden standard type is not offered, and a stage that has it is a missing type",
+         %{conn: conn, path: path, scope: scope} do
+      document =
+        Draft.update_stage(
+          Processes.default_document("software"),
+          id_of("Explore"),
+          &Draft.add_artifact(&1, "outputs", "explainer")
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [shown_standard_types: ["mockup"]]
+        )
+
+      {:ok, view, _html} = live(conn, path <> "?tab=details")
+
+      assert has_element?(
+               view,
+               ~s(#stages-check [data-problem="missing_type"]),
+               Words.missing_type("Explore", "explainer")
+             )
+
+      assert has_element?(
+               view,
+               ~s(#stages-check [data-problem="missing_type"] a[href="#{workspace_path(scope, "/settings/artifact-types")}"]),
+               "Switch it on"
+             )
+
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(view, ~s(#stage-outputs-0-type option[value="mockup"]))
+      assert has_element?(view, ~s(#stage-outputs-0-type option[value="verdict"]))
+      refute has_element?(view, ~s(#stage-outputs-0-type option[value="screenshot"]))
     end
 
     test "a custom type of the workspace is a type the process may name", %{
