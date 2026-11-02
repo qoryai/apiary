@@ -192,12 +192,13 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert Enum.map(steps, & &1.group) == List.duplicate(nil, 8)
 
       # Before the workspace exists, the flow's steps lead to the organisation's overview,
-      # whose kind cards create it.
+      # whose kind cards link to the types' pages.
       assert Enum.find(steps, &(&1.id == :sources)).path == "/#{scope.organisation.slug}"
 
       refute Enum.any?(steps, &Map.has_key?(&1, :heading))
 
-      # The flow a page names, of the type picked.
+      # A flow given in `flow:`, of the Software type, with `type: true` and no workspace:
+      # its steps lead to the overview too, and its title has the type's name.
       flow =
         SetUpComponents.flow(scope.organisation, Apiary.Lingo.Domain.Software, nil, :set_up,
           type: true
