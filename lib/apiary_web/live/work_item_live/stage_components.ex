@@ -95,7 +95,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   attr :check, :any,
     default: nil,
-    doc: "Check again: `:checking`, `{:still_missing, workflow}`, `{:failed, message}`, or nil"
+    doc:
+      "Check again: `:checking`, `{:still_missing, workflow}`, `{:failed, message}` with `message` as rich text (`ApiaryWeb.RichText`), or nil"
 
   attr :notice, :string,
     default: nil,
@@ -240,7 +241,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           </p>
           <.button id={"#{@id}-check-go"} type="submit">{gettext("Check again")}</.button>
         <% {:failed, message} -> %>
-          <p id={"#{@id}-check-result"} class="q-xp-err">{message}</p>
+          <p id={"#{@id}-check-result"} class="q-xp-err"><.rich text={message} /></p>
           <.button id={"#{@id}-check-go"} type="submit">{gettext("Try again")}</.button>
         <% :checking -> %>
           <.button id={"#{@id}-check-go"} type="submit" disabled>

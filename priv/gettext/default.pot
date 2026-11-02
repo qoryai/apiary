@@ -15026,7 +15026,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page and act again, and tell an instance admin if it fails again. Qory Apiary could not act on the stage."
+msgid "Reload the page and act again, and %{contact_support} if it fails again. Qory Apiary could not act on the stage."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -20181,7 +20181,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Try again, and tell an instance admin if it fails again. The check of the harness stopped with an error in Qory Apiary."
+msgid "Try again, and %{contact_support} if it fails again. The check of the harness stopped with an error in Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
