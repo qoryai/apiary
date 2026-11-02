@@ -45,7 +45,7 @@ defmodule Apiary.Dispatches.WireTest do
 
   # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
   # schema its name starts with, the longest that matches.
-  @schemas ~w(claim-answer claim dispatched release machine-log refusal)
+  @schemas ~w(claim-answer claim dispatched release machine-log machine-end refusal)
 
   defp schema_of("invalid/" <> name),
     do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
@@ -75,7 +75,8 @@ defmodule Apiary.Dispatches.WireTest do
     "claim" => &Wire.claim/1,
     "dispatched" => &Wire.dispatched/1,
     "release" => &Wire.release/1,
-    "machine-log" => &Wire.machine_log/1
+    "machine-log" => &Wire.machine_log/1,
+    "machine-end" => &Wire.machine_end/1
   }
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
@@ -90,6 +91,7 @@ defmodule Apiary.Dispatches.WireTest do
   defp dispatched(body), do: read(&Wire.dispatched/1, body)
   defp release(body), do: read(&Wire.release/1, body)
   defp machine_log(body), do: read(&Wire.machine_log/1, body)
+  defp machine_end(body), do: read(&Wire.machine_end/1, body)
 
   @claim %{"version" => 1, "time" => "2026-10-15T12:00:00Z", "wait_seconds" => 10}
   @external %{
@@ -105,7 +107,7 @@ defmodule Apiary.Dispatches.WireTest do
   }
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"},
+          {"provisioner/v1", "676fbda9388aaa1dde630c732f0479f29a3aeca9"},
           {"run/v1", "676fbda9388aaa1dde630c732f0479f29a3aeca9"},
           {"integration/v1", "3fc796d01e551d7e966be99bd109239ca9806a7c"},
           {"explore/v1", "dd274020be2ec6d678e13bd15401a6aceaba8bd7"}
@@ -209,8 +211,8 @@ defmodule Apiary.Dispatches.WireTest do
 
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
 
-    assert length(requests) == 7
-    assert length(invalid_requests) == 11
+    assert length(requests) == 10
+    assert length(invalid_requests) == 15
     assert length(answers) == 16
     assert length(refusals) == 3
   end
@@ -242,6 +244,9 @@ defmodule Apiary.Dispatches.WireTest do
                "claim/without-pool-id.json",
                "dispatched/with-external.json",
                "dispatched/without-external.json",
+               "machine-end/delete-failed.json",
+               "machine-end/deleting.json",
+               "machine-end/gone.json",
                "machine-log/truncated.json",
                "machine-log/whole.json",
                "release/no-capacity.json"
@@ -297,6 +302,10 @@ defmodule Apiary.Dispatches.WireTest do
                "claim-wait-seconds-26.json",
                "dispatched-external-ref-nul.json",
                "dispatched-external-type-upper-case.json",
+               "machine-end-undefined-member.json",
+               "machine-end-unknown-state.json",
+               "machine-end-version-2.json",
+               "machine-end-without-state.json",
                "machine-log-log-nul.json",
                "machine-log-undefined-member.json",
                "machine-log-version-2.json",
@@ -662,6 +671,47 @@ defmodule Apiary.Dispatches.WireTest do
                :error
 
       assert machine_log(~s({"version":1.0,"time":"2026-10-15T12:10:00Z","log":"a"})) ==
+               :error
+    end
+  end
+
+  describe "a machine end" do
+    test "each state of the contract's fixtures is read to its atom" do
+      for {name, state} <- [
+            {"deleting", :deleting},
+            {"gone", :gone},
+            {"delete-failed", :delete_failed}
+          ] do
+        assert machine_end(fixture("machine-end/#{name}.json")) ==
+                 {:ok, %{time: ~U[2026-10-15 12:10:00Z], state: state}}
+      end
+    end
+
+    test "refuses each body the contract's invalid fixtures have, and every other wrong value" do
+      gone = fixture("machine-end/gone.json") |> Jason.decode!()
+
+      for body <- [
+            Map.put(gone, "version", 2),
+            Map.put(gone, "reason", "The machine was removed."),
+            Map.delete(gone, "state"),
+            Map.delete(gone, "time"),
+            Map.delete(gone, "version"),
+            Map.put(gone, "state", "stopped"),
+            Map.put(gone, "state", "GONE"),
+            Map.put(gone, "state", nil),
+            Map.put(gone, "state", 1),
+            Map.put(gone, "state", ["gone"]),
+            Map.put(gone, "time", "2026-10-15T12:10:00.5Z")
+          ] do
+        assert machine_end(body) == :error, inspect(body)
+      end
+
+      assert machine_end(
+               ~s({"version":1,"time":"2026-10-15T12:10:00Z","state":"gone","state":"gone"})
+             ) ==
+               :error
+
+      assert machine_end(~s({"version":1.0,"time":"2026-10-15T12:10:00Z","state":"gone"})) ==
                :error
     end
   end

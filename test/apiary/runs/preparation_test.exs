@@ -486,4 +486,44 @@ defmodule Apiary.Runs.PreparationTest do
 
     assert %{machine: nil, steps: [], stopped: nil} = Preparation.read(other, run)
   end
+
+  describe "the machine's end" do
+    test "is nil before the starter's first report, and the last report after", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+
+      assert %{machine: %{end: nil, handed_over_at: handed_over_at, ended_at: nil}} =
+               Preparation.read(ctx.scope, run)
+
+      assert handed_over_at == dispatch.handed_over_at
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :deleting})
+      at = Repo.get!(Dispatch, dispatch.id).machine_end_at
+
+      assert %{machine: %{end: %{state: :deleting, at: ^at}}} = Preparation.read(ctx.scope, run)
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+      assert %{machine: %{end: %{state: :gone}}} = Preparation.read(ctx.scope, run)
+    end
+
+    test "ended_at is the dispatch's end, else the run's end once the run ended", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      exited = DateTime.add(DateTime.utc_now(), -120, :second)
+      run = run |> Ecto.Changeset.change(state: "failed", exited_at: exited) |> Repo.update!()
+
+      assert %{machine: %{ended_at: ^exited}} = Preparation.read(ctx.scope, run)
+
+      ended = DateTime.add(DateTime.utc_now(), -60, :second)
+      change_dispatch!(dispatch, ended_at: ended, end_cause: :run_ended)
+      assert %{machine: %{ended_at: ^ended}} = Preparation.read(ctx.scope, run)
+    end
+
+    test "a dispatch released before its handover has no handover", ctx do
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No capacity."})
+      run = Repo.get!(Run, registered.id)
+
+      assert %{machine: %{handed_over_at: nil, end: nil, ended_at: %DateTime{}}} =
+               Preparation.read(ctx.scope, run)
+    end
+  end
 end

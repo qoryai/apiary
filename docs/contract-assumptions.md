@@ -656,6 +656,25 @@ whose run has not redeemed its run code ends that run at once: the run is `faile
 the reason `machine_stopped`, and its run of the queue and the dispatch end `lost`, as the
 lost-run check ends them at the code's expiry (`Apiary.Dispatches.RunEnd.machine_stopped/1`).
 
+The machine end is what the starter reports about the removal of the machine it created for
+a dispatch (`machine-end.schema.json`, `Apiary.Dispatches.MachineEnds`): `deleting`, the
+removal was requested and the machine may still exist; `gone`, the starter confirmed that
+the machine no longer exists; `delete_failed`, the removal failed and the machine still
+exists. The body is exactly `version` 1, `time` and `state`; anything else is `400`
+`invalid_request`. The refusals come in the contract's order: `403` `forbidden` for an
+unknown dispatch, another pool's, or a key the action is refused to, one answer; and `503`
+`unavailable` for a report that could not be stored, after which nothing was written. It is
+never `410` `gone` or `409` `lease_expired`. Else the signed `204`, with no body. Every
+accepted report replaces the state on the dispatch, `machine_end_state`, and its time,
+`machine_end_at`, in the order the reports take the dispatch's row lock; `gone` is final,
+and a later report changes nothing and is still `204`. The trail keeps three entries of
+`dispatch.machine_end` for a dispatch at most, about the pool: its first report, its first
+`delete_failed` and its `gone`. After each accepted report that the dispatch does not keep
+as `gone`, Qory Apiary broadcasts a message on the topic of the run registered at the claim,
+and the run's page shows the state in the Clean up row
+([ui.md](ui.md), The run page). The access action reaches every node pool's key, enrolled
+before or after, through the role `pool_key`.
+
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
 row lock, so a request both refuse is refused by the limit. A node runs one instance at a

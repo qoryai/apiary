@@ -292,7 +292,8 @@ defmodule ApiaryWeb.Routes do
 
       # A node pool's starter's requests, with the `factory` feature: its claim of a run
       # waiting for the pool, and, for the dispatch that claim made, that the machine
-      # started, the run given back and the log of the machine the starter created.
+      # started, the run given back, the log of the machine the starter created and the
+      # removal of that machine.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_pool
 
@@ -300,6 +301,7 @@ defmodule ApiaryWeb.Routes do
         post "/dispatches/:dispatch_id/dispatched", DispatchController, :dispatched
         post "/dispatches/:dispatch_id/release", DispatchController, :release
         post "/dispatches/:dispatch_id/machine-log", DispatchController, :machine_log
+        post "/dispatches/:dispatch_id/machine-end", DispatchController, :machine_end
       end
 
       # An adapter's collections: a part of its listing, and one it no longer reaches.

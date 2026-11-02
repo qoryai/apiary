@@ -139,6 +139,7 @@ defmodule Apiary.AuditChanges do
       :"collection.set_backlog",
       :"collection.move",
       :"dispatch.release",
+      :"dispatch.machine_end",
       :"target.set_further_repositories",
       :"target.rebuild_environment",
       :"secret.seal",
@@ -834,6 +835,27 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # A node pool's starter reports the removal of the machine of a dispatch its pool
+  # claimed, in the trail of the workspace's organisation, about the pool; the entry's
+  # actor is the pool's key.
+  def make(:"dispatch.machine_end", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(key, Apiary.Dispatches.now())
+    before = entries()
+
+    :ok = Apiary.Dispatches.report_machine_end(key, dispatch.public_id, %{state: :gone})
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"node", key.node_id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
   # A member takes a ticket of the workspace's Backlog in, in the workspace's trail,
   # about the new work item.
   def make(:"work_item.take_in", %{scope: scope} = ctx) do
@@ -1291,6 +1313,17 @@ defmodule Apiary.AuditChanges do
      Apiary.Dispatches.release(other, dispatch.public_id, %{
        reason: "The job could not start."
      })}
+  end
+
+  # A dispatch another pool of the workspace claimed is not the key's to report on.
+  def refuse(:"dispatch.machine_end", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(claimer, Apiary.Dispatches.now())
+    before = entries()
+
+    {before, Apiary.Dispatches.report_machine_end(other, dispatch.public_id, %{state: :gone})}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,

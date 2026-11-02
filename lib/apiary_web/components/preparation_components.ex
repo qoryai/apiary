@@ -11,6 +11,14 @@ defmodule ApiaryWeb.PreparationComponents do
   has the time so far; with no row running, the heading has the time to the end of the
   last row that ended.
 
+  The last row, Clean up, shows what the pool's starter reported about the removal of the
+  machine (`clean_up/3`): the report's state and time as soon as a report exists; else,
+  once the run has ended and a machine existed for its dispatch, that a report is awaited
+  for 15 minutes after the run ended, then that none came; and for a run on a permanent
+  machine, once it has ended, that the machine stays registered. The 15 minutes are
+  counted at render, against the time the caller gives (`now`); the caller renders again
+  when they pass (`clean_up_due/3`).
+
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
   (`Apiary.ExternalText`). The machine log is shown to an instance admin alone; the
@@ -32,7 +40,24 @@ defmodule ApiaryWeb.PreparationComponents do
   # The most of a machine log the section shows, in bytes.
   @machine_log_bytes 65_536
 
-  @doc "Whether a preparation has a row to show: a machine, or a step."
+  # How long after the run ended the Clean up row waits for a report, in seconds.
+  @clean_up_wait_seconds 15 * 60
+
+  @typedoc """
+  What the Clean up row shows: the starter's last report, `{:report, state, at}`; that a
+  report is awaited until `due_at`, `{:waiting, due_at}`; that none came, `:no_report`;
+  that the machine is permanent and stays registered, `:stays`.
+  """
+  @type clean_up ::
+          {:report, :deleting | :gone | :delete_failed, DateTime.t()}
+          | {:waiting, DateTime.t()}
+          | :no_report
+          | :stays
+
+  @doc """
+  Whether a preparation has a machine or a step to show. The run page also shows the
+  section when it has a Clean up row (`clean_up/3`), as for a run with no step.
+  """
   @spec shown?(Preparation.t() | nil) :: boolean
   def shown?(%{machine: nil, steps: []}), do: false
   def shown?(%{}), do: true
@@ -51,16 +76,70 @@ defmodule ApiaryWeb.PreparationComponents do
     do: at != nil and not Enum.any?(steps, &(&1.state == "running"))
 
   @doc """
+  What the Clean up row of `preparation` shows at `now` (`t:clean_up/0`), or nil for no
+  row. `run` gives whether the run is alive, and, for a run no node pool claimed, whether
+  it ran on a permanent machine (a node of kind `:node`, preloaded as `run.node`).
+
+    * A report of the starter is shown as soon as it exists, whether the run is alive or
+      not.
+    * With no report, a run that has ended and whose dispatch was handed over waits for
+      one until 15 minutes after the run ended (`machine.ended_at`), and then has none.
+    * A run with no dispatch, on a permanent machine, once it has ended, keeps its machine.
+    * Anything else has no row: a run that goes on with no report, a dispatch released
+      before a machine existed, and a run on no permanent machine.
+  """
+  @spec clean_up(Preparation.t() | nil, Apiary.Runs.Run.t(), DateTime.t()) :: clean_up | nil
+  def clean_up(%{machine: %{end: %{state: state, at: at}}}, _run, _now),
+    do: {:report, state, at}
+
+  def clean_up(%{machine: %{} = machine}, run, now) do
+    cond do
+      alive?(run) or is_nil(machine.handed_over_at) or is_nil(machine.ended_at) ->
+        nil
+
+      DateTime.compare(now, due_at(machine)) == :lt ->
+        {:waiting, due_at(machine)}
+
+      true ->
+        :no_report
+    end
+  end
+
+  def clean_up(%{machine: nil}, %{node: %{kind: :node}} = run, _now),
+    do: if(alive?(run), do: nil, else: :stays)
+
+  def clean_up(_preparation, _run, _now), do: nil
+
+  @doc """
+  When the Clean up row of `preparation` changes from waiting for a report to no report,
+  as `clean_up/3` shows it at `now`: the time, or nil when the row is not waiting.
+  """
+  @spec clean_up_due(Preparation.t() | nil, Apiary.Runs.Run.t(), DateTime.t()) ::
+          DateTime.t() | nil
+  def clean_up_due(preparation, run, now) do
+    case clean_up(preparation, run, now) do
+      {:waiting, due_at} -> due_at
+      _other -> nil
+    end
+  end
+
+  defp due_at(%{ended_at: ended_at}), do: DateTime.add(ended_at, @clean_up_wait_seconds)
+
+  defp alive?(%{state: state}), do: state in Apiary.Runs.Run.alive_states()
+
+  @doc """
   The section. `machine_log` is what the caller read of the machine's log: `{:ok, text,
   truncated}` for an instance admin, `:none` while no log has arrived, `{:deleted, days}`
   once a log that arrived can have been deleted (`days` is the machine logs' retention),
   `:unreadable` for one whose file cannot be read, and `:hidden` for anyone else.
-  `alive` is whether the run is alive: nothing ticks once it has ended.
+  `alive` is whether the run is alive: nothing ticks once it has ended. `clean_up` is
+  what the Clean up row shows (`clean_up/3`), nil for no row.
   """
   attr :id, :string, default: "prepare-machine"
   attr :preparation, :map, required: true
   attr :machine_log, :any, default: :hidden
   attr :alive, :boolean, required: true
+  attr :clean_up, :any, default: nil
 
   def prepare_machine(assigns) do
     going_from = going_from(assigns.preparation, assigns.alive)
@@ -161,8 +240,64 @@ defmodule ApiaryWeb.PreparationComponents do
             </span>
           </div>
         </li>
+        <li :if={@clean_up}>
+          <.clean_up_row id={"#{@id}-clean-up"} clean_up={@clean_up} />
+        </li>
       </ol>
     </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :clean_up, :any, required: true
+
+  # The Clean up row: a mark, its name, what was reported or awaited, and the report's
+  # time. The text contains the state, so the mark is an icon with no text for a screen
+  # reader.
+  defp clean_up_row(assigns) do
+    {kind, at} =
+      case assigns.clean_up do
+        {:report, state, at} -> {state, at}
+        {:waiting, _due_at} -> {:waiting, nil}
+        other -> {other, nil}
+      end
+
+    assigns = assign(assigns, kind: kind, at: at, text: clean_up_text(kind))
+
+    ~H"""
+    <div id={@id} class="q-hd q-prep-row" data-clean-up={@kind}>
+      <.clean_up_mark kind={@kind} />
+      <span class="q-k">{gettext("Clean up")}</span>
+      <span class="q-s">{@text}</span>
+      <span class="q-t">
+        <span class="q-tc1 q-prep-cell"><.clock :if={@at} at={@at} /></span>
+        <span class="q-tc2 q-prep-cell"></span>
+      </span>
+    </div>
+    """
+  end
+
+  defp clean_up_text(:gone), do: gettext("Machine removed")
+  defp clean_up_text(:deleting), do: gettext("Machine removal requested")
+  defp clean_up_text(:delete_failed), do: gettext("Removal failed: the machine still exists")
+  defp clean_up_text(:waiting), do: gettext("Waiting for a report")
+  defp clean_up_text(:no_report), do: gettext("No removal report")
+  defp clean_up_text(:stays), do: gettext("Machine stays registered")
+
+  attr :kind, :atom, required: true
+
+  defp clean_up_mark(assigns) do
+    ~H"""
+    <%= case @kind do %>
+      <% :gone -> %>
+        <.icon name="hero-check-circle-micro" class="q-prep-ok size-4 self-center" />
+      <% :delete_failed -> %>
+        <.icon name="hero-x-circle-micro" class="q-prep-bad size-4 self-center" />
+      <% kind when kind in [:deleting, :waiting] -> %>
+        <.icon name="hero-ellipsis-horizontal-circle-micro" class="q-running size-4 self-center" />
+      <% _none -> %>
+        <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
+    <% end %>
     """
   end
 
