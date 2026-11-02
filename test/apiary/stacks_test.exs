@@ -338,13 +338,45 @@ defmodule Apiary.StacksTest do
         - source: {git: https://code.example.com/team/extra, ref: v1}
           exclude: {instructions: true}
       bind:
-        agents/coder: web-coder
+        agents: {coder: web-coder}
+        commands: {review: web-review}
+        skills: {lint: web-lint}
       extensions:
         required_check: Harness self-tests
       """
 
       assert {:ok, %Stack{harness: ^document}} =
                Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+    end
+
+    test "take bind by kind, then by role, with one name per role", ctx do
+      document = """
+      extends: {git: #{@stacks}, ref: v2}
+      bind:
+        agents: {developer: web-developer, reviewer: web-reviewer}
+        commands: {ship: web-ship}
+        skills: {}
+      """
+
+      assert {:ok, %Stack{harness: ^document}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+    end
+
+    test "refuse a flat bind, an unknown kind and a list of names in bind", ctx do
+      base = "extends: {git: #{@stacks}, ref: v2}\n"
+
+      for {bind, place} <- [
+            {"{agents/developer: web-developer}", "#/bind/agents~1developer"},
+            {"{tools: {developer: web-developer}}", "#/bind/tools"},
+            {"{agents: {developer: [web-developer, web-reviewer]}}", "#/bind/agents/developer"},
+            {"{agents: [web-developer]}", "#/bind/agents"},
+            {"{agents: {developer: team/web-developer}}", "#/bind/agents/developer"},
+            {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"}
+          ] do
+        document = base <> "bind: #{bind}\n"
+        assert [error] = refused(ctx, document), document
+        assert error =~ "does not follow the harness format at #{place}: ", document
+      end
     end
 
     test "refuse each key a harness document does not take", ctx do
@@ -369,7 +401,7 @@ defmodule Apiary.StacksTest do
                    "a harness document that extends a stack takes that stack's workflows"
                ]
 
-      for document <- ["name: web\n", "bind: {agents/coder: x}\n"] do
+      for document <- ["name: web\n", "bind: {agents: {coder: x}}\n"] do
         assert refused(ctx, document) == [
                  "add extends or at least one module: " <>
                    "a harness document extends a stack, or defines one with at least one module"
@@ -581,7 +613,7 @@ defmodule Apiary.StacksTest do
 
     test "refuse !!binary in any place, with no crash", ctx do
       for document <- [
-            "extends: {git: #{@stacks}, ref: v2}\nbind: {agents/x: !!binary //79}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nbind: {agents: {x: !!binary //79}}\n",
             "extends: {git: #{@stacks}, ref: v2}\nname: !!binary //79\n",
             "extends: {git: #{@stacks}, ref: !!binary //79}\n",
             "extends: {git: #{@stacks}, ref: v2}\nextensions: {a: !!binary //79}\n"

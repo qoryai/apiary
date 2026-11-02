@@ -106,11 +106,38 @@ defmodule Apiary.Dispatches.WireTest do
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"},
-          {"run/v1", "e8272d526cbbcfcf416dc78c0a25c7079cb0f9f0"},
+          {"run/v1", "676fbda9388aaa1dde630c732f0479f29a3aeca9"},
           {"integration/v1", "3fc796d01e551d7e966be99bd109239ca9806a7c"},
           {"explore/v1", "dd274020be2ec6d678e13bd15401a6aceaba8bd7"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
+    end
+  end
+
+  test "the run contract that saves a harness document is the vendored copy here" do
+    lib = Path.expand("../../../lib/apiary/stacks", __DIR__)
+
+    for file <- ["documents.schema.json", ".contract-ref"] do
+      assert File.read!(Path.join(lib, file)) ==
+               File.read!(Path.join([@vendored, "run/v1", file])),
+             file
+    end
+  end
+
+  @tag :contract
+  test "a run's harness binds by kind, then by role, one name per role" do
+    documents = Path.join(@vendored, "run/v1/fixtures")
+    read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
+    valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
+
+    nested = read.("documents/explore-harness-bind.json")
+
+    assert %{"agents" => %{"writer" => "copywriter"}} = nested["harness"]["harness"]["bind"]
+
+    assert valid?.(nested)
+
+    for name <- ~w(flat list name-slash role-dot unknown-kind) do
+      refute valid?.(read.("invalid/documents-harness-bind-#{name}.json")), name
     end
   end
 

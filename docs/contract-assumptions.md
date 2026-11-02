@@ -476,7 +476,11 @@ every other organisation, whether the instance has one organisation or several, 
 unknown owner is never the run's organisation. Workspace settings › Workflow and the
 set-up's Harness step write a stored stack at the workspace's level, and so do tests and
 the demo (`mix apiary.demo.console`, which stores one for the workspace Main); no
-endpoint sets one.
+endpoint sets one. A stored document's `bind` is set by kind, then by role, as the run
+contract's `harness_section` has it: `agents`, `commands` or `skills`, each with its roles
+set to the name of one entry of that kind, such as
+`bind: {agents: {developer: web-developer}}`. The save fails for a flat key such as
+`agents/developer`, for another kind, and for a list of names.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
