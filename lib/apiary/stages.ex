@@ -818,7 +818,9 @@ defmodule Apiary.Stages do
   # nil for a work item the runner has not placed. `scope` decides whether its person may
   # approve the gate; with none, `approvable?` is false. `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
-  # one, the gate of a stage with no workflow is not approvable.
+  # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
+  # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
+  # loop, the limit of the loop it left, which a later entry's runs do not count by.
   @doc false
   @spec status(WorkItem.t(), Scope.t() | nil) :: map | nil
   def status(%WorkItem{} = work_item, scope \\ nil) do
@@ -837,6 +839,7 @@ defmodule Apiary.Stages do
         version: %{id: version.public_id, number: version.number},
         round: work_item.stage_round,
         rounds: shown_rounds(stage, work_item.stage_entry),
+        loop: is_integer(work_item.loop_entry),
         state: state,
         gaps: shown_gaps(escalation, work_item, stage, artifacts),
         outputs: outputs,
@@ -912,7 +915,8 @@ defmodule Apiary.Stages do
 
   # runs/1 is the work item's runs of stages, newest first: each with the public id of its
   # registered run (`rn_…`, nil before a claim registers it), its workflow, stage, round,
-  # `of` (the attempts its take in may reach), `status` (the state of the run of the
+  # `take_in` and `attempt` (its place in the take in, from 1), `of` (the attempts its
+  # take in may reach), `status` (the state of the run of the
   # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
   # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
   # started and ended, nil for not yet.
@@ -935,6 +939,8 @@ defmodule Apiary.Stages do
         workflow: dispatch_run.workflow,
         stage_id: dispatch_run.stage_id,
         round: dispatch_run.round,
+        take_in: dispatch_run.take_in,
+        attempt: dispatch_run.attempt,
         of: dispatch_run.of,
         status: dispatch_run.state,
         verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]),

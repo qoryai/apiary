@@ -110,7 +110,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     >
       <div class="q-wi-step-h">
         <h2 id={"#{@id}-h"}>{@page.stage.name}</h2>
-        <span id={"#{@id}-state"}><.state_badge state={@page.state} /></span>
+        <span id={"#{@id}-state"}><.state_badge state={shown_state(@page)} /></span>
       </div>
       <p :if={@page.rounds} id={"#{@id}-round"} class="q-wi-bee-line">
         {gettext("Round %{round} of %{rounds}",
@@ -147,11 +147,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  # The state as the card and the head show it: Queued while the stage's run waits for a
+  # machine, as the step card and the run list say.
+  defp shown_state(%{state: :running, queued: true}), do: :queued
+  defp shown_state(%{state: state}), do: state
+
+  defp state_color(:queued), do: "neutral"
   defp state_color(:running), do: "success"
   defp state_color(:at_gate), do: "info"
   defp state_color(:done), do: "neutral"
   defp state_color(_state), do: "warning"
 
+  defp state_words(:queued), do: gettext("Queued")
   defp state_words(:running), do: gettext("Running")
   defp state_words(:waiting_inputs), do: gettext("Waits for inputs")
   defp state_words(:waiting_answers), do: gettext("Needs answers")
@@ -166,11 +173,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   """
   def head_status(page) do
     %{
-      words: page.stage.name <> " · " <> state_words(page.state),
+      words: page.stage.name <> " · " <> state_words(shown_state(page)),
       mark: head_mark(page)
     }
   end
 
+  defp head_mark(%{state: :running, queued: true}), do: :todo
   defp head_mark(%{state: :running}), do: :run
   defp head_mark(%{state: :done}), do: :ready
   defp head_mark(%{can_decide: true}), do: :wait
@@ -187,7 +195,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp stage_body(%{page: %{state: :running}} = assigns) do
     ~H"""
-    <p id={"#{@id}-line"}>{gettext("%{stage} is running.", stage: @page.stage.name)}</p>
+    <p :if={!@page.queued} id={"#{@id}-line"}>
+      {gettext("%{stage} is running.", stage: @page.stage.name)}
+    </p>
     """
   end
 
@@ -349,7 +359,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         types={@page.missing_outputs}
         add_path={@add_path}
       />
-      <p :if={@decides} id={"#{@id}-approvers"} class="text-xs opacity-70">
+      <p :if={@decides and not @page.confirm_gate} id={"#{@id}-approvers"} class="text-xs opacity-70">
         <%= case @page.approvers do %>
           <% :members -> %>
             {gettext("One approval covers each version. Any member approves.")}
@@ -458,14 +468,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       assign(
         assigns,
         :escalation,
-        assigns.page.escalation || %{cause: :escalate, gaps: [], run: nil, harness_path: nil}
+        assigns.page.escalation ||
+          %{cause: :escalate, result: true, gaps: [], run: nil, harness_path: nil}
       )
 
+    # The card addresses no one: Waiting on you counts no escalation.
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
-      <h3 id={"#{@id}-h"} class="text-sm font-semibold">
-        {gettext("%{stage} waits for you", stage: @page.stage.name)}
-      </h3>
       <p id={"#{@id}-cause"}>{cause_words(@escalation.cause, @page, @escalation.gaps != [])}</p>
       <ul :if={@escalation.gaps != []} id={"#{@id}-gaps"} class="list-disc ps-5">
         <li :for={{gap, i} <- Enum.with_index(@escalation.gaps)}>
@@ -473,8 +482,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </li>
       </ul>
       <p :if={@escalation.run} id={"#{@id}-run"} class="text-xs opacity-70">
-        {gettext("From run %{run} · %{workflow}",
-          run: Format.number(@escalation.run.number),
+        {gettext("From attempt %{attempt} · %{workflow}",
+          attempt: Format.number(@escalation.run.number),
           workflow: @escalation.run.workflow || ""
         )}
       </p>
@@ -492,7 +501,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           {gettext("A note you add goes to the next run as work item data.")}
         </p>
         <div class="q-wi-acts flex-wrap">
-          <.button id={"#{@id}-accept"} type="submit" name="how" value="accept" variant="primary">
+          <.button
+            :if={@escalation.result}
+            id={"#{@id}-accept"}
+            type="submit"
+            name="how"
+            value="accept"
+            variant="primary"
+          >
             {gettext("Accept as it is")}
           </.button>
           <.button id={"#{@id}-another"} type="submit" name="how" value="another_round">
@@ -590,8 +606,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   ## The runs
 
   @doc """
-  The runs of the work item, newest first: each with its workflow, its round and its
-  verdict, or none yet.
+  The runs of the work item, newest first: each an attempt, counted from the work item's
+  first run ("Attempt 2"), so that it is not taken for the run's number on the server
+  ("Run 18342"), with its workflow, its round and its verdict, or none yet.
   """
   attr :id, :string, default: "work-item-runs"
   attr :runs, :list, required: true
@@ -611,8 +628,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   defp run_words(run) do
-    gettext("Run %{run} · %{workflow} · round %{round} · %{verdict}",
-      run: Format.number(run.number),
+    gettext("Attempt %{attempt} · %{workflow} · round %{round} · %{verdict}",
+      attempt: Format.number(run.number),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
       verdict: shows_words(run.shows)

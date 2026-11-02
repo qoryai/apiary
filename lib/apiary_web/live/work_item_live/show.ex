@@ -165,7 +165,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             notice={@stage_notice}
           />
           <.step_card
-            :if={!@flow or @flow.explore}
+            :if={step_card?(@flow, @item)}
             work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
@@ -179,6 +179,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             asking={if @asking == :decline, do: :decline}
             item_noun={@source.item_noun}
             now={@now}
+            queued_of={queued_of(@flow, @item)}
           />
           <.work_item_details
             work_item={@item}
@@ -187,6 +188,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             uninstalled={@source.uninstalled}
             item_noun={@source.item_noun}
             collection_noun={@source.collection_noun}
+            queued={queued_run(@flow, @item)}
             now={@now}
           />
         </:rail>
@@ -938,6 +940,47 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           Access.can?(scope, action, row)
     }
   end
+
+  # Details' Runs under the workflow model, while the newest run waits for a machine and
+  # none has started: that run, in place of None yet, counted as the step card counts it.
+  defp queued_run(%{runs: [%{shows: :queued} | _]} = flow, %{run: %{attempt: attempt}} = item)
+       when is_integer(attempt) do
+    case queued_of(flow, item) do
+      of when is_integer(of) ->
+        gettext("Attempt %{attempt} of %{of} is queued.",
+          attempt: Format.number(attempt),
+          of: Format.number(of)
+        )
+
+      nil ->
+        nil
+    end
+  end
+
+  defp queued_run(_flow, _item), do: nil
+
+  # The most runs of the take in for its latest run. In a loop the runner applies the
+  # round limit of the work item's version, the stage card's rounds. The database row of a
+  # run queued before the work item moved to a version with fewer rounds keeps the old
+  # `of`, so in a loop the count does not use it. Outside a loop the runner caps the runs
+  # by the row's `of`, and the count is that `of`. Nil without a run.
+  defp queued_of(flow, %{run: %{attempt: attempt, of: of}})
+       when is_integer(attempt) and is_integer(of),
+       do: runs_of(flow, attempt, of)
+
+  defp queued_of(_flow, _item), do: nil
+
+  defp runs_of(%{rounds: rounds, loop: true} = flow, attempt, _of) when is_integer(rounds),
+    do: attempt + max(rounds - (Map.get(flow, :round) || 1), 0)
+
+  defp runs_of(_flow, _attempt, of), do: of
+
+  # Today's step card, beside the stage card at Explore. At the run limit it says that the
+  # run was "the last run of this take in", which is false while the escalation card
+  # offers Run another round: there the step card is not shown.
+  defp step_card?(nil, _item), do: true
+  defp step_card?(%{explore: false}, _item), do: false
+  defp step_card?(flow, item), do: not (status(item) == :used_up and escalated?(flow, :used_up))
 
   defp status(%{status: status}), do: status
   defp status(_item), do: nil
