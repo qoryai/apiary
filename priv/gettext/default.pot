@@ -133,8 +133,8 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{attempt} of %{of} run used"
-msgid_plural "%{attempt} of %{of} runs used"
+msgid "%{attempt} of %{of} attempt used"
+msgid_plural "%{attempt} of %{of} attempts used"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2527,18 +2527,6 @@ msgstr ""
 msgid "%{runtime}, without a wall"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{run} · %{count} run, %{state}"
-msgid_plural "%{run} · %{count} runs, %{state}"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/artifact_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{run} · round %{round}"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{seconds} s"
@@ -3963,7 +3951,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That was run %{attempt} of %{of}, the last run of this take in."
+msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That was attempt %{attempt} of %{of}, the last attempt of this take in."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -4867,7 +4855,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Answers for run %{attempt}"
+msgid "Answers for attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -5185,6 +5173,36 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "At the gate"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of} is queued."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. The agent answers the line in it."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -6742,7 +6760,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Copy run id"
+msgid "Copy run number"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -6763,7 +6781,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Copy the run id"
+msgid "Copy the run number"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -9655,6 +9673,11 @@ msgstr ""
 msgid "In a software workspace, the ticket must be in a target assigned to %{workspace}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "In attempt %{attempt} of %{of}, the agent writes a reply to the line."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "In background"
@@ -9683,11 +9706,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "In force since %{date}; %{following} of %{targets} follow it."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "In run %{attempt} of %{of}, the agent writes a reply to the line."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14674,13 +14692,13 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory starts run %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know."
+msgid "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory still has %{number} question after run %{attempt} of %{of}, the last run of this take in."
-msgid_plural "Qory still has %{number} questions after run %{attempt} of %{of}, the last run of this take in."
+msgid "Qory still has %{number} question after attempt %{attempt} of %{of}, the last attempt of this take in."
+msgid_plural "Qory still has %{number} questions after attempt %{attempt} of %{of}, the last attempt of this take in."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -15624,40 +15642,15 @@ msgstr ""
 msgid "Run"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of}"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} is queued."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} reads the %{item}, then returns a proposal or questions."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} starts when the workspace's pool takes it. The agent answers the line in it."
-msgstr ""
-
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{id}"
+msgid "Run %{run}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15682,7 +15675,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{run} ended without a result. That was run %{attempt} of %{of}, the last run of this take in."
+msgid "Run %{run} ended without a result. That was attempt %{attempt} of %{of}, the last attempt of this take in."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15730,9 +15723,21 @@ msgstr ""
 msgid "Run %{run} wrote this. Qory shows it as plain text."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run %{run} · %{count} run, %{state}"
+msgid_plural "Run %{run} · %{count} runs, %{state}"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run %{run} · %{workflow} · round %{round} · %{verdict}"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run %{run} · round %{round}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15742,7 +15747,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run Explore again starts run %{attempt} of %{of}."
+msgid "Run Explore again starts attempt %{attempt} of %{of}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15822,11 +15827,6 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Run id"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
 msgid "Run id on the machine"
 msgstr ""
 
@@ -15848,6 +15848,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run not found"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run number"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -16464,12 +16469,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Sending starts run %{attempt} of %{of}, which reads the %{item}, its comments, the first instruction and every answer of this take in."
+msgid "Sending starts attempt %{attempt} of %{of}, which reads the %{item}, its comments, the first instruction and every answer of this take in."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Sending starts run %{attempt} of %{of}, which reads the line and every answer of this take in."
+msgid "Sending starts attempt %{attempt} of %{of}, which reads the line and every answer of this take in."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -18480,7 +18485,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "The link may be for another workspace, or the run id is mistyped."
+msgid "The link may be for another workspace, or the run number is mistyped."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -18692,6 +18697,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "The output is cut: this is its last 64 KiB."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The page of run %{run} shows what it did."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -18983,11 +18993,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run's last result was an error. There is nothing to show or confirm."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "The run's page, %{run}, shows what it did."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -22818,6 +22823,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -23154,7 +23160,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "run %{id}"
+msgid "run %{run}"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

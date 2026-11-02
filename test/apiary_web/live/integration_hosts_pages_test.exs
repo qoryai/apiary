@@ -121,7 +121,7 @@ defmodule ApiaryWeb.IntegrationHostsPagesTest do
   test "a run's connections tab", ctx do
     %{conn: conn, scope: scope} = ctx
     [run | _] = Apiary.Repo.all(Apiary.Runs.Run)
-    path = workspace_path(scope, "/runs/#{run.public_id}/network")
+    path = workspace_path(scope, "/runs/#{run.number}/network")
 
     before = html(page(conn, path), "#run-connections")
     add_integration(ctx)

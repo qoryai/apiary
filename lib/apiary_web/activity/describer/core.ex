@@ -920,12 +920,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           nil ->
             text(gettext("A run"))
 
-          public_id ->
+          number ->
             href =
               workspace && Features.visible?(scope, :observability) &&
-                ~p"/#{scope.organisation}/#{workspace}/runs/#{public_id}"
+                ~p"/#{scope.organisation}/#{workspace}/runs/#{number}"
 
-            %{text: String.slice(public_id, 0, 11), mono: true, href: href || nil}
+            %{text: gettext("Run %{run}", run: number), mono: false, href: href || nil}
         end
 
       "target" ->

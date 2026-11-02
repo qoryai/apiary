@@ -147,13 +147,13 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert target["href"] == target_page_path(scope, "github.example", "acme/shop")
 
     short = String.slice(run.public_id, 0, 11)
-    href = workspace_path(scope, "/runs/#{run.public_id}")
+    href = workspace_path(scope, "/runs/#{run.number}")
 
     for q <- [
           short,
           String.slice(run.node_run_id, 0, 4),
           run.node_run_id,
-          "https://x.example#{href}"
+          "https://x.example" <> workspace_path(scope, "/runs/#{run.public_id}")
         ] do
       answer = jump(conn, workspace_path(scope, "/jump"), q)
       assert [%{"href" => ^href}] = group(answer, "Runs")["items"], q
@@ -161,14 +161,15 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     answer = jump(conn, workspace_path(scope, "/jump"), "checkout")
     assert [%{"label" => label, "href" => ^href}] = group(answer, "Runs")["items"]
-    assert label == "#{short} · Fix the checkout"
+    assert label == "Run #{run.number} · Fix the checkout"
 
     refute group(jump(conn, workspace_path(scope, "/jump"), "nightly"), "Runs")
 
-    # A run without a title is its short id.
+    # A run without a title is "Run" and its number.
     task_short = String.slice(task.public_id, 0, 11)
+    task_name = "Run #{task.number}"
     answer = jump(conn, workspace_path(scope, "/jump"), task_short)
-    assert [%{"label" => ^task_short}] = group(answer, "Runs")["items"]
+    assert [%{"label" => ^task_name}] = group(answer, "Runs")["items"]
 
     # three characters are not an id, nor is `rn_` and three
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
@@ -187,14 +188,15 @@ defmodule ApiaryWeb.JumpControllerTest do
        %{conn: conn, scope: scope} do
     run = started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"})
     short = String.slice(run.public_id, 0, 11)
+    name = "Run #{run.number}"
 
     answer = jump(conn, workspace_path(scope, "/jump"), short)
-    assert [%{"label" => ^short}] = group(answer, "Runs")["items"]
+    assert [%{"label" => ^name}] = group(answer, "Runs")["items"]
 
     for title <- [" ", "\u00A0", "\u200B\u00A0\u3000"] do
       run |> Ecto.Changeset.change(about_title: title) |> Apiary.Repo.update!()
       answer = jump(conn, workspace_path(scope, "/jump"), short)
-      assert [%{"label" => ^short}] = group(answer, "Runs")["items"], inspect(title)
+      assert [%{"label" => ^name}] = group(answer, "Runs")["items"], inspect(title)
     end
   end
 
@@ -221,9 +223,10 @@ defmodule ApiaryWeb.JumpControllerTest do
     run |> Ecto.Changeset.change(target_path: "acme/\u202Eshop") |> Apiary.Repo.update!()
     short = String.slice(run.public_id, 0, 11)
 
-    # A title with nothing left to show is no title: the run is its short id.
+    # A title with nothing left to show is no title: the run is "Run" and its number.
+    name = "Run #{run.number}"
     answer = jump(conn, workspace_path(scope, "/jump"), short)
-    assert [%{"label" => ^short, "detail" => "acme/shop"}] = group(answer, "Runs")["items"]
+    assert [%{"label" => ^name, "detail" => "acme/shop"}] = group(answer, "Runs")["items"]
 
     # A path sent with nothing left to show is marked, never the state's word.
     run |> Ecto.Changeset.change(target_path: "\u202E\u200B") |> Apiary.Repo.update!()
@@ -249,8 +252,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     detail = Map.new(group(answer, "Runs")["items"], &{&1["href"], &1["detail"]})
 
     assert detail == %{
-             workspace_path(scope, "/runs/#{completed.public_id}") => "Completed",
-             workspace_path(scope, "/runs/#{cancelled.public_id}") => "Cancelled"
+             workspace_path(scope, "/runs/#{completed.number}") => "Completed",
+             workspace_path(scope, "/runs/#{cancelled.number}") => "Cancelled"
            }
   end
 

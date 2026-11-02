@@ -1160,13 +1160,12 @@ defmodule ApiaryWeb.LayoutsTest do
       scope: scope
     } do
       run = Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop())
-      short = String.slice(run.public_id, 0, 11)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
       assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope, "/runs")}']", "Runs")
-      assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{short}")
+      assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{run.number}")
       assert has_element?(view, "#nav-runs[aria-current='page']")
     end
 
@@ -1179,7 +1178,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # A run: Runs is its parent, marked to stay on a phone, with the back chevron.
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
       html = render(view)
       assert has_element?(view, "#breadcrumb li.q-trail-up a[href='#{runs}'] .q-trail-back")

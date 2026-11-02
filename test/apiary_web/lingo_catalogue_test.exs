@@ -34,10 +34,10 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "When the run starts, Qory reads the %{item} and the answers of this take in, and writes a proposal.",
     "When the run starts, Qory reads the %{item} and your answers, and writes a proposal.",
     "When the run starts, Qory reads the %{item} and writes a proposal.",
-    "Qory starts run %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
-    "Run %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions.",
-    "Run %{attempt} of %{of} reads the %{item}, then returns a proposal or questions.",
-    "Run %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
+    "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
+    "Attempt %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions.",
+    "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions.",
+    "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
     "tag or version"
   ]
 

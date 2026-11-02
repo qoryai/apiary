@@ -451,8 +451,8 @@ defmodule Apiary.Targets do
 
   @doc """
   summary/3 is what a target's header and its About say of it: how many runs it has
-  (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, public_id:}` or
-  nil), and the fourteen days of the window as `page/3` counts them (`days`, `window`:
+  (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, public_id:,
+  number:}` or nil), and the fourteen days of the window as `page/3` counts them (`days`, `window`:
   runs, ended well, cancelled and ended badly, denied attempts, over the fourteen days).
   """
   @spec summary(Scope.t(), Target.t(), DateTime.t()) :: map
@@ -472,7 +472,8 @@ defmodule Apiary.Targets do
           select: %{
             state: r.state,
             at: type(coalesce(r.started_at, r.inserted_at), :utc_datetime_usec),
-            public_id: r.public_id
+            public_id: r.public_id,
+            number: r.number
           }
       )
     end

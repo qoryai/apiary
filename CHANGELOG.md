@@ -498,6 +498,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   {developer: web-developer}}: agents/developer is a flat key.”, of another kind with
   “Use agents, commands or skills under bind: tools is not a kind.”, and of a list of
   names with “Give one name per role: bind.agents.reviewer is a list.”
+- Every run has a number, one count for the whole server, and the console names and
+  addresses a run by it: “Run 18342” at `/acme/main/runs/18342`, in the run page's header
+  and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the
+  search results. A run's title, when it sent one, is the line under the header. An
+  address with the run's `rn_` id, such as a link built from the API, sends on to the
+  number's address in the same workspace. Details shows **Run number** with Copy, the
+  run's menu copies the number, and a downloaded log is named `run-18342.log`. A run's
+  place in a take in reads “Attempt 2 of 3”. The API keeps the `rn_` id, and the
+  diagnostics endpoint, `GET /v1/runs/<run>/diagnostics`, takes the number or the `rn_`
+  id.
 - The Runs list shows, for each run, the workflow it ran (such as `explore-a-ticket`,
   with the stage and round that placed it), its work item as a link, and how it started,
   such as "Taken in by dana". The Host column is gone, and the Target column and the
@@ -660,6 +670,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A page of a workspace that is open when its test run passes, such as the run's page,
+  drops the sidebar's group Set up within a second. Before, the group stayed, with the
+  Test run step not done, until the page was opened again.
 - The built-in harness uses qory's hello example at a commit that allows extending it.
   With the earlier commit, composing the built-in harness failed, so every test run
   failed.
@@ -688,6 +701,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
+  value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
+  in the order they started, then the sequence goes on from the highest number. The
+  migration locks `runs` against reads and writes while it runs.
 - `type_template_versions`: three nullable columns, `name`, `summary` and `description`,
   with a check on their lengths (1 to 60, 200 and 1,200 characters) that scans the table
   under a lock that blocks writes. It changes no existing row.

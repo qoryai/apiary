@@ -129,6 +129,7 @@ defmodule Apiary.Contract.RecordedRunTest do
           :__meta__,
           :id,
           :public_id,
+          :number,
           :inserted_at,
           :updated_at,
           :registered_at,

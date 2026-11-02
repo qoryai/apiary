@@ -41,16 +41,16 @@ defmodule ApiaryWeb.RunLive.RunCodePagesTest do
 
   test "the run page shows the run in each tab", %{conn: conn, scope: scope, run: run} do
     for tab <- ["", "/terminal", "/network", "/details"] do
-      {:ok, view, html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}#{tab}"))
-      assert html =~ run.public_id, tab
-      assert render(view) =~ run.public_id, tab
+      {:ok, view, html} = live(conn, workspace_path(scope, "/runs/#{run.number}#{tab}"))
+      assert html =~ "Run #{run.number}", tab
+      assert render(view) =~ "Run #{run.number}", tab
     end
   end
 
   test "the runs list shows the run", %{conn: conn, scope: scope, run: run} do
     {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
     render_async(view)
-    assert has_element?(view, "#run-#{run.public_id}")
+    assert has_element?(view, "#run-#{run.number}")
   end
 
   test "the overview shows the run lost, never picked up, once its code expires",
@@ -65,13 +65,13 @@ defmodule ApiaryWeb.RunLive.RunCodePagesTest do
     render_async(view, 5_000)
 
     assert view
-           |> element("#att-run-#{run.public_id}")
+           |> element("#att-run-#{run.number}")
            |> render() =~ "Lost, never posted its exit"
 
     assert view
            |> render()
            |> LazyHTML.from_fragment()
-           |> LazyHTML.query("#att-run-#{run.public_id} .q-ar-why")
+           |> LazyHTML.query("#att-run-#{run.number} .q-ar-why")
            |> LazyHTML.attribute("title") == [@never]
   end
 end

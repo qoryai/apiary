@@ -119,14 +119,31 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by its `public_id`, `rn_…`, the id the run's URL
-  carries; raises `Ecto.NoResultsError` when the workspace has none such, which a run of
+  One run of the scope's workspace by its `public_id`, `rn_…`, the id the API gives;
+  raises `Ecto.NoResultsError` when the workspace has none such, which a run of
   another workspace and a malformed id both are, the node's run id among them.
   """
   def get_run_by_public_id!(%Scope{} = scope, public_id) do
     if Run.public_id?(public_id),
       do: Repo.one!(from r in in_scope(scope), where: r.public_id == ^public_id),
       else: raise(Ecto.NoResultsError, queryable: Run)
+  end
+
+  @doc """
+  One run of the scope's workspace by `param`: its number (`Run.parse_number/1`), the
+  form the run's URL carries, or its `public_id`, `rn_…`; nil for a run the workspace has
+  not got, a run of another workspace among them, and for anything of neither shape.
+  """
+  @spec get_run_by_param(Scope.t(), term) :: Run.t() | nil
+  def get_run_by_param(%Scope{} = scope, param) do
+    case Run.parse_number(param) do
+      {:ok, number} ->
+        Repo.one(from r in in_scope(scope), where: r.number == ^number)
+
+      :error ->
+        if Run.public_id?(param),
+          do: Repo.one(from r in in_scope(scope), where: r.public_id == ^param)
+    end
   end
 
   @doc "The workspace's runs, newest first. `limit:` defaults to #{@default_limit}, at most #{@max_limit}."
