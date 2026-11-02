@@ -14331,3 +14331,130 @@
     }
   }
 }
+
+/* ==== The Stages canvas (`ApiaryWeb.StagesLive.Canvas`, assets/js/canvas.js) ==============
+   The canvas's box, and `.q-canvas-fill`: a box that takes the rest of the window, with
+   the canvas and, beside it, a `.q-canvas-side` (the inspector or a side panel). It follows
+   the Terminal's sizing: the page fills the window, each element down to the box
+   stretches, and the box takes the rest. */
+@layer qory {
+  /* The box: the cards on dots in the theme's text colour. React Flow's ground is clear,
+     so the box's shows. */
+  .q-canvas {
+    --xy-background-color: transparent;
+    --xy-background-pattern-color: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--color-base-300);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-200);
+  }
+  /* Outside a filling box the canvas is as tall as its column (the hook sets the
+     variable). */
+  .q-canvas > [data-canvas] {
+    width: 100%;
+    height: var(--q-canvas-height, 11rem);
+  }
+
+  /* The filling box: one column below 1024 px, the canvas 70 % of the window tall and the
+     side under it; the page's edges, with no frame. */
+  .q-canvas-fill {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    margin-inline: calc(-1 * var(--q-gutter, 0px));
+  }
+  .q-canvas-fill > .q-canvas {
+    height: max(380px, 70dvh);
+    border: 0;
+    border-radius: 0;
+  }
+  .q-canvas-fill > .q-canvas > [data-canvas],
+  .q-canvas:fullscreen > [data-canvas],
+  html.q-canvas-focus .q-canvas > [data-canvas] {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 0;
+  }
+  .q-canvas-side {
+    min-width: 0;
+    padding: 20px var(--q-gutter, 1rem) 24px;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  /* From 1024 px the page is the window's height: every element from the page down to the
+     box is a column whose last part stretches, and the box takes what the parts above it
+     leave, never under 380 px. The side is 30rem wide (`--q-canvas-side` changes it) and
+     scrolls; the canvas scrolls its column. */
+  @media (min-width: 1024px) {
+    .q-page:has(.q-canvas-fill) {
+      display: flex;
+      height: calc(100dvh - var(--q-bar));
+      flex-direction: column;
+      padding-bottom: 0;
+    }
+    .q-page:has(> * > .q-canvas-fill:first-child) {
+      padding-top: 0;
+    }
+    /* A box under the shell's notices, while no notice shows, starts at the bar too: it
+       rises by the page's top padding. */
+    .q-page > * > #shell-notices:first-child:not(:has(*)) + .q-canvas-fill {
+      margin-top: -1.5rem;
+    }
+    .q-page:has(.q-canvas-fill) :has(.q-canvas-fill) {
+      display: flex;
+      min-height: 0;
+      max-width: none;
+      flex: 1 1 0;
+      flex-direction: column;
+    }
+    .q-canvas-fill {
+      min-height: 380px;
+      flex: 1 1 0;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .q-canvas-fill > .q-canvas {
+      height: auto;
+    }
+    .q-canvas-side {
+      width: var(--q-canvas-side, 30rem);
+      overflow-y: auto;
+      padding: 20px 20px 24px;
+      border-top: 0;
+      border-left: 1px solid var(--q-border-subtle);
+    }
+  }
+
+  /* Focus: the shell, the header and the sidebar fold away, and the filling box (or the
+     canvas's box, where there is none) takes the window until Escape. */
+  html.q-canvas-focus {
+    overflow: hidden;
+  }
+  html.q-canvas-focus :is(#shell, #sidebar, .drawer-side) {
+    visibility: hidden;
+  }
+  html.q-canvas-focus :is(.q-canvas-fill, .q-canvas:not(.q-canvas-fill > .q-canvas)) {
+    position: fixed;
+    inset: 12px;
+    z-index: 60;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    visibility: visible;
+    border: 1px solid var(--color-base-300);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+  }
+  /* Full screen: the browser's, for the same box. */
+  :is(.q-canvas-fill, .q-canvas):fullscreen {
+    height: 100%;
+    margin: 0;
+    border-radius: 0;
+    background-color: var(--color-base-100);
+  }
+  .q-canvas-fill:fullscreen > .q-canvas {
+    height: auto;
+  }
+}

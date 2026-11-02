@@ -4340,10 +4340,10 @@ msgstr ""
 msgid "Agent"
 msgstr ""
 
-#: lib/apiary_web/components/set_up_components.ex
+#: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
-msgid "Agents change code in your repositories."
+msgid "Agents change code in your repositories. Each ticket needs a repository."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -5177,6 +5177,11 @@ msgstr ""
 msgid "At most 64 characters, and not the name of another adapter here."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "At most 80 words, on the type's page. A blank line starts a new paragraph."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "At the gate"
@@ -5641,6 +5646,11 @@ msgctxt "field edited"
 msgid "Changed"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Changed How it works."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed Qory's proposal for a work item and confirmed it"
@@ -5796,6 +5806,11 @@ msgstr ""
 msgid "Changed the instance's configuration"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the name."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the outputs of %{name}."
@@ -5814,6 +5829,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the sequence of %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the summary."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6007,7 +6027,6 @@ msgid "Checking the organisations you own"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
-#: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose"
 msgstr ""
@@ -6901,6 +6920,11 @@ msgstr ""
 msgid "Create invitation link"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "Create workspace"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Create your account"
@@ -6947,8 +6971,8 @@ msgstr ""
 msgid "Created the workspace"
 msgstr ""
 
-#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/user_live/registration.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "Creating"
 msgstr ""
@@ -7585,8 +7609,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/artifact_live/show.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Details"
 msgstr ""
@@ -7789,6 +7815,12 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
+msgstr ""
+
+#: lib/apiary/processes.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.\n\nYou connect: where work comes from, where changes go, and a model."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -8750,8 +8782,14 @@ msgid "Fixed when the key was made."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Focus"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/canvas.ex
+#, elixir-autogen, elixir-format
+msgid "Focus: the canvas takes the window (f)"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -9017,6 +9055,7 @@ msgid "Full log"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Full screen"
 msgstr ""
@@ -9434,6 +9473,12 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "How it ended"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "How it works"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -10596,6 +10641,7 @@ msgid "Leave %{organisation}?"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Leave full screen"
 msgstr ""
@@ -11546,6 +11592,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/nodes.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -11770,6 +11817,7 @@ msgstr ""
 
 #: lib/apiary_web/dead_end.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "New workspace"
 msgstr ""
@@ -13234,6 +13282,11 @@ msgstr ""
 msgid "One or more machines that use the pool's access key."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "One or two sentences, on the card on New workspace and at the top of the type's page."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #, elixir-autogen, elixir-format
 msgid "One per line, such as %{owner}/docs: targets of %{owner} only, each once."
@@ -14214,12 +14267,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
-msgid "Press Enter to open the stage under the canvas."
+msgid "Press Enter to open the stage beside the canvas."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
-msgid "Press Enter to open the stage under the canvas. Move it with the left and right arrow keys."
+msgid "Press Enter to open the stage beside the canvas. Move it with the up and down arrow keys."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -16791,32 +16844,12 @@ msgid_plural "Show %{count} earlier comments"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show %{count} more stages on the left"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show %{count} more stages on the right"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show %{number} more"
 msgid_plural "Show %{number} more"
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show 1 more stage on the left"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "Show 1 more stage on the right"
-msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -17150,8 +17183,10 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "Stages"
 msgstr ""
@@ -17360,6 +17395,7 @@ msgid "Suggestions"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Summary"
 msgstr ""
@@ -19274,6 +19310,11 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{stages}."
 msgstr ""
 
 #: lib/apiary_web/components/workspace_components.ex
@@ -21315,7 +21356,13 @@ msgid_plural "Write at most %{count} lines."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/instance_live/workspace_types.ex
+#, elixir-autogen, elixir-format
+msgid "Write at most %{count} words."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Write at most %{number} characters."
 msgstr ""
@@ -21678,11 +21725,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text."
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "You connect: where work comes from, where changes go, a model."
 msgstr ""
 
 #: lib/apiary_web/live/setup_live.ex
@@ -23613,14 +23655,4 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "… %{number} more"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "← %{count} more"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/canvas.ex
-#, elixir-autogen, elixir-format
-msgid "→ %{count} more"
 msgstr ""

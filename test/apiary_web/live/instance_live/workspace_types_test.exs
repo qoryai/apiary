@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   # Instance settings › Workspace types (`ApiaryWeb.InstanceLive.WorkspaceTypes`): the
   # section in the Instance level's menu, the list of types, a type's stages edited on
-  # the canvas and saved as a new version, the history, the refusals of a save, and a path
+  # the canvas and saved as a new version, the Details tab with the type's texts, the
+  # history, the refusals of a save, and a path
   # that does not exist for an organisation's owner or with `workflow_model` off. Not
   # async: a test of an instance admin hides the instance's organisation, a row every test
   # shares, and each test sets the instance's features.
@@ -20,6 +21,8 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   setup do
     Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
   end
+
+  defp details(view), do: render_patch(view, @edit <> "?tab=details")
 
   defp history(view, number),
     do: view |> element("#type-version-#{number}") |> render() |> LazyHTML.from_fragment()
@@ -94,11 +97,110 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert author_id == user.id
       assert has_element?(view, "#type-version", "Editing version 2.")
 
+      details(view)
       assert LazyHTML.text(history(view, 2)) =~ "Renamed the stage Explore to Discover."
       assert LazyHTML.text(history(view, 2)) =~ "Newest"
       refute LazyHTML.text(history(view, 1)) =~ "Newest"
       assert LazyHTML.text(history(view, 1)) =~ "Qory Apiary default"
       assert LazyHTML.text(history(view, 1)) =~ "The first version."
+    end
+
+    test "Stages opens first; Details has the sentence, the type's texts and the history", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, @edit)
+
+      assert has_element?(view, ~s(#type-tabs-stages[href="#{@edit}"][aria-current="page"]))
+      assert has_element?(view, ~s(#type-tabs-details[href="#{@edit}?tab=details"]))
+      assert has_element?(view, "#type-editor #type-canvas")
+      refute has_element?(view, "#type-details")
+
+      details(view)
+      assert has_element?(view, ~s(#type-tabs-details[aria-current="page"]))
+      refute has_element?(view, "#type-canvas")
+      assert has_element?(view, "#type-version", "Editing version 1.")
+      assert has_element?(view, "#type-save[disabled]")
+
+      assert has_element?(
+               view,
+               "#type-details > p:first-child",
+               "New workspaces of this type start with these stages."
+             )
+
+      # A copy of the release's default shows the texts from code.
+      assert has_element?(view, ~s(#type-name[value="Software factory"][maxlength="60"]))
+
+      assert has_element?(
+               view,
+               ~s(#type-summary[maxlength="200"][value="Agents change code in your repositories. Each ticket needs a repository."])
+             )
+
+      assert has_element?(view, ~s(#type-description[maxlength="1200"]), "You connect:")
+      assert has_element?(view, "#type-machine")
+      assert has_element?(view, "#type-version-1", "The first version.")
+    end
+
+    test "a switch of tabs keeps the draft; a save keeps the stages and the texts", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, @edit)
+      view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
+
+      details(view)
+      assert has_element?(view, "#type-dirty", "Unsaved changes")
+
+      view
+      |> form("#type-texts-form",
+        texts: %{name: "Web shop factory", summary: "For the Web shop."}
+      )
+      |> render_change()
+
+      render_patch(view, @edit)
+      assert has_element?(view, "#stage-panel-title", "Edit Discover")
+      view |> element("#type-save") |> render_click()
+
+      assert %{
+               number: 2,
+               name: "Web shop factory",
+               summary: "For the Web shop.",
+               description: nil
+             } =
+               TypeTemplates.newest(@type_key)
+
+      assert has_element?(view, "#settings-section-title", "Web shop factory")
+      refute has_element?(view, "#type-dirty")
+
+      details(view)
+      assert LazyHTML.text(history(view, 2)) =~ "Renamed the stage Explore to Discover."
+      assert LazyHTML.text(history(view, 2)) =~ "Changed the name."
+      assert LazyHTML.text(history(view, 2)) =~ "Changed the summary."
+      refute LazyHTML.text(history(view, 2)) =~ "Changed How it works."
+
+      {:ok, list, _html} = live(conn, @index)
+      assert has_element?(list, "#workspace-type-qory-software", "Web shop factory")
+    end
+
+    test "a text over its limit shows under its field on Details", %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit)
+      render_hook(view, "edit_texts", %{"texts" => %{"name" => String.duplicate("a", 61)}})
+      view |> element("#type-save") |> render_click()
+
+      assert_patch(view, @edit <> "?tab=details")
+      assert has_element?(view, "#type-texts-form", "Write at most 60 characters.")
+      assert has_element?(view, ~s(#type-name[aria-invalid="true"]))
+      assert TypeTemplates.newest(@type_key).number == 1
+    end
+
+    test "How it works over 80 words shows under its field", %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit <> "?tab=details")
+      words = Enum.map_join(1..81, " ", fn _n -> "shop" end)
+
+      view |> form("#type-texts-form", texts: %{description: words}) |> render_change()
+      view |> element("#type-save") |> render_click()
+
+      assert has_element?(view, "#type-texts-form", "Write at most 80 words.")
+      assert has_element?(view, ~s(#type-description[aria-invalid="true"]))
+      assert TypeTemplates.newest(@type_key).number == 1
     end
 
     test "a gate is none or any member: no named approvers", %{conn: conn} do

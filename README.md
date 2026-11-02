@@ -46,9 +46,10 @@ Open the link, `http://localhost:4100/setup/<code>`, and enter your email addres
 password and your organisation's name. That creates the instance's organisation and your
 account as its owner, the instance's admin, with no workspace yet; everyone else joins by
 invitation. Two pages follow: **Connect Qory Apiary**, where you set up mail, skip it or
-continue with the server's mail settings, and **What will this workspace do?**, where you
-select **Choose** on **Software factory**, keep the name Main, and select **Create
-workspace**.
+continue with the server's mail settings, and **What will your first workspace do?**,
+where you select the **Software factory** card, then **Create workspace** on its page. The
+workspace is named Software factory; rename it on its first set-up step, **Name**, or keep
+the name.
 
 Mail is optional: with the mail lines of `.env` empty, Qory Apiary sends no email, you sign
 in with your password, and an invitation is a link you copy and send. To send mail, set
