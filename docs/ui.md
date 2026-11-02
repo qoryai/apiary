@@ -27,8 +27,8 @@ page and an Instance page, the one the person came from (Two levels, below).
   then the workspace, each a link to its home, and the page's segments, a target or a
   record, the last one the page with `aria-current="page"`. A page of a workspace or an
   organisation starts them with its section's name as the sidebar words it: a link to the
-  section's page on a page under it (`Acme / Main / Runs / Run rn_7k3m9q2x`, also where that
-  run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
+  section's page on a page under it (`Acme / Main / Runs / Run 14`, also where that
+  run is not found, and `Acme / Main / Runs` where the address is no run's number), the page
   itself on the section's page (`Acme / Main / Runs`, `Acme / Main / Overview`,
   `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
   target, a machine, a run) is the page itself on its first tab and a link
@@ -188,7 +188,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   is drawn lighter, the page's parent, while the disclosure under the bar (Two levels,
   above) names the level and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
-  (`‹ Runs / Run rn_7k3m9q2x`): the item of the one
+  (`‹ Runs / Run 14`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
   Where the two do not fit, the page's name is cut short first, with an ellipsis, and the
   parent keeps up to 8rem. A section's page shows its name alone. On a core
@@ -714,7 +714,8 @@ version in force is exported; another version's path sends on to it.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
-  card, of the run chosen (`?run=`, its `rn_` id; another value is dropped with a notice;
+  card, of the run chosen (`?run=`, its number; its `rn_` id is patched to the number, and
+  another value is dropped with a notice;
   the first row until the reader chooses one), with the
   last lines of its log as plain text for a reader who may read the log (`run.read_log`;
   without it, no line is read and the preview has no terminal). The `RunList` hook tells
@@ -1246,10 +1247,11 @@ The set-up is the pages a person goes through before the console: the set-up lin
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
 (`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: the kind cards, on
 the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces/new`,
-whose Choose creates the workspace, then each step a page of the workspace,
+each a link to its type's page `/<org>/workspaces/new/<type key>`, whose Create workspace
+creates the workspace, then each step a page of the workspace,
 `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
-sidebar, but for the kind cards, which show the organisation's sidebar, and the steps of
+sidebar, but for the kind cards and the type's page, which show the organisation's sidebar, and the steps of
 a workspace that exists, which show the workspace's sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
 mark and the theme menu.
 
@@ -1257,16 +1259,29 @@ mark and the theme menu.
   on the organisation's overview (`/<org>`) while it has no workspace, under "What will
   your first workspace do?", and on `/<org>/workspaces/new`, under "What will this
   workspace do?". There is one card per type of workspace, "Software factory" the one,
-  each with what you do there, what you connect, and **Choose** at its foot. Each card is
-  20rem wide, or the column's width where the column is narrower, and a further card
-  wraps to the next line. **Choose** creates the workspace, named after the type ("Software factory", then "Software factory 2"), and
-  opens its step Name. A person who may not create the first workspace sees "An owner of
+  each with the type's name, its summary and an arrow, as the type's newest version shows
+  them (`Apiary.Processes.type_texts/1`). The whole card is one link to the type's page,
+  named after the type. Each card is 20rem wide, or the column's width where the column
+  is narrower, and a further card wraps to the next line. A person who may not create the first workspace sees "An owner of
   Acme creates the first workspace." in place of the cards. Where the organisation has as
   many workspaces as the edition allows, New workspace is headed "New workspace", with no
   question, and shows the edition's line in an information notice in place of the cards:
   "Qory Apiary Community allows one workspace per organisation, and Acme has it." The
   cards show no indicator:
   the count starts at the step Name, in the sidebar's group Set up.
+- **The type's page** (`WorkspaceTypeLive`, `/<org>/workspaces/new/qory.software`), for
+  the people New workspace is for; its breadcrumb is the organisation, New workspace,
+  then the type's name. With `workflow_model`, the stages a new workspace starts with fill
+  the window on the view-only canvas (The stages canvas), and a 24rem side panel beside it
+  has the type's name as the page's heading, its summary, "How it works" with its
+  description, "Stages" with "The workspace starts with the stages shown. After you
+  create it, owners and admins can change them in Workspace settings › Stages.", and
+  **Create workspace** under the text. Without the feature there is no canvas: "How it
+  works" takes the main area, and the side panel has the name, the summary and Create
+  workspace. **Create workspace** creates the workspace, named after the type ("Software
+  factory", then "Software factory 2"), and opens its step Name. The page shows nothing
+  of the workspace limit; at the limit, Create workspace shows the edition's line as
+  information. A key of no type with a card is a page that does not exist.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
   settings page's column **About this step** (`.q-context`): the muted colour, no box.
@@ -1655,21 +1670,23 @@ under the header. The Timeline tab's content, Prepare machine included, stops at
 left aligned, so a row's time stays near it; the Details rail, the header and the tabs stay
 where they are, and Network access and Terminal keep the column's whole width. The terminal
 takes the whole window through Focus (The terminal, below). The top bar's breadcrumb ends with Runs, a link to the list,
-and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
+and `Run 14`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
-A run's address, `/:org/:workspace/runs/:run_id`, carries the id Qory Apiary gives the
-run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the run id on the machine,
-or any other value, is not found, and nothing redirects it. The header, Details and Copy
-run id give the whole `rn_` id; lists, titles and the breadcrumb give `rn_` and its first
-eight characters. Details' Record shows the run id on the machine on the next row, "Run id on the
-machine", and the search finds a run by either id. Details and the runs list's preview
-show the instance id Forager claimed for the run, when it claimed one, under "Machine
-id".
+A run's address, `/:org/:workspace/runs/:run_id`, carries the run's number, one count
+for the whole server (`Apiary.Runs.Run`, `number`). An address with the run's `rn_` id,
+the id the API gives, is sent on to the number's address when the run is in the
+workspace; a number or `rn_` id of no run of the workspace, the run id on the machine and
+any other value are not found, the same page for each. The header, the breadcrumb, the
+lists and the titles name a run "Run 14"; Details' Record shows "Run number" with Copy,
+the run id on the machine on the next row, "Run id on the machine", and the search finds
+a run by its `rn_` id or the run id on the machine. The run page, the lists and the
+titles show no `rn_` id. Details and the runs list's preview show the instance id
+Forager claimed for the run, when it claimed one, under "Machine id".
 
-- **The header** is the title (the one the run gave in its `about`, else "Run" and the
-  run's whole id, `Run rn_7k3m9q2xd4h8vbn1`) alone; then, when the run names a kind or subjects, one
-  line of what it is about: the kind, then at most three subjects, each its type and ref
+- **The header** is "Run" and the run's number, `Run 14`, alone; then the title the run
+  gave in its `about`, when it gave one, on the next line; then, when the run names a kind or
+  subjects, one line of what it is about: the kind, then at most three subjects, each its type and ref
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
   the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each
@@ -1679,7 +1696,7 @@ id".
   page), the runtime, the host, when it
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
-  (Copy run id, which copies the `rn_` id, Raw log, Download log), and no
+  (Copy run number, Raw log, Download log, a file named `run-14.log`), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
@@ -1913,6 +1930,45 @@ start when the run has both.
   a run whose log was pruned shows the log's pruned notice and the Transcript alone.
 - **No output.** For a run with neither a log nor runtime events, the column shows an
   empty state in place of the box.
+
+## The stages canvas
+
+`<Canvas.canvas>` in `ApiaryWeb.StagesLive.Canvas` draws a process's stages with React
+Flow (`assets/js/canvas.js`, a separate bundle loaded on first mount). Workspace settings ›
+Stages, Instance settings › Workspace types and a workspace type's page use it.
+
+- **The column.** The stages lie top to bottom on a dotted ground (dots 20 px apart, the
+  theme's text colour at 22 %), each a 360 px card with its name (18 px), its workflows and
+  loops (16 px; a loop is a dashed box inside the card, labelled with its rounds), its gate
+  line and its alert lines, joined to the next card by an arrow. The cards are drawn at
+  zoom 1; a pinch or the zoom buttons zoom from 0.75 to 1.5. You reach stages out of view
+  by scrolling the canvas; there is no "more" control.
+- **Edit mode** (`mode={:edit}`): a "+" above the first card, between two cards and below
+  the last adds a stage there. You drag a card to a new place, or move it one place with
+  the up and down arrow keys; Enter opens it in the inspector beside the canvas.
+- **View-only mode** (`mode={:view}`): no "+", no drag and no move. With
+  `selectable={false}` a card opens nothing and Tab passes it by.
+- **The buttons**, at the canvas's top right in both modes: Zoom out, Zoom in, **Focus**
+  (`f` outside a field; a class on the root that folds the shell and the sidebar away so
+  the box takes the window; Escape leaves) and **Full screen**, the browser's, shown only where the browser
+  has it.
+- **Size.** In a `.q-canvas-fill` box (app.css) the canvas takes the rest of the window,
+  as the terminal does: from 1024 px the page is the window's height, every element down
+  to the box stretches, and the box takes the rest, never under 380 px. A `.q-canvas-side`
+  after the canvas in that box (the inspector, or a side panel) sits beside it, 30rem wide
+  unless `--q-canvas-side` sets another width, and scrolls; below 1024 px it goes under
+  the canvas, which is then 70 % of the window tall. Focus and Full screen show the whole
+  box, the side too. Outside such a box the canvas is as tall as its column. A box that
+  is the page's first element, or comes right after the shell's notices while no notice
+  shows, starts at the top bar, with no page padding above it.
+- **The settings pages.** Workspace settings › Stages and Instance settings › Workspace
+  types each have two tabs under the page's title (`page_tabs/1`, `place="section"`):
+  **Stages**, at the page's address, is the canvas with the inspector beside it in a
+  `.q-canvas-fill` box, right under the tabs; **Details**, at `?tab=details`, starts with
+  the page's sentence, then every other setting (on Workspace types the type's Name,
+  Summary and How it works first) and the history. The version line, **Save**, **Save
+  as trial** (Workspace settings only) and **Discard changes** are at the right end of the tabs' row
+  on both tabs: one draft has the edits of both, and a switch of tabs keeps it.
 
 ## Words
 

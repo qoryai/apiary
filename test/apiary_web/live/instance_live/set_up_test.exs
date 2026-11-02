@@ -751,13 +751,18 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
   # The steps of the flow of a new workspace, the first `current`: every step with the
   # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
-  # Choose on the organisation's overview: the new workspace's Name step.
+  # The Software factory card on the organisation's overview, then Create workspace on the
+  # type's page: the new workspace's Name step.
   defp choose_kind(conn, organisation) do
     {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
-    assert has_element?(lv, "#set-up-card-software")
 
-    lv
-    |> element("#set-up-card-software-choose")
+    assert {:error, {:live_redirect, %{to: to}}} =
+             lv |> element("#set-up-card-software-link") |> render_click()
+
+    {:ok, page, _html} = live(conn, to)
+
+    page
+    |> element("#workspace-type-create")
     |> render_click()
     |> follow_redirect(conn)
   end

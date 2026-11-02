@@ -1606,18 +1606,23 @@ defmodule ApiaryWeb.RunComponentsTest do
   describe "a run's title and what it is about" do
     @public_id "rn_7f3e9b205b1d4c7e"
 
-    test "the title is the one the run gave, else Run and its short id" do
-      titled = %{public_id: @public_id, about_title: "Fix the login redirect"}
-      assert RunComponents.run_title(titled) == "Fix the login redirect"
+    test "a run is Run and its number, with or without the title it gave" do
+      titled = %{public_id: @public_id, number: 14, about_title: "Fix the login redirect"}
+      assert RunComponents.run_title(titled) == "Run 14"
       assert RunComponents.given_title(titled) == "Fix the login redirect"
 
       for untitled <- [
-            %{public_id: @public_id, about_title: nil},
-            %{public_id: @public_id, about_title: ""},
+            %{public_id: @public_id, number: 14, about_title: nil},
+            %{public_id: @public_id, number: 14, about_title: ""},
             # A task is an ordinary label, never the title.
-            %{public_id: @public_id, about_title: nil, labels: %{"task" => "fix-login"}}
+            %{
+              public_id: @public_id,
+              number: 14,
+              about_title: nil,
+              labels: %{"task" => "fix-login"}
+            }
           ] do
-        assert RunComponents.run_title(untitled) == "Run rn_7f3e9b20"
+        assert RunComponents.run_title(untitled) == "Run 14"
         assert RunComponents.given_title(untitled) == nil
       end
     end
@@ -1656,21 +1661,21 @@ defmodule ApiaryWeb.RunComponentsTest do
       do: html |> LazyHTML.from_fragment() |> LazyHTML.query("bdi") |> Enum.map(&LazyHTML.text/1)
 
     test "the title as a page shows it, isolated in a row; one with nothing left is none" do
-      run = %{public_id: @public_id, about_title: @sent}
+      run = %{public_id: @public_id, number: 14, about_title: @sent}
       assert RunComponents.given_title(run) == @sent
       assert RunComponents.shown_run_title(run) == @shown
-      assert RunComponents.run_title(run) == @shown
-      assert bdis(render_component(&RunComponents.run_name/1, run: run)) == [@shown]
+      assert RunComponents.run_title(run) == "Run 14"
+      assert text(render_component(&RunComponents.run_name/1, run: run)) == "Run 14"
 
       blank = %{run | about_title: "\u202E\u200B"}
       assert RunComponents.given_title(blank) == "\u202E\u200B"
       assert RunComponents.shown_run_title(blank) == nil
-      assert RunComponents.run_title(blank) == "Run rn_7f3e9b20"
+      assert RunComponents.run_title(blank) == "Run 14"
       assert RunComponents.shown_run_title(%{run | about_title: " \u200B "}) == nil
 
       html = render_component(&RunComponents.run_name/1, run: blank)
       assert bdis(html) == []
-      assert text(html) == "rn_7f3e9b20"
+      assert text(html) == "Run 14"
     end
 
     test "the about line, a subject's words, its tooltip and its markup as a page shows them" do

@@ -69,7 +69,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
   defp open(conn, scope, run) do
     {:ok, lv, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
     lv
   end
@@ -345,7 +345,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
     test "the quiet tick reads the machine's start on the Timeline tab alone", ctx do
       %{dispatch: dispatch, registered: run} = claimed(ctx.scope)
-      path = ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/runs/#{run.public_id}"
+      path = ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/runs/#{run.number}"
       {:ok, lv, _html} = live(ctx.conn, path <> "/terminal")
 
       dispatched_quietly!(dispatch)
