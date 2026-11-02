@@ -98,22 +98,25 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  # The document of the workspace's current version, with `fun` applied to Explore's
+  # sequence.
+  defp explore_sequence(scope, fun) do
+    Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+      Enum.map(stages, fn
+        %{"id" => @explore} = stage -> Map.update!(stage, "sequence", fun)
+        stage -> stage
+      end)
+    end)
+  end
+
   # Moves `work_item` to a trial version of the workspace's current one with 2 Explore
   # rounds instead of 3; its queued run moves with it and keeps its stored `of`.
   defp two_rounds!(scope, work_item) do
     document =
-      Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
-        Enum.map(stages, fn
-          %{"id" => @explore} = stage ->
-            Map.update!(stage, "sequence", fn sequence ->
-              Enum.map(sequence, fn
-                %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
-                entry -> entry
-              end)
-            end)
-
-          stage ->
-            stage
+      explore_sequence(scope, fn sequence ->
+        Enum.map(sequence, fn
+          %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
+          entry -> entry
         end)
       end)
 
@@ -323,6 +326,35 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-round", "Round 2 of 2")
       assert has_element?(view, "#work-item-step-run", "Run 2 of 2 is queued.")
       refute render(view) =~ "Run 2 of 3 is queued."
+    end
+
+    test "a run queued after Explore's loop counts the runs its entry may have", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Explore: the loop of explore-a-ticket, 3 rounds, then one more workflow outside it.
+      save!(
+        scope,
+        explore_sequence(scope, fn sequence ->
+          sequence ++ [%{"workflow" => "explore-a-ticket"}]
+        end)
+      )
+
+      work_item =
+        Enum.reduce(1..2, taken_in_fixture(scope), fn attempt, work_item ->
+          work_item = end_run!(work_item, questions_result())
+          {:ok, _} = WorkItems.answer(scope, work_item, attempt, %{"1" => "a", "2" => "b"})
+          Repo.get!(WorkItem, work_item.id)
+        end)
+
+      # Round 3 proposes; the workflow after the loop is queued with the runs it may have
+      # in its round, not the loop's rounds.
+      work_item = end_run!(work_item, understood_result())
+      assert %DispatchRun{attempt: 4, of: 6} = newest_run(work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert render(view) =~ "Run 4 of 6 is queued."
+      refute render(view) =~ "Run 4 of 4 is queued."
     end
 
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
@@ -1211,12 +1243,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %Escalation{cause: :round_limit} = escalation(work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      # The step card's "cannot explore again in this take in" is false while Run another
-      # round is on the escalation card: the step card is not shown.
+      # The step card's "the last run of this take in" is false while Run another round is
+      # on the escalation card: the step card is not shown.
       assert has_element?(view, "#work-item-stage-escalation-another")
       refute has_element?(view, "#work-item-stage-escalation-accept")
       refute has_element?(view, "#work-item-step")
-      refute render(view) =~ "cannot explore again"
+      refute render(view) =~ "the last run of this take in."
 
       view
       |> form("#work-item-stage-escalation-form", %{"note" => ""})

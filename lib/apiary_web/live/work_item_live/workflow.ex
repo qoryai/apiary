@@ -107,6 +107,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       queued: state == :running and match?([%{shows: :queued} | _], runs),
       round: get(status, :round),
       rounds: shown_rounds(get(status, :round), get(status, :rounds)),
+      # Whether the work item is in a loop, whose limit `rounds` is.
+      loop: get(status, :loop) == true,
       gaps: lines(get(status, :gaps)),
       runs: runs,
       notes: Enum.map(Stages.notes(row), &note(&1, all)),

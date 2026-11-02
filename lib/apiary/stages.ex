@@ -818,7 +818,9 @@ defmodule Apiary.Stages do
   # nil for a work item the runner has not placed. `scope` decides whether its person may
   # approve the gate; with none, `approvable?` is false. `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
-  # one, the gate of a stage with no workflow is not approvable.
+  # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
+  # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
+  # loop, the limit of the loop it left, which a later entry's runs do not count by.
   @doc false
   @spec status(WorkItem.t(), Scope.t() | nil) :: map | nil
   def status(%WorkItem{} = work_item, scope \\ nil) do
@@ -837,6 +839,7 @@ defmodule Apiary.Stages do
         version: %{id: version.public_id, number: version.number},
         round: work_item.stage_round,
         rounds: shown_rounds(stage, work_item.stage_entry),
+        loop: is_integer(work_item.loop_entry),
         state: state,
         gaps: shown_gaps(escalation, work_item, stage, artifacts),
         outputs: outputs,
