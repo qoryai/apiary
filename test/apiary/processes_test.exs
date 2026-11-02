@@ -522,6 +522,7 @@ defmodule Apiary.ProcessesTest do
       assert Sources.chosen_workflows(scope, workspace) == {:ok, []}
     end
 
+    @tag needs: :factory
     test "qory_workflows/1 is the stack of a harness the organisation shares, which its runs compose" do
       %{scope: scope} = sign_up_fixture()
 

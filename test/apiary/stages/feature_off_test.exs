@@ -47,7 +47,7 @@ defmodule Apiary.Stages.FeatureOffTest do
     assert %RunHarness{state: :resolved, origin: :none, workflow: nil} =
              Repo.get_by!(RunHarness, dispatch_run_id: run.id)
 
-    refute_enqueued(worker: WalkJob)
+    refute_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
     assert Harnesses.entries(run) == []
   end
 

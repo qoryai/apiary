@@ -200,14 +200,14 @@ defmodule Apiary.Processes do
   qory_workflows/0 is the workflows of the copied `software` stack of the Qory harness
   (Apiary.Harnesses.QoryCopy.workflows/1), the stack of the type's template: for what
   has no workspace, and for the name that makes a run Explore
-  (`Apiary.Stages.explore_workflow/0`). A workspace's marks read `qory_workflows/1`.
+  (Apiary.Stages.explore_workflow/0). A workspace's marks read `qory_workflows/1`.
   """
   @spec qory_workflows() :: [String.t()]
   def qory_workflows, do: QoryCopy.workflows("software")
 
   @doc """
   qory_workflows/1 is the workflows the stack of a workspace on the Qory harness lists,
-  given the harness as `Apiary.Stacks.Sources.chosen/1` returns it: the stack its runs
+  given the harness as Apiary.Stacks.Sources.chosen/1 returns it: the stack its runs
   compose. With no row that is `Workspace.qory_stack/1`, and `core` lists none. With a
   row, it is the stack of the row's document, which a harness the organisation shares
   sets for every workspace. A stack the copy does not have lists none.

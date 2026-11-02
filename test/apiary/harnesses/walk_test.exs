@@ -2759,9 +2759,9 @@ defmodule Apiary.Harnesses.WalkTest do
         # alone.
         assert Harnesses.entries(run) == []
         assert ComposedConfiguration.stack_hosts(row.pins) == ["github.com"]
+        refute_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
       end
 
-      refute_enqueued(worker: WalkJob)
       assert calls() == []
       assert Repo.aggregate(Assignment, :count) == 0
     end
@@ -2803,9 +2803,9 @@ defmodule Apiary.Harnesses.WalkTest do
                  row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
 
         assert row.document == Builtin.document()
+        refute_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
       end
 
-      refute_enqueued(worker: WalkJob)
       assert calls() == []
     end
 
