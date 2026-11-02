@@ -6,6 +6,7 @@ defmodule Apiary.Harnesses.QoryCopyTest do
 
   alias Apiary.Harnesses.{QoryCopy, Reader}
   alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Processes
   alias Mix.Tasks.Apiary.Harness.Update
 
   @root Path.expand("../../..", __DIR__)
@@ -57,6 +58,40 @@ defmodule Apiary.Harnesses.QoryCopyTest do
 
     {:ok, exports} = Reader.exports(QoryCopy.file("qory.yaml"))
     assert harness.stack in exports.stacks
+  end
+
+  describe "the copied template" do
+    test "is the software type's, and the process passes the process rules" do
+      template = QoryCopy.template()
+
+      assert template.type == "qory.software"
+      assert Processes.validate(template.process) == :ok
+    end
+
+    test "keeps today's stage ids, which the migrated work items keep" do
+      assert Enum.map(QoryCopy.template().process["stages"], &{&1["id"], &1["name"]}) == [
+               {"st_r79kph11eg", "Explore"},
+               {"st_p9w5cvh311", "Shape"},
+               {"st_6ns22c4pav", "Build"},
+               {"st_m1mqbeywdg", "Verify"},
+               {"st_k9kpv17xmy", "Release"}
+             ]
+    end
+
+    test "has the texts of its module" do
+      assert QoryCopy.texts() == QoryCopy.Texts.texts("software-factory")
+    end
+  end
+
+  describe "the copied stacks' workflows" do
+    test "are the names each stack lists: software lists explore-a-ticket, core none" do
+      assert QoryCopy.workflows("software") == ["explore-a-ticket"]
+      assert QoryCopy.workflows("core") == []
+    end
+
+    test "a stack the copy does not have raises" do
+      assert_raise FunctionClauseError, fn -> QoryCopy.workflows("missing") end
+    end
   end
 
   describe "the template's texts" do

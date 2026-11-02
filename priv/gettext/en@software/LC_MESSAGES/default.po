@@ -4502,7 +4502,6 @@ msgid "Agent"
 msgstr ""
 
 #: lib/apiary/harnesses/qory_copy/texts.ex
-#: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
 msgid "Agents change code in your repositories. Each ticket needs a repository."
@@ -8037,7 +8036,6 @@ msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not st
 msgstr ""
 
 #: lib/apiary/harnesses/qory_copy/texts.ex
-#: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
 msgid "Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.\n\nYou connect: where work comes from, where changes go, and a model."

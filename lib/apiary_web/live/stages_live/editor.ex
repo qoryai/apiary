@@ -220,7 +220,9 @@ defmodule ApiaryWeb.StagesLive.Editor do
     end
   end
 
-  defp first_workflow(socket), do: List.first(socket.assigns.declared) || "explore-a-ticket"
+  defp first_workflow(socket),
+    do: List.first(socket.assigns.declared) || List.first(Apiary.Processes.qory_workflows())
+
   defp first_type(socket), do: List.first(socket.assigns.types).name
 
   defp new_name(doc) do

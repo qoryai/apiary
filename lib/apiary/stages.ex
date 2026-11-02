@@ -73,8 +73,6 @@ defmodule Apiary.Stages do
   alias Apiary.Stages.{Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
   alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
 
-  # Transition (D1): the workflow whose runs return today's explore v1 result.
-  @explore_workflow "explore-a-ticket"
   # The runs a workflow outside a loop may have in one round of its entry: its first,
   # and one after each set of answers, as today's Explore has in one take in.
   @question_runs 3
@@ -276,17 +274,28 @@ defmodule Apiary.Stages do
   # workflow model off, which keep the workflow the Workflow page saved
   # (`Apiary.Stacks.workflow/2`).
   #
-  # Transition, as D1: nil for explore-a-ticket too. Explore v1 runs exactly as today's
+  # Transition, as D1: nil for `explore_workflow/0` too. Explore v1 runs exactly as today's
   # Explore run, by the Workflow page's saved workflow, until the harness change.
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
-  def run_workflow(%DispatchRun{workflow: @explore_workflow}), do: nil
-
   def run_workflow(%DispatchRun{stage_id: stage_id, workflow: workflow})
       when is_binary(stage_id) and is_binary(workflow),
-      do: if(on?(), do: workflow)
+      do: if(workflow != explore_workflow() and on?(), do: workflow)
 
   def run_workflow(%DispatchRun{}), do: nil
+
+  # Transition (D1): explore_workflow/0 is the workflow whose runs return today's explore
+  # v1 result: the first workflow of the default process that the Qory harness lists, in
+  # stage order. Nil for none, and then no stage is Explore.
+  @doc false
+  @spec explore_workflow() :: String.t() | nil
+  def explore_workflow do
+    listed = Processes.qory_workflows()
+
+    Processes.default_document("software")["stages"]
+    |> Enum.flat_map(&Runner.workflows/1)
+    |> Enum.find(&(&1 in listed))
+  end
 
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
   # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`), which passes
@@ -414,7 +423,7 @@ defmodule Apiary.Stages do
 
   # confirmed_stage_id/2 is the stage whose proposal a confirmation of the run `attempt`
   # of the work item's take in confirms: the stage that run ran in, or, for a run with no
-  # stage, the stage that runs explore-a-ticket (`explore_stage_id/1`).
+  # stage, the stage that runs `explore_workflow/0` (`explore_stage_id/1`).
   @doc false
   @spec confirmed_stage_id(WorkItem.t(), pos_integer) :: String.t() | nil
   def confirmed_stage_id(%WorkItem{id: id, take_in: take_in} = work_item, attempt) do
@@ -427,13 +436,14 @@ defmodule Apiary.Stages do
   end
 
   # explore_stage_id/1 is the id of the stage of the work item's process version that runs
-  # explore-a-ticket; nil for none.
+  # `explore_workflow/0`; nil for none.
   @doc false
   @spec explore_stage_id(WorkItem.t()) :: String.t() | nil
   def explore_stage_id(%WorkItem{} = work_item) do
     case Processes.version_for(work_item) do
       %{document: %{"stages" => stages}} ->
-        Enum.find_value(stages, &(@explore_workflow in Runner.workflows(&1) && &1["id"]))
+        explore = explore_workflow()
+        Enum.find_value(stages, &(explore in Runner.workflows(&1) && &1["id"]))
 
       _none ->
         nil
@@ -639,10 +649,10 @@ defmodule Apiary.Stages do
   end
 
   # Today's confirmation, where Explore's proposal waits for it at the gate of the stage
-  # that runs explore-a-ticket: the gate approves what a member confirms, so the two are
+  # that runs `explore_workflow/0`: the gate approves what a member confirms, so the two are
   # one act. The gate of any other stage confirms nothing.
   defp confirm_explore(scope, work_item, stage) do
-    if @explore_workflow in Runner.workflows(stage),
+    if explore_workflow() in Runner.workflows(stage),
       do: confirm_today(scope, work_item),
       else: {:ok, false}
   end
@@ -1142,7 +1152,7 @@ defmodule Apiary.Stages do
 
   # The stage's workflows that hold it back: with a snapshot of the names the workspace's
   # harness listed, each that is in neither it nor the declarations
-  # (`Apiary.Processes.workflow_declaration/2`: explore-a-ticket and the saved workflow);
+  # (`Apiary.Processes.workflow_declaration/2`: the Qory harness's and the saved workflow);
   # with no snapshot, none, and the run starts.
   defp undeclared(workspace, declarations) do
     case Processes.declared_snapshot(workspace) do
@@ -1261,15 +1271,18 @@ defmodule Apiary.Stages do
        when cause in [:closed, :undone, :released, :superseded],
        do: :ignored
 
-  defp run_result(work_item, %DispatchRun{workflow: workflow, step: "explore"} = run, context)
-       when workflow in [nil, @explore_workflow],
-       do: {:ok, explore_result(work_item, run, context)}
+  defp run_result(work_item, %DispatchRun{} = run, context) do
+    cond do
+      explore_run?(run) -> {:ok, explore_result(work_item, run, context)}
+      run.end_cause == :run_ended -> {:ok, reported_result(work_item, run)}
+      true -> {:ok, {:stopped, stop_cause(run, work_item, context)}}
+    end
+  end
 
-  defp run_result(work_item, %DispatchRun{end_cause: :run_ended} = run, _context),
-    do: {:ok, reported_result(work_item, run)}
+  defp explore_run?(%DispatchRun{step: "explore", workflow: workflow}),
+    do: is_nil(workflow) or workflow == explore_workflow()
 
-  defp run_result(work_item, run, context),
-    do: {:ok, {:stopped, stop_cause(run, work_item, context)}}
+  defp explore_run?(%DispatchRun{}), do: false
 
   # D1: today's explore v1 result as artifacts.
   defp explore_result(

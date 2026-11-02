@@ -918,11 +918,13 @@ defmodule ApiaryWeb.StagesLiveTest do
       # The choice's stack, and not the stack the saved workflow document extends.
       assert %{names: ["review"]} = Processes.declared_snapshot(scope.workspace)
 
-      # The field of Explore, the selected stage, suggests the harness's names, explore-a-ticket
-      # of the Qory harness and fix, the saved workflow, among them.
-      for name <- ["explore-a-ticket", "fix", "review"] do
+      # The field of Explore, the selected stage, suggests the harness's names, with fix, the
+      # saved workflow, among them, and not the Qory harness's.
+      for name <- ["fix", "review"] do
         assert has_element?(view, ~s(#stage-panel datalist option[value="#{name}"])), name
       end
+
+      refute has_element?(view, ~s(#stage-panel datalist option[value="explore-a-ticket"]))
 
       # A name the harness repository does not list: list it in the stack, or choose another.
       view
@@ -1125,6 +1127,34 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert Enum.any?(calls(), &match?({"read", _call}, &1))
       assert Processes.declared_snapshot(scope.workspace) == snapshot
       refute has_element?(view, "#stages-workflows-error")
+    end
+  end
+
+  describe "a harness repository with no workflows and no saved workflow" do
+    test "a new entry starts with the Qory harness's first name", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: scope.workspace.organisation_id,
+        workspace_id: scope.workspace.id,
+        choice: :repository,
+        version_kind: :commit,
+        version_name: String.duplicate("c3", 20),
+        harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: core\n"
+      })
+
+      :ok = Processes.record_declared(scope.workspace, [])
+      assert Processes.declared_workflows(scope.workspace) == []
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Shape")
+
+      view |> element("#stage-add-entry") |> render_click()
+
+      assert card(view, "Shape")["sequence"] == [%{"workflow" => "explore-a-ticket"}]
     end
   end
 

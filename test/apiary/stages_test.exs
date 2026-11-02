@@ -199,6 +199,36 @@ defmodule Apiary.StagesTest do
       assert Stages.check_workflows(other, work_item, read.([])) == {:error, :not_found}
     end
 
+    test "on a harness repository whose snapshot does not list the Explore workflow, Explore waits",
+         %{scope: scope} do
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: scope.workspace.organisation_id,
+        workspace_id: scope.workspace.id,
+        choice: :repository,
+        version_kind: :commit,
+        version_name: String.duplicate("c3", 20),
+        harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: core\n"
+      })
+
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      work_item = take_in!(scope)
+
+      assert work_item.stage_state == :waiting_workflow
+      assert runs(work_item) == []
+
+      assert %{waiting_workflow: "explore-a-ticket"} = Stages.status(work_item)
+    end
+
+    test "on the Qory harness with a snapshot that does not list it, Explore starts", %{
+      scope: scope
+    } do
+      :ok = Processes.record_declared(scope.workspace, [])
+      work_item = take_in!(scope)
+
+      assert work_item.stage_state == :running
+      assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
+    end
+
     test "Check again on the Qory harness reads nothing and records the Qory names", %{
       scope: scope
     } do
@@ -455,6 +485,17 @@ defmodule Apiary.StagesTest do
 
       assert [%{check: :passed}, %{check: :missing}, %{check: :not_checked}] =
                Stages.status(work_item).outputs
+    end
+  end
+
+  describe "run_workflow/1" do
+    test "is nil for the Explore workflow and the name of any other" do
+      assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: "explore-a-ticket"}) ==
+               nil
+
+      assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: "review"}) == "review"
+      assert Stages.run_workflow(%DispatchRun{stage_id: nil, workflow: "review"}) == nil
+      assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: nil}) == nil
     end
   end
 
