@@ -236,6 +236,32 @@ defmodule Apiary.Runs.StepsTest do
       assert {steps(scope, run), log_steps(run)} == expected
     end
 
+    test "keeps a push step between the session's exit and the run's exit, as Forager sends it",
+         %{scope: scope, run: run} do
+      # The shape of Forager's `fixtures/link/link-batch-push-step.json`.
+      project!(run, [
+        {1, "session.exited",
+         %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 540_000}},
+        started(2, 2, "push work to git.example.com/acme/web-shop", "push"),
+        {3, "run.log", step_log_data(2, "To https://git.example.com/acme/web-shop.git\n")},
+        exited(4, 2),
+        {5, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 601_400}}
+      ])
+
+      assert [
+               %{
+                 step: 2,
+                 kind: "push",
+                 state: "succeeded",
+                 exit_code: 0,
+                 started_sequence: 2,
+                 exited_sequence: 4
+               }
+             ] = steps(scope, run)
+
+      assert log_steps(run) == [{3, 2}]
+    end
+
     test "the database holds a step's number, state and kind to their lists", %{run: run} do
       row = fn attrs ->
         Repo.insert!(
@@ -263,7 +289,7 @@ defmodule Apiary.Runs.StepsTest do
       for {kind, step} <- Enum.with_index(Step.kinds(), 1),
           do: assert(%Step{} = row.(%{step: step, kind: kind}))
 
-      assert %Step{state: "running", kind: nil} = row.(%{step: 7})
+      assert %Step{state: "running", kind: nil} = row.(%{step: 9})
     end
 
     test "the steps go with their run", %{scope: scope, run: run} do
