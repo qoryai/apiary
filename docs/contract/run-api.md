@@ -13,10 +13,12 @@ The code is in `lib/apiary_web/contract/run_api/`.
 
 ## Requests
 
-Every path is under `/v1/runs/<run_id>/`, where `<run_id>` is the run's id as the run's
-documents contain it. Qory Apiary identifies the run by this run id, under the gateway's
-access key: the gateway sends only the id of a run it serves, and a request for a run
-the key does not serve gets `404` `not_found`.
+Every path is under `/v1/runs/<run_id>/`, where `<run_id>` is the run's id: `run_id` in
+the signed `201` to the redemption of the run code, beside `run_key` and `documents`
+(`run_answer` in Forager's enrolment contract,
+`contracts/forager/v1/enrolment.schema.json`). Qory Apiary identifies the run by this
+run id, under the gateway's access key: the gateway sends only the id of a run it
+serves, and a request for a run the key does not serve gets `404` `not_found`.
 
 | Method and path | What it returns |
 |---|---|
@@ -155,7 +157,8 @@ Returns `200` with the index:
 none; `newest_version` is the number of the newest version. `changed_after_approval` is
 true when the newest version is newer than the approved one and was made in a stage
 other than the work item's stage. A version
-written by a run has the run's id as the run's documents contain it; a version written
+written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
+the answer to the redemption of the run code; a version written
 by a person has `"writer": {"kind": "person", "name": "dana"}`. An approval is
 `{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no
 file contents; `GET artifacts/<version_id>/files/<filename>` returns them.

@@ -166,8 +166,9 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # A version written by a run has the run's id, as the run's documents contain it; one
-  # written by a person has the person's name.
+  # A version written by a run has the run's id, `run_id` of the answer to the redemption
+  # of the run code (`Apiary.Contract.Enrolment.run_answer_body/1`); one written by a
+  # person has the person's name.
   defp writer(version, context) do
     case text(get(version, :writer)) do
       "run" ->
@@ -234,8 +235,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
 
   defp name(context, user_id), do: Map.get(context.names, user_id, Inputs.former_member())
 
-  # The run id of each run of the queue, as the run's documents contain it, by the row's
-  # id, which `Apiary.Artifacts` keeps on a version.
+  # The run id of each run of the queue, as the answer to the redemption of the run code
+  # has it, by the row's id, which `Apiary.Artifacts` keeps on a version.
   defp run_ids(ids) do
     case ids |> Enum.filter(&is_binary/1) |> Enum.uniq() do
       [] ->
