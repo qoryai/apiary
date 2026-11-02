@@ -122,7 +122,10 @@ defmodule Mix.Tasks.Apiary.Harness.UpdateTest do
   end
 
   test "stops before writing for a commit the checkout does not have", ctx do
-    assert_raise Mix.Error, ~r/has no commit 0000000/, fn -> run(ctx, "0000000") end
+    assert_raise Mix.Error, ~r/\ARun git fetch in .*: it has no commit 0000000\.\z/, fn ->
+      run(ctx, "0000000")
+    end
+
     refute File.exists?(ctx.output)
     refute File.exists?(ctx.texts)
   end
@@ -155,7 +158,10 @@ defmodule Mix.Tasks.Apiary.Harness.UpdateTest do
 
     commit = ctx.env |> git!(["-C", ctx.checkout, "rev-parse", "HEAD"]) |> String.trim()
 
-    assert_raise Mix.Error, ~r/has no file stacks\/software\/qory-stack.yaml/, fn ->
+    message =
+      "Choose a commit that has stacks/software/qory-stack.yaml: #{commit} has no such file."
+
+    assert_raise Mix.Error, message, fn ->
       run(ctx, commit)
     end
 
@@ -165,7 +171,9 @@ defmodule Mix.Tasks.Apiary.Harness.UpdateTest do
   test "stops before writing when a file is not YAML the reader takes", ctx do
     commit = commit!(ctx.env, ctx.checkout, %{"qory.yaml" => "a: &x 1\nb: *x\n"})
 
-    assert_raise Mix.Error, ~r/qory.yaml at #{commit} is not readable: :alias/, fn ->
+    message = "Correct qory.yaml at #{commit}: it is not readable (:alias)."
+
+    assert_raise Mix.Error, message, fn ->
       run(ctx, commit)
     end
 
@@ -178,7 +186,8 @@ defmodule Mix.Tasks.Apiary.Harness.UpdateTest do
         "modules/software-factory/process.yaml" => "name: Example\ndescription: Text\n"
       })
 
-    assert_raise Mix.Error, ~r/process.yaml has no text summary/, fn -> run(ctx, commit) end
+    message = "Add the text summary to modules/software-factory/process.yaml."
+    assert_raise Mix.Error, message, fn -> run(ctx, commit) end
     refute File.exists?(ctx.output)
   end
 end

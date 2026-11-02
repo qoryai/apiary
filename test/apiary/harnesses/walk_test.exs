@@ -530,6 +530,27 @@ defmodule Apiary.Harnesses.WalkTest do
                Walk.run(ctx.input)
     end
 
+    test "a base's root file whose exports.modules is no list of text walks on to its stack",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      for modules <- ["[1]", "core"] do
+        root = "exports:\n  stacks: [web]\n  modules: #{modules}\n"
+
+        serve([ctx.run],
+          covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+          files: Map.put(@base_files, {"R_harness", "harness.yaml"}, root)
+        )
+
+        assert {:ok, walked} = Walk.run(ctx.input), modules
+
+        assert walked.pins == [
+                 %{"git" => @harness, "ref" => "v1", "at" => "c-R_harness"},
+                 %{"git" => @tools, "ref" => "v2", "at" => "c-R_tools"}
+               ]
+      end
+    end
+
     test "a file whose base has a name alone fails invalid, and the rule names the base", ctx do
       serve([ctx.run],
         covered: covering(ctx),

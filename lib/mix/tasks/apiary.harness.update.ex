@@ -97,7 +97,9 @@ defmodule Mix.Tasks.Apiary.Harness.Update do
 
         cond do
           not Regex.match?(@full_commit, commit) ->
-            Mix.raise("git rev-parse returned #{inspect(commit)} for #{given}.")
+            Mix.raise(
+              "Check the commit id: git rev-parse returned #{inspect(commit)} for #{given}."
+            )
 
           # git takes a branch or tag of that name before an abbreviated commit id.
           not String.starts_with?(commit, given) ->
@@ -111,7 +113,7 @@ defmodule Mix.Tasks.Apiary.Harness.Update do
         end
 
       {_out, _status} ->
-        Mix.raise("The checkout #{checkout} has no commit #{given}.")
+        Mix.raise("Run git fetch in #{checkout}: it has no commit #{given}.")
     end
   end
 
@@ -123,19 +125,21 @@ defmodule Mix.Tasks.Apiary.Harness.Update do
             bytes
 
           {:ok, _other} ->
-            Mix.raise("#{path} at #{commit} is not a YAML mapping.")
+            Mix.raise("Correct #{path} at #{commit}: it is not a YAML mapping.")
 
           {:error, reason} ->
-            Mix.raise("#{path} at #{commit} is not readable: #{inspect(reason)}.")
+            Mix.raise("Correct #{path} at #{commit}: it is not readable (#{inspect(reason)}).")
         end
 
       {_out, _status} ->
-        Mix.raise("The commit #{commit} has no file #{path}.")
+        Mix.raise("Choose a commit that has #{path}: #{commit} has no such file.")
     end
   end
 
   defp git(checkout, args) do
-    unless File.dir?(checkout), do: Mix.raise("The checkout #{checkout} is not a folder.")
+    unless File.dir?(checkout),
+      do: Mix.raise("Give a checkout folder: #{checkout} is not a folder.")
+
     System.cmd("git", ["-C", checkout | args])
   end
 
@@ -145,7 +149,7 @@ defmodule Mix.Tasks.Apiary.Harness.Update do
     for key <- ["name", "summary", "description"], into: %{} do
       case process[key] do
         text when is_binary(text) and text != "" -> {String.to_atom(key), text}
-        _other -> Mix.raise("#{path} has no text #{key}.")
+        _other -> Mix.raise("Add the text #{key} to #{path}.")
       end
     end
   end

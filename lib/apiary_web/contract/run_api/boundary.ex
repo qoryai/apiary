@@ -99,6 +99,11 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   @spec name?(term) :: boolean
   def name?(name), do: Type.name?(name)
 
+  # standard?/1 is whether `name` is the name of a standard artifact type
+  # (`Apiary.Artifacts.Type.standard_names/0`).
+  @spec standard?(term) :: boolean
+  def standard?(name), do: name in Type.standard_names()
+
   # filename?/1 is whether `name` is a filename an artifact's file may have
   # (`Apiary.Artifacts.Filename.valid?/1`).
   @spec filename?(term) :: boolean

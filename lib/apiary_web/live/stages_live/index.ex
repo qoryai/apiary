@@ -685,7 +685,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                     }
                     class="ml-1 font-medium text-accent underline underline-offset-[3px]"
                   >
-                    {gettext("Define it")}
+                    {type_fix(problem)}
                   </.link>
                 </li>
               </ul>
@@ -872,4 +872,12 @@ defmodule ApiaryWeb.StagesLive.Index do
     do: Words.input_not_output(stage_name(doc, id), type)
 
   defp stage_name(doc, id), do: (Processes.stage(doc, id) || %{})["name"]
+
+  # The link beside a type the workspace does not have: a standard name is a hidden type,
+  # which cannot be defined.
+  defp type_fix({:missing_type, _id, type}) do
+    if type in Apiary.Artifacts.Type.standard_names(),
+      do: gettext("Switch it on"),
+      else: gettext("Define it")
+  end
 end

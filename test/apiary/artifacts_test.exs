@@ -5,9 +5,12 @@ defmodule Apiary.ArtifactsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Artifacts
+  alias Apiary.{Artifacts, Processes, WorkItems}
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Store, Type, Version}
+  alias Apiary.ArtifactStoreHook
   alias Apiary.Audit.Entry
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
   @moduletag :tmp_dir
@@ -110,6 +113,184 @@ defmodule Apiary.ArtifactsTest do
 
       assert Artifacts.type(scope.workspace, "bids") == nil
       refute "bids" in Enum.map(Artifacts.types(scope.workspace), & &1.name)
+    end
+  end
+
+  # Sets the workspace's list in the database, for a list `switch_type/4` would not write.
+  defp show!(%{id: id}, names) do
+    {1, _rows} =
+      Repo.update_all(from(w in Workspace, where: w.id == ^id),
+        set: [shown_standard_types: names]
+      )
+  end
+
+  defp names(types), do: Enum.map(types, & &1.name)
+
+  describe "a workspace's shown standard types" do
+    setup %{scope: scope} do
+      {:ok, type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-findings",
+          "base_view" => "document"
+        })
+
+      %{custom: type}
+    end
+
+    test "with no list, every standard type is shown, marked as shown", %{scope: scope} do
+      assert names(Artifacts.types(scope.workspace)) ==
+               Type.standard_names() ++ ["demo-findings"]
+
+      assert names(Artifacts.all_types(scope.workspace)) ==
+               Type.standard_names() ++ ["demo-findings"]
+
+      assert Enum.all?(Artifacts.all_types(scope.workspace), & &1.shown)
+      assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
+    end
+
+    test "with a list, only its types and the always-on types are shown", %{scope: scope} do
+      show!(scope.workspace, ["mockup", "change"])
+
+      assert names(Artifacts.types(scope.workspace)) ==
+               ~w(mockup change proposal questions verdict demo-findings)
+
+      assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
+      assert Artifacts.type(scope.workspace, "explainer") == nil
+    end
+
+    test "an empty list keeps the always-on types and the custom types", %{scope: scope} do
+      show!(scope.workspace, [])
+
+      assert names(Artifacts.types(scope.workspace)) ==
+               ~w(proposal questions verdict demo-findings)
+
+      for name <- Type.always_on() do
+        assert %Type{name: ^name, standard: true} = Artifacts.type(scope.workspace, name)
+      end
+
+      assert %Type{name: "demo-findings"} = Artifacts.type(scope.workspace, "demo-findings")
+    end
+
+    test "all_types/1 lists every type, with whether each standard type is shown", %{
+      scope: scope
+    } do
+      show!(scope.workspace, ["mockup"])
+      types = Artifacts.all_types(scope.workspace)
+
+      assert names(types) == Type.standard_names() ++ ["demo-findings"]
+
+      assert for(%Type{standard: true, shown: true, name: name} <- types, do: name) ==
+               ~w(mockup proposal questions verdict)
+    end
+
+    test "are read by the workspace's id, whatever the struct has", %{scope: scope} do
+      unset = %Workspace{id: scope.workspace.id, organisation_id: scope.organisation.id}
+      older = Repo.get!(Workspace, scope.workspace.id)
+      assert older.shown_standard_types == nil
+
+      show!(scope.workspace, ["mockup"])
+
+      for workspace <- [unset, older] do
+        assert workspace.shown_standard_types == nil
+        assert Artifacts.type(workspace, "explainer") == nil
+        refute "explainer" in names(Artifacts.types(workspace))
+
+        assert %Type{name: "explainer", shown: false} =
+                 Enum.find(Artifacts.all_types(workspace), &(&1.name == "explainer"))
+      end
+    end
+
+    test "an always-on type or a custom type reads no list", %{scope: scope} do
+      show!(scope.workspace, [])
+      handler = "shown-types-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{query: query}, _config ->
+          if self() == parent, do: send(parent, {:query, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert %Type{} = Artifacts.type(scope.workspace, "verdict")
+      assert %Type{} = Artifacts.type(scope.workspace, "demo-findings")
+      refute_received {:query, "SELECT w0.\"shown_standard_types\"" <> _rest}
+
+      assert Artifacts.type(scope.workspace, "explainer") == nil
+      assert_received {:query, "SELECT w0.\"shown_standard_types\"" <> _rest}
+    end
+
+    test "a push of a hidden type is refused, and writes no row", ctx do
+      show!(ctx.scope.workspace, ["mockup"])
+
+      for actor <- [{:run, ctx.run}, {:person, ctx.scope}] do
+        assert {:error, {:unknown_type, "explainer"}} =
+                 Artifacts.push(actor, ctx.work_item, "explainer", [doc()])
+      end
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+      assert stored_paths(ctx.root) == []
+    end
+
+    test "a type hidden between the push's read and its lock is refused, with no row", ctx do
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+
+      assert {:error, {:unknown_type, "explainer"}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+    end
+
+    test "a person's push of a type hidden before the lock writes no version or audit entry",
+         ctx do
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+
+      assert {:error, {:unknown_type, "explainer"}} =
+               Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [doc()])
+
+      assert count(Version) == 0
+      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+    end
+
+    test "a push goes on when the list changes before the lock and still has the type", ctx do
+      show!(ctx.scope.workspace, ["explainer"])
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      assert Repo.get!(Workspace, ctx.scope.workspace.id).shown_standard_types ==
+               ["explainer", "mockup"]
+    end
+
+    test "a push of an always-on type or a custom type does not depend on the list", ctx do
+      show!(ctx.scope.workspace, [])
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "verdict", [
+                 json("verdict.json", %{"verdict" => "passed"})
+               ])
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "demo-findings", [doc()])
+    end
+
+    test "the Exists check is false for a hidden type", ctx do
+      stage = "st_aaaaaaaaaa"
+
+      {:ok, _version} =
+        Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()], stage_id: stage)
+
+      assert Artifacts.exists?(ctx.work_item, stage, "explainer")
+
+      show!(ctx.scope.workspace, ["mockup"])
+      refute Artifacts.exists?(ctx.work_item, stage, "explainer")
     end
   end
 
@@ -304,6 +485,305 @@ defmodule Apiary.ArtifactsTest do
         Artifacts.push({:run, run}, context.work_item, "bids", [file("bids.csv", "a,b")])
 
       assert {:error, :in_use} = Artifacts.delete_type(scope, type)
+    end
+  end
+
+  describe "switch_type/4" do
+    # The default process with `type` among the outputs, or the inputs, of its first stage.
+    defp with_type(type, key \\ "outputs") do
+      document = Processes.default_document("software")
+      [first | rest] = document["stages"]
+      first = Map.update!(first, key, &(&1 ++ [%{"type" => type, "required" => true}]))
+      %{document | "stages" => [first | rest]}
+    end
+
+    # A past version that has `type`: `process_version_id` of a work item that keeps it.
+    defp past_version(scope, type) do
+      {:ok, version} = Processes.save(scope, scope.workspace, with_type(type))
+
+      {:ok, _current} =
+        Processes.save(scope, scope.workspace, Processes.default_document("software"))
+
+      Repo.reload!(version)
+    end
+
+    defp keep!(%WorkItem{id: id}, version, fields \\ []) do
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^id),
+          set: [process_version_id: version.id] ++ fields
+        )
+    end
+
+    defp stored(scope), do: Repo.get!(Workspace, scope.workspace.id).shown_standard_types
+
+    defp switches, do: Repo.all(from e in Entry, where: e.action == "artifact_type.edit")
+
+    test "off stores the other names that can be hidden, in the standard order", ctx do
+      assert {:ok, %Type{name: "mockup", shown: false}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
+
+      assert stored(ctx.scope) ==
+               ~w(acceptance-criteria explainer decision-record screenshot demo-video change)
+
+      assert Artifacts.type(ctx.scope.workspace, "mockup") == nil
+      refute "mockup" in names(Artifacts.types(ctx.scope.workspace))
+      refute Enum.find(Artifacts.all_types(ctx.scope.workspace), &(&1.name == "mockup")).shown
+    end
+
+    test "on adds the name back in the standard order", ctx do
+      show!(ctx.scope.workspace, ~w(acceptance-criteria change))
+
+      assert {:ok, %Type{name: "mockup", shown: true}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", true)
+
+      assert stored(ctx.scope) == ~w(acceptance-criteria mockup change)
+      assert %Type{name: "mockup"} = Artifacts.type(ctx.scope.workspace, "mockup")
+    end
+
+    test "stores no always-on name", ctx do
+      show!(ctx.scope.workspace, ~w(mockup verdict))
+
+      assert {:ok, %Type{}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", true)
+
+      assert stored(ctx.scope) == ~w(explainer mockup)
+    end
+
+    test "a repeat of the state writes no row and no audit entry", ctx do
+      before = Repo.get!(Workspace, ctx.scope.workspace.id)
+
+      assert {:ok, %Type{shown: true}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", true)
+
+      assert Repo.get!(Workspace, ctx.scope.workspace.id) == before
+
+      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+      show!(ctx.scope.workspace, ["mockup"])
+
+      assert {:ok, %Type{shown: false}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+
+      assert stored(ctx.scope) == ["mockup"]
+      assert switches() == []
+    end
+
+    test "writes an audit entry for each change, about the workspace", ctx do
+      {:ok, _type} = Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
+      {:ok, _type} = Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", true)
+
+      assert [
+               %Entry{details: %{"change" => "hide", "type" => "mockup"}} = hidden,
+               %Entry{details: %{"change" => "show", "type" => "mockup"}}
+             ] = Enum.sort_by(switches(), & &1.details["change"])
+
+      assert hidden.workspace_id == ctx.scope.workspace.id
+    end
+
+    test "fails for a type an artifact of the workspace has", ctx do
+      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      assert {:error, :has_artifacts} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+
+      assert stored(ctx.scope) == nil
+      assert switches() == []
+    end
+
+    test "checks the artifacts before the current process", ctx do
+      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"))
+
+      assert {:error, :has_artifacts} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "fails for a type a stage of the current process has", ctx do
+      for {key, type} <- [{"outputs", "explainer"}, {"inputs", "mockup"}] do
+        {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type(type, key))
+
+        assert {:error, :current_process} =
+                 Artifacts.switch_type(ctx.scope, ctx.scope.workspace, type, false)
+      end
+
+      assert stored(ctx.scope) == nil
+    end
+
+    test "checks the current process before the versions in use", ctx do
+      {:ok, _trial} =
+        Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"), trial: true)
+
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"))
+
+      assert {:error, :current_process} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "fails for a type of a trial version", ctx do
+      {:ok, _trial} =
+        Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"), trial: true)
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "fails for a type of a version a work item keeps", ctx do
+      keep!(ctx.work_item, past_version(ctx.scope, "explainer"))
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "a past version no work item keeps does not count", ctx do
+      past_version(ctx.scope, "explainer")
+
+      assert {:ok, %Type{shown: false}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "a version only an ended work item keeps does not count", ctx do
+      version = past_version(ctx.scope, "explainer")
+      now = DateTime.utc_now()
+
+      for state <- WorkItems.State.ended_states() do
+        keep!(ctx.work_item, version,
+          state: state,
+          declined_at: if(state == :declined, do: now),
+          closed_at: if(state == :closed, do: now)
+        )
+
+        show!(ctx.scope.workspace, nil)
+
+        assert {:ok, %Type{shown: false}} =
+                 Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+      end
+    end
+
+    # A run of the work item's take in, in `state`, on `version`.
+    defp run_on!(work_item, version, state) do
+      %{dispatch_run: run} = explore_run_fixture(work_item, state: state)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [process_version_id: version.id]
+        )
+
+      run
+    end
+
+    test "a closed work item counts only while a run on its version has not ended", ctx do
+      version = past_version(ctx.scope, "explainer")
+      keep!(ctx.work_item, version, state: :closed, closed_at: DateTime.utc_now())
+      run = run_on!(ctx.work_item, version, :handed_over)
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      assert {:ok, %Type{shown: false}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "a claimed run that stayed on a version after an assign counts", ctx do
+      version = past_version(ctx.scope, "explainer")
+      keep!(ctx.work_item, version)
+      run_on!(ctx.work_item, version, :claimed)
+
+      assert {:ok, assigned} =
+               Processes.assign(
+                 ctx.scope,
+                 Repo.reload!(ctx.work_item),
+                 Processes.current(ctx.scope.workspace)
+               )
+
+      refute assigned.process_version_id == version.id
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "a work item taken in again leaves the version it kept", %{scope: scope} do
+      version = past_version(scope, "explainer")
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      keep!(work_item, version)
+      {:ok, _undone} = WorkItems.undo(scope, Repo.reload!(work_item))
+
+      assert {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id)
+
+      assert Repo.reload!(again).process_version_id == Processes.current(scope.workspace).id
+    end
+
+    test "a type in use can be switched off once nothing uses it", ctx do
+      keep!(ctx.work_item, past_version(ctx.scope, "explainer"))
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+
+      keep!(ctx.work_item, Processes.current(ctx.scope.workspace))
+
+      assert {:ok, %Type{shown: false}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "an always-on type has no switch", ctx do
+      for name <- ~w(proposal questions verdict), on? <- [true, false] do
+        assert {:error, :always_on} =
+                 Artifacts.switch_type(ctx.scope, ctx.scope.workspace, name, on?)
+      end
+
+      assert stored(ctx.scope) == nil
+    end
+
+    test "a name that is no standard type is not found", ctx do
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          "name" => "bids",
+          "base_view" => "file"
+        })
+
+      for name <- ["bids", "no-such-type", 12, nil] do
+        assert {:error, :not_found} =
+                 Artifacts.switch_type(ctx.scope, ctx.scope.workspace, name, false)
+      end
+    end
+
+    test "fails for a member and works for an admin", ctx do
+      member = member_fixture(ctx.scope)
+      admin = member_fixture(ctx.scope, :admin)
+
+      assert {:error, :forbidden} =
+               Artifacts.switch_type(member.scope, ctx.scope.workspace, "mockup", false)
+
+      assert {:ok, %Type{}} =
+               Artifacts.switch_type(admin.scope, ctx.scope.workspace, "mockup", false)
+    end
+
+    test "fails for a member with an always-on name too", ctx do
+      member = member_fixture(ctx.scope)
+
+      assert {:error, :forbidden} =
+               Artifacts.switch_type(member.scope, ctx.scope.workspace, "verdict", false)
+    end
+
+    test "is not found for a workspace other than the scope's", ctx do
+      other = scope_fixture()
+
+      assert {:error, :not_found} =
+               Artifacts.switch_type(ctx.scope, other.workspace, "mockup", false)
+
+      assert Repo.get!(Workspace, other.workspace.id).shown_standard_types == nil
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "is not found with workflow_model off", ctx do
+      assert {:error, :not_found} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
+
+      assert stored(ctx.scope) == nil
     end
   end
 

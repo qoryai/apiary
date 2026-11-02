@@ -352,6 +352,14 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   defp new_page(ctx, type),
     do: ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=" <> type
 
+  defp show!(scope, names) do
+    {1, _rows} =
+      Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+        set: [shown_standard_types: names]
+      )
+  end
+
   defp in_stage(work_item, stage_id) do
     {1, _rows} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -407,6 +415,27 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                {:person, "By hand", ctx.scope.user.id}
 
       assert_redirect(view, page(ctx, version))
+    end
+
+    test "offers only the types the workspace shows", ctx do
+      show!(ctx.scope, ["mockup"])
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      for name <- ~w(mockup proposal questions verdict),
+          do: assert(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
+
+      for name <- ~w(explainer screenshot change),
+          do: refute(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
+    end
+
+    test "says to choose another type when the type is hidden after the page opened", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      show!(ctx.scope, ["mockup"])
+
+      assert add_notes(view) =~ "Choose a type from the list."
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says what to change when the push refuses the files or the name", ctx do

@@ -708,6 +708,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"artifact_type.edit", %{"change" => "delete", "type" => type}, _actor),
     do: gettext("Deleted artifact type %{type}", type: type)
 
+  defp said(:"artifact_type.edit", %{"change" => "show", "type" => type}, _actor),
+    do: gettext("Switched on artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "hide", "type" => type}, _actor),
+    do: gettext("Switched off artifact type %{type}", type: type)
+
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
   defp said(_policy, %{"change" => "rule_changed"}, _actor),
