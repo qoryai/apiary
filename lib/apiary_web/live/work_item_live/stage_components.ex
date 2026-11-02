@@ -482,8 +482,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </li>
       </ul>
       <p :if={@escalation.run} id={"#{@id}-run"} class="text-xs opacity-70">
-        {gettext("From run %{run} · %{workflow}",
-          run: Format.number(@escalation.run.number),
+        {gettext("From attempt %{attempt} · %{workflow}",
+          attempt: Format.number(@escalation.run.number),
           workflow: @escalation.run.workflow || ""
         )}
       </p>
@@ -606,8 +606,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   ## The runs
 
   @doc """
-  The runs of the work item, newest first: each with its workflow, its round and its
-  verdict, or none yet.
+  The runs of the work item, newest first: each an attempt, counted from the work item's
+  first run ("Attempt 2"), so that it is not taken for the run's number on the server
+  ("Run 18342"), with its workflow, its round and its verdict, or none yet.
   """
   attr :id, :string, default: "work-item-runs"
   attr :runs, :list, required: true
@@ -627,8 +628,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   defp run_words(run) do
-    gettext("Run %{run} · %{workflow} · round %{round} · %{verdict}",
-      run: Format.number(run.number),
+    gettext("Attempt %{attempt} · %{workflow} · round %{round} · %{verdict}",
+      attempt: Format.number(run.number),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
       verdict: shows_words(run.shows)

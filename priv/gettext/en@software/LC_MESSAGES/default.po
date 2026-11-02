@@ -5176,6 +5176,7 @@ msgid "Attempt %{attempt} of %{of}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} is queued."
 msgstr ""
@@ -5203,6 +5204,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of}, after answers from %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} · %{workflow} · round %{round} · %{verdict}"
 msgstr ""
 
 #: lib/apiary_web/components/host_components.ex
@@ -8979,14 +8985,14 @@ msgstr ""
 msgid "From an https address"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "From attempt %{attempt} · %{workflow}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "From now on %{target} stays on %{mode} whatever %{workspace}'s mode becomes."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "From run %{run} · %{workflow}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15638,11 +15644,6 @@ msgstr ""
 msgid "Run"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} is queued."
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -15730,11 +15731,6 @@ msgid "Run %{run} · %{count} run, %{state}"
 msgid_plural "Run %{run} · %{count} runs, %{state}"
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} · %{workflow} · round %{round} · %{verdict}"
-msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format

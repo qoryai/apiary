@@ -13,9 +13,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # its artifacts' (`Apiary.Artifacts.subscribe/2`), where `{:artifact_pushed, work_item_id,
   # version_id}` arrives.
   #
-  # **The runs.** `Apiary.Stages.runs/1`, numbered from the work item's first run. A run
-  # whose `questions` artifact has a version shows as questions: the versions carry the
-  # run of the queue, so `runs/2` reads the registered runs' links to it (`runs`).
+  # **The runs.** `Apiary.Stages.runs/1`, each an attempt numbered from the work item's
+  # first run, not the run's number on the server. A run whose `questions` artifact has a
+  # version shows as questions: the versions carry the run of the queue, so `runs/2`
+  # reads the registered runs' links to it (`runs`).
   #
   # **The feature.** `on?/1` is whether the reader is shown `workflow_model`. A work item
   # the stage runner has not placed (`Apiary.Stages.status/2` is nil) draws as before the
