@@ -13,7 +13,8 @@ defmodule ApiaryWeb.SetUpComponents do
   - `kind_cards/1` is the empty organisation overview's choice of what the first workspace
     does, and `template_cards/1` New workspace's: a card for each template of the Qory
     harness, the organisation's shared harness, the sources assigned to it and its
-    connected repositories. `read_line/3` is why a source was not read.
+    connected repositories. `choose_kind/3` and `choose_template/4` are Create workspace on
+    a template's page, for the Qory template and for a template of a harness repository.
 
   Each step belongs to one of two progresses, its `:progress`. The instance's,
   `:instance`, is set up once, by the instance admin: Your account, one step for each
@@ -1056,7 +1057,7 @@ defmodule ApiaryWeb.SetUpComponents do
 
   defp place_cards(place, templates) do
     for template <- templates do
-      key = place.prefix <> "." <> template.module
+      key = Sources.template_key(place.source, template.module)
 
       %{
         id: "set-up-card-#{slug(key)}",
@@ -1117,6 +1118,10 @@ defmodule ApiaryWeb.SetUpComponents do
   end
 
   defp not_readable_words(:stack_not_exported), do: [gettext("its stack is not exported")]
+
+  defp not_readable_words({:unknown_type, type}),
+    do: [gettext("Qory Apiary has no workspace type %{type}", type: type)]
+
   defp not_readable_words({:invalid, _errors}), do: [gettext("its process is not valid")]
   defp not_readable_words({:types, refusals}), do: Enum.map(refusals, &TemplateTypes.message/1)
   defp not_readable_words(:unreadable), do: [gettext("Qory Apiary cannot read its process.yaml")]
@@ -1246,6 +1251,108 @@ defmodule ApiaryWeb.SetUpComponents do
             Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
         end
     end
+  end
+
+  @doc """
+  choose_template/4 takes Create workspace on the page of a template of a harness source
+  (`ApiaryWeb.WorkspaceTypeLive`): `place` is the place the page read and `start` the source, commit and template that read
+  gave. It creates a workspace of that template in the scope's organisation
+  (`Apiary.Organisations.create_workspace_from_template/3`, with `which`, `:first` where the
+  organisation has no workspace yet) and opens its first set-up step, Name. The answers
+  that are not a workspace:
+
+    * the edition's limit: the page shows the edition's line (`limit_line/1`) as information;
+    * a workspace made by someone else first, or a person who may no longer create one:
+      the organisation's overview opens;
+    * a shared harness whose row has no owner, for a person who may create: an error that
+      says to save the shared harness again;
+    * a source or a connected repository that is no longer offered: New workspace opens, so
+      its list is read afresh;
+    * a process, an artifact type or a name the template has wrong: an error that says what
+      is wrong in which module;
+    * any other refusal: "Nothing was changed. Try again."
+  """
+  @spec choose_template(Phoenix.LiveView.Socket.t(), map, map, :first | :any) ::
+          Phoenix.LiveView.Socket.t()
+  def choose_template(socket, place, start, which) do
+    scope = socket.assigns.current_scope
+    organisation = scope.organisation
+
+    case Organisations.create_workspace_from_template(scope, start, which) do
+      {:ok, workspace} ->
+        Phoenix.LiveView.push_navigate(socket,
+          to:
+            flow_path(
+              flow(organisation, Domain.for_workspace(workspace), workspace, :set_up),
+              :name
+            )
+        )
+
+      {:error, :limit} ->
+        Phoenix.LiveView.put_flash(socket, :info, limit_line(organisation))
+
+      {:error, :exists} ->
+        Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+      {:error, :forbidden} ->
+        if Access.authorize(scope, :"workspace.create", organisation) == :ok,
+          do: forbidden_flash(socket, start),
+          else: Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+      {:error, reason} when reason in [:not_found, :invalid] ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, gettext("Nothing was changed. Try again."))
+        |> Phoenix.LiveView.push_navigate(to: ~p"/#{organisation}/workspaces/new")
+
+      {:error, errors} when is_list(errors) ->
+        refused_flash(socket, place, start, gettext("its process is not valid"))
+
+      {:error, {:invalid, type, error}} ->
+        refused_flash(socket, place, start, TemplateTypes.message({:invalid, type, error}))
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        case Keyword.get(errors, :name) do
+          nil ->
+            Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+          error ->
+            Phoenix.LiveView.put_flash(
+              socket,
+              :error,
+              gettext("Change `name` in the process.yaml of %{module} in %{repository}. %{error}",
+                module: start.template.module,
+                repository: named(place).label,
+                error: translate_error(error)
+              )
+            )
+        end
+    end
+  end
+
+  # A refusal of the shared harness's row: no organisation owns it any more.
+  defp forbidden_flash(socket, %{source: %{kind: :shared}}) do
+    Phoenix.LiveView.put_flash(
+      socket,
+      :error,
+      gettext(
+        "Save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
+      )
+    )
+  end
+
+  defp forbidden_flash(socket, _start),
+    do: Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+  defp refused_flash(socket, place, start, reason) do
+    Phoenix.LiveView.put_flash(
+      socket,
+      :error,
+      gettext("%{module} in %{repository} is not a template: %{reason}.",
+        module: start.template.module,
+        repository: named(place).label,
+        reason: reason
+      )
+    )
   end
 
   @doc """

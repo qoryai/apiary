@@ -24,13 +24,16 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
 
   **A template of a harness repository**, with the key `<prefix>.<module>`, split at its
   first dot, as a module's name may have dots: the page reads the repository outside its
-  process and shows "Reading harnesses…" meanwhile.
-  It then shows the same page from the template's `process`, its name, summary and
-  description, with the harness line, "Harness: <repository>, stack <stack>", where
-  Create workspace stands in the Qory page, and no Create workspace. For a shared harness
+  process and shows "Reading harnesses…" meanwhile. It then shows the same page from the
+  template's `process`, its name, summary and description, with the harness line,
+  "Harness: <repository>, stack <stack>", where the Qory page has it. For a shared harness
   that runs hide, the line is "Harness: shared harness, stack <stack>". A read that fails
-  shows its reason and a link to New workspace; a module that gave no template opens New workspace. The page writes no workspace and no
-  harness, and its link carries no commit.
+  shows its reason and a link to New workspace; a module that gave no template opens New
+  workspace. Create workspace shows once the read has succeeded. It makes the workspace
+  from the template the page read, with no second read, and opens its Name step
+  (`ApiaryWeb.SetUpComponents.choose_template/4`). The source, the commit and the template
+  come from the page's read, and no parameter of the event is used. The link carries no
+  commit.
 
   A key of no place that New workspace lists for the person, and any key but the Qory
   template's while the feature `factory` is off, is a path that does not exist.
@@ -72,6 +75,7 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
       which: if(Organisations.has_workspace?(scope.organisation), do: :any, else: :first),
       harness: gettext("Harness: Qory harness, stack %{stack}", stack: QoryCopy.template().stack),
       create: true,
+      start: nil,
       reading: false,
       read_error: nil,
       module: nil
@@ -99,6 +103,9 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
           canvas: Features.visible?(scope, :workflow_model),
           harness: nil,
           create: false,
+          start: nil,
+          domain: nil,
+          which: if(Organisations.has_workspace?(scope.organisation), do: :any, else: :first),
           reading: true,
           read_error: nil
         )
@@ -115,15 +122,23 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
     do: text |> String.split(~r/\n\s*\n/) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
 
   @impl true
-  def handle_event("create", _params, %{assigns: %{create: true}} = socket) do
-    %{domain: domain, which: which} = socket.assigns
+  # `start` is set from the read of this page's own source (`handle_async/3`), and no
+  # parameter of the event is read.
+  def handle_event("create", _params, %{assigns: %{create: true, start: %{} = start}} = socket) do
+    %{place: place, which: which} = socket.assigns
+    {:noreply, SetUpComponents.choose_template(socket, place, start, which)}
+  end
+
+  def handle_event("create", _params, %{assigns: %{create: true, domain: domain}} = socket)
+      when not is_nil(domain) do
+    %{which: which} = socket.assigns
     {:noreply, SetUpComponents.choose_kind(socket, domain.name(), which)}
   end
 
   def handle_event("create", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_async(:template, {:ok, {:ok, %{templates: templates}}}, socket) do
+  def handle_async(:template, {:ok, {:ok, %{templates: templates} = result}}, socket) do
     %{module: module, place: place} = socket.assigns
 
     case Enum.find(templates, &(&1.module == module)) do
@@ -152,6 +167,8 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
            paragraphs: paragraphs(template.description),
            document: template.process,
            harness: harness,
+           create: true,
+           start: %{source: place.source, commit: result.commit, template: template},
            reading: false
          )}
     end
@@ -272,7 +289,6 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
               </p>
             </section>
             <p id="workspace-type-harness" class="text-[13px]/5 text-muted">{@harness}</p>
-            <%!-- Create workspace is on the Qory template alone until a repository template can create one. --%>
             <.button
               :if={@create}
               id="workspace-type-create"

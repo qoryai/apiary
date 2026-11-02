@@ -5781,6 +5781,11 @@ msgctxt "plain"
 msgid "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Change `name` in the process.yaml of %{module} in %{repository}. %{error}"
+msgstr ""
+
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change access"
@@ -14810,6 +14815,11 @@ msgstr ""
 msgid "Qory Apiary has no result from the run. There is nothing to show or confirm."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary has no workspace type %{type}"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary is adding %{name}. This page shows how to set it up once it is added."
@@ -16453,6 +16463,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Save secret"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex

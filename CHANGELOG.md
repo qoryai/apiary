@@ -27,8 +27,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `/<organisation>/workspaces/new` shows one card for each template, in groups: the Qory
   harness, the organisation's shared harness, the sources assigned to it, and its connected
   repositories. A card opens the template's page, `/<organisation>/workspaces/new/<key>`,
-  with the harness the template is read from. Only the Qory template has **Create
-  workspace**.
+  with the harness the template is read from. **Create workspace** on that page makes
+  the workspace from that template.
 - An instance admin can change the name, summary and “How it works” of each workspace
   type in Instance settings › Workspace types › **Details**. Each save makes a new version
   and an audit entry. A blank field shows the text that Qory Apiary ships.

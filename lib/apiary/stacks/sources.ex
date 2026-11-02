@@ -679,7 +679,7 @@ defmodule Apiary.Stacks.Sources do
           hidden: hidden,
           source: %{
             id: "shared",
-            kind: :linked,
+            kind: :shared,
             label: if(hidden, do: "", else: repository(git)),
             git: git,
             ref: chosen.pin || @head,

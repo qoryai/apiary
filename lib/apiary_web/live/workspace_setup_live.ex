@@ -16,7 +16,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # ends. A read that the person's limit stops (`{:limited, seconds}`) keeps the results
   # shown, shows the limit line, and the reads start again after `seconds`
   # (`:templates_resume`). Each card leads to its template's page
-  # (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace, on the Qory template alone,
+  # (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace
   # creates the workspace at once, named after its type, and opens its Name step
   # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The empty organisation overview shows the
   # Qory card alone (`ApiaryWeb.SetUpComponents.kind_cards/1`). The page is only for a

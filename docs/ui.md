@@ -1305,9 +1305,14 @@ mark and the theme menu.
   dot. The page reads the repository, shows "Reading harnesses…", then the canvas or "How
   it works" from the template's process, its name, summary and description, and the harness
   line "Harness: acme/harness, stack support" (for a shared harness that runs hide,
-  "Harness: shared harness, stack support") where Create workspace stands on the Qory page.
-  It has no Create workspace. A read that fails shows its reason and a link to New
-  workspace; a module that gave no template opens New workspace. A key of no template
+  "Harness: shared harness, stack support") where the Qory page has it. Once the read has
+  succeeded, **Create workspace** shows. It creates the workspace from the template the
+  page read, named after the template, makes no second read, and opens its step Name. At the
+  limit it shows the edition's line as information. Where the source is no longer offered,
+  New workspace opens with "Nothing was changed. Try again."; a template whose process,
+  artifact types or name is refused shows the module, the repository and what to change.
+  A read that fails shows its reason and a link to New workspace; a module that gave no
+  template opens New workspace. A key of no template
   place, and any key but `qory.software` without the feature `factory`, is a page that
   does not exist.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
