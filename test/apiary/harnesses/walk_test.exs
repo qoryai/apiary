@@ -2420,6 +2420,20 @@ defmodule Apiary.Harnesses.WalkTest do
       assert claimed_level(ctx) == :read
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved off a lowered entry onto another workflow's gets read", ctx do
+      declared!(ctx, "  build: {access: write}\n")
+      process!(ctx, %{"workflow" => "build", "access" => "read"})
+      run = queued(ctx)
+
+      {:ok, version} = process!(ctx, %{"workflow" => "lint"})
+      work_item = Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
+      assert {:ok, _assigned} = Apiary.Processes.assign(ctx.scope, work_item, version)
+
+      assert walked_level(run) == :write
+      assert claimed_level(ctx) == :read
+    end
+
     test "a changed or removed row on an explore run stays read", ctx do
       declared!(ctx, "  explore: {access: write}\n")
       recording(ctx, "explore", nil)

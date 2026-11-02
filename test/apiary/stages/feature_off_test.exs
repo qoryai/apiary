@@ -56,4 +56,14 @@ defmodule Apiary.Stages.FeatureOffTest do
     assert Repo.all(from d in GateDecision, where: d.work_item_id == ^work_item.id) == []
     assert Stages.status(work_item) == nil
   end
+
+  test "a run with a place in a process has no limits, whatever its workflow" do
+    run = %DispatchRun{
+      stage_id: "st_r79kph11eg",
+      process_version_id: Ecto.UUID.generate(),
+      workflow: "build"
+    }
+
+    assert Stages.limits(run) == nil
+  end
 end

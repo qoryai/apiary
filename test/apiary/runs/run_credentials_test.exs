@@ -249,6 +249,98 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert [%RunCredential{access: :read}] = entries()
     end
 
+    # A version of the workspace's process, with `sequence` in its one stage.
+    defp process!(ctx, sequence) do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Build",
+        "inputs" => [],
+        "sequence" => sequence,
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+      version
+    end
+
+    # A run of the queue under a version with `from`, moved to a version with `to`.
+    defp moved!(ctx, from, to) do
+      process!(ctx, from)
+      {work_item, queued} = queued!(ctx)
+      assert {:ok, _assigned} = Apiary.Processes.assign(ctx.scope, work_item, process!(ctx, to))
+      queued
+    end
+
+    # The level of the claim of `queued`, whose walk resolved `write`: its documents' and
+    # its token's.
+    defp claimed_levels(ctx, queued) do
+      section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
+      walk_resolved!(queued, origin: :setting, document: section, access_level: :write)
+
+      assert {:ok, %{documents: %{harness: %{access: documents}}}} = claim(ctx)
+      assert [%RunCredential{access: token}] = entries()
+      {documents, token}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved onto an entry of another workflow reads, in its documents and its token",
+         ctx do
+      queued =
+        moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [%{"workflow" => "lint"}])
+
+      assert {"build", 0} = {queued.workflow, queued.stage_entry}
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved to a version with no entry at its place reads", ctx do
+      queued = moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose stage its version does not have reads", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved onto an entry of its workflow takes that entry's level", ctx do
+      queued =
+        moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [%{"workflow" => "build"}])
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved onto a lowered entry of its workflow reads", ctx do
+      queued =
+        moved!(ctx, [%{"workflow" => "build"}], [%{"workflow" => "build", "access" => "read"}])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a stage's run that stays on its version keeps its entry's level", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket run moved onto an entry of another workflow stays as it is", ctx do
+      queued = moved!(ctx, [%{"workflow" => "explore-a-ticket"}], [%{"workflow" => "lint"}])
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
     test "fills the target path exactly as the adapter wrote it", ctx do
       ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
       {work_item, _queued} = queued!(ctx)
