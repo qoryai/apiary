@@ -114,20 +114,18 @@ defmodule Apiary.Processes do
   @type finding ::
           {:missing_workflow, String.t(), String.t()}
           | {:missing_type, String.t(), String.t()}
-          | {:output_not_written, String.t(), String.t()}
           | {:input_not_output, String.t(), String.t()}
 
   @typedoc """
   What the harness declares of a workflow: its name, its access level and time limit
-  (nil where Qory Apiary does not keep them), and the artifact types it reads and writes
-  (nil for any type).
+  (nil where Qory Apiary does not keep them), and the artifact types it reads (nil for
+  any type).
   """
   @type declaration :: %{
           name: String.t(),
           access: :read | :write | nil,
           time_limit: String.t() | nil,
-          reads: [String.t()] | nil,
-          writes: [String.t()] | nil
+          reads: [String.t()] | nil
         }
 
   ## The document
@@ -922,8 +920,8 @@ defmodule Apiary.Processes do
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
   the level recorded with the saved workflow where one is, else nil: the level the
-  workflow declares in its stack. `time_limit`, `reads` and `writes` are nil, since Qory
-  Apiary keeps none of them: nil `reads` and `writes` mean any type.
+  workflow declares in its stack. `time_limit` and `reads` are nil, since Qory Apiary
+  keeps neither of them: nil `reads` means any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
@@ -936,7 +934,7 @@ defmodule Apiary.Processes do
         |> Enum.sort_by(&(not is_nil(&1.target_id)))
         |> Enum.find_value(& &1.access)
 
-      %{name: name, access: access, time_limit: nil, reads: nil, writes: nil}
+      %{name: name, access: access, time_limit: nil, reads: nil}
     end
   end
 
@@ -958,8 +956,6 @@ defmodule Apiary.Processes do
       again or replaced;
     * `{:missing_type, stage_id, type}`: an input's or an output's type that
       `artifact_types` does not have;
-    * `{:output_not_written, stage_id, type}`: a required output that no workflow of the
-      stage writes, where every workflow of the stage declares what it writes;
     * `{:input_not_output, stage_id, type}`: an input that no earlier stage lists as an
       output.
 
@@ -992,26 +988,18 @@ defmodule Apiary.Processes do
             type not in types,
             do: {:missing_type, id, type}
 
-      writes = Enum.map(workflows, &(declared[&1] && declared[&1].writes))
-
-      not_written =
-        for %{"type" => type, "required" => true} <- outputs,
-            workflows != [] and Enum.all?(writes, &is_list/1),
-            not Enum.any?(writes, &(type in &1)),
-            do: {:output_not_written, id, type}
-
       not_output =
         for type <- Enum.uniq(Enum.map(inputs, & &1["type"])),
             type not in earlier,
             do: {:input_not_output, id, type}
 
       earlier = Enum.reduce(outputs, earlier, &MapSet.put(&2, &1["type"]))
-      {findings ++ missing_workflows ++ missing_types ++ not_written ++ not_output, earlier}
+      {findings ++ missing_workflows ++ missing_types ++ not_output, earlier}
     end)
     |> elem(0)
   end
 
-  defp declared_entry(name) when is_binary(name), do: {name, %{name: name, writes: nil}}
+  defp declared_entry(name) when is_binary(name), do: {name, %{name: name}}
   defp declared_entry(%{name: name} = declaration), do: {name, declaration}
 
   defp type_name(name) when is_binary(name), do: name

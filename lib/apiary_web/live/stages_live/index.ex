@@ -200,13 +200,11 @@ defmodule ApiaryWeb.StagesLive.Index do
   # The check and the canvas follow every change of the draft.
   defp refresh(socket) do
     %{draft: draft, declared: declared, types: types, snapshot: snapshot} = socket.assigns
-    # Every workflow writes any type until the harness declares `writes` (spec addition 9),
-    # so an output that nothing writes is not listed. Before the first read of the harness
-    # no stage waits for a workflow, so none is listed as missing.
+    # Before the first read of the harness no stage waits for a workflow, so none is listed
+    # as missing.
     problems =
       draft
       |> Processes.placement_check(declared, types)
-      |> Enum.reject(&match?({:output_not_written, _id, _type}, &1))
       |> Enum.reject(&(is_nil(snapshot) and match?({:missing_workflow, _id, _name}, &1)))
 
     socket = assign(socket, problems: problems)

@@ -396,7 +396,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
       {:invalid, :note} ->
         assign_form(socket, params, note: {note_rule(), []})
 
-      {kind, _name} when kind in [:unknown_type, :not_writable] ->
+      {:unknown_type, _name} ->
         assign_form(socket, params, type: {gettext("Choose a type from the list."), []})
 
       {:invalid, :type} ->

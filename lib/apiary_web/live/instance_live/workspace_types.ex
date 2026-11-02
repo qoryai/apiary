@@ -115,10 +115,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   defp refresh(socket) do
     %{draft: draft, declared: declared, types: types} = socket.assigns
 
-    problems =
-      draft
-      |> Processes.placement_check(declared, types)
-      |> Enum.reject(&match?({:output_not_written, _id, _type}, &1))
+    problems = Processes.placement_check(draft, declared, types)
 
     socket = assign(socket, problems: problems)
     push_event(socket, "stages:view", view(socket.assigns))

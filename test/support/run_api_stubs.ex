@@ -1,10 +1,9 @@
 defmodule ApiaryWeb.RunApiStubs do
   @moduledoc """
   Stubs for the run API's tests (`ApiaryWeb.Contract.RunApi.Boundary`): `Artifacts`, the
-  real `Apiary.Artifacts` with a record of each push and an error a test sets;
-  `Processes`, a declaration set by the test; and `Features`, the flag `workflow_model`.
-  `install/1` sets them in the application's configuration until the test ends, so a
-  test that uses them is not async.
+  real `Apiary.Artifacts` with a record of each push and an error a test sets; and
+  `Features`, the flag `workflow_model`. `install/1` sets them in the application's
+  configuration until the test ends, so a test that uses them is not async.
 
   `Apiary.Stages` calls `Apiary.Artifacts` through `Apiary.Stages.Artifacts`, with no stub:
   a version these tests read through the stage runner is a row in the real tables, with
@@ -14,7 +13,6 @@ defmodule ApiaryWeb.RunApiStubs do
   process. `put/2` sets a value:
 
     * `:flag`: whether `workflow_model` is on, true unless set;
-    * `:declaration`: what `Processes.workflow_declaration/2` returns, nil unless set;
     * `:push_error`: an error `Artifacts.push/5` returns in place of a push.
 
   `Artifacts.push/5` records each version it stored, with the options it was given and
@@ -25,8 +23,8 @@ defmodule ApiaryWeb.RunApiStubs do
 
   @doc """
   Sets the stubs in the application's configuration until the test ends, but for the
-  ones named in `real` (`:artifacts`, `:processes` or `:features`), which stay the
-  modules the boundary calls by default.
+  ones named in `real` (`:artifacts` or `:features`), which stay the modules the boundary
+  calls by default.
   """
   def install(real \\ []) do
     previous = Application.get_env(:apiary, @boundary)
@@ -35,7 +33,6 @@ defmodule ApiaryWeb.RunApiStubs do
       Keyword.drop(
         [
           artifacts: __MODULE__.Artifacts,
-          processes: __MODULE__.Processes,
           features: __MODULE__.Features
         ],
         real
@@ -81,14 +78,6 @@ defmodule ApiaryWeb.RunApiStubs do
     @moduledoc "The feature `workflow_model`, on unless the stubs' `:flag` is false."
     def all, do: [:workflow_model]
     def on?(:workflow_model), do: ApiaryWeb.RunApiStubs.get(:flag, true)
-  end
-
-  defmodule Processes do
-    @moduledoc "A workflow's declaration: the stubs' `:declaration`, the name recorded."
-    def workflow_declaration(_workspace, name) do
-      ApiaryWeb.RunApiStubs.put(:declared, name)
-      ApiaryWeb.RunApiStubs.get(:declaration)
-    end
   end
 
   defmodule Artifacts do

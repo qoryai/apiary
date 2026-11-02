@@ -369,8 +369,6 @@ defmodule ApiaryWeb.StagesLiveTest do
                ~s(#stages-check [data-problem="input_not_output"]),
                "Build needs acceptance-criteria as an input, and no stage before Build lists it as an output."
              )
-
-      refute render(view) =~ "output_not_written"
     end
 
     test "the gate: none, any member, or named members", %{conn: conn, path: path, scope: scope} do

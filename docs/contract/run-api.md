@@ -231,15 +231,11 @@ Checks, in order, after the checks of every request:
    `invalid_request`, with the first member that failed in `names`, such as
    `files[0].filename`.
 2. A type the workspace does not have, or a standard type it hides: `422` `unknown_type`.
-3. A type the run's workflow may not write: `403` `type_not_writable`. A workflow may
-   write the types in the `writes` list of its declaration in the stack, and always
-   `verdict` and `questions`. A workflow whose declaration has no `writes` list, or that
-   the harness no longer declares, may write any type the workspace has.
-4. More files than the type's maximum: `422` `too_many_files`.
-5. Files larger together than the type's size limit, which bounds all files of one
+3. More files than the type's maximum: `422` `too_many_files`.
+4. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
-6. A content that is not strict base64: `400` `invalid_request`.
-7. Files that do not match the type's format: `422` `invalid_artifact`, with the file
+5. A content that is not strict base64: `400` `invalid_request`.
+6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
    file. A version of the type `verdict` is checked against the type's JSON Schema, so
    its `verdict` is `passed`, `changes-requested` or `escalate`.
@@ -271,7 +267,6 @@ is `400` `invalid_request`.
 |---|---|---|---|
 | `400` | `invalid_request` | `names` | A body that is not the request's object, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
-| `403` | `type_not_writable` | `type`, `message` | The run's workflow may not write the type |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file |
 | `404` | (the error page) | | The instance does not have `workflow_model` |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended |
@@ -291,8 +286,6 @@ The messages:
   workspace's Artifact types, then run the round again."
 - `unknown_type`, for a standard type the workspace hides: "Switch on the artifact type
   mockup in the workspace's Artifact types, then run the round again."
-- `type_not_writable`: "Add the artifact type explainer to the writes list of the
-  workflow capture-demo, or push a type that the workflow writes."
 - `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a
   limit of 1)
 - `too_large`: "Shrink the files of one version of demo-video to at most 209715200 bytes

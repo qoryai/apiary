@@ -351,7 +351,7 @@ defmodule Apiary.ProcessesTest do
              ]
     end
 
-    test "lists a required output no workflow writes only where every workflow declares what it writes" do
+    test "lists no finding for a required output of a stage whose workflow is declared" do
       document =
         default()
         |> put_sequence(@shape, [%{"workflow" => "write-specs"}])
@@ -363,14 +363,9 @@ defmodule Apiary.ProcessesTest do
             stage
         end)
 
-      any = %{name: "write-specs", writes: nil}
-      some = %{name: "write-specs", writes: ["change"]}
-      explore = %{name: "explore-a-ticket", writes: nil}
+      declared = [%{name: "explore-a-ticket"}, %{name: "write-specs"}]
 
-      assert Processes.placement_check(document, [explore, any], @types) == []
-
-      assert Processes.placement_check(document, [explore, some], @types) ==
-               [{:output_not_written, @shape, "explainer"}]
+      assert Processes.placement_check(document, declared, @types) == []
     end
   end
 
@@ -454,10 +449,10 @@ defmodule Apiary.ProcessesTest do
       assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket", "implement"]
 
       assert Processes.workflow_declaration(scope.workspace, "implement") ==
-               %{name: "implement", access: :write, time_limit: nil, reads: nil, writes: nil}
+               %{name: "implement", access: :write, time_limit: nil, reads: nil}
 
       assert Processes.workflow_declaration(scope.workspace, "explore-a-ticket") ==
-               %{name: "explore-a-ticket", access: nil, time_limit: nil, reads: nil, writes: nil}
+               %{name: "explore-a-ticket", access: nil, time_limit: nil, reads: nil}
 
       assert Processes.workflow_declaration(scope.workspace, "capture-demo") == nil
     end
@@ -476,7 +471,7 @@ defmodule Apiary.ProcessesTest do
                ["explore-a-ticket", "implement", "review"]
 
       assert Processes.workflow_declaration(scope.workspace, "review") ==
-               %{name: "review", access: nil, time_limit: nil, reads: nil, writes: nil}
+               %{name: "review", access: nil, time_limit: nil, reads: nil}
 
       assert Processes.declared_snapshot(other) == nil
       assert Processes.declared_workflows(other) == ["explore-a-ticket"]

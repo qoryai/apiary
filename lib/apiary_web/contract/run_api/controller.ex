@@ -22,8 +22,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
   #      `422` `unknown_type`, whose message says to define the type, or for a standard
-  #      type to switch it on; a type the run's workflow may not write `403`
-  #      `type_not_writable`; more files than the type takes `422` `too_many_files`; files
+  #      type to switch it on; more files than the type takes `422` `too_many_files`; files
   #      over the type's size limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
   #      the files that do not match the type's format among it, `422` `invalid_artifact`.
@@ -111,20 +110,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, push} <- Body.push(conn.assigns.raw_body),
          workspace = run.work_item.workspace,
          {:ok, type} <- known_type(workspace, push.type),
-         :ok <- writable(workspace, run, push.type),
          :ok <- within(type, push),
          {:ok, files} <- Body.decode_files(push.files),
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
              name: push.name,
              stage_id: Boundary.stage_id(run.dispatch_run),
-             note: push.note,
-             writes: Boundary.writes(workspace, Boundary.workflow(run.dispatch_run))
+             note: push.note
            )
            |> pushed(%{
              name: push.type,
              type: type,
-             workflow: Boundary.workflow(run.dispatch_run),
              filenames: Enum.map(files, & &1.filename)
            }) do
       answer(conn, 201, Wire.version(version, push.type, push.name))
@@ -145,13 +141,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
            Boundary.push({:run, run.dispatch_run}, run.work_item, "verdict", [file],
              name: "main",
              stage_id: Boundary.stage_id(run.dispatch_run),
-             note: nil,
-             writes: :any
+             note: nil
            )
            |> pushed(%{
              name: "verdict",
              type: nil,
-             workflow: Boundary.workflow(run.dispatch_run),
              filenames: ["verdict.json"]
            }) do
       answer(conn, 201, Wire.version(version, "verdict", "main"))
@@ -314,14 +308,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  defp writable(workspace, run, type) do
-    workflow = Boundary.workflow(run.dispatch_run)
-
-    if Boundary.writable?(workspace, workflow, type),
-      do: :ok,
-      else: {:error, {:not_writable, type, workflow}}
-  end
-
   # The type's maximum file count and size limit, checked before any content is decoded.
   # The size limit bounds all files of one version together.
   defp within(type, push) do
@@ -343,16 +329,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   # What `Apiary.Artifacts.push/5` returns, turned into the run API's errors: the push's
   # type, the type's limit and the member at fault, never another detail of the push.
-  # `push` has the type's name (`name`), the type (`type`, nil where it was not read),
-  # the run's workflow and the filenames in the order of the files.
+  # `push` has the type's name (`name`), the type (`type`, nil where it was not read) and
+  # the filenames in the order of the files.
   defp pushed({:ok, version}, _push), do: {:ok, version}
   defp pushed({:error, refusal}, push), do: refused(refusal, push)
   defp pushed(_error, _push), do: {:error, :unavailable}
 
   defp refused({:unknown_type, _name}, push), do: {:error, {:unknown_type, push.name}}
-
-  defp refused({:not_writable, _type}, push),
-    do: {:error, {:not_writable, push.name, push.workflow}}
 
   defp refused({:too_many_files, max_files}, push),
     do: {:error, {:too_many_files, push.name, limit(max_files, push.type, :max_files)}}
@@ -453,15 +436,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     )
   end
 
-  defp write_error(conn, {:error, {:not_writable, type, workflow}}) do
-    error(conn, 403, "type_not_writable",
-      type: type,
-      message:
-        "Add the artifact type #{type} to the writes list of the workflow#{named(workflow)}, " <>
-          "or push a type that the workflow writes."
-    )
-  end
-
   defp write_error(conn, {:error, {:too_many_files, type, limit}}) do
     error(conn, 422, "too_many_files",
       type: type,
@@ -495,9 +469,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   defp file_count(1), do: "1 file"
   defp file_count(limit), do: "#{limit} files"
-
-  defp named(nil), do: ""
-  defp named(workflow), do: " " <> workflow
 
   ## Answers
 
