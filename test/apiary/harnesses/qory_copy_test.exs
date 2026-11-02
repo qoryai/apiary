@@ -12,8 +12,8 @@ defmodule Apiary.Harnesses.QoryCopyTest do
   @dir Path.join(@root, "priv/harness/qory")
   @texts Path.join(@root, "lib/apiary/harnesses/qory_copy/texts.ex")
 
-  # The commit the copy was made from, and the files copied from qoryai/harness at that
-  # commit, by their SHA-256 there.
+  # The files copied from qoryai/harness at the commit in `.harness-ref`, by their SHA-256
+  # there.
   @harness_ref "0968239f1907d692b06d3f7bae21cf030c64ec58"
   @copied_sha256 %{
     "qory.yaml" => "0d43ac5ebe9ebdbb2087f42b14a56a8dea3db95516b7d514d1093cfea8a62f6e",
@@ -25,13 +25,13 @@ defmodule Apiary.Harnesses.QoryCopyTest do
       "e21a31b7e8a1bc55a36c991f7d780e0b885c7654e444c12542bd46bdb96e6e53"
   }
 
-  test "the copy's ref is the commit the copy was made from" do
-    # Definition.qory_harness().latest is this commit too once the pin moves to it.
+  test "the copy is of the commit Definition pins as the newest Qory harness" do
     assert File.read!(Path.join(@dir, ".harness-ref")) == @harness_ref <> "\n"
     assert QoryCopy.ref() == @harness_ref
+    assert Definition.qory_harness().latest == @harness_ref
   end
 
-  test "the copied files are the bytes of that commit" do
+  test "the copied files are the bytes of the pinned commit" do
     copied =
       for path <- Path.wildcard(Path.join(@dir, "**/*"), match_dot: true),
           File.regular?(path),
@@ -50,14 +50,14 @@ defmodule Apiary.Harnesses.QoryCopyTest do
     assert QoryCopy.file("missing.yaml") == nil
   end
 
-  test "Definition keeps stack core, which the copy exports" do
+  test "Definition keeps stack core and lists the stacks the copy exports" do
     harness = Definition.qory_harness()
     assert harness.stack == "core"
-    assert harness.stacks == ["core"]
+    assert harness.stacks == ["core", "software"]
     assert Definition.qory("qory.software").harness["stack"] == "core"
 
     {:ok, exports} = Reader.exports(QoryCopy.file("qory.yaml"))
-    assert harness.stack in exports.stacks
+    assert exports.stacks == harness.stacks
   end
 
   describe "the template's texts" do
