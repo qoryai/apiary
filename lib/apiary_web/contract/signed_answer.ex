@@ -21,9 +21,9 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
   signs the answer as it is sent, from the status, body and digest headers the answer
   has by then, so a controller writes its answer as any other and the signature covers
   exactly what goes out. One answer is signed over a digest in place of its body: a file
-  of the run API (`ApiaryWeb.Contract.RunApi.Controller`), sent from the store with
+  of the run API (`docs/contract/run-api.md`), sent from the store with
   `send_file` or in chunks, sets `conn.private[:qory_body_sha256]`, the SHA-256 Qory Apiary
-  computed from the file's bytes when it stored them (`Apiary.Artifacts`), and the answer
+  computed from the file's bytes when it stored them, and the answer
   string has that digest where it has the body's (`SignedMessage.answer_digest/5`). Every
   other answer sets no such value and is signed over its body. `put_enrolment/3` signs an answer to an enrolment, written but
   not yet sent, bound to its proof: a separate function, so an enrolment answer is never
