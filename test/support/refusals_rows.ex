@@ -503,7 +503,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"dispatch.claim",
         :"dispatch.dispatched",
         :"dispatch.release",
-        :"dispatch.machine_log"
+        :"dispatch.machine_log",
+        :"dispatch.machine_end"
       ],
       token: [:"invitation.accept"],
       link: [:"instance.mail_on"],

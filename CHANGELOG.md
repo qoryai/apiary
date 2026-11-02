@@ -79,6 +79,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its session started shows “The run stopped before its session started, at the step
   <step>.” above the Timeline. The section updates without a reload until the session
   starts or the run ends.
+- **Prepare machine** ends in **Clean up**, which shows what the node pool reported about
+  removing the run's machine: "Machine removed", "Machine removal requested" or "Removal
+  failed: the machine still exists", with the time of the report. With no report, a run
+  that ended shows "Waiting for a report" for 15 minutes, then "No removal report". A run
+  on a permanent machine shows "Machine stays registered" once it ended. A pool's starter
+  reports at `POST /v1/dispatches/<dispatch_id>/machine-end`, and the audit log records
+  its first report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
   for owners, admins and members who may read the run's log. The diagnostics contain the
   run, its queue entry and claim, how its machine was prepared, its latest 5,000 events at
@@ -694,6 +701,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `dispatches`: two nullable columns, `machine_end_state` and `machine_end_at`, with a
+  check that scans `dispatches` under a lock that blocks writes. It changes no existing
+  row.
 - `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
   value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
   in the order they started, then the sequence goes on from the highest number. The

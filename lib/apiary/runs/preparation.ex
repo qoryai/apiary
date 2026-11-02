@@ -10,8 +10,9 @@ defmodule Apiary.Runs.Preparation do
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
       pool claimed. `requested_at` is the claim, and `requested_ms` the time from the
       claim to the starter's `dispatched`; `started` spans from that `dispatched` to the
-      redemption of the run's code, or to the failure that ended the attempt
-      (`t:machine/0`).
+      redemption of the run's code, or to the failure that ended the attempt; `end` is
+      what the pool's starter last reported about the removal of the machine, nil while
+      it has reported nothing (`t:machine/0`).
     * `steps`: the run's steps by number, each with its output: the last 64 KiB of its
       log lines as plain text (`Apiary.Runs.Record.plain_lines/1`), and whether that is
       cut (`t:step/0`). The output is nil for a reader who may not read the run's log
@@ -65,11 +66,25 @@ defmodule Apiary.Runs.Preparation do
         }
 
   @typedoc """
+  What the pool's starter last reported about the removal of the machine, at
+  `POST /v1/dispatches/<dispatch_id>/machine-end`: `deleting`, the removal was requested
+  and the machine may still exist; `gone`, the starter confirmed that the machine no
+  longer exists; `delete_failed`, the removal failed and the machine still exists. `at`
+  is when Qory Apiary accepted the report.
+  """
+  @type machine_end :: %{state: :deleting | :gone | :delete_failed, at: DateTime.t()}
+
+  @typedoc """
   The machine part. `dispatch_id` is the dispatch's public id, `dp_…`. `machine_type` is
   nil while the claim answer has no machine type. `requested_ms` is nil while the
   dispatch has no `dispatched`. `release_reason` is the starter's reason of a release,
   nil for any other dispatch. `started.state` is `running`, `succeeded`, `failed` or
-  `cancelled`, as a step's.
+  `cancelled`, as a step's. `handed_over_at` is when the dispatch was handed over, so a
+  machine existed for it, nil for a dispatch never handed over. `ended_at` is when the
+  dispatch ended with its run; for a run that ended before its dispatch did, the run's
+  exit, loss or failed start, or else its last change; nil while both go on. `end` is
+  the starter's last report about the removal of the machine, nil before the first
+  (`t:machine_end/0`).
   """
   @type machine :: %{
           dispatch_id: String.t(),
@@ -78,6 +93,9 @@ defmodule Apiary.Runs.Preparation do
           requested_at: DateTime.t(),
           requested_ms: non_neg_integer | nil,
           release_reason: String.t() | nil,
+          handed_over_at: DateTime.t() | nil,
+          ended_at: DateTime.t() | nil,
+          end: machine_end | nil,
           started: %{
             state: String.t(),
             started_at: DateTime.t() | nil,
@@ -250,6 +268,9 @@ defmodule Apiary.Runs.Preparation do
       requested_at: dispatch.claimed_at,
       requested_ms: between(dispatch.claimed_at, started_at),
       release_reason: dispatch.release_reason,
+      handed_over_at: dispatch.handed_over_at,
+      ended_at: dispatch.ended_at || run_ended_at(run),
+      end: machine_end(dispatch),
       started: %{
         state: state,
         started_at: started_at,
@@ -258,6 +279,18 @@ defmodule Apiary.Runs.Preparation do
       }
     }
   end
+
+  # When a run that ended did so, for a dispatch that has not ended yet: its exit, its
+  # loss or its failed start, else its last change. Nil while the run is alive.
+  defp run_ended_at(%Run{state: state} = run) do
+    if state not in Run.alive_states(),
+      do: run.exited_at || run.lost_at || run.start_failed_at || run.updated_at
+  end
+
+  defp machine_end(%Dispatch{machine_end_state: nil}), do: nil
+
+  defp machine_end(%Dispatch{machine_end_state: state, machine_end_at: at}),
+    do: %{state: state, at: at}
 
   # When the machine started the run: the redemption of the run's code, which sets the
   # run key's issue time; for a run without a code, the dispatch's handover.

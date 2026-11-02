@@ -87,6 +87,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
   def label(:"dispatch.release"), do: gettext("Runs given back")
   def label(:"dispatch.prebuilt"), do: gettext("Images recorded")
+  def label(:"dispatch.machine_end"), do: gettext("Machine removal reports")
   def label(:"target.rebuild_environment"), do: gettext("Builds asked for")
   def label(:"adapter.install"), do: gettext("Adapter installed")
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
@@ -648,6 +649,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"dispatch.release", %{"handed_over" => true}, _actor),
     do: gettext("Gave back a run handed over to its machine")
+
+  # What a pool's starter reported about the removal of a run's machine, by the state;
+  # the entry is the pool's.
+  defp said(:"dispatch.machine_end", %{"state" => "deleting"}, _actor),
+    do: gettext("Reported that the removal of a run's machine was requested")
+
+  defp said(:"dispatch.machine_end", %{"state" => "gone"}, _actor),
+    do: gettext("Reported that a run's machine was removed")
+
+  defp said(:"dispatch.machine_end", %{"state" => "delete_failed"}, _actor),
+    do: gettext("Reported that the removal of a run's machine failed")
 
   # The image a prebuild built, recorded; the entry is the run's.
   defp said(:"dispatch.prebuilt", _details, _actor),

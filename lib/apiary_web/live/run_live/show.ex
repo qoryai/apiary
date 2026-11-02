@@ -373,6 +373,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 preparation={@preparation}
                 machine_log={@machine_log}
                 alive={alive?(@run)}
+                clean_up={@clean_up}
               />
             <% @run.state == "pending" and @index.items == [] -> %>
               <.limits reason={:not_started} variant="empty" registered={!!@run.registered_at} />
@@ -612,6 +613,7 @@ defmodule ApiaryWeb.RunLive.Show do
         preparation={@preparation}
         machine_log={@machine_log}
         alive={alive?(@run)}
+        clean_up={@clean_up}
       />
 
       <.timeline
@@ -1483,7 +1485,9 @@ defmodule ApiaryWeb.RunLive.Show do
        win_last: nil,
        preparation: nil,
        preparation_settled: false,
-       machine_log: :hidden
+       machine_log: :hidden,
+       clean_up: nil,
+       clean_up_timer: nil
      )
      |> stream_configure(:items, dom_id: & &1.id)
      |> stream(:items, [])
@@ -2772,6 +2776,19 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, socket |> assign(flush_scheduled: false) |> flush()}
   end
 
+  # The pool's starter reported about the removal of the run's machine: the preparation is
+  # read again, settled or not, so the Clean up row shows the report.
+  def handle_info(
+        {:machine_end_changed, %Run{id: id}},
+        %{assigns: %{run: %Run{id: id}}} = socket
+      ),
+      do: {:noreply, assign_preparation(socket)}
+
+  # The Clean up row waited 15 minutes after the run ended: the preparation is read again,
+  # and the row shows the report that came, or that none came.
+  def handle_info(:clean_up_due, %{assigns: %{run: %Run{}, loaded: true}} = socket),
+    do: {:noreply, assign_preparation(socket)}
+
   # Quiet is the server's word: recomputed on a timer and on every batch, never by the page.
   def handle_info(:quiet_tick, socket) do
     Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
@@ -3015,12 +3032,36 @@ defmodule ApiaryWeb.RunLive.Show do
   defp assign_preparation(%{assigns: %{run: %Run{} = run, current_scope: scope}} = socket) do
     preparation = Preparation.read(scope, run)
 
-    assign(socket,
+    socket
+    |> assign(
       preparation: preparation,
       preparation_settled:
         PreparationComponents.settled?(preparation, alive?(run)) or
           socket.assigns.index.session_items > 0,
       machine_log: machine_log(scope, preparation, socket.assigns.machine_log)
+    )
+    |> assign_clean_up()
+  end
+
+  # The Clean up row as it is now (`ApiaryWeb.PreparationComponents.clean_up/3`), and,
+  # while it waits for a report, one timer for the moment it no longer does, which reads
+  # the preparation again. The timer before is cancelled.
+  defp assign_clean_up(%{assigns: %{preparation: preparation, run: run}} = socket) do
+    now = DateTime.utc_now()
+    if ref = socket.assigns.clean_up_timer, do: Process.cancel_timer(ref)
+
+    timer =
+      case PreparationComponents.clean_up_due(preparation, run, now) do
+        nil ->
+          nil
+
+        due_at ->
+          Process.send_after(self(), :clean_up_due, DateTime.diff(due_at, now, :millisecond) + 1)
+      end
+
+    assign(socket,
+      clean_up: PreparationComponents.clean_up(preparation, run, now),
+      clean_up_timer: timer
     )
   end
 

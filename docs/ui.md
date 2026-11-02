@@ -1801,6 +1801,15 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   preparation again at each flush; the starter's `dispatched` and the redemption of the
   run's code are broadcast on the run's topic, so they show at once. On the Timeline tab
   the page also reads them at each quiet tick (5 s) while Machine started is running.
+  The last row, Clean up, shows what the pool's starter reported about the removal of the
+  machine (`PreparationComponents.clean_up/3`): "Machine removed", "Machine removal
+  requested" or "Removal failed: the machine still exists", with the report's time, as soon
+  as a report exists. With no report, a run that has ended and whose dispatch was handed
+  over shows "Waiting for a report" for 15 minutes after the run ended, counted at render,
+  and then "No removal report"; an open page changes at the 15 minutes without a reload. A
+  run on a permanent machine shows "Machine stays registered" once it has ended. A run that
+  goes on with no report, or whose dispatch was released before a machine existed, has no
+  such row. A report reaches an open page on the run's topic, settled section or not.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

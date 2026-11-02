@@ -642,6 +642,12 @@ defmodule Apiary.Access do
         {:not,
          "a machine log is kept as a file with its record, which has its size and when it was uploaded, not in the audit trail"}
     ),
+    # The trail keeps three entries of a dispatch at most: its first report, its first
+    # `delete_failed` and its `gone` (`Apiary.Dispatches.MachineEnds`).
+    Action.new(:"dispatch.machine_end", "report the removal of a claimed run's machine",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
     # A member asks for a build of a target's environment, for each node pool of its
     # workspace (`Apiary.Environments.rebuild/2`).
     Action.new(:"target.rebuild_environment", "rebuild the environment of a target",
@@ -655,7 +661,8 @@ defmodule Apiary.Access do
     :"dispatch.claim",
     :"dispatch.dispatched",
     :"dispatch.release",
-    :"dispatch.machine_log"
+    :"dispatch.machine_log",
+    :"dispatch.machine_end"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the

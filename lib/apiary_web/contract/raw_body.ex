@@ -61,14 +61,15 @@ defmodule ApiaryWeb.Contract.RawBody do
   ]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
-  # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release` and `/machine-log`. Read the same way where `served?/1` holds, as below.
+  # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release`, `/machine-log` and
+  # `/machine-end`. Read the same way where `served?/1` holds, as below.
   @pool_max_bytes 1024 * 1024
   # The form of an access key id, as `ApiaryWeb.Contract.SignedRequest` checks it
   # (`valid_key_id?/1`). The lookup runs only for an id of this form: an id with an invalid
   # UTF-8 byte or a NUL fails in the database query.
   @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   @pool_claim_path ["v1", "pools", "claim"]
-  @dispatch_actions ["dispatched", "release", "machine-log"]
+  @dispatch_actions ["dispatched", "release", "machine-log", "machine-end"]
   # The integration contract's paths and the provisioner contract's belong to one feature.
   # Their bodies are read here only where the instance has it, or where the request
   # carries a signature, which `ApiaryWeb.Features.Routes` lets through to be verified: an
