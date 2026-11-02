@@ -250,10 +250,16 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                "the JSON Schemas in artifact_types take too long to check: use fewer or smaller schemas"
     end
 
-    test "a schema over the limit of its patterns stays not valid" do
+    test "a schema over the single budget stays not valid" do
       # 210 patterns, each counted at the most one pattern can take, pass 16 MiB.
       properties = Map.new(1..210, &{"p#{&1}", %{"pattern" => "(?x)a#{&1}"}})
       [entry] = structured(1, fn _index -> %{"properties" => properties} end)
+
+      assert CustomSchema.check_within(
+               entry["json_schema"],
+               CustomSchema.total(TemplateTypes.total(30_000))
+             ) ==
+               {:error, :budget}
 
       assert TemplateTypes.check(template([entry])) ==
                {:error, [{:invalid, "t1", :json_schema}]}

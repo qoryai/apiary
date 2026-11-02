@@ -42,7 +42,7 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
     end
   end
 
-  describe "check_within/2" do
+  describe "check_within/3" do
     @plenty [reductions: 10_000_000, ms: 30_000]
 
     test "takes a schema's reductions off what is left" do
@@ -75,6 +75,11 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
       assert {:error, :total} = CustomSchema.check_within(schema, left)
     end
 
+    # The single budget of `check/1` with `changes`: no real schema reaches that budget.
+    defp single(changes) do
+      Keyword.merge([reductions: 10_000_000, heap_words: 4_194_304, ms: 10_000], changes)
+    end
+
     # 54 KiB of 4 patterns, which takes at least 9 ms and 360,000 reductions to build, most
     # of the time in the compile of the patterns. `Budget.run/2` reads a run every 2 ms.
     @slow %{
@@ -95,6 +100,26 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
     test "is the total's refusal when the run is cut on time" do
       left = CustomSchema.total(reductions: 10_000_000, ms: 3)
       assert {:error, :total} = CustomSchema.check_within(@slow, left)
+    end
+
+    test "is the budget's refusal for a run over the single budget's reductions" do
+      left = CustomSchema.total(@plenty)
+      assert {:error, :budget} = CustomSchema.check_within(@slow, left, single(reductions: 1_000))
+    end
+
+    test "is the budget's refusal for a run over the single budget's time" do
+      left = CustomSchema.total(@plenty)
+      assert {:error, :budget} = CustomSchema.check_within(@slow, left, single(ms: 3))
+    end
+
+    test "is the total's refusal for a total of reductions under the single budget" do
+      left = CustomSchema.total(reductions: 1_000, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left, single(reductions: 2_000))
+    end
+
+    test "is the total's refusal for a total of time under the single budget" do
+      left = CustomSchema.total(reductions: 10_000_000, ms: 3)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left, single(ms: 5))
     end
 
     test "stops a loop only after schemas that passed" do

@@ -25,9 +25,9 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      the total for a caller with less time than `@total`.
   #
   # A nil list is `:ok` with no check, so a template written before the key works
-  # unchanged. `Apiary.Stacks.Sources` calls `check/1` on each template it reads, last,
-  # after `Apiary.Harnesses.Reader.template/1`, the check of the stack and
-  # `Apiary.Processes.validate/1`. A caller that has not validated the process gets no
+  # unchanged. `Apiary.Stacks.Sources` calls `check/2` on each template it reads, with the
+  # time its read has left, last, after `Apiary.Harnesses.Reader.template/1`, the check of
+  # the stack and `Apiary.Processes.validate/1`. A caller that has not validated the process gets no
   # crash: `check/1` skips a stage that is not a map, a stage whose name is not text, and
   # an `inputs` or `outputs` that is not a list.
   #

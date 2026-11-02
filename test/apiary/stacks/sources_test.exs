@@ -871,24 +871,55 @@ defmodule Apiary.Stacks.SourcesTest do
       assert module_reads() == []
     end
 
-    test "the check of a module's types gets no time past the deadline", ctx do
-      file =
-        template_file() <>
-          """
-          artifact_types:
-            - name: customer-facts
-              base_view: structured
-              size_limit: 65536
-              max_files: 1
-              json_schema: {type: object}
-          """
+    defp typed_file(json_schema) do
+      template_file() <>
+        """
+        artifact_types:
+          - name: customer-facts
+            base_view: structured
+            size_limit: 65536
+            max_files: 1
+            json_schema: #{json_schema}
+        """
+    end
 
-      source = template_source(ctx, root("[a]"), %{"a" => file})
+    test "a check of a module's types out of time fails as a late read fails", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file("{type: object}")})
+
+      assert {:error, {:call, %{cause: :late, seconds: 30}}} =
+               Sources.templates(ctx.scope, source, clock(1))
+    end
+
+    test "too long a check of a module's types with time left stays the file's refusal", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file("{type: object}")})
+
+      # The clock's second read, the check's time, is past the deadline and the third is
+      # on time: `:schemas_too_long` as from a check over its reductions, which no test
+      # file reaches.
+      reads = :counters.new(1, [])
+
+      clock = fn ->
+        :counters.add(reads, 1, 1)
+        now = System.monotonic_time(:millisecond)
+        if :counters.get(reads, 1) == 2, do: now + 60_000, else: now
+      end
 
       assert {:ok, %{templates: [], not_readable: [not_readable]}} =
-               Sources.templates(ctx.scope, source, clock(1))
+               Sources.templates(ctx.scope, source, clock)
 
       assert not_readable == %{module: "a", reason: {:types, [:schemas_too_long]}}
+    end
+
+    test "a bad schema found in time stays its refusal", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file("{type: 5}")})
+
+      assert {:ok, %{templates: [], not_readable: [not_readable]}} =
+               Sources.templates(ctx.scope, source, clock(2))
+
+      assert not_readable == %{
+               module: "a",
+               reason: {:types, [{:invalid, "customer-facts", :json_schema}]}
+             }
     end
 
     test "a file Reader.template/1 does not pass is unreadable", ctx do

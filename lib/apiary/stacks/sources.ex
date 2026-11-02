@@ -45,7 +45,7 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
   # the result's lists. A module whose file has a `stack` the `exports` do not list, a
   # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
-  # does not pass `Apiary.Artifacts.TemplateTypes.check/1`, and a module whose file is not
+  # does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module whose file is not
   # read, is in `not_readable` with the reason (`t:not_readable/0`), and the other modules
   # are read. The file's checks run in that order, the costly check of the types last.
   # A failed read of one file fails the source only where the failure is about the
@@ -72,7 +72,8 @@ defmodule Apiary.Stacks.Sources do
   # public repository's host, take at most 30 seconds together, and one past that makes
   # the source not read. A file read from the cache makes no request, so `templates/2` also
   # checks the time before each module, and a source past it fails as a late read fails.
-  # The check of a module's artifact types gets the time left, at most its total.
+  # The check of a module's artifact types gets the time left, at most its total. A check
+  # that returns `:schemas_too_long` past that time fails the source as a late read fails.
   #
   # ## The save
   #
@@ -776,9 +777,14 @@ defmodule Apiary.Stacks.Sources do
     case Reader.module_file(exports, name, @template_file) do
       {:ok, path} ->
         case read_file(location, path, version, deadline) do
-          {:ok, nil, _version} -> :no_file
-          {:ok, content, _version} -> checked_template(content, name, exports, deadline, clock)
-          {:error, reason} -> file_failure(reason)
+          {:ok, nil, _version} ->
+            :no_file
+
+          {:ok, content, _version} ->
+            checked_template(content, name, location, exports, deadline, clock)
+
+          {:error, reason} ->
+            file_failure(reason)
         end
 
       {:error, _no_path} ->
@@ -792,7 +798,7 @@ defmodule Apiary.Stacks.Sources do
 
   # `content`, a module's file, as a template of `name`: its `stack` is checked first, and
   # its types, whose check is the costly one, last, with the time left.
-  defp checked_template(content, name, %{stacks: stacks}, deadline, clock) do
+  defp checked_template(content, name, location, %{stacks: stacks}, deadline, clock) do
     with {:ok, template} <- Reader.template(content),
          true <- template.stack in stacks,
          :ok <- Apiary.Processes.validate(template.process),
@@ -800,7 +806,7 @@ defmodule Apiary.Stacks.Sources do
       {:ok, Map.put(template, :module, name)}
     else
       false -> {:not_readable, :stack_not_exported}
-      {:types, {:error, refusals}} -> {:not_readable, {:types, refusals}}
+      {:types, {:error, refusals}} -> types_refused(refusals, location, deadline, clock)
       {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
       {:error, _file_reason} -> {:not_readable, :unreadable}
     end
@@ -808,6 +814,14 @@ defmodule Apiary.Stacks.Sources do
 
   defp check_types(template, deadline, clock),
     do: TemplateTypes.check(template, TemplateTypes.total(deadline - clock.()))
+
+  # `:schemas_too_long` past `deadline` is a read out of time and no defect of the file, so
+  # it fails the source as a late read fails.
+  defp types_refused(refusals, location, deadline, clock) do
+    if :schemas_too_long in refusals and clock.() >= deadline,
+      do: {:error, late(location)},
+      else: {:not_readable, {:types, refusals}}
+  end
 
   # Whether `reason`, why a read of one file failed, is about the source rather than the
   # file: the source is out of reach, out of time, no longer covered or not at the version.

@@ -22,7 +22,8 @@ defmodule Apiary.Artifacts.CustomSchema do
   # left, and its reductions, read in its process at the end, come off the total.
   # `{:error, :total}` is a total that ran out: nothing left before a run, a run cut short
   # only because what was left was smaller than the single budget, or a run that ended
-  # past what was left, whether its schema passed or not.
+  # past what was left, whether its schema passed or not. `{:error, :budget}` is a run
+  # over the single budget with more of the total left.
   #
   # `validate/2`, for a push: the document is checked against the bounds below before
   # JSV is given it, and JSV builds the schema and validates the document in the budget's
@@ -49,8 +50,6 @@ defmodule Apiary.Artifacts.CustomSchema do
   # (32 MiB on a 64-bit machine), and 10 s, a bound only on a check that runs away while
   # it counts few reductions.
   @budget [reductions: 10_000_000, heap_words: 4_194_304, ms: 10_000]
-  @single_reductions @budget[:reductions]
-  @single_ms @budget[:ms]
   @pattern_bytes 16_777_216
   @casts ~w(jsv-cast x-jsv-cast)
 
@@ -86,11 +85,15 @@ defmodule Apiary.Artifacts.CustomSchema do
   @spec total(reductions: non_neg_integer, ms: non_neg_integer) :: left
   def total(reductions: reductions, ms: ms), do: %{reductions: reductions, deadline: now() + ms}
 
-  # check_within/2 is `check/1` under what is left of a total: `{:ok, left}`, with the
+  # check_within/3 is `check/1` under what is left of a total: `{:ok, left}`, with the
   # schema's reductions taken off, `{:error, :total}`, or `check/1`'s `{:error, refusal}`.
+  # `single` is the single budget: the tests' seam, as no real schema reaches 10,000,000
+  # reductions.
   @doc false
-  @spec check_within(term, left) :: {:ok, left} | {:error, refusal | :total}
-  def check_within(schema, %{reductions: reductions, deadline: deadline} = left)
+  @spec check_within(term, left, Budget.budget()) :: {:ok, left} | {:error, refusal | :total}
+  def check_within(schema, left, single \\ @budget)
+
+  def check_within(schema, %{reductions: reductions, deadline: deadline} = left, single)
       when is_map(schema) do
     ms = deadline - now()
 
@@ -98,18 +101,19 @@ defmodule Apiary.Artifacts.CustomSchema do
       not Bounds.within?(schema, @schema_limits) -> {:error, :limits}
       byte_size(CanonicalJSON.encode!(schema)) > @schema_bytes -> {:error, :too_large}
       reductions <= 0 or ms <= 0 -> {:error, :total}
-      true -> counted(schema, left, ms)
+      true -> counted(schema, left, ms, single)
     end
   end
 
-  def check_within(_schema, %{}), do: {:error, :not_an_object}
+  def check_within(_schema, %{}, _single), do: {:error, :not_an_object}
 
   # A run past what was left is the total's, whether or not a read of its reductions came
   # in time to cut it: the same schemas get the same result. A run past the deadline is
   # the total's too.
-  defp counted(schema, %{reductions: reductions, deadline: deadline} = left, ms) do
-    budget = Keyword.merge(@budget, reductions: min(reductions, @single_reductions))
-    budget = Keyword.put(budget, :ms, min(ms, @single_ms))
+  defp counted(schema, %{reductions: reductions, deadline: deadline} = left, ms, single) do
+    most = single[:reductions]
+    longest = single[:ms]
+    budget = Keyword.merge(single, reductions: min(reductions, most), ms: min(ms, longest))
 
     result = Budget.run(fn -> {build(copy(schema)), reductions_here()} end, budget)
     late? = now() > deadline
@@ -118,8 +122,8 @@ defmodule Apiary.Artifacts.CustomSchema do
       {:ok, {_result, used}} when late? or used > reductions -> {:error, :total}
       {:ok, {:ok, used}} -> {:ok, %{left | reductions: reductions - used}}
       {:ok, {{:error, refusal}, _used}} -> {:error, refusal}
-      {:error, :reductions} when reductions < @single_reductions -> {:error, :total}
-      {:error, :time} when ms < @single_ms -> {:error, :total}
+      {:error, :reductions} when reductions < most -> {:error, :total}
+      {:error, :time} when ms < longest -> {:error, :total}
       {:error, _reason} -> {:error, :budget}
     end
   end

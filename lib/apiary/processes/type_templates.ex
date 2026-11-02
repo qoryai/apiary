@@ -197,9 +197,11 @@ defmodule Apiary.Processes.TypeTemplates do
   defp base_view(view), do: Enum.find(Type.base_views(), &(Atom.to_string(&1) == view))
 
   @doc """
-  offered_types/0 is the artifact types a type's process may place: the standard types and
-  the custom types of the copied template (Apiary.Harnesses.QoryCopy.template/0). That
-  template is the default process of every type (`Apiary.Processes.default_document/1`).
+  offered_types/0 is the artifact types the page of a type offers for a stage's inputs and
+  outputs, and the list `Apiary.Processes.placement_check/3` checks them against on that
+  page: the standard types and the custom types of the copied template
+  (Apiary.Harnesses.QoryCopy.template/0). That template is the default process of every
+  type (`Apiary.Processes.default_document/1`).
   """
   @spec offered_types() :: [%{name: String.t(), base_view: atom}]
   def offered_types, do: artifact_types(QoryCopy.template().artifact_types)
