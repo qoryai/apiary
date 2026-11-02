@@ -53,6 +53,11 @@ defmodule Apiary.Harnesses.Reader do
   and `maxLength` counts code points, not graphemes, as the Explore result's schema does.
   A `\\s` or `\\S` of a pattern reads every Unicode space, as qory's check of the file
   does.
+
+  The schema takes an optional `artifact_types` list, whose entries are a name alone or a
+  custom type's full definition. `template/1` returns the list as written, and nil when
+  the key is absent. The schema has no list of standard types, so the caller checks what
+  the list means for the workspaces made from the template.
   """
 
   alias Apiary.Explore.Result
@@ -123,7 +128,8 @@ defmodule Apiary.Harnesses.Reader do
 
   @typedoc """
   A factory's `process.yaml`: its texts, the workspace type, the stack its workflows run
-  on, and `process`, the `qory.process/v1` document as written.
+  on, `process`, the `qory.process/v1` document as written, and `artifact_types`, the
+  artifact types its workspaces use as written, nil when the key is absent.
   """
   @type template :: %{
           name: String.t(),
@@ -131,7 +137,8 @@ defmodule Apiary.Harnesses.Reader do
           description: String.t(),
           type: String.t(),
           stack: String.t(),
-          process: map
+          process: map,
+          artifact_types: [map] | nil
         }
 
   # qory's process.schema.json, under the application's priv.
@@ -368,7 +375,7 @@ defmodule Apiary.Harnesses.Reader do
   as the moduledoc says: `{:ok, template}` or `{:error, reason}`. A file the schema
   refuses, such as one with a key missing, a key of the wrong type or a key the schema
   does not define, is `:invalid_template`. The schema checks `process` loosely; the
-  caller checks it as a process.
+  caller checks it as a process, and checks what `artifact_types` means.
   """
   @spec template(binary) :: {:ok, template} | {:error, reason}
   def template(bytes) when is_binary(bytes) do
@@ -381,7 +388,8 @@ defmodule Apiary.Harnesses.Reader do
            description: file["description"],
            type: file["type"],
            stack: file["stack"],
-           process: file["process"]
+           process: file["process"],
+           artifact_types: file["artifact_types"]
          }}
       else
         {:error, :invalid_template}

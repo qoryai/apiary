@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   # Instance settings › Workspace types (`ApiaryWeb.InstanceLive.WorkspaceTypes`): the
   # section in the Instance level's menu, the list of types, a type's stages edited on
-  # the canvas and saved as a new version, the Details tab with the type's texts, the
-  # history, the refusals of a save, and a path
+  # the canvas and saved as a new version, the types a stage offers, the Details tab with
+  # the type's texts, the history, the refusals of a save, and a path
   # that does not exist for an organisation's owner or with `workflow_model` off. Not
   # async: a test of an instance admin hides the instance's organisation, a row every test
   # shares, and each test sets the instance's features.
@@ -10,6 +10,8 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
   import Phoenix.LiveViewTest
 
+  alias Apiary.Harnesses.QoryCopy
+  alias Apiary.Processes
   alias Apiary.Processes.TypeTemplates
 
   @moduletag with_features: Apiary.Features.all()
@@ -17,6 +19,8 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   @type_key "qory.software"
   @index "/instance/workspace-types"
   @edit "/instance/workspace-types/qory.software"
+  @template_key {QoryCopy, :template}
+  @custom_type "web-shop-brief"
 
   setup do
     Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
@@ -26,6 +30,26 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
   defp history(view, number),
     do: view |> element("#type-version-#{number}") |> render() |> LazyHTML.from_fragment()
+
+  # The copied template with `listed` as its types, until the test ends.
+  defp put_template_types(listed) do
+    shipped = QoryCopy.template()
+    :persistent_term.put(@template_key, %{shipped | artifact_types: listed})
+    on_exit(fn -> :persistent_term.put(@template_key, shipped) end)
+  end
+
+  # The type options of an output added to Explore, whose one output is at 0.
+  defp new_output_options(view) do
+    view |> element("#stage-add-outputs") |> render_click()
+
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#stage-outputs-1-type option")
+    |> LazyHTML.attribute("value")
+  end
+
+  defp standard_names, do: Enum.map(TypeTemplates.artifact_types(), & &1.name)
 
   describe "an instance admin" do
     setup do
@@ -316,6 +340,51 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
              )
 
       assert TypeTemplates.newest(@type_key).number == 2
+    end
+
+    test "offers the custom types of the copied template, and a draft may use them", %{
+      conn: conn
+    } do
+      put_template_types([
+        %{"name" => "proposal"},
+        %{"name" => @custom_type, "base_view" => "document", "size_limit" => 1, "max_files" => 1}
+      ])
+
+      {:ok, view, _html} = live(conn, @edit)
+
+      assert new_output_options(view) == standard_names() ++ [@custom_type]
+
+      view
+      |> form("#stage-form", stage: %{outputs: %{"1" => %{type: @custom_type}}})
+      |> render_change()
+
+      view |> element("#type-save") |> render_click()
+      document = TypeTemplates.newest(@type_key).document
+
+      assert Enum.any?(hd(document["stages"])["outputs"], &(&1["type"] == @custom_type))
+
+      assert {:missing_type, hd(document["stages"])["id"], @custom_type} in Processes.placement_check(
+               document,
+               TypeTemplates.workflows(),
+               TypeTemplates.artifact_types()
+             )
+
+      refute Enum.any?(
+               Processes.placement_check(
+                 document,
+                 TypeTemplates.workflows(),
+                 TypeTemplates.offered_types()
+               ),
+               &match?({:missing_type, _id, _type}, &1)
+             )
+    end
+
+    test "offers the standard types alone with the copy as shipped", %{conn: conn} do
+      assert QoryCopy.template().artifact_types == nil
+
+      {:ok, view, _html} = live(conn, @edit)
+
+      assert new_output_options(view) == standard_names()
     end
 
     test "a key no type has is a path that does not exist", %{conn: conn} do
