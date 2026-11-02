@@ -116,7 +116,6 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @grant_ref "G_acme"
   @pool "preview-pool"
   @forager "0.10.0"
-  @harness_workflows ["explore-a-ticket"]
 
   # The work items, in the order they are taken in: what happens to each, who takes its
   # ticket in, and its ticket: number, title and the line its body opens with.
@@ -312,7 +311,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     # A stage waits for a workflow only against a recorded read of the harness: with none,
     # its run starts.
-    :ok = Processes.record_declared(dana_scope.workspace, @harness_workflows)
+    :ok = Processes.record_declared(dana_scope.workspace, Processes.qory_workflows())
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"

@@ -50,7 +50,7 @@ defmodule Apiary.Processes do
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
-  alias Apiary.Stacks.Stack
+  alias Apiary.Stacks.{Sources, Stack}
   alias Apiary.WorkItems.WorkItem
 
   @schema ["schemas", "process", "v1.schema.json"]
@@ -67,11 +67,6 @@ defmodule Apiary.Processes do
 
   # Crockford base32 without i, l, o and u, as `Apiary.PublicId` writes its ids.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"
-
-  # Transition: the Qory harness's core stack does not list explore-a-ticket in its
-  # workflows yet, so `declared_workflows/1` adds it by hand. Remove this once that stack
-  # lists it.
-  @qory_workflows ["explore-a-ticket"]
 
   # A snapshot keeps at most this many names; a read lists at most 20 stacks.
   @max_declared 1_000
@@ -188,11 +183,12 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  qory_workflows/0 is the workflows the Qory harness declares, which every workspace
-  composes.
+  qory_workflows/0 is the workflows the Qory harness declares: the names of the copied
+  `software` stack (`Apiary.Harnesses.QoryCopy.workflows/1`). It does not follow
+  `Apiary.Lingo.Domain.Definition.qory_harness/0`, whose stack `core` lists no workflows.
   """
   @spec qory_workflows() :: [String.t()]
-  def qory_workflows, do: @qory_workflows
+  def qory_workflows, do: QoryCopy.workflows("software")
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
@@ -818,11 +814,11 @@ defmodule Apiary.Processes do
 
   @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
-  sorted: explore-a-ticket, of the Qory harness; the names of the workspace's snapshot
-  (`declared_snapshot/1`), which covers only the workspace's harness, as
-  Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
-  workspace's Workflow page, at the workspace or a target of it.
-  Before the first snapshot, the names are explore-a-ticket and the saved workflow.
+  sorted: for a workspace on the Qory harness, `qory_workflows/0`; the names of the
+  workspace's snapshot (`declared_snapshot/1`), which covers only the workspace's harness,
+  as Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
+  workspace's Workflow page, at the workspace or a target of it. Before the first
+  snapshot, a workspace on another harness has only the saved workflow.
   """
   @spec declared_workflows(%Workspace{}) :: [String.t()]
   def declared_workflows(%Workspace{} = workspace) do
@@ -832,17 +828,23 @@ defmodule Apiary.Processes do
     |> Enum.sort()
   end
 
-  # Transition: the saved workflow is added by hand, as explore-a-ticket is, for a
-  # workspace with no snapshot or a snapshot older than its save. Remove it once the
-  # snapshot is written wherever a workspace's harness is chosen or saved.
+  # Transition: the saved workflow is added by hand for a workspace with no snapshot or a
+  # snapshot older than its save. Remove it once the snapshot is written wherever a
+  # workspace's harness is chosen or saved.
   defp declared_names(workspace, saved) do
+    harness =
+      case Sources.chosen(workspace) do
+        %{choice: :qory} -> qory_workflows()
+        _repository -> []
+      end
+
     snapshot =
       case declared_snapshot(workspace) do
         %{names: names} -> names
         nil -> []
       end
 
-    @qory_workflows ++ snapshot ++ Enum.map(saved, & &1.workflow)
+    harness ++ snapshot ++ Enum.map(saved, & &1.workflow)
   end
 
   @doc """

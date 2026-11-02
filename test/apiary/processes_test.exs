@@ -16,14 +16,29 @@ defmodule Apiary.ProcessesTest do
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.QoryCopy
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.Version
+  alias Apiary.Stacks.{Sources, Stack}
   alias Apiary.WorkItems.WorkItem
 
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
 
   defp default, do: Processes.default_document("software")
+
+  # A harness repository chosen for the workspace `workspace_id`, or shared with every
+  # workspace of the organisation for nil.
+  defp repository_harness!(scope, workspace_id) do
+    Repo.insert!(%Stack{
+      organisation_id: scope.workspace.organisation_id,
+      workspace_id: workspace_id,
+      choice: :repository,
+      version_kind: :commit,
+      version_name: String.duplicate("c3", 20),
+      harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: core\n"
+    })
+  end
 
   # The default with each stage changed by `fun`, given the stage.
   defp edit(document \\ default(), fun),
@@ -460,6 +475,55 @@ defmodule Apiary.ProcessesTest do
       assert DateTime.compare(read_at, first_read) in [:gt, :eq]
       assert Processes.declared_workflows(scope.workspace) == ["capture-demo", "explore-a-ticket"]
       assert Processes.workflow_declaration(scope.workspace, "review") == nil
+    end
+
+    test "on the Qory harness come from the copied software stack, not the stack a workspace starts with" do
+      %{scope: scope} = sign_up_fixture()
+
+      assert Definition.qory_harness().stack == "core"
+      assert QoryCopy.workflows("core") == []
+      assert Processes.qory_workflows() == QoryCopy.workflows("software")
+      assert Processes.declared_workflows(scope.workspace) == Processes.qory_workflows()
+      assert {:ok, ["explore-a-ticket"]} = Sources.chosen_workflows(scope, scope.workspace)
+    end
+
+    test "on a harness repository are its snapshot, without the Qory harness's names" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+
+      assert Processes.declared_workflows(scope.workspace) == []
+      assert Processes.workflow_declaration(scope.workspace, "explore-a-ticket") == nil
+
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+
+      assert Processes.declared_workflows(scope.workspace) == ["review"]
+      assert Processes.workflow_declaration(scope.workspace, "explore-a-ticket") == nil
+
+      :ok = Processes.record_declared(scope.workspace, ["explore-a-ticket", "review"])
+
+      assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket", "review"]
+    end
+
+    test "on a harness repository the organisation shares are its snapshot too" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, nil)
+
+      assert Processes.declared_workflows(scope.workspace) == []
+    end
+
+    test "on the Qory harness chosen by a row keep the copied names" do
+      %{scope: scope} = sign_up_fixture()
+
+      Repo.insert!(%Stack{
+        organisation_id: scope.workspace.organisation_id,
+        workspace_id: scope.workspace.id,
+        choice: :qory,
+        version_kind: :latest,
+        harness: "extends:\n  git: https://github.com/qoryai/harness\n  stack: core\n"
+      })
+
+      assert Sources.chosen(scope.workspace).saved
+      assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket"]
     end
   end
 
