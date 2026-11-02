@@ -37,18 +37,33 @@ defmodule Apiary.Stacks.Sources do
   # `path` the `qory-stack.yaml` in that folder, and a root the stacks its harness file
   # exports, else its `qory-stack.yaml`.
   #
+  # ## Reading a source's templates
+  #
+  # `templates/2` reads the templates of one source, as `exports/2` reads the source: from
+  # its root harness file, whatever stack or folder the source is narrowed to. A template
+  # is the `process.yaml` of a module the file's `exports` list, read at the commit of the
+  # root file, in the module's folder (`Apiary.Harnesses.Reader.module_file/3`). A module
+  # with no such file is in neither of the result's lists. A module whose file has a
+  # `stack` the `exports` do not list or a `process` that does not pass
+  # `Apiary.Processes.validate/1`, and a module whose file is not read, is in
+  # `not_readable` with the reason (`t:not_readable/0`), and the other modules are read.
+  # A failed read of one file fails the source only where the failure is about the
+  # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
+  # listed twice counts once.
+  #
   # ## Limits
   #
   # A person's reads are counted in a fixed window of a minute, by the person's account
   # (`Apiary.Runs.RateLimit.reserve/3`): at most 10 reads of a source (`exports/2`,
-  # `read/2` and the reads of a save), else `{:error, {:limited, seconds}}`, the seconds
-  # until the window ends. `RateLimit` counts on each node, so on a cluster a person gets
+  # `read/2`, `templates/2` and the reads of a save), else `{:error, {:limited, seconds}}`,
+  # the seconds until the window ends. `RateLimit` counts on each node, so on a cluster a person gets
   # these limits on each node. Each resolve of an address may make the adapter call the
   # system it reaches under credentials every organisation shares, so a person's reads
   # stay a few. A read of a source makes one resolve per adapter and at most 3 reads to
   # find its stacks, then, for `read/2`, reads the first 20 stacks it has, in the order
-  # its harness file exports them; its calls, and its requests to a public repository's
-  # host, take at most 30 seconds together, and one past that makes the source not read.
+  # its harness file exports them, or, for `templates/2`, the file of each of the first 20
+  # modules it lists; its calls, and its requests to a public repository's host, take at
+  # most 30 seconds together, and one past that makes the source not read.
   #
   # ## The save
   #
@@ -125,6 +140,10 @@ defmodule Apiary.Stacks.Sources do
   # The most stacks a read of a source reads, and the time all its calls may take.
   @max_stacks 20
   @read_time 30_000
+  # The file of a module that makes it a template, and the most modules a read of a
+  # source's templates reads.
+  @template_file "process.yaml"
+  @max_template_modules 20
   # The time of one call, `Apiary.Adapters.Calls`' default.
   @call_time 10_000
 
@@ -147,6 +166,51 @@ defmodule Apiary.Stacks.Sources do
 
   @typedoc "A stack of a source: its export name, nil for none, the base a document extends, and its workflows."
   @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
+
+  @typedoc """
+  A template of a source: `module`, the name of the module whose folder has its
+  `process.yaml`, and the fields of the file (`t:Apiary.Harnesses.Reader.template/0`).
+  """
+  @type template :: %{
+          module: String.t(),
+          name: String.t(),
+          summary: String.t(),
+          description: String.t(),
+          type: String.t(),
+          stack: String.t(),
+          process: map
+        }
+
+  @typedoc """
+  A module of a source that gives no template, and why; `module` is nil for
+  `:modules_invalid`, which is about every module of the source:
+
+    * `:stack_not_exported`: the file's `stack` is not among the stacks of `exports`;
+    * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
+    * `:unreadable`: the module's folder is at no path a read takes, a read of the file
+      failed, or the file does not pass `Apiary.Harnesses.Reader.template/1`;
+    * `:modules_invalid`: the `modules` of `exports` are not a list of text.
+  """
+  @type not_readable :: %{
+          module: String.t() | nil,
+          reason:
+            :stack_not_exported
+            | {:invalid, [Apiary.Processes.error()]}
+            | :unreadable
+            | :modules_invalid
+        }
+
+  @typedoc """
+  The templates of a source: `commit`, the commit the read resolved; `templates` and
+  `not_readable`, in the order of `exports`; and `more`, how many distinct modules the
+  source lists past the ones read.
+  """
+  @type templates :: %{
+          commit: String.t(),
+          templates: [template],
+          not_readable: [not_readable],
+          more: non_neg_integer
+        }
 
   @typedoc """
   A call to an adapter that failed, as a page shows it: the adapter's shown name
@@ -556,6 +620,145 @@ defmodule Apiary.Stacks.Sources do
       end
     end
   end
+
+  @doc false
+  # templates/2 is the templates `source` offers (the moduledoc), read at the source's
+  # `ref` as one of the person's reads, whatever the number of its modules: `{:ok,
+  # templates}` (`t:templates/0`), or `{:error, reason}` as `read/2` has it. A source with
+  # no root harness file or no `exports` has no template. It calls the adapters, so a
+  # page runs it outside its process.
+  @spec templates(Scope.t(), source) :: {:ok, templates} | {:error, reason}
+  def templates(%Scope{} = scope, %{} = source) do
+    deadline = now() + @read_time
+
+    PublicGit.session(public_budget(deadline), fn ->
+      read_templates(scope, source, deadline)
+    end)
+  end
+
+  defp read_templates(
+         %Scope{organisation: %Organisation{} = organisation} = scope,
+         source,
+         deadline
+       ) do
+    harness_source = Map.merge(source.narrowing, %{"git" => source.git, "ref" => source.ref})
+
+    with :ok <- spend(scope, :read, @reads_a_minute),
+         {:ok, location} <- locate(organisation, harness_source, deadline),
+         {:ok, version, exports} <- root_exports(location, source.ref, deadline) do
+      module_templates(location, exports, version, deadline)
+    end
+  end
+
+  # The `exports` of the root harness file at `location`, read at `at`: `{:ok, version,
+  # exports}`, with `:none` for a source with neither file or with no `exports`, or
+  # `{:error, reason}`.
+  defp root_exports(location, at, deadline) do
+    with {:ok, harness, version} <- read_file(location, "harness.yaml", at, deadline),
+         {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
+      case {harness, qory} do
+        {nil, nil} -> {:ok, version, :none}
+        {content, nil} -> exports_at("harness.yaml", content, version)
+        {nil, content} -> exports_at("qory.yaml", content, version)
+        _both -> {:error, both_files()}
+      end
+    end
+  end
+
+  defp exports_at(file, content, version) do
+    case Reader.exports(content) do
+      {:ok, exports} -> {:ok, version, exports}
+      :none -> {:ok, version, :none}
+      {:error, reason} -> {:error, refused_file(file, reason)}
+    end
+  end
+
+  defp module_templates(_location, :none, version, _deadline),
+    do: {:ok, %{commit: version, templates: [], not_readable: [], more: 0}}
+
+  defp module_templates(_location, %{modules: :invalid}, version, _deadline) do
+    not_readable = [%{module: nil, reason: :modules_invalid}]
+    {:ok, %{commit: version, templates: [], not_readable: not_readable, more: 0}}
+  end
+
+  defp module_templates(location, %{modules: modules} = exports, version, deadline) do
+    {read, past} = modules |> Enum.uniq() |> Enum.split(@max_template_modules)
+
+    read
+    |> Enum.reduce_while({[], []}, fn name, {templates, not_readable} ->
+      case module_template(location, exports, name, version, deadline) do
+        :no_file ->
+          {:cont, {templates, not_readable}}
+
+        {:ok, template} ->
+          {:cont, {[template | templates], not_readable}}
+
+        {:not_readable, reason} ->
+          {:cont, {templates, [%{module: name, reason: reason} | not_readable]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:error, reason} ->
+        {:error, reason}
+
+      {templates, not_readable} ->
+        {:ok,
+         %{
+           commit: version,
+           templates: Enum.reverse(templates),
+           not_readable: Enum.reverse(not_readable),
+           more: length(past)
+         }}
+    end
+  end
+
+  # The template of the module `name`, a name `exports` lists: `{:ok, template}`,
+  # `:no_file`, `{:not_readable, reason}`, or `{:error, reason}` for a read that fails the
+  # source.
+  defp module_template(location, exports, name, version, deadline) do
+    case Reader.module_file(exports, name, @template_file) do
+      {:ok, path} ->
+        case read_file(location, path, version, deadline) do
+          {:ok, nil, _version} -> :no_file
+          {:ok, content, _version} -> checked_template(content, name, exports)
+          {:error, reason} -> file_failure(reason)
+        end
+
+      {:error, _no_path} ->
+        {:not_readable, :unreadable}
+    end
+  end
+
+  defp file_failure(reason) do
+    if source_failed?(reason), do: {:error, reason}, else: {:not_readable, :unreadable}
+  end
+
+  # `content`, a module's file, as a template of `name`: its `stack` is checked first.
+  defp checked_template(content, name, %{stacks: stacks}) do
+    with {:ok, template} <- Reader.template(content),
+         true <- template.stack in stacks,
+         :ok <- Apiary.Processes.validate(template.process) do
+      {:ok, Map.put(template, :module, name)}
+    else
+      false -> {:not_readable, :stack_not_exported}
+      {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
+      {:error, _file_reason} -> {:not_readable, :unreadable}
+    end
+  end
+
+  # Whether `reason`, why a read of one file failed, is about the source rather than the
+  # file: the source is out of reach, out of time, no longer covered or not at the version.
+  defp source_failed?({:call, %{cause: cause}}),
+    do: cause in [:late, :timeout, :unreachable, :no_address, :not_allowed, :unauthorized]
+
+  defp source_failed?({:fetch, code, _rule}),
+    do: code in [:source_unreachable, :host_not_allowed, :rate_limited]
+
+  defp source_failed?({:no_version, _ref}), do: true
+  defp source_failed?(reason), do: reason in [:not_covered, :no_commit]
 
   # The base a document extends for `stack` of `source`.
   defp base(source, stack) do

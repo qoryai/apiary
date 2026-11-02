@@ -65,8 +65,10 @@ defmodule Apiary.HarnessReadsFixtures do
   `{resource_ref, path}` to a document. A public repository is served by its host
   (`Apiary.PublicGitServer`). A resource's version is `c-<resource_ref>`, whatever version a read asks, or its value in
   `versions`, a map by resource_ref. `refuse_at` maps a version a read asks for (`at`) to
-  the code a 404 refuses that read with, such as `"version_not_found"`. `down: true` makes
-  every call reach no one, and `down:` a list of adapter ids the calls of those adapters.
+  the code a 404 refuses that read with, such as `"version_not_found"`, and `refuse_path`
+  does so for a read of a path. `down: true` makes every call reach no one, `down:` a list
+  of adapter ids the calls of those adapters, and `down_path:` a list of paths the reads
+  of those paths.
   Each call is sent to the test as `{:harness_call, path, members}`.
   """
   def serve_calls(adapters, opts \\ []) do
@@ -84,7 +86,7 @@ defmodule Apiary.HarnessReadsFixtures do
       adapter = Map.fetch!(hosts, host)
 
       cond do
-        down?(opts[:down], adapter) ->
+        down?(opts[:down], adapter) or call["path"] in (opts[:down_path] || []) ->
           Req.Test.transport_error(conn, :econnrefused)
 
         path == "resolve" ->
@@ -109,6 +111,9 @@ defmodule Apiary.HarnessReadsFixtures do
 
         path == "read" and is_map_key(opts[:refuse_at] || %{}, call["at"]) ->
           answer(conn, 404, %{"error" => opts[:refuse_at][call["at"]]}, adapter)
+
+        path == "read" and is_map_key(opts[:refuse_path] || %{}, call["path"]) ->
+          answer(conn, 404, %{"error" => opts[:refuse_path][call["path"]]}, adapter)
 
         path == "read" ->
           found =
