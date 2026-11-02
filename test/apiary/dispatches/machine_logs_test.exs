@@ -56,7 +56,10 @@ defmodule Apiary.Dispatches.MachineLogsTest do
   # A dispatch claimed, before `dispatched`, which its starter may release.
   defp claimed!(ctx) do
     {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
     dispatch
   end
 

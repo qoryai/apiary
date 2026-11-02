@@ -96,7 +96,9 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       _gateway = workspace_gateway!(ctx.scope)
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-      {:ok, %{dispatch: _dispatch}} = Dispatches.claim(key, Dispatches.now())
+
+      {:ok, %{dispatch: _dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
 
       assert WorkItems.undo(ctx.scope, ctx.work_item) == {:error, :claimed}
       assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
@@ -107,7 +109,10 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       _gateway = workspace_gateway!(ctx.scope)
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+
+      {:ok, %{dispatch: dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
       at = DateTime.add(dispatch.claimed_at, 1, :second)
       ended_at = DateTime.add(at, 1, :second)
 
@@ -220,7 +225,9 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       _gateway = workspace_gateway!(ctx.scope)
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-      {:ok, %{dispatch: _dispatch}} = Dispatches.claim(key, Dispatches.now())
+
+      {:ok, %{dispatch: _dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
 
       assert WorkItems.decline(ctx.scope, ctx.work_item) == {:error, :running}
       assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)

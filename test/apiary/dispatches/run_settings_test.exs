@@ -56,7 +56,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     answer =
-      case Dispatches.claim(ctx.key, Dispatches.now(), @body) do
+      case Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body) do
         {:ok, %{registered: run, documents: documents}} -> {:ok, Map.put(documents, :run, run)}
         {:ok, :none} -> {:error, :gone}
         {:error, _reason} = error -> error

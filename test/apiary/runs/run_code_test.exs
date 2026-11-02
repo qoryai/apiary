@@ -30,7 +30,10 @@ defmodule Apiary.Runs.RunCodeTest do
   defp claimed!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: %Dispatch{}} = handed} = Dispatches.claim(ctx.key, Dispatches.now(), @body)
+
+    {:ok, %{dispatch: %Dispatch{}} = handed} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+
     %{queued: queued, dispatch: handed.dispatch, handed: handed, run: handed.registered}
   end
 

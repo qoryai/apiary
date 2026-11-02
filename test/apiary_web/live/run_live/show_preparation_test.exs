@@ -87,7 +87,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(scope), 1)
       end)
 
-    {:ok, claimed} = Dispatches.claim(key, Dispatches.now())
+    {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
     Map.merge(claimed, %{key: key, gateway: gateway})
   end
 
@@ -234,7 +234,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
           Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
         end)
 
-      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      {:ok, %{dispatch: dispatch, registered: run}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
       :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
       lv = open(ctx.conn, ctx.scope, run)
 
@@ -260,7 +262,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
           Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
         end)
 
-      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      {:ok, %{dispatch: dispatch, registered: run}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
       :ok = Dispatches.release(key, dispatch.public_id, %{reason: "Key #{run_key} refused."})
       run = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
 
@@ -581,7 +585,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
           Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
         end)
 
-      {:ok, %{dispatch: dispatch, registered: run}} = Dispatches.claim(key, Dispatches.now())
+      {:ok, %{dispatch: dispatch, registered: run}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
       :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
       lv = open(ctx.conn, ctx.scope, run)
 

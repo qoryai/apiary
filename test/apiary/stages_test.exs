@@ -489,9 +489,9 @@ defmodule Apiary.StagesTest do
   end
 
   describe "run_workflow/1" do
-    test "is nil for the Explore workflow and the name of any other" do
+    test "is the workflow of a stage's run, Explore's among them" do
       assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: "explore-a-ticket"}) ==
-               nil
+               "explore-a-ticket"
 
       assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: "review"}) == "review"
       assert Stages.run_workflow(%DispatchRun{stage_id: nil, workflow: "review"}) == nil

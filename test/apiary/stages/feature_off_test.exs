@@ -3,14 +3,16 @@ defmodule Apiary.Stages.FeatureOffTest do
   # run 1 of 3 with no place in a process, a run's end stores no artifact and opens no
   # escalation, and a confirmation writes no gate decision.
   use Apiary.DataCase, async: false
+  use Oban.Testing, repo: Apiary.Repo
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Artifacts, Repo, Stages, WorkItems}
+  alias Apiary.{Artifacts, Harnesses, Repo, Stacks, Stages, WorkItems}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.{RunHarness, WalkJob}
   alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
@@ -39,6 +41,26 @@ defmodule Apiary.Stages.FeatureOffTest do
            ] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
   end
 
+  test "a run with no row gets a walk resolved with no origin, and no job", %{scope: scope} do
+    run = scope |> taken_in_fixture() |> newest_run()
+
+    assert %RunHarness{state: :resolved, origin: :none, workflow: nil} =
+             Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+    refute_enqueued(worker: WalkJob)
+    assert Harnesses.entries(run) == []
+  end
+
+  test "a run walks the workflow of the one saved row", %{scope: scope} do
+    {:ok, _row} = Stacks.put_stack(scope, {:workspace, scope.workspace, "review"}, nil)
+    run = scope |> taken_in_fixture() |> newest_run()
+
+    assert %RunHarness{state: :pending, workflow: "review"} =
+             Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+    assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
+  end
+
   test "a proposal, questions and no result store nothing for the stage runner", %{scope: scope} do
     work_item = taken_in_fixture(scope) |> end_run!(questions_result())
     {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
@@ -65,5 +87,12 @@ defmodule Apiary.Stages.FeatureOffTest do
     }
 
     assert Stages.limits(run) == nil
+  end
+
+  test "a run with a place in a process has no run workflow, Explore's among them" do
+    for workflow <- ["explore-a-ticket", "build"] do
+      assert Stages.run_workflow(%DispatchRun{stage_id: "st_r79kph11eg", workflow: workflow}) ==
+               nil
+    end
   end
 end

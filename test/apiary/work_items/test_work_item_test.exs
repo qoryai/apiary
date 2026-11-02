@@ -682,7 +682,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
     test "takes the run of a test work item, which has no connection to check", ctx do
       [run] = runs(test_item!(ctx.scope))
 
-      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, _taken} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
       assert dispatched?(run)
       refute run!(run).end_cause in [:closed, :undone]
@@ -692,7 +692,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
          ctx do
       last = test_item!(ctx.scope)
       [run] = runs(last)
-      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, _taken} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
       assert %DispatchRun{state: :claimed} = run!(run)
 
       assert WorkItems.take_in_test(ctx.scope, "Once more") == {:error, :test_running}
@@ -751,7 +751,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
           {run, cause}
         end
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
 
       for {run, cause} <- ended do
         assert %DispatchRun{state: :ended, end_cause: ^cause} = run!(run)
@@ -768,7 +768,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
         set: [state: :ended, ended_at: Dispatches.now(), ended_reason: :adapter_reported]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
       refute dispatched?(run)
     end

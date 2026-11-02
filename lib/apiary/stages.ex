@@ -274,14 +274,11 @@ defmodule Apiary.Stages do
   # model choice are read by. nil for a run the stage runner did not queue, or with the
   # workflow model off, which keep the workflow the Workflow page saved
   # (`Apiary.Stacks.workflow/2`).
-  #
-  # Transition, as D1: nil for `explore_workflow/0` too. Explore v1 runs exactly as today's
-  # Explore run, by the Workflow page's saved workflow, until the harness change.
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
   def run_workflow(%DispatchRun{stage_id: stage_id, workflow: workflow})
       when is_binary(stage_id) and is_binary(workflow),
-      do: if(workflow != explore_workflow() and on?(), do: workflow)
+      do: if(on?(), do: workflow)
 
   def run_workflow(%DispatchRun{}), do: nil
 

@@ -42,13 +42,16 @@ defmodule Apiary.Runs.PreparationTest do
         Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
       end)
 
-    case Dispatches.claim(ctx.key, Dispatches.now()) do
+    case Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) do
       {:ok, %{dispatch: %Dispatch{}} = claimed} ->
         claimed
 
       {:error, :no_gateway} ->
         _gateway = gateway_for!(ctx.scope, ctx.pool)
-        {:ok, %{dispatch: %Dispatch{}} = claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+
+        {:ok, %{dispatch: %Dispatch{}} = claimed} =
+          Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
         claimed
     end
   end

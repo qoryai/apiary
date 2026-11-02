@@ -531,7 +531,7 @@ defmodule Apiary.WorkflowEndToEndTest do
         do: Apiary.DispatchedRunsFixtures.walk_resolved!(run)
 
     assert {:ok, %{run_code: _code} = claimed} =
-             Dispatches.claim(ctx.place.key, Dispatches.now())
+             Apiary.DispatchedRunsFixtures.walked_claim(ctx.place.key, Dispatches.now())
 
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)
     run_id = claimed.registered.node_run_id

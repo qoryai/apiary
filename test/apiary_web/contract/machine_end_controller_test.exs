@@ -93,7 +93,10 @@ defmodule ApiaryWeb.Contract.MachineEndControllerTest do
   # A dispatch of a fresh work item, claimed, not handed over.
   defp dispatch!(ctx) do
     {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
     dispatch
   end
 

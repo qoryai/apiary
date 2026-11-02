@@ -45,7 +45,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     Application.put_env(:apiary, :features, Enum.uniq(previous ++ [:registry]))
 
     try do
-      Dispatches.claim(ctx.key, Dispatches.now())
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
     after
       Application.put_env(:apiary, :features, previous)
     end

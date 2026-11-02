@@ -217,7 +217,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       _gateway = gateway_for!(scope, pool)
       %{access_key: key} = enrolled_key_fixture(scope, pool)
-      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
+      {:ok, _claimed} = Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
       view = open(conn, path)
 
       assert has_element?(view, "#{pool_id(pool)}-running", "A build is running.")
@@ -564,7 +564,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       _gateway = gateway_for!(scope, arm)
       %{access_key: key} = enrolled_key_fixture(scope, arm)
-      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
+      {:ok, _claimed} = Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
       set_policy_image!(scope)
       view = open(conn, path)

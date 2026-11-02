@@ -74,7 +74,9 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
   defp take_in_again(ctx), do: fn -> WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) end
   defp undo(ctx, work_item), do: fn -> WorkItems.undo(ctx.scope, work_item) end
   defp decline(ctx, work_item), do: fn -> WorkItems.decline(ctx.scope, work_item) end
-  defp claim(ctx), do: fn -> Dispatches.claim(ctx.key, Dispatches.now()) end
+
+  defp claim(ctx),
+    do: fn -> Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) end
 
   defp move(ctx, workspace) do
     fn ->

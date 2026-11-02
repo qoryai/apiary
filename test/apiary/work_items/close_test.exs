@@ -51,7 +51,9 @@ defmodule Apiary.WorkItems.CloseTest do
   end
 
   defp claimed!(key) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
     dispatch
   end
 
@@ -248,7 +250,7 @@ defmodule Apiary.WorkItems.CloseTest do
 
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
       assert Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^run.id) == []
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
     end
 
     test "a waiting run with a stale dispatch ends closed, and the dispatch run_ended", ctx do

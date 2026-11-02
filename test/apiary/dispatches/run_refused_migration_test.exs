@@ -81,7 +81,10 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
     _gateway = gateway_for!(scope, pool)
     %{access_key: key} = access_key_fixture(scope, node: pool)
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
     %{run: run, dispatch: dispatch}
   end
 

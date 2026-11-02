@@ -18,7 +18,7 @@ defmodule Apiary.Harnesses.WalkTest do
   alias Apiary.Adapters.{Calls, Collection, Grant}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Harnesses.{Assignment, Builtin, Reader, RunHarness, Walk, WalkJob}
+  alias Apiary.Harnesses.{Assignment, Builtin, Reader, RunHarness, Walk, WalkJob, WorkflowGap}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
@@ -2293,22 +2293,11 @@ defmodule Apiary.Harnesses.WalkTest do
       )
     end
 
-    test "a run of a workspace with no workflow gets a row resolved with no origin read, and no job",
-         ctx do
-      run = queued(ctx)
-
-      assert %RunHarness{state: :resolved, origin: :none, workflow: nil} =
-               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
-
-      refute_enqueued(worker: WalkJob)
-      assert Harnesses.entries(run) == []
-    end
-
     test "a run with a workflow is pending, with its job, which writes the walk", ctx do
       setting(ctx.scope, @setting)
       run = queued(ctx)
 
-      assert %RunHarness{state: :pending, workflow: "explore"} =
+      assert %RunHarness{state: :pending, workflow: "explore-a-ticket"} =
                Repo.get_by!(RunHarness, dispatch_run_id: run.id)
 
       assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id}, queue: :harness)
@@ -2438,13 +2427,13 @@ defmodule Apiary.Harnesses.WalkTest do
 
     test "the job writes the access level the walk resolved", ctx do
       setting(ctx.scope, @setting)
-      recording(ctx, "explore", nil)
+      recording(ctx, "explore-a-ticket", nil)
       run = queued(ctx)
       assert Repo.get_by!(RunHarness, dispatch_run_id: run.id).access_level == :read
 
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
-        files: declaring("  explore: {access: write}\n")
+        files: declaring("  explore-a-ticket: {access: write}\n")
       )
 
       assert :ok = job(run)
@@ -2490,9 +2479,12 @@ defmodule Apiary.Harnesses.WalkTest do
       level
     end
 
-    # The access level of the documents of the next run a machine claims. The workspace's
+    # The access level of the documents of the next run a machine claims.
+    defp claimed_level(ctx), do: claimed_harness(ctx).access
+
+    # The harness members of the documents of the next run a machine claims. The workspace's
     # collections lose their environments, so the claim takes that run and no prebuild.
-    defp claimed_level(ctx) do
+    defp claimed_harness(ctx) do
       workspace_id = ctx.scope.workspace.id
 
       {_count, _rows} =
@@ -2504,7 +2496,7 @@ defmodule Apiary.Harnesses.WalkTest do
       body = ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
 
       {:ok, %{documents: documents}} = Dispatches.claim(place.key, Dispatches.now(), body)
-      documents.harness.access
+      documents.harness
     end
 
     @tag needs: [:factory, :workflow_model]
@@ -2565,29 +2557,16 @@ defmodule Apiary.Harnesses.WalkTest do
       assert claimed_level(ctx) == :read
     end
 
-    test "a changed or removed row on an explore run stays read", ctx do
+    test "a changed or removed row on a run with no stage entry stays read", ctx do
       declared!(ctx, "  explore: {access: write}\n")
       recording(ctx, "explore", nil)
-      removed = queued(ctx)
-      changed = queued(ctx)
+      assert {:ok, %{access_level: :write}} = Walk.run(ctx.input)
 
       {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "explore"})
-      assert walked_level(removed) == :read
+      assert {:ok, %{access_level: :read}} = Walk.run(ctx.input)
 
       recording(ctx, "review", :write)
-      assert walked_level(changed) == :read
-    end
-
-    @tag needs: [:factory, :workflow_model]
-    test "a stage's explore-a-ticket entry keeps the rule of an explore run", ctx do
-      declared!(ctx, "  explore: {access: write}\n")
-      recording(ctx, "explore", nil)
-      process!(ctx, %{"workflow" => "explore-a-ticket"})
-      run = queued(ctx)
-      assert %DispatchRun{stage_id: "st_r79kph11eg"} = run
-
-      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "explore"})
-      assert walked_level(run) == :read
+      assert {:ok, %{access_level: :read}} = Walk.run(ctx.input)
     end
 
     test "an adapter that answers no one is tried again, then fails adapter_unavailable", ctx do
@@ -2832,14 +2811,9 @@ defmodule Apiary.Harnesses.WalkTest do
 
     test "a work item that is no test is walked as before, beside a test", ctx do
       test_run!(ctx.scope)
-
-      assert %RunHarness{origin: :none} =
-               Repo.get_by!(RunHarness, dispatch_run_id: queued(ctx).id)
-
-      setting(ctx.scope, @setting)
       run = queued(ctx)
 
-      assert %RunHarness{state: :pending, workflow: "explore"} =
+      assert %RunHarness{state: :pending, workflow: "explore-a-ticket"} =
                Repo.get_by!(RunHarness, dispatch_run_id: run.id)
 
       assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
@@ -2874,6 +2848,186 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, walked} = Walk.run(ctx.input)
       assert [%{"resources" => ["R_qory"]}] = walked.harness_links
       assert [@builtin_git] in resolves(calls())
+    end
+  end
+
+  ## Explore with no row on the Workflow page
+
+  describe "a stage's run of explore-a-ticket" do
+    @describetag needs: [:factory, :workflow_model]
+
+    setup do
+      :ok = Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
+      :ok
+    end
+
+    # `ctx` for `workspace`, which takes the target's collection.
+    defp moved_to(ctx, %Workspace{} = workspace) do
+      organisation_id = ctx.scope.organisation.id
+
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.organisation_id == ^organisation_id),
+          set: [workspace_id: workspace.id]
+        )
+
+      %{ctx | scope: %{ctx.scope | workspace: workspace}}
+    end
+
+    # A workspace from a template of the stack `web` of `@harness`, with the process of the
+    # copied template, and no row with a workflow.
+    defp repository_template!(ctx) do
+      path = "../../fixtures/harness/v1/sources/factory/modules/support-desk/process.yaml"
+      {:ok, read} = __DIR__ |> Path.join(path) |> File.read!() |> Reader.template()
+
+      template =
+        Map.merge(read, %{
+          module: "support-desk",
+          stack: "web",
+          process: Apiary.Processes.default_document("software")
+        })
+
+      {:ok, workspace} =
+        Organisations.create_workspace_from_template(ctx.scope, %{
+          source: shared!(ctx, {:branch, "main"}, "main"),
+          commit: @commit,
+          template: template
+        })
+
+      workspace
+    end
+
+    # The run of a work item taken in, walked by its job, and the documents of its claim.
+    defp explored!(ctx) do
+      assert Stacks.workflow_for(ctx.scope.workspace, nil) == nil
+      run = queued(ctx)
+
+      assert %DispatchRun{stage_id: "st_r79kph11eg", workflow: "explore-a-ticket"} = run
+
+      assert %RunHarness{state: :pending, workflow: "explore-a-ticket"} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, origin: :setting, access_level: :read} =
+               walk = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      {run, walk, claimed_harness(ctx)}
+    end
+
+    # The run's end with a proposal, which Explore's gate waits on.
+    defp at_the_gate?(run) do
+      work_item =
+        Apiary.WorkItems.WorkItem
+        |> Repo.get!(run.work_item_id)
+        |> Apiary.StagesFixtures.end_run!(understood_result())
+
+      Enum.any?(Apiary.Artifacts.list(work_item), &(&1.type == "proposal")) and
+        work_item.stage_state == :at_gate
+    end
+
+    test "a workspace of the Qory template walks it and reads, with the workflow in its documents",
+         ctx do
+      {:ok, workspace} = Organisations.create_workspace_of_kind(ctx.scope, Domain.Software, :any)
+      ctx = moved_to(ctx, workspace)
+      serve([ctx.run], covered: covering(ctx), files: %{})
+
+      {_run, walk, documents} = explored!(ctx)
+
+      assert %{"extends" => %{"stack" => "software"}} = walk.document
+      assert %{workflow: "explore-a-ticket", access: :read} = documents
+      assert %{"extends" => %{"stack" => "software"}} = documents.harness
+      assert at_the_gate?(queued(ctx))
+    end
+
+    test "a workspace of a repository template walks its stack and reads, with the workflow in its documents",
+         ctx do
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  explore-a-ticket: {access: read}\n")
+      )
+
+      ctx = moved_to(ctx, repository_template!(ctx))
+
+      {_run, walk, documents} = explored!(ctx)
+
+      assert %{"extends" => %{"stack" => "web"}} = walk.document
+      assert %{workflow: "explore-a-ticket", access: :read} = documents
+      assert %{"extends" => %{"stack" => "web"}} = documents.harness
+      assert at_the_gate?(queued(ctx))
+    end
+
+    test "a workspace with no harness row walks the Qory harness, and a gap shows that workflow",
+         ctx do
+      serve([ctx.run], covered: covering(ctx), files: %{})
+
+      {run, walk, documents} = explored!(ctx)
+
+      assert walk.stack_id == nil
+      assert %{workflow: "explore-a-ticket", access: :read} = documents
+
+      %Apiary.Runs.Run{id: id} =
+        Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^id),
+          set: [reason: "workflow_not_in_harness"]
+        )
+
+      assert WorkflowGap.of_dispatch_run(run, nil) ==
+               %{workflow: "explore-a-ticket", source: :qory}
+    end
+
+    test "a row of its workflow lowers it", ctx do
+      declared!(ctx, "  explore-a-ticket: {access: write}\n")
+      recording(ctx, "explore-a-ticket", :read)
+
+      assert walked_level(queued(ctx)) == :read
+    end
+
+    test "a row of its workflow that records write does not raise a declared read", ctx do
+      declared!(ctx, "  explore-a-ticket: {access: read}\n")
+      recording(ctx, "explore-a-ticket", :write)
+
+      assert walked_level(queued(ctx)) == :read
+    end
+
+    test "a row of another workflow gives it neither that name nor that level", ctx do
+      declared!(ctx, "  review: {access: write}\n")
+      recording(ctx, "review", :write)
+      run = queued(ctx)
+
+      assert walked_level(run) == :read
+
+      assert %RunHarness{workflow: "explore-a-ticket"} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+    end
+
+    test "two rows of other workflows leave it its walk", ctx do
+      declared!(ctx, "  explore-a-ticket: {access: read}\n")
+      recording(ctx, "review", :write)
+      recording(ctx, "lint", :write)
+
+      assert walked_level(queued(ctx)) == :read
+    end
+
+    test "a level its harness declares stays with no row, and with a row removed", ctx do
+      declared!(ctx, "  explore-a-ticket: {access: write}\n")
+      assert walked_level(queued(ctx)) == :write
+
+      recording(ctx, "explore-a-ticket", nil)
+      run = queued(ctx)
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "explore-a-ticket"})
+
+      assert walked_level(run) == :write
+    end
+
+    test "its entry's read lowers a level its harness declares, at the claim", ctx do
+      declared!(ctx, "  explore-a-ticket: {access: write}\n")
+      process!(ctx, %{"workflow" => "explore-a-ticket", "access" => "read"})
+
+      assert walked_level(queued(ctx)) == :write
+      assert claimed_level(ctx) == :read
     end
   end
 

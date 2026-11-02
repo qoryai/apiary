@@ -107,7 +107,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
     if apply, do: target_candidate!(work_item)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
-    case Dispatches.claim(pool_key, Dispatches.now()) do
+    case Apiary.DispatchedRunsFixtures.walked_claim(pool_key, Dispatches.now()) do
       {:ok, :none} ->
         {{:error, :gone}, queued}
 
@@ -541,7 +541,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       # which goes through the instance's gateway.
       work_item = work_item_fixture(ctx.client)
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-      {:ok, claimed} = Dispatches.claim(pool_key, Dispatches.now())
+      {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(pool_key, Dispatches.now())
       handed = %{run: claimed.registered, run_key: redeemed_run_key!(claimed.run_code)}
       run = attach!(gateway_key, handed)
       assert run.node_id == pool_key.node_id

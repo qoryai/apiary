@@ -30,7 +30,7 @@ defmodule ApiaryWeb.RunLive.RunCodePagesTest do
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     {:ok, %{dispatch: dispatch, registered: registered}} =
-      Dispatches.claim(place.key, Dispatches.now())
+      Apiary.DispatchedRunsFixtures.walked_claim(place.key, Dispatches.now())
 
     :ok = Dispatches.dispatched(place.key, dispatch.public_id, %{external: nil})
 
