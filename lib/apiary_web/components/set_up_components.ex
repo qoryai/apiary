@@ -273,7 +273,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
   or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
-  in `opts`, the step's paths name the type.
+  in `opts`, the flow's `type` is true; no page of the core passes it.
   """
   @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
   def flow(organisation, domain, workspace, page, opts \\ []),
@@ -288,7 +288,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow_path/2 is the path of the step `id` of `flow`: once the workspace exists, its page
   in the workspace, `/:org/:workspace/set-up/<id>`; before, the organisation's overview,
-  `/:org`, whose kind cards create it.
+  `/:org`, whose kind cards link to the types' pages (`ApiaryWeb.WorkspaceTypeLive`).
   """
   @spec flow_path(flow, atom) :: String.t()
   def flow_path(%{organisation: organisation, workspace: %Workspace{} = workspace}, id),
