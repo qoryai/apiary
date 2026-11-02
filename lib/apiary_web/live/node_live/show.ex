@@ -843,7 +843,11 @@ defmodule ApiaryWeb.NodeLive.Show do
           id="node-over-bound"
           class="text-[13px]/5 text-muted"
         >
-          {gettext("Contact support: some machines of this pool were not recorded.")}
+          <.rich text={
+            rich_gettext("%{contact_support}: some machines of this pool were not recorded.",
+              contact_support: ApiaryWeb.Support.rich()
+            )
+          } />
         </p>
 
         <p id="node-instance-claim" class="text-[13px]/5 text-faint">

@@ -85,6 +85,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :named, :boolean, default: true, doc: "whether the block starts with the name"
   attr :action, :string, required: true, doc: "Install's path, `paths/2`'s `install`"
   attr :ready, :boolean, required: true, doc: "whether the adapter can be installed yet"
+  attr :instance_admin, :boolean, default: false, doc: "whether the reader is an instance admin"
   attr :sending, :boolean, default: false, doc: "whether Install was pressed"
   attr :cancel, :string, default: nil, doc: "where Cancel leads; no Cancel without one"
   attr :class, :any, default: nil
@@ -120,6 +121,7 @@ defmodule ApiaryWeb.IntegrationComponents do
           adapter={@adapter}
           action={@action}
           ready={@ready}
+          instance_admin={@instance_admin}
           sending={@sending}
         />
         <.button :if={@cancel && !@sending} id={"#{@id}-cancel"} variant="ghost" navigate={@cancel}>
@@ -133,10 +135,19 @@ defmodule ApiaryWeb.IntegrationComponents do
           id={"#{@id}-not-ready"}
           class="text-[13px] text-primary-soft-content"
         >
-          {gettext(
-            "%{integration} can't be installed yet: this instance's admins are still setting it up.",
-            integration: Apiary.Adapters.title(@adapter)
-          )}
+          <%= if @instance_admin do %>
+            {gettext(
+              "%{integration} can't be installed yet: this instance's admins are still setting it up.",
+              integration: Apiary.Adapters.title(@adapter)
+            )}
+          <% else %>
+            <.rich text={
+              rich_gettext("%{contact_support}: %{integration} can't be installed yet.",
+                contact_support: ApiaryWeb.Support.rich(),
+                integration: Apiary.Adapters.title(@adapter)
+              )
+            } />
+          <% end %>
         </span>
       </div>
     </div>
@@ -147,6 +158,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :adapter, Node, required: true
   attr :action, :string, required: true, doc: "Install's path, `paths/2`'s `install`"
   attr :ready, :boolean, required: true
+  attr :instance_admin, :boolean, default: false, doc: "whether the reader is an instance admin"
   attr :sending, :boolean, default: false
   attr :variant, :string, default: "primary", values: ~w(primary default)
   attr :size, :string, default: "sm", values: ~w(xs sm)
@@ -186,6 +198,17 @@ defmodule ApiaryWeb.IntegrationComponents do
       </.button>
     </.form>
     """
+  end
+
+  @doc false
+  # The adapters of `adapters` a page lists for the person of `scope`: every one for an
+  # instance admin; for anyone else those that can be installed (`ready?/1`) and those
+  # with an id in `connected`, so that a connection stays in reach.
+  @spec offered(Apiary.Accounts.Scope.t(), [Node.t()], Enumerable.t()) :: [Node.t()]
+  def offered(scope, adapters, connected) do
+    if Apiary.Access.instance_admin?(scope),
+      do: adapters,
+      else: Enum.filter(adapters, &(ready?(&1) or &1.id in connected))
   end
 
   @doc false

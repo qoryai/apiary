@@ -151,7 +151,8 @@ defmodule Apiary.GatewaysInstanceTest do
       :"dispatch.claim",
       :"dispatch.dispatched",
       :"dispatch.release",
-      :"dispatch.machine_log"
+      :"dispatch.machine_log",
+      :"dispatch.machine_end"
     ]
 
     defp dispatch(workspace, pool_id),

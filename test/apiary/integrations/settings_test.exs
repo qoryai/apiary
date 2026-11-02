@@ -95,7 +95,7 @@ defmodule Apiary.Integrations.SettingsTest do
 
       assert errors_on(changeset) == %{
                source: [
-                 "must be a repository's path: this instance adds no integration from an address"
+                 "must be a repository's path: Qory Apiary adds no integration from an address"
                ]
              }
 

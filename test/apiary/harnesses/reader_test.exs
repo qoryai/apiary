@@ -414,7 +414,7 @@ defmodule Apiary.Harnesses.ReaderTest do
 
     test "refuse !!binary and every other type but text, numbers, booleans and null" do
       assert Reader.parse("a: !!binary //79\n") == {:error, :unsupported_type}
-      assert Reader.parse("bind: {agents/x: !!binary //79}\n") == {:error, :unsupported_type}
+      assert Reader.parse("bind: {agents: {x: !!binary //79}}\n") == {:error, :unsupported_type}
       assert Reader.parse("a: !!binary aHR0cHM6Ly91OnBAaC9y\n") == {:error, :unsupported_type}
       assert Reader.parse("a: !!timestamp 2001-12-14\n") == {:error, :invalid_yaml}
     end

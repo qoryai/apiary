@@ -149,7 +149,8 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told, and the
   # registered run is broadcast as changed, once the transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3`, `release/3` and `upload_machine_log/3`
+  # ## The starter on a dispatch: `dispatched/3`, `release/3`, `upload_machine_log/3` and
+  # `report_machine_end/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
   # `access_key` started the machine for a dispatch its pool claimed: the first one,
@@ -166,6 +167,10 @@ defmodule Apiary.Dispatches do
   # `upload_machine_log(access_key, dispatch_id, meta)` stores the dispatch's machine log,
   # once per dispatch, before or after the dispatch ends, and `machine_log(scope,
   # dispatch_id)` reads it, for an instance admin alone (`Apiary.Dispatches.MachineLogs`).
+  #
+  # `report_machine_end(access_key, dispatch_id, meta)` keeps what the starter reports
+  # about the removal of the dispatch's machine, any number of times, before or after the
+  # dispatch ends; `gone` is final (`Apiary.Dispatches.MachineEnds`).
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -224,7 +229,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, MachineLogs, Release}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, MachineEnds, MachineLogs, Release}
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
@@ -1270,6 +1275,14 @@ defmodule Apiary.Dispatches do
   @spec machine_log(Scope.t() | nil, term) ::
           {:ok, MachineLogs.machine_log()} | {:error, :forbidden | :not_found | :unreadable}
   def machine_log(scope, dispatch_id), do: MachineLogs.machine_log(scope, dispatch_id)
+
+  # report_machine_end/3 keeps the state the starter reports for the machine of the
+  # dispatch `dispatch_id` (`Apiary.Dispatches.MachineEnds.report/3`).
+  @doc false
+  @spec report_machine_end(AccessKey.t(), term, MachineEnds.report()) ::
+          :ok | {:error, MachineEnds.refusal()}
+  def report_machine_end(%AccessKey{} = access_key, dispatch_id, meta),
+    do: MachineEnds.report(access_key, dispatch_id, meta)
 
   ## The end of a run handed over
 

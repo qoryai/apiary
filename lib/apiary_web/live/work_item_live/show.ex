@@ -600,37 +600,39 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Why the stage runner did not act, each with its fix first.
-  defp refused(:not_earlier, flow), do: not_earlier(flow)
+  @doc false
+  def refused(:not_earlier, flow), do: not_earlier(flow)
 
-  defp refused({:outputs_missing, types}, flow) do
+  def refused({:outputs_missing, types}, flow) do
     gettext("Add %{outputs} before you approve %{stage}.",
       outputs: StageComponents.outputs_words(types),
       stage: flow.stage.name
     )
   end
 
-  defp refused(:not_approver, flow),
+  def refused(:not_approver, flow),
     do: gettext("Ask an approver of %{stage} to act on it.", stage: flow.stage.name)
 
-  defp refused(:unknown_stage, _flow),
+  def refused(:unknown_stage, _flow),
     do:
       gettext(
         "Choose a stage from the list. The stage you sent is not in the work item's process version."
       )
 
-  defp refused(:not_placed, _flow),
+  def refused(:not_placed, _flow),
     do: gettext("Reload the page. The work item is not in a stage.")
 
-  defp refused(:not_found, _flow),
+  def refused(:not_found, _flow),
     do: gettext("Reload the page. The work item is not in this workspace any more.")
 
-  defp refused({:invalid, :note}, _flow),
+  def refused({:invalid, :note}, _flow),
     do: gettext("Shorten the note to 4,000 characters or fewer.")
 
-  defp refused(_reason, _flow),
+  def refused(_reason, _flow),
     do:
       gettext(
-        "Reload the page and act again, and tell an instance admin if it fails again. Qory Apiary could not act on the stage."
+        "Reload the page and act again, and %{contact_support} if it fails again. Qory Apiary could not act on the stage.",
+        contact_support: ApiaryWeb.Support.plain(mid_sentence: true)
       )
 
   # Where the work item moved since the reader saw it, by the names of the stages.
@@ -705,8 +707,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp check_words(_socket, :exited),
     do:
-      gettext(
-        "Try again, and tell an instance admin if it fails again. The check of the harness stopped with an error in Qory Apiary."
+      rich_gettext(
+        "Try again, and %{contact_support} if it fails again. The check of the harness stopped with an error in Qory Apiary.",
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
       )
 
   defp check_words(socket, reason) do

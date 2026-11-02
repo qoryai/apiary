@@ -33,7 +33,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/2`):
   # the organisation's connected repositories (`Apiary.Stacks.Sources.repositories/1`),
   # listed with no call once the page connects, so the group shows Reading… until then;
-  # the harness sources an instance admin assigned to the organisation; and a public
+  # the harness sources Qory Apiary provides to the organisation; and a public
   # address, which shows a field for it. Once a linked repository is listed, a search box narrows
   # the choice and keeps the public address in view. Choosing a source, or typing an
   # address, reads its stacks through the adapters, outside the page's process;
@@ -102,6 +102,7 @@ defmodule ApiaryWeb.WorkflowLive do
           |> start_async(:linked, fn ->
             {Sources.repositories(scope), Sources.unplaced(scope)}
           end)
+          |> record_declared()
           |> preselect_assigned(),
         else: socket
 
@@ -161,6 +162,7 @@ defmodule ApiaryWeb.WorkflowLive do
     |> assign(chosen: chosen, editing: false, harness_refusal: nil)
     |> assign_harness_form(nil)
     |> load_targets()
+    |> record_declared()
   end
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
@@ -311,7 +313,6 @@ defmodule ApiaryWeb.WorkflowLive do
         {:noreply,
          socket
          |> assign(current: Sources.current(scope.workspace), save_error: nil)
-         |> record_declared()
          |> put_flash(
            :info,
            gettext("Saved. Runs of %{workspace} now follow the workflow %{workflow}.",
@@ -507,7 +508,6 @@ defmodule ApiaryWeb.WorkflowLive do
           {:ok, stacks} ->
             socket
             |> assign(stacks: stacks, reading: false)
-            |> record_declared()
             |> preselect_workflow()
 
           {:error, reason} ->
@@ -519,6 +519,17 @@ defmodule ApiaryWeb.WorkflowLive do
 
     {:noreply, assign_form(socket)}
   end
+
+  def handle_async(:declared, {:ok, {chosen, {:ok, names}}}, socket) when is_list(names) do
+    workspace = socket.assigns.current_scope.workspace
+
+    if Sources.chosen(workspace) == chosen,
+      do: :ok = Apiary.Processes.record_declared(workspace, names)
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:declared, _failed, socket), do: {:noreply, socket}
 
   def handle_async(:read, {:exit, _reason}, socket),
     do: {:noreply, socket |> assign(read_error: :exited, reading: false) |> assign_form()}
@@ -604,28 +615,20 @@ defmodule ApiaryWeb.WorkflowLive do
     end
   end
 
-  # The workflows of the stack read under the saved document's base, kept as the
-  # workspace's snapshot (`Apiary.Processes.record_declared/2`), once read and again once
-  # saved. A source only tried in Source changes no snapshot.
-  defp record_declared(
-         %{assigns: %{current: %{base: %{} = base}, stacks: [_ | _] = stacks}} = socket
-       ) do
-    case Enum.find(stacks, &(&1.base == base)) do
-      nil ->
-        socket
+  # The workflows of the workspace's harness, read outside the page's process as Check
+  # again on a work item reads them (`Apiary.Stacks.Sources.chosen_workflows/2`) and kept
+  # as the workspace's snapshot (`Apiary.Processes.record_declared/2`): once the page is
+  # connected, and again once a harness choice is saved. A read that fails, or a source
+  # only tried in Source, changes no snapshot; a harness chosen while the read ran keeps
+  # the snapshot of its later read.
+  defp record_declared(socket) do
+    %{current_scope: scope} = socket.assigns
+    chosen = Sources.chosen(scope.workspace)
 
-      stack ->
-        :ok =
-          Apiary.Processes.record_declared(
-            socket.assigns.current_scope.workspace,
-            stack.workflows
-          )
-
-        socket
-    end
+    socket
+    |> cancel_async(:declared)
+    |> start_async(:declared, fn -> {chosen, Sources.chosen_workflows(scope, scope.workspace)} end)
   end
-
-  defp record_declared(socket), do: socket
 
   # The current workflow, where the chosen source's stacks have it under the current base.
   defp preselect_workflow(%{assigns: %{current: %{workflow: workflow, base: base}}} = socket) do
@@ -718,7 +721,7 @@ defmodule ApiaryWeb.WorkflowLive do
               disabled={@harness_saving}
             />
             <.notice :if={@harness_refusal} kind={:error}>
-              <span id="workflow-harness-refusal">{@harness_refusal}</span>
+              <span id="workflow-harness-refusal"><.rich text={@harness_refusal} /></span>
             </.notice>
             <div class="flex gap-2">
               <.button
@@ -813,12 +816,14 @@ defmodule ApiaryWeb.WorkflowLive do
             {gettext("Reading the stack of %{source}…", source: @source.label)}
           </p>
           <.notice :if={@read_error} kind={:error}>
-            <span id="workflow-read-error">{HarnessComponents.read_words(
-              @read_error,
-              @source,
-              @organisation,
-              @workspace
-            )}</span>
+            <span id="workflow-read-error"><.rich text={
+              HarnessComponents.read_words(
+                @read_error,
+                @source,
+                @organisation,
+                @workspace
+              )
+            } /></span>
           </.notice>
           <.notice :if={@stacks && no_workflow?(@stacks)} kind={:error}>
             <span id="workflow-no-workflow">
@@ -863,11 +868,14 @@ defmodule ApiaryWeb.WorkflowLive do
             )}
           </p>
           <p :if={!@stages?} id="workflow-list">
-            {pgettext(
-              "plain",
-              "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it.",
-              organisation: @organisation
-            )}
+            <.rich text={
+              rich_pgettext(
+                "plain",
+                "The list shows the repositories connected to %{organisation}, and the harness sources Qory Apiary provides to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or %{contact_support}.",
+                organisation: @organisation,
+                contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+              )
+            } />
           </p>
           <HarnessComponents.about />
         </:context>

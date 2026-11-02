@@ -9,12 +9,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   alias ApiaryWeb.StagesLive.Words
 
-  # A stage's alert lines: each workflow it runs that the harness does not declare.
+  # A stage's alert lines: each workflow it runs that the harness does not list, in the
+  # words for `harness` (`ApiaryWeb.StagesLive.Words.undeclared/3`).
   @doc false
-  def stage_alerts(problems, stage) do
+  def stage_alerts(problems, stage, harness \\ :workspace) do
     for {:missing_workflow, id, name} <- problems,
         id == stage["id"],
-        do: Words.undeclared(stage["name"], name)
+        do: Words.undeclared(stage["name"], name, harness)
   end
 
   # Under "Default machine type" only (Vito's text, 2026-10-31).
@@ -34,8 +35,24 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :people, :map, required: true, doc: "each member's name by user id"
   attr :stage_errors, :map, default: %{}, doc: "refusals of a save, by stage id"
   attr :rounds_errors, :map, default: %{}, doc: "refused rounds, by the loop's place"
+
+  attr :workflow_errors, :map,
+    default: %{},
+    doc: "refused workflow names, by the entry's place: \"0\", or \"1-0\" in a loop"
+
   attr :problems, :list, required: true
   attr :machine, :string, required: true
+
+  attr :marks, :list,
+    default: nil,
+    doc:
+      "the workflows the harness lists, each marked with a check, any other with a cross; nil for no marks"
+
+  attr :harness, :atom,
+    default: :workspace,
+    values: [:workspace, :qory_workspace, :qory],
+    doc:
+      "the harness the alerts name: the workspace's harness repository, the workspace's Qory harness, or the Qory harness of a workspace type"
 
   attr :named, :boolean,
     default: true,
@@ -49,10 +66,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       class="grid gap-3"
     >
       <h2 id="stage-panel-title" class="text-[15px]/6 font-semibold">{@stage["name"]}</h2>
-      <.alerts stage={@stage} problems={@problems} />
+      <.alerts stage={@stage} problems={@problems} harness={@harness} />
       <dl class="grid gap-2 text-[13.5px]/5">
         <dt class="font-medium">{gettext("Sequence")}</dt>
-        <dd :for={line <- sequence_lines(@stage, @machine)}>{line}</dd>
+        <dd :for={{line, workflow} <- sequence_lines(@stage, @machine)}>
+          {line}<.workflow_mark :if={workflow} workflow={workflow} marks={@marks} class="ml-2" />
+        </dd>
         <dd :if={@stage["sequence"] == []}>{gettext("No workflow")}</dd>
         <dt class="font-medium">{gettext("Inputs")}</dt>
         <dd :for={item <- @stage["inputs"]}>{artifact_line(item)}</dd>
@@ -90,7 +109,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           {gettext("Remove")}
         </.button>
       </div>
-      <.alerts stage={@stage} problems={@problems} />
+      <.alerts stage={@stage} problems={@problems} harness={@harness} />
       <.form
         for={%{}}
         as={:stage}
@@ -149,6 +168,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   id={"stage-entry-#{i}-#{j}"}
                   declared={@declared}
                   machine={@machine}
+                  marks={@marks}
+                  errors={List.wrap(@workflow_errors["#{i}-#{j}"])}
                   remove={length(loop["body"]) > 1 && %{"at" => j, "loop" => i}}
                 />
                 <div>
@@ -164,6 +185,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                 id={"stage-entry-#{i}"}
                 declared={@declared}
                 machine={@machine}
+                marks={@marks}
+                errors={List.wrap(@workflow_errors[to_string(i)])}
                 remove={%{"at" => i}}
               />
             <% end %>
@@ -263,10 +286,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   attr :stage, :map, required: true
   attr :problems, :list, required: true
+  attr :harness, :atom, required: true
 
   defp alerts(assigns) do
     ~H"""
-    <.notice :for={line <- stage_alerts(@problems, @stage)} kind={:warning}>
+    <.notice :for={line <- stage_alerts(@problems, @stage, @harness)} kind={:warning}>
       <span data-stage-alert>{line}</span>
     </.notice>
     """
@@ -277,18 +301,20 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :id, :string, required: true
   attr :declared, :list, required: true
   attr :machine, :string, required: true
+  attr :marks, :list, required: true
+  attr :errors, :list, required: true
   attr :remove, :any, required: true
 
   defp entry(assigns) do
     ~H"""
     <div id={@id} class="flex flex-wrap items-end gap-3">
-      <.input
+      <.workflow_field
         id={"#{@id}-workflow"}
         name={"#{@name}[workflow]"}
-        type="select"
         value={@entry["workflow"]}
-        label={gettext("Workflow")}
-        options={workflow_options(@declared, @entry["workflow"])}
+        names={@declared}
+        marks={@marks}
+        errors={@errors}
       />
       <.input
         id={"#{@id}-machine"}
@@ -374,21 +400,82 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     """
   end
 
-  # The workflows the harness declares (`Apiary.Processes.declared_workflows/1`). A
-  # workflow it no longer declares stays shown as the entry's value, and cannot be chosen.
-  defp workflow_options(declared, workflow) do
-    if workflow in declared,
-      do: declared,
-      else: declared ++ [[key: workflow, value: workflow, disabled: true]]
+  @doc false
+  # workflow_field/1 is a workflow's name as a text field, with the names the harness
+  # lists (`names`) as the browser's suggestions: a person picks one or types any name. A
+  # name that breaks the schema's pattern shows `errors` under the field
+  # (`ApiaryWeb.StagesLive.Editor`). With `marks`, the harness's list, a check or a cross
+  # with its words follows the field.
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, required: true
+  attr :names, :list, required: true, doc: "the names the field suggests"
+  attr :marks, :list, default: nil
+  attr :errors, :list, default: []
+
+  def workflow_field(assigns) do
+    ~H"""
+    <div class="flex flex-wrap items-end gap-2">
+      <.input
+        id={@id}
+        name={@name}
+        value={@value}
+        label={gettext("Workflow")}
+        errors={@errors}
+        list={"#{@id}-names"}
+        maxlength="64"
+        autocomplete="off"
+        spellcheck="false"
+        class="w-56 font-mono"
+      />
+      <datalist id={"#{@id}-names"}>
+        <option :for={name <- @names} value={name}></option>
+      </datalist>
+      <.workflow_mark workflow={@value} marks={@marks} id={"#{@id}-mark"} class="mb-2" />
+    </div>
+    """
   end
 
+  attr :workflow, :string, required: true
+  attr :marks, :list, required: true
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+
+  # A check when the harness lists the workflow, else a cross, each with its words; nothing
+  # with no list.
+  defp workflow_mark(%{marks: nil} = assigns), do: ~H""
+
+  defp workflow_mark(assigns) do
+    assigns = assign(assigns, :listed, assigns.workflow in assigns.marks)
+
+    ~H"""
+    <span
+      id={@id}
+      data-mark={if @listed, do: "listed", else: "missing"}
+      class={[
+        "inline-flex items-center gap-1 text-[13px]/5",
+        if(@listed, do: "text-success", else: "text-error"),
+        @class
+      ]}
+    >
+      <.icon
+        name={if @listed, do: "hero-check-circle-micro", else: "hero-x-circle-micro"}
+        class="size-4"
+      />
+      <span>{Words.mark_text(@listed)}</span>
+    </span>
+    """
+  end
+
+  # Each line of a member's Sequence, with the workflow a line runs, nil for a loop's
+  # label.
   defp sequence_lines(stage, machine) do
     Enum.flat_map(stage["sequence"], fn
       %{"loop" => %{"rounds" => rounds, "body" => body}} ->
         [
-          ngettext("Loop: at most %{number} round", "Loop: at most %{number} rounds", rounds,
-            number: rounds
-          )
+          {ngettext("Loop: at most %{number} round", "Loop: at most %{number} rounds", rounds,
+             number: rounds
+           ), nil}
           | Enum.map(body, &entry_line(&1, machine))
         ]
 
@@ -399,10 +486,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   defp entry_line(entry, machine),
     do:
-      gettext("%{workflow}, machine type %{machine}",
-        workflow: entry["workflow"],
-        machine: entry["machine"] || machine
-      )
+      {gettext("%{workflow}, machine type %{machine}",
+         workflow: entry["workflow"],
+         machine: entry["machine"] || machine
+       ), entry["workflow"]}
 
   defp artifact_line(%{"type" => type, "required" => true}),
     do: gettext("%{type}, required", type: type)

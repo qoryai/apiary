@@ -429,14 +429,19 @@
           }
         },
         "bind": {
-          "description": "The entry that fills each role a module references: <kind>/<role> to the name of an entry of that kind, so a module writes ${qory:agents/coder} and the harness defines which agent that is.",
+          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is.",
           "type": "object",
-          "propertyNames": {
-            "pattern": "^(agents|commands|skills)/[^/\\\\@ .][^/\\\\@ ]*$"
-          },
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+          "additionalProperties": false,
+          "properties": {
+            "agents": {
+              "$ref": "#/$defs/harness_bind_roles"
+            },
+            "commands": {
+              "$ref": "#/$defs/harness_bind_roles"
+            },
+            "skills": {
+              "$ref": "#/$defs/harness_bind_roles"
+            }
           }
         },
         "extensions": {
@@ -632,6 +637,17 @@
         "env": {
           "$ref": "#/$defs/harness_part"
         }
+      }
+    },
+    "harness_bind_roles": {
+      "description": "The roles of one kind of a bind, each to the name of the one entry of that kind that fills the role.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
       }
     },
     "harness_names": {

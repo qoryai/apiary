@@ -17,7 +17,9 @@ defmodule Apiary.Runs do
     * `topic(workspace_id, run_id)`, `"run:<workspace_id>:<run_id>"` (`run_id` is the
       row's id): `{:run_projected, %Run{}, first_sequence, last_sequence}` after a
       projection, with the lowest and highest sequence it folded, and
-      `{:run_changed, %Run{}}` as above.
+      `{:run_changed, %Run{}}` as above, and `{:machine_end_changed, %Run{}}` when the
+      pool's starter reported about the removal of the run's machine, at
+      `POST /v1/dispatches/<dispatch_id>/machine-end`.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -77,6 +79,15 @@ defmodule Apiary.Runs do
     broadcast_touched(run)
     Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.workspace_id), {:run_changed, run})
     Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.workspace_id, run.id), {:run_changed, run})
+  end
+
+  @doc false
+  def broadcast_machine_end(%Run{} = run) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      topic(run.workspace_id, run.id),
+      {:machine_end_changed, run}
+    )
   end
 
   @doc false
