@@ -55,9 +55,12 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
     lv
   end
 
+  # The words of the Clean up row, after a check of its name.
   defp row(lv) do
+    assert has_element?(lv, "#prepare-machine-clean-up .q-k", "Clean up")
+
     lv
-    |> element("#prepare-machine-clean-up")
+    |> element("#prepare-machine-clean-up .q-s")
     |> render()
     |> LazyHTML.from_fragment()
     |> LazyHTML.text()
@@ -82,7 +85,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
       end_dispatch!(claimed.dispatch, DateTime.add(DateTime.utc_now(), -60, :second))
 
       lv = open(ctx.conn, ctx.scope, run)
-      assert row(lv) =~ "Clean up Waiting for a report"
+      assert row(lv) =~ "Waiting for a report"
       refute has_element?(lv, "#prepare-machine-clean-up time")
 
       timer = :sys.get_state(lv.pid).socket.assigns.clean_up_timer
@@ -96,7 +99,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
       end_dispatch!(claimed.dispatch, DateTime.add(DateTime.utc_now(), -16 * 60, :second))
 
       lv = open(ctx.conn, ctx.scope, run)
-      assert row(lv) =~ "Clean up No removal report"
+      assert row(lv) =~ "No removal report"
       assert :sys.get_state(lv.pid).socket.assigns.clean_up_timer == nil
     end
 
@@ -130,7 +133,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
             {:gone, "Machine removed"}
           ] do
         report!(claimed, state)
-        assert row(lv) =~ "Clean up " <> words
+        assert row(lv) =~ words
         assert has_element?(lv, "#prepare-machine-clean-up time")
       end
 
@@ -146,7 +149,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
       refute has_element?(lv, "#prepare-machine-clean-up")
 
       report!(claimed, :deleting)
-      assert row(lv) =~ "Clean up Machine removal requested"
+      assert row(lv) =~ "Machine removal requested"
     end
 
     test "a report about another run's machine changes nothing on the page", ctx do
@@ -197,7 +200,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
         |> project!(steps(true))
 
       lv = open(ctx.conn, ctx.scope, ended)
-      assert row(lv) =~ "Clean up Machine stays registered"
+      assert row(lv) =~ "Machine stays registered"
       refute has_element?(lv, "#prepare-machine-clean-up time")
     end
   end
