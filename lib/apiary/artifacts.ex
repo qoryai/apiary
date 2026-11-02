@@ -14,8 +14,10 @@ defmodule Apiary.Artifacts do
   #
   # A workspace's `shown_standard_types` is the list of the standard types it shows, nil
   # for all ten; an always-on type (`Type.always_on/0`) is shown whatever the list
-  # contains. Each of these functions reads the list from the database by the workspace's
-  # id: a caller's struct can have the field unset, or be older than a change of the list.
+  # contains. `types/1` and `all_types/1` read the list from the database by the
+  # workspace's id, and `type/2` reads it the same way for a standard type that can be
+  # hidden and for no other name: a caller's struct can have the field unset, or be older
+  # than a change of the list.
   #
   # `create_type/3`, `update_type/3` and `delete_type/2` edit a workspace's custom types,
   # the Artifact types section of its settings: each checks `artifact_type.edit` with

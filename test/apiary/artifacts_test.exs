@@ -246,11 +246,26 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 0
     end
 
-    test "a type shown between the push's read and its lock is pushed", ctx do
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, nil) end)
+    test "a person's push of a type hidden before the lock writes no version or audit entry",
+         ctx do
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+
+      assert {:error, {:unknown_type, "explainer"}} =
+               Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [doc()])
+
+      assert count(Version) == 0
+      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+    end
+
+    test "a push goes on when the list changes before the lock and still has the type", ctx do
+      show!(ctx.scope.workspace, ["explainer"])
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
 
       assert {:ok, %Version{}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      assert Repo.get!(Workspace, ctx.scope.workspace.id).shown_standard_types ==
+               ["explainer", "mockup"]
     end
 
     test "a push of an always-on type or a custom type does not depend on the list", ctx do
