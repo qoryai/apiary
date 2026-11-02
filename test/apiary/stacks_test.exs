@@ -877,6 +877,100 @@ defmodule Apiary.StacksTest do
     end
   end
 
+  describe "recorded_access/3" do
+    # The workspace's row for `workflow`, with `access`.
+    defp recorded!(ctx, workflow, access) do
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, workflow}, doc("core"),
+          access: access
+        )
+    end
+
+    defp target_of(ctx), do: %{system: ctx.target.system, path: ctx.target.path}
+
+    test "an explore run gets the access of its row, nil where the row records none", ctx do
+      for access <- [:read, :write, nil] do
+        recorded!(ctx, "explore", access)
+        assert Stacks.recorded_access(ctx.scope.workspace, nil, "explore") == access
+      end
+    end
+
+    test "an explore run gets read where its row is gone or has another workflow", ctx do
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, "explore") == :read
+
+      recorded!(ctx, "review", :write)
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, "explore") == :read
+    end
+
+    test "an explore run gets read for two rows at its places", ctx do
+      recorded!(ctx, "explore", :write)
+      put!(ctx, {:target, ctx.target, "explore"}, doc("x"))
+
+      assert Stacks.recorded_access(ctx.scope.workspace, target_of(ctx), "explore") == :read
+    end
+
+    test "a stage's run gets nil with no row, or with a row of another workflow", ctx do
+      stage_run = {:stage, "build"}
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, stage_run) == nil
+
+      recorded!(ctx, "explore", :read)
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, stage_run) == nil
+    end
+
+    test "a stage's run gets the access of the row with its workflow", ctx do
+      for access <- [:read, :write, nil] do
+        recorded!(ctx, "build", access)
+        assert Stacks.recorded_access(ctx.scope.workspace, nil, {:stage, "build"}) == access
+      end
+    end
+
+    test "a stage's run gets the row with its workflow among other rows at its places", ctx do
+      recorded!(ctx, "explore", :write)
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, ctx.target, "build"}, doc("x"), access: :read)
+
+      target = target_of(ctx)
+      assert Stacks.recorded_access(ctx.scope.workspace, target, {:stage, "build"}) == :read
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, {:stage, "build"}) == nil
+    end
+
+    test "a stage's run gets the lower of its workspace's and its target's rows", ctx do
+      target = target_of(ctx)
+
+      for {workspace, at_target, lowest} <- [
+            {:write, :read, :read},
+            {:read, :write, :read},
+            {:write, nil, :write},
+            {nil, nil, nil}
+          ] do
+        recorded!(ctx, "build", workspace)
+
+        {:ok, _stack} =
+          Stacks.put_stack(ctx.scope, {:target, ctx.target, "build"}, doc("x"), access: at_target)
+
+        assert Stacks.recorded_access(ctx.scope.workspace, target, {:stage, "build"}) == lowest
+      end
+    end
+
+    test "a stage's run leaves out the rows at another target and of another workspace", ctx do
+      other = target!(ctx.scope, "team/other")
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, other, "build"}, doc("x"), access: :read)
+
+      %{scope: elsewhere} = sign_up_fixture()
+
+      {:ok, _stack} =
+        Stacks.put_stack(elsewhere, {:workspace, elsewhere.workspace, "build"}, doc("x"),
+          access: :read
+        )
+
+      target = target_of(ctx)
+      assert Stacks.recorded_access(ctx.scope.workspace, target, {:stage, "build"}) == nil
+    end
+  end
+
   describe "a harness choice" do
     test "is stored with its document at each place with no workflow", ctx do
       for {level, place} <- places(ctx),
