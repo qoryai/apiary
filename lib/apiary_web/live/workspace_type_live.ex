@@ -12,10 +12,11 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
   (`StagesLive.Canvas.canvas/1`, in a `.q-canvas-fill` box), whose cards open nothing.
   Beside it, a side panel has the template's name, its summary, "How it works" with its
   description (`Apiary.Processes.type_texts/1`, a blank line between paragraphs),
-  "Stages" with one line on where they change after, the harness line, "Harness: Qory
-  harness, stack software" (the copied template's `stack`), and **Create workspace**.
-  Without the feature there is no canvas: "How it works" takes the main area, and the side
-  panel has the name, the summary, the harness line and Create workspace.
+  "Stages" with one line on where they change after, with the feature `factory` the
+  harness line, "Harness: Qory harness, stack software" (the copied template's `stack`),
+  and **Create workspace**. Without `workflow_model` there is no canvas: "How it works"
+  takes the main area, and the side panel has the name, the summary, the harness line
+  where there is one and Create workspace.
 
   Create workspace creates the workspace and opens its Name step
   (`ApiaryWeb.SetUpComponents.choose_kind/3`). Where the organisation had no workspace when
@@ -73,13 +74,20 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
       document: newest.document,
       canvas: Features.visible?(scope, :workflow_model),
       which: if(Organisations.has_workspace?(scope.organisation), do: :any, else: :first),
-      harness: gettext("Harness: Qory harness, stack %{stack}", stack: QoryCopy.template().stack),
+      harness: qory_harness_line(scope),
       create: true,
       start: nil,
       reading: false,
       read_error: nil,
       module: nil
     )
+  end
+
+  # The harness line of the Qory template, with the feature `factory`; without it the page
+  # has no harness line.
+  defp qory_harness_line(scope) do
+    if Features.visible?(scope, :factory),
+      do: gettext("Harness: Qory harness, stack %{stack}", stack: QoryCopy.template().stack)
   end
 
   # The page of a template of a place that New workspace lists, read once the socket is
@@ -288,7 +296,9 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
                 )}
               </p>
             </section>
-            <p id="workspace-type-harness" class="text-[13px]/5 text-muted">{@harness}</p>
+            <p :if={@harness} id="workspace-type-harness" class="text-[13px]/5 text-muted">
+              {@harness}
+            </p>
             <.button
               :if={@create}
               id="workspace-type-create"

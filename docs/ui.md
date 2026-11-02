@@ -1248,7 +1248,7 @@ The set-up is the pages a person goes through before the console: the set-up lin
 (`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: the kind cards, on
 the empty organisation overview `/<org>`, and the template cards on New workspace
 `/<org>/workspaces/new`, each a link to its template's page
-`/<org>/workspaces/new/<key>`, whose Create workspace (the Qory template's alone)
+`/<org>/workspaces/new/<key>`, whose Create workspace
 creates the workspace, then each step a page of the workspace,
 `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
@@ -1258,7 +1258,8 @@ mark and the theme menu.
 
 - **The kind cards** (`SetUpComponents.kind_cards/1`) come before the workspace set-up:
   on the organisation's overview (`/<org>`) while it has no workspace, under "What will
-  your first workspace do?". There is one card per type of workspace, "Software factory"
+  your first workspace do?", and, without the feature `factory`, on New workspace
+  (`/<org>/workspaces/new`), under "What will this workspace do?". There is one card per type of workspace, "Software factory"
   the one, each with the type's name, its summary and an arrow, as the type's newest
   version shows them (`Apiary.Processes.type_texts/1`). The whole card is one link to the
   type's page, named after the type. Each card is 20rem wide, or the column's width where
@@ -1267,9 +1268,9 @@ mark and the theme menu.
   of the cards. The cards show no indicator: the count starts at the step Name, in the
   sidebar's group Set up.
 - **The template cards** (`SetUpComponents.template_cards/1`) are New workspace
-  (`/<org>/workspaces/new`), under "What will this workspace do?": the same card for each
-  template, in groups under a heading each. "Qory harness" has the Software factory card.
-  With the feature `factory`, "Shared harness" has the templates of the harness repository
+  (`/<org>/workspaces/new`) with the feature `factory`, under "What will this workspace
+  do?": the same card for each template, in groups under a heading each. "Qory harness"
+  has the Software factory card. "Shared harness" has the templates of the harness repository
   the organisation shares, "Assigned harnesses" those of the sources an instance admin
   assigned to it, and "Connected repositories" those of its connected repositories, for a
   person `harness.save` allows (`Apiary.Stacks.Sources.listed/1`). A card of the last two
@@ -1292,10 +1293,10 @@ mark and the theme menu.
   canvas), and a 24rem side panel beside it has the template's name as the page's
   heading, its summary, "How it works" with its description, "Stages" with "The workspace
   starts with the stages shown. After you create it, owners and admins can change them in
-  Workspace settings › Stages.", the harness line "Harness: Qory harness, stack software",
-  and **Create workspace** under the text. Without the feature there is no canvas: "How it
-  works" takes the main area, and the side panel has the name, the summary, the harness
-  line and Create workspace. **Create workspace** creates the workspace, named after the
+  Workspace settings › Stages.", the harness line "Harness: Qory harness, stack software"
+  (with the feature `factory`), and **Create workspace** under the text. Without
+  `workflow_model` there is no canvas: "How it works" takes the main area, and the side
+  panel has the name, the summary, the harness line and Create workspace. **Create workspace** creates the workspace, named after the
   template ("Software factory", then "Software factory 2"), and opens its step Name.
   Workspace settings › Stages and Workflow then show its harness with its stack: "Harness:
   Qory harness, stack software", or "stack core" for a workspace made with no template.

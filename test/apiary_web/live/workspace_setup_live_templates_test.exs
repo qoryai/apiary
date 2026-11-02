@@ -116,9 +116,14 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
   end
 
+  defp template_card_id(key), do: ApiaryWeb.SetUpComponents.template_card_id(key)
+
+  # The id of the shared harness's card of the module support-desk.
+  defp shared_card, do: "#" <> template_card_id("shared.support-desk")
+
   # The id of the card of `module` in the repository `collection`.
   defp card(collection, module \\ "support-desk"),
-    do: "#set-up-card-#{collection.public_id}-#{module}"
+    do: "#" <> template_card_id(collection.public_id <> "." <> module)
 
   # The organisation's shared harness: a repository at `git`, on the stack support.
   defp share!(ctx, git, ref \\ "HEAD") do
@@ -216,13 +221,13 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       # The shared harness is read at v1, which the stub serves like any other version.
       assert has_element?(
                lv,
-               "#set-up-group-shared #set-up-card-shared-support-desk h3",
+               "#set-up-group-shared #{shared_card()} h3",
                "Support desk"
              )
 
-      refute has_element?(lv, "#set-up-card-shared-support-desk-label")
+      refute has_element?(lv, "#{shared_card()}-label")
 
-      id = "#set-up-card-assigned-#{assignment.id}-support-desk"
+      id = "#" <> template_card_id("assigned-#{assignment.id}.support-desk")
       assert has_element?(lv, "#set-up-group-assigned #{id} h3", "Support desk")
       assert words(lv, "#{id}-label") == "example-org/team-harness"
 
@@ -243,7 +248,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       lv = open(ctx)
       html = render(lv)
 
-      assert has_element?(lv, "#set-up-group-shared #set-up-card-shared-support-desk h3")
+      assert has_element?(lv, "#set-up-group-shared #{shared_card()} h3")
       refute html =~ "acme/harness"
       refute html =~ "code.example.com"
 
@@ -287,7 +292,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
 
       lv = open(ctx)
 
-      refute has_element?(lv, "#set-up-card-shared-support-desk")
+      refute has_element?(lv, shared_card())
       assert has_element?(lv, "#set-up-group-shared p", "example-org/team-harness")
     end
 
@@ -299,7 +304,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
 
       lv = open(ctx)
 
-      assert has_element?(lv, "#set-up-card-shared-support-desk")
+      assert has_element?(lv, shared_card())
       refute has_element?(lv, card(ctx.harness))
       refute has_element?(lv, "#set-up-group-connected")
 
@@ -307,6 +312,20 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
         for {"read", %{"path" => "qory.yaml"}} <- harness_calls(), do: :read
 
       assert reads == [:read]
+    end
+
+    test "modules whose names differ by a dot, a hyphen or an underscore get one card each",
+         ctx do
+      names = ["a.b", "a-b", "a_b"]
+      serve(ctx, harness_files(Map.new(names, &{&1, support_desk_file()})))
+      lv = open(ctx)
+
+      ids = Enum.map(names, &card(ctx.harness, &1))
+      assert length(Enum.uniq(ids)) == 3
+      for id <- ids, do: assert(has_element?(lv, id))
+      assert length(texts(lv, "#set-up-group-connected h3")) == 3
+
+      assert template_card_id("a_2eb") != template_card_id("a.b")
     end
 
     test "a connected repository with nothing to show shows nothing", ctx do

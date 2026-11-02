@@ -898,10 +898,15 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       live(conn, ~p"/#{organisation}/workspaces/new/#{key}")
     end
 
-    # New workspace lists the Qory template alone.
+    # The Qory page is as it was without the feature: no harness line.
+    refute has_element?(view, "#workspace-type-harness")
+
+    # New workspace is the kind cards as they were: no group and no heading of a group,
+    # and the card one level below the page's title.
     {:ok, cards, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
-    assert has_element?(cards, "#set-up-group-qory #set-up-card-software")
-    refute has_element?(cards, "#set-up-group-connected")
-    refute has_element?(cards, "#set-up-group-shared")
+    assert has_element?(cards, "h1#set-up-cards-title", "What will this workspace do?")
+    assert has_element?(cards, "#set-up-cards #set-up-card-software h2", "Software factory")
+    refute has_element?(cards, "#set-up-card-software h3")
+    refute has_element?(cards, "[id^=set-up-group-]")
   end
 end

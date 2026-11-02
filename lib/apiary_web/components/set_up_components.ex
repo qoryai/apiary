@@ -11,9 +11,9 @@ defmodule ApiaryWeb.SetUpComponents do
     stacks under the form.
   - `heading/1` is a step's title, and `back/1` the Back button at the form's foot.
   - `kind_cards/1` is the empty organisation overview's choice of what the first workspace
-    does, and `template_cards/1` New workspace's: a card for each template of the Qory
-    harness, the organisation's shared harness, the sources assigned to it and its
-    connected repositories. `choose_kind/3` and `choose_template/4` are Create workspace on
+    does, and New workspace's without the feature `factory`. `template_cards/1` is New
+    workspace's with it: a card for each template of the Qory harness, the organisation's
+    shared harness, the sources assigned to it and its connected repositories. `choose_kind/3` and `choose_template/4` are Create workspace on
     a template's page, for the Qory template and for a template of a harness repository.
 
   Each step belongs to one of two progresses, its `:progress`. The instance's,
@@ -852,8 +852,8 @@ defmodule ApiaryWeb.SetUpComponents do
   name, and the summary describes it. The cards are 20rem wide, or the column's width
   where the column is narrower, in a grid that wraps a further card to the next line. A
   card's title is one heading level below `heading`. The empty organisation overview
-  (`ApiaryWeb.OrganisationLive`) shows it; New workspace (`/:org/workspaces/new`) shows
-  `template_cards/1`. With `limit`, that line shows in an information notice in place of
+  (`ApiaryWeb.OrganisationLive`) shows it, and New workspace (`/:org/workspaces/new`)
+  without the feature `factory`; with it, New workspace shows `template_cards/1`. With `limit`, that line shows in an information notice in place of
   the cards.
   """
   attr :id, :string, default: "set-up-cards"
@@ -1060,7 +1060,7 @@ defmodule ApiaryWeb.SetUpComponents do
       key = Sources.template_key(place.source, template.module)
 
       %{
-        id: "set-up-card-#{slug(key)}",
+        id: template_card_id(key),
         key: key,
         name: template.name,
         summary: template.summary,
@@ -1154,8 +1154,20 @@ defmodule ApiaryWeb.SetUpComponents do
 
   def named(%{source: source}), do: source
 
-  # An id's text for an element id: a key's dots and any other mark become hyphens.
-  defp slug(text), do: String.replace(text, ~r/[^A-Za-z0-9_-]/, "-")
+  @doc false
+  # template_card_id/1 is the element id of the card of the template with the page key
+  # `key`.
+  @spec template_card_id(String.t()) :: String.t()
+  def template_card_id(key), do: "set-up-card-" <> slug(key)
+
+  # An id's text for an element id: letters, digits and `-` stay, and every other byte,
+  # `_` included, is `_` and its two hex digits, so two texts never give one id.
+  defp slug(text), do: for(<<byte <- text>>, into: "", do: slug_byte(byte))
+
+  defp slug_byte(byte) when byte in ?a..?z or byte in ?A..?Z or byte in ?0..?9 or byte == ?-,
+    do: <<byte>>
+
+  defp slug_byte(byte), do: "_" <> Base.encode16(<<byte>>, case: :lower)
 
   attr :id, :string, required: true
   attr :href, :string, required: true

@@ -177,14 +177,25 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, "#set-up-cards")
     end
 
-    test "New workspace shows the same cards, in the organisation's sidebar", %{conn: conn} do
+    @tag :feature_sets
+    test "New workspace shows the cards, in the organisation's sidebar", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
 
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new")
 
       assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
-      assert has_element?(lv, "h2#set-up-group-qory-title", "Qory harness")
-      assert has_element?(lv, "#set-up-group-qory #set-up-card-software h3", "Software factory")
+
+      # With the feature `factory` the cards are in groups; without it they are the kind
+      # cards, with no group and no heading above the card but the page's.
+      if Apiary.Features.on?(:factory) do
+        assert has_element?(lv, "h2#set-up-group-qory-title", "Qory harness")
+        assert has_element?(lv, "#set-up-group-qory #set-up-card-software h3", "Software factory")
+      else
+        refute has_element?(lv, "#set-up-group-qory")
+        refute has_element?(lv, "#set-up-group-qory-title")
+        assert has_element?(lv, "#set-up-card-software h2", "Software factory")
+        refute has_element?(lv, "#set-up-card-software h3")
+      end
 
       assert has_element?(
                lv,

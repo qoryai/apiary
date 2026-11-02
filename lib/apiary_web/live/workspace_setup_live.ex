@@ -16,10 +16,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # ends. A read that the person's limit stops (`{:limited, seconds}`) keeps the results
   # shown, shows the limit line, and the reads start again after `seconds`
   # (`:templates_resume`). Each card leads to its template's page
-  # (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace
-  # creates the workspace at once, named after its type, and opens its Name step
-  # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The empty organisation overview shows the
-  # Qory card alone (`ApiaryWeb.SetUpComponents.kind_cards/1`). The page is only for a
+  # (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace creates the workspace at once
+  # and opens its Name step: named after its type for the Qory template
+  # (`ApiaryWeb.SetUpComponents.choose_kind/3`), and after the template for a template of a
+  # harness repository (`ApiaryWeb.SetUpComponents.choose_template/4`). Without the
+  # `factory` feature the page shows the kind cards
+  # (`ApiaryWeb.SetUpComponents.kind_cards/1`) with no groups and reads nothing, and the
+  # empty organisation overview shows them too. The page is only for a
   # person `workspace.create` allows (`Apiary.Access`); where the organisation has as many
   # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page is headed
   # "New workspace", shows the edition's line on why
@@ -210,6 +213,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     Connections,
     Dispatches,
     Edition,
+    Features,
     ModelChoices,
     Organisations,
     Runs,
@@ -267,7 +271,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        workspace_stacks_of: nil,
        template_places: [],
        template_reads: %{},
-       template_limit: nil
+       template_limit: nil,
+       template_groups: false
      )}
   end
 
@@ -325,11 +330,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     scope = socket.assigns.current_scope
     at_limit = SetUpComponents.at_limit?(scope)
 
-    # At the limit the page makes no read.
+    # At the limit the page makes no read, and without the feature `factory` it has no group.
     places =
       if at_limit,
         do: [],
         else: Enum.reject(Sources.listed(scope), &(&1.group == :qory))
+
+    groups = Features.visible?(scope, :factory)
 
     assign(socket,
       view: :cards,
@@ -344,6 +351,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         ),
       limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
+    |> assign(template_groups: groups)
     |> TemplateReads.init(places)
     |> TemplateReads.start()
   end
@@ -1867,7 +1875,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:organisation}
     >
       <:crumb>{gettext("New workspace")}</:crumb>
+      <SetUpComponents.kind_cards
+        :if={!@template_groups}
+        title={@page_title}
+        limit={@limit}
+        organisation={@current_scope.organisation}
+      />
       <SetUpComponents.template_cards
+        :if={@template_groups}
         title={@page_title}
         limit={@limit}
         organisation={@current_scope.organisation}
