@@ -551,6 +551,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The Qory harness is pinned at harness commit c0e7e33c, which exports the stacks `core`
   and `software`. On the Qory harness, the Stack select of each repository lists
   `software`.
+- A workspace made from the software template gets the artifact type `branch`, and every
+  standard type stays shown.
 
 ### Changed
 
