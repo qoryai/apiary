@@ -154,7 +154,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp state_words(:running), do: gettext("Running")
   defp state_words(:waiting_inputs), do: gettext("Waits for inputs")
-  defp state_words(:waiting_answers), do: gettext("Waits for answers")
+  defp state_words(:waiting_answers), do: gettext("Needs answers")
   defp state_words(:waiting_workflow), do: gettext("Waits for a workflow")
   defp state_words(:escalated), do: gettext("Waits for a person")
   defp state_words(:at_gate), do: gettext("At the gate")
