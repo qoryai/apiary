@@ -641,6 +641,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A page of a workspace that is open when its test run passes, such as the run's page,
+  drops the sidebar's group Set up within a second. Before, the group stayed, with the
+  Test run step not done, until the page was opened again.
 - The built-in harness uses qory's hello example at a commit that allows extending it.
   With the earlier commit, composing the built-in harness failed, so every test run
   failed.
