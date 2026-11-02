@@ -818,6 +818,33 @@ defmodule Apiary.Stacks.SourcesTest do
                "reply-draft is not a standard type, so it needs a definition"
     end
 
+    test "a standard type listed twice is not readable, with the type's name", ctx do
+      file = template_file() <> "artifact_types:\n  - name: mockup\n  - name: mockup\n"
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: {:types, [refusal]}}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert refusal == {:repeated, "mockup"}
+
+      assert TemplateTypes.message(refusal) ==
+               "artifact_types lists mockup more than once: list this name once"
+    end
+
+    test "an entry of artifact_types the schema refuses is not readable, with the type's name",
+         ctx do
+      file = template_file() <> "artifact_types:\n  - {name: reply-draft, base_view: document}\n"
+      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+      assert {:ok, read} = Sources.templates(ctx.scope, source)
+      assert [%{module: "b"}] = read.templates
+      assert [%{module: "a", reason: {:types, [refusal]}}] = read.not_readable
+      assert refusal == {:schema, "reply-draft"}
+
+      assert TemplateTypes.message(refusal) ==
+               "the entry reply-draft in artifact_types does not match process.schema.json"
+    end
+
     test "the process is checked before the types", ctx do
       file =
         String.replace(template_file(), "name: Check", "name: Answer") <>
@@ -950,7 +977,9 @@ defmodule Apiary.Stacks.SourcesTest do
     end
 
     test "a file Reader.template/1 does not pass is unreadable", ctx do
-      for file <- ["name: Support desk\n", "a: [", "- a\n"] do
+      unnamed = template_file() <> "artifact_types:\n  - {base_view: document}\n"
+
+      for file <- ["name: Support desk\n", "a: [", "- a\n", unnamed] do
         source = template_source(ctx, root("[a]"), %{"a" => file})
 
         assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: :unreadable}]}} =

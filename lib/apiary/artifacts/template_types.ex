@@ -10,19 +10,25 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #   2. `{:standard_name, type}`: a custom type has a standard type's name;
   #   3. `{:not_listed, stage, type}`: a stage has a type in its inputs or outputs that
   #      the list does not have and that is not always on (`Type.always_on/0`);
-  #   4. `{:invalid, type, :repeated}`: the list has a custom name more than once, one
-  #      refusal per name. A standard name may be listed twice, and a custom type with a
-  #      standard name is only `{:standard_name, type}`;
-  #   5. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2` or
+  #   4. `{:repeated, type}`: an entry with a name alone has a standard name that another
+  #      such entry has, one refusal per name;
+  #   5. `{:invalid, type, :repeated}`: the list has a custom name more than once, one
+  #      refusal per name. A custom type with a standard name is only
+  #      `{:standard_name, type}`;
+  #   6. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2` or
   #      `Apiary.Artifacts.CustomSchema.check/1`. `error` is the field that failed, with
   #      the base view for a limit. The check stops at the first such definition;
-  #   6. `:schemas_too_long`: the definitions' JSON Schemas passed the total of one
+  #   7. `:schemas_too_long`: the definitions' JSON Schemas passed the total of one
   #      template (`@total`), which `Apiary.Artifacts.CustomSchema.check_within/2` counts.
   #      A file of 64 KiB fits about 800 definitions, each with a budget of up to 10 s, so
   #      the total bounds how long one template holds a caller. A schema over its single
   #      budget stays `{:invalid, type, :json_schema}`. A template with no JSON Schema
   #      does no such work, and `check/2` is `check/1` with another total. `total/1` is
   #      the total for a caller with less time than `@total`.
+  #
+  # `{:schema, type}` is an eighth refusal, which `check/1` does not make: the entry `type`
+  # did not pass the schema of `process.yaml`, so `Apiary.Harnesses.Reader.template/1`
+  # returned no template to check, and `Apiary.Stacks.Sources` makes the refusal.
   #
   # A nil list is `:ok` with no check, so a template written before the key works
   # unchanged. `Apiary.Stacks.Sources` calls `check/2` on each template it reads, with the
@@ -85,8 +91,10 @@ defmodule Apiary.Artifacts.TemplateTypes do
           {:not_standard, String.t()}
           | {:standard_name, String.t()}
           | {:not_listed, String.t(), String.t()}
+          | {:repeated, String.t()}
           | {:invalid, String.t(), error}
           | :schemas_too_long
+          | {:schema, String.t()}
 
   # check/1: see the head of this module.
   @doc false
@@ -102,7 +110,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
     case Enum.uniq(
            not_standard(alone) ++
              standard_names(custom) ++
-             not_listed(process, listed) ++ repeated(custom) ++ invalid(custom, total)
+             not_listed(process, listed) ++
+             repeated_standard(alone) ++ repeated(custom) ++ invalid(custom, total)
          ) do
       [] -> :ok
       refusals -> {:error, refusals}
@@ -145,6 +154,12 @@ defmodule Apiary.Artifacts.TemplateTypes do
   end
 
   defp types_in(_entries), do: []
+
+  # One refusal per standard name listed more than once by its name alone.
+  defp repeated_standard(alone) do
+    names = alone |> Enum.map(& &1["name"]) |> Enum.filter(&(&1 in Type.standard_names()))
+    for name <- Enum.uniq(names -- Enum.uniq(names)), do: {:repeated, name}
+  end
 
   # One refusal per custom name listed more than once.
   defp repeated(custom) do
@@ -222,6 +237,15 @@ defmodule Apiary.Artifacts.TemplateTypes do
     do:
       gettext("the stage %{stage} uses %{type}, which artifact_types does not list",
         stage: stage,
+        type: type
+      )
+
+  def message({:repeated, type}),
+    do: gettext("artifact_types lists %{type} more than once: list this name once", type: type)
+
+  def message({:schema, type}),
+    do:
+      gettext("the entry %{type} in artifact_types does not match process.schema.json",
         type: type
       )
 

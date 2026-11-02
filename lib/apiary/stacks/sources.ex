@@ -48,7 +48,9 @@ defmodule Apiary.Stacks.Sources do
   # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
   # does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module whose file is not
   # read, is in `not_readable` with the reason (`t:not_readable/0`), and the other modules
-  # are read. The file's checks run in that order, the costly check of the types last.
+  # are read. The file's checks run in that order, the costly check of the types last. The
+  # schema of the file comes before them, so an entry of `artifact_types` it refuses is
+  # reported first.
   # A failed read of one file fails the source only where the failure is about the
   # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
   # listed twice counts once.
@@ -244,9 +246,11 @@ defmodule Apiary.Stacks.Sources do
       (`Apiary.Lingo.Domain.known_type?/1`), so a workspace cannot be made from it;
     * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
     * `{:types, refusals}`: its `artifact_types` do not pass the check of a template's
-      types; `TemplateTypes.message/1` returns each refusal's text;
+      types, or the schema refuses an entry with a name (`{:schema, type}`);
+      `TemplateTypes.message/1` returns each refusal's text;
     * `:unreadable`: the module's folder is at no path a read takes, a read of the file
-      failed, or the file does not pass `Apiary.Harnesses.Reader.template/1`;
+      failed, or the file does not pass `Apiary.Harnesses.Reader.template/1` for a reason
+      that is about no entry of `artifact_types` with a name;
     * `:modules_invalid`: the `modules` of `exports` are not a list of text.
   """
   @type not_readable :: %{
@@ -971,6 +975,7 @@ defmodule Apiary.Stacks.Sources do
       {:unknown_type, _type} = reason -> {:not_readable, reason}
       {:types, {:error, refusals}} -> types_refused(refusals, location, deadline, clock)
       {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
+      {:error, {:invalid_artifact_type, type}} -> {:not_readable, {:types, [{:schema, type}]}}
       {:error, _file_reason} -> {:not_readable, :unreadable}
     end
   end

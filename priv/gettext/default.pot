@@ -22584,6 +22584,11 @@ msgid_plural "application/json · %{number} bytes"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "artifact_types lists %{type} more than once: list this name once"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "asked for by %{person}"
@@ -23763,6 +23768,11 @@ msgstr ""
 #: lib/apiary/artifacts/template_types.ex
 #, elixir-autogen, elixir-format
 msgid "the custom type %{type} is not valid: %{error}"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the entry %{type} in artifact_types does not match process.schema.json"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

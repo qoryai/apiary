@@ -144,6 +144,10 @@ defmodule Apiary.Harnesses.Reader do
   # qory's process.schema.json, under the application's priv.
   @template_schema ["contract", "harness", "v1", "process.schema.json"]
 
+  # The most characters of a type's name a refusal keeps: the most a name has. A name the
+  # schema refuses can be as long as the file.
+  @max_type_name 64
+
   @doc "The most bytes a file may have."
   @spec max_bytes() :: pos_integer
   def max_bytes, do: @max_bytes
@@ -379,28 +383,56 @@ defmodule Apiary.Harnesses.Reader do
   template/1 is a factory's `process.yaml`, checked against qory's `process.schema.json`
   as the moduledoc says: `{:ok, template}` or `{:error, reason}`. A file the schema
   refuses, such as one with a key missing, a key of the wrong type or a key the schema
-  does not define, is `:invalid_template`. The schema checks `process` loosely; the
+  does not define, is `:invalid_template`. Where the schema refuses an entry of
+  `artifact_types` whose `name` is text, whatever else it refuses, it is
+  `{:invalid_artifact_type, name}` for the first such entry, with the first
+  #{@max_type_name} characters of the name. The schema checks `process` loosely; the
   caller checks it as a process, and checks what `artifact_types` means.
   """
-  @spec template(binary) :: {:ok, template} | {:error, reason}
+  @spec template(binary) ::
+          {:ok, template} | {:error, reason | {:invalid_artifact_type, String.t()}}
   def template(bytes) when is_binary(bytes) do
     with {:ok, file} <- parse(bytes) do
-      if Schema.valid?(file, template_root()) do
-        {:ok,
-         %{
-           name: file["name"],
-           summary: file["summary"],
-           description: file["description"],
-           type: file["type"],
-           stack: file["stack"],
-           process: file["process"],
-           artifact_types: file["artifact_types"]
-         }}
-      else
-        {:error, :invalid_template}
+      case JSV.validate(file, template_root(), cast: false) do
+        {:ok, _file} ->
+          {:ok,
+           %{
+             name: file["name"],
+             summary: file["summary"],
+             description: file["description"],
+             type: file["type"],
+             stack: file["stack"],
+             process: file["process"],
+             artifact_types: file["artifact_types"]
+           }}
+
+        {:error, %JSV.ValidationError{errors: errors}} ->
+          {:error, template_refusal(file, errors)}
       end
     end
   end
+
+  # An error's path is in JSV's order, the last key first.
+  defp template_refusal(%{"artifact_types" => listed}, errors) when is_list(listed) do
+    refused =
+      for %{data_path: path} <- errors,
+          ["artifact_types", index | _rest] when is_integer(index) <- [Enum.reverse(path)],
+          into: MapSet.new(),
+          do: index
+
+    listed
+    |> Enum.with_index()
+    |> Enum.find_value(:invalid_template, fn
+      {%{"name" => name}, index} when is_binary(name) ->
+        if index in refused,
+          do: {:invalid_artifact_type, String.slice(name, 0, @max_type_name)}
+
+      _entry ->
+        nil
+    end)
+  end
+
+  defp template_refusal(_file, _errors), do: :invalid_template
 
   defp template_root,
     do: Schema.file!(@template_schema, &Result.code_point_lengths/1)
