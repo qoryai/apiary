@@ -403,6 +403,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                ~w(screenshot proposal questions verdict customer-facts reply-draft)
     end
 
+    @tag needs: :workflow_model
     test "does not ask for artifact_type.edit", ctx do
       member = member_fixture(ctx.scope).scope
 
