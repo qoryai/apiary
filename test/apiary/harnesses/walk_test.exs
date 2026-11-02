@@ -1031,6 +1031,38 @@ defmodule Apiary.Harnesses.WalkTest do
       assert %{"message" => "repeats a key", "message_values" => %{}} = walk.(repeated)
     end
 
+    test "a stored flat bind fails the walk in the save check's words, hidden or not", ctx do
+      admin = %{
+        instance_admin_scope()
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace
+      }
+
+      base = "extends: {git: \"#{@harness}\", ref: v1}\n"
+      flat = base <> "bind: {agents/developer: web-developer}\n"
+
+      # A row saved before bind was nested: the save refuses a flat bind.
+      walk = fn scope ->
+        stack = setting(scope, base)
+        Repo.update_all(from(s in Stacks.Stack, where: s.id == ^stack.id), set: [harness: flat])
+        serve([ctx.run], covered: covering(ctx), files: @base_files)
+        assert {:failed, %{failure: :invalid, rule: rule}} = Walk.run(ctx.input)
+        rule
+      end
+
+      assert %{
+               "message" =>
+                 "Write bind by kind, then by role, such as " <>
+                   "bind: {agents: {developer: web-developer}}: %{key} is a flat key.",
+               "values" => %{"key" => "agents/developer"}
+             } = walk.(ctx.scope)
+
+      assert walk.(admin) == %{
+               "message" => "has a value the harness format does not take",
+               "values" => %{}
+             }
+    end
+
     test "a hidden harness's rule has no path, ref or stack name", ctx do
       admin = %{
         instance_admin_scope()

@@ -130,6 +130,11 @@ msgstr ""
 msgid "Enter the host that runs reach over the network. %{host} is a name for the local machine."
 msgstr ""
 
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Give one name per role: %{place} is a list."
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Leave the effort empty: %{model} has no effort values to choose from."
@@ -211,9 +216,19 @@ msgstr ""
 msgid "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."
 msgstr ""
 
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Use agents, commands or skills under bind: %{key} is not a kind."
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use light, fast or thinking: %{tier} is not a tier."
+msgstr ""
+
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Write bind by kind, then by role, such as bind: {agents: {developer: web-developer}}: %{key} is a flat key."
 msgstr ""
 
 #: lib/apiary/kinds/endpoint.ex
