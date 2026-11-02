@@ -1149,8 +1149,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
     test "Add workflow and Add loop start with the first name a stage may run", %{
       conn: conn,
-      path: path,
-      scope: scope
+      path: path
     } do
       {:ok, view, _html} = live(conn, path)
       render_async(view)
