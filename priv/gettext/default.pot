@@ -6653,6 +6653,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Commit this file to a harness repository. Only new workspaces made from it use it."
 msgstr ""
 

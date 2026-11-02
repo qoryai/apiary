@@ -593,7 +593,8 @@ defmodule ApiaryWeb.StagesLive.Index do
               {gettext("Export process.yaml")}
             </.button>
             <p id="stages-export-line" class="min-w-0 flex-1 text-[13px]/5 text-muted">
-              {gettext(
+              {pgettext(
+                "plain",
                 "Commit this file to a harness repository. Only new workspaces made from it use it."
               )}
               <span :if={exports_people?(@versions)} id="stages-export-people">
