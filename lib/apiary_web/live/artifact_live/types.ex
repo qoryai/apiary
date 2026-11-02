@@ -477,13 +477,14 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   def handle_event("switch", %{"id" => name}, socket) do
     scope = socket.assigns.current_scope
     on? = not Enum.any?(socket.assigns.standard, &(&1.name == name and &1.shown))
+    socket = assign(socket, in_use: nil, switch_refused: nil)
 
     case Artifacts.switch_type(scope, scope.workspace, name, on?) do
       {:ok, _type} ->
-        {:noreply, socket |> assign(in_use: nil, switch_refused: nil) |> load()}
+        {:noreply, load(socket)}
 
       {:error, reason} when reason in [:has_artifacts, :current_process, :version_in_use] ->
-        {:noreply, socket |> assign(in_use: nil, switch_refused: {reason, name}) |> load()}
+        {:noreply, socket |> assign(switch_refused: {reason, name}) |> load()}
 
       {:error, :forbidden} ->
         {:noreply, socket |> load() |> not_allowed()}

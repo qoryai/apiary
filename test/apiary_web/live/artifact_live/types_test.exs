@@ -183,6 +183,35 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     assert has_element?(view, ~s(#artifact-type-demo-video-switch[aria-checked="false"]))
   end
 
+  describe "a stale tab that shows a refusal" do
+    setup ctx do
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("mockup"))
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+      click_switch(view, "mockup")
+      assert has_element?(view, "#artifact-type-switch-refused")
+      %{view: view}
+    end
+
+    test "shows no old line after a switch of a name that is gone", ctx do
+      render_click(ctx.view, "switch", %{"id" => "no-such-type"})
+
+      refute has_element?(ctx.view, "#artifact-type-switch-refused")
+    end
+
+    test "shows no old line after a switch by a person who lost the level", ctx do
+      {1, _rows} =
+        Repo.update_all(
+          from(m in Apiary.Organisations.Membership, where: m.id == ^ctx.scope.membership.id),
+          set: [level: :member]
+        )
+
+      click_switch(ctx.view, "demo-video")
+
+      refute has_element?(ctx.view, "#artifact-type-switch-refused")
+      assert stored(ctx.scope) == nil
+    end
+  end
+
   test "keeps listing a standard type the workspace hides", ctx do
     show!(ctx.scope, ["mockup"])
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
