@@ -6618,6 +6618,11 @@ msgstr ""
 msgid "Commented on a work item"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Commit this file to a harness repository. Only new workspaces made from it use it."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Compare with"
@@ -8653,6 +8658,11 @@ msgstr ""
 msgid "Export for a machine without a server"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Export process.yaml"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Export the version in force"
@@ -8666,6 +8676,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Export · Version %{version} · Policy"
+msgstr ""
+
+#: lib/apiary/processes/export.ex
+#, elixir-autogen, elixir-format
+msgid "Exported from the workspace %{name}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -9312,6 +9327,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Gate: one of %{people} approves"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Gates that list people export as all members."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

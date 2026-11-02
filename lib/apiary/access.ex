@@ -500,7 +500,7 @@ defmodule Apiary.Access do
     # function that takes it makes it audited, with its entry.
     Action.new(
       :"process.edit",
-      "save a version of the workspace's process, as a trial or as the current one, make a trial current or drop it, and assign a work item to a version",
+      "save a version of the workspace's process, as a trial or as the current one, make a trial current or drop it, assign a work item to a version, and export it",
       feature: :workflow_model,
       roles: @admins
     ),

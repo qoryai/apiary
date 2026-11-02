@@ -973,6 +973,10 @@ defmodule ApiaryWeb.Routes do
           # A run's diagnostics document, for Copy diagnostics on the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/diagnostics", RunDiagnosticsController, :show
 
+          # The workspace's process as a `process.yaml`, as an attachment, for Export
+          # process.yaml on the Stages page, with the `workflow_model` feature. Not a page.
+          get "/:org/:workspace/settings/stages/process.yaml", ProcessExportController, :show
+
           # A target's policy had a page of its own, by the target row's id; it is the
           # Policy tab of the target's page now, where these send on to.
           get "/:org/:workspace/policy/targets/:target_id", TargetMovedController, :show

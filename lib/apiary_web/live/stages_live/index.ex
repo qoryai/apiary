@@ -18,6 +18,8 @@ defmodule ApiaryWeb.StagesLive.Index do
   # keeps it.
   #
   # Owners and admins (`process.edit`) edit; members read the page with no edit controls.
+  # Owners and admins also get Export process.yaml under the tabs' row, a link to
+  # `ApiaryWeb.ProcessExportController`.
   #
   # A stage's workflow is a text field that suggests `Apiary.Processes.declared_workflows/1`
   # and takes any name the schema's pattern allows. Once the page is connected, for
@@ -215,6 +217,14 @@ defmodule ApiaryWeb.StagesLive.Index do
   # waiting; before the first read, nil, and no workflow has a mark.
   defp marks(%{snapshot: nil}), do: nil
   defp marks(%{declared: declared}), do: declared
+
+  # Whether a gate of the current version lists people, which the export leaves out.
+  defp exports_people?(versions) do
+    case Enum.find(versions, &(&1.status == :current)) do
+      nil -> false
+      current -> Processes.Export.lists_people?(current)
+    end
+  end
 
   # The canvas's mode: owners and admins (`process.edit`) edit; members view.
   defp mode(%{may: true}), do: :edit
@@ -563,6 +573,35 @@ defmodule ApiaryWeb.StagesLive.Index do
               </p>
             </div>
           </div>
+          <%!-- The download is of the current version, so it leaves out the draft and any
+          trial. --%>
+          <div
+            :if={@may}
+            id="stages-export"
+            class={[
+              "flex max-w-[60rem] flex-wrap items-center gap-x-3 gap-y-1",
+              @tab == :stages && "py-2"
+            ]}
+          >
+            <.button
+              id="stages-export-button"
+              href={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/stages/process.yaml"
+              }
+              download="process.yaml"
+            >
+              {gettext("Export process.yaml")}
+            </.button>
+            <p id="stages-export-line" class="min-w-0 flex-1 text-[13px]/5 text-muted">
+              {gettext(
+                "Commit this file to a harness repository. Only new workspaces made from it use it."
+              )}
+              <span :if={exports_people?(@versions)} id="stages-export-people">
+                {gettext("Gates that list people export as all members.")}
+              </span>
+            </p>
+          </div>
+
           <div
             :if={(@may and @trial != nil and @dirty) or @notice != nil or @save_errors != []}
             class={["grid gap-3", @tab == :stages && "py-4"]}
