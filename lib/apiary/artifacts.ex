@@ -35,9 +35,13 @@ defmodule Apiary.Artifacts do
   #   2. `:current_process`: a stage of the current process has the type in its inputs
   #      or outputs;
   #   3. `:version_in_use`: a stage of a version in use has the type there. A version is
-  #      in use while it is a trial, or while a work item that has not ended keeps it. An
-  #      ended work item has no more runs, and a take in again places it under the
-  #      current version (`Apiary.Stages.take_in/2`).
+  #      in use while it is a trial, while a work item that has not ended keeps it, or
+  #      while a run of the queue that has not ended is on it (`process_version_id`). So a
+  #      work item that ended counts only through such a run: a run handed over goes on
+  #      after a close, and a claimed run stays on its version after `Processes.assign/3`
+  #      or `Processes.drop_trial/2`. Once its runs end, a work item that ended has none
+  #      left, and a take in again places it under the current version
+  #      (`Apiary.Stages.take_in/2`).
   #
   # A switch holds the scope's places and the workspace's row as `Apiary.Processes` holds
   # them, `FOR NO KEY UPDATE`, and reads the list and the scope again under that lock. So
@@ -364,9 +368,9 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # The documents of the workspace's trial versions and of the versions its work items
-  # keep, a work item that ended left out: a take in again places it under the current
-  # version.
+  # The documents of the workspace's trial versions, of the versions that its work items
+  # that have not ended keep, and of the versions that its runs of the queue that have not
+  # ended are on. An ended work item's version counts only through such a run.
   defp documents_in_use(workspace_id) do
     kept =
       from w in WorkItem,
@@ -375,9 +379,18 @@ defmodule Apiary.Artifacts do
             not is_nil(w.process_version_id),
         select: w.process_version_id
 
+    running =
+      from r in DispatchRun,
+        where:
+          r.workspace_id == ^workspace_id and r.state != :ended and
+            not is_nil(r.process_version_id),
+        select: r.process_version_id
+
     Repo.all(
       from v in ProcessVersion,
-        where: v.workspace_id == ^workspace_id and (v.status == :trial or v.id in subquery(kept)),
+        where:
+          v.workspace_id == ^workspace_id and
+            (v.status == :trial or v.id in subquery(kept) or v.id in subquery(running)),
         select: v.document
     )
   end

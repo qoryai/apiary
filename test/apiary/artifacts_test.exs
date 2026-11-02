@@ -9,6 +9,7 @@ defmodule Apiary.ArtifactsTest do
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Store, Type, Version}
   alias Apiary.ArtifactStoreHook
   alias Apiary.Audit.Entry
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
@@ -655,6 +656,53 @@ defmodule Apiary.ArtifactsTest do
         assert {:ok, %Type{shown: false}} =
                  Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
       end
+    end
+
+    # A run of the work item's take in, in `state`, on `version`.
+    defp run_on!(work_item, version, state) do
+      %{dispatch_run: run} = explore_run_fixture(work_item, state: state)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [process_version_id: version.id]
+        )
+
+      run
+    end
+
+    test "a closed work item counts only while a run on its version has not ended", ctx do
+      version = past_version(ctx.scope, "explainer")
+      keep!(ctx.work_item, version, state: :closed, closed_at: DateTime.utc_now())
+      run = run_on!(ctx.work_item, version, :handed_over)
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      assert {:ok, %Type{shown: false}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+    end
+
+    test "a claimed run that stayed on a version after an assign counts", ctx do
+      version = past_version(ctx.scope, "explainer")
+      keep!(ctx.work_item, version)
+      run_on!(ctx.work_item, version, :claimed)
+
+      assert {:ok, assigned} =
+               Processes.assign(
+                 ctx.scope,
+                 Repo.reload!(ctx.work_item),
+                 Processes.current(ctx.scope.workspace)
+               )
+
+      refute assigned.process_version_id == version.id
+
+      assert {:error, :version_in_use} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
     end
 
     test "a work item taken in again leaves the version it kept", %{scope: scope} do
