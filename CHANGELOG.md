@@ -499,7 +499,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   shows “The harness has not been read yet.” and no marks.
   **Stages**, **Workflow** and **Check again** read the same harness: the workspace's
   choice, else the harness the organisation shares, else the Qory harness. The Qory
-  harness is not read: its workflow is `explore-a-ticket`. A run that qory ends with
+  harness is not read: its workflow is `explore-a-ticket`, and **Stages** shows “The Qory
+  harness's workflows: explore-a-ticket.” A run that qory ends with
   `workflow_not_in_harness`, because the harness it composed has no skill for the run's
   workflow, shows that workflow and where the harness comes from on the run's page and
   on the work item.

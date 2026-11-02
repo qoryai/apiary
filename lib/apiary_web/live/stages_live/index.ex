@@ -639,7 +639,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               </.link>
             </p>
             <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
-              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot)}</p>
+              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot, @cross)}</p>
               <p :if={@declared_error} id="stages-workflows-error" class="text-error">
                 {Words.read_failed(@declared_error, @snapshot)}
               </p>
@@ -673,7 +673,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 {gettext("Placement check")}
               </h2>
               <p :if={@problems == []} id="stages-check-clear" class="text-[13.5px]/5">
-                {check_clear(@snapshot)}
+                {check_clear(@snapshot, @cross)}
               </p>
               <ul :if={@problems != []} class="grid gap-1 text-[13.5px]/5">
                 <li :for={problem <- @problems} data-problem={elem(problem, 0)}>
@@ -835,14 +835,21 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   # The placement check with nothing to list. Before the first read of the harness it
-  # leaves the workflows out, as it does not check them.
-  defp check_clear(nil),
+  # leaves the workflows out, as it does not check them. The Qory harness is never read:
+  # its workflows are recorded once an owner or admin opens this page or Workflow.
+  defp check_clear(nil, :qory_workspace),
+    do:
+      gettext(
+        "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
+      )
+
+  defp check_clear(nil, _harness),
     do:
       gettext(
         "Every type exists, and every input is an output of an earlier stage. The workflows are checked once the harness is read."
       )
 
-  defp check_clear(_snapshot),
+  defp check_clear(_snapshot, _harness),
     do:
       gettext(
         "Every workflow is declared, every type exists, and every input is an output of an earlier stage."

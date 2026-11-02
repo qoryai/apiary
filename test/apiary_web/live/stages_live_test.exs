@@ -1221,7 +1221,8 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, ~s{#stage-entry-2-workflow-mark[data-mark="listed"]})
       assert card(view, "Build")["alerts"] == []
 
-      # Details: the Qory names as the harness's list, and no read that failed.
+      # Details: the Qory harness's workflows, with no time of a read, and no read that
+      # failed.
       details(view, path)
       assert has_element?(view, "#stages-workflows")
       refute has_element?(view, "#stages-workflows-error")
@@ -1229,8 +1230,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-workflows-list",
-               "Workflows the harness listed just now: explore-a-ticket."
+               "The Qory harness's workflows: explore-a-ticket."
              )
+
+      refute render(element(view, "#stages-details")) =~ "listed"
 
       assert has_element?(view, "#stages-check-clear", "Every workflow is declared")
 
@@ -1244,7 +1247,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(member, ~s{#stage-panel dd [data-mark="listed"]}, "A stage can run it")
     end
 
-    test "before the first read of the harness: no marks, the line, and no workflow listed as missing",
+    test "on the Qory harness, before its workflows are recorded: no marks, the Qory line, and no workflow listed as missing",
          %{path: path, scope: scope} do
       # A member's page reads nothing, so the harness stays unread.
       %{user: user} = member_fixture(scope)
@@ -1258,16 +1261,25 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stage-panel [data-mark]")
       refute has_element?(view, "#stage-panel [data-stage-alert]")
 
+      # The Qory harness is never read: its workflows, and when they are checked.
       details(view, path)
-      assert has_element?(view, "#stages-workflows-list", "The harness has not been read yet.")
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "The Qory harness's workflows: explore-a-ticket."
+             )
+
       assert has_element?(view, "#stages-check")
       refute has_element?(view, ~s(#stages-check [data-problem="missing_workflow"]))
 
       assert has_element?(
                view,
                "#stages-check-clear",
-               "Every type exists, and every input is an output of an earlier stage. The workflows are checked once the harness is read."
+               "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
              )
+
+      refute render(element(view, "#stages-details")) =~ ~r/harness is read|been read/
     end
   end
 

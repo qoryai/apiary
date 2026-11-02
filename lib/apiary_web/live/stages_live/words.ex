@@ -95,19 +95,28 @@ defmodule ApiaryWeb.StagesLive.Words do
   def add_after(name), do: gettext("Add a stage after %{stage}", stage: name)
 
   # The workflows the harness listed at its last read (`Apiary.Processes.declared_snapshot/1`),
-  # with the time of that read; before the first read, that it has not been read.
+  # with the time of that read; before the first read, that it has not been read. The
+  # Qory harness (`:qory_workspace`) is never read: its workflows, with no time.
   @doc false
-  def workflows_line(_declared, %{names: [], read_at: at}),
+  def workflows_line(declared, snapshot, harness \\ :workspace)
+
+  def workflows_line(_declared, _snapshot, :qory_workspace),
+    do:
+      gettext("The Qory harness's workflows: %{names}.",
+        names: Enum.join(Apiary.Processes.qory_workflows(), ", ")
+      )
+
+  def workflows_line(_declared, %{names: [], read_at: at}, _harness),
     do: gettext("The harness listed no workflows %{time}.", time: read_time(at))
 
-  def workflows_line(_declared, %{names: names, read_at: at}),
+  def workflows_line(_declared, %{names: names, read_at: at}, _harness),
     do:
       gettext("Workflows the harness listed %{time}: %{names}.",
         time: read_time(at),
         names: Enum.join(names, ", ")
       )
 
-  def workflows_line(_declared, nil), do: not_read()
+  def workflows_line(_declared, nil, _harness), do: not_read()
 
   # Before the first read of the harness: the canvas shows no marks, and no stage waits
   # for a workflow.
@@ -160,7 +169,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def undeclared(stage_name, workflow, :qory),
     do:
       gettext(
-        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once its harness has been read, on its Stages or Workflow page or by Check again.",
+        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages or Workflow page, or someone uses Check again on a work item.",
         stage: stage_name,
         workflow: workflow
       )
