@@ -432,15 +432,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "for want of a model key: each tab puts the fix first, none says it ended with an error",
          %{conn: conn, scope: scope} do
-      {work_item, run} = refused(scope, "model_key_missing")
-      short = Integer.to_string(run.number)
+      {work_item, _run} = refused(scope, "model_key_missing")
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(
                view,
                "#work-item-step-line",
-               @key_fix <> " The gateway had no model key for run #{short}."
+               @key_fix <> " The gateway had no model key for attempt 1."
              )
 
       refute html =~ "ended with an error"
@@ -457,14 +456,13 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute html =~ "ended with an error"
 
       {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
-      assert html =~ @key_fix <> " The gateway had no model key for run"
+      assert html =~ @key_fix <> " The gateway had no model key for attempt"
       refute html =~ "ended with an error"
     end
 
     test "at attempt 3 of 3: the step card puts the fix first and keeps that no run is left",
          %{conn: conn, scope: scope} do
-      {work_item, run} = refused(scope, "model_key_missing", 3)
-      short = Integer.to_string(run.number)
+      {work_item, _run} = refused(scope, "model_key_missing", 3)
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -472,7 +470,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
                view,
                "#work-item-step-line",
                @key_fix <>
-                 " The gateway had no model key for run #{short}. That was attempt 3 of 3, the last attempt of this take in."
+                 " The gateway had no model key for attempt 3. That was attempt 3 of 3, the last attempt of this take in."
              )
 
       refute html =~ "ended without a result. That was run"
@@ -486,7 +484,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
              )
 
       {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
-      assert html =~ @key_fix <> " The gateway had no model key for run"
+      assert html =~ @key_fix <> " The gateway had no model key for attempt"
     end
 
     test "with another code, every tab keeps the words for an error",
@@ -680,7 +678,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert html =~ "At checkout."
     end
 
-    test "its number alone where the reader reads only the workspace it is in now", ctx do
+    test "its attempt alone where the reader reads only the workspace it is in now", ctx do
       EditionStubs.MembersReachNamed.put([ctx.there.id])
       conn = log_in_user(ctx.conn, ctx.member)
       org = ctx.scope.organisation
@@ -688,16 +686,17 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
-      short = Integer.to_string(ctx.run.number)
       refute has_element?(view, ~s(a[href*="/runs/"]))
-      assert has_element?(view, ".q-wi-run-id", short)
+      assert has_element?(view, "#work-item-explore-run", "Attempt 2 of 3")
+      refute html =~ "Run #{ctx.run.number}"
       assert html =~ "At checkout."
 
       {:ok, thread, _html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/thread")
 
       refute has_element?(thread, ~s(a[href*="/runs/"]))
-      assert has_element?(thread, ".q-wi-run-id", short)
+      assert render(thread) =~ "Qory started Explore in attempt 1"
+      refute render(thread) =~ "Run #{ctx.run.number}"
       assert render(thread) =~ "At checkout."
     end
   end
