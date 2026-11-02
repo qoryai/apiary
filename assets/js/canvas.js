@@ -1,21 +1,23 @@
-// The canvas bundle of Workspace settings › Stages: React and React Flow (@xyflow/react),
-// vendored under assets/vendor/flow (see assets/vendor/README.md). A separate esbuild
-// entry, so only the Stages page downloads it: the StagesCanvas hook
-// (hooks/stages_canvas.js) adds this script and the stylesheet esbuild writes beside it
-// (canvas.css) on first mount, then calls `mount`.
+// The canvas bundle of the Stages canvas: React and React Flow (@xyflow/react), vendored
+// under assets/vendor/flow (see assets/vendor/README.md). A separate esbuild entry, so only
+// the pages with the canvas download it: the StagesCanvas hook (hooks/stages_canvas.js)
+// adds this script and the stylesheet esbuild writes beside it (canvas.css) on first
+// mount, then calls `mount`.
 //
 // The canvas is the page's editor. It draws the view the page sends and sends back:
 // "select", with a stage id, on a click or Enter on a card; "reorder", with every stage
 // id in the new order, after a card is dropped; "move", one place earlier or later, on
-// the left and right arrow keys, with the focus kept on the moved card; and "add_stage",
+// the up and down arrow keys, with the focus kept on the moved card; and "add_stage",
 // with the place, from a "+" before the first card, between two cards or after the last.
-// A card or "+" that takes the focus is panned into view, and so is the selected card;
-// after a "+", the new stage is selected, panned to, and its name field in the inspector
-// takes the focus with its text selected. The cards are drawn at zoom 1 from the first
-// stage; the canvas is as tall as the tallest card. Where cards are out of view, the edge
-// fades and a "← n more" or "→ n more" button in the top margin pans to them. The wheel
-// scrolls the page; a pinch or the zoom buttons zoom. All text reaches React as props and
-// is rendered as text.
+// The cards lie in a column, top to bottom, on a dotted ground. A card or "+" that takes
+// the focus is scrolled into view, and so is the selected card; after a "+", the new stage
+// is selected, scrolled to, and its name field in the inspector takes the focus with its
+// text selected. The cards are drawn at zoom 1 from the first stage.
+//
+// In a box that fills the window (`.q-canvas-fill`, app.css) the wheel scrolls the
+// column; elsewhere the canvas is as tall as the column and the wheel scrolls the page. A
+// pinch or the zoom buttons zoom. Focus (`f`) gives the box the window until Escape, and
+// Full screen gives it the screen. All text reaches React as props and is rendered as text.
 import {
   createContext,
   createElement as h,
@@ -23,11 +25,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
 import {createRoot} from "react-dom/client"
 import {
+  Background,
   ReactFlow,
   ReactFlowProvider,
   Handle,
@@ -41,22 +45,29 @@ import "../vendor/flow/xyflow-react/style.css"
 import {
   ADD_SIZE,
   CARD_WIDTH,
+  GAP,
   MARGIN_TOP,
+  SIDE,
   ZOOM,
-  cardX,
-  clampX,
-  dropX,
+  dropY,
+  fitViewport,
   isStage,
   keyMove,
   layout,
   orderByDrop,
-  outside,
-  panLeft,
-  panRight,
+  panExtent,
   paneHeight,
-  revealX,
+  revealY,
   sameOrder,
 } from "./hooks/stages_canvas"
+import {singleKeys} from "./hooks/shortcuts"
+
+// The class on <html> while a canvas has Focus (app.css).
+const FOCUS_CLASS = "q-canvas-focus"
+
+// A key that is typed into a field, not a shortcut.
+const typing = target =>
+  !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
 
 // The page's push and words, and what a "+" does, for the nodes React Flow draws.
 const Page = createContext({push: () => {}, words: {}, add: () => {}})
@@ -65,7 +76,7 @@ const line = (text, key, className) => h("p", {key, className, title: text}, tex
 
 // A workflow's name on one line, cut with an ellipsis, in full in its title and label.
 const workflow = (name, key) =>
-  h("p", {key, className: "truncate font-mono text-[13px]/[18px]", title: name, "aria-label": name}, name)
+  h("p", {key, className: "truncate font-mono text-[16px]/6", title: name, "aria-label": name}, name)
 
 const steps = (sequence, words) =>
   sequence.length === 0
@@ -79,9 +90,9 @@ const steps = (sequence, words) =>
                 key: `s${i}`,
                 role: "group",
                 "aria-label": item.loop,
-                className: "grid gap-0.5 rounded-[6px] border border-dashed border-base-content/35 px-2 pb-1.5 pt-1",
+                className: "grid gap-0.5 rounded-[6px] border border-dashed border-base-content/35 px-2.5 pb-2 pt-1.5",
               },
-              h("p", {className: "text-[12px]/4 text-muted", "aria-hidden": "true"}, item.loop),
+              h("p", {className: "text-[14px]/5 text-muted", "aria-hidden": "true"}, item.loop),
               ...item.workflows.map((name, j) => workflow(name, `w${j}`)),
             )
           : workflow(item.workflow, `s${i}`),
@@ -93,17 +104,17 @@ const StageCard = memo(({data, selected}) => {
     "div",
     {
       className: [
-        "grid gap-1.5 rounded-box border bg-base-100 p-2.5 text-left text-[13px]/[18px] shadow-sm",
+        "grid gap-2 rounded-box border bg-base-100 px-[18px] py-4 text-left text-[16px]/6 shadow-sm",
         selected ? "border-primary ring-2 ring-primary" : "border-base-300",
       ].join(" "),
       style: {width: CARD_WIDTH},
     },
-    h(Handle, {type: "target", position: Position.Left, isConnectable: false, className: "!opacity-0"}),
-    line(data.name, "name", "truncate text-[14px]/5 font-semibold text-base-content"),
+    h(Handle, {type: "target", position: Position.Top, isConnectable: false, className: "!opacity-0"}),
+    line(data.name, "name", "truncate text-[18px]/[26px] font-semibold text-base-content"),
     ...steps(data.sequence, words),
     line(data.gate, "gate", "text-muted"),
     ...data.alerts.map((text, i) => line(text, `a${i}`, "text-error")),
-    h(Handle, {type: "source", position: Position.Right, isConnectable: false, className: "!opacity-0"}),
+    h(Handle, {type: "source", position: Position.Bottom, isConnectable: false, className: "!opacity-0"}),
   )
 })
 
@@ -130,58 +141,103 @@ const nodeTypes = {stage: StageCard, add: AddNode}
 const theme = () =>
   (document.documentElement.dataset.theme || "").includes("dark") ? "dark" : "light"
 
-// A "more" button's text or label with its number of cards.
-const fill = (template, count) => String(template || "").replaceAll("%{count}", String(count))
+const moved = (a, b) => Math.abs(a.x - b.x) > 0.5 || Math.abs(a.y - b.y) > 0.5
+
+// `fresh` (layout's nodes) with the size React Flow measured for each node in `current`,
+// so a new view moves the cards without hiding them to measure them again.
+const keepMeasured = (fresh, current) => {
+  const sizes = new Map(current.map(node => [node.id, node.measured]))
+  return fresh.map(node => (sizes.get(node.id) ? {...node, measured: sizes.get(node.id)} : node))
+}
+
+// The box Focus and Full screen give the window or the screen: the filling box with the
+// canvas and the inspector beside it, or the canvas's box alone.
+const boxOf = el => el.closest(".q-canvas-fill") || el.closest(".q-canvas") || el
 
 function Flow({initial, words, push, subscribe, el}) {
   const [view, setView] = useState(initial)
+  // Each card's measured height, by stage id, for the column's positions.
+  const heights = useRef({})
   const [nodes, setNodes] = useState(() => layout(initial).nodes)
   // The viewport after each pan or zoom, by the pointer or by a button.
   const viewport = useViewport()
-  const [width, setWidth] = useState(() => el.clientWidth)
+  const [size, setSize] = useState(() => ({width: el.clientWidth, height: el.clientHeight}))
+  const sizeRef = useRef(size)
+  sizeRef.current = size
   const viewRef = useRef(initial)
   // The card the arrow keys moved, to focus again once the page sends the new order.
   const focusId = useRef(null)
   // Set by a "+": the next view's selected stage is the new one.
   const added = useRef(false)
-  // The new stage, to pan to once React Flow has drawn it.
+  // The new stage, to scroll to once React Flow has drawn it.
   const pending = useRef(null)
-  // The side of the "more" button last pressed, and both buttons, to keep the focus on
-  // the canvas when that button goes.
-  const pressed = useRef(null)
-  const leftButton = useRef(null)
-  const rightButton = useRef(null)
   const flow = useReactFlow()
-  const count = (view.stages || []).length
+  // Whether the canvas fills the window, where the wheel scrolls it.
+  const fills = useMemo(() => !!el.closest(".q-canvas-fill"), [el])
+  const [focused, setFocused] = useState(false)
+  const [full, setFull] = useState(false)
+  const canFull = !!(document.fullscreenEnabled && boxOf(el).requestFullscreen)
+
+  const {edges: lines, length} = layout(view, heights.current)
+  const lengthRef = useRef(length)
+  lengthRef.current = length
 
   useEffect(() => {
-    const observer = new ResizeObserver(() => setWidth(el.clientWidth))
+    const observer = new ResizeObserver(() => setSize({width: el.clientWidth, height: el.clientHeight}))
     observer.observe(el)
     return () => observer.disconnect()
   }, [el])
 
-  // Moves the line sideways to `x`, with the cards at the top margin.
-  const panTo = useCallback(
-    (x, duration = 150) => {
-      const {zoom} = flow.getViewport()
-      flow.setViewport({x, y: MARGIN_TOP, zoom}, {duration})
-    },
-    [flow],
+  // Outside a filling box the canvas is as tall as the column at its zoom (app.css reads
+  // the variable).
+  useEffect(() => {
+    el.style.setProperty("--q-canvas-height", `${paneHeight(length, viewport.zoom)}px`)
+  }, [el, length, viewport.zoom])
+
+  // The card centred, the column within its bounds, after each change of size, length or
+  // zoom.
+  useEffect(() => {
+    if (!size.width || !size.height) return
+    const current = flow.getViewport()
+    const next = fitViewport(current, size, length)
+    if (moved(current, next)) flow.setViewport(next)
+  }, [flow, size, length, viewport.zoom])
+
+  const extent = useMemo(
+    () => (size.width && size.height ? panExtent(size, length, viewport.zoom) : undefined),
+    [size, length, viewport.zoom],
   )
 
-  // Pans so the node `id` is whole in the canvas, moving the line as little as it can.
+  // Once React Flow measures a card whose height differs from the one used, the cards
+  // under it move to their places.
+  useEffect(() => {
+    const measured = {}
+    for (const node of nodes) {
+      const height = node.measured?.height
+      if (isStage(node) && height && heights.current[node.id] !== height) measured[node.id] = height
+    }
+    if (Object.keys(measured).length === 0) return
+    heights.current = {...heights.current, ...measured}
+    const places = new Map(layout(viewRef.current, heights.current).nodes.map(n => [n.id, n.position]))
+    setNodes(current =>
+      current.map(node =>
+        node.dragging || !places.has(node.id) ? node : {...node, position: places.get(node.id)},
+      ),
+    )
+  }, [nodes])
+
+  // Scrolls so the node `id` is whole in the canvas, moving the column as little as it can.
   const reveal = useCallback(
     id => {
-      const node = flow.getNode(id)
-      const index = (viewRef.current.stages || []).findIndex(s => String(s.id) === id)
-      const start = node ? node.position.x : cardX(Math.max(index, 0))
-      const end = start + (node?.measured?.width ?? (index >= 0 ? CARD_WIDTH : ADD_SIZE))
+      const node = flow.getNode(id) ?? layout(viewRef.current, heights.current).nodes.find(n => n.id === id)
+      if (!node) return
+      const start = node.position.y
+      const end = start + (node.measured?.height ?? ADD_SIZE)
       const current = flow.getViewport()
-      const total = (viewRef.current.stages || []).length
-      const x = revealX(start, end, total, current, el.clientWidth)
-      if (Math.abs(x - current.x) > 0.5) panTo(x)
+      const y = revealY(start, end, current, sizeRef.current, lengthRef.current)
+      if (Math.abs(y - current.y) > 0.5) flow.setViewport({...current, y}, {duration: 150})
     },
-    [el, flow, panTo],
+    [flow],
   )
 
   useEffect(
@@ -190,11 +246,11 @@ function Flow({initial, words, push, subscribe, el}) {
         const before = viewRef.current.selected
         viewRef.current = next
         setView(next)
-        setNodes(layout(next).nodes)
+        setNodes(current => keepMeasured(layout(next, heights.current).nodes, current))
         if (added.current && next.selected && next.selected !== before) {
           added.current = false
-          // Pan to the new stage once React Flow has drawn it; its name in the inspector
-          // takes the focus, with "New stage" selected, so typing replaces it.
+          // Scroll to the new stage once React Flow has drawn it; its name in the
+          // inspector takes the focus, with "New stage" selected, so typing replaces it.
           pending.current = String(next.selected)
           requestAnimationFrame(() =>
             requestAnimationFrame(() => {
@@ -210,6 +266,23 @@ function Flow({initial, words, push, subscribe, el}) {
     [subscribe, reveal],
   )
 
+  // The new stage, once React Flow has drawn it.
+  useEffect(() => {
+    if (!pending.current) return
+    let inner
+    const frame = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const target = pending.current
+        pending.current = null
+        if (target) reveal(target)
+      })
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      cancelAnimationFrame(inner)
+    }
+  }, [view, reveal])
+
   const add = useCallback(
     at => {
       added.current = true
@@ -218,7 +291,7 @@ function Flow({initial, words, push, subscribe, el}) {
     [push],
   )
 
-  // A card or "+" that takes the focus by Tab is panned into view.
+  // A card or "+" that takes the focus by Tab is scrolled into view.
   const onFocusCapture = useCallback(
     event => {
       const id = event.target.closest?.(".react-flow__node")?.dataset.id
@@ -226,34 +299,6 @@ function Flow({initial, words, push, subscribe, el}) {
     },
     [reveal],
   )
-
-  // When the number of stages changes: pan to a new stage, or keep the shorter line from
-  // ending left of the canvas's right edge.
-  useEffect(() => {
-    let inner
-    const frame = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => {
-        const target = pending.current
-        pending.current = null
-        if (target) return reveal(target)
-        const current = flow.getViewport()
-        const x = clampX(current.x, count, current.zoom, el.clientWidth)
-        if (Math.abs(x - current.x) > 0.5) panTo(x)
-      })
-    })
-    return () => {
-      cancelAnimationFrame(frame)
-      cancelAnimationFrame(inner)
-    }
-  }, [count, flow, el, reveal, panTo])
-
-  // The canvas is as tall as the tallest card at the zoom it has, with its margins.
-  const measured = nodes.filter(isStage).map(node => node.measured?.height || 0)
-  const tallest = Math.max(0, ...measured) || 120
-  const height = paneHeight(tallest, viewport.zoom)
-  useEffect(() => {
-    el.style.height = `${height}px`
-  }, [el, height])
 
   // The moved card keeps the focus after the page sends the new order. React Flow draws
   // the reordered nodes in commits after this one, and moving a focused element in the
@@ -276,33 +321,58 @@ function Flow({initial, words, push, subscribe, el}) {
     return () => cancelAnimationFrame(frame)
   }, [view, el])
 
-  const hidden = outside(count, viewport, width)
-
-  // A "more" button that a pan removed passes the focus to the other one.
+  // Focus: the <html> class gives the box the window (app.css) until Escape, or until the
+  // canvas goes. `f` anywhere on the page but in a field turns it on and off, as on the
+  // Terminal.
   useEffect(() => {
-    const side = pressed.current
-    if (!side || document.activeElement !== document.body) return
-    if (side === "right" && hidden.right === 0) leftButton.current?.focus()
-    if (side === "left" && hidden.left === 0) rightButton.current?.focus()
-    pressed.current = null
-  }, [hidden.left, hidden.right])
+    document.documentElement.classList.toggle(FOCUS_CLASS, focused)
+    const onKey = event => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
+      if (document.querySelector("dialog[open]")) return
+      if (event.key === "Escape" && focused) {
+        setFocused(false)
+      } else if (event.key === "f" && singleKeys() && !typing(event.target)) {
+        event.preventDefault()
+        setFocused(on => !on)
+      }
+    }
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.documentElement.classList.remove(FOCUS_CLASS)
+    }
+  }, [focused])
 
-  const more = side => {
-    pressed.current = side
-    const current = flow.getViewport()
-    const pan = side === "right" ? panRight : panLeft
-    panTo(pan(count, current, el.clientWidth), 200)
-  }
+  // Full screen: the browser's, where it has one.
+  useEffect(() => {
+    const box = boxOf(el)
+    const onChange = () => setFull(document.fullscreenElement === box)
+    document.addEventListener("fullscreenchange", onChange)
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange)
+      if (document.fullscreenElement === box) document.exitFullscreen?.()
+    }
+  }, [el])
 
-  // Each vertical move ends with the cards back at the top margin.
+  const toggleFull = useCallback(() => {
+    const box = boxOf(el)
+    if (document.fullscreenElement === box) document.exitFullscreen()
+    else box.requestFullscreen()
+  }, [el])
+
+  // Each move ends with the card centred and the column within its bounds.
   const onMoveEnd = useCallback(
     (_event, next) => {
-      if (Math.abs(next.y - MARGIN_TOP) > 0.5) flow.setViewport({...next, y: MARGIN_TOP})
+      const fit = fitViewport(next, sizeRef.current, lengthRef.current)
+      if (moved(next, fit)) flow.setViewport(fit)
     },
     [flow],
   )
 
-  const snapBack = useCallback(() => setNodes(layout(viewRef.current).nodes), [])
+  const snapBack = useCallback(
+    () => setNodes(current => keepMeasured(layout(viewRef.current, heights.current).nodes, current)),
+    [],
+  )
 
   const onNodesChange = useCallback(changes => setNodes(current => applyNodeChanges(changes, current)), [])
 
@@ -323,8 +393,11 @@ function Flow({initial, words, push, subscribe, el}) {
     (event, node) => {
       if (!isStage(node)) return
       const before = (viewRef.current.stages || []).map(s => String(s.id))
-      const x = dropX(event, node, point => flow.screenToFlowPosition(point))
-      const order = orderByDrop(before, node.id, x)
+      const tops = layout(viewRef.current, heights.current)
+        .nodes.filter(isStage)
+        .map(card => card.position.y)
+      const y = dropY(event, node, point => flow.screenToFlowPosition(point))
+      const order = orderByDrop(before, node.id, y, tops, GAP.edit)
       if (!sameOrder(order, before)) push("reorder", {ids: order})
       snapBack()
     },
@@ -332,7 +405,7 @@ function Flow({initial, words, push, subscribe, el}) {
   )
 
   // Keys on a card, before React Flow's handlers: Enter or Space opens it in the
-  // inspector; left and right move it one place where the person may edit; up and down
+  // inspector; up and down move it one place where the person may edit; left and right
   // do nothing (React Flow would move the card by pixels). A button keeps its keys.
   const onKeyDownCapture = useCallback(
     event => {
@@ -364,50 +437,27 @@ function Flow({initial, words, push, subscribe, el}) {
     [select],
   )
 
-  const edges = layout(view).edges.map(edge => ({...edge, markerEnd: {type: MarkerType.ArrowClosed}}))
+  const edges = lines.map(edge => ({...edge, markerEnd: {type: MarkerType.ArrowClosed}}))
   const description =
     view.selectable === false ? words.node_view : view.editable === true ? words.node : words.node_read
+  // The wheel scrolls the column where the canvas fills the window, in Focus or on the
+  // full screen; elsewhere the canvas is as tall as the column and the wheel scrolls the
+  // page.
+  const scrolls = fills || focused || full
 
-  const fade = side =>
-    h("div", {
-      key: `fade-${side}`,
-      "aria-hidden": "true",
-      className: [
-        "pointer-events-none absolute inset-y-0 z-10 w-16 from-base-200 to-transparent",
-        side === "left" ? "left-0 bg-linear-to-r" : "right-0 bg-linear-to-l",
-      ].join(" "),
-    })
-
-  const moreButton = (side, number) =>
-    h(
-      "button",
-      {
-        key: `more-${side}`,
-        ref: side === "left" ? leftButton : rightButton,
-        type: "button",
-        // In the top margin, above the cards, so it covers none of them.
-        className: [
-          "btn btn-xs h-6 min-h-6 border-base-300 bg-base-100 px-2 text-[13px]/none font-normal",
-          side === "left" ? "absolute left-1 top-1 z-10" : "",
-        ].join(" "),
-        "aria-label": fill(number === 1 ? words[`${side}_label_one`] : words[`${side}_label`], number),
-        onClick: () => more(side),
-      },
-      fill(words[side], number),
-    )
+  const base =
+    "btn btn-xs h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300"
+  const control = `${base} px-2`
+  const square = `${base} w-7 px-0`
 
   const zoomButton = (label, symbol, onClick) =>
     h(
       "button",
-      {
-        type: "button",
-        className: "btn btn-ghost btn-xs h-6 min-h-6 w-6 px-0 text-[14px]/none",
-        "aria-label": label,
-        title: label,
-        onClick,
-      },
+      {type: "button", className: square, "aria-label": label, title: label, onClick},
       h("span", {"aria-hidden": "true"}, symbol),
     )
+
+  const fullWords = full ? words.leave_full_screen : words.full_screen
 
   return h(
     Page.Provider,
@@ -433,10 +483,12 @@ function Flow({initial, words, push, subscribe, el}) {
           selectionKeyCode: null,
           multiSelectionKeyCode: null,
           zoomOnDoubleClick: false,
-          // The wheel scrolls the page; a pinch and the buttons zoom.
           zoomOnScroll: false,
-          preventScrolling: false,
-          defaultViewport: {x: 0, y: MARGIN_TOP, zoom: ZOOM.start},
+          panOnScroll: scrolls,
+          panOnScrollMode: "vertical",
+          preventScrolling: scrolls,
+          translateExtent: extent,
+          defaultViewport: fitViewport({x: SIDE, y: MARGIN_TOP, zoom: ZOOM.start}, size, 0),
           minZoom: ZOOM.min,
           maxZoom: ZOOM.max,
           // React Flow's MIT licence allows the badge to go; its licence file stays in
@@ -450,25 +502,45 @@ function Flow({initial, words, push, subscribe, el}) {
             "node.a11yDescription.ariaLiveMessage": () => words.moved,
           },
         },
+        // The dots; their colour is the theme's (`.q-canvas` in app.css).
+        h(Background, {variant: "dots", gap: 20, size: 1}),
       ),
-      hidden.left > 0 && fade("left"),
-      hidden.right > 0 && fade("right"),
-      hidden.left > 0 && moreButton("left", hidden.left),
-      // In the top margin, above the cards: "→ more", then the zoom buttons.
+      // In the top margin, at the right: the zoom buttons, Focus and Full screen.
       h(
         "div",
-        {className: "absolute right-1 top-1 z-10 flex items-center gap-1"},
-        hidden.right > 0 && moreButton("right", hidden.right),
+        {
+          role: "group",
+          "aria-label": words.controls,
+          className: "absolute right-4 top-3 z-10 flex items-center gap-1.5",
+        },
+        zoomButton(words.zoom_out, "−", () => flow.zoomOut({duration: 150})),
+        zoomButton(words.zoom_in, "+", () => flow.zoomIn({duration: 150})),
         h(
-          "div",
+          "button",
           {
-            role: "group",
-            "aria-label": words.controls,
-            className: "flex gap-0.5 rounded-field border border-base-300 bg-base-100",
+            type: "button",
+            className: control,
+            title: words.focus_title,
+            "aria-pressed": String(focused),
+            "aria-keyshortcuts": "f",
+            onClick: () => setFocused(on => !on),
           },
-          zoomButton(words.zoom_out, "−", () => flow.zoomOut({duration: 150})),
-          zoomButton(words.zoom_in, "+", () => flow.zoomIn({duration: 150})),
+          h("span", {className: "hero-arrows-pointing-in-micro size-4 shrink-0", "aria-hidden": "true"}),
+          h("span", null, words.focus),
         ),
+        canFull &&
+          h(
+            "button",
+            {
+              type: "button",
+              className: square,
+              title: fullWords,
+              "aria-label": fullWords,
+              "aria-pressed": String(full),
+              onClick: toggleFull,
+            },
+            h("span", {className: "hero-arrows-pointing-out-micro size-4 shrink-0", "aria-hidden": "true"}),
+          ),
       ),
     ),
   )

@@ -166,14 +166,15 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert canvas["selected"] == id_of("Explore")
       assert canvas["first"] == "Add a stage before Explore"
 
-      # The canvas fills in the number of cards out of view on each side.
+      # The canvas scrolls to cards out of view: no "more" control. Its buttons: the zoom,
+      # Focus and Full screen.
       words = canvas_data(view, "data-words")
-      assert words["left"] == "← %{count} more"
-      assert words["right"] == "→ %{count} more"
-      assert words["right_label_one"] == "Show 1 more stage on the right"
-      assert words["right_label"] == "Show %{count} more stages on the right"
-      assert words["left_label"] == "Show %{count} more stages on the left"
-      refute Map.has_key?(words, "fit")
+      refute Enum.any?(~w(left right left_label right_label fit), &Map.has_key?(words, &1))
+      assert words["focus"] == "Focus"
+      assert words["full_screen"] == "Full screen"
+
+      assert words["node"] ==
+               "Press Enter to open the stage beside the canvas. Move it with the up and down arrow keys."
 
       assert [explore | _] = canvas["stages"]
 
@@ -756,8 +757,8 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert names(view) == ~w(Explore Shape Build Verify Release)
       refute canvas_view(view)["editable"]
-      # The "more" buttons, for a member too.
-      assert canvas_data(view, "data-words")["right"] == "→ %{count} more"
+      # Focus, for a member too.
+      assert canvas_data(view, "data-words")["focus"] == "Focus"
       assert has_element?(view, "#stage-panel-title", "Explore")
       assert has_element?(view, "#stage-panel", "explore-a-ticket, machine type default")
       assert has_element?(view, "#stages-version", "Version 1, current.")
