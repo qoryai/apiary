@@ -48,11 +48,10 @@ defmodule Apiary.Harnesses.Reader do
 
   `template/1` checks a `process.yaml` against qory's `process.schema.json`, vendored under
   `priv/contract/harness/v1/` from the qory commit in the `.contract-ref` file beside it.
-  Two changes to how the schema is built make it read as qory reads it: each `minLength`
-  and `maxLength` counts code points, not graphemes, as the Explore result's schema does;
-  and each `\\s` and `\\S` of a pattern is the ASCII white space of Go's regular
-  expressions, tab, line feed, form feed, carriage return and space, not every Unicode
-  space.
+  One change to how the schema is built makes it read as qory reads it: each `minLength`
+  and `maxLength` counts code points, not graphemes, as the Explore result's schema does.
+  A `\\s` or `\\S` of a pattern reads every Unicode space, as qory's check of the file
+  does.
   """
 
   alias Apiary.Explore.Result
@@ -257,7 +256,8 @@ defmodule Apiary.Harnesses.Reader do
   defp exports_of(exports) do
     dir = Map.get(exports, "dir")
     stacks = Map.get(exports, "stacks", [])
-    modules = Map.get(exports, "modules", [])
+    # `modules:` with no value lists no modules, as qory reads it.
+    modules = with nil <- Map.get(exports, "modules"), do: []
 
     if dir?(dir) and names?(stacks) and names?(modules),
       do: {:ok, %{dir: dir, stacks: stacks, modules: modules}},
@@ -295,13 +295,19 @@ defmodule Apiary.Harnesses.Reader do
   module_file/3 is the path of `file` in the folder of the module `name` in a source whose
   root file has `exports`, from the source's root, as qory resolves it: `modules/<name>`
   with no `dir`, `<dir>/modules/<name>` for a `dir` of one folder, and `<modules>/<name>`
-  for a `dir` map. `{:ok, path}`, or `{:error, :invalid_name}` for a name that is not one
-  path segment as qory's exports allow it: empty, or with a slash, a backslash, an `@` or
-  a leading dot, such as `..`. `file` is a relative path inside the folder, with no `.`
-  or `..` part, else `{:error, :invalid_file}`.
+  for a `dir` map. The folder is cleaned as qory cleans it: a `.` part goes, and a `..`
+  part goes with the part before it.
+
+  `{:ok, path}`, or one of:
+
+    * `{:error, :invalid_name}` for a name that is not one path segment as qory's exports
+      allow it: empty, or with a slash, a backslash, an `@` or a leading dot, such as `..`;
+    * `{:error, :invalid_file}` for a `file` that is not a relative path inside the folder,
+      with no `.` or `..` part;
+    * `{:error, :invalid_dir}` for a `dir` that is absolute or leads outside the source.
   """
   @spec module_file(exports, String.t(), String.t()) ::
-          {:ok, String.t()} | {:error, :invalid_name | :invalid_file}
+          {:ok, String.t()} | {:error, :invalid_name | :invalid_file | :invalid_dir}
   def module_file(%{dir: dir}, name, file) when is_binary(name) and is_binary(file) do
     cond do
       not segment?(name) ->
@@ -311,14 +317,31 @@ defmodule Apiary.Harnesses.Reader do
         {:error, :invalid_file}
 
       true ->
-        modules =
-          case dir do
-            nil -> "modules"
-            dir when is_binary(dir) -> Path.join(dir, "modules")
-            %{"modules" => modules} -> modules
-          end
+        with {:ok, folder} <- modules_folder(dir), do: {:ok, Path.join(folder ++ [name, file])}
+    end
+  end
 
-        {:ok, Path.join([modules, name, file])}
+  # The parts of the folder of a source's modules, from its root.
+  defp modules_folder(nil), do: {:ok, ["modules"]}
+  defp modules_folder(dir) when is_binary(dir), do: cleaned(dir <> "/modules")
+  defp modules_folder(%{"modules" => modules}), do: cleaned(modules)
+
+  # A folder's parts as Go's `filepath.Clean` leaves them, or `:invalid_dir` where qory
+  # refuses the folder: an absolute one, and one whose cleaned path starts with `..`.
+  defp cleaned("/" <> _absolute), do: {:error, :invalid_dir}
+
+  defp cleaned(folder) do
+    folder
+    |> String.split("/")
+    |> Enum.reduce_while({:ok, []}, fn
+      part, {:ok, parts} when part in ["", "."] -> {:cont, {:ok, parts}}
+      "..", {:ok, []} -> {:halt, {:error, :invalid_dir}}
+      "..", {:ok, [_part | parts]} -> {:cont, {:ok, parts}}
+      part, {:ok, parts} -> {:cont, {:ok, [part | parts]}}
+    end)
+    |> case do
+      {:ok, parts} -> {:ok, Enum.reverse(parts)}
+      refused -> refused
     end
   end
 
@@ -360,45 +383,7 @@ defmodule Apiary.Harnesses.Reader do
   end
 
   defp template_root,
-    do: Schema.file!(@template_schema, &(&1 |> Result.code_point_lengths() |> go_spaces()))
-
-  # go_spaces/1 is `schema` with each `\s` and `\S` of a `pattern` outside a character
-  # class written as Go's regular expressions read it: ASCII white space alone.
-  defp go_spaces(%{} = schema) do
-    Map.new(schema, fn
-      {"pattern", source} when is_binary(source) ->
-        {"pattern", go_space_source(source, false, "")}
-
-      {keyword, value} when keyword in ~w(const enum default examples) ->
-        {keyword, value}
-
-      {keyword, value} ->
-        {keyword, go_spaces(value)}
-    end)
-  end
-
-  defp go_spaces(list) when is_list(list), do: Enum.map(list, &go_spaces/1)
-  defp go_spaces(other), do: other
-
-  defp go_space_source(<<>>, _class, acc), do: acc
-
-  defp go_space_source(<<"\\s", rest::binary>>, false, acc),
-    do: go_space_source(rest, false, acc <> "[\\t\\n\\f\\r ]")
-
-  defp go_space_source(<<"\\S", rest::binary>>, false, acc),
-    do: go_space_source(rest, false, acc <> "[^\\t\\n\\f\\r ]")
-
-  defp go_space_source(<<?\\, c::utf8, rest::binary>>, class, acc),
-    do: go_space_source(rest, class, <<acc::binary, ?\\, c::utf8>>)
-
-  defp go_space_source(<<?[, rest::binary>>, false, acc),
-    do: go_space_source(rest, true, acc <> "[")
-
-  defp go_space_source(<<?], rest::binary>>, true, acc),
-    do: go_space_source(rest, false, acc <> "]")
-
-  defp go_space_source(<<c::utf8, rest::binary>>, class, acc),
-    do: go_space_source(rest, class, <<acc::binary, c::utf8>>)
+    do: Schema.file!(@template_schema, &Result.code_point_lengths/1)
 
   @doc """
   parse/1 is the value of one YAML file under the limits of the moduledoc: `{:ok,

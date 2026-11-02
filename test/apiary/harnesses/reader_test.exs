@@ -169,6 +169,9 @@ defmodule Apiary.Harnesses.ReaderTest do
     test "a file that lists no modules exports none" do
       assert Reader.exports("exports: {stacks: [web]}\n") ==
                {:ok, %{dir: nil, stacks: ["web"], modules: []}}
+
+      assert Reader.exports("exports:\n  stacks: [web]\n  modules:\n") ==
+               {:ok, %{dir: nil, stacks: ["web"], modules: []}}
     end
 
     test "a file without exports is :none" do
@@ -183,6 +186,8 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.exports("exports: {dir: {stacks: a}}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {dir: ''}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {modules: core}\n") == {:error, :invalid_exports}
+      assert Reader.exports("exports: {modules: false}\n") == {:error, :invalid_exports}
+      assert Reader.exports("exports: {modules: {core: 1}}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {modules: [1]}\n") == {:error, :invalid_exports}
 
       assert Reader.exports("exports: {dir: {stacks: a, modules: b, templates: c}}\n") ==
@@ -202,7 +207,7 @@ defmodule Apiary.Harnesses.ReaderTest do
       {:ok, exports} = Reader.exports(source("exports-dir/qory.yaml"))
 
       assert Reader.module_file(exports, "marketing", "process.yaml") ==
-               {:ok, "./harness/modules/marketing/process.yaml"}
+               {:ok, "harness/modules/marketing/process.yaml"}
     end
 
     test "is in <modules>/<name> with a dir map" do
@@ -210,6 +215,39 @@ defmodule Apiary.Harnesses.ReaderTest do
 
       assert Reader.module_file(exports, "core", "process.yaml") ==
                {:ok, "delivered/modules/core/process.yaml"}
+    end
+
+    test "cleans the folder as qory does" do
+      for {dir, folder} <- [
+            {".", "modules"},
+            {"./harness/", "harness/modules"},
+            {"a/./b", "a/b/modules"},
+            {"a//b", "a/b/modules"},
+            {"a/../b", "b/modules"},
+            {"a/..", "modules"},
+            {%{"stacks" => "s", "modules" => "."}, nil},
+            {%{"stacks" => "s", "modules" => "./lib/modules"}, "lib/modules"},
+            {%{"stacks" => "s", "modules" => "lib/../delivered"}, "delivered"}
+          ] do
+        path = Path.join(List.wrap(folder) ++ ["core", "process.yaml"])
+        assert Reader.module_file(%{dir: dir}, "core", "process.yaml") == {:ok, path}
+      end
+    end
+
+    test "refuses a dir that is absolute or leads outside the source" do
+      for modules <- ["/etc", "//etc", "/", "..", "../up", "../..", "a/../..", "./.."] do
+        assert Reader.module_file(%{dir: %{"stacks" => "s", "modules" => modules}}, "x", "f") ==
+                 {:error, :invalid_dir},
+               modules
+      end
+
+      for dir <- ["/etc", "/", "..", "../..", "../up", "a/../..", "a/../../b"] do
+        assert Reader.module_file(%{dir: dir}, "x", "f") == {:error, :invalid_dir}, dir
+      end
+
+      # The name and the file are refused first, whatever the dir.
+      assert Reader.module_file(%{dir: "/etc"}, "..", "f") == {:error, :invalid_name}
+      assert Reader.module_file(%{dir: "/etc"}, "x", "..") == {:error, :invalid_file}
     end
 
     test "refuses a name that is not one path segment" do
@@ -304,13 +342,20 @@ defmodule Apiary.Harnesses.ReaderTest do
                {:error, :invalid_template}
     end
 
-    test "reads white space in a text as qory does: ASCII alone" do
-      # A no-break space is a character of a word, as it is in Go's regular expressions.
-      assert {:ok, %{name: "\u00A0"}} = Reader.template(with_value("name", ~s("\u00A0")))
-      assert Reader.template(with_value("name", ~s(" "))) == {:error, :invalid_template}
+    test "reads every Unicode space as white space, as qory's check of the file does" do
+      for space <- [" ", "\u00A0", "\u2003", "\u3000"] do
+        for key <- ~w(name summary description type) do
+          assert Reader.template(with_value(key, ~s("#{space}"))) == {:error, :invalid_template},
+                 key
+        end
 
-      words = Enum.map_join(1..81, "\u00A0", &"w#{&1}")
-      assert {:ok, _template} = Reader.template(with_value("description", words))
+        words = Enum.map_join(1..81, space, &"w#{&1}")
+        assert Reader.template(with_value("description", words)) == {:error, :invalid_template}
+      end
+
+      # 80 words with those spaces between them.
+      words = Enum.map_join(1..80, "\u00A0", &"w#{&1}")
+      assert {:ok, %{description: ^words}} = Reader.template(with_value("description", words))
     end
 
     test "refuses a stack that is not one name" do
