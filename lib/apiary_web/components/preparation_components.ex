@@ -53,7 +53,10 @@ defmodule ApiaryWeb.PreparationComponents do
           | :no_report
           | :stays
 
-  @doc "Whether a preparation has a row to show: a machine, or a step."
+  @doc """
+  Whether a preparation has a machine or a step to show. The run page also shows the
+  section when it has a Clean up row (`clean_up/3`), as for a run with no step.
+  """
   @spec shown?(Preparation.t() | nil) :: boolean
   def shown?(%{machine: nil, steps: []}), do: false
   def shown?(%{}), do: true
@@ -248,7 +251,8 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :clean_up, :any, required: true
 
   # The Clean up row: a mark, its name, what was reported or awaited, and the report's
-  # time. The text says the state, so the mark is an icon with no text for a screen reader.
+  # time. The text contains the state, so the mark is an icon with no text for a screen
+  # reader.
   defp clean_up_row(assigns) do
     {kind, at} =
       case assigns.clean_up do

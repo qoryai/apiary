@@ -368,7 +368,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
               </div>
             <% @run.state == "pending" and @index.items == [] and @tab == :timeline and
-                 PreparationComponents.shown?(@preparation) -> %>
+                 (PreparationComponents.shown?(@preparation) or @clean_up != nil) -> %>
               <.prepare_machine
                 preparation={@preparation}
                 machine_log={@machine_log}
@@ -609,7 +609,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.background_tasks background={@index.background} ended={!alive?(@run)} />
 
       <.prepare_machine
-        :if={@earlier == 0 and PreparationComponents.shown?(@preparation)}
+        :if={@earlier == 0 and (PreparationComponents.shown?(@preparation) or @clean_up != nil)}
         preparation={@preparation}
         machine_log={@machine_log}
         alive={alive?(@run)}

@@ -203,5 +203,30 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
       assert row(lv) =~ "Machine stays registered"
       refute has_element?(lv, "#prepare-machine-clean-up time")
     end
+
+    test "with no setup step, once it ended, the section shows the row alone", ctx do
+      node = node_fixture(ctx.scope)
+
+      running =
+        node
+        |> node_run_fixture(unique_instance_id(), %{state: "running"})
+        |> project!([{1, "run.started", started_data()}])
+
+      lv = open(ctx.conn, ctx.scope, running)
+      refute has_element?(lv, "#prepare-machine")
+
+      ended =
+        node
+        |> node_run_fixture(unique_instance_id(), %{state: "running"})
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 2_000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, ended)
+      assert has_element?(lv, "#prepare-machine")
+      refute has_element?(lv, "#prepare-machine [id^='prepare-machine-step-']")
+      assert row(lv) =~ "Machine stays registered"
+    end
   end
 end
