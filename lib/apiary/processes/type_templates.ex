@@ -72,7 +72,9 @@ defmodule Apiary.Processes.TypeTemplates do
   Why a save is refused: `:forbidden`, for anyone but an instance admin or where the
   feature `workflow_model` is off; `:stale`, when a version newer than `based_on` exists;
   `:unknown_type`, for a key no type has; `{:too_long, text, limit}`, for a text over its
-  limit (`Apiary.Processes.TypeTemplate.limits/0`); or the document's errors, in the shape of
+  limit of characters (`Apiary.Processes.TypeTemplate.limits/0`);
+  `{:too_many_words, :description, limit}`, for a description over its limit of words
+  (`Apiary.Processes.TypeTemplate.word_limit/0`); or the document's errors, in the shape of
   `Apiary.Processes.validate/1`'s, with `:named_approvers` for a gate that lists people
   and `:unchanged` for the document and the texts of the newest version.
   """
@@ -81,6 +83,7 @@ defmodule Apiary.Processes.TypeTemplates do
           | :stale
           | :unknown_type
           | {:too_long, TypeTemplate.text(), pos_integer}
+          | {:too_many_words, :description, pos_integer}
           | [Processes.error()]
 
   ## Reading
@@ -273,14 +276,23 @@ defmodule Apiary.Processes.TypeTemplates do
   defp texts(%{} = texts, type, _newest) do
     defaults = Processes.type_text_defaults(type)
     limits = TypeTemplate.limits()
+    words = TypeTemplate.word_limit()
 
     Enum.reduce_while(@texts, {:ok, %{}}, fn text, {:ok, kept} ->
       value = kept_text(Map.get(texts, text), defaults[text])
 
-      # Counted in code points, as the table's check counts them.
-      if value && length(String.codepoints(value)) > limits[text],
-        do: {:halt, {:error, {:too_long, text, limits[text]}}},
-        else: {:cont, {:ok, Map.put(kept, text, value)}}
+      # Characters counted in code points, as the table's check counts them; words as the
+      # runs between white space.
+      cond do
+        value && length(String.codepoints(value)) > limits[text] ->
+          {:halt, {:error, {:too_long, text, limits[text]}}}
+
+        value && text == :description && length(String.split(value)) > words ->
+          {:halt, {:error, {:too_many_words, :description, words}}}
+
+        true ->
+          {:cont, {:ok, Map.put(kept, text, value)}}
+      end
     end)
   end
 

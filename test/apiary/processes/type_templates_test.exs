@@ -292,6 +292,19 @@ defmodule Apiary.Processes.TypeTemplatesTest do
 
       assert String.length(kept) == 1200
     end
+
+    test "a description over 80 words is refused" do
+      admin = instance_admin()
+      eighty = Enum.map_join(1..80, " ", fn _n -> "shop" end)
+
+      assert {:error, {:too_many_words, :description, 80}} =
+               TypeTemplates.save(admin, @type_key, default(),
+                 texts: %{description: eighty <> "\n\nshop"}
+               )
+
+      assert {:ok, %{description: ^eighty}} =
+               TypeTemplates.save(admin, @type_key, default(), texts: %{description: eighty})
+    end
   end
 
   describe "a new workspace" do

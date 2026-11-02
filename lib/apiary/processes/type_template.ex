@@ -13,7 +13,8 @@ defmodule Apiary.Processes.TypeTemplate do
   - `based_on`: the number of the version the save started from; nil for a copy of the
     release's default.
   - `name`, `summary` and `description`: the type's name, its one or two sentences on
-    New workspace, and its "How it works" text, at most `limits/0` characters each. Nil
+    New workspace, and its "How it works" text, at most `limits/0` characters each, and
+    the description at most `word_limit/0` words. Nil
     shows the text the release ships in code, translated (`Apiary.Processes.type_texts/1`).
   """
   use Ecto.Schema
@@ -23,6 +24,9 @@ defmodule Apiary.Processes.TypeTemplate do
 
   # The most characters of each text, as the table's check has them.
   @limits %{name: 60, summary: 200, description: 1200}
+
+  # The most words of the description, which the type's page shows beside its stages.
+  @word_limit 80
 
   @typedoc "A version of a workspace type's default process."
   @type t :: %__MODULE__{}
@@ -48,4 +52,8 @@ defmodule Apiary.Processes.TypeTemplate do
   @doc "limits/0 is the most characters of each text: name 60, summary 200, description 1200."
   @spec limits() :: %{text => pos_integer}
   def limits, do: @limits
+
+  @doc "word_limit/0 is the most words of the description: 80."
+  @spec word_limit() :: pos_integer
+  def word_limit, do: @word_limit
 end
