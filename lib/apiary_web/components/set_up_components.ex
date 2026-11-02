@@ -257,9 +257,10 @@ defmodule ApiaryWeb.SetUpComponents do
   (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and what the page sets
   up: `:set_up`, the steps of a workspace, in the workspace
   (`/:org/:workspace/set-up/<step>`), or `:new`. Before the workspace exists, the steps'
-  paths lead to the organisation's overview, whose kind cards create it. `type` is
-  whether the flow names the type; no page of the core sets it, since a card's
-  **Choose** creates the workspace.
+  paths lead to the organisation's overview, `/:org`, whose kind cards link to the types'
+  pages (`ApiaryWeb.WorkspaceTypeLive`), where **Create workspace** creates it. `type` is
+  true where `flow/5` has `type: true` in its options; no page of the core passes it, and
+  `flow_path/2` does not read it.
   """
   @type flow :: %{
           organisation: %Organisation{},
@@ -272,7 +273,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
   or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
-  in `opts`, the step's paths name the type.
+  in `opts`, the flow's `type` is true; no page of the core passes it.
   """
   @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
   def flow(organisation, domain, workspace, page, opts \\ []),
@@ -287,7 +288,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow_path/2 is the path of the step `id` of `flow`: once the workspace exists, its page
   in the workspace, `/:org/:workspace/set-up/<id>`; before, the organisation's overview,
-  `/:org`, whose kind cards create it.
+  `/:org`, whose kind cards link to the types' pages (`ApiaryWeb.WorkspaceTypeLive`).
   """
   @spec flow_path(flow, atom) :: String.t()
   def flow_path(%{organisation: organisation, workspace: %Workspace{} = workspace}, id),
@@ -354,7 +355,7 @@ defmodule ApiaryWeb.SetUpComponents do
   workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
   titles of the collections the step's done rule counts, or their number from 3 on, Model
   the chosen model as the step shows it, Harness the chosen harness as the step shows it,
-  and Machines the node pool that runs the workspace's runs. Each value is read for the
+  and Machines the pool that runs the workspace's runs. Each value is read for the
   scope's person with the reads of its step's page: Work sources and Destinations only
   where `adapter.read` allows the tick list, Model only where the person may read the
   choices of the workspace's chain as the Model step reads them. Test run shows

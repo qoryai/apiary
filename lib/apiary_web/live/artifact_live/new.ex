@@ -428,7 +428,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
         assign(
           socket,
           :error,
-          gettext("Store the files again. If it fails again, contact support.")
+          gettext("Store the files again. If it fails again, %{contact_support}.",
+            contact_support: ApiaryWeb.Support.plain(mid_sentence: true)
+          )
         )
 
       :stage_changed ->
@@ -469,7 +471,10 @@ defmodule ApiaryWeb.ArtifactLive.New do
   @spec general_line(Apiary.WorkItems.WorkItem.t(), term, term) :: String.t()
   def general_line(work_item, type_name, refusal) do
     Artifacts.log_refusal(work_item, type_name, refusal)
-    gettext("Add the version again. If it fails again, contact support.")
+
+    gettext("Add the version again. If it fails again, %{contact_support}.",
+      contact_support: ApiaryWeb.Support.plain(mid_sentence: true)
+    )
   end
 
   # Why the push found no work item it may write. The push refuses with `:forbidden` or
@@ -486,7 +491,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
         )
 
       not Apiary.Features.visible?(scope, :workflow_model) ->
-        gettext("Artifacts are not available here. Contact support if you need them.")
+        gettext("Artifacts are not available here. %{contact_support} if you need them.",
+          contact_support: ApiaryWeb.Support.plain()
+        )
 
       is_nil(Load.work_item(scope, number)) ->
         gettext(

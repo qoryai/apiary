@@ -3,7 +3,8 @@ defmodule ApiaryWeb.StagesLive.Editor do
   # page that edits one: the Stages page and Instance settings › Workspace types. The
   # page's socket has `draft` (the document), `selected` (a stage's id), `declared` (the
   # workflows offered), `types` (the artifact types offered, each with a `name`),
-  # `notice`, `save_note`, `save_errors`, `stage_errors` and `rounds_errors`. Each
+  # `notice`, `save_note`, `save_errors`, `stage_errors`, `rounds_errors` and
+  # `workflow_errors`. Each
   # function takes the page's `refresh`, which checks the draft and pushes the canvas's
   # view ("stages:view").
   @moduledoc false
@@ -51,10 +52,15 @@ defmodule ApiaryWeb.StagesLive.Editor do
   end
 
   # A loop's rounds outside 1 to 10 keep the rounds the loop had, and show an error under
-  # the field: the form is novalidate, so the browser does not check them.
+  # the field: the form is novalidate, so the browser does not check them. A workflow name
+  # that breaks the schema's pattern keeps the entry's workflow the same way.
   def edit_event("edit_stage", %{"stage" => params}, socket, refresh) when is_map(params) do
     socket = edit_selected(socket, &Draft.apply_form(&1, params), refresh)
-    assign(socket, rounds_errors: rounds_errors(params))
+
+    assign(socket,
+      rounds_errors: rounds_errors(params),
+      workflow_errors: workflow_errors(params)
+    )
   end
 
   def edit_event("edit_process", %{"process" => %{"machine" => machine}}, socket, refresh),
@@ -168,9 +174,29 @@ defmodule ApiaryWeb.StagesLive.Editor do
         draft: fun.(socket.assigns.draft),
         notice: nil,
         save_note: nil,
-        rounds_errors: %{}
+        rounds_errors: %{},
+        workflow_errors: %{}
       )
       |> refresh.()
+
+  # Each workflow field whose name breaks the pattern, by its entry's place: "0" for the
+  # first entry, "1-0" for the first workflow of a loop in the second.
+  defp workflow_errors(%{"sequence" => %{} = sequence}) do
+    for {i, entry} <- sequence,
+        is_map(entry),
+        {place, name} <- workflow_names(i, entry),
+        not Draft.workflow_name?(name),
+        into: %{},
+        do: {place, Words.workflow_refused()}
+  end
+
+  defp workflow_errors(_params), do: %{}
+
+  defp workflow_names(i, %{"body" => %{} = body}),
+    do: for({j, %{"workflow" => name}} <- body, do: {"#{i}-#{j}", name})
+
+  defp workflow_names(i, %{"workflow" => name}), do: [{i, name}]
+  defp workflow_names(_i, _entry), do: []
 
   defp rounds_errors(%{"sequence" => %{} = sequence}) do
     for {i, %{"rounds" => text}} <- sequence, not Draft.rounds?(text), into: %{} do

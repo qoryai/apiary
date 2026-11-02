@@ -174,7 +174,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
         Repo.all(from w in WorkItem, where: w.workspace_id == ^workspace.id)
         |> Map.new(&{&1.title, &1})
 
-      assert map_size(items) == 9
+      assert map_size(items) == 10
 
       at = fn title ->
         work_item = Map.fetch!(items, title)
@@ -223,6 +223,24 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert at.(stopped.title) == {"Explore", "escalated"}
       assert to_string(Stages.status(stopped).escalation.cause) == "run_stopped"
 
+      # A run that qory closed because the harness at the target's root has no skill
+      # explore-a-ticket: the escalation names the workflow and that file.
+      missing_skill = items["Show the size guide in German"]
+      assert at.(missing_skill.title) == {"Explore", "escalated"}
+      escalation = Stages.status(missing_skill).escalation
+      assert to_string(escalation.cause) == "run_stopped"
+
+      assert escalation.gaps ==
+               "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of repository acme/web-shop."
+
+      assert Repo.one!(
+               from r in Apiary.Runs.Run,
+                 join: d in DispatchRun,
+                 on: d.id == r.dispatch_run_id,
+                 where: d.work_item_id == ^missing_skill.id,
+                 select: r.reason
+             ) == "workflow_not_in_harness"
+
       # Max added acceptance criteria with a Mermaid diagram and a mockup in Shape.
       added = items["Show delivery dates on the product page"]
       assert at.(added.title) == {"Shape", "at_gate"}
@@ -268,7 +286,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert_received {:mix_shell, :info, ["The preview is there already: nothing more is made."]}
 
       assert Repo.aggregate(from(w in WorkItem, where: w.workspace_id == ^workspace.id), :count) ==
-               9
+               10
 
       assert length(Processes.list_versions(workspace)) == 4
     end

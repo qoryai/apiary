@@ -1082,6 +1082,77 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-check")
     end
 
+    defp check_line(view) do
+      view
+      |> element("#work-item-stage-check-result")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    test "for a workflow: a check that stops on an error sends the reader to support", %{
+      conn: conn,
+      scope: scope
+    } do
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+      work_item = at_build(scope, :waiting_workflow)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      WorkflowFake.check_result(scope.workspace, fn -> raise "the check failed" end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        view |> form("#work-item-stage-check") |> render_submit()
+        render_async(view)
+      end)
+
+      assert check_line(view) ==
+               "Try again, and contact support if it fails again. " <>
+                 "The check of the harness stopped with an error in Qory Apiary."
+
+      Application.put_env(:apiary, :support_address, "support@example.com")
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        view |> form("#work-item-stage-check") |> render_submit()
+        render_async(view)
+      end)
+
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-check-result a[href="mailto:support@example.com"]),
+               "contact support"
+             )
+
+      assert check_line(view) ==
+               "Try again, and contact support if it fails again. " <>
+                 "The check of the harness stopped with an error in Qory Apiary."
+
+      # A read that failed, in the harness's words, links Contact support too.
+      WorkflowFake.check_result(scope.workspace, {:error, {:unreadable, :address}})
+      view |> form("#work-item-stage-check") |> render_submit()
+      render_async(view)
+
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-check-result a[href="mailto:support@example.com"]),
+               "Contact support"
+             )
+    end
+
+    test "a refusal the page has no words for sends the reader to support" do
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+
+      assert ApiaryWeb.WorkItemLive.Show.refused(:busy, nil) ==
+               "Reload the page and act again, and contact support if it fails again. " <>
+                 "Qory Apiary could not act on the stage."
+
+      Application.put_env(:apiary, :support_address, "support@example.com")
+
+      assert ApiaryWeb.WorkItemLive.Show.refused(:busy, nil) ==
+               "Reload the page and act again, and contact support at support@example.com " <>
+                 "if it fails again. Qory Apiary could not act on the stage."
+    end
+
     # A work item at Build, which needs no input here, waiting for a workflow the harness
     # now lists: a check that finds it queues Build's run.
     defp waiting_for_found_workflow(scope) do

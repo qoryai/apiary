@@ -129,6 +129,15 @@ defmodule ApiaryWeb.DocsControllerTest do
       assert html =~ "The documentation is not built"
     end
 
+    @tag :feature_sets
+    test "/docs/admin leads an instance admin to /docs, which says so", %{conn: conn} do
+      {conn, _scope} = admin_conn(conn)
+      assert redirected_to(get(conn, "/docs/admin")) == "/docs"
+
+      html = conn |> get(~p"/docs") |> html_response(404)
+      assert html =~ "The documentation is not built"
+    end
+
     @tag with_features: [:observability]
     test "so does a tree built for other features only", %{conn: conn, tmp_dir: tmp_dir} do
       build(tmp_dir, [security_tree()])
@@ -168,6 +177,118 @@ defmodule ApiaryWeb.DocsControllerTest do
     test "is not served to an instance without the tree's features", %{conn: conn, name: name} do
       assert conn |> get("/docs/#{name}") |> html_response(404)
       assert conn |> get("/docs/#{security_tree()}/#{name}") |> html_response(404)
+    end
+  end
+
+  describe "the guides for instance admins" do
+    @describetag :feature_sets
+
+    # A public tree and an admins' tree for the instance's features, as `mix docs` builds
+    # them: the admins' tree alone has install.html.
+    setup %{tmp_dir: tmp_dir} do
+      tree = ApiaryWeb.DocsController.tree_name(Apiary.Features.enabled())
+
+      for {dir, pages} <- [
+            {Path.join(tmp_dir, tree), ["index.html", "quickstart.html"]},
+            {Path.join([tmp_dir, "admin", tree]),
+             ["index.html", "quickstart.html", "install.html"]}
+          ],
+          page <- pages do
+        File.mkdir_p!(dir)
+
+        File.write!(
+          Path.join(dir, page),
+          "<html><body>#{Path.relative_to(dir, tmp_dir)}/#{page}</body></html>"
+        )
+      end
+
+      %{tree: tree}
+    end
+
+    defp admin_conn(conn) do
+      Apiary.EditionKit.hide_instance_organisation()
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      assert Apiary.Access.instance_admin?(scope)
+      {conn, scope}
+    end
+
+    test "are the core's two, which an edition's list extends and never replaces" do
+      assert ApiaryWeb.DocsController.admin_guides() == ["install.md", "hosting-checklist.md"]
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AdminGuide)
+
+      assert ApiaryWeb.DocsController.admin_guides() ==
+               ["install.md", "hosting-checklist.md", "admin.md"]
+    end
+
+    test "an instance admin is led to the admins' tree and served its guides, privately",
+         %{conn: conn, tree: tree} do
+      {conn, _scope} = admin_conn(conn)
+
+      assert redirected_to(get(conn, ~p"/docs")) == "/docs/admin/index.html"
+      assert redirected_to(get(conn, "/docs/admin")) == "/docs/admin/index.html"
+
+      served = get(conn, "/docs/admin/install.html")
+      assert response(served, 200) =~ "admin/#{tree}/install.html"
+      assert get_resp_header(served, "content-type") == ["text/html"]
+      assert get_resp_header(served, "cache-control") == ["private"]
+
+      assert conn |> get("/docs/admin/quickstart.html") |> response(200) =~ "quickstart.html"
+      assert conn |> get("/docs/admin/no-such-page.html") |> html_response(404) =~ "Not Found"
+    end
+
+    test "the public tree has no admin guide, for an instance admin either", %{conn: conn} do
+      {conn, _scope} = admin_conn(conn)
+      assert conn |> get("/docs/install.html") |> html_response(404) =~ "Not Found"
+    end
+
+    test "a member of the instance's organisation is not found there, and led to the public tree",
+         %{conn: conn} do
+      {_admin_conn, scope} = admin_conn(conn)
+      member = Apiary.OrganisationsFixtures.member_fixture(scope)
+      refute Apiary.Access.instance_admin?(member.scope)
+      conn = log_in_user(build_conn(), member.user)
+
+      assert redirected_to(get(conn, ~p"/docs")) == "/docs/index.html"
+      assert conn |> get("/docs/admin") |> html_response(404) =~ "Not Found"
+      assert conn |> get("/docs/admin/install.html") |> html_response(404) =~ "Not Found"
+      assert conn |> get("/docs/admin/index.html") |> html_response(404) =~ "Not Found"
+      assert conn |> get("/docs/install.html") |> html_response(404) =~ "Not Found"
+    end
+
+    test "the owner of another organisation is not found there", %{conn: conn} do
+      %{conn: conn, scope: scope} = register_and_log_in_user(%{conn: conn})
+      refute Apiary.Access.instance_admin?(scope)
+
+      assert conn |> get("/docs/admin/install.html") |> html_response(404) =~ "Not Found"
+    end
+
+    test "the 404 there is the usual page, as for any path under /docs", %{conn: conn} do
+      public = conn |> get("/docs/install.html") |> html_response(404)
+      admin = conn |> get("/docs/admin/install.html") |> html_response(404)
+      title = &Regex.run(~r{<title[^>]*>(.*?)</title>}s, &1, capture: :all_but_first)
+
+      assert [_title] = title.(admin)
+      assert title.(admin) == title.(public)
+      assert admin =~ ~s(<link) and admin =~ "Not Found"
+    end
+
+    test "a visitor who is not signed in is not found there", %{conn: conn} do
+      assert redirected_to(get(conn, ~p"/docs")) == "/docs/index.html"
+      assert conn |> get("/docs/admin") |> html_response(404) =~ "Not Found"
+      assert conn |> get("/docs/admin/install.html") |> html_response(404) =~ "Not Found"
+      assert conn |> get("/docs/install.html") |> html_response(404) =~ "Not Found"
+      assert conn |> get("/docs/quickstart.html") |> response(200) =~ "quickstart.html"
+    end
+  end
+
+  describe "the guides for instance admins, with only the public tree built" do
+    setup %{tmp_dir: tmp_dir}, do: build(tmp_dir, trees())
+
+    test "an instance admin is led to the public tree", %{conn: conn} do
+      Apiary.EditionKit.hide_instance_organisation()
+      %{conn: conn} = register_and_log_in_user(%{conn: conn})
+      assert redirected_to(get(conn, ~p"/docs")) == "/docs/index.html"
     end
   end
 

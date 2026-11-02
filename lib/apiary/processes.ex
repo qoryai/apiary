@@ -851,12 +851,15 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   @doc """
-  record_declared/2 keeps `names` as the workflows the workspace's harness source lists,
-  read now: it replaces the names the workspace kept, with the time of this read
-  (`declared_snapshot/1`). Call it after a read of the workspace's harness source
-  succeeds: Workspace settings > Workflow calls it for the stack the saved workflow's
-  document extends, read or saved there, and for no other source a person tries. Each
-  name is kept once, sorted, at most 1,000. `:ok`.
+  record_declared/2 keeps `names` as the workflows the workspace's harness lists now: it
+  replaces the names the workspace kept, with the time of this call
+  (`declared_snapshot/1`). Call it with the names that
+  Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
+  choice, else the harness the organisation shares, else the Qory harness, whose names
+  are `qory_workflows/0`, with no read. The Stages page calls it on open, Workspace
+  settings > Workflow on open and after a harness choice is saved, and Check again on a
+  work item; a saved workflow does not change it. Each name is kept once, sorted, at
+  most 1,000. `:ok`.
   """
   @spec record_declared(%Workspace{}, [String.t()]) :: :ok
   def record_declared(%Workspace{id: id, organisation_id: organisation_id}, names)
@@ -877,11 +880,11 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  declared_snapshot/1 is the workflow names the workspace kept at the last read of its
-  harness source (`record_declared/2`): `%{names: names, read_at: time}`, or nil before
-  the first read. It covers only the workspace's harness source, the stack the workflow
-  saved on Workspace settings > Workflow extends: not a harness file of a repository,
-  and not the stack chosen for a target.
+  declared_snapshot/1 is the workflow names the workspace kept at the last
+  `record_declared/2`: `%{names: names, read_at: time}`, or nil before the first. It
+  covers only the workspace's harness as Apiary.Stacks.Sources.chosen_workflows/2
+  finds it (the choice, else the harness the organisation shares, else the Qory
+  harness): not a harness file of a repository, and not the stack chosen for a target.
   """
   @spec declared_snapshot(%Workspace{}) :: %{names: [String.t()], read_at: DateTime.t()} | nil
   def declared_snapshot(%Workspace{id: id}) do
@@ -898,8 +901,9 @@ defmodule Apiary.Processes do
   @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
   sorted: explore-a-ticket, of the Qory harness; the names of the workspace's snapshot
-  (`declared_snapshot/1`), which covers only the workspace's harness source; and the
-  workflow saved on the workspace's Workflow page, at the workspace or a target of it.
+  (`declared_snapshot/1`), which covers only the workspace's harness, as
+  Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
+  workspace's Workflow page, at the workspace or a target of it.
   Before the first snapshot, the names are explore-a-ticket and the saved workflow.
   """
   @spec declared_workflows(%Workspace{}) :: [String.t()]

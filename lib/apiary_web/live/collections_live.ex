@@ -83,17 +83,24 @@ defmodule ApiaryWeb.CollectionsLive do
     role = if list == :sources, do: :items, else: :targets
     may_connect = Access.can?(scope, :"adapter.connect", scope.organisation)
 
-    adapters =
-      for adapter <- Adapters.list_configured(domain),
-          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
-          do: adapter
-
     connecting =
       for {adapter_id, %{state: :pending}} <- AdapterConnections.live_by_adapter(scope),
           into: MapSet.new(),
           do: adapter_id
 
     connected = WorkspaceSetup.connected_ids(scope.organisation, domain, role)
+
+    adapters =
+      IntegrationComponents.offered(
+        scope,
+        for(
+          adapter <- Adapters.list_configured(domain),
+          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
+          do: adapter
+        ),
+        Enum.concat(connected, connecting)
+      )
+
     cards = WorkspaceSetup.cards(scope, domain, list, scope.workspace)
     carded = MapSet.new(cards, & &1.adapter.id)
 
@@ -114,7 +121,8 @@ defmodule ApiaryWeb.CollectionsLive do
       may: Access.can?(scope, :"collection.assign", scope.organisation),
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
-      who_connects: IntegrationComponents.who_connects(scope, list)
+      who_connects: IntegrationComponents.who_connects(scope, list),
+      instance_admin: Access.instance_admin?(scope)
     )
   end
 
@@ -245,6 +253,7 @@ defmodule ApiaryWeb.CollectionsLive do
                   adapter={adapter}
                   action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
                   ready={adapter.id in @ready}
+                  instance_admin={@instance_admin}
                   sending={@sending == adapter.public_id}
                   label={gettext("Connect")}
                 />
@@ -265,9 +274,18 @@ defmodule ApiaryWeb.CollectionsLive do
             id={"#{@id}-no-adapter"}
             class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
           >
-            {gettext(
-              "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-            )}
+            <%= if @instance_admin do %>
+              {gettext(
+                "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+              )}
+            <% else %>
+              <.rich text={
+                rich_gettext(
+                  "%{contact_support} to add a work source. Qory Apiary offers none for this type yet.",
+                  contact_support: ApiaryWeb.Support.rich()
+                )
+              } />
+            <% end %>
           </p>
 
           <p
@@ -275,9 +293,18 @@ defmodule ApiaryWeb.CollectionsLive do
             id={"#{@id}-no-adapter"}
             class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
           >
-            {gettext(
-              "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-            )}
+            <%= if @instance_admin do %>
+              {gettext(
+                "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+              )}
+            <% else %>
+              <.rich text={
+                rich_gettext(
+                  "%{contact_support} to add a work destination. Qory Apiary offers none for this type yet.",
+                  contact_support: ApiaryWeb.Support.rich()
+                )
+              } />
+            <% end %>
           </p>
 
           <p

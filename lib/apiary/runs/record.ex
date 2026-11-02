@@ -20,6 +20,7 @@ defmodule Apiary.Runs.Record do
 
   alias Apiary.Edition
   alias Apiary.Accounts.Scope
+  alias Apiary.Harnesses.WorkflowGap
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs
@@ -172,17 +173,21 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The run of the scope's workspace that `param` names, with its access key, its node (a
-  deleted node's too) and, for a run whose start failed, its dispatch
-  (`Apiary.Runs.Run`, `dispatch_id`). `param` is the run's number, as the run's URL
-  carries it (`Apiary.Runs.Run.parse_number/1`), or its `public_id`, `rn_…`, as the API
-  and older links carry it. `:error` for a run the workspace has not got, a run of
-  another workspace among them, and for anything of neither shape, the node's run id
+  deleted node's too), for a run whose start failed, its dispatch (`Apiary.Runs.Run`,
+  `dispatch_id`), and, for a run that ended `workflow_not_in_harness`, its run of the
+  queue with that run's harness walk and work item. `param` is the run's number, as the
+  run's URL carries it (`Apiary.Runs.Run.parse_number/1`), or its `public_id`, `rn_…`, as
+  the API and older links carry it. `:error` for a run the workspace has not got, a run
+  of another workspace among them, and for anything of neither shape, the node's run id
   among them.
   """
   def fetch_run(%Scope{} = scope, param) do
     case Runs.get_run_by_param(scope, param) do
-      %Run{} = run -> {:ok, Repo.preload(run, [:access_key, :node, :dispatch])}
-      nil -> :error
+      %Run{} = run ->
+        {:ok, run |> Repo.preload([:access_key, :node, :dispatch]) |> WorkflowGap.preload()}
+
+      nil ->
+        :error
     end
   end
 
@@ -192,8 +197,11 @@ defmodule Apiary.Runs.Record do
   """
   def reload(%Scope{} = scope, %Run{id: id}) do
     case Repo.one(from r in runs(scope), where: r.id == ^id) do
-      %Run{} = run -> Repo.preload(run, [:access_key, :node, :dispatch])
-      nil -> nil
+      %Run{} = run ->
+        run |> Repo.preload([:access_key, :node, :dispatch]) |> WorkflowGap.preload()
+
+      nil ->
+        nil
     end
   end
 

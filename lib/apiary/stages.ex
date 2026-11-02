@@ -578,7 +578,7 @@ defmodule Apiary.Stages do
   @doc false
   @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
           {:ok, WorkItem.t()} | {:error, term}
-  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &read_declared/2) do
+  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &Sources.chosen_workflows/2) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
          %WorkItem{} <- in_workspace(workspace, id) || {:error, :not_found},
@@ -614,21 +614,6 @@ defmodule Apiary.Stages do
         {:error, :not_live} = refused -> refused
       end
     end)
-  end
-
-  # The workflow names the harness the workspace chose lists, read at its pin, or at
-  # `HEAD` with none: of its stack, or of every stack where it names none.
-  defp read_declared(scope, workspace) do
-    chosen = Sources.chosen(workspace)
-
-    with {:ok, source} <- Sources.address(chosen.git || ""),
-         {:ok, stacks} <- Sources.read(scope, %{source | ref: chosen.pin || source.ref}) do
-      {:ok,
-       stacks
-       |> Enum.filter(&(is_nil(chosen.stack) or &1.name == chosen.stack))
-       |> Enum.flat_map(& &1.workflows)
-       |> Enum.uniq()}
-    end
   end
 
   # approve/3 approves the gate of the work item's stage, with the scope's person's
@@ -1780,7 +1765,10 @@ defmodule Apiary.Stages do
 
     case {waiting_workflow(work_item, stage), Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
-        not_listed(stage["name"], workflow, workspace.name, read_at)
+        case Sources.chosen(workspace) do
+          %{choice: :qory} -> not_in_qory(stage["name"], workflow)
+          _repository -> not_listed(stage["name"], workflow, workspace.name, read_at)
+        end
 
       _none ->
         gaps(nil, work_item, stage, artifacts)
@@ -1798,6 +1786,16 @@ defmodule Apiary.Stages do
 
     "#{stage} uses #{workflow}, which #{workspace}'s harness did not list at #{time}. " <>
       "Check again, or choose another workflow for #{stage}."
+  end
+
+  # not_in_qory/2 is why a stage waits for a workflow on the Qory harness, which is never
+  # read: its workflows are fixed (`Apiary.Processes.qory_workflows/0`).
+  @doc false
+  @spec not_in_qory(String.t(), String.t()) :: String.t()
+  def not_in_qory(stage, workflow) do
+    "#{stage} uses #{workflow}, which the Qory harness does not list. " <>
+      "Choose another workflow for #{stage}, or choose a harness that lists #{workflow} " <>
+      "under workflows on the Workflow page."
   end
 
   defp gaps(%Escalation{gaps: gaps}, _work_item, _stage, _artifacts), do: gaps

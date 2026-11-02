@@ -90,6 +90,7 @@ defmodule Apiary.AccessRows do
       {:"instance.mail_on", yes: []},
       {:"instance.rename", yes: []},
       {:"instance.configure", yes: []},
+      {:"instance.support_save", yes: []},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"audit.prune", yes: [:instance, :feature_off, :hidden]},
       {:"workspace.create", yes: @owners ++ [:feature_off, :hidden]},
@@ -175,6 +176,7 @@ defmodule Apiary.AccessRows do
       {:"dispatch.release", yes: [:pool_key, :hidden]},
       {:"target.set_further_repositories", yes: @owners ++ [:admin]},
       {:"dispatch.machine_log", yes: [:pool_key, :hidden]},
+      {:"dispatch.machine_end", yes: [:pool_key, :hidden]},
       {:"target.rebuild_environment", yes: @owners ++ [:member, :admin]}
     ]
   end

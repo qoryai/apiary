@@ -52,7 +52,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationActivityTest do
     assert has_element?(view, "#filter-action-form li", "Configuration changed")
 
     for entry <- [retention, deletion, invitations] do
-      assert text(view, "#entry-#{entry.id}-action") =~ "Changed the instance's configuration"
+      assert text(view, "#entry-#{entry.id}-action") =~ "Changed the configuration of Qory Apiary"
       assert text(view, "#entry-#{entry.id}-actor") =~ scope.user.email
     end
 

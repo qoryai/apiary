@@ -41,8 +41,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
   def label(:"instance.mail_resend"), do: gettext("Mail test link sent again")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
-  def label(:"instance.rename"), do: gettext("Instance renamed")
+  def label(:"instance.rename"), do: gettext("Name in the header changed")
   def label(:"instance.configure"), do: gettext("Configuration changed")
+  def label(:"instance.support_save"), do: gettext("Support address saved")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -87,6 +88,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
   def label(:"dispatch.release"), do: gettext("Runs given back")
   def label(:"dispatch.prebuilt"), do: gettext("Images recorded")
+  def label(:"dispatch.machine_end"), do: gettext("Machine removal reports")
   def label(:"target.rebuild_environment"), do: gettext("Builds asked for")
   def label(:"adapter.install"), do: gettext("Adapter installed")
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
@@ -531,16 +533,19 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"instance.mail_on", _details, _actor),
     do: gettext("Turned mail on, by the test link")
 
-  defp said(:"instance.rename", _details, _actor), do: gettext("Renamed the instance")
+  defp said(:"instance.rename", _details, _actor), do: gettext("Changed the name in the header")
 
   defp said(:"instance.configure", _details, _actor),
-    do: gettext("Changed the instance's configuration")
+    do: gettext("Changed the configuration of Qory Apiary")
+
+  defp said(:"instance.support_save", _details, _actor),
+    do: gettext("Saved the support address")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
 
   defp said(:"audit.prune", _details, _actor),
-    do: gettext("Deleted the activity older than the instance keeps")
+    do: gettext("Deleted the activity older than the retention period")
 
   defp said(:"workspace.create", _details, _actor), do: gettext("Created the workspace")
   defp said(:"workspace.rename", _details, _actor), do: gettext("Renamed the workspace")
@@ -648,6 +653,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"dispatch.release", %{"handed_over" => true}, _actor),
     do: gettext("Gave back a run handed over to its machine")
+
+  # What a pool's starter reported about the removal of a run's machine, by the state;
+  # the entry is the pool's.
+  defp said(:"dispatch.machine_end", %{"state" => "deleting"}, _actor),
+    do: gettext("Reported that the removal of a run's machine was requested")
+
+  defp said(:"dispatch.machine_end", %{"state" => "gone"}, _actor),
+    do: gettext("Reported that a run's machine was removed")
+
+  defp said(:"dispatch.machine_end", %{"state" => "delete_failed"}, _actor),
+    do: gettext("Reported that the removal of a run's machine failed")
 
   # The image a prebuild built, recorded; the entry is the run's.
   defp said(:"dispatch.prebuilt", _details, _actor),
@@ -1043,6 +1059,15 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         after_["name"] || Apiary.ProductName.edition_name()
       )
 
+  # An address saved or emptied: an https address as it is, an email address, which the
+  # trail does not keep, in words, and none as "None".
+  def change(:"instance.support_save", before, after_, _details),
+    do:
+      from_to(
+        support_address(before["support_address"]),
+        support_address(after_["support_address"])
+      )
+
   def change(action, before, after_, _details)
       when action in [:"member.change_level", :"instance_admin.grant", :"instance_admin.revoke"] and
              is_map_key(before, "level"),
@@ -1238,6 +1263,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp configured("invitations_per_day", n) when is_integer(n), do: Format.number(n)
   defp configured("invitations_per_day", _other), do: gettext("n/a")
   defp configured(_days, n), do: days(n)
+
+  defp support_address(nil), do: gettext("None")
+  defp support_address("email"), do: gettext("An email address")
+  defp support_address(url) when is_binary(url), do: url
+  defp support_address(_other), do: gettext("n/a")
 
   defp days(nil), do: gettext("Forever")
 

@@ -50,6 +50,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       "a redirect or a line of text, never a page: it leads a person of the connection's " <>
         "organisation to the integration's page, and raises not found for anyone else " <>
         "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)",
+    "/docs/admin" =>
+      "for an instance admin alone (`test/apiary_web/controllers/docs_controller_test.exs` " <>
+        "holds it)",
+    "/docs/admin/*path" =>
+      "for an instance admin alone (`test/apiary_web/controllers/docs_controller_test.exs` " <>
+        "holds it)",
     "/:org/:workspace/work/:number/artifacts/:version_id/files/:filename" =>
       "a file of an artifact, never a page: served as an attachment under a sandbox " <>
         "policy instead of the console's " <>

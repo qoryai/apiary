@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       output to Verify.
     * A read of Web shop's harness is recorded, which lists only `explore-a-ticket`.
     * The adapter **Tracker** is made and connected for Acme, with the repository
-      `acme/web-shop` in Web shop and its tickets; Dana and Max take nine of them in.
+      `acme/web-shop` in Web shop and its tickets; Dana and Max take ten of them in.
       With `workflow_model` on, a take in enters Explore.
     * The node pool **preview-pool** and its key. A run of Explore needs a gateway to be
       claimed, and the preview has none: the task hands a waiting run over in the
@@ -58,7 +58,11 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         then Shape approved by Dana, Build at its gate;
       * Record a demo of the new checkout: on version 2, acceptance criteria that Max
         added in Shape, then Shape approved by Dana, Build waiting for its workflows,
-        which the harness does not declare.
+        which the harness does not declare;
+      * Show the size guide in German: Explore escalated, as a run that stopped. The
+        harness file at the root of `acme/web-shop` has no skill `explore-a-ticket`, so
+        qory closed the run failed with the reason `workflow_not_in_harness`, which the
+        run's page and the work item show with the workflow and that file.
     * Last, Dana saves a trial version (Explore with 2 rounds instead of 3) and assigns
       the first work item to it.
 
@@ -88,6 +92,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Batch, Ingest, Run}
   alias Apiary.Sources.Backlog
@@ -133,7 +138,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     {:approved, :dana, 108, "Remove the old promotion banner",
      "The autumn promotion ended; the banner code is still shipped."},
     {:waiting_workflow, :dana, 109, "Record a demo of the new checkout",
-     "Sales asks for a short video of the three checkout steps."}
+     "Sales asks for a short video of the three checkout steps."},
+    {:workflow_missing, :max, 110, "Show the size guide in German",
+     "The size guide on the product page is in English only."}
   ]
 
   @impl Mix.Task
@@ -768,6 +775,14 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     current(ctx.dana, work_item)
   end
 
+  # The run's harness walk read the repository's root harness file, and qory found no
+  # skill explore-a-ticket in the harness it composed from it: the run ends failed with
+  # `workflow_not_in_harness` before its runtime starts, and Explore escalates.
+  defp drive!(:workflow_missing, ctx, work_item) do
+    record_result!(ctx, work_item, :workflow_not_in_harness)
+    current(ctx.dana, work_item)
+  end
+
   defp drive!(:artifacts, ctx, work_item) do
     work_item = drive!(:shape_gate, ctx, work_item)
 
@@ -896,6 +911,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       ) || Shell.raise!("#{work_item.title} has no run of Explore waiting")
 
     now = DateTime.utc_now()
+    if result == :workflow_not_in_harness, do: walked_file!(dispatch_run)
     run = hand_over!(dispatch_run, work_item, key, now)
 
     meta = %{
@@ -952,24 +968,62 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     run
   end
 
+  # The run's harness walk as the walk's job leaves it for a target with a root harness
+  # file: resolved, from that file. The preview runs no walk job.
+  defp walked_file!(%DispatchRun{id: id}) do
+    {1, _rows} =
+      Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
+        set: [state: :resolved, origin: :file, workflow: "explore-a-ticket"]
+      )
+  end
+
   defp batch!(%Run{node_run_id: subject}, work_item, result, now) do
+    body =
+      result
+      |> events(work_item)
+      |> Enum.with_index(2)
+      |> Enum.map(fn {{seconds, {type, data}}, sequence} ->
+        %{
+          "specversion" => "1.0",
+          "id" => Ecto.UUID.generate(),
+          "source" => "urn:qory:run:" <> subject,
+          "type" => type,
+          "subject" => subject,
+          "time" =>
+            now
+            |> DateTime.add(seconds, :second)
+            |> DateTime.truncate(:millisecond)
+            |> DateTime.to_iso8601(),
+          "sequence" => sequence |> Integer.to_string() |> String.pad_leading(10, "0"),
+          "data" => data
+        }
+      end)
+
+    case Batch.parse(Jason.encode!(body)) do
+      {:ok, batch} -> batch
+      :error -> Shell.raise!("the events of #{work_item.title} are not a batch")
+    end
+  end
+
+  # A run that qory closed before the runtime started: the run starts, then exits failed
+  # with the reason, and no session.
+  defp events(:workflow_not_in_harness, work_item),
+    do: [
+      {-3, {"dev.qory.run.started", started(work_item)}},
+      {0,
+       {"dev.qory.run.exited",
+        %{"state" => "failed", "reason" => "workflow_not_in_harness", "exit_code" => -1}}}
+    ]
+
+  defp events(result, work_item) do
     text =
       case result do
         {:result, document} -> Jason.encode!(document)
         {:text, text} -> text
       end
 
-    events = [
-      {-90,
-       {"dev.qory.run.started",
-        %{
-          "opened_by" => "run",
-          "forager_version" => @forager,
-          "host" => @pool,
-          "wall" => "docker",
-          "labels" => %{},
-          "about" => %{"kind" => "Explore", "title" => work_item.title}
-        }}},
+    [
+      {-90, {"dev.qory.run.started", started(work_item)}},
       {-89,
        {"dev.qory.session.started",
         %{
@@ -997,32 +1051,17 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
        {"dev.qory.run.exited",
         %{"state" => "completed", "exit_code" => 0, "duration_ms" => 90_000}}}
     ]
-
-    body =
-      events
-      |> Enum.with_index(2)
-      |> Enum.map(fn {{seconds, {type, data}}, sequence} ->
-        %{
-          "specversion" => "1.0",
-          "id" => Ecto.UUID.generate(),
-          "source" => "urn:qory:run:" <> subject,
-          "type" => type,
-          "subject" => subject,
-          "time" =>
-            now
-            |> DateTime.add(seconds, :second)
-            |> DateTime.truncate(:millisecond)
-            |> DateTime.to_iso8601(),
-          "sequence" => sequence |> Integer.to_string() |> String.pad_leading(10, "0"),
-          "data" => data
-        }
-      end)
-
-    case Batch.parse(Jason.encode!(body)) do
-      {:ok, batch} -> batch
-      :error -> Shell.raise!("the events of #{work_item.title} are not a batch")
-    end
   end
+
+  defp started(work_item),
+    do: %{
+      "opened_by" => "run",
+      "forager_version" => @forager,
+      "host" => @pool,
+      "wall" => "docker",
+      "labels" => %{},
+      "about" => %{"kind" => "Explore", "title" => work_item.title}
+    }
 
   # An explore v1 result whose verdict is `understood`.
   defp proposal(title) do

@@ -14,7 +14,8 @@ defmodule ApiaryWeb.StagesLive.Canvas do
   # canvas is drawn by `assets/js/canvas.js` (React Flow) through the colocated hook
   # below; it reads `data-view` once, then each "stages:view" event the page pushes with
   # `view/3`. Its inputs are plain data: the document, the mode, and optionally the
-  # selected stage's id, the names of named approvers and each stage's alert lines.
+  # selected stage's id, the names of named approvers, each stage's alert lines and the
+  # workflows a stage may run, which mark each workflow on a card with a check or a cross.
   #
   # In both modes the canvas has, at its top right, Zoom out, Zoom in, Focus (`f`: the box
   # takes the window until Escape) and Full screen. Put it first in a `.q-canvas-fill` box, with
@@ -38,6 +39,11 @@ defmodule ApiaryWeb.StagesLive.Canvas do
 
   attr :alerts, :map, default: %{}, doc: "a stage's id to the alert lines its card shows"
 
+  attr :marks, :list,
+    default: nil,
+    doc:
+      "the workflows the harness lists, each marked with a check, any other with a cross; nil for no marks"
+
   attr :selectable, :boolean,
     default: true,
     doc: "whether a click or Enter on a card sends \"select\"; false sends no event"
@@ -56,6 +62,7 @@ defmodule ApiaryWeb.StagesLive.Canvas do
             selected: @selected,
             people: @people,
             alerts: @alerts,
+            marks: @marks,
             selectable: @selectable
           )
         )
@@ -84,11 +91,12 @@ defmodule ApiaryWeb.StagesLive.Canvas do
 
   @doc false
   # view/3 is what the canvas draws for `document` in `mode`: each stage's name and lines,
-  # as text. `opts`: `selected`, `people`, `alerts` and `selectable`, as the component's
-  # attributes.
+  # as text. `opts`: `selected`, `people`, `alerts`, `marks` and `selectable`, as the
+  # component's attributes.
   def view(document, mode, opts \\ []) when mode in [:edit, :view] do
     people = Keyword.get(opts, :people, %{})
     alerts = Keyword.get(opts, :alerts, %{})
+    listed = Keyword.get(opts, :marks)
     stages = document["stages"] || []
 
     %{
@@ -109,10 +117,29 @@ defmodule ApiaryWeb.StagesLive.Canvas do
             sequence: Words.card_sequence(stage),
             gate: Words.gate_line(stage, people),
             add: Words.add_after(stage["name"]),
-            alerts: Map.get(alerts, stage["id"], [])
+            alerts: Map.get(alerts, stage["id"], []),
+            marks: marks(stage, listed)
           }
         end
     }
+  end
+
+  # Each workflow of the stage by name, with whether the harness lists it and its label;
+  # none with no list.
+  defp marks(_stage, nil), do: %{}
+
+  defp marks(stage, listed) do
+    for name <- workflow_names(stage), into: %{} do
+      listed? = name in listed
+      {name, %{listed: listed?, label: Words.mark_label(name, listed?)}}
+    end
+  end
+
+  defp workflow_names(stage) do
+    Enum.flat_map(stage["sequence"] || [], fn
+      %{"loop" => %{"body" => body}} -> Enum.map(body, &to_string(&1["workflow"]))
+      entry -> [to_string(entry["workflow"])]
+    end)
   end
 
   # The canvas's words, as text.

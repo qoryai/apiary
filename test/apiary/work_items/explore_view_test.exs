@@ -273,6 +273,38 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       walk |> Ecto.Changeset.change(failure_adapter_id: nil) |> Repo.update!()
       assert adapter_shown.() == adapter.name
     end
+
+    test "a run whose harness has no skill for its workflow: the workflow and the harness file of the target",
+         ctx do
+      failed = %{
+        state: "failed",
+        exit_state: "failed",
+        reason: "workflow_not_in_harness",
+        outcome_state: nil,
+        outcome_time: nil,
+        outcome_received_at: nil,
+        outcome_digest: nil
+      }
+
+      %{dispatch_run: dispatch_run} = explore_run_fixture(ctx.work_item, run: failed)
+
+      Repo.insert!(%RunHarness{
+        dispatch_run_id: dispatch_run.id,
+        state: :resolved,
+        origin: :file,
+        workflow: "explore-a-ticket"
+      })
+
+      assert %{run: %{workflow_gap: gap}} = WorkItems.explore(ctx.scope, ctx.work_item)
+      assert gap == %{workflow: "explore-a-ticket", source: {:target, "acme/shop"}}
+
+      # Any other reason: no gap.
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.dispatch_run_id == ^dispatch_run.id),
+        set: [reason: "no_session"]
+      )
+
+      assert %{run: %{workflow_gap: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
+    end
   end
 
   describe "explore_thread/3" do

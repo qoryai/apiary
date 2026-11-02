@@ -11,7 +11,7 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Adapters.Collection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Gateways
-  alias Apiary.Harnesses.{RunHarness, Walk}
+  alias Apiary.Harnesses.{RunHarness, Walk, WorkflowGap}
   alias Apiary.Integrations.ApplyTemplates
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
@@ -40,6 +40,15 @@ defmodule Apiary.Stages.StopCause do
 
   def text(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _context),
     do: "The run ended with an error."
+
+  # A run that sent no result: qory closed it with `workflow_not_in_harness` when the
+  # harness it composed has no skill for the run's workflow (`Apiary.Harnesses.WorkflowGap`).
+  def text(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
+    case WorkflowGap.of_dispatch_run(run, work_item) do
+      %{} = facts -> workflow_gap(facts, work_item)
+      nil -> "The run ended without a result."
+    end
+  end
 
   def text(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
     do: "The run ended without a result."
@@ -114,6 +123,39 @@ defmodule Apiary.Stages.StopCause do
   def build_run(%WorkItem{}), do: nil
 
   ## The causes
+
+  # The words of `ApiaryWeb.HarnessComponents.workflow_gap_words/1`, stored once in
+  # English: the target is a repository in a software workspace.
+  defp workflow_gap(%{workflow: workflow, source: source}, work_item) do
+    missing =
+      if workflow,
+        do: "The run's harness has no skill named #{workflow}.",
+        else: "The run's harness has no skill with the name of the run's workflow."
+
+    case gap_source(source, work_item) do
+      nil -> missing
+      from -> missing <> " " <> from
+    end
+  end
+
+  defp gap_source({:target, target}, work_item) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+    word = if Domain.name(workspace) == "software", do: "repository", else: "target"
+    "The harness comes from the harness file at the root of #{word} #{target}."
+  end
+
+  defp gap_source({:repository, address, {:stack, stack}}, _work_item),
+    do: "The harness comes from #{address}, stack #{stack}."
+
+  defp gap_source({:repository, address, {:path, path}}, _work_item),
+    do: "The harness comes from #{address}, folder #{path}."
+
+  defp gap_source({:repository, address, nil}, _work_item),
+    do: "The harness comes from #{address}."
+
+  defp gap_source(:section, _work_item), do: "The harness is the workspace's harness."
+  defp gap_source(:qory, _work_item), do: "The harness is the Qory harness."
+  defp gap_source(nil, _work_item), do: nil
 
   defp lines(%DispatchRun{end_cause: :run_refused, end_detail: "model_key_missing"}, n, _ctx),
     do:

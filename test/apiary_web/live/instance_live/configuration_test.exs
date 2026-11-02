@@ -159,6 +159,26 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       end
     end
 
+    test "shows the support address read only, with where it is changed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+
+      assert text(view, "#config-support h2") == "Support"
+      assert text(view, "#config-support-address dt") == "Support address"
+      assert text(view, "#config-support-address-value") == "None"
+
+      assert text(view, "#config-support-address-source") ==
+               "Changed in Instance settings › General"
+
+      assert has_element?(view, "#config-support-address-source a[href='/instance/general']")
+
+      Application.put_env(:apiary, :support_address, "support@example.com")
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+      assert text(view, "#config-support-address-value") == "support@example.com"
+      assert text(view, "#config-support-address-source") == "Set by SUPPORT_ADDRESS"
+    end
+
     @tag :feature_sets
     test "shows a value the environment sets read only, with the variable that sets it",
          %{conn: conn} do
