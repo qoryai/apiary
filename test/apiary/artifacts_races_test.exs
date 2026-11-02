@@ -180,6 +180,8 @@ defmodule Apiary.ArtifactsRacesTest do
   @tag needs: :workflow_model
   test "a switch off that comes after a push waits for it, and then finds the artifact",
        %{scope: scope, work_item: work_item, run: run} do
+    shown = Repo.get!(Workspace, scope.workspace.id).shown_standard_types
+
     {held, holder} =
       hold(fn -> Artifacts.push({:run, run}, work_item, "explainer", plan()) end)
 
@@ -191,7 +193,7 @@ defmodule Apiary.ArtifactsRacesTest do
     commit(held)
 
     assert {:error, :has_artifacts} = Task.await(switch.task, 15_000)
-    assert Repo.get!(Workspace, scope.workspace.id).shown_standard_types == nil
+    assert Repo.get!(Workspace, scope.workspace.id).shown_standard_types == shown
   end
 
   @tag needs: :workflow_model

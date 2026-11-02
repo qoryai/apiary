@@ -174,7 +174,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   # The harness of the workspace's runs, as the Workflow page names it.
-  defp harness_name(%{choice: :qory}), do: gettext("Qory harness")
+  defp harness_name(%{choice: :qory} = chosen), do: ApiaryWeb.HarnessComponents.qory_line(chosen)
   defp harness_name(chosen), do: ApiaryWeb.HarnessComponents.chosen_line(chosen)
 
   defp load_work_items(socket) do

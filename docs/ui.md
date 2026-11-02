@@ -1296,8 +1296,10 @@ mark and the theme menu.
   and **Create workspace** under the text. Without the feature there is no canvas: "How it
   works" takes the main area, and the side panel has the name, the summary, the harness
   line and Create workspace. **Create workspace** creates the workspace, named after the
-  template ("Software factory", then "Software factory 2"), and opens its step Name. The
-  page shows nothing of the workspace limit; at the limit, Create workspace shows the
+  template ("Software factory", then "Software factory 2"), and opens its step Name.
+  Workspace settings › Stages and Workflow then show its harness with its stack: "Harness:
+  Qory harness, stack software", or "stack core" for a workspace made with no template.
+  The page shows nothing of the workspace limit; at the limit, Create workspace shows the
   edition's line as information.
   A template of a harness repository has the key `<prefix>.<module>`, split at the first
   dot. The page reads the repository, shows "Reading harnesses…", then the canvas or "How

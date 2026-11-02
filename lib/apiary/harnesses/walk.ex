@@ -413,12 +413,14 @@ defmodule Apiary.Harnesses.Walk do
 
   defp at_version(section, _ref), do: section
 
-  # The Qory harness of the workspace's type, for a run with no choice, after the
+  # The Qory harness of the workspace's type at the workspace's stack
+  # (`Apiary.Organisations.Workspace.qory_stack/1`), for a run with no choice, after the
   # target's harness file read at `version`, nil for none.
   defp qory(input, version) do
     put(:hidden, Edition.operated?(input.organisation))
     definition = input.workspace |> Domain.for_workspace() |> Domain.definition()
-    section = %{"extends" => definition.harness}
+    base = Map.put(definition.harness, "stack", Workspace.qory_stack(input.workspace))
+    section = %{"extends" => base}
     sources(section, input.organisation, nil)
 
     walked(%{

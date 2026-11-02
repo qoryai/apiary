@@ -14951,9 +14951,13 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/set_up_components.ex
-#: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Qory harness"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory harness, stack %{stack}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

@@ -379,12 +379,10 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
              )
     end
 
-    test "offers the standard types alone with the copy as shipped", %{conn: conn} do
-      assert QoryCopy.template().artifact_types == nil
-
+    test "offers the standard types and the copy's custom type as shipped", %{conn: conn} do
       {:ok, view, _html} = live(conn, @edit)
 
-      assert new_output_options(view) == standard_names()
+      assert new_output_options(view) == standard_names() ++ ["branch"]
     end
 
     test "a key no type has is a path that does not exist", %{conn: conn} do
