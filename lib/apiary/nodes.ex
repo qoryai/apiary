@@ -1323,8 +1323,10 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
-  names/2 is the scope's workspace's nodes of `ids`, deleted ones too, by id: for a page
-  that shows the node a run ran on. A node of another workspace is not among them.
+  names/2 is the scope's workspace's nodes of `ids`, deleted ones too, and the instance's
+  pool where `ids` has it, by id: for a page that shows the node a run ran on, the Qory
+  Pool for a run the instance's pool claimed. A node of another workspace is not among
+  them.
   """
   @spec names(Scope.t(), [Ecto.UUID.t()]) :: %{Ecto.UUID.t() => Node.t()}
   def names(%Scope{}, []), do: %{}
@@ -1337,7 +1339,9 @@ defmodule Apiary.Nodes do
         ids
       ) do
     from(n in Node,
-      where: n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id,
+      where:
+        (n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id) or
+          (is_nil(n.organisation_id) and is_nil(n.workspace_id) and n.kind == :pool),
       where: n.id in ^Enum.uniq(ids)
     )
     |> Repo.all()

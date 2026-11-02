@@ -8,9 +8,10 @@ defmodule Apiary.Runs.Preparation do
   `read/2` returns a map with five members:
 
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
-      pool claimed. `requested_at` is the claim; `started` spans from the starter's
-      `dispatched` to the redemption of the run's code, or to the failure that ended the
-      attempt (`t:machine/0`).
+      pool claimed. `requested_at` is the claim, and `requested_ms` the time from the
+      claim to the starter's `dispatched`; `started` spans from that `dispatched` to the
+      redemption of the run's code, or to the failure that ended the attempt
+      (`t:machine/0`).
     * `steps`: the run's steps by number, each with its output: the last 64 KiB of its
       log lines as plain text (`Apiary.Runs.Record.plain_lines/1`), and whether that is
       cut (`t:step/0`). The output is nil for a reader who may not read the run's log
@@ -65,15 +66,17 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   The machine part. `dispatch_id` is the dispatch's public id, `dp_…`. `machine_type` is
-  nil while the claim answer has no machine type. `release_reason` is the starter's
-  reason of a release, nil for any other dispatch. `started.state` is `running`,
-  `succeeded`, `failed` or `cancelled`, as a step's.
+  nil while the claim answer has no machine type. `requested_ms` is nil while the
+  dispatch has no `dispatched`. `release_reason` is the starter's reason of a release,
+  nil for any other dispatch. `started.state` is `running`, `succeeded`, `failed` or
+  `cancelled`, as a step's.
   """
   @type machine :: %{
           dispatch_id: String.t(),
           pool: pool,
           machine_type: String.t() | nil,
           requested_at: DateTime.t(),
+          requested_ms: non_neg_integer | nil,
           release_reason: String.t() | nil,
           started: %{
             state: String.t(),
@@ -245,6 +248,7 @@ defmodule Apiary.Runs.Preparation do
       pool: pool(dispatch.pool, run),
       machine_type: nil,
       requested_at: dispatch.claimed_at,
+      requested_ms: between(dispatch.claimed_at, started_at),
       release_reason: dispatch.release_reason,
       started: %{
         state: state,

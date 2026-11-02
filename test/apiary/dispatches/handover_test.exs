@@ -553,6 +553,21 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
+  describe "the first dispatched" do
+    test "broadcasts the run its claim registered as changed, and a later one does not",
+         ctx do
+      _queued = queued!(ctx)
+      %{registered: %Run{id: id} = run} = claimed = claimed!(ctx)
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Runs.topic(run.workspace_id, id))
+
+      assert dispatched(ctx.key, claimed) == :ok
+      assert_received {:run_changed, %Run{id: ^id}}
+
+      assert dispatched(ctx.key, claimed) == :ok
+      refute_received {:run_changed, %Run{}}
+    end
+  end
+
   # The target of the work items queued here, with `paths` its runs also read, saved as an
   # owner saves them.
   defp further!(ctx, paths) do

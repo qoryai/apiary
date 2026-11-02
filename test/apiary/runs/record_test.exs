@@ -140,7 +140,7 @@ defmodule Apiary.Runs.RecordTest do
                tool: "Bash",
                status: :failed,
                denied_inside: true,
-               summary: {:text, "npm install @acme/ui-steps --registry https://registry.example"},
+               summary: nil,
                connections: [
                  %{host: "registry.example", decision: "denied", outcome: "refused", rule: nil}
                ]
@@ -659,6 +659,67 @@ defmodule Apiary.Runs.RecordTest do
     end
   end
 
+  describe "a session's runtime texts, results and denials" do
+    test "the index has the texts and thinking; the rows are the slim events", %{scope: scope} do
+      run = projected(scope, runtime_record())
+      index = Record.timeline(scope, run)
+
+      assert index.texts == 2
+
+      kinds = for item <- index.items, item.kind in [:text, :thinking, :tool], do: item.kind
+      assert kinds == [:text, :tool, :tool, :thinking, :text]
+
+      whole =
+        Repo.all(
+          from e in Apiary.Runs.Event,
+            where: e.run_id == ^run.id,
+            select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
+        )
+        |> Map.new(&{&1.sequence, Timeline.slim(&1)})
+
+      # jsonb_pretty and Jason indent differently: the wells of JSON are compared parsed.
+      parsed = fn items ->
+        for item <- items do
+          Map.update(item, :wells, [], fn wells ->
+            for well <- wells do
+              if well.format == :json,
+                do: %{well | text: Jason.decode!(well.text), bytes: nil},
+                else: well
+            end
+          end)
+        end
+      end
+
+      rows = Record.items(scope, run, index.items)
+      assert parsed.(rows) == parsed.(Timeline.build(index.items, whole))
+
+      assert %{summary: "harness:greet", result: %{text: "Launching skill: harness:greet"}} =
+               Enum.find(rows, &(&1[:tool] == "Skill"))
+
+      assert %{status: :denied, reason: "Quoted text in this command can't be checked" <> _} =
+               Enum.find(rows, &(&1[:tool] == "Bash"))
+
+      assert %{cost_usd: 0.0912, outcome: "success"} = Enum.find(rows, &(&1.kind == :result))
+    end
+
+    test "a line of the runtime's stdout is found in the log, the setup's lines not counted",
+         %{scope: scope} do
+      run = projected(scope, runtime_record())
+
+      # Every stream, as Raw reads the log at first: the setup's 24 bytes, then the
+      # runtime's lines, with the stderr chunk between its two stdout chunks.
+      offsets = for line <- 1..10, do: Record.log_offset(scope, run, 1, line, nil)
+      assert offsets == [24, 42, 72, 108, 160, 195, 227, 261, 291, nil]
+
+      # stdout alone: the stderr chunk is not in front of the later lines.
+      assert Record.log_offset(scope, run, 1, 5, "stdout") == 141
+      assert Record.log_offset(scope, run, 1, 9, "stdout") == 272
+
+      assert Record.log_offset(scope, run, 2, 1, nil) == nil
+      assert Record.log_offset(scope, run, 1, 0, nil) == nil
+    end
+  end
+
   describe "the query cuts what Timeline.slim/2 cuts" do
     test "on every event of every demo run, the rows are the slim events", %{scope: scope} do
       for name <- ~w(session-with-subagents failed-run running) do
@@ -683,7 +744,22 @@ defmodule Apiary.Runs.RecordTest do
                   else: well
               end
 
-            if is_map_key(item, :wells), do: %{item | wells: wells}, else: item
+            item = if is_map_key(item, :wells), do: %{item | wells: wells}, else: item
+
+            # The Transcript's response of an old call is a well's JSON too.
+            case item do
+              %{response: %{text: text} = response} ->
+                case Jason.decode(text) do
+                  {:ok, value} ->
+                    %{item | response: %{response | text: value, bytes: nil, lines: nil}}
+
+                  _ ->
+                    item
+                end
+
+              _ ->
+                item
+            end
           end
         end
 

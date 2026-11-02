@@ -348,7 +348,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   with the integration's mark as a link out ("Open %{ref} on %{integration}", with the
   ticket's full form; none for a test work item), and who owns it; More,
   with Copy link and Close work item…, on a work item that has not ended; then the stages
-  (`stage_track/1`).
+  (`stage_track/1`, or `track` where the page gives it).
 
   Copy link copies `link`, the work item's address, in the browser (the `CopyToClipboard`
   hook). Close work item… sends `"ask_close"`, and is there only with `can_close`.
@@ -366,6 +366,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :can_act, :boolean,
     default: false,
     doc: "whether the reader may answer, confirm or decline"
+
+  attr :stage_status, :map,
+    default: nil,
+    doc: "`:words` and `:mark` in place of the status, under the feature `workflow_model`"
+
+  slot :track,
+    doc:
+      "the stages in place of `stage_track/1`: the process version's, under the feature `workflow_model`"
 
   def work_item_header(assigns) do
     work_item = assigns.work_item
@@ -393,7 +401,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         </h1>
         <div class="q-wi-meta-wrap">
           <p id={"#{@id}-meta"} class="q-wi-meta">
-            <.work_item_status work_item={@work_item} can_act={@can_act} />
+            <.work_item_status :if={!@stage_status} work_item={@work_item} can_act={@can_act} />
+            <span :if={@stage_status} id={"#{@id}-stage-status"} class="q-wi-st">
+              <.work_item_mark kind={@stage_status.mark} />{@stage_status.words}
+            </span>
             <span :if={@integration}>
               <.external_link href={@href} class="q-wi-ref" title={@href && @open_title}>
                 <BacklogComponents.integration_tile name={@integration} /><.external_text text={
@@ -431,7 +442,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         </.menu_item>
       </.row_menu>
     </div>
-    <.stage_track id={"#{@id}-stages"} work_item={@work_item} />
+    <.stage_track :if={@track == []} id={"#{@id}-stages"} work_item={@work_item} />
+    {render_slot(@track)}
     """
   end
 

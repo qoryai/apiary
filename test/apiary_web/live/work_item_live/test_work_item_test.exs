@@ -9,7 +9,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
   import Phoenix.LiveViewTest
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.WorkItem
 
@@ -52,6 +52,10 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       conn: conn,
       scope: scope
     } do
+      # The rows of the list; `ApiaryWeb.WorkItemLive.WorkflowTest` tests the board, which
+      # replaces them under the feature `workflow_model`.
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:workflow_model])
       test_item = test_item!(scope)
       listed = work_item_fixture(scope)
 

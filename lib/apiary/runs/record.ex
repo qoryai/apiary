@@ -28,6 +28,7 @@ defmodule Apiary.Runs.Record do
 
   @policy_applied "dev.qory.run.policy_applied"
   @runtime_started "dev.qory.runtime.started"
+  @runtime_text "dev.qory.runtime.text"
   @session_started "dev.qory.session.started"
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
@@ -293,6 +294,17 @@ defmodule Apiary.Runs.Record do
           tool_use_id: fragment("left(? ->> 'tool_use_id', 255)", e.data),
           agent_id: fragment("left(? ->> 'agent_id', 255)", e.data),
           agent_type: fragment("left(? ->> 'agent_type', 255)", e.data),
+          # A text event's kind, "prompt" for a user's text, or "empty" for a block with no
+          # text, which makes no item.
+          text_kind:
+            fragment(
+              "CASE WHEN ? = ? THEN CASE WHEN coalesce(? -> 'text', '\"\"'::jsonb) = '\"\"'::jsonb THEN 'empty' WHEN ? ->> 'role' = 'user' THEN 'prompt' ELSE left(? ->> 'kind', 12) END END",
+              e.type,
+              ^@runtime_text,
+              e.data,
+              e.data,
+              e.data
+            ),
           # 256 characters hold the 255 bytes the fold keeps of an egress event's host,
           # and one more, so a host longer than that is cut and marked below as the fold
           # cuts and marks it (`Timeline.egress_host/1`).
@@ -406,20 +418,18 @@ defmodule Apiary.Runs.Record do
   end
 
   # The columns of the statement below, by name: its own names, never an event's.
-  @input_columns for key <- ~w(command file_path pattern path url description),
-                     do: {key, String.to_atom("input_" <> key)}
-  @slim_columns Map.new(
-                  Timeline.slim_keys() ++ [:input_first | Enum.map(@input_columns, &elem(&1, 1))],
-                  &{Atom.to_string(&1), &1}
-                )
+  @slim_columns Map.new(Timeline.slim_keys(), &{Atom.to_string(&1), &1})
 
   @slim_sql """
   SELECT
     e.sequence, e.type, e.time,
     #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason state code signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
-    #{Enum.map_join(~w(port exit_code duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
-    CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
+    #{Enum.map_join(~w(port exit_code duration_ms turns status line session), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
+    CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,20})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
+    (e.data -> 'truncated' = 'true'::jsonb) IS TRUE AS truncated,
+    (e.data -> 'is_error' = 'true'::jsonb) IS TRUE AS is_error,
+    CASE WHEN jsonb_typeof(e.data -> 'summary') = 'string' THEN left(e.data ->> 'summary', 401) END AS summary,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
     #{Enum.map_join(~w(allow allow_first deny), ",\n  ", fn list -> """
     CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN jsonb_array_length(e.data -> '#{list}') ELSE 0 END AS #{list}_count,
@@ -434,11 +444,8 @@ defmodule Apiary.Runs.Record do
     CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts_of["tools"] |> String.replace("%DATA%", "e.data") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS tools,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts_of["credentials"] |> String.replace("%DATA%", "e.data") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS credentials,
-    #{Enum.map_join(~w(command file_path pattern path url description), ",\n  ", &"CASE WHEN jsonb_typeof(x.i -> '#{&1}') = 'string' THEN left(x.i ->> '#{&1}', 400) END AS input_#{&1}")},
-    (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
-       WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,
-    #{Enum.map_join(~w(text error details input response stdout stderr response_json), ",\n  ", fn name -> "left(y.#{name}, $5) AS #{name}, octet_length(y.#{name}) AS #{name}_bytes" end)},
-    #{Enum.map_join(~w(error details response stdout stderr), ",\n  ", fn name -> "CASE WHEN y.#{name} IS NULL OR y.#{name} = '' THEN 0 ELSE length(y.#{name}) - length(replace(y.#{name}, E'\\n', '')) + CASE WHEN right(y.#{name}, 1) = E'\\n' THEN 0 ELSE 1 END END AS #{name}_lines" end)}
+    #{Enum.map_join(~w(text error details input response stdout stderr response_json content), ",\n  ", fn name -> "left(y.#{name}, $5) AS #{name}, octet_length(y.#{name}) AS #{name}_bytes" end)},
+    #{Enum.map_join(~w(error details response stdout stderr content), ",\n  ", fn name -> "CASE WHEN y.#{name} IS NULL OR y.#{name} = '' THEN 0 ELSE length(y.#{name}) - length(replace(y.#{name}, E'\\n', '')) + CASE WHEN right(y.#{name}, 1) = E'\\n' THEN 0 ELSE 1 END END AS #{name}_lines" end)}
   FROM events e
   CROSS JOIN LATERAL (SELECT e.data -> 'input' AS i, e.data -> 'response' AS r) x
   CROSS JOIN LATERAL (SELECT
@@ -448,6 +455,7 @@ defmodule Apiary.Runs.Record do
       CASE WHEN jsonb_typeof(x.r -> 'stderr') = 'string' THEN x.r ->> 'stderr' END AS err,
       CASE e.type WHEN 'dev.qory.runtime.prompt_submitted' THEN e.data -> 'prompt'
                   WHEN 'dev.qory.runtime.result' THEN e.data -> 'result'
+                  WHEN 'dev.qory.runtime.text' THEN e.data -> 'text'
                   ELSE e.data -> 'message' END AS body) w
   CROSS JOIN LATERAL (SELECT
       CASE WHEN jsonb_typeof(w.body) = 'string' THEN w.body #>> '{}' END AS text,
@@ -457,7 +465,15 @@ defmodule Apiary.Runs.Record do
       w.plain AS response, w.out AS stdout, w.err AS stderr,
       CASE WHEN x.r IS NOT NULL AND jsonb_typeof(x.r) NOT IN ('string', 'null') AND x.r <> '{}'::jsonb
                 AND coalesce(w.plain, '') = '' AND coalesce(w.out, '') = '' AND coalesce(w.err, '') = ''
-           THEN jsonb_pretty(x.r) END AS response_json) y
+           THEN jsonb_pretty(x.r) END AS response_json,
+      -- A tool result's content as text (`Timeline.content_text/1`).
+      CASE WHEN e.type <> 'dev.qory.runtime.tool_result' THEN NULL
+           WHEN jsonb_typeof(e.data -> 'content') = 'string' THEN e.data ->> 'content'
+           WHEN jsonb_typeof(e.data -> 'content') = 'array' THEN
+             (SELECT string_agg(CASE WHEN jsonb_typeof(b) = 'object' AND b ->> 'type' = 'text' AND jsonb_typeof(b -> 'text') = 'string' THEN b ->> 'text'
+                                     WHEN jsonb_typeof(b -> 'type') = 'string' THEN '[' || left(b ->> 'type', 40) || ']'
+                                     ELSE '[?]' END, E'\\n' ORDER BY n)
+                FROM jsonb_array_elements(e.data -> 'content') WITH ORDINALITY a(b, n)) END AS content) y
   WHERE e.organisation_id = $1 AND e.workspace_id = $2 AND e.run_id = $3 AND e.sequence = ANY($4)
   """
 
@@ -484,11 +500,6 @@ defmodule Apiary.Runs.Record do
   end
 
   defp slim_event(row) do
-    input =
-      for {key, column} <- @input_columns, into: %{} do
-        {key, row[column]}
-      end
-
     row
     |> Map.update!(:time, &utc/1)
     |> Map.update!(:terminated, &(&1 || []))
@@ -497,7 +508,7 @@ defmodule Apiary.Runs.Record do
     |> Map.update!(:deny, &(&1 || []))
     |> Map.update!(:tools, &(&1 || []))
     |> Map.update!(:credentials, &(&1 || []))
-    |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
+    |> Map.put(:summary, Timeline.tool_summary(row.summary))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn
       {key, ""} -> {key, nil}
@@ -941,6 +952,87 @@ defmodule Apiary.Runs.Record do
           {_either, acc} ->
             acc
         end
+    end
+  end
+
+  @doc """
+  Where line `line` (1-based) of the session's stdout starts in the log as Raw reads it:
+  the number of bytes before it in the run's chunks of `stream`, every stream when nil, in
+  sequence order. A runtime event read from the output has the line's number (`line`) and
+  the session's (`session`); a `dev.qory.run.log` event has the session's too. `line`
+  counts the runtime's output only, so a chunk of a step, such as a walled session's setup
+  command, is not counted, though it has the session. The session is read from the chunk's
+  event, as `log_chunks` has no column for it. Nil when the session's stdout in the log
+  has fewer lines, as after the log was pruned.
+  """
+  def log_offset(%Scope{} = scope, %Run{} = run, session, line, stream)
+      when is_integer(session) and is_integer(line) and line >= 1 do
+    case line_start(scope, run, session, line - 1, 0) do
+      {sequence, within} ->
+        before =
+          Repo.one(
+            from l in log_after(scope, run, 0, stream),
+              where: l.sequence < ^sequence,
+              select: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0)
+          )
+
+        to_integer(before) + within
+
+      nil ->
+        nil
+    end
+  end
+
+  def log_offset(_scope, _run, _session, _line, _stream), do: nil
+
+  # The chunk the line starts in, and the bytes of the chunk before it: `breaks` line
+  # feeds of the session's stdout come before the line. A line that starts where a chunk
+  # ends starts at the next chunk; with none, the log has no such line yet.
+  defp line_start(scope, run, session, breaks, after_sequence) do
+    page =
+      Repo.all(
+        from l in log_after(scope, run, after_sequence, "stdout"),
+          where: is_nil(l.step),
+          join: e in subquery(events(scope, run)),
+          on: e.sequence == l.sequence,
+          where: fragment("(?->>'session') = ?", e.data, ^Integer.to_string(session)),
+          order_by: l.sequence,
+          limit: @log_page,
+          select: {l.sequence, l.bytes}
+      )
+
+    case find_break(page, breaks) do
+      {:found, sequence, within} ->
+        {sequence, within}
+
+      {:more, left, last} when length(page) == @log_page ->
+        line_start(scope, run, session, left, last)
+
+      _none ->
+        nil
+    end
+  end
+
+  defp find_break([], breaks), do: {:none, breaks}
+
+  defp find_break([{sequence, _bytes} | _rest], 0), do: {:found, sequence, 0}
+
+  defp find_break([{sequence, bytes} | rest], breaks) do
+    feeds = :binary.matches(bytes, "\n")
+
+    if length(feeds) >= breaks do
+      {at, 1} = Enum.at(feeds, breaks - 1)
+
+      cond do
+        at + 1 < byte_size(bytes) -> {:found, sequence, at + 1}
+        rest == [] -> {:more, 0, sequence}
+        true -> find_break(rest, 0)
+      end
+    else
+      case rest do
+        [] -> {:more, breaks - length(feeds), sequence}
+        _ -> find_break(rest, breaks - length(feeds))
+      end
     end
   end
 

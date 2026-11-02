@@ -260,7 +260,9 @@ defmodule Apiary.Kinds.ServicesTest do
                Enum.sort(
                  ~w(api-format.schema.json auth.schema.json policy.schema.json
                     run-configuration.schema.json runtimes.json secrets-request.schema.json
-                    secrets-answer.schema.json sealed-plaintext.schema.json)
+                    secrets-answer.schema.json sealed-plaintext.schema.json
+                    events/runtime.text.schema.json events/runtime.tool_result.schema.json
+                    events/runtime.tool_denied.schema.json)
                  |> Enum.map(&("priv/contract/" <> &1))
                  |> Enum.concat(
                    for file <- ~w(sealed/invalid/bad-signature.json sealed/invalid/expired.json

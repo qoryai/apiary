@@ -141,6 +141,163 @@ defmodule Apiary.RunEventsFixtures do
     ]
   end
 
+  @doc """
+  A synthetic run of one session on pipes whose runtime reported its texts, tool results
+  and denials (`dev.qory.runtime.text`, `.tool_result`, `.tool_denied`), as Forager maps a
+  headless Claude Code session. A setup command of the session (step 1) prints 3 lines on
+  stdout before the runtime starts; the runtime's stdout lines are numbered from 1 without
+  them, and each event read from the output has its `line`.
+
+  The runtime's stdout, by line: 1 the system record, 2 the first text, 3 the Skill call,
+  4 its result, 5 the Bash call, 6 its denial, 7 thinking, 8 the last text, 9 the result.
+  """
+  def runtime_record do
+    out = fn lines -> Enum.map_join(lines, &(&1 <> "\n")) end
+
+    [
+      {1, "run.started", started_data()},
+      {2, "session.started", session_started_data()},
+      {3, "run.step_started", %{"step" => 1, "name" => "prepare the inputs", "kind" => "setup"}},
+      {4, "run.log",
+       %{
+         "stream" => "stdout",
+         "bytes" => Base.encode64(out.(["setup 1", "setup 2", "setup 3"])),
+         "session" => 1,
+         "step" => 1
+       }},
+      {5, "run.step_exited",
+       %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 40}},
+      {6, "runtime.started",
+       %{"session_id" => "session-1", "session" => 1, "source" => "startup", "model" => "opus"}},
+      {7, "runtime.prompt_submitted",
+       %{"session_id" => "session-1", "session" => 1, "prompt" => "/harness:hello"}},
+      {8, "run.log",
+       %{
+         "stream" => "stdout",
+         "bytes" =>
+           Base.encode64(
+             out.([
+               ~s({"type":"system"}),
+               ~s({"type":"assistant","text":1}),
+               ~s({"type":"assistant","tool":"Skill"}),
+               ~s({"type":"user","result":"Skill"})
+             ])
+           ),
+         "session" => 1
+       }},
+      {9, "runtime.text",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "kind" => "text",
+         "text" => "I'll greet **Dana** with the skill.",
+         "line" => 2
+       }},
+      {10, "runtime.tool_started",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "tool" => "Skill",
+         "tool_use_id" => "toolu_1",
+         "input" => %{"skill" => "harness:greet", "args" => "Dana"},
+         "summary" => "harness:greet",
+         "line" => 3
+       }},
+      {11, "runtime.tool_result",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "tool_use_id" => "toolu_1",
+         "content" => [%{"type" => "text", "text" => "Launching skill: harness:greet"}],
+         "line" => 4
+       }},
+      {12, "runtime.tool_finished",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "tool" => "Skill",
+         "tool_use_id" => "toolu_1",
+         "input" => %{"skill" => "harness:greet", "args" => "Dana"},
+         "summary" => "harness:greet",
+         "duration_ms" => 80
+       }},
+      {13, "run.log",
+       %{"stream" => "stderr", "bytes" => Base.encode64("warning: slow disk\n"), "session" => 1}},
+      {14, "run.log",
+       %{
+         "stream" => "stdout",
+         "bytes" =>
+           Base.encode64(
+             out.([
+               ~s({"type":"assistant","tool":"Bash"}),
+               ~s({"type":"user","denied":"Bash"}),
+               ~s({"type":"assistant","thinking":1}),
+               ~s({"type":"assistant","text":2}),
+               ~s({"type":"result"})
+             ])
+           ),
+         "session" => 1
+       }},
+      {15, "runtime.tool_started",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "tool" => "Bash",
+         "tool_use_id" => "toolu_2",
+         "input" => %{"command" => "echo \"Hello, Dana\""},
+         "summary" => "echo \"Hello, Dana\"",
+         "line" => 5
+       }},
+      {16, "runtime.tool_denied",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "tool" => "Bash",
+         "tool_use_id" => "toolu_2",
+         "message" => "Quoted text in this command can't be checked before it runs",
+         "line" => 6
+       }},
+      {17, "runtime.text",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "kind" => "thinking",
+         "text" => "The shell call was denied; answer in text.",
+         "line" => 7
+       }},
+      {18, "runtime.text",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "kind" => "text",
+         "text" => "# Hello, Dana\nWelcome to the Web shop of Acme.",
+         "line" => 8
+       }},
+      {19, "runtime.turn_finished",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "message" => "# Hello, Dana\nWelcome to the Web shop of Acme."
+       }},
+      {20, "runtime.result",
+       %{
+         "session_id" => "session-1",
+         "session" => 1,
+         "outcome" => "success",
+         "is_error" => false,
+         "turns" => 6,
+         "duration_ms" => 14_000,
+         "cost_usd" => 0.0912,
+         "result" => "# Hello, Dana\nWelcome to the Web shop of Acme.",
+         "line" => 9
+       }},
+      {21, "runtime.ended", %{"session_id" => "session-1", "session" => 1, "reason" => "other"}},
+      {22, "session.exited",
+       %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 15_000}},
+      {23, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 16_000}}
+    ]
+  end
+
   @doc "The data of a `run.log` line of step `step`, on stderr, as the host work writes it."
   def step_log_data(step, line),
     do: %{"stream" => "stderr", "bytes" => Base.encode64(line), "step" => step}
