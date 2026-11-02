@@ -32,9 +32,14 @@ defmodule Apiary.Stacks do
   # access and write no audit entry. Tests call them, the demo (`mix apiary.demo.console`)
   # calls `put_stack/3`, and Workspace settings › Workflow calls both through
   # `Apiary.Stacks.Sources.save/3`, which asks `harness.save`, the access action for a
-  # save, first. A write records the person who saved the value and, in
-  # `owner_organisation_id`, the organisation the edition gives for the scope
-  # (`Apiary.Edition.harness_owner/1`). The core gives the scope's organisation when the
+  # save, first. A new workspace's harness calls `put_stack/4` through
+  # `Apiary.Stacks.Sources.save_start/3` and `save_qory_start/2`, after the checks of
+  # `Apiary.Organisations.create_workspace_from_template/3` or
+  # `create_workspace_of_kind/3`. A write records the person who saved the value and, in
+  # `owner_organisation_id`, the option `owner:` where the caller gives it, as
+  # `save_start/3` does with the shared row's owner, else the organisation the edition
+  # gives for the scope (`Apiary.Edition.harness_owner/1`). The core gives the scope's
+  # organisation when the
   # scope reaches it through a membership there alone (`saved_by/1`), and the instance's
   # organisation for an instance admin who reaches it any other way. A scope the edition
   # gives no organisation for, such as the instance acting by itself, saves nothing

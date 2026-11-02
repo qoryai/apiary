@@ -131,15 +131,19 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Organisations.create_workspace_from_template/3`), with no read: the commit is
   # the one `templates/2` gave, recorded as given, and a run's walk reads the row as any
   # other. `check_start/2`, before the transaction, takes a connected repository under
-  # `harness.save`, and an assigned or a shared source with the feature `factory` visible;
-  # it refuses a source that offers no template.
+  # `harness.save`, and an assigned or a shared source with the feature `factory` visible.
+  # It refuses a source that offers no template, and a connected or an assigned source
+  # that differs from the entry of `repositories/1` or `assigned/1` on its id, address,
+  # `ref` or narrowing.
   #
   # `save_start/3` writes a row at the workspace: the source's repository, the template's
   # stack, and the commit as the row's `ref`, with no version. A row of an assigned source
   # has the assignment's `ref`, the only one the assignment covers, and the commit is in
-  # the record alone. A row of the shared harness keeps the shared row's owner, so a
-  # harness that runs hide stays hidden (`Apiary.Stacks.Resolution`), and the record then
-  # has no address. `save_qory_start/2` writes a `:qory` row only where the organisation
+  # the record alone. A row of the shared harness has the shared row's `ref` where an
+  # assignment covers the template's stack at that `ref`, with the commit in the record
+  # alone, and the commit otherwise. It keeps the shared row's owner, so a harness that
+  # runs hide stays hidden (`Apiary.Stacks.Resolution`), and the record then has no
+  # address. `save_qory_start/2` writes a `:qory` row only where the organisation
   # shares another harness, which the workspace would otherwise take. Both hold the lock
   # of the organisation's shares where they read its shared row.
   #
@@ -1966,9 +1970,11 @@ defmodule Apiary.Stacks.Sources do
   # check_start/2 is whether the scope's person may make a workspace from `start` (the
   # moduledoc), asked before the transaction: `:ok`; `{:error, :forbidden}` or `{:error,
   # :not_found}` from the access check or with the feature off; `{:error, :invalid}` for a
-  # source that offers no template or a template of a type that is the key of no domain's
-  # type, which a page read before can still send (`Apiary.Lingo.Domain.known_type?/1`);
-  # or `{:error, errors}` for a process `Apiary.Processes.validate/1` refuses.
+  # source that offers no template, a connected or an assigned source that is not the
+  # entry of its list, read from the database (`listed?/2`), or a template of a type that
+  # is the key of no domain's type, which a page read before can still send
+  # (`Apiary.Lingo.Domain.known_type?/1`); or `{:error, errors}` for a process
+  # `Apiary.Processes.validate/1` refuses.
   @spec check_start(Scope.t(), start) ::
           :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
   def check_start(
@@ -1977,6 +1983,7 @@ defmodule Apiary.Stacks.Sources do
       )
       when is_binary(commit) do
     with :ok <- source_allowed(scope, source),
+         true <- listed?(scope, source),
          true <- not narrowed?(narrowing) and Domain.known_type?(template.type) do
       Apiary.Processes.validate(template.process)
     else
@@ -1995,6 +2002,17 @@ defmodule Apiary.Stacks.Sources do
 
   defp source_allowed(%Scope{}, _source), do: {:error, :invalid}
 
+  # Whether `source` is the entry of the list of its kind on what the row and the record
+  # use. The shared harness has no list: `row_source/4` checks it under the lock.
+  defp listed?(scope, %{kind: :linked} = source), do: entry?(repositories(scope), source)
+  defp listed?(scope, %{kind: :assigned} = source), do: entry?(assigned(scope), source)
+  defp listed?(_scope, %{kind: :shared}), do: true
+
+  defp entry?(entries, source) do
+    keys = [:id, :git, :ref, :narrowing]
+    Enum.any?(entries, &(Map.take(&1, keys) == Map.take(source, keys)))
+  end
+
   @doc false
   # save_start/3 saves the harness of `workspace`, new, made from `start` (the moduledoc),
   # inside the caller's transaction: `{:ok, record}`, the record of the template
@@ -2008,9 +2026,10 @@ defmodule Apiary.Stacks.Sources do
         %Workspace{} = workspace,
         %{source: source, commit: commit, template: template}
       ) do
-    base = %{"git" => source.git, "ref" => row_ref(source, commit), "stack" => template.stack}
+    stack = template.stack
 
-    with {:ok, opts, git} <- row_options(scope, source),
+    with {:ok, ref, opts, git} <- row_source(scope, source, commit, stack),
+         base = %{"git" => source.git, "ref" => ref, "stack" => stack},
          {:ok, _row} <-
            saved(
              Stacks.put_stack(
@@ -2033,25 +2052,40 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  defp row_ref(%{kind: :assigned, ref: ref}, _commit), do: ref
-  defp row_ref(_source, commit), do: commit
-
-  # The options of the row of `source`, and the address its record has.
-  defp row_options(%Scope{organisation: organisation}, %{kind: :shared, git: git}) do
+  # The `ref` of the row of `source`, its options, and the address its record has.
+  defp row_source(
+         %Scope{organisation: organisation},
+         %{kind: :shared, git: git},
+         commit,
+         stack
+       ) do
     lock_shares(organisation)
 
     case Stacks.shared(organisation) do
-      %Stack{harness: harness, owner_organisation_id: owner} ->
-        if extended(harness)["git"] == git,
-          do: {:ok, [owner: owner], if(not hides?(owner, organisation), do: git)},
-          else: {:error, :not_found}
+      %Stack{harness: harness, owner_organisation_id: owner} = row ->
+        if extended(harness)["git"] == git do
+          ref = assigned_ref(organisation, row, git, stack) || commit
+          {:ok, ref, [owner: owner], if(not hides?(owner, organisation), do: git)}
+        else
+          {:error, :not_found}
+        end
 
       nil ->
         {:error, :not_found}
     end
   end
 
-  defp row_options(%Scope{}, %{git: git}), do: {:ok, [], git}
+  defp row_source(%Scope{}, %{kind: :assigned, git: git, ref: ref}, _commit, _stack),
+    do: {:ok, ref, [], git}
+
+  defp row_source(%Scope{}, %{git: git}, commit, _stack), do: {:ok, commit, [], git}
+
+  # The `ref` of the shared row `row` where an assignment covers `stack` of `git` at it,
+  # as `Apiary.Harnesses.allowed?/3` compares it; else nil.
+  defp assigned_ref(%Organisation{id: id}, row, git, stack) do
+    ref = pin(row, nil, nil)
+    if Harnesses.assigned?(id, %{"git" => git, "ref" => ref, "stack" => stack}), do: ref
+  end
 
   defp hides?(owner, %Organisation{id: id} = organisation) do
     Resolution.hidden?(owner, %{

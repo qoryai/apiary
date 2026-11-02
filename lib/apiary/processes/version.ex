@@ -8,11 +8,13 @@ defmodule Apiary.Processes.Version do
     under; `:trial`, a version chosen work items run under before it is made current;
     `:past`, a current version a later one replaced; `:dropped`, a trial that was not
     made current.
-  - `author_id`: who saved it, nil for the copy of the type's default made with the
-    workspace.
+  - `author_id`: who saved it. On version 1, nil for a copy of the type's default or of
+    the Qory template, and the person who made the workspace for a copy of a repository's
+    template.
   - `based_on_id`: the version the save started from, nil for version 1.
-  - `template`: `%{"type" => type, "version" => version}`, the default process the
-    workspace copied as version 1, kept on that version; nil on the others.
+  - `template`: what the workspace copied as version 1, on that version alone, nil on the
+    others: `%{"type" => type, "version" => version}` for the type's default, or the keys
+    `source`, `git`, `commit`, `module`, `stack`, `type` and `version` for a template.
   - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
   """
   use Ecto.Schema

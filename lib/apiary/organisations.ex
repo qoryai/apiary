@@ -1748,7 +1748,8 @@ defmodule Apiary.Organisations do
   shared source needs the feature `factory` (Apiary.Stacks.Sources.check_start/2).
 
   `create_workspace_of_kind/3`'s answers, and `{:error, :invalid}` for a source that
-  offers no template, a template whose `type` is the key of no domain's type
+  offers no template, a connected or an assigned source that differs from the
+  organisation's list of them, a template whose `type` is the key of no domain's type
   (`Apiary.Lingo.Domain.known_type?/1`), or a row the save rules refuse; `{:error,
   errors}` for a process Apiary.Processes.validate/1 refuses; `{:error, {:invalid, type,
   error}}` for a custom type the database refuses; and `{:error, :not_found}` where the
@@ -1875,9 +1876,10 @@ defmodule Apiary.Organisations do
   create_first_workspace/2 creates the first workspace of the scope's organisation, one
   created with none (`sign_up_user/3` with `workspace: false`): named `attrs["name"]`,
   else "#{@default_workspace_name}", of the domain `attrs["domain"]`, one of
-  `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. It is
-  `create_workspace/2` in every other way: the action `workspace.create`, the edition's
-  limit, the entry and the edition's step.
+  `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. A domain whose type is
+  the Qory template's makes the workspace from that template, as
+  `create_workspace_of_kind/3` does. The action `workspace.create`, the edition's limit,
+  the entry and the edition's step are those of `create_workspace/2`.
 
   `{:ok, workspace}`; `{:error, :exists}` where the organisation has a workspace in use
   already, counted under the organisation's lock, so of two calls at once one creates it;

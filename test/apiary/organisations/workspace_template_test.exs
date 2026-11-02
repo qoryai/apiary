@@ -62,6 +62,28 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     )
   end
 
+  # A connected repository of the organisation, as `Sources.repositories/1` lists it.
+  defp linked!(scope) do
+    adapter = call_adapter_fixture()
+    {connection, _nonce} = connection_fixture(scope, adapter.adapter, :listed)
+    harness_collection_fixture(connection, @harness, "acme/harness")
+    [source] = Sources.repositories(scope)
+    source
+  end
+
+  # An assignment of `source` to the organisation, as `Sources.assigned/1` lists it.
+  defp assigned!(scope, source) do
+    Repo.insert!(%Assignment{
+      organisation_id: scope.organisation.id,
+      every_organisation: false,
+      source: source,
+      created_by_id: instance_admin_scope().user.id
+    })
+
+    [listed] = Sources.assigned(scope)
+    listed
+  end
+
   defp start(source, changes \\ %{}, commit \\ @commit),
     do: %{source: source, commit: commit, template: template(changes)}
 
@@ -296,7 +318,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     test "a commit an adapter gives that is no full id is recorded as given" do
       scope = scope_fixture()
       commit = "c-R_harness"
-      source = source(:linked, "linked:cl_0")
+      source = linked!(scope)
 
       assert {:ok, workspace} =
                Organisations.create_workspace_from_template(scope, start(source, %{}, commit))
@@ -307,17 +329,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
     test "an assigned source keeps the assignment's ref for reads and records the commit apart" do
       scope = scope_fixture()
-      admin = instance_admin_scope()
-
-      assignment =
-        Repo.insert!(%Assignment{
-          organisation_id: scope.organisation.id,
-          every_organisation: false,
-          source: %{"git" => @harness, "ref" => "v1"},
-          created_by_id: admin.user.id
-        })
-
-      assert [%{kind: :assigned, ref: "v1"} = source] = Sources.assigned(scope)
+      source = assigned!(scope, %{"git" => @harness, "ref" => "v1"})
+      assert %{kind: :assigned, ref: "v1", id: "assigned:" <> assignment_id} = source
 
       assert {:ok, workspace} =
                Organisations.create_workspace_from_template(scope, start(source))
@@ -327,7 +340,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       template = first_version(workspace).template
       assert template["commit"] == @commit
-      assert template["type"] == "assigned-#{assignment.id}.support-desk"
+      assert template["type"] == "assigned-#{assignment_id}.support-desk"
     end
 
     test "the shared harness: a row at the template's stack and the commit the list read" do
@@ -383,7 +396,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
     test "the name is the template's, numbered where it is taken" do
       scope = scope_fixture()
-      source = source(:linked, "linked:cl_0")
+      source = linked!(scope)
 
       {:ok, first} = Organisations.create_workspace_from_template(scope, start(source))
       {:ok, second} = Organisations.create_workspace_from_template(scope, start(source))
@@ -396,7 +409,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert Organisations.create_workspace_from_template(
                scope,
-               start(source(:linked, "linked:cl_0")),
+               start(linked!(scope)),
                :first
              ) == {:error, :exists}
     end
@@ -404,7 +417,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     test "a member, and an admin, may not create one" do
       scope = scope_fixture()
       before = held(scope)
-      source = source(:linked, "linked:cl_0")
+      source = linked!(scope)
 
       for level <- [:member, :admin] do
         assert Organisations.create_workspace_from_template(
@@ -420,11 +433,9 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       scope = scope_fixture()
       before = held(scope)
 
-      for source <- [
-            source(:address, "address"),
-            source(:linked, "linked:cl_0", %{narrowing: %{"stack" => "web"}}),
-            source(:assigned, "assigned:u1", %{narrowing: %{"path" => "stacks/web"}})
-          ] do
+      narrowed = assigned!(scope, %{"git" => @harness, "ref" => "v1", "path" => "stacks/web"})
+
+      for source <- [source(:address, "address"), narrowed] do
         assert Organisations.create_workspace_from_template(scope, start(source)) ==
                  {:error, :invalid}
       end
@@ -435,7 +446,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     test "a process that does not pass the check is refused before the transaction" do
       scope = scope_fixture()
       before = held(scope)
-      source = source(:linked, "linked:cl_0")
+      source = linked!(scope)
 
       assert {:error, [_error | _more]} =
                Organisations.create_workspace_from_template(
@@ -506,7 +517,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert {:ok, %Workspace{shown_standard_types: nil} = workspace} =
                Organisations.create_workspace_from_template(
                  scope,
-                 start(source(:linked, "linked:cl_0"))
+                 start(linked!(scope))
                )
 
       assert Repo.all(from t in Type, where: t.workspace_id == ^workspace.id) == []
@@ -514,6 +525,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
     test "a failed insert of a template's type rolls the workspace back" do
       scope = scope_fixture()
+      source = linked!(scope)
       before = held(scope)
 
       entries = fn ->
@@ -530,7 +542,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert Organisations.create_workspace_from_template(
                scope,
-               start(source(:linked, "linked:cl_0"), %{artifact_types: [type, type]})
+               start(source, %{artifact_types: [type, type]})
              ) == {:error, {:invalid, "reply-draft", :repeated}}
 
       assert held(scope) == before
@@ -538,12 +550,64 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       refute_received {:workspace_created, _ids}
     end
 
+    test "a connected source that differs from its entry is refused, and nothing is made" do
+      scope = scope_fixture()
+      source = linked!(scope)
+      before = held(scope)
+
+      for forged <- [
+            %{source | id: "linked:cl_0"},
+            %{source | git: "https://code.example.com/acme/other"},
+            %{source | ref: "v9"},
+            %{source | narrowing: %{"stack" => "web"}}
+          ] do
+        assert Organisations.create_workspace_from_template(scope, start(forged)) ==
+                 {:error, :invalid}
+      end
+
+      assert held(scope) == before
+    end
+
+    test "an assigned source that differs from its entry is refused, and nothing is made" do
+      scope = scope_fixture()
+      source = assigned!(scope, %{"git" => @harness, "ref" => "v1"})
+      before = held(scope)
+
+      for forged <- [
+            %{source | id: "assigned:" <> Ecto.UUID.generate()},
+            %{source | git: "https://code.example.com/acme/other"},
+            %{source | ref: "v9"},
+            %{source | narrowing: %{"stack" => "web"}}
+          ] do
+        assert Organisations.create_workspace_from_template(scope, start(forged)) ==
+                 {:error, :invalid}
+      end
+
+      assert held(scope) == before
+    end
+
+    test "a source of no list is refused: an assignment or a repository that does not exist" do
+      scope = scope_fixture()
+      before = held(scope)
+
+      for forged <- [
+            source(:assigned, "assigned:" <> Ecto.UUID.generate(), %{ref: "v9"}),
+            source(:linked, "linked:cl_0")
+          ] do
+        assert Organisations.create_workspace_from_template(scope, start(forged)) ==
+                 {:error, :invalid}
+      end
+
+      assert held(scope) == before
+    end
+
     test "a template of a type that is no domain's is refused, and nothing is made" do
       scope = scope_fixture()
+      sources = [linked!(scope), assigned!(scope, %{"git" => @harness, "ref" => "v1"})]
       before = held(scope)
       :ok = Organisations.subscribe_workspaces(scope)
 
-      for source <- [source(:linked, "linked:cl_0"), source(:assigned, "assigned:1")] do
+      for source <- sources do
         assert Organisations.create_workspace_from_template(
                  scope,
                  start(source, %{type: "customer-care"})
@@ -556,14 +620,13 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
     test "a create that fails after the workspace row leaves nothing" do
       scope = scope_fixture()
+      refused = assigned!(scope, %{"git" => "http://code.example.com/acme", "ref" => "v1"})
       before = held(scope)
       :ok = Organisations.subscribe_workspaces(scope)
 
       # A row the save rules refuse, and a shared harness gone since the page read it.
-      assert Organisations.create_workspace_from_template(
-               scope,
-               start(source(:linked, "linked:cl_0", %{git: "http://code.example.com/acme"}))
-             ) == {:error, :invalid}
+      assert Organisations.create_workspace_from_template(scope, start(refused)) ==
+               {:error, :invalid}
 
       assert Organisations.create_workspace_from_template(
                scope,
@@ -590,12 +653,11 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     test "an organisation at the edition's limit: nothing is made" do
       scope = scope_fixture()
       :ok = Edition.put_test_stub(OneWorkspace)
+      source = linked!(scope)
       before = held(scope)
 
-      assert Organisations.create_workspace_from_template(
-               scope,
-               start(source(:linked, "linked:cl_0"))
-             ) == {:error, :limit}
+      assert Organisations.create_workspace_from_template(scope, start(source)) ==
+               {:error, :limit}
 
       assert held(scope) == before
     end

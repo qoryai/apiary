@@ -14,7 +14,7 @@ defmodule Apiary.Harnesses.WalkTest do
   import Apiary.WorkItemsFixtures
   import Apiary.DispatchedRunsFixtures
 
-  alias Apiary.{Dispatches, Harnesses, Stacks, WorkItems}
+  alias Apiary.{Dispatches, Edition, Harnesses, Organisations, Stacks, WorkItems}
   alias Apiary.Adapters.{Calls, Collection, Grant}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
@@ -270,6 +270,127 @@ defmodule Apiary.Harnesses.WalkTest do
   end
 
   ## The target's file and the choice's document
+
+  describe "the row of a workspace made from a template" do
+    setup do
+      :ok = Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
+      :ok
+    end
+
+    # The template of the stack `web` of `source`, read at `@commit`.
+    defp from_template(ctx, source) do
+      path = "../../fixtures/harness/v1/sources/factory/modules/support-desk/process.yaml"
+      {:ok, read} = __DIR__ |> Path.join(path) |> File.read!() |> Reader.template()
+      template = Map.merge(read, %{module: "support-desk", stack: "web"})
+
+      {:ok, workspace} =
+        Organisations.create_workspace_from_template(ctx.scope, %{
+          source: source,
+          commit: @commit,
+          template: template
+        })
+
+      {:ok, _row} = Stacks.put_stack(ctx.scope, {:workspace, workspace, "explore"}, nil)
+      workspace
+    end
+
+    # The organisation shares the harness at `ref`, a row the instance's organisation owns.
+    defp shared!(ctx, version, ref) do
+      document = ~s(extends:\n  git: "#{@harness}"\n  ref: "#{ref}"\n  stack: "web"\n)
+
+      {:ok, _row} =
+        Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, document,
+          choice: :repository,
+          version: version,
+          owner: Edition.instance_organisation_id()
+        )
+
+      %{
+        id: "shared",
+        kind: :shared,
+        label: "acme/harness",
+        git: @harness,
+        ref: ref,
+        narrowing: %{},
+        location: nil,
+        version: nil,
+        stacks: nil
+      }
+    end
+
+    # The repository is reached only through the instance's grant, as `assigned` covers it.
+    defp through_the_instance(ctx, assigned) do
+      %{instance: instance} = instance(ctx, assigned)
+
+      covered =
+        ctx
+        |> covering()
+        |> Map.update!(ctx.run.adapter.id, &Map.delete(&1, @harness))
+        |> Map.put(instance.adapter.id, %{
+          @harness => {"G_i", "R_harness"},
+          @tools => {"G_i", "R_tools"}
+        })
+
+      serve([ctx.run, instance], covered: covered, files: @base_files)
+    end
+
+    defp row_ref(workspace) do
+      {:ok, %{"extends" => %{"ref" => ref}}} =
+        Reader.document(Stacks.choice(workspace).harness)
+
+      ref
+    end
+
+    test "an assigned source walks at the assignment's ref", ctx do
+      through_the_instance(ctx, [{@harness, "v1"}, {@tools, "v2"}])
+      source = Enum.find(Sources.assigned(ctx.scope), &(&1.git == @harness))
+
+      workspace = from_template(ctx, source)
+
+      assert row_ref(workspace) == "v1"
+      assert {:ok, _walked} = Walk.run(%{ctx.input | workspace: workspace})
+    end
+
+    test "a shared source through an assignment of a branch walks at that branch", ctx do
+      through_the_instance(ctx, [{@harness, "main"}, {@tools, "v2"}])
+
+      workspace = from_template(ctx, shared!(ctx, {:branch, "main"}, "main"))
+
+      assert row_ref(workspace) == "main"
+      assert {:ok, _walked} = Walk.run(%{ctx.input | workspace: workspace})
+    end
+
+    test "a shared source through an assignment of a tag walks at that tag", ctx do
+      through_the_instance(ctx, [{@harness, "v1"}, {@tools, "v2"}])
+
+      workspace = from_template(ctx, shared!(ctx, {:tag, "v1"}, "v1"))
+
+      assert row_ref(workspace) == "v1"
+      assert {:ok, _walked} = Walk.run(%{ctx.input | workspace: workspace})
+    end
+
+    test "a shared source no assignment covers keeps the commit, and walks by the grant", ctx do
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      workspace = from_template(ctx, shared!(ctx, {:branch, "main"}, "main"))
+
+      assert row_ref(workspace) == @commit
+      assert {:ok, _walked} = Walk.run(%{ctx.input | workspace: workspace})
+    end
+
+    test "the commit stays where an assignment covers another ref", ctx do
+      through_the_instance(ctx, [{@harness, "v1"}, {@tools, "v2"}])
+
+      workspace = from_template(ctx, shared!(ctx, {:branch, "main"}, "main"))
+
+      assert row_ref(workspace) == @commit
+
+      assert {:failed, %{failure: :not_allowed}} = Walk.run(%{ctx.input | workspace: workspace})
+    end
+  end
 
   describe "which harness applies" do
     test "the target's file whose section has extends applies over the workspace's Qory harness choice, and the run gets no document",
