@@ -42,14 +42,15 @@ defmodule Apiary.Lingo.Domain.Definition do
           named: [%{name: String.t(), commit: String.t()}]
         }
 
-  # The Qory harness versions this release ships. The newest is a commit of the `main`
-  # branch of the Qory harness, by its full commit id. This release ships no named
-  # versions: the Qory harness has no tags.
+  # The Qory harness versions this release ships. The newest is a commit of the Qory
+  # harness, by its full commit id; priv/harness/qory/ has a copy of its template and
+  # stack files at that commit (`mix apiary.harness.update`). This release ships no
+  # named versions: the Qory harness has no tags.
   @qory_harness %{
     git: "https://github.com/qoryai/harness",
     stack: "core",
-    stacks: ["core"],
-    latest: "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305",
+    stacks: ["core", "software"],
+    latest: "0968239f1907d692b06d3f7bae21cf030c64ec58",
     named: []
   }
 

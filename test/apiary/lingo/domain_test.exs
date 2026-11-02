@@ -127,7 +127,7 @@ defmodule Apiary.Lingo.DomainTest do
   describe "a domain's definition" do
     @harness %{
       "git" => "https://github.com/qoryai/harness",
-      "ref" => "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305",
+      "ref" => "0968239f1907d692b06d3f7bae21cf030c64ec58",
       "stack" => "core"
     }
 
