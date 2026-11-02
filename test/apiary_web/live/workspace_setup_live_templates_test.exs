@@ -257,6 +257,28 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       refute render(page) =~ "acme/harness"
     end
 
+    test "a hidden shared harness that cannot be fetched shows no host or port", ctx do
+      serve(ctx, harness_files())
+      row = share!(ctx, "https://private.example.org/acme/harness")
+
+      {1, _} =
+        Repo.update_all(from(s in Stack, where: s.id == ^row.id),
+          set: [owner_organisation_id: Apiary.Edition.instance_organisation_id()]
+        )
+
+      lv = open(ctx)
+      html = render(lv)
+
+      assert has_element?(
+               lv,
+               "#set-up-group-shared p",
+               "Qory Apiary could not read the shared harness. Try again. If it repeats,"
+             )
+
+      refute html =~ "private.example.org"
+      refute html =~ "acme/harness\""
+    end
+
     test "a shared row whose repository only a narrowed assignment covers has no template",
          ctx do
       admin = instance_grant(ctx, repository_files("R_team", @module_files))

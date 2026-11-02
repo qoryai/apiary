@@ -912,7 +912,7 @@ defmodule ApiaryWeb.SetUpComponents do
 
     * "Qory harness": the Qory template, as `kind_cards/1` shows it, always;
     * "Shared harness", "Assigned harnesses" and "Connected repositories": the templates
-      each place of `places` gave, as `reads` has them.
+      read from each place of `places`, as `reads` has them.
 
   `places` are the places the person may list templates from. `reads` maps a place's
   `prefix` to `:waiting` or `:reading`, `{:ok, templates}` or `{:error, reason}`. A place in
@@ -1131,8 +1131,17 @@ defmodule ApiaryWeb.SetUpComponents do
   # failed, for a reason of `Apiary.Stacks.Sources` or `:exited`, in the words of
   # `ApiaryWeb.HarnessComponents.read_words/3`. A failed read of a public repository's host
   # has its words from `read_words/4`, which takes the organisation's name where a
-  # workspace's is asked, as New workspace has no workspace.
+  # workspace's is asked, as New workspace has no workspace; for a hidden shared harness
+  # the words have no host and no port.
   @spec read_line(term, map, %Organisation{}) :: String.t() | list
+  def read_line({:fetch, _code, _rule}, %{hidden: true}, _organisation) do
+    # The words of a failed fetch have the host and the port of the address.
+    rich_gettext(
+      "Qory Apiary could not read the shared harness. Try again. If it repeats, %{contact_support}.",
+      contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+    )
+  end
+
   def read_line(reason, place, %Organisation{name: name}),
     do: HarnessComponents.read_words(reason, named(place), name, name)
 
@@ -1255,8 +1264,8 @@ defmodule ApiaryWeb.SetUpComponents do
 
   @doc """
   choose_template/4 takes Create workspace on the page of a template of a harness source
-  (`ApiaryWeb.WorkspaceTypeLive`): `place` is the place the page read and `start` the source, commit and template that read
-  gave. It creates a workspace of that template in the scope's organisation
+  (`ApiaryWeb.WorkspaceTypeLive`): `place` is the place the page read, and `start` the
+  source, commit and template that read gave. It creates a workspace of that template in the scope's organisation
   (`Apiary.Organisations.create_workspace_from_template/3`, with `which`, `:first` where the
   organisation has no workspace yet) and opens its first set-up step, Name. The answers
   that are not a workspace:
@@ -1264,13 +1273,13 @@ defmodule ApiaryWeb.SetUpComponents do
     * the edition's limit: the page shows the edition's line (`limit_line/1`) as information;
     * a workspace made by someone else first, or a person who may no longer create one:
       the organisation's overview opens;
-    * a shared harness whose row has no owner, for a person who may create: an error that
-      says to save the shared harness again;
+    * a shared harness whose row has no owner, for a person who may create: an error with
+      the fix, to save the shared harness again;
     * a source or a connected repository that is no longer offered: New workspace opens, so
       its list is read afresh;
-    * a process, an artifact type or a name the template has wrong: an error that says what
-      is wrong in which module;
-    * any other refusal: "Nothing was changed. Try again."
+    * a process, an artifact type or a name the template has wrong: an error with the module
+      and what to change;
+    * any other refusal, an edition's included: "Nothing was changed. Try again."
   """
   @spec choose_template(Phoenix.LiveView.Socket.t(), map, map, :first | :any) ::
           Phoenix.LiveView.Socket.t()
@@ -1326,6 +1335,9 @@ defmodule ApiaryWeb.SetUpComponents do
               )
             )
         end
+
+      {:error, _other} ->
+        Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
     end
   end
 

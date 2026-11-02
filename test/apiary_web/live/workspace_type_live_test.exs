@@ -696,15 +696,70 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
         )
 
       view = open(conn, user, organisation, "shared.support-desk")
-      html = view |> element("#workspace-type-create") |> render_click()
-
-      _ = html
+      view |> element("#workspace-type-create") |> render_click()
 
       assert flash_error(view) =~
                squash(
                  "Save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
                )
 
+      assert workspaces(organisation) == []
+    end
+
+    test "a hidden shared harness that cannot be fetched shows no host or port", %{
+      conn: conn,
+      user: user,
+      organisation: organisation
+    } do
+      document =
+        "extends:\n  git: \"https://private.example.org/acme/harness\"\n  stack: \"support\"\n  ref: \"HEAD\"\n"
+
+      {:ok, row} =
+        Apiary.Stacks.put_stack(
+          scope_of(user, organisation),
+          {:organisation, organisation},
+          document,
+          choice: :repository,
+          version: {:branch, "HEAD"}
+        )
+
+      {1, _} =
+        Repo.update_all(from(s in Apiary.Stacks.Stack, where: s.id == ^row.id),
+          set: [owner_organisation_id: Apiary.Edition.instance_organisation_id()]
+        )
+
+      view = open(conn, user, organisation, "shared.support-desk")
+
+      assert has_element?(
+               view,
+               "#workspace-type-read-error",
+               "Qory Apiary could not read the shared harness. Try again. If it repeats,"
+             )
+
+      refute render(view) =~ "private.example.org"
+    end
+
+    defmodule RefusesWorkspace do
+      @moduledoc false
+      # An edition that refuses the workspace after it is made, as Pro's can.
+      def workspace_created(_repo, _workspace, _scope), do: {:error, :refused}
+    end
+
+    test "an edition's refusal of the new workspace is the general error, and nothing is made",
+         %{conn: conn, user: user, organisation: organisation, template_path: path} do
+      :ok = Apiary.Edition.put_test_stub(RefusesWorkspace)
+
+      view =
+        open(
+          conn,
+          user,
+          organisation,
+          String.replace_prefix(path, ~p"/#{organisation}/workspaces/new/", "")
+        )
+
+      view |> element("#workspace-type-create") |> render_click()
+
+      assert flash_error(view) =~ squash("Nothing was changed. Try again.")
       assert workspaces(organisation) == []
     end
 
@@ -757,8 +812,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
         )
 
       conn = log_in_user(conn, user)
-      assert {:ok, new_workspace, html} = create(view, conn)
-      _ = html
+      assert {:ok, new_workspace, _html} = create(view, conn)
       assert flash_error(new_workspace) =~ squash("Nothing was changed. Try again.")
       assert has_element?(new_workspace, "#set-up-cards")
       assert workspaces(organisation) == []

@@ -82,8 +82,8 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
     )
   end
 
-  # A template of a place `Apiary.Stacks.Sources.listed/1` gives, read once the socket is
-  # connected; a key of no place is a path that does not exist.
+  # The page of a template of a place that New workspace lists, read once the socket is
+  # connected; a key of no listed place is a path that does not exist.
   defp repository_template(socket, scope, key) do
     case Sources.find_listed(scope, key) do
       {:ok, place, module} ->

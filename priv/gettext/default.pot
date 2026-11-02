@@ -14774,6 +14774,11 @@ msgctxt "plain"
 msgid "Qory Apiary could not read the linked repositories. Reload the page to try again."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not read the shared harness. Try again. If it repeats, %{contact_support}."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
