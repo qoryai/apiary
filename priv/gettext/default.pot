@@ -1580,8 +1580,8 @@ msgstr ""
 msgid "%{number} MB"
 msgstr ""
 
+#: lib/apiary/artifacts/type_rules.ex
 #: lib/apiary_web/components/artifact_components.ex
-#: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} MiB"
 msgstr ""
@@ -2973,6 +2973,11 @@ msgstr ""
 msgid "%{type} %{name} v%{number}"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{type} is not a standard type, so it needs a definition"
+msgstr ""
+
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -3747,6 +3752,7 @@ msgstr ""
 msgid "A stored secret"
 msgstr ""
 
+#: lib/apiary/artifacts/type_rules.ex
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "A structured type has one file."
@@ -6278,7 +6284,7 @@ msgstr ""
 msgid "Choose %{collections} · %{adapter} · %{account}"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a base view."
 msgstr ""
@@ -6355,7 +6361,7 @@ msgstr ""
 msgid "Choose another name: %{name} is a standard type."
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another name: this workspace has a type called %{name}."
 msgstr ""
@@ -14256,7 +14262,7 @@ msgstr ""
 msgid "Password link made"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."
 msgstr ""
@@ -16780,7 +16786,7 @@ msgstr ""
 msgid "Set a model choice"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Set a size limit above 0 and at most %{size}."
 msgstr ""
@@ -16835,7 +16841,7 @@ msgstr ""
 msgid "Set its runs to read no other target"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Set most files to a whole number from 1 to %{number}."
 msgstr ""
@@ -20668,8 +20674,8 @@ msgstr ""
 msgid "Use a password instead"
 msgstr ""
 
+#: lib/apiary/artifacts/type_rules.ex
 #: lib/apiary_web/live/artifact_live/new.ex
-#: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Use lowercase letters and digits, in groups joined by single hyphens, at most 64 characters."
 msgstr ""
@@ -23619,6 +23625,16 @@ msgstr ""
 msgid "the credential from the adapter reaches beyond the run's access"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the custom type %{type} has a standard type's name"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the custom type %{type} is not valid: %{error}"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "the harness files"
@@ -23694,6 +23710,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the stage %{stage} uses %{type}, which artifact_types does not list"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
