@@ -2,7 +2,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   # Workspace settings › Artifact types, `/:org/:workspace/settings/artifact-types`, under
   # the feature `workflow_model`, for owners and admins (`artifact_type.edit`): the
   # standard types, read only, each with its base view, size limit and most files; then
-  # the workspace's custom types (`Apiary.Artifacts.types/1`), with Add a type
+  # the workspace's custom types (`Apiary.Artifacts.all_types/1`), with Add a type
   # (`…/new`), Edit (`…/:type_id/edit`: size limit, most files and, for a structured
   # type, the JSON Schema) and Delete, confirmed in its row (`…/:type_id/delete`). A
   # custom type's name and base view are fixed once it is made. A type that artifacts of
@@ -278,7 +278,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp load(socket) do
     {standard, custom} =
       socket.assigns.current_scope.workspace
-      |> Artifacts.types()
+      |> Artifacts.all_types()
       |> Enum.split_with(& &1.standard)
 
     assign(socket, standard: standard, custom: custom)

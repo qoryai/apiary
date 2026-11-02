@@ -7,13 +7,21 @@ defmodule Apiary.Artifacts do
   #
   # ## Types
   #
-  # `types(workspace)` is the ten standard types and the workspace's custom types, and
-  # `type(workspace, name)` one of them, nil for a name neither has
-  # (`Apiary.Artifacts.Type`). `create_type/3`, `update_type/3` and `delete_type/2` edit
-  # a workspace's custom types, the Artifact types section of its settings: each checks
-  # `artifact_type.edit` with `Apiary.Access` and writes its entry in the audit trail, about
-  # the workspace. A custom type's name and base view are fixed once it is made. A type
-  # is deleted only while no artifact of the workspace has its name, else `:in_use`.
+  # `types(workspace)` is the standard types the workspace shows and the workspace's custom
+  # types, and `type(workspace, name)` one of them, nil for a name neither has and for a
+  # hidden standard type (`Apiary.Artifacts.Type`). `all_types(workspace)` is the ten
+  # standard types, each with `shown` set, and the custom types, for the settings page.
+  #
+  # A workspace's `shown_standard_types` is the list of the standard types it shows, nil
+  # for all ten; an always-on type (`Type.always_on/0`) is shown whatever the list
+  # contains. Each of these functions reads the list from the database by the workspace's
+  # id: a caller's struct can have the field unset, or be older than a change of the list.
+  #
+  # `create_type/3`, `update_type/3` and `delete_type/2` edit a workspace's custom types,
+  # the Artifact types section of its settings: each checks `artifact_type.edit` with
+  # `Apiary.Access` and writes its entry in the audit trail, about the workspace. A custom
+  # type's name and base view are fixed once it is made. A type is deleted only while no
+  # artifact of the workspace has its name, else `:in_use`.
   #
   # ## A push
   #
@@ -34,8 +42,8 @@ defmodule Apiary.Artifacts do
   #   1. the actor: a person whom `Apiary.Access` refuses `artifact.write` on the work
   #      item, `{:error, :not_found}` or `{:error, :forbidden}`; a run of another work
   #      item, `{:error, :not_found}`;
-  #   2. the type: a name of no type, `{:unknown_type, name}`; a name of the wrong form,
-  #      `{:invalid, :type}`;
+  #   2. the type: a name of no type, or of a standard type the workspace hides,
+  #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`;
   #   3. a run's writes: `{:not_writable, type}`;
   #   4. the options: `{:invalid, :name | :stage_id | :note}`;
   #   5. the files: none, `{:invalid, :no_files}`; more than the type's most,
@@ -57,16 +65,21 @@ defmodule Apiary.Artifacts do
   #      else `{:invalid, :no_video}`.
   #
   # Then every file is kept in the store, and only then are the rows written, in one
-  # transaction: the work item locked `FOR UPDATE`, read again in the workspace it was
-  # in, else `{:error, :not_found}`; the artifact found or made; the next number, one
-  # more than the highest; the version and its files. The lock makes the transactions of
-  # pushes to one work item run one after the other, so the numbers of an artifact are
-  # 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in another stage is
-  # `{:error, :stage_changed}`, and no row, audit entry or message is written; without
-  # it, the stage is not compared. A refusal, or a failure of the transaction, writes no
-  # row; a file kept in the store before it stays there (a content address that a later
-  # version may share). A store with no root, or one that cannot write, is
-  # `{:error, :store_unavailable}`.
+  # transaction: for a standard type a workspace can hide, the workspace's row locked
+  # `FOR SHARE` and its list read again, a hidden type `{:unknown_type, name}`; the work
+  # item locked `FOR UPDATE`, read again in the workspace it was in, else
+  # `{:error, :not_found}`; the artifact found or made; the next number, one more than the
+  # highest; the version and its files. The workspace's lock comes first, as in the core's
+  # lock order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
+  # verdicts are the most frequent pushes, and the stage runner pushes them inside
+  # transactions that already hold the work item. The work item's lock makes the
+  # transactions of pushes to one work item run one after the other, so the numbers of an
+  # artifact are 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in
+  # another stage is `{:error, :stage_changed}`, and no row, audit entry or message is
+  # written; without it, the stage is not compared. A refusal, or a failure of the
+  # transaction, writes no row; a file kept in the store before it stays there (a content
+  # address that a later version may share). A store with no root, or one that cannot
+  # write, is `{:error, :store_unavailable}`.
   #
   # Once the push's transaction commits, `{:artifact_pushed, work_item_id, version_id}`,
   # the work item's public id (`wi_…`) and the version's (`av_…`), goes to the work item's
@@ -93,7 +106,7 @@ defmodule Apiary.Artifacts do
   # the work item has a version of `type`, of any name, made in `stage_id`, whose files
   # are what the type's base view takes, by the content types the format check kept at
   # the push (`Apiary.Artifacts.Format.stored?/2`); no file is read again. False for a
-  # type the workspace does not have.
+  # type the workspace does not have and for a hidden standard type.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -144,10 +157,18 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec types(Workspace.t()) :: [Type.t()]
   def types(%Workspace{id: workspace_id}) do
-    custom =
-      Repo.all(from t in Type, where: t.workspace_id == ^workspace_id, order_by: t.name)
+    shown = shown_standard_types(workspace_id)
 
-    Type.standard() ++ custom
+    Enum.filter(Type.standard(), &shown?(&1.name, shown)) ++ custom_types(workspace_id)
+  end
+
+  @doc false
+  @spec all_types(Workspace.t()) :: [Type.t()]
+  def all_types(%Workspace{id: workspace_id}) do
+    shown = shown_standard_types(workspace_id)
+
+    Enum.map(Type.standard(), &%{&1 | shown: shown?(&1.name, shown)}) ++
+      custom_types(workspace_id)
   end
 
   @doc false
@@ -155,7 +176,8 @@ defmodule Apiary.Artifacts do
   def type(%Workspace{id: workspace_id}, name) when is_binary(name) do
     case Enum.find(Type.standard(), &(&1.name == name)) do
       %Type{} = standard ->
-        standard
+        if name in Type.always_on() or shown?(name, shown_standard_types(workspace_id)),
+          do: standard
 
       nil ->
         if Type.name?(name),
@@ -164,6 +186,16 @@ defmodule Apiary.Artifacts do
   end
 
   def type(%Workspace{}, _name), do: nil
+
+  defp custom_types(workspace_id),
+    do: Repo.all(from t in Type, where: t.workspace_id == ^workspace_id, order_by: t.name)
+
+  defp shown_standard_types(workspace_id) do
+    Repo.one(from w in Workspace, where: w.id == ^workspace_id, select: w.shown_standard_types)
+  end
+
+  defp shown?(_name, nil), do: true
+  defp shown?(name, shown), do: name in Type.always_on() or name in shown
 
   # create_type/3 makes a custom type in `workspace`: `{:ok, type}`,
   # `{:error, :not_found | :forbidden}`, or `{:error, changeset}`. `attrs` has `name`,
@@ -626,7 +658,8 @@ defmodule Apiary.Artifacts do
     Repo.transact(fn ->
       now = DateTime.utc_now()
 
-      with %WorkItem{} = held <- held_work_item(work_item),
+      with :ok <- shown_kept(work_item, type),
+           %WorkItem{} = held <- held_work_item(work_item),
            :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
@@ -640,6 +673,29 @@ defmodule Apiary.Artifacts do
       end
     end)
   end
+
+  # A standard type a workspace can hide: the row of the workspace the push read, locked
+  # `FOR SHARE` until the push commits, and its list read again. A standard type has no
+  # row to lock, so a change of the list, which locks the workspace's row `FOR UPDATE`,
+  # runs before or after the push and not between its check and its rows. A work item
+  # moved since the read fails `held_work_item/1`. nil once the workspace is gone.
+  defp shown_kept(%WorkItem{workspace_id: workspace_id}, %Type{standard: true, name: name}) do
+    if name in Type.always_on() do
+      :ok
+    else
+      case Repo.one(
+             from w in Workspace,
+               where: w.id == ^workspace_id,
+               lock: "FOR SHARE",
+               select: {w.id, w.shown_standard_types}
+           ) do
+        nil -> nil
+        {_id, shown} -> if shown?(name, shown), do: :ok, else: {:error, {:unknown_type, name}}
+      end
+    end
+  end
+
+  defp shown_kept(_work_item, %Type{}), do: :ok
 
   # The work item held `FOR UPDATE`, where it was when the push read it; nil once it
   # moved to another workspace or went.

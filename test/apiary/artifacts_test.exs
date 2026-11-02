@@ -7,7 +7,9 @@ defmodule Apiary.ArtifactsTest do
 
   alias Apiary.Artifacts
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Store, Type, Version}
+  alias Apiary.ArtifactStoreHook
   alias Apiary.Audit.Entry
+  alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
   @moduletag :tmp_dir
@@ -110,6 +112,169 @@ defmodule Apiary.ArtifactsTest do
 
       assert Artifacts.type(scope.workspace, "bids") == nil
       refute "bids" in Enum.map(Artifacts.types(scope.workspace), & &1.name)
+    end
+  end
+
+  # Sets the workspace's list in the database, as nothing in the product does yet.
+  defp show!(%{id: id}, names) do
+    {1, _rows} =
+      Repo.update_all(from(w in Workspace, where: w.id == ^id),
+        set: [shown_standard_types: names]
+      )
+  end
+
+  defp names(types), do: Enum.map(types, & &1.name)
+
+  describe "a workspace's shown standard types" do
+    setup %{scope: scope} do
+      {:ok, type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-findings",
+          "base_view" => "document"
+        })
+
+      %{custom: type}
+    end
+
+    test "with no list, every standard type is shown, marked as shown", %{scope: scope} do
+      assert names(Artifacts.types(scope.workspace)) ==
+               Type.standard_names() ++ ["demo-findings"]
+
+      assert names(Artifacts.all_types(scope.workspace)) ==
+               Type.standard_names() ++ ["demo-findings"]
+
+      assert Enum.all?(Artifacts.all_types(scope.workspace), & &1.shown)
+      assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
+    end
+
+    test "with a list, only its types and the always-on types are shown", %{scope: scope} do
+      show!(scope.workspace, ["mockup", "change"])
+
+      assert names(Artifacts.types(scope.workspace)) ==
+               ~w(mockup change proposal questions verdict demo-findings)
+
+      assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
+      assert Artifacts.type(scope.workspace, "explainer") == nil
+    end
+
+    test "an empty list keeps the always-on types and the custom types", %{scope: scope} do
+      show!(scope.workspace, [])
+
+      assert names(Artifacts.types(scope.workspace)) ==
+               ~w(proposal questions verdict demo-findings)
+
+      for name <- Type.always_on() do
+        assert %Type{name: ^name, standard: true} = Artifacts.type(scope.workspace, name)
+      end
+
+      assert %Type{name: "demo-findings"} = Artifacts.type(scope.workspace, "demo-findings")
+    end
+
+    test "all_types/1 lists every type, with whether each standard type is shown", %{
+      scope: scope
+    } do
+      show!(scope.workspace, ["mockup"])
+      types = Artifacts.all_types(scope.workspace)
+
+      assert names(types) == Type.standard_names() ++ ["demo-findings"]
+
+      assert for(%Type{standard: true, shown: true, name: name} <- types, do: name) ==
+               ~w(mockup proposal questions verdict)
+    end
+
+    test "are read by the workspace's id, whatever the struct has", %{scope: scope} do
+      unset = %Workspace{id: scope.workspace.id, organisation_id: scope.organisation.id}
+      older = Repo.get!(Workspace, scope.workspace.id)
+      assert older.shown_standard_types == nil
+
+      show!(scope.workspace, ["mockup"])
+
+      for workspace <- [unset, older] do
+        assert workspace.shown_standard_types == nil
+        assert Artifacts.type(workspace, "explainer") == nil
+        refute "explainer" in names(Artifacts.types(workspace))
+
+        assert %Type{name: "explainer", shown: false} =
+                 Enum.find(Artifacts.all_types(workspace), &(&1.name == "explainer"))
+      end
+    end
+
+    test "an always-on type or a custom type reads no list", %{scope: scope} do
+      show!(scope.workspace, [])
+      handler = "shown-types-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{query: query}, _config ->
+          if self() == parent, do: send(parent, {:query, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert %Type{} = Artifacts.type(scope.workspace, "verdict")
+      assert %Type{} = Artifacts.type(scope.workspace, "demo-findings")
+      refute_received {:query, "SELECT w0.\"shown_standard_types\"" <> _rest}
+
+      assert Artifacts.type(scope.workspace, "explainer") == nil
+      assert_received {:query, "SELECT w0.\"shown_standard_types\"" <> _rest}
+    end
+
+    test "a push of a hidden type is refused, and writes no row", ctx do
+      show!(ctx.scope.workspace, ["mockup"])
+
+      for actor <- [{:run, ctx.run}, {:person, ctx.scope}] do
+        assert {:error, {:unknown_type, "explainer"}} =
+                 Artifacts.push(actor, ctx.work_item, "explainer", [doc()])
+      end
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+      assert stored_paths(ctx.root) == []
+    end
+
+    test "a type hidden between the push's read and its lock is refused, with no row", ctx do
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+
+      assert {:error, {:unknown_type, "explainer"}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+    end
+
+    test "a type shown between the push's read and its lock is pushed", ctx do
+      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, nil) end)
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+    end
+
+    test "a push of an always-on type or a custom type does not depend on the list", ctx do
+      show!(ctx.scope.workspace, [])
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "verdict", [
+                 json("verdict.json", %{"verdict" => "passed"})
+               ])
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "demo-findings", [doc()])
+    end
+
+    test "the Exists check is false for a hidden type", ctx do
+      stage = "st_aaaaaaaaaa"
+
+      {:ok, _version} =
+        Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()], stage_id: stage)
+
+      assert Artifacts.exists?(ctx.work_item, stage, "explainer")
+
+      show!(ctx.scope.workspace, ["mockup"])
+      refute Artifacts.exists?(ctx.work_item, stage, "explainer")
     end
   end
 

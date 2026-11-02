@@ -7,6 +7,8 @@ defmodule Apiary.ArtifactsRacesTest do
   # The rule under test (`Apiary.Artifacts.push/5`): a push locks its work item
   # `FOR UPDATE` before it finds or makes the artifact and counts its versions, so pushes
   # to one work item take turns, and the numbers of an artifact are 1, 2, … with no gap.
+  # Before that lock, a push of a standard type a workspace can hide takes the workspace
+  # `FOR SHARE`, the core's lock order; a push of an always-on type takes no such lock.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -15,6 +17,8 @@ defmodule Apiary.ArtifactsRacesTest do
 
   alias Apiary.{Artifacts, Repo}
   alias Apiary.Artifacts.{Artifact, Version}
+  alias Apiary.Organisations.Workspace
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag :tmp_dir
 
@@ -95,5 +99,59 @@ defmodule Apiary.ArtifactsRacesTest do
                order_by: v.number,
                select: v.number
            ) == Enum.to_list(1..sides)
+  end
+
+  # What a process change holds (`Apiary.Processes`): the workspace `FOR NO KEY UPDATE`.
+  defp hold_workspace(%WorkItem{workspace_id: id}) do
+    hold(fn ->
+      Repo.one!(from w in Workspace, where: w.id == ^id, select: w.id, lock: "FOR NO KEY UPDATE")
+    end)
+  end
+
+  test "a push of a type a workspace can hide waits on the workspace before the work item",
+       %{work_item: work_item, run: run} do
+    {held, holder} = hold_workspace(work_item)
+
+    push =
+      start(fn ->
+        Artifacts.push({:run, run}, work_item, "explainer", [
+          %{filename: "plan.md", content_type: "text/markdown", binary: "# Plan"}
+        ])
+      end)
+
+    await_blocked(push.backend, holder)
+
+    # The holder writes the work item, as a process change does. A push that took the work
+    # item first would wait on the holder here, and the holder on the push.
+    assert {1, nil} =
+             continue(held, fn ->
+               Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+                 set: [updated_at: DateTime.utc_now()]
+               )
+             end)
+
+    commit(held)
+    assert {:ok, %Version{}} = Task.await(push.task, 15_000)
+  end
+
+  test "a push of an always-on type goes past a held workspace", %{
+    work_item: work_item,
+    run: run
+  } do
+    {held, _holder} = hold_workspace(work_item)
+
+    push =
+      start(fn ->
+        Artifacts.push({:run, run}, work_item, "verdict", [
+          %{
+            filename: "verdict.json",
+            content_type: "application/json",
+            binary: ~s({"verdict":"passed"})
+          }
+        ])
+      end)
+
+    assert {:ok, %Version{}} = Task.await(push.task, 15_000)
+    commit(held)
   end
 end

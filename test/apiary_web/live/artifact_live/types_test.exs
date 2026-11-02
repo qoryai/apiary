@@ -7,11 +7,14 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
   # environment, which every test reads.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
   alias Apiary.Artifacts
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Repo
 
   @moduletag needs: :workflow_model
 
@@ -26,6 +29,13 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     get(conn, path).status
   rescue
     error -> Plug.Exception.status(error)
+  end
+
+  defp show!(scope, names) do
+    {1, _rows} =
+      Repo.update_all(from(w in Workspace, where: w.id == ^scope.workspace.id),
+        set: [shown_standard_types: names]
+      )
   end
 
   defp custom!(scope, attrs) do
@@ -61,6 +71,14 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     assert has_element?(view, "#artifact-type-#{type.public_id}", "Structured")
     assert has_element?(view, "#artifact-type-#{type.public_id}-menu")
     refute render(view) =~ "Workflows</th>"
+  end
+
+  test "keeps listing a standard type the workspace hides", ctx do
+    show!(ctx.scope, ["mockup"])
+    {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+
+    for name <- Apiary.Artifacts.Type.standard_names(),
+        do: assert(has_element?(view, "#artifact-type-#{name}"), name)
   end
 
   test "adds a custom type and shows a refused name as the line to fix", ctx do
@@ -237,6 +255,17 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
                ),
                name
       end
+    end
+
+    test "opens the form empty for a standard type the workspace hides", ctx do
+      show!(ctx.scope, ["mockup"])
+
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "?name=explainer"))
+
+      assert has_element?(
+               view,
+               ~s(#artifact-type-form input[name="artifact_type[name]"][value=""])
+             )
     end
   end
 
