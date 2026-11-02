@@ -1086,7 +1086,8 @@ and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
 ## The steps of a run
 
 A step is one named unit of a run's host work or of a session's join, such as a fetch, a
-compose, the fetch of an image or the start of a wall. Each step is a
+compose, the fetch of an image, the start of a wall or a push. A host step runs before the
+first join, between joins, or after the last join and before the run's exit. Each step is a
 `dev.qory.run.step_started`, with `step`, its number in the run from 1, `name` and
 `kind`, then a `dev.qory.run.step_exited` with the same `step`, `state`, `exit_code` and
 `duration_ms`; the step's log lines are the `dev.qory.run.log` events with its number as
@@ -1100,7 +1101,7 @@ What the projection reads:
 - `step` is an integer from 1 to 2147483647; a step event whose `step` is anything else
   is stored and folded into nothing, and a log chunk with such a `step` has none.
 - `name` is cut to 1024 bytes on a character boundary. `kind` is `fetch`, `compose`,
-  `image`, `setup`, `join` or `wall`, and any other value is absent.
+  `image`, `build`, `setup`, `join`, `wall` or `push`, and any other value is absent.
 - The exit's `state` is `succeeded`, `failed` or `cancelled`; any other value, or none, is
   `failed`, as for a run's exit. `exit_code` outside -2147483647 to 2147483647 and a
   negative `duration_ms` are absent.

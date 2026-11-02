@@ -262,7 +262,7 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The layout of the run's timeline (`Timeline.index/2`) from a light read of every
-  projected event that makes an item: ids and a few words, no payload. The outstanding
+  projected event of `Timeline.types/0`: ids and a few words, no payload. The outstanding
   background tasks are read beside it, from the last list the runtime gave.
   """
   def timeline(%Scope{} = scope, %Run{} = run) do

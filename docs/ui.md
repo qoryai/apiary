@@ -1702,6 +1702,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
+  A run with a failed push step looks only at the newest of its results and failed turns,
+  and shows that item if it is a failure, else no line.
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
@@ -1799,8 +1801,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   far, ticking from its first row. With neither a session's start nor a failed row, and no
   row running, the duration runs to the end of the last row that ended: between two steps,
   and after the last step of a runtime with no session event. The page reads the
-  preparation again at each flush; the starter's `dispatched` and the redemption of the
-  run's code are broadcast on the run's topic, so they show at once. On the Timeline tab
+  preparation again at each flush until it has settled: until the session's first item,
+  or until the session started with no step running. After that it reads the preparation
+  at each `dev.qory.run.step_started`, `dev.qory.run.step_exited` and
+  `dev.qory.run.exited`, so a later session's join shows on an open page. The starter's
+  `dispatched` and the redemption of the run's code are broadcast on the run's topic, so
+  they show at once. On the Timeline tab
   the page also reads them at each quiet tick (5 s) while Machine started is running.
   The last row, Clean up, shows what the pool's starter reported about the removal of the
   machine (`PreparationComponents.clean_up/3`): "Machine removed", "Machine removal
@@ -1813,10 +1819,26 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   such row. A report reaches an open page on the run's topic, settled section or not. The
   Clean up row has a mark, its text and, for a report, the report's time: no duration, and
   it opens on no click. On a page whose section had settled while the run was alive, the
-  row that the run's end brings ("Waiting for a report" or "Machine stays registered")
-  shows after a reload of the page. A run on a permanent machine with no step shows the
-  section once it has ended: Session started, when its session started, and the Clean up
-  row.
+  run's exit reads the preparation, so the row that it brings ("Waiting for a report" or
+  "Machine stays registered") shows with no reload; for a run that ended with no exit, such
+  as a lost run, the row shows after a reload of the page. A run on a permanent machine
+  with no step shows the section once it has ended: Session started, when its session
+  started, and the Clean up row.
+- **After the session** follows the timeline on the Timeline tab
+  (`PreparationComponents.after_session/1`, from `after_session` of
+  `Apiary.Runs.Preparation`), above the line at the end of the record, once the window
+  reaches the run's end. It lists the run's `push` steps, the host work that a run does
+  after its last session and before its exit, and there is no section for a run with none.
+  Each row is a step's row of Prepare machine: state, start time, duration, output, and
+  open when failed. The section has no total, no cause line and no Clean up row. A failed
+  push is no failed preparation: it adds no cause line, no reason in the run's header, no
+  note above the timeline, and no time to Prepare machine. Under How it ended, a run with
+  a failed push shows only a failed result or failed turn that is the newest of its
+  results and failed turns; a failed tool or an earlier failure does not show. An open page shows a push step's
+  start, its end, and the Cancelled of a run's exit with no reload; its output shows at
+  the step's end. A row that fails on an open page opens, as its `id` changes to a new
+  one that ends in `-failed`, so the page mounts it again; a person's open or close of a
+  row stays until then.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

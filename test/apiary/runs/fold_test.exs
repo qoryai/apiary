@@ -1127,7 +1127,7 @@ defmodule Apiary.Runs.FoldTest do
       end
     end
 
-    test "a kind outside the six is absent, and an exit's state outside the three, or none, is failed" do
+    test "a kind outside the eight is absent, and an exit's state outside the three, or none, is failed" do
       steps =
         Fold.fold(@run, [
           step_started(2, 1, %{"kind" => "deploy"}),
@@ -1140,7 +1140,7 @@ defmodule Apiary.Runs.FoldTest do
       assert %{1 => %{kind: nil, state: "failed"}, 2 => %{kind: nil, state: "failed"}} = steps
       assert %{3 => %{state: "failed"}} = steps
 
-      for kind <- ~w(fetch compose image setup join wall) do
+      for kind <- ~w(fetch compose image build setup join wall push) do
         assert %{1 => %{kind: ^kind}} =
                  Fold.fold(@run, [step_started(2, 1, %{"kind" => kind})]).steps
       end

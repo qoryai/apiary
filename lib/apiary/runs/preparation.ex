@@ -1,11 +1,12 @@
 defmodule Apiary.Runs.Preparation do
   @moduledoc """
   How a run's machine was prepared, from the machine request to the start of its session,
-  as the run page's Prepare machine section and the run's diagnostics show it. Read from
-  records Qory Apiary keeps for every run: the run's dispatch, its steps
-  (`Apiary.Runs.Step`) with their log lines, and its first `dev.qory.session.started`.
+  as the run page's Prepare machine section and the run's diagnostics show it, and the
+  run's push steps, which the run page shows after the session. Read from records Qory
+  Apiary keeps for every run: the run's dispatch, its steps (`Apiary.Runs.Step`) with their
+  log lines, and its first `dev.qory.session.started`.
 
-  `read/2` returns a map with five members:
+  `read/2` returns a map with six members:
 
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
       pool claimed. `requested_at` is the claim, and `requested_ms` the time from the
@@ -13,10 +14,14 @@ defmodule Apiary.Runs.Preparation do
       redemption of the run's code, or to the failure that ended the attempt; `end` is
       what the pool's starter last reported about the removal of the machine, nil while
       it has reported nothing (`t:machine/0`).
-    * `steps`: the run's steps by number, each with its output: the last 64 KiB of its
-      log lines as plain text (`Apiary.Runs.Record.plain_lines/1`), and whether that is
-      cut (`t:step/0`). The output is nil for a reader who may not read the run's log
-      (`run.read_log`), and empty once retention deleted the run's log lines.
+    * `steps`: the run's steps of every kind but `push`, by number, each with its output:
+      the last 64 KiB of its log lines as plain text
+      (`Apiary.Runs.Record.plain_lines/1`), and whether that is cut (`t:step/0`). The
+      output is nil for a reader who may not read the run's log (`run.read_log`), and
+      empty once retention deleted the run's log lines.
+    * `after_session`: the run's `push` steps by number, in the same shape. A push runs
+      after the last session, so it is no part of the preparation: `machine` and `stopped`
+      are read from `steps` alone, and a failed push is no failed preparation.
     * `log_pruned_at`: when retention deleted the run's log lines (`runs.log_pruned_at`),
       nil while they are kept.
     * `session_started_at`: the time of the run's first `dev.qory.session.started`; nil
@@ -41,9 +46,9 @@ defmodule Apiary.Runs.Preparation do
   # The most of a step's output that is kept, in bytes of UTF-8.
   @output_bytes 65_536
 
-  # The steps whose cause lies in the workspace: its targets, harness and set-up. A
-  # failure of any other kind of step the contract lists lies on the pool's machine; a
-  # kind outside the list counts as the workspace's.
+  # The kinds of step whose failure lies on the pool's machine. A failure of any other step
+  # lies in the workspace: its targets, harness, build and set-up, and a kind outside the
+  # contract's list counts as the workspace's.
   @pool_kinds ~w(image join wall)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
@@ -136,6 +141,7 @@ defmodule Apiary.Runs.Preparation do
   @type t :: %{
           machine: machine | nil,
           steps: [step],
+          after_session: [step],
           log_pruned_at: DateTime.t() | nil,
           session_started_at: DateTime.t() | nil,
           stopped: stopped | nil
@@ -157,13 +163,15 @@ defmodule Apiary.Runs.Preparation do
     attempt = attempt(scope, run)
     log? = Keyword.get_lazy(opts, :log, fn -> Access.can?(scope, :"run.read_log", run) end)
     kept? = is_nil(run.log_pruned_at)
-    steps = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
+    every = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
+    {after_session, steps} = Enum.split_with(every, &(&1.kind == "push"))
     session_started_at = Record.session_started_at(scope, run)
     machine = machine(run, attempt, steps, session_started_at)
 
     %{
       machine: machine,
       steps: steps,
+      after_session: after_session,
       log_pruned_at: run.log_pruned_at,
       session_started_at: session_started_at,
       stopped:
@@ -481,6 +489,10 @@ defmodule Apiary.Runs.Preparation do
     do: steps |> Enum.find(&(&1.number == number)) |> step_name()
 
   def stopped_step(_preparation), do: nil
+
+  @doc "Whether a push step of a preparation failed."
+  @spec push_failed?(t) :: boolean
+  def push_failed?(%{after_session: steps}), do: Enum.any?(steps, &(&1.state == "failed"))
 
   # The starter's reason as a line an external system sent, with its one closing full
   # stop left out for the sentence's, through the secret filter unless kept as stored.
