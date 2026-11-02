@@ -248,21 +248,22 @@ defmodule Apiary.Stages do
   end
 
   # limits/1 is the lowered time limit, in seconds, and access level of the run of the
-  # queue `run` (`Apiary.Stages.Runner.limits/3`), read at its claim without a lock, with
+  # queue `run` (`Apiary.Stages.Runner.limits/4`), read at its claim without a lock, with
   # the harness's declaration of its workflow as the claim reads it; nil for a run the
-  # stage runner did not queue, or with the workflow model off.
+  # stage runner did not queue, or with the workflow model off. A stage its version does
+  # not have counts as a stage with no entry.
   @doc false
   @spec limits(DispatchRun.t()) ::
           %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
   def limits(%DispatchRun{stage_id: stage_id, process_version_id: version_id} = run)
       when is_binary(stage_id) and is_binary(version_id) do
     with true <- on?(),
-         %Processes.Version{} = version <- Repo.get(Processes.Version, version_id),
-         %{} = stage <- Processes.stage(version, stage_id) do
+         %Processes.Version{} = version <- Repo.get(Processes.Version, version_id) do
+      stage = Processes.stage(version, stage_id) || %{}
       workspace = Repo.get!(Workspace, run.workspace_id)
       declaration = run.workflow && Processes.workflow_declaration(workspace, run.workflow)
       position = %{entry: run.stage_entry, loop_entry: run.loop_entry, round: run.round}
-      Runner.limits(stage, position, declaration)
+      Runner.limits(stage, position, declaration, run_workflow(run))
     else
       _none -> nil
     end
