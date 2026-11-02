@@ -190,7 +190,12 @@ defmodule ApiaryWeb.WorkItemLive.View do
         latest = List.last(runs)
 
         %{
-          latest: %{id: latest.id, number: latest.number, path: run_path(ctx, latest)},
+          latest: %{
+            id: latest.id,
+            number: latest.number,
+            attempt: latest.attempt,
+            path: run_path(ctx, latest)
+          },
           count: length(runs),
           running: Enum.count(runs, &(&1.state in [:pending, :running]))
         }

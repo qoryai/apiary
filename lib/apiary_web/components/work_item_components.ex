@@ -893,8 +893,8 @@ defmodule ApiaryWeb.WorkItemComponents do
               )
           end,
         started:
-          rich_gettext("Run %{run} started %{when}.",
-            run: run_ref(run),
+          rich_gettext("Attempt %{attempt} started %{when}.",
+            attempt: attempt_ref(run),
             when: inline_ago(run.started_at, assigns.now)
           )
       )
@@ -1163,38 +1163,38 @@ defmodule ApiaryWeb.WorkItemComponents do
        ),
        do:
          rich_gettext(
-           "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}.",
-           run: run_ref(run)
+           "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}.",
+           attempt: attempt_ref(run)
          )
 
   defp no_result_line(:no_result, run) do
     case run[:outcome] do
       :none ->
-        rich_gettext("Run %{run} ended without a result.", run: run_ref(run))
+        rich_gettext("Attempt %{attempt} ended without a result.", attempt: attempt_ref(run))
 
       :refused ->
         rich_gettext(
-          "Run %{run} returned a result that did not pass Qory's check, so Explore has no result.",
-          run: run_ref(run)
+          "Attempt %{attempt} returned a result that did not pass Qory's check, so Explore has no result.",
+          attempt: attempt_ref(run)
         )
 
       _error ->
-        rich_gettext("Run %{run} ended with an error, so Explore has no result.",
-          run: run_ref(run)
+        rich_gettext("Attempt %{attempt} ended with an error, so Explore has no result.",
+          attempt: attempt_ref(run)
         )
     end
   end
 
   defp no_result_line(:lost, run),
     do:
-      rich_gettext("Run %{run} was lost before it ended, so Explore has no result.",
-        run: run_ref(run)
+      rich_gettext("Attempt %{attempt} was lost before it ended, so Explore has no result.",
+        attempt: attempt_ref(run)
       )
 
   defp no_result_line(:cancelled, run),
     do:
-      rich_gettext("Run %{run} was cancelled before it ended, so Explore has no result.",
-        run: run_ref(run)
+      rich_gettext("Attempt %{attempt} was cancelled before it ended, so Explore has no result.",
+        attempt: attempt_ref(run)
       )
 
   # The take in's last run, which gave no result, as one sentence with its id: for a
@@ -1202,18 +1202,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp used_up_line(%{end_cause: :run_refused, end_detail: "model_key_missing"} = run),
     do:
       rich_gettext(
-        "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That was attempt %{attempt} of %{of}, the last attempt of this take in.",
-        run: run_ref(run),
-        attempt: Format.number(run.attempt),
+        "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}. That was attempt %{number} of %{of}, the last attempt of this take in.",
+        attempt: attempt_ref(run),
+        number: Format.number(run.attempt),
         of: Format.number(run.of)
       )
 
   defp used_up_line(run),
     do:
       rich_gettext(
-        "Run %{run} ended without a result. That was attempt %{attempt} of %{of}, the last attempt of this take in.",
-        run: run_ref(run),
-        attempt: Format.number(run.attempt),
+        "Attempt %{attempt} ended without a result. That was attempt %{number} of %{of}, the last attempt of this take in.",
+        attempt: attempt_ref(run),
+        number: Format.number(run.attempt),
         of: Format.number(run.of)
       )
 
@@ -1369,14 +1369,19 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp person_key(%{you: true}), do: :you
   defp person_key(person), do: person[:id] || make_ref()
 
-  # A run's number, as a link to its page where the page gives one. A run that ended
-  # before its handover has none: no part names it with this.
-  defp run_ref(%{path: path, number: number}) when is_binary(path),
-    do: {:link, path, shown_number(number), "q-wi-run"}
+  # A run inside a work item, by its attempt in the take in, as a link to the run's page
+  # where the page gives one. The run's number on the server is shown only under Artifacts.
+  defp attempt_ref(%{path: path, attempt: attempt}) when is_binary(path),
+    do: {:link, path, shown_number(attempt), "q-wi-run"}
 
-  defp run_ref(%{number: number}), do: {:m, shown_number(number), "q-wi-run-id"}
+  defp attempt_ref(run), do: shown_number(run[:attempt])
 
-  # A run with no number reads n/a, as a run with no id did.
+  # A run's place in the take in ("Attempt 2 of 3"), as a link to the run's page where the
+  # page gives one.
+  defp place_ref(%{path: path}, place) when is_binary(path), do: {:link, path, place, "q-wi-run"}
+  defp place_ref(_run, place), do: place
+
+  # An attempt with no number reads n/a.
   defp shown_number(number) when is_integer(number), do: Integer.to_string(number)
   defp shown_number(_number), do: gettext("n/a")
 
@@ -1833,10 +1838,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         else: gettext("ended")
 
     rich_ngettext(
-      "Run %{run} · %{count} run, %{state}",
-      "Run %{run} · %{count} runs, %{state}",
+      "Attempt %{attempt} · %{count} run, %{state}",
+      "Attempt %{attempt} · %{count} runs, %{state}",
       count,
-      run: run_ref(latest),
+      attempt: attempt_ref(latest),
       state: state
     )
   end
@@ -2107,8 +2112,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :run, :map, required: true
   attr :now, :any, required: true
 
-  # Which run of the take in, its id, its state, its time. Before a run exists, and while
-  # it is pending, it is Queued, Explore's word.
+  # Which run of the take in, as a link to its page, its state, its time. Before a run
+  # exists, and while it is pending, it is Queued, Explore's word.
   defp run_line(assigns) do
     run = assigns.run
     state = run[:state]
@@ -2132,8 +2137,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p id={@id} class="q-xp-run">
-      <span><b>{@place}</b></span>
-      <span :if={@run[:id]}><.rich text={rich_gettext("Run %{run}", run: run_ref(@run))} /></span>
+      <span><b><.rich text={place_ref(@run, @place)} /></b></span>
       <span class={@state_class}>{@state_word}</span>
       <span :if={@time}><.rich text={@time} /></span>
     </p>
@@ -2304,8 +2308,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           aria-labelledby={"#{@id}-#{run.number}-h"}
         >
           <h3 id={"#{@id}-#{run.number}-h"}>
-            <span>{run_place(run)}</span>
-            <.rich text={rich_gettext("Run %{run}", run: run_ref(run))} />
+            <.rich text={place_ref(run, run_place(run))} />
           </h3>
           <.answered id={"#{@id}-#{run.number}-qa"} run={run} now={@now} />
         </section>
@@ -2523,8 +2526,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       <span>
         <.rich text={
           rich_gettext(
-            "Run %{run} wrote this. Qory shows it as plain text.",
-            run: run_ref(@run)
+            "Attempt %{attempt} wrote this. Qory shows it as plain text.",
+            attempt: attempt_ref(@run)
           )
         } />
       </span>
@@ -2644,37 +2647,37 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp proposal_caption(run, %{by: by, at: at}, changed, now) do
     at = inline_ago(at, now)
-    run = run_ref(run)
+    attempt = attempt_ref(run)
 
     case {you?(by), changed} do
       {true, true} ->
         rich_gettext(
-          "You confirmed this proposal %{when}, with your changes. Run %{run} wrote the rest, and Qory shows it as plain text.",
+          "You confirmed this proposal %{when}, with your changes. Attempt %{attempt} wrote the rest, and Qory shows it as plain text.",
           when: at,
-          run: run
+          attempt: attempt
         )
 
       {false, true} ->
         rich_gettext(
-          "%{name} confirmed this proposal %{when}, with their changes. Run %{run} wrote the rest, and Qory shows it as plain text.",
+          "%{name} confirmed this proposal %{when}, with their changes. Attempt %{attempt} wrote the rest, and Qory shows it as plain text.",
           name: by.name,
           when: at,
-          run: run
+          attempt: attempt
         )
 
       {true, false} ->
         rich_gettext(
-          "You confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text.",
+          "You confirmed this proposal %{when}. Attempt %{attempt} wrote it, and Qory shows it as plain text.",
           when: at,
-          run: run
+          attempt: attempt
         )
 
       {false, false} ->
         rich_gettext(
-          "%{name} confirmed this proposal %{when}. Run %{run} wrote it, and Qory shows it as plain text.",
+          "%{name} confirmed this proposal %{when}. Attempt %{attempt} wrote it, and Qory shows it as plain text.",
           name: by.name,
           when: at,
-          run: run
+          attempt: attempt
         )
     end
   end
@@ -2805,7 +2808,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           {adapter_failure_words(@run.adapter_failure)}
         </p>
         <p :if={@run[:id]}>
-          <.rich text={rich_gettext("The page of run %{run} shows what it did.", run: run_ref(@run))} />
+          <.rich text={
+            rich_gettext("The page of attempt %{attempt} shows what it did.",
+              attempt: attempt_ref(@run)
+            )
+          } />
         </p>
       </div>
     </div>
@@ -3139,7 +3146,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :test, :boolean, default: false, doc: "whether it is a test work item"
   attr :now, :any, required: true
 
-  # The take in's earlier runs, each folded: its place, its id, what it gave, when.
+  # The take in's earlier runs, each folded: its place, what it gave, when.
   defp earlier_runs(assigns) do
     ~H"""
     <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
@@ -3148,7 +3155,6 @@ defmodule ApiaryWeb.WorkItemComponents do
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
           <span class="q-xp-it"><b>{run_place(run)}</b></span>
-          <span :if={run.id} class="q-xp-it">{gettext("Run %{run}", run: run.number)}</span>
           <span class="q-xp-it">{run_gave(run)}</span>
           <span :if={run[:ended_at]} class="q-xp-it">
             {time_tag(run.ended_at, Format.relative(run.ended_at, @now))}
@@ -3209,8 +3215,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
         <span>
           <.rich text={
-            rich_gettext("Run %{run} wrote these questions. Qory shows them as plain text.",
-              run: run_ref(@run)
+            rich_gettext("Attempt %{attempt} wrote these questions. Qory shows them as plain text.",
+              attempt: attempt_ref(@run)
             )
           } />
         </span>
@@ -3822,8 +3828,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       it has words for the reason, else draws nothing;
     * `:undone` - who undid it, before a run started.
 
-  A run is `%{id:, number:, path:, attempt:, of:}`, its number shown and linked where
-  `path` is given. A run that ended before its handover has no id: a line that would name
+  A run is `%{id:, number:, path:, attempt:, of:}`, its attempt shown and linked to the
+  run's page where `path` is given. A run that ended before its handover has no id: a line that would name
   it draws nothing. A question is `%{public_id:, text:, answer:}`. Every kind takes
   `integration`, so no page draws the key without its mark. What a run wrote, and a
   member's answers, are quoted as plain text, never inside a sentence.
@@ -4035,15 +4041,16 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :started, start: :answers, run: run}),
     do:
-      rich_gettext("Qory started Explore again, with the answers, in run %{run}",
-        run: run_ref(run)
+      rich_gettext("Qory started Explore again, with the answers, in attempt %{attempt}",
+        attempt: attempt_ref(run)
       )
 
   defp event_line(%{kind: :started, start: :again, run: run}),
-    do: rich_gettext("Qory started Explore again in run %{run}", run: run_ref(run))
+    do:
+      rich_gettext("Qory started Explore again in attempt %{attempt}", attempt: attempt_ref(run))
 
   defp event_line(%{kind: :started, run: run}),
-    do: rich_gettext("Qory started Explore in run %{run}", run: run_ref(run))
+    do: rich_gettext("Qory started Explore in attempt %{attempt}", attempt: attempt_ref(run))
 
   defp event_line(%{kind: :asked, questions: questions, duration: duration}) do
     n = length(questions)
@@ -4094,33 +4101,35 @@ defmodule ApiaryWeb.WorkItemComponents do
        }),
        do:
          rich_gettext(
-           "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}",
-           run: run_ref(run)
+           "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}",
+           attempt: attempt_ref(run)
          )
 
   defp event_line(%{kind: :no_result, outcome: :none, run: run}),
-    do: rich_gettext("Run %{run} ended without a result", run: run_ref(run))
+    do: rich_gettext("Attempt %{attempt} ended without a result", attempt: attempt_ref(run))
 
   defp event_line(%{kind: :no_result, outcome: :refused, run: run}),
     do:
-      rich_gettext("Run %{run} returned a result that did not pass Qory's check",
-        run: run_ref(run)
+      rich_gettext("Attempt %{attempt} returned a result that did not pass Qory's check",
+        attempt: attempt_ref(run)
       )
 
   defp event_line(%{kind: :no_result, run: run}),
     do:
-      rich_gettext("Run %{run} ended with an error, so Explore has no result", run: run_ref(run))
+      rich_gettext("Attempt %{attempt} ended with an error, so Explore has no result",
+        attempt: attempt_ref(run)
+      )
 
   defp event_line(%{kind: :lost, run: run}),
     do:
-      rich_gettext("Run %{run} was lost before it ended, so Explore has no result",
-        run: run_ref(run)
+      rich_gettext("Attempt %{attempt} was lost before it ended, so Explore has no result",
+        attempt: attempt_ref(run)
       )
 
   defp event_line(%{kind: :cancelled, run: run}),
     do:
-      rich_gettext("Run %{run} was cancelled before it ended, so Explore has no result",
-        run: run_ref(run)
+      rich_gettext("Attempt %{attempt} was cancelled before it ended, so Explore has no result",
+        attempt: attempt_ref(run)
       )
 
   defp event_line(%{kind: :explore_again, actor: actor}) do

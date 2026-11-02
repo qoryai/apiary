@@ -125,6 +125,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     work_item
   end
 
+  # The text of the element `selector`, its whitespace collapsed: the whole line.
+  defp line(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
   defp place!(work_item, version, stage_id, state, fields \\ []) do
     {1, _} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -495,8 +506,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert html =~ "Attempt 1 · explore-a-ticket · round 1 · passed"
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
 
-      # The stage card counts attempts of the work item; Artifacts and Details name the run
-      # by its number on the server.
+      # Inside the work item, runs count by attempt; only Artifacts names the run by its
+      # number on the server.
       number =
         Repo.one(
           from r in Apiary.Runs.Run,
@@ -505,7 +516,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         )
 
       assert has_element?(view, "#work-item-artifact-list", "Run #{number} · round 1")
-      assert has_element?(view, "#work-item-details-runs", "Run #{number}")
+      assert line(view, "#work-item-details-runs") == "Attempt 1 · 1 run, ended"
       refute html =~ "Run 1 · explore-a-ticket"
       refute html =~ "rn_"
 
@@ -520,6 +531,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       view |> element("#work-item-step-confirm") |> render_click()
       assert [%GateDecision{stage_id: @explore}] = decisions(work_item, :approve)
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
+    end
+
+    test "a result that did not pass the check: both cards name the run by its attempt", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope |> taken_in_fixture() |> end_run!(%{"version" => 1, "verdict" => "understood"})
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-stage-escalation-run") == "From attempt 1 · explore-a-ticket"
+
+      assert line(view, "#work-item-step-line") ==
+               "Attempt 1 returned a result that did not pass Qory's check, so Explore has no result."
+
+      refute html =~ ~r/\bRun \d/
     end
 
     test "a run that stopped: the escalation with its cause", %{conn: conn, scope: scope} do

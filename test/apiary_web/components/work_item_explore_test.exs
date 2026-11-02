@@ -385,7 +385,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         html = card(work_item(%{status: :running, run: r}))
         assert text(html, ".q-wi-bee-line") == line
-        assert text(html, "#work-item-step-run") == "Run 15 started 2 minutes ago."
+        assert text(html, "#work-item-step-run") == "Attempt 3 started 2 minutes ago."
 
         assert attr(html, "#work-item-step-run a", "href") == [
                  "/8wonders/main/runs/15"
@@ -471,14 +471,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "no result, lost, cancelled: the badge, what happened, Run Explore again and Decline" do
       for {status, overrides, badge, line} <- [
             {:no_result, %{state: :failed, outcome: :error}, "No result",
-             "Run 16 ended with an error, so Explore has no result."},
-            {:no_result, %{outcome: :none}, "No result", "Run 16 ended without a result."},
+             "Attempt 1 ended with an error, so Explore has no result."},
+            {:no_result, %{outcome: :none}, "No result", "Attempt 1 ended without a result."},
             {:no_result, %{outcome: :refused}, "No result",
-             "Run 16 returned a result that did not pass Qory's check, so Explore has no result."},
+             "Attempt 1 returned a result that did not pass Qory's check, so Explore has no result."},
             {:lost, %{state: :lost, outcome: nil}, "Lost",
-             "Run 16 was lost before it ended, so Explore has no result."},
+             "Attempt 1 was lost before it ended, so Explore has no result."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
-             "Run 16 was cancelled before it ended, so Explore has no result."}
+             "Attempt 1 was cancelled before it ended, so Explore has no result."}
           ] do
         r =
           run(
@@ -573,7 +573,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       none = used(%{state: :failed, outcome: :error})
 
       assert text(none, "#work-item-step-line") ==
-               "Run 15 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
+               "Attempt 3 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
     end
 
     test "Close only with the right to close; a reader who may not act reads why, and nothing to do" do
@@ -716,7 +716,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a pending run reads Queued too, with its id" do
       r = run(%{state: :pending, attempt: 1, ended_at: nil})
       html = tab(work_item(%{status: :queued, run: r}))
-      assert items(html, "work-item-explore-run") == ["Attempt 1 of 3", "Run 12", "Queued"]
+      assert items(html, "work-item-explore-run") == ["Attempt 1 of 3", "Queued"]
     end
 
     test "queued again with the reader's answers: the answers run 2 reads, grouped" do
@@ -737,7 +737,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "These questions come from 1 earlier run of this take in. Qory shows them as plain text."
 
       group = "#work-item-explore-read-13"
-      assert text(html, "#{group}-h") == "Attempt 1 of 3 Run 13"
+      assert text(html, "#{group}-h") == "Attempt 1 of 3"
       assert attr(html, "#{group}-h a", "href") == ["/8wonders/main/runs/13"]
       assert text(html, "#{group}-qa-who") == "You answered 1 hour ago"
       assert texts(html, "#{group} .q-xp-ans") == @answers
@@ -761,7 +761,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert items(html, "work-item-explore-run") ==
-               ["Attempt 3 of 3", "Run 15", "Running", "started 2 minutes ago"]
+               ["Attempt 3 of 3", "Running", "started 2 minutes ago"]
 
       assert attr(html, "#work-item-explore-run span.q-xp-run-on", "class") == ["q-xp-run-on"]
 
@@ -780,8 +780,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                ["You answered 1 hour ago", "Priya answered 20 minutes ago"]
 
       assert texts(html, "#work-item-explore-earlier summary") == [
-               "Attempt 1 of 3 Run 13 Wrote 3 questions Yesterday, 15:31",
-               "Attempt 2 of 3 Run 14 Wrote 1 question 50 minutes ago"
+               "Attempt 1 of 3 Wrote 3 questions Yesterday, 15:31",
+               "Attempt 2 of 3 Wrote 1 question 50 minutes ago"
              ]
     end
 
@@ -803,14 +803,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(work_item(%{}))
 
       assert items(html, "work-item-explore-run") ==
-               ["Attempt 1 of 3", "Run 12", "Completed", "ended 3 days ago, after 11 minutes"]
+               ["Attempt 1 of 3", "Completed", "ended 3 days ago, after 11 minutes"]
 
       p = "#work-item-explore-proposal"
       assert text(html, "#{p}-h") == "Qory's proposal"
       assert count(html, "#{p} .q-xp-frame-h .badge") == 0
 
       assert text(html, "#{p} .q-xp-cap") ==
-               "Run 12 wrote this. Qory shows it as plain text."
+               "Attempt 1 wrote this. Qory shows it as plain text."
 
       assert attr(html, "#{p} .q-xp-cap a", "href") == ["/8wonders/main/runs/12"]
 
@@ -889,7 +889,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{p} .q-xp-frame-h .badge") == "Confirmed"
 
       assert text(html, "#{p} .q-xp-cap") ==
-               "You confirmed this proposal just now, with your changes. Run 12 wrote the rest, and Qory shows it as plain text."
+               "You confirmed this proposal just now, with your changes. Attempt 1 wrote the rest, and Qory shows it as plain text."
 
       assert text(html, "#{p}-approach-by") == "Changed by you"
 
@@ -922,19 +922,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       changed = tab(w, changes: %{approach: %{value: "Another approach.", by: @priya}})
 
       assert text(changed, "#work-item-explore-proposal .q-xp-cap") ==
-               "Priya confirmed this proposal 3 hours ago, with their changes. Run 12 wrote the rest, and Qory shows it as plain text."
+               "Priya confirmed this proposal 3 hours ago, with their changes. Attempt 1 wrote the rest, and Qory shows it as plain text."
 
       assert text(changed, "#work-item-explore-proposal-approach-by") == "Changed by Priya"
 
       unchanged = tab(w)
 
       assert text(unchanged, "#work-item-explore-proposal .q-xp-cap") ==
-               "Priya confirmed this proposal 3 hours ago. Run 12 wrote it, and Qory shows it as plain text."
+               "Priya confirmed this proposal 3 hours ago. Attempt 1 wrote it, and Qory shows it as plain text."
 
       mine = tab(%{w | confirmed_by: @dana})
 
       assert text(mine, "#work-item-explore-proposal .q-xp-cap") ==
-               "You confirmed this proposal 3 hours ago. Run 12 wrote it, and Qory shows it as plain text."
+               "You confirmed this proposal 3 hours ago. Attempt 1 wrote it, and Qory shows it as plain text."
     end
 
     test "declined at Confirm: the proposal, read" do
@@ -1022,7 +1022,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{q}-h") == "Qory's questions"
 
       assert text(html, "#{q} .q-xp-cap") ==
-               "Run 13 wrote this. Qory shows it as plain text."
+               "Attempt 1 wrote this. Qory shows it as plain text."
 
       assert texts(html, "#{q} .q-xp-sec > h3") ==
                ["Understanding so far", "Questions"]
@@ -1134,7 +1134,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(used_item(), can_act: true, earlier_runs: [run1_answered(), run2_answered()])
 
       assert items(html, "work-item-explore-run") ==
-               ["Attempt 3 of 3", "Run 15", "Completed", "ended 8 minutes ago, after 9 minutes"]
+               ["Attempt 3 of 3", "Completed", "ended 8 minutes ago, after 9 minutes"]
 
       assert text(html, "#work-item-explore-limit") ==
                "This take in used all 3 runs, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog."
@@ -1147,7 +1147,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{body}-h") == "Qory's questions, and the answers"
 
       assert text(html, "#{body} .q-xp-cap") ==
-               "Run 13 wrote these questions. Qory shows them as plain text."
+               "Attempt 1 wrote these questions. Qory shows them as plain text."
 
       assert text(html, "#{body}-qa-who") == "You answered 1 hour ago"
 
@@ -1189,7 +1189,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       html = tab(used_item(), earlier_runs: [proposed, lost])
 
-      assert texts(html, "#work-item-explore-earlier summary .q-xp-it:nth-child(4)") ==
+      assert texts(html, "#work-item-explore-earlier summary .q-xp-it:nth-child(3)") ==
                ["Wrote a proposal", "Lost"]
 
       assert text(html, "#work-item-explore-earlier-17-body-h") ==
@@ -1221,13 +1221,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         html = tab(work_item(%{number: 97, status: status, run: r}))
 
-        assert Enum.at(items(html, "work-item-explore-run"), 2) == run_state
+        assert Enum.at(items(html, "work-item-explore-run"), 1) == run_state
         assert text(html, "#work-item-explore-none-h") == heading
 
         assert texts(html, "#work-item-explore-none p") == [
                  heading,
                  body,
-                 "The page of run 12 shows what it did."
+                 "The page of attempt 1 shows what it did."
                ]
 
         assert attr(html, "#work-item-explore-none a", "href") == [
@@ -1776,9 +1776,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       r = run(%{attempt: 2})
 
       for {start, words} <- [
-            {nil, "Qory started Explore in run 12"},
-            {:answers, "Qory started Explore again, with the answers, in run 12"},
-            {:again, "Qory started Explore again in run 12"}
+            {nil, "Qory started Explore in attempt 2"},
+            {:answers, "Qory started Explore again, with the answers, in attempt 2"},
+            {:again, "Qory started Explore again in attempt 2"}
           ] do
         html = event(kind: :started, run: r, start: start)
         assert line(html) == words <> " Attempt 2 of 3 14 Oct, 11:25"
@@ -1827,11 +1827,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       r = run(%{})
 
       for {kind, outcome, words} <- [
-            {:no_result, :error, "Run 12 ended with an error, so Explore has no result"},
-            {:no_result, :none, "Run 12 ended without a result"},
-            {:no_result, :refused, "Run 12 returned a result that did not pass Qory's check"},
-            {:lost, :error, "Run 12 was lost before it ended, so Explore has no result"},
-            {:cancelled, :error, "Run 12 was cancelled before it ended, so Explore has no result"}
+            {:no_result, :error, "Attempt 1 ended with an error, so Explore has no result"},
+            {:no_result, :none, "Attempt 1 ended without a result"},
+            {:no_result, :refused, "Attempt 1 returned a result that did not pass Qory's check"},
+            {:lost, :error, "Attempt 1 was lost before it ended, so Explore has no result"},
+            {:cancelled, :error,
+             "Attempt 1 was cancelled before it ended, so Explore has no result"}
           ] do
         html = event(kind: kind, run: r, outcome: outcome)
         assert line(html) == words <> " 14 Oct, 11:25"
@@ -2029,7 +2030,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait"]
 
         assert text(html, "#work-item-step-line") ==
-                 "Run 15 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
+                 "Attempt 3 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
 
         assert count(html, "#work-item-step-again") == 0
         assert count(html, "#work-item-step-next") == 0
@@ -2351,7 +2352,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = card(work_item(%{number: 97, status: :no_result, run: refused("model_key_missing")}))
 
       assert text(html, "#work-item-step-line") ==
-               @key_fix <> " The gateway had no model key for run 16."
+               @key_fix <> " The gateway had no model key for attempt 1."
 
       assert attr(html, "#work-item-step-line a", "href") == [
                "/8wonders/main/runs/16"
@@ -2368,7 +2369,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert texts(html, "#work-item-explore-none p") == [
                "The run did not start.",
                @key_fix <> " The gateway had no model key for the run.",
-               "The page of run 16 shows what it did."
+               "The page of attempt 1 shows what it did."
              ]
 
       refute html =~ "ended with an error"
@@ -2385,7 +2386,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert line(html) ==
-               @key_fix <> " The gateway had no model key for run 12 14 Oct, 11:25"
+               @key_fix <> " The gateway had no model key for attempt 1 14 Oct, 11:25"
 
       assert attr(html, "p a", "href") == ["/8wonders/main/runs/12"]
       assert count(html, ".q-wi-ev-bad") == 1
@@ -2396,7 +2397,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         item = work_item(%{number: 97, status: :no_result, run: r})
 
         assert text(card(item), "#work-item-step-line") ==
-                 "Run 16 ended with an error, so Explore has no result."
+                 "Attempt 1 ended with an error, so Explore has no result."
 
         assert text(tab(item), "#work-item-explore-none-h") == "The run ended with an error."
 
@@ -2410,7 +2411,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           )
 
         assert line(thread) ==
-                 "Run 16 ended with an error, so Explore has no result 14 Oct, 11:25"
+                 "Attempt 1 ended with an error, so Explore has no result 14 Oct, 11:25"
 
         refute thread =~ "model key"
       end
@@ -2424,7 +2425,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert text(html, "#work-item-step-line") ==
                @key_fix <>
-                 " The gateway had no model key for run 16. That was attempt 3 of 3, the last attempt of this take in."
+                 " The gateway had no model key for attempt 3. That was attempt 3 of 3, the last attempt of this take in."
 
       assert attr(html, "#work-item-step-line a", "href") == [
                "/8wonders/main/runs/16"
@@ -2441,7 +2442,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert texts(html, "#work-item-explore-none p") == [
                "The run did not start.",
                @key_fix <> " The gateway had no model key for the run.",
-               "The page of run 16 shows what it did."
+               "The page of attempt 3 shows what it did."
              ]
 
       thread =
@@ -2454,7 +2455,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert line(thread) ==
-               @key_fix <> " The gateway had no model key for run 16 14 Oct, 11:25"
+               @key_fix <> " The gateway had no model key for attempt 3 14 Oct, 11:25"
     end
 
     test "at attempt 3 of 3, another refusal code keeps the words for the run limit" do
@@ -2462,7 +2463,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = card(work_item(%{number: 97, status: :no_result, run: r}))
 
       assert text(html, "#work-item-step-line") ==
-               "Run 16 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
+               "Attempt 3 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
 
       refute html =~ "model key"
     end
