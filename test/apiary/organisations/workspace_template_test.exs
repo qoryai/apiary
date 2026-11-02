@@ -168,6 +168,9 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                "version" => newest.number
              }
 
+      assert version.template["type"] == QoryCopy.template().type
+      assert version.template["type"] == workspace.type
+
       assert Stacks.choice(workspace) == nil
     end
 
@@ -269,7 +272,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       adapter = call_adapter_fixture()
       {connection, _nonce} = connection_fixture(scope, adapter.adapter, :listed)
       live_grant_fixture(scope.organisation.id, adapter.adapter, connection, "G_acme")
-      collection = harness_collection_fixture(connection, @harness, "acme/harness")
+      harness_collection_fixture(connection, @harness, "acme/harness")
 
       serve_calls([adapter],
         covered: %{adapter.adapter.id => %{@harness => {"G_acme", "R_harness"}}},
@@ -293,6 +296,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert workspace.name == "Support desk"
       assert workspace.qory_stack == nil
+      assert workspace.domain == "software"
+      assert workspace.type == "qory.software"
 
       version = first_version(workspace)
       assert version.document == read.process
@@ -304,9 +309,11 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                "commit" => @commit,
                "module" => "support-desk",
                "stack" => "support",
-               "type" => collection.public_id <> ".support-desk",
+               "type" => read.type,
                "version" => nil
              }
+
+      assert read.type == workspace.type
 
       row = Stacks.choice(workspace)
       assert %Stack{choice: :repository, version_kind: nil} = row
@@ -338,7 +345,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     test "an assigned source keeps the assignment's ref for reads and records the commit apart" do
       scope = scope_fixture()
       source = assigned!(scope, %{"git" => @harness, "ref" => "v1"})
-      assert %{kind: :assigned, ref: "v1", id: "assigned:" <> assignment_id} = source
+      assert %{kind: :assigned, ref: "v1"} = source
 
       assert {:ok, workspace} =
                Organisations.create_workspace_from_template(scope, start(source))
@@ -348,7 +355,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       template = first_version(workspace).template
       assert template["commit"] == @commit
-      assert template["type"] == "assigned-#{assignment_id}.support-desk"
+      assert template["type"] == "qory.software"
     end
 
     test "the shared harness: a row at the template's stack and the commit the list read" do
@@ -365,7 +372,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       template = first_version(workspace).template
       assert template["git"] == @harness
-      assert template["type"] == "shared.support-desk"
+      assert template["type"] == "qory.software"
 
       assert {:chosen, %{harness_hidden: false}} =
                Stacks.chosen_for(scope.organisation, workspace, nil, "triage")

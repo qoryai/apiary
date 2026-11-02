@@ -2174,7 +2174,7 @@ defmodule Apiary.Stacks.Sources do
          "commit" => commit,
          "module" => template.module,
          "stack" => template.stack,
-         "type" => template_key(source, template.module),
+         "type" => template.type,
          "version" => nil
        }}
     end

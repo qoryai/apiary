@@ -12,8 +12,8 @@ defmodule Apiary.Processes do
   `repository`), `git`, `commit`, `module`, `stack`, `type` and `version`. The Qory
   template's process is the newest version of the type's default process
   (`Apiary.Processes.TypeTemplates.newest/1`, `copy_qory_template/1`). A template of a
-  harness source is copied as it was read (`copy_template/4`); `type` is its page key
-  (Apiary.Stacks.Sources.template_key/2), and `version` is nil.
+  harness source is copied as it was read (`copy_template/4`), and `version` is nil. In
+  both, `type` is the template file's `type`, the same value as `workspaces.type`.
 
   A workspace made with no template gets a copy of that newest version with its `{type,
   number}` as its `template` (`copy_default/1`). One made another way, before the process
@@ -363,7 +363,7 @@ defmodule Apiary.Processes do
         "commit" => harness.latest,
         "module" => QoryCopy.template_module(),
         "stack" => Workspace.qory_stack(workspace),
-        "type" => key,
+        "type" => QoryCopy.template().type,
         "version" => newest.number
       },
       []
