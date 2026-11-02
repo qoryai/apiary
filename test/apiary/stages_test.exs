@@ -488,6 +488,17 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "run_workflow/1" do
+    test "is nil for the Explore workflow and the name of any other" do
+      assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: "explore-a-ticket"}) ==
+               nil
+
+      assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: "review"}) == "review"
+      assert Stages.run_workflow(%DispatchRun{stage_id: nil, workflow: "review"}) == nil
+      assert Stages.run_workflow(%DispatchRun{stage_id: @explore, workflow: nil}) == nil
+    end
+  end
+
   describe "failed checks in a loop" do
     test "start the next round with their gaps, which status, notes and the escalation show",
          %{scope: scope} do

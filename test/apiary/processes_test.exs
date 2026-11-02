@@ -11,7 +11,7 @@ defmodule Apiary.ProcessesTest do
   import Apiary.WorkItemsFixtures,
     only: [work_item_fixture: 1, ticket_connection_fixture: 1, backlog_ticket_fixture: 2]
 
-  alias Apiary.{Deletion, Organisations, Processes, Stacks, WorkItems}
+  alias Apiary.{Deletion, Organisations, Processes, Stacks, Stages, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
@@ -131,6 +131,17 @@ defmodule Apiary.ProcessesTest do
 
       assert placed != []
       assert placed -- Processes.qory_workflows() == []
+    end
+
+    # `Apiary.Stages`' explore v1 result and ApiaryWeb.WorkItemLive.Workflow depend on this
+    # name. A harness update that renames the workflow, or that drops it from the stack
+    # while the template still places it, fails here.
+    test "runs the Explore workflow, which the copied stack lists" do
+      assert Stages.explore_workflow() == "explore-a-ticket"
+      assert "explore-a-ticket" in QoryCopy.workflows("software")
+
+      [explore | _rest] = default()["stages"]
+      assert Stages.explore_workflow() in Processes.workflows(explore)
     end
 
     test "is the software type's for a domain without a default, and the template names the type" do

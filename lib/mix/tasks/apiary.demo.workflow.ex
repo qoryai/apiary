@@ -972,7 +972,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   defp walked_file!(%DispatchRun{id: id}) do
     {1, _rows} =
       Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
-        set: [state: :resolved, origin: :file, workflow: "explore-a-ticket"]
+        set: [state: :resolved, origin: :file, workflow: Stages.explore_workflow()]
       )
   end
 
