@@ -25,7 +25,7 @@ defmodule Apiary.Processes.ExportTest do
 
   setup do
     # A sign-up's workspace is made from the Qory template; `workspace_fixture/2` makes one
-    # with no template, and `Apiary.Processes.current/1` gives it its first version.
+    # with no template, and `Apiary.Processes.current/1` inserts its first version.
     %{scope: signed_up, user: user} = sign_up_fixture()
     workspace = workspace_fixture(signed_up.organisation, "Web shop")
 
@@ -65,10 +65,12 @@ defmodule Apiary.Processes.ExportTest do
     version.document
   end
 
-  defp named_gate(document, ids) do
-    update_in(document["stages"], fn [first | rest] ->
-      gate = %{"kind" => "person", "approvers" => %{"members" => ids}}
-      [Map.put(first, "gate", gate) | rest]
+  # The document with a gate on its first two stages that lists the people `ids`.
+  defp named_gates(document, ids) do
+    gate = %{"kind" => "person", "approvers" => %{"members" => ids}}
+
+    update_in(document["stages"], fn [first, second | rest] ->
+      [Map.put(first, "gate", gate), Map.put(second, "gate", gate) | rest]
     end)
   end
 
@@ -168,20 +170,19 @@ defmodule Apiary.Processes.ExportTest do
       scope: scope,
       workspace: workspace
     } do
-      saved!(scope, named_gate(current(workspace), [scope.user.id]))
+      saved!(scope, named_gates(current(workspace), [scope.user.id]))
       saved = current(workspace)
+      all_members = %{"kind" => "person", "approvers" => "members"}
 
       template = exported(workspace)
 
-      assert hd(template.process["stages"])["gate"] == %{
-               "kind" => "person",
-               "approvers" => "members"
-             }
+      assert [%{"gate" => ^all_members}, %{"gate" => ^all_members} | rest] =
+               template.process["stages"]
 
-      assert tl(template.process["stages"]) == tl(saved["stages"])
+      assert rest == Enum.drop(saved["stages"], 2)
 
-      assert Map.delete(hd(template.process["stages"]), "gate") ==
-               Map.delete(hd(saved["stages"]), "gate")
+      assert Enum.map(template.process["stages"], &Map.delete(&1, "gate")) ==
+               Enum.map(saved["stages"], &Map.delete(&1, "gate"))
 
       refute Processes.export(workspace) =~ scope.user.id
     end
@@ -200,37 +201,44 @@ defmodule Apiary.Processes.ExportTest do
       assert keys == ~w(apiVersion name summary description type stack process artifact_types)
     end
 
-    test "writes the same bytes twice, whatever the order of a stored map", %{
+    test "writes the same bytes twice, with the keys of a json_schema sorted", %{
       scope: scope,
       workspace: workspace
     } do
+      # A map of more than 32 keys does not iterate in sorted order.
+      names = many_keys()
+
       custom!(scope, %{
         "name" => "bid-set",
         "base_view" => "structured",
-        "json_schema" => %{"type" => "object", "title" => "Bids", "description" => "Web shop"}
+        "json_schema" => %{"type" => "object", "properties" => Map.new(names, &{&1, %{}})}
       })
 
-      assert Processes.export(workspace) == Processes.export(workspace)
+      bytes = Processes.export(workspace)
+      properties = Enum.map_join(names, ", ", &~s("#{&1}": {}))
 
-      assert Processes.export(workspace) =~
-               ~s(  "json_schema": {"description": "Web shop", "title": "Bids", "type": "object"}\n)
+      assert bytes == Processes.export(workspace)
+      assert bytes =~ ~s(  "json_schema": {"properties": {#{properties}}, "type": "object"}\n)
     end
 
     test "sorts the keys inside process", %{scope: scope, workspace: workspace} do
-      with_note(scope, "text")
+      # A map of more than 32 keys does not iterate in sorted order.
+      document = Enum.reduce(many_keys(), current(workspace), &with_stage_field(&2, &1, 1))
+      saved!(scope, document)
 
       lines = String.split(Processes.export(workspace), "\n")
 
       # The keys of the first stage, from the `- ` of its first key to the next stage.
-      first = Enum.find_index(lines, &String.starts_with?(&1, ~s(    - "gate":)))
+      first = Enum.find_index(lines, &String.starts_with?(&1, ~s(    - "field-)))
 
       stage =
         lines |> Enum.drop(first + 1) |> Enum.take_while(&(!String.starts_with?(&1, "    - ")))
 
-      keys = for line <- stage, [_, key] <- [Regex.run(~r/^      "([a-z_]+)":/, line)], do: key
+      keys =
+        for line <- stage, [_, key] <- [Regex.run(~r/^      "([a-z0-9_-]+)":/, line)], do: key
 
+      assert length(keys) > 32
       assert keys == Enum.sort(keys)
-      assert "note" in keys
     end
 
     test "writes an empty mapping, an empty list, a null, a boolean and a number as such", %{
@@ -245,6 +253,7 @@ defmodule Apiary.Processes.ExportTest do
         |> with_stage_field("yes", true)
         |> with_stage_field("count", 3)
         |> with_stage_field("share", 0.5)
+        |> with_stage_field("whole", 1.0)
         |> with_stage_field("text", "null")
 
       saved!(scope, document)
@@ -258,11 +267,12 @@ defmodule Apiary.Processes.ExportTest do
             ~s("yes": true\n),
             ~s("count": 3\n),
             ~s("share": 0.5\n),
+            ~s("whole": 1.0\n),
             ~s("text": "null"\n)
           ],
           do: assert(bytes =~ line)
 
-      assert exported(workspace).process == current(workspace)
+      assert exported(workspace).process === current(workspace)
     end
 
     test "keeps nested lists, and numbers of every kind in a json_schema", %{
@@ -275,23 +285,35 @@ defmodule Apiary.Processes.ExportTest do
         "type" => "object",
         "default" => nil,
         "properties" => %{
-          "share" => %{"minimum" => 0.5, "maximum" => 1.0e20, "multipleOf" => 1.5e-7}
+          "share" => %{
+            "minimum" => 0.5,
+            "maximum" => 1.0,
+            "exclusiveMaximum" => 1.0e20,
+            "multipleOf" => 1.5e-7
+          }
         },
         "enum" => [1, -2, true, false, nil, "text", [], %{}]
       }
 
-      custom!(scope, %{
-        "name" => "bid-set",
-        "base_view" => "structured",
-        "json_schema" => schema
-      })
+      type =
+        custom!(scope, %{
+          "name" => "bid-set",
+          "base_view" => "structured",
+          "json_schema" => schema
+        })
+
+      stored = Repo.reload!(type).json_schema
+
+      # jsonb keeps 1.0e20 as the number with no decimal point, which reads as an integer.
+      assert stored["properties"]["share"]["exclusiveMaximum"] === 100_000_000_000_000_000_000
+      assert stored["properties"]["share"]["maximum"] === 1.0
 
       template = exported(workspace)
 
-      assert template.process == current(workspace)
+      assert template.process === current(workspace)
 
-      assert Enum.find(template.artifact_types, &(&1["name"] == "bid-set"))["json_schema"] ==
-               schema
+      assert Enum.find(template.artifact_types, &(&1["name"] == "bid-set"))["json_schema"] ===
+               stored
     end
 
     test "fits a json_schema of nearly 64 KiB into the reader's budget", %{
@@ -308,7 +330,7 @@ defmodule Apiary.Processes.ExportTest do
       assert %{artifact_types: _types} = exported(workspace)
     end
 
-    test "writes a file the reader's limits refuse, since the file goes to a repository", %{
+    test "writes a file over the reader's limit of bytes", %{
       scope: scope,
       workspace: workspace
     } do
@@ -335,6 +357,9 @@ defmodule Apiary.Processes.ExportTest do
       assert Reader.template(Processes.export(workspace)) == {:error, :too_deep}
     end
   end
+
+  # 40 keys, in the sorted order of their bytes.
+  defp many_keys, do: Enum.map(10..49, &"field-#{&1}")
 
   defp properties(count),
     do: Map.new(1..count, &{"field-#{&1}", %{"type" => "string", "description" => "Field #{&1}"}})
@@ -373,6 +398,20 @@ defmodule Apiary.Processes.ExportTest do
       end
     end
 
+    test "writes the characters YAML does not allow in a file as escapes", %{
+      scope: scope,
+      workspace: workspace
+    } do
+      with_note(scope, "a\u2028b\u2029c\uFEFFd\uFFFEe\uFFFFf")
+
+      bytes = Processes.export(workspace)
+
+      assert bytes =~ ~S("note": "a\u2028b\u2029c\uFEFFd\uFFFEe\uFFFFf")
+
+      for raw <- ["\u2028", "\u2029", "\uFEFF", "\uFFFE", "\uFFFF"],
+          do: refute(String.contains?(bytes, raw))
+    end
+
     test "survives in a json_schema", %{scope: scope, workspace: workspace} do
       schema = %{"type" => "object", "description" => "x", "enum" => @strings}
 
@@ -399,7 +438,7 @@ defmodule Apiary.Processes.ExportTest do
       assert yaml_strings(root) |> Enum.member?("next\u0085line and line\u2028separator")
     end
 
-    test "U+0085 and the other control characters in a process: the reader refuses the file",
+    test "U+0085 and the other control characters in a process: the reader returns an error",
          %{scope: scope, workspace: workspace} do
       for character <- ["\u0085", "\u0001", "\u007F"] do
         with_note(scope, "a#{character}b")
@@ -417,6 +456,83 @@ defmodule Apiary.Processes.ExportTest do
 
   defp yaml_strings({:yamerl_str, _module, _tag, _place, text}), do: [text]
   defp yaml_strings(_node), do: []
+
+  describe "a long key" do
+    @long String.duplicate("k", 1_100)
+
+    # 600 characters, with 1,200 bytes of escapes.
+    @escaped String.duplicate("\"", 600)
+
+    test "in a block is an explicit key, which the reader reads", %{
+      scope: scope,
+      workspace: workspace
+    } do
+      saved!(
+        scope,
+        current(workspace)
+        |> with_stage_field(@long, %{"nested" => [1, %{@long => "value"}]})
+        |> with_stage_field("short", 1)
+      )
+
+      bytes = Processes.export(workspace)
+
+      assert bytes =~ ~s(? "#{@long}"\n      :\n        "nested":\n)
+      assert bytes =~ ~s(- ? "#{@long}"\n)
+      assert exported(workspace).process === current(workspace)
+    end
+
+    test "in flow is an explicit key, which the reader reads", %{
+      scope: scope,
+      workspace: workspace
+    } do
+      schema = %{
+        "type" => "object",
+        "default" => %{@long => 1, "short" => 2},
+        "properties" => %{"a" => %{"default" => [%{@long => %{}}]}}
+      }
+
+      custom!(scope, %{"name" => "bid-set", "base_view" => "structured", "json_schema" => schema})
+
+      assert Processes.export(workspace) =~ ~s({? "#{@long}" : 1, "short": 2})
+
+      assert Enum.find(exported(workspace).artifact_types, &(&1["name"] == "bid-set"))[
+               "json_schema"
+             ] === schema
+    end
+
+    test "counts the bytes of its escapes", %{scope: scope, workspace: workspace} do
+      saved!(scope, with_stage_field(current(workspace), @escaped, 1))
+
+      custom!(scope, %{
+        "name" => "bid-set",
+        "base_view" => "structured",
+        "json_schema" => %{"type" => "object", "default" => %{@escaped => 1}}
+      })
+
+      written = String.duplicate(~S(\"), 600)
+      template = exported(workspace)
+
+      assert Processes.export(workspace) =~ ~s(? "#{written}"\n      : 1\n)
+      assert Processes.export(workspace) =~ ~s({? "#{written}" : 1})
+      assert template.process === current(workspace)
+    end
+
+    test "stays implicit up to 1,000 written bytes", %{scope: scope, workspace: workspace} do
+      fits = String.duplicate("k", 998)
+      over = String.duplicate("j", 999)
+
+      saved!(
+        scope,
+        current(workspace) |> with_stage_field(fits, 1) |> with_stage_field(over, 2)
+      )
+
+      bytes = Processes.export(workspace)
+
+      assert bytes =~ ~s(      "#{fits}": 1\n)
+      assert bytes =~ ~s(? "#{over}"\n      : 2\n)
+      assert exported(workspace).process === current(workspace)
+    end
+  end
 
   describe "the name" do
     defp renamed(workspace, name),
@@ -542,6 +658,33 @@ defmodule Apiary.Processes.ExportTest do
       assert exported(workspace).description == "Exported from the workspace #{workspace.name}."
     end
 
+    test "fall back for a text over the limit in code points and within it in graphemes", %{
+      workspace: workspace
+    } do
+      # The table's check keeps a stored text within the limits. The release's texts have
+      # no such check, so the test takes it away, inside this test's transaction.
+      Repo.query!(
+        "ALTER TABLE type_template_versions DROP CONSTRAINT type_template_versions_texts_check"
+      )
+
+      summary = String.duplicate("e\u0301", 150)
+      description = Enum.map_join(1..80, " ", fn _word -> String.duplicate("e\u0301", 10) end)
+      newest = TypeTemplates.newest("qory.software")
+
+      assert String.length(summary) <= 200
+      assert String.length(description) <= 1200
+      assert length(String.split(description)) == 80
+
+      {1, _} =
+        Repo.update_all(from(t in TypeTemplate, where: t.id == ^newest.id),
+          set: [summary: summary, description: description]
+        )
+
+      fallback = "Exported from the workspace Web shop."
+
+      assert %{summary: ^fallback, description: ^fallback} = exported(workspace)
+    end
+
     test "keep a description of 80 words", %{workspace: workspace} do
       description = Enum.map_join(1..80, " ", &"w#{&1}")
 
@@ -550,7 +693,7 @@ defmodule Apiary.Processes.ExportTest do
       assert exported(workspace).description == description
     end
 
-    test "fall back for a text with a control character, which the reader refuses", %{
+    test "fall back for a text with a control character", %{
       workspace: workspace
     } do
       texts!("Agents work\u0085on tickets.", "Each ticket\u0001 goes through the stages.")

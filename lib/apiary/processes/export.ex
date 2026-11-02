@@ -13,11 +13,11 @@ defmodule Apiary.Processes.Export do
     * `name` is the workspace's name, at most 60 code points. A character of several code
       points that crosses the limit goes whole.
     * `summary` and `description` are the texts of the workspace type
-      (`Apiary.Processes.type_texts/1`). A text that is missing or blank, or that the
-      schema or `Apiary.Harnesses.Reader` would refuse, is replaced by a line with the
-      workspace's name. A text can pass the check of a save and still be refused here:
+      (`Apiary.Processes.type_texts/1`). A text that is missing, blank, or outside the
+      rules of the schema and of `Apiary.Harnesses.Reader` is replaced by a line with the
+      workspace's name. A stored text can pass a save and still be replaced here:
       `Apiary.Processes.TypeTemplates` counts words with `String.split/1`, which keeps
-      no-break spaces inside a word, and it allows control characters.
+      no-break spaces inside a word, and it does not check for control characters.
     * `stack` is the stack the base of the workspace's harness choice extends
       (Apiary.Stacks.choice/1), else `Apiary.Organisations.Workspace.qory_stack/1`.
     * `process` is the current version's document. Each gate that lists people is written
@@ -31,7 +31,10 @@ defmodule Apiary.Processes.Export do
   whole file: every string, a mapping's key included, is a double-quoted scalar, and every
   integer, boolean and null is plain. A mapping inside `process` or a `json_schema` has
   sorted keys, so two exports of one version are the same bytes. A `json_schema` is one
-  line of flow JSON. An empty mapping is `{}` and an empty list is `[]`.
+  line of flow JSON. An empty mapping is `{}` and an empty list is `[]`. A key whose written
+  form is over 1,000 bytes is an explicit key, `? "key"` then `: value` in a block and
+  `{? "key" : value}` in flow, because YAML limits an implicit key to 1,024 characters, and
+  yaml.v3, qory's reader, then fails on the whole file.
 
   A double-quoted scalar here is also a JSON string. Its escapes are `\\"`, `\\\\`, `\\n`,
   `\\r`, `\\t` and `\\uXXXX`, which YAML 1.1 defines in section 5.6 and YAML 1.2 in
@@ -54,6 +57,11 @@ defmodule Apiary.Processes.Export do
 
   # The most code points of `name`, as process.schema.json counts them.
   @name_limit 60
+
+  # The most bytes of a key's written form, quotes and escapes included, on one line with
+  # its value. An escape counts as written, so a key over this is explicit before its
+  # characters reach YAML's limit of 1,024.
+  @implicit_key_bytes 1_000
 
   @doc """
   file/1 is the bytes of the `process.yaml` of `workspace`, from its current version.
@@ -131,8 +139,8 @@ defmodule Apiary.Processes.Export do
 
   defp fits?(nil, _text), do: false
 
-  # The rules of process.schema.json, whose `\S` reads every Unicode space, as this regular
-  # expression does, and the characters `Apiary.Harnesses.Reader` allows.
+  # The rules of process.schema.json, where `\S` excludes every Unicode space, as it does
+  # in this regular expression, and the control characters of `Apiary.Harnesses.Reader`.
   defp fits?(value, text) do
     words = length(Regex.scan(~r/\S+/u, value))
 
@@ -195,7 +203,12 @@ defmodule Apiary.Processes.Export do
     pairs
     |> Enum.with_index()
     |> Enum.map(fn {{key, value}, index} ->
-      [if(index == 0, do: lead, else: pad), string(key), ":", after_key(value, indent)]
+      start = if(index == 0, do: lead, else: pad)
+      written = string(key)
+
+      if explicit?(written),
+        do: [start, "? ", written, "\n", pad, ":", after_key(value, indent)],
+        else: [start, written, ":", after_key(value, indent)]
     end)
   end
 
@@ -234,7 +247,7 @@ defmodule Apiary.Processes.Export do
   defp flow({:flow, value}), do: flow(value)
 
   defp flow(%{} = map) do
-    pairs = for {key, value} <- Enum.sort(map), do: [string(key), ": ", flow(value)]
+    pairs = for {key, value} <- Enum.sort(map), do: flow_pair(string(key), value)
     ["{", Enum.intersperse(pairs, ", "), "}"]
   end
 
@@ -246,6 +259,14 @@ defmodule Apiary.Processes.Export do
   defp flow(value) when is_integer(value), do: Integer.to_string(value)
   defp flow(value) when is_float(value), do: Float.to_string(value)
   defp flow(value) when is_binary(value), do: string(value)
+
+  defp flow_pair(written, value) do
+    if explicit?(written),
+      do: ["? ", written, " : ", flow(value)],
+      else: [written, ": ", flow(value)]
+  end
+
+  defp explicit?(written), do: IO.iodata_length(written) > @implicit_key_bytes
 
   defp string(text), do: [?", for(<<char::utf8 <- text>>, do: character(char)), ?"]
 
