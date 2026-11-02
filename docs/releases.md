@@ -36,7 +36,9 @@ the root `qory.yaml`, the `process.yaml` of the module `software-factory`, and t
 `qory-stack.yaml` of the stacks `core` and `software` into `priv/harness/qory/`, writes
 the commit to `priv/harness/qory/.harness-ref`, and writes the template's name, summary
 and description to `lib/apiary/harnesses/qory_copy/texts.ex` for translation. Set
-`latest` to the same commit, and commit what the task writes.
+`latest` to the same commit, and commit what the task writes. If `process.yaml` changed,
+raise `@template_version` in `lib/apiary/processes.ex`, or an instance that already has
+the workspace type keeps the earlier default.
 
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for

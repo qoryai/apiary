@@ -178,8 +178,8 @@ defmodule ApiaryWeb.StagesLive.Words do
       )
 
   # A workflow's mark, in words beside the check or the cross: a check for a name a stage
-  # may run (`Apiary.Processes.declared_workflows/1`: explore-a-ticket, the names the
-  # harness listed at its last read, and the workflows saved on the Workflow page), a
+  # may run (`Apiary.Processes.declared_workflows/1`: the Qory harness's names, the names
+  # the harness listed at its last read, and the workflows saved on the Workflow page), a
   # cross for any other.
   @doc false
   def mark_text(true), do: gettext("A stage can run it")

@@ -519,6 +519,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on. A type stays on while an artifact of the workspace has it, or while the current
   process or a process version in use includes it. A workspace keeps every standard
   type until a person switches one off.
+- A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
+  a **Workflow** page row with that workflow, lowers it.
 <!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
   timeline, as they happen. A failed push opens its row with the step's output, and it
@@ -538,6 +540,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- The software workspace type's default stages and texts come from the copy of the Qory
+  harness in the release, and they are unchanged. An instance with no save on
+  Instance settings › Workspace types gets them as one more version of the type, so the
+  version number rises by 1. New workspaces copy that version.
+- A workspace on a harness repository no longer has `explore-a-ticket` added to the
+  workflows it lists: a stack that does not list it gets a cross on Stages, and Explore
+  waits. A workspace on the Qory harness is unchanged.
+<!-- /feature -->
 - A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
   the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
