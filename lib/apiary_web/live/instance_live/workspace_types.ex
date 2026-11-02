@@ -188,10 +188,10 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
          |> refresh()}
 
       # A text too long shows under its field, on Details.
-      {:error, {:too_long, text, limit}} ->
+      {:error, {too_long, text, limit}} when too_long in [:too_long, :too_many_words] ->
         {:noreply,
          socket
-         |> assign(text_error: {text, limit})
+         |> assign(text_error: {text, too_long_line(too_long, limit)})
          |> push_patch(to: ~p"/instance/workspace-types/#{type}?tab=details")}
 
       {:error, errors} when is_list(errors) ->
@@ -274,10 +274,10 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
       <:crumb>{@name}</:crumb>
 
       <.settings_page section={:workspace_types} title={@name} measure="list">
-        <div id="type-stages" class="grid gap-6">
+        <div id="type-stages" class={["grid", @tab == :details && "gap-6"]}>
           <%!-- One row: the tabs, then the version line and the buttons at its right end. One
           draft has the edits of both tabs, so the buttons are on both. --%>
-          <div class="flex flex-wrap items-end justify-between gap-x-6 border-b border-line [&>.q-tabs]:border-b-0">
+          <div class="flex max-w-[60rem] flex-wrap items-end justify-between gap-x-6 border-b border-line [&>.q-tabs]:border-b-0">
             <.page_tabs id="type-tabs" label={@name} current={@tab} place="section">
               <:tab key={:stages} patch={@path}>{gettext("Stages")}</:tab>
               <:tab key={:details} patch={"#{@path}?tab=details"}>{gettext("Details")}</:tab>
@@ -302,14 +302,21 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
               </p>
             </div>
           </div>
-          <.notice :if={@notice} kind={:success}>
-            <span id="type-notice">{@notice}</span>
-          </.notice>
-          <.notice :if={@save_errors != []} kind={:error}>
-            <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
-          </.notice>
+          <div
+            :if={@notice != nil or @save_errors != []}
+            class={["grid gap-3", @tab == :stages && "py-4"]}
+          >
+            <.notice :if={@notice} kind={:success}>
+              <span id="type-notice">{@notice}</span>
+            </.notice>
+            <.notice :if={@save_errors != []} kind={:error}>
+              <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
+            </.notice>
+          </div>
 
-          <div :if={@tab == :stages} id="type-editor" class="grid items-start gap-4">
+          <%!-- The box takes the rest of the window (`.q-canvas-fill`), with the inspector
+          beside the canvas and no gap under the tabs. --%>
+          <div :if={@tab == :stages} id="type-editor" class="q-canvas-fill">
             <Canvas.canvas
               id="type-canvas"
               document={@draft}
@@ -317,22 +324,23 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
               selected={@selected}
               alerts={canvas_alerts(assigns)}
             />
-
-            <Inspector.stage_panel
-              :if={@stage}
-              stage={@stage}
-              may={true}
-              named={false}
-              last={length(@draft["stages"]) == 1}
-              declared={@declared}
-              types={@types}
-              members={[]}
-              people={%{}}
-              stage_errors={@stage_errors}
-              rounds_errors={@rounds_errors}
-              problems={@problems}
-              machine={@draft["machine"]}
-            />
+            <div class="q-canvas-side">
+              <Inspector.stage_panel
+                :if={@stage}
+                stage={@stage}
+                may={true}
+                named={false}
+                last={length(@draft["stages"]) == 1}
+                declared={@declared}
+                types={@types}
+                members={[]}
+                people={%{}}
+                stage_errors={@stage_errors}
+                rounds_errors={@rounds_errors}
+                problems={@problems}
+                machine={@draft["machine"]}
+              />
+            </div>
           </div>
 
           <div :if={@tab == :details} id="type-details" class="grid gap-6">
@@ -442,10 +450,14 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   end
 
   # The line under a text that the save found too long.
-  defp text_errors({text, limit}, text),
-    do: [gettext("Write at most %{number} characters.", number: limit)]
-
+  defp text_errors({text, line}, text), do: [line]
   defp text_errors(_error, _text), do: []
+
+  defp too_long_line(:too_long, limit),
+    do: gettext("Write at most %{number} characters.", number: limit)
+
+  defp too_long_line(:too_many_words, limit),
+    do: gettext("Write at most %{count} words.", count: limit)
 
   # A type's key in an element id: `qory.software` as `qory-software`.
   defp slug(type), do: String.replace(type, ~r/[^a-z0-9_-]/, "-")

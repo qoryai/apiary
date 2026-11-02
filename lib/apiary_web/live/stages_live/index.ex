@@ -7,7 +7,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   #
   # The canvas is the editor (`assets/js/canvas.js`, React Flow, through the hook
   # `assets/js/hooks/stages_canvas.js`): it sends a selection, an order of stages, a move
-  # by the arrow keys and a "+" (add_stage) as events; the inspector under it edits the
+  # by the arrow keys and a "+" (add_stage) as events; the inspector beside it edits the
   # selected stage. The page is the only writer of the document, and every save goes
   # through `Apiary.Processes.save/4`, which checks the document against its schema.
   #
@@ -523,10 +523,10 @@ defmodule ApiaryWeb.StagesLive.Index do
         measure="list"
         title={gettext("Stages")}
       >
-        <div id="stages" class="grid gap-6">
+        <div id="stages" class={["grid", @tab == :details && "gap-6"]}>
           <%!-- One row: the tabs, then the version line and the buttons at its right end. One
           draft has the edits of both tabs, so the buttons are on both. --%>
-          <div class="flex flex-wrap items-end justify-between gap-x-6 border-b border-line [&>.q-tabs]:border-b-0">
+          <div class="flex max-w-[60rem] flex-wrap items-end justify-between gap-x-6 border-b border-line [&>.q-tabs]:border-b-0">
             <.page_tabs id="stages-tabs" label={gettext("Stages")} current={@tab} place="section">
               <:tab key={:stages} patch={@path}>{gettext("Stages")}</:tab>
               <:tab key={:details} patch={"#{@path}?tab=details"}>{gettext("Details")}</:tab>
@@ -565,25 +565,29 @@ defmodule ApiaryWeb.StagesLive.Index do
               </p>
             </div>
           </div>
-          <p
-            :if={@may and @trial != nil and @dirty}
-            id="stages-trial-first"
-            class="text-[13px]/5 text-muted"
+          <div
+            :if={(@may and @trial != nil and @dirty) or @notice != nil or @save_errors != []}
+            class={["grid gap-3", @tab == :stages && "py-4"]}
           >
-            {gettext("Make the trial current, or drop it, before you save another trial.")}
-          </p>
-          <.notice :if={@notice} kind={:success}>
-            <span id="stages-notice">{@notice}</span>
-          </.notice>
-          <.notice :if={@save_errors != []} kind={:error}>
-            <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
-          </.notice>
+            <p
+              :if={@may and @trial != nil and @dirty}
+              id="stages-trial-first"
+              class="text-[13px]/5 text-muted"
+            >
+              {gettext("Make the trial current, or drop it, before you save another trial.")}
+            </p>
+            <.notice :if={@notice} kind={:success}>
+              <span id="stages-notice">{@notice}</span>
+            </.notice>
+            <.notice :if={@save_errors != []} kind={:error}>
+              <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
+            </.notice>
+          </div>
 
-          <%!-- The canvas is the editor: a card selected on it opens in the inspector under it.
-          The canvas takes the column's full width (60rem at most, `.q-settings-main-list`)
-          and draws the cards at zoom 1; beside it the inspector would leave the canvas
-          less than the 1000 px both need. --%>
-          <div :if={@tab == :stages} id="stages-editor" class="grid items-start gap-4">
+          <%!-- The canvas is the editor: a card selected on it opens in the inspector beside
+          it. The box takes the rest of the window (`.q-canvas-fill`), with no gap under the
+          tabs. --%>
+          <div :if={@tab == :stages} id="stages-editor" class="q-canvas-fill">
             <Canvas.canvas
               id="stages-canvas"
               document={@draft}
@@ -592,21 +596,22 @@ defmodule ApiaryWeb.StagesLive.Index do
               people={@people}
               alerts={canvas_alerts(assigns)}
             />
-
-            <Inspector.stage_panel
-              :if={@stage}
-              stage={@stage}
-              may={@may}
-              last={length(@draft["stages"]) == 1}
-              declared={@declared}
-              types={@types}
-              members={@members}
-              people={@people}
-              stage_errors={@stage_errors}
-              rounds_errors={@rounds_errors}
-              problems={@problems}
-              machine={@draft["machine"]}
-            />
+            <div class="q-canvas-side">
+              <Inspector.stage_panel
+                :if={@stage}
+                stage={@stage}
+                may={@may}
+                last={length(@draft["stages"]) == 1}
+                declared={@declared}
+                types={@types}
+                members={@members}
+                people={@people}
+                stage_errors={@stage_errors}
+                rounds_errors={@rounds_errors}
+                problems={@problems}
+                machine={@draft["machine"]}
+              />
+            </div>
           </div>
 
           <div :if={@tab == :details} id="stages-details" class="grid gap-6">

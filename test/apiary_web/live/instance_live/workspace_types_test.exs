@@ -191,6 +191,18 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert TypeTemplates.newest(@type_key).number == 1
     end
 
+    test "How it works over 80 words shows under its field", %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit <> "?tab=details")
+      words = Enum.map_join(1..81, " ", fn _n -> "shop" end)
+
+      view |> form("#type-texts-form", texts: %{description: words}) |> render_change()
+      view |> element("#type-save") |> render_click()
+
+      assert has_element?(view, "#type-texts-form", "Write at most 80 words.")
+      assert has_element?(view, ~s(#type-description[aria-invalid="true"]))
+      assert TypeTemplates.newest(@type_key).number == 1
+    end
+
     test "a gate is none or any member: no named approvers", %{conn: conn} do
       {:ok, view, _html} = live(conn, @edit)
 
