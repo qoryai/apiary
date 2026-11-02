@@ -213,8 +213,37 @@ defmodule Apiary.Contract.SignedMessage do
       when status in 100..599 and is_binary(request_signature) and
              (is_binary(configuration) or is_nil(configuration)) and
              (is_binary(run_configuration) or is_nil(run_configuration)) do
-    lines(@answer_tag, status, request_signature, body, configuration, run_configuration)
+    lines(@answer_tag, status, request_signature, sha256(body), configuration, run_configuration)
   end
+
+  @doc ~S"""
+  answer_digest/5 is `answer/5`'s answer string for a body given by its SHA-256, in
+  lowercase hex, in place of the body: the same string `answer/5` makes for the body
+  whose digest it is. A file answer of the run API is signed this way, over the digest
+  Qory Apiary computed from the file's bytes when it stored them, so the file is sent
+  from the store without being read into memory.
+
+      iex> Apiary.Contract.SignedMessage.answer_digest(404, "c2ln", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", nil, nil)
+      "qory-answer-ed25519-v1\n404\nc2ln\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"
+  """
+  @spec answer_digest(100..599, String.t(), String.t(), String.t() | nil, String.t() | nil) ::
+          binary
+  def answer_digest(status, request_signature, body_sha256, configuration, run_configuration)
+      when status in 100..599 and is_binary(request_signature) and is_binary(body_sha256) and
+             byte_size(body_sha256) == 64 and
+             (is_binary(configuration) or is_nil(configuration)) and
+             (is_binary(run_configuration) or is_nil(run_configuration)) do
+    unless sha256?(body_sha256),
+      do: raise(ArgumentError, "body_sha256 is not a SHA-256 in lowercase hex")
+
+    lines(@answer_tag, status, request_signature, body_sha256, configuration, run_configuration)
+  end
+
+  @doc """
+  sha256?/1 is whether `value` is a SHA-256 in lowercase hex, as `answer_digest/5` takes it.
+  """
+  @spec sha256?(term) :: boolean
+  def sha256?(value), do: is_binary(value) and Regex.match?(~r/\A[0-9a-f]{64}\z/, value)
 
   @doc ~S"""
   enrolment_answer/3 is the answer string of an answer with `status` and `body` to the
@@ -226,9 +255,11 @@ defmodule Apiary.Contract.SignedMessage do
   """
   @spec enrolment_answer(100..599, String.t(), iodata) :: binary
   def enrolment_answer(status, proof, body) when status in 100..599 and is_binary(proof),
-    do: lines(@enrolment_answer_tag, status, proof, body, nil, nil)
+    do: lines(@enrolment_answer_tag, status, proof, sha256(body), nil, nil)
 
-  defp lines(tag, status, bound_to, body, configuration, run_configuration) do
+  defp sha256(body), do: Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+
+  defp lines(tag, status, bound_to, digest, configuration, run_configuration) do
     IO.iodata_to_binary([
       tag,
       ?\n,
@@ -236,7 +267,7 @@ defmodule Apiary.Contract.SignedMessage do
       ?\n,
       bound_to,
       ?\n,
-      Base.encode16(:crypto.hash(:sha256, body), case: :lower),
+      digest,
       ?\n,
       configuration || "",
       ?\n,
