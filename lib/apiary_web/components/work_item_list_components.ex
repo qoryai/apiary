@@ -513,9 +513,14 @@ defmodule ApiaryWeb.WorkItemListComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
+  attr :stage_status, :map,
+    default: nil,
+    doc: "`:words` and `:mark` in place of the status, under the feature `workflow_model`"
+
   def work_item_row(assigns) do
     work_item = assigns.work_item
     owner = work_item.owner
+    stage_status = assigns.stage_status
 
     assigns =
       assign(assigns,
@@ -523,13 +528,22 @@ defmodule ApiaryWeb.WorkItemListComponents do
         owner: owner,
         title: shown_title(work_item),
         hot: ApiaryWeb.WorkItemComponents.hot?(work_item),
-        words: ApiaryWeb.WorkItemComponents.status_words(work_item)
+        words:
+          if(stage_status,
+            do: stage_status.words,
+            else: ApiaryWeb.WorkItemComponents.status_words(work_item)
+          ),
+        mark:
+          if(stage_status,
+            do: stage_status.mark,
+            else: ApiaryWeb.WorkItemComponents.mark(work_item, assigns.can_act)
+          )
       )
 
     ~H"""
     <li id={@id}>
       <.link navigate={@navigate} class={["q-wl-row", @hot && "q-wl-row-hot"]}>
-        <.work_item_mark kind={ApiaryWeb.WorkItemComponents.mark(@work_item, @can_act)} />
+        <.work_item_mark kind={@mark} />
         <span class="q-wl-no">#{@work_item.number}</span>
         <span class="q-wl-ttl">
           <b>

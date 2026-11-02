@@ -222,7 +222,7 @@ defmodule ApiaryWeb.SettingsLive do
         id="delete-organisation-kept"
         title={gettext("Delete this organisation")}
       >
-        {organisation_kept()}
+        {organisation_kept(@current_scope)}
       </SettingsComponents.danger_action>
     </SettingsComponents.danger_zone>
     """
@@ -584,7 +584,7 @@ defmodule ApiaryWeb.SettingsLive do
     sentence =
       cond do
         action in @delete_organisation and organisation_kept?(scope) ->
-          organisation_kept()
+          organisation_kept(scope)
 
         action in @delete_organisation ->
           ApiaryWeb.Access.who_may(
@@ -631,10 +631,10 @@ defmodule ApiaryWeb.SettingsLive do
       !may?(scope, :"organisation.delete") and may?(scope, :"organisation.rename") and
         Access.refused_on?(:"organisation.delete", scope.organisation)
 
-  defp organisation_kept,
+  defp organisation_kept(scope),
     do:
-      gettext(
-        "This is the instance's organisation, whose owners run the instance, so it cannot be deleted."
+      gettext("%{organisation} runs this Qory Apiary, so it cannot be deleted.",
+        organisation: scope.organisation.name
       )
 
   @impl true

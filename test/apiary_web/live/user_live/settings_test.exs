@@ -122,7 +122,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       {:ok, lv, html} = live(conn, ~p"/users/settings")
 
       assert html =~
-               "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
+               "Contact support to change your address. Qory Apiary sends no email yet."
 
       refute html =~ "We send a confirmation link to the new address."
       assert has_element?(lv, "#email_form input[name='user[email]'][disabled]")

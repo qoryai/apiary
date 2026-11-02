@@ -215,7 +215,7 @@ defmodule ApiaryWeb.MemberLive.CopiedLinkTest do
       assert has_element?(
                lv,
                "#flash-error",
-               "No new link for dana@example.com: this organisation has made #{Apiary.Instance.invitations_per_day()} invitations in the last 24 hours, as many as it may. Try again later."
+               "No new link for dana@example.com now: too many invitations were sent in the last 24 hours. Try again later, or contact support."
              )
 
       refute has_element?(lv, "#invitation-#{invitation.id}-link")

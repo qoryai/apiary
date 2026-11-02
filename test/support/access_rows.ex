@@ -90,6 +90,7 @@ defmodule Apiary.AccessRows do
       {:"instance.mail_on", yes: []},
       {:"instance.rename", yes: []},
       {:"instance.configure", yes: []},
+      {:"instance.support_save", yes: []},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"audit.prune", yes: [:instance, :feature_off, :hidden]},
       {:"workspace.create", yes: @owners ++ [:feature_off, :hidden]},

@@ -264,12 +264,11 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
         )
 
       assert words(lv, "#node-#{pool.public_id}-level") ==
-               "The instance provides the Qory Pool to every workspace that has no pool. " <>
-                 "It belongs to no workspace or organisation."
+               "Qory Pool: machines Qory Apiary provides for the runs of every workspace " <>
+                 "that has no pool."
 
       assert words(lv, "#node-#{gateway.public_id}-level") ==
-               "The instance provides the Qory Gateway to every organisation. " <>
-                 "It belongs to no workspace or organisation."
+               "Qory Gateway: the gateway Qory Apiary provides to every organisation."
 
       assert words(lv, "#node-#{pool.public_id}-name") == "Qory Pool"
       assert words(lv, "#node-#{gateway.public_id}-name") == "Qory Gateway"
@@ -371,19 +370,19 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
         {:ok, _lv, html} = live(conn, path)
 
         assert html =~
-                 "On Default gateway, runs go through the Qory Gateway, the default for this instance."
+                 "On Default gateway, runs go through the Qory Gateway, the default for Qory Apiary."
       end
     end
 
-    test "with a gateway of the workspace too, the form groups the instance's under This instance",
+    test "with a gateway of the workspace too, the form groups the instance's under Qory Apiary",
          %{scope: scope, member: conn, gateway: gateway} do
       ours = gateway_fixture(scope)
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines/new")
 
       assert has_element?(lv, ~s|optgroup[label="This workspace"] option[value="#{ours.id}"]|)
-      assert has_element?(lv, ~s|optgroup[label="This instance"] option[value="#{gateway.id}"]|)
+      assert has_element?(lv, ~s|optgroup[label="Qory Apiary"] option[value="#{gateway.id}"]|)
 
-      assert words(lv, ~s|optgroup[label="This instance"] option[value="#{gateway.id}"]|) ==
+      assert words(lv, ~s|optgroup[label="Qory Apiary"] option[value="#{gateway.id}"]|) ==
                "Qory Gateway"
     end
 
@@ -428,8 +427,8 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       {:ok, _lv, html} = live(conn, base <> "/settings")
 
       assert html =~
-               "On Default gateway, runs go through the Qory Gateway, the default for this " <>
-                 "instance. On Direct, they go through no gateway."
+               "On Default gateway, runs go through the Qory Gateway, the default for Qory " <>
+                 "Apiary. On Direct, they go through no gateway."
 
       {:ok, lv, _html} = live(conn, base <> "/access-key")
 

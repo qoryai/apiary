@@ -106,7 +106,7 @@ defmodule ApiaryWeb.PolicyLive.RequiredHostsTest do
       view = open(conn, scope)
 
       assert text(view, "#required-hosts-harness") =~
-               "Harness sources github.com The Qory harness The instance"
+               "Harness sources github.com The Qory harness Qory Apiary"
     end
 
     defp harness_document(git), do: "extends:\n  git: \"#{git}\"\n  ref: \"main\"\n"
@@ -156,7 +156,7 @@ defmodule ApiaryWeb.PolicyLive.RequiredHostsTest do
       view = open(conn, scope)
 
       assert text(view, "#required-hosts-harness") =~
-               "github.com The Qory harness The instance"
+               "github.com The Qory harness Qory Apiary"
 
       assert text(view, "#required-hosts-harness") =~
                "tools.example The harness source acme/target-harness This workspace's choice"

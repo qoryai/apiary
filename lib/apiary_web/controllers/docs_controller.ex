@@ -17,35 +17,104 @@ defmodule ApiaryWeb.DocsController do
 
   In the `:browser` pipeline without `:require_authenticated_user`: the documentation is
   for somebody who has not signed up yet, too.
+
+  ## The guides for instance admins
+
+  Some guides are for whoever runs the instance (`admin_guides/0`): `install.md` and
+  `hosting-checklist.md`, and an edition's (`c:ApiaryWeb.Edition.admin_guides/0`).
+  `mix docs` builds each tree twice: the public tree without them, so its pages, sidebar
+  and search never list them, and the tree for instance admins with every guide, under
+  `admin/` of the same root (`admin_dir/1`). The endpoint serves only the public tree, so
+  an admin guide's address under `/docs` is not found there. `admin/2` serves the admins'
+  tree at `/docs/admin`, to a signed-in instance admin (`Apiary.Access.instance_admin?/1`)
+  only, and answers anyone else 404, signed in or not; `/docs` itself leads an instance
+  admin there. Whoever runs the server without signing in reads the guides in the
+  repository's `guides` directory.
   """
   use ApiaryWeb, :controller
 
-  @doc "Redirects to the first page of the built documentation, or says it is not built."
+  # The core's guides for instance admins, by file name.
+  @admin_guides ["install.md", "hosting-checklist.md"]
+
+  @doc """
+  Redirects to the first page of the built documentation: the admins' tree for an
+  instance admin, where it is built, else the public tree; or says it is not built.
+  """
   def index(conn, _params) do
-    if built?() do
-      redirect(conn, to: "/docs/index.html")
-    else
-      conn
-      |> put_status(:not_found)
-      |> render(:not_built, page_title: gettext("Documentation"))
+    cond do
+      admin?(conn) and admin_built?() -> redirect(conn, to: "/docs/admin/index.html")
+      built?() -> redirect(conn, to: "/docs/index.html")
+      true -> not_built(conn)
     end
   end
 
   @doc "A path under `/docs` the endpoint found no file for."
   def missing(conn, params) do
-    if built?() do
-      conn
-      |> put_status(:not_found)
-      |> put_view(html: ApiaryWeb.ErrorHTML)
-      |> render(:"404")
-    else
-      index(conn, params)
+    if built?(), do: not_found(conn), else: index(conn, params)
+  end
+
+  @doc """
+  A path under `/docs/admin`: for a signed-in instance admin, the file of the admins' tree
+  (`admin_dir/0`), `/docs/admin` itself leading to its first page, and 404 for a path with
+  no file; for anyone else, 404, as for a path that does not exist. The answer is marked
+  `private`, so no shared cache keeps it for another person.
+  """
+  def admin(conn, params) do
+    cond do
+      not admin?(conn) -> not_found(conn)
+      not admin_built?() -> redirect(conn, to: "/docs")
+      Map.get(params, "path", []) == [] -> redirect(conn, to: "/docs/admin/index.html")
+      true -> serve_admin(conn)
     end
   end
+
+  defp serve_admin(conn) do
+    static =
+      Plug.Static.init(
+        at: "/docs/admin",
+        from: admin_dir(),
+        cache_control_for_etags: "private",
+        cache_control_for_vsn_requests: "private"
+      )
+
+    case Plug.Static.call(conn, static) do
+      %Plug.Conn{halted: true} = served -> served
+      _not_found -> not_found(conn)
+    end
+  end
+
+  defp admin?(conn), do: Apiary.Access.instance_admin?(conn.assigns[:current_scope])
+
+  defp not_found(conn) do
+    conn
+    |> put_status(:not_found)
+    |> put_view(html: ApiaryWeb.ErrorHTML)
+    |> put_format("html")
+    |> render(:"404")
+  end
+
+  defp not_built(conn) do
+    conn
+    |> put_status(:not_found)
+    |> render(:not_built, page_title: gettext("Documentation"))
+  end
+
+  @doc """
+  The guides only instance admins read, by file name: the core's, `install.md` and
+  `hosting-checklist.md`, then the edition's (`c:ApiaryWeb.Edition.admin_guides/0`), which
+  extend the core's list and never replace it. `mix docs.all` reads it to split the
+  trees.
+  """
+  @spec admin_guides() :: [String.t()]
+  def admin_guides, do: Enum.uniq(@admin_guides ++ ApiaryWeb.Edition.admin_guides())
 
   @doc "Whether `mix docs` has built the tree this instance serves."
   @spec built?() :: boolean()
   def built?, do: File.regular?(Path.join(dir(), "index.html"))
+
+  @doc "Whether `mix docs` has built the admins' tree for this instance's features."
+  @spec admin_built?() :: boolean()
+  def admin_built?, do: File.regular?(Path.join(admin_dir(), "index.html"))
 
   @doc """
   The directory of the documentation tree for `features`, by default the instance's
@@ -61,9 +130,18 @@ defmodule ApiaryWeb.DocsController do
   instance's documentation.
   """
   @spec dir([Apiary.Features.feature()]) :: Path.t()
-  def dir(features \\ Apiary.Features.enabled()) do
-    root = root()
+  def dir(features \\ Apiary.Features.enabled()), do: tree_dir(root(), features)
 
+  @doc """
+  The directory of the admins' tree for `features`, by default the instance's: as
+  `dir/1`, among the trees under `admin/` of the root, which hold every guide, the
+  admins' guides (`admin_guides/0`) included.
+  """
+  @spec admin_dir([Apiary.Features.feature()]) :: Path.t()
+  def admin_dir(features \\ Apiary.Features.enabled()),
+    do: tree_dir(Path.join(root(), "admin"), features)
+
+  defp tree_dir(root, features) do
     tree =
       case File.ls(root) do
         {:ok, names} ->

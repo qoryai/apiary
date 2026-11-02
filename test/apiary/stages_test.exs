@@ -274,7 +274,7 @@ defmodule Apiary.StagesTest do
              ] = Stages.runs(work_item)
 
       assert Map.keys(run) |> Enum.sort() ==
-               ~w(ended_at id of round stage_id started_at status verdict workflow)a
+               ~w(attempt ended_at id of round stage_id started_at status take_in verdict workflow)a
 
       public_id = work_item.public_id
       assert_receive {:stage_changed, ^public_id}

@@ -148,6 +148,159 @@ msgstr ""
 msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
 msgstr ""
 
+#: lib/apiary/support_address.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} at %{address}"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} for a new password link. Password links work once and for a short time."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} for a password link."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} for a password link. Qory Apiary sends no email yet."
+msgstr ""
+
+#: lib/apiary_web/live/collections_live.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to add a work destination. Qory Apiary offers none for this type yet."
+msgstr ""
+
+#: lib/apiary_web/live/collections_live.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to add a work source. Qory Apiary offers none for this type yet."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to add an integration. %{organisation} installs it here once Qory Apiary offers it."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to add an integration. Qory Apiary offers none for the workspaces of this organisation yet."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to add an integration. Qory Apiary offers none yet."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to change your address. Qory Apiary sends no email yet."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to correct the address of %{source}: an address is https://, a host, an optional port and an optional path."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to correct the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
+msgstr "%{contact_support} to correct the version of %{source}: a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "%{contact_support} to make %{source} available to %{organisation}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} with run %{run}. The machine stopped sending for 10 minutes."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support} with work item #%{number}. No machine has taken the test run yet."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. Machines can't reach %{url}, the address in this command."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run did not start: %{adapter} has no call address."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run did not start: Qory Apiary does not call the call address of %{adapter}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run did not start: the call to %{adapter} for %{what} did not reach it."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run did not start: the call to %{adapter} for %{what} timed out."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The run did not start: the response of %{adapter} failed its signature check or format check, or was over 1 MiB."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. The values of this workspace cannot be read: they were stored under another encryption secret."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. This account cannot log in at the moment."
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: %{integration} can't be installed yet."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: Qory Apiary could not call the %{adapter} adapter."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: Qory Apiary could not read the targets of the %{adapter} adapter."
+msgstr "%{contact_support}: Qory Apiary could not read the repositories of the %{adapter} adapter."
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: some machines of this pool were not recorded."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} chosen workspace"
@@ -2306,6 +2459,11 @@ msgstr ""
 msgid "%{organisation} has no workspace yet."
 msgstr ""
 
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} runs this Qory Apiary, so it cannot be deleted."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} › %{workspace}"
@@ -2579,8 +2737,8 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{source} has no version named %{ref}. Contact support to correct the version of this harness source."
-msgstr "%{source} has no branch, tag or commit named %{ref}. Contact support to correct the version of this harness source."
+msgid "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source."
+msgstr "%{source} has no branch, tag or commit named %{ref}. %{contact_support} to correct the version of this harness source."
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
@@ -2635,11 +2793,6 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} waits for answers to the agent's questions."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage} waits for you"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -3018,11 +3171,6 @@ msgstr ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} is being set up"
-msgstr ""
-
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "%{workspace} is this instance's only workspace."
 msgstr ""
 
 #: lib/apiary_web/components/workspace_components.ex
@@ -3422,6 +3570,11 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgid "A pool for %{workspace} takes the runs of %{workspace} alone. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
 msgid "A pool is ready when a machine has joined it and its runs go through a gateway that has an active access key. Runs of work items need a ready pool, because Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
 msgstr ""
 
@@ -3744,16 +3897,6 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Account menu, %{email}"
-msgstr ""
-
-#: lib/apiary_web/live/user_live/registration.ex
-#, elixir-autogen, elixir-format
-msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
-msgstr ""
-
-#: lib/apiary_web/live/user_live/registration.ex
-#, elixir-autogen, elixir-format
-msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4127,7 +4270,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Add the version again. If it fails again, contact support."
+msgid "Add the version again. If it fails again, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -4715,6 +4858,11 @@ msgstr ""
 msgid "An allow rule on this target still holds here."
 msgstr "An allow rule on this repository still holds here."
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "An email address"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -4726,19 +4874,9 @@ msgstr ""
 msgid "An https address, such as https://example.com/shop/description.json. The release's other files are beside it."
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin"
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin finds the cause in the machine log of the Machine started step."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4955,7 +5093,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Artifacts are not available here. Contact support if you need them."
+msgid "Artifacts are not available here. %{contact_support} if you need them."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -4998,49 +5136,9 @@ msgstr ""
 msgid "Ask %{names} to install one."
 msgstr ""
 
-#: lib/apiary_web/live/user_live/login.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an admin of %{name} for a password link."
-msgstr ""
-
-#: lib/apiary_web/live/user_live/login.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an admin of this Qory Apiary for a password link."
-msgstr ""
-
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an approver of %{stage} to act on it."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check %{adapter}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check %{adapter}. The run did not start: the response of %{adapter} to the call for %{what} failed its signature check or format check, or was over 1 MiB."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run did not start: the call to %{adapter} for %{what} failed to connect, found no address for the host name, or got 502, 503 or 504 from the reverse proxy."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check that %{adapter} is running. The run did not start: the call to %{adapter} for %{what} timed out."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run did not start: the call address is not an https address at the adapter's name under the instance's name, its host resolves to an address that Qory Apiary does not call, or the instance's public address has no host name."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to check the call address of %{adapter}. The run did not start: %{adapter} has no call address, so Qory Apiary could not call it for %{what}."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -5181,6 +5279,7 @@ msgid "Attempt %{attempt} of %{of}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} is queued."
 msgstr ""
@@ -5208,6 +5307,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of}, after answers from %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} · %{workflow} · round %{round} · %{verdict}"
 msgstr ""
 
 #: lib/apiary_web/components/host_components.ex
@@ -5337,7 +5441,7 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Bring tickets in from a system such as an issue tracker. Owners and admins of %{organisation} connect it once for the organisation."
+msgid "Bring tickets in from a system such as an issue tracker."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -5789,6 +5893,16 @@ msgstr ""
 msgid "Changed how long runs are kept"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Changed in %{page}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the configuration of Qory Apiary"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the default machine type from %{from} to %{to}."
@@ -5821,7 +5935,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Changed the instance's configuration"
+msgid "Changed the name in the header"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/workspace_types.ex
@@ -5919,11 +6033,6 @@ msgstr "Changes to the workspace's rules, which re-render this repository too, a
 msgid "Changes to this target's rules, newest first"
 msgstr "Changes to this repository's rules, newest first"
 
-#: lib/apiary_web/live/user_live/settings.ex
-#, elixir-autogen, elixir-format
-msgid "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
-msgstr ""
-
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check again"
@@ -5972,11 +6081,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Check the TLS setting and port, such as 587 with Always, or 465, then send the test link again. The TLS handshake with the relay failed at %{time}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. Three calls to the adapter failed."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -6623,55 +6727,24 @@ msgstr ""
 msgid "Connections inline"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
+#: lib/apiary/support_address.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support to correct the address of %{source}: an address is https://, a host, an optional port and an optional path."
+msgid "Contact support"
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support to correct the folder of %{source}: a folder is a relative path with no empty, . or .. part, at most 1,024 characters long."
+msgid "Contact support at %{address}."
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
+#: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
-msgstr "Contact support to correct the version of %{source}: a branch, tag or commit name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces."
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Contact support to make %{source} available to %{organisation}."
+msgid "Contact support with run %{run}."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support with run %{run}. The machine stopped sending for 10 minutes."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support with work item #%{number}. No machine has taken the test run yet."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary could not call the %{adapter} adapter."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary could not read the targets of the %{adapter} adapter."
-msgstr "Contact support: Qory Apiary could not read the repositories of the %{adapter} adapter."
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: some machines of this pool were not recorded."
+msgid "Contact support."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -6722,7 +6795,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Copy again in a minute. Qory Apiary could not build the diagnostics. If it fails again, tell your instance admin."
+msgid "Copy again in a minute. If it fails again, %{contact_support} with run %{run}. Qory Apiary could not build the diagnostics."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -7377,7 +7450,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Deleted the activity older than the instance keeps"
+msgid "Deleted the activity older than the retention period"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -8984,14 +9057,14 @@ msgstr ""
 msgid "From an https address"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "From attempt %{attempt} · %{workflow}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "From now on %{target} stays on %{mode} whatever %{workspace}'s mode becomes."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "From run %{run} · %{workflow}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -9137,6 +9210,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -9566,7 +9640,7 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."
+msgid "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, %{contact_support}. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -9789,7 +9863,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Install one of this instance's integrations for %{organisation}."
+msgid "Install an integration Qory Apiary offers for %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -9826,11 +9900,6 @@ msgid_plural "Installed · %{number} %{collections}, %{unassigned} unassigned"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Instance renamed"
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/general.ex
 #, elixir-autogen, elixir-format
 msgid "Instance renamed to %{name}."
@@ -9844,6 +9913,7 @@ msgid "Instance settings"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Instance settings › %{page}"
 msgstr ""
@@ -11626,6 +11696,11 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Name in the header changed"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Name of the key"
@@ -12182,12 +12257,7 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "No new link for %{email}: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No new link for %{email}: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+msgid "No new link for %{email} now: too many invitations were sent in the last 24 hours. Try again later, or %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -12603,8 +12673,10 @@ msgid_plural "Nobody will be left who can cancel the deletion of the organisatio
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/artifact_live/show.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/member_live/index.ex
@@ -13346,16 +13418,6 @@ msgstr ""
 msgid "Only a rule of the workspace can be locked: a lock is what holds it against the targets."
 msgstr "Only a rule of the workspace can be locked: a lock is what holds it against the repositories."
 
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Only an admin of this Qory Apiary makes password links, while it sends no email."
-msgstr ""
-
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "Only an instance admin checks the Qory Pool and the Qory Gateway."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
@@ -13953,6 +14015,11 @@ msgctxt "plain"
 msgid "Owners and admins of %{organisation} connect an integration that covers %{source} in Organisation settings › Integrations. %{source} is not public, or does not exist, and no connection of %{organisation} reaches it."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{organisation} connect it once for the organisation."
+msgstr ""
+
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{organisation} finish the set-up."
@@ -13993,7 +14060,7 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
-msgid "Pages are in English, the one language this instance has."
+msgid "Pages are in English, the one language Qory Apiary offers."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -14012,16 +14079,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Password link made"
-msgstr ""
-
-#: lib/apiary_web/live/user_live/password.ex
-#, elixir-autogen, elixir-format
-msgid "Password links work once and for a short time. Ask an admin of %{name} for a new one."
-msgstr ""
-
-#: lib/apiary_web/live/user_live/password.ex
-#, elixir-autogen, elixir-format
-msgid "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -14436,6 +14493,8 @@ msgid "QORY_APIARY_PUBLIC_KEY. The same for every machine connected to this Qory
 msgstr ""
 
 #: lib/apiary_web/activity/actor.ex
+#: lib/apiary_web/components/host_components.ex
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary"
@@ -14463,12 +14522,12 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, contact support."
+msgid "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, contact support."
+msgid "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -14489,12 +14548,17 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, contact support."
+msgid "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary does not prune runs automatically: a workspace's retention takes effect when the pruning job is run by hand."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/release.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary doesn't add integrations from this source."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
@@ -14527,6 +14591,21 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary no longer adds integrations from this source, so its version can't be changed."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/release.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary no longer adds integrations from this source, so this one can't be added."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary no longer adds integrations from this source."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -14610,6 +14689,11 @@ msgstr ""
 msgid "Qory Gateway"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Gateway: the gateway Qory Apiary provides to every organisation."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -14620,6 +14704,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/nodes.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Pool and Qory Gateway"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Pool: machines Qory Apiary provides for the runs of every workspace that has no pool."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14754,6 +14843,7 @@ msgid "Questions"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Queued"
 msgstr ""
@@ -14938,7 +15028,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page and act again, and tell an instance admin if it fails again. Qory Apiary could not act on the stage."
+msgid "Reload the page and act again, and %{contact_support} if it fails again. Qory Apiary could not act on the stage."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -15313,11 +15403,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Renamed a value ID of a stored secret"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Renamed the instance"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15730,11 +15815,6 @@ msgid_plural "Run %{run} · %{count} runs, %{state}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} · %{workflow} · round %{round} · %{verdict}"
-msgstr ""
-
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run %{run} · round %{round}"
@@ -15752,7 +15832,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run Explore again. If the run ends the same way, ask an instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
+msgid "Run Explore again. If the run ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run Explore again. If the run ends the same way, %{contact_support}. Three calls to the adapter %{adapter} failed."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -15964,8 +16049,8 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Runs change targets in a system such as a ticket tracker or a document store. Owners and admins of %{organisation} connect it once for the organisation."
-msgstr "Runs change repositories in a system such as a forge. Owners and admins of %{organisation} connect it once for the organisation."
+msgid "Runs change targets in a system such as a ticket tracker or a document store."
+msgstr "Runs change repositories in a system such as a forge."
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -15980,6 +16065,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs in %{workspace} then wait for this pool."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -16032,6 +16122,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Runs of machines and pools on Default gateway go through the default."
 msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of this target start in the pool's default image."
+msgstr "Runs of this repository start in the pool's default image."
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -16202,6 +16297,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Saved the mail settings and started a test send"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved the support address"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -16650,7 +16750,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
+msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or %{contact_support} with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -17296,7 +17396,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Store the files again. If it fails again, contact support."
+msgid "Store the files again. If it fails again, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -17408,6 +17508,28 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Superseded"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Support"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Support address"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Support address saved"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Support address saved."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -17878,13 +18000,13 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, contact support."
+msgid "The %{adapter} adapter did not accept the call from Qory Apiary. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "The %{adapter} adapter did not answer within %{count} second. Try again. If it repeats, contact support."
-msgid_plural "The %{adapter} adapter did not answer within %{count} seconds. Try again. If it repeats, contact support."
+msgid "The %{adapter} adapter did not answer within %{count} second. Try again. If it repeats, %{contact_support}."
+msgid_plural "The %{adapter} adapter did not answer within %{count} seconds. Try again. If it repeats, %{contact_support}."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -17982,7 +18104,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment."
+msgid "The Qory Pool: machines Qory Apiary provides for the runs of every workspace that has no pool."
 msgstr ""
 
 #: lib/apiary_web/components/host_components.ex
@@ -18374,27 +18496,12 @@ msgstr ""
 
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
-msgid "The instance"
-msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "The instance admin can read the machine's log."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
-msgstr ""
-
-#: lib/apiary_web/components/host_components.ex
-#, elixir-autogen, elixir-format
 msgid "The integration %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The integrations Qory Apiary offers, and whether each is installed for %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
@@ -18510,7 +18617,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "The list shows the repositories connected to %{organisation}, and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or ask an instance admin to assign it."
+msgid "The list shows the repositories connected to %{organisation}, and the harness sources Qory Apiary provides to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -18637,7 +18744,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/general.ex
 #, elixir-autogen, elixir-format
-msgid "The name this instance shows on its pages and in its email."
+msgid "The name this instance shows on its pages and in its email, and where “Contact support” leads."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -19494,16 +19601,6 @@ msgstr ""
 msgid "This Qory Apiary is not set up yet: use the set-up link from its install."
 msgstr ""
 
-#: lib/apiary_web/live/user_live/password.ex
-#, elixir-autogen, elixir-format
-msgid "This account cannot log in at the moment. Ask the admins of %{name}."
-msgstr ""
-
-#: lib/apiary_web/live/user_live/password.ex
-#, elixir-autogen, elixir-format
-msgid "This account cannot log in at the moment. Ask the admins of this Qory Apiary."
-msgstr ""
-
 #: lib/apiary_web/controllers/adapter_setup_controller.ex
 #, elixir-autogen, elixir-format
 msgid "This adapter has nothing to set up now."
@@ -19597,16 +19694,6 @@ msgstr ""
 msgid "This host cannot be named in a policy: a rule takes a host name, not an address of this form."
 msgstr ""
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "This instance"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "This instance doesn't accept integrations from this source."
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #, elixir-autogen, elixir-format
 msgid "This instance has at most %{count} diagnostics keys. Revoke one to add another."
@@ -19622,34 +19709,9 @@ msgstr ""
 msgid "This instance has no setting for this machine, so Qory Apiary writes no new code after a revoke."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "This instance no longer accepts integrations from this source, so it can't be added."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This instance no longer accepts integrations from this source, so its version can't be changed."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "This instance no longer accepts integrations from this source."
-msgstr ""
-
-#: lib/apiary_web/live/adapter_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "This instance's integrations, and whether each is installed for %{organisation}."
-msgstr ""
-
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "This invitation is no longer valid"
-msgstr ""
-
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "This is the instance's organisation, whose owners run the instance, so it cannot be deleted."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -20116,7 +20178,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Try again, and tell an instance admin if it fails again. The check of the harness stopped with an error in Qory Apiary."
+msgid "Try again, and %{contact_support} if it fails again. The check of the harness stopped with an error in Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -20958,6 +21020,21 @@ msgstr ""
 msgid "Where your machines and pools will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Where “Contact support” leads on the pages and in the emails people in an organisation read."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Where “Contact support” leads on the pages and in the emails people in an organisation read. With none, “Contact support” shows as plain text."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Where “Contact support” leads on the pages and in the emails people in an organisation read: an https address or an email address. Empty: “Contact support” shows as plain text, without a link."
+msgstr ""
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Which harness do runs in %{workspace} use?"
@@ -21789,6 +21866,16 @@ msgstr ""
 msgid "You have not been added to a workspace yet"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You join %{name} by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You join %{name} by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "You join an organisation through an invitation. Ask an owner or an admin of yours to invite %{email}; the email they send brings you straight to their workspace."
@@ -22267,6 +22354,11 @@ msgstr "collection"
 msgctxt "source collection, when its adapter names none"
 msgid "collections"
 msgstr "collections"
+
+#: lib/apiary/support_address.ex
+#, elixir-autogen, elixir-format
+msgid "contact support"
+msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -23452,11 +23544,6 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/rules.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace's policy"
-msgstr ""
-
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "this instance"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

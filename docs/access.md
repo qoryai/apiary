@@ -203,6 +203,9 @@ the product's name in Instance settings › General (`instance.rename`,
 Changing the instance's settings in Instance settings › Configuration
 (`instance.configure`, `Apiary.InstanceConfig.save/3`) is an instance admin's too, asked
 by `Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in.
+Saving the support address in Instance settings › General (`instance.support_save`,
+`Apiary.SupportAddress.save/2`) is an instance admin's too, asked by
+`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
 Starting an adapter's set-up at the system it reads from (`adapter.setup`,
 `Apiary.Adapters.setup/2`) is an instance admin's too, asked by
 `Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.

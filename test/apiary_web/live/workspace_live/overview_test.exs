@@ -326,7 +326,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#onboarding-ways")
 
       # The test server is localhost: machines can't reach it, and the box says so.
-      assert text(view, "#onboarding-unreachable") =~ "Machines can't reach this address."
+      assert text(view, "#onboarding-unreachable") =~ "Machines can't reach"
 
       # Nowhere else: the address, the flash, the title, the log, the state as inspected.
       refute path =~ code

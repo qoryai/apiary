@@ -260,7 +260,7 @@ defmodule ApiaryWeb.HostComponents do
   def source_words(:registry), do: gettext("The image registry")
   def source_words({:adapter, name}), do: gettext("The adapter %{name}", name: name)
 
-  defp required_by_words(:instance), do: gettext("The instance")
+  defp required_by_words(:instance), do: gettext("Qory Apiary")
   defp required_by_words(:workspace), do: gettext("This workspace's choice")
   defp required_by_words(:organisation), do: gettext("The organisation's choice")
 
