@@ -1599,10 +1599,10 @@ defmodule ApiaryWeb.RunLive.Show do
             rule_panel: nil
           )
           |> put_index(Record.timeline(scope, run))
-          |> assign_ending()
           |> assign_policy_facts()
           |> assign(preparation: nil, preparation_settled: false, machine_log: :hidden)
           |> assign_preparation()
+          |> assign_ending()
         else
           socket
         end
@@ -2011,8 +2011,10 @@ defmodule ApiaryWeb.RunLive.Show do
   # whose image was missing from the registry and whose work was queued again
   # (`Apiary.Dispatches.requeued_for_image?/1`), that, with the way to its exit; else the
   # last of its timeline's results that was no success, failed turns and failed tools,
-  # read whole, with the way to that item. Nothing for a run that is alive or ended well,
-  # or whose timeline says no more than its state.
+  # read whole, with the way to that item. A run with a failed push step has no failed
+  # tool here: the push is what failed last, and it is no item of the timeline. Nothing
+  # for a run that is alive or ended well, or whose timeline says no more than its state.
+  # Read after the preparation, which has the push steps.
   defp assign_ending(%{assigns: %{run: %Run{state: state} = run, index: index}} = socket) do
     exited = Enum.find(index.items, &(&1.kind == :run_exited))
 
@@ -2035,9 +2037,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp assign_ending(socket, state, run, index) do
     if state in Run.ended_badly_states() do
+      kinds =
+        if Preparation.push_failed?(socket.assigns.preparation),
+          do: [:result, :turn_failed],
+          else: [:result, :turn_failed, :tool]
+
       candidates =
         index.items
-        |> Enum.filter(&(&1.kind in [:result, :turn_failed, :tool]))
+        |> Enum.filter(&(&1.kind in kinds))
         |> Enum.take(-12)
 
       ending =
@@ -3006,7 +3013,7 @@ defmodule ApiaryWeb.RunLive.Show do
           end
       end
 
-    socket = socket |> put_index(index) |> assign_ending() |> refresh_preparation(rows)
+    socket = socket |> put_index(index) |> refresh_preparation(rows) |> assign_ending()
     security = socket.assigns.security
 
     case rows do

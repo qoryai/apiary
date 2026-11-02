@@ -182,6 +182,173 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
     assert lv |> element(".q-limits") |> render() =~ "stopped before its session started"
   end
 
+  describe "How it ended" do
+    defp failed_push(from) do
+      [
+        {from, "run.step_started", %{"step" => 1, "name" => @push, "kind" => "push"}},
+        {from + 1, "run.step_exited",
+         %{"step" => 1, "state" => "failed", "exit_code" => 1, "duration_ms" => 100}}
+      ]
+    end
+
+    defp failed_exit(sequence),
+      do:
+        {sequence, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+
+    defp session_started do
+      [
+        {1, "run.started", started_data()},
+        {2, "session.started", session_started_data()},
+        {3, "runtime.started", %{"session_id" => "session-0001"}}
+      ]
+    end
+
+    # A session whose last item, at sequence 4, is the event given, and which exited 0.
+    defp session_ended(type, data) do
+      session_started() ++
+        [
+          {4, type, data},
+          {5, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
+        ]
+    end
+
+    # A session in which a tool failed and which ended with a success, through sequence 7.
+    defp failed_tool_then_success do
+      tool = %{"tool" => "Bash", "tool_use_id" => "tool-1"}
+
+      session_started() ++
+        [
+          {4, "runtime.tool_started", Map.put(tool, "input", %{"command" => "make"})},
+          {5, "runtime.tool_failed", Map.put(tool, "error", "exit status 1")},
+          {6, "runtime.result", %{"outcome" => "success", "result" => "done"}},
+          {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
+        ]
+    end
+
+    test "a failed tool, a success, then a failed push: no line", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          failed_tool_then_success() ++ failed_push(8) ++ [failed_exit(10)]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      refute has_element?(lv, "#run-why")
+    end
+
+    test "a failed result, then a failed push, still shows its ending", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          session_ended("runtime.result", %{
+            "outcome" => "error",
+            "result" => "the tests still fail"
+          }) ++ failed_push(6) ++ [failed_exit(8)]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-why", "the tests still fail")
+    end
+
+    test "a failed turn, then a failed push, still shows its ending", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          session_ended("runtime.turn_failed", %{"error" => "the turn stopped"}) ++
+            failed_push(6) ++ [failed_exit(8)]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-why", "the turn stopped")
+    end
+
+    test "a failed tool with no push step still shows its ending", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          failed_tool_then_success() ++ [failed_exit(8)]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-why", "Bash failed")
+    end
+
+    test "a failed tool with a push that succeeded still shows its ending", ctx do
+      run =
+        project!(
+          run_fixture(ctx.scope),
+          failed_tool_then_success() ++
+            [
+              {8, "run.step_started", %{"step" => 1, "name" => @push, "kind" => "push"}},
+              {9, "run.step_exited",
+               %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+              failed_exit(10)
+            ]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-why", "Bash failed")
+    end
+
+    test "on a live page, the run's exit in a later flush than the step's exit: no line",
+         ctx do
+      run = project!(run_fixture(ctx.scope), failed_tool_then_success())
+      lv = open(ctx.conn, ctx.scope, run)
+      at_end(lv)
+      assert settled?(lv)
+
+      arrive!(lv, run, failed_push(8))
+      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      refute has_element?(lv, "#run-why")
+
+      arrive!(lv, run, [failed_exit(10)])
+      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      refute has_element?(lv, "#run-why")
+    end
+
+    test "on a live page, the step's exit and the run's exit in one flush: no line", ctx do
+      run = project!(run_fixture(ctx.scope), failed_tool_then_success())
+      lv = open(ctx.conn, ctx.scope, run)
+      at_end(lv)
+
+      arrive!(lv, run, failed_push(8) ++ [failed_exit(10)])
+
+      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      refute has_element?(lv, "#run-why")
+    end
+
+    test "on a live page, a failed tool with no push step shows its ending at the exit", ctx do
+      run = project!(run_fixture(ctx.scope), failed_tool_then_success())
+      lv = open(ctx.conn, ctx.scope, run)
+      at_end(lv)
+
+      arrive!(lv, run, [failed_exit(8)])
+
+      assert has_element?(lv, "#run-why", "Bash failed")
+    end
+  end
+
+  test "a late event on a settled page reads the preparation again", ctx do
+    # Sequence 6 is missing, and 7 is on the page: its arrival reaches below what the page
+    # holds, so the flush has no rows to look at.
+    run =
+      session_over(ctx.scope, [{7, "runtime.notification", %{"kind" => "k", "message" => "m"}}])
+
+    lv = open(ctx.conn, ctx.scope, run)
+    at_end(lv)
+    assert settled?(lv)
+
+    arrive!(lv, run, [push_started(6)])
+
+    assert has_element?(lv, "#after-session-step-1[data-state='running']")
+  end
+
   test "a run's exit cancels an open push step on the page", ctx do
     run = session_over(ctx.scope, [push_started(6)])
     lv = open(ctx.conn, ctx.scope, run)

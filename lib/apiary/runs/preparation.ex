@@ -490,6 +490,11 @@ defmodule Apiary.Runs.Preparation do
 
   def stopped_step(_preparation), do: nil
 
+  @doc "Whether a push step of a preparation failed; false for no preparation."
+  @spec push_failed?(t | nil) :: boolean
+  def push_failed?(%{after_session: steps}), do: Enum.any?(steps, &(&1.state == "failed"))
+  def push_failed?(nil), do: false
+
   # The starter's reason as a line an external system sent, with its one closing full
   # stop left out for the sentence's, through the secret filter unless kept as stored.
   defp reason(nil, _how), do: gettext("n/a")

@@ -1702,6 +1702,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
+  A run with a failed push step leaves failed tools out of that search.
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
@@ -1830,7 +1831,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   Each row is a step's row of Prepare machine: state, start time, duration, output, and
   open when failed. The section has no total, no cause line and no Clean up row. A failed
   push is no failed preparation: it adds no cause line, no reason in the run's header, no
-  note above the timeline, and no time to Prepare machine. An open page shows a push step's
+  note above the timeline, and no time to Prepare machine. A run with a failed push does
+  not show an earlier failed tool under How it ended; a failed result or a failed turn
+  still shows there. An open page shows a push step's
   start, its end, and the Cancelled of a run's exit with no reload; its output shows at
   the step's end.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
