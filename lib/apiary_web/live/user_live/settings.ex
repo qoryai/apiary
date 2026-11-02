@@ -71,7 +71,7 @@ defmodule ApiaryWeb.UserLive.Settings do
               <:note :if={@mail?}>
                 {gettext("We send a confirmation link to the new address.")}
               </:note>
-              <:note :if={!@mail?}>{no_mail_for_email()}</:note>
+              <:note :if={!@mail?}><.rich text={no_mail_for_email()} /></:note>
             </SettingsComponents.save>
           </.form>
         </SettingsComponents.part>
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.UserLive.Settings do
               id="preferences_language"
               class="text-[13px] text-muted"
             >
-              {gettext("Pages are in English, the one language this instance has.")}
+              {gettext("Pages are in English, the one language Qory Apiary offers.")}
             </p>
             <SettingsComponents.save>
               <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
@@ -430,7 +430,10 @@ defmodule ApiaryWeb.UserLive.Settings do
 
     case Accounts.change_user_email(user, user_params) do
       _changeset when not mail? ->
-        {:noreply, socket |> assign(:mail?, false) |> put_flash(:error, no_mail_for_email())}
+        {:noreply,
+         socket
+         |> assign(:mail?, false)
+         |> put_flash(:error, plain_text(no_mail_for_email(ApiaryWeb.Support.plain())))}
 
       %{valid?: true} = changeset ->
         Accounts.deliver_user_update_email_instructions(
@@ -549,9 +552,11 @@ defmodule ApiaryWeb.UserLive.Settings do
     end
   end
 
-  defp no_mail_for_email,
+  defp no_mail_for_email(contact_support \\ ApiaryWeb.Support.rich()),
     do:
-      gettext("Changing your address needs mail. Ask an admin of this Qory Apiary to set it up.")
+      rich_gettext("%{contact_support} to change your address. Qory Apiary sends no email yet.",
+        contact_support: contact_support
+      )
 
   defp preferences_form(changeset, action \\ nil),
     do: to_form(changeset, as: :preferences, action: action || changeset.action)

@@ -1912,7 +1912,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       ended at its claim, before it started (`:end_cause` `:variables_invalid`,
       `:ticket_gone`, `:inputs_invalid` or `:target_access_gone`), while it waited for its environment
       image's build, which failed (`:build_failed`), or because its harness walk failed
-      (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why;
+      (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why; for
+      a run whose harness had no skill for its workflow (`:workflow_gap`), that workflow
+      and where the harness came from;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
       with Qory's words under Show Qory's words;
@@ -2800,9 +2802,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.icon name={@icon} class="q-xp-bad-i size-4" />
       <div>
         <p id={"#{@id}-h"}><b>{@heading}</b></p>
-        <p :if={@body}>{@body}</p>
+        <p :if={@body}><.rich text={@body} /></p>
         <p :if={@run[:adapter_failure]} id={"#{@id}-adapter"}>
-          {adapter_failure_words(@run.adapter_failure)}
+          <.rich text={adapter_failure_words(@run.adapter_failure)} />
         </p>
         <p :if={@run[:id]}>
           <.rich text={rich_gettext("The page of run %{run} shows what it did.", run: run_ref(@run))} />
@@ -2839,6 +2841,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        unstarted_words(cause)}
 
+  defp no_result_words(%{workflow_gap: %{} = gap}),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       ApiaryWeb.HarnessComponents.workflow_gap_words(gap)}
+
   defp no_result_words(%{outcome: :none}),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
@@ -2863,44 +2870,48 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     case cause do
       :timeout ->
-        gettext(
-          "Ask an instance admin to check that %{adapter} is running. The run did not start: the call to %{adapter} for %{what} timed out.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} timed out.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
         )
 
       :unreachable ->
-        gettext(
-          "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run did not start: the call to %{adapter} for %{what} failed to connect, found no address for the host name, or got 502, 503 or 504 from the reverse proxy.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} did not reach it.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
         )
 
       :refused ->
-        gettext(
-          "Ask an instance admin to check %{adapter}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what,
           code: failure.code || "unauthorized"
         )
 
       :invalid_answer ->
-        gettext(
-          "Ask an instance admin to check %{adapter}. The run did not start: the response of %{adapter} to the call for %{what} failed its signature check or format check, or was over 1 MiB.",
-          adapter: adapter,
-          what: what
+        rich_gettext(
+          "%{contact_support}. The run did not start: the response of %{adapter} failed its signature check or format check, or was over 1 MiB.",
+          contact_support: ApiaryWeb.Support.rich(),
+          adapter: adapter
         )
 
       :no_address ->
-        gettext(
-          "Ask an instance admin to check the call address of %{adapter}. The run did not start: %{adapter} has no call address, so Qory Apiary could not call it for %{what}.",
-          adapter: adapter,
-          what: what
+        rich_gettext(
+          "%{contact_support}. The run did not start: %{adapter} has no call address.",
+          contact_support: ApiaryWeb.Support.rich(),
+          adapter: adapter
         )
 
       :not_allowed ->
-        gettext(
-          "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run did not start: the call address is not an https address at the adapter's name under the instance's name, its host resolves to an address that Qory Apiary does not call, or the instance's public address has no host name.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: Qory Apiary does not call the call address of %{adapter}.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter
         )
 
@@ -2976,14 +2987,16 @@ defmodule ApiaryWeb.WorkItemComponents do
         )
 
       "adapter_unavailable" ->
-        gettext(
-          "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. Three calls to the adapter failed.",
+        rich_gettext(
+          "Run Explore again. If the run ends the same way, %{contact_support}. Three calls to the adapter %{adapter} failed.",
+          contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
           adapter: failure.adapter
         )
 
       "walk_error" ->
-        gettext(
-          "Run Explore again. If the run ends the same way, ask an instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
+        rich_gettext(
+          "Run Explore again. If the run ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary.",
+          contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
         )
 
       _adapter_failed ->
@@ -3022,13 +3035,20 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def harness_problem_words(rule), do: harness_rule_words(rule)
 
+  # A save check's message goes inside a sentence that ends in ".": a message that is a
+  # sentence of its own, such as the bind messages of `Apiary.Stacks.Document`, loses its
+  # "." here, so the line does not end in "..".
   defp saved_rule_words(message, values) when is_binary(message) do
     values =
       for {key, value} <- values || %{}, atom = @rule_values[key], atom != nil do
         {atom, value || gettext("the workspace's harness setting")}
       end
 
-    ApiaryWeb.CoreComponents.translate_error({message, values})
+    words = ApiaryWeb.CoreComponents.translate_error({message, values})
+
+    if String.ends_with?(message, "."),
+      do: String.replace_suffix(words, ".", ""),
+      else: words
   end
 
   defp walk_rule_words("both_files", _values),

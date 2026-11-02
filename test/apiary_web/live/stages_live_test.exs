@@ -6,8 +6,8 @@ defmodule ApiaryWeb.StagesLiveTest do
   place ("+"), renaming, moving and removing it; a stage's sequence, loop, inputs, outputs
   and gate; the placement check; a save, a trial and the history; a member's page, with
   the same canvas and a read-only inspector; the tabs Stages and Details, with one draft;
-  and the harness's workflows, read again from the saved harness source against stub
-  adapters (`Req.Test`).
+  the harness's workflows, read again from the workspace's harness choice against stub
+  adapters (`Req.Test`); and a workflow's typed name, with its check or cross.
 
   Not async: each test sets the instance's features, which are the whole node's.
   """
@@ -115,6 +115,8 @@ defmodule ApiaryWeb.StagesLiveTest do
     test "sees the software type's five stages on the canvas, the inspector and the harness",
          %{conn: conn, path: path, scope: scope} do
       {:ok, view, _html} = live(conn, path)
+      # The Qory harness's names, recorded when the page opens.
+      render_async(view)
 
       assert has_element?(view, "#settings-section-title", "Stages")
       assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
@@ -188,7 +190,13 @@ defmodule ApiaryWeb.StagesLiveTest do
                ],
                "gate" => "Gate: a member approves",
                "add" => "Add a stage after Explore",
-               "alerts" => []
+               "alerts" => [],
+               "marks" => %{
+                 "explore-a-ticket" => %{
+                   "listed" => true,
+                   "label" => "explore-a-ticket: a stage can run it"
+                 }
+               }
              }
 
       assert has_element?(view, "#stage-panel-title", "Edit Explore")
@@ -311,7 +319,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
     test "the placement check lists a workflow the harness does not declare and an input no earlier stage outputs",
          %{conn: conn, path: path, scope: scope} do
-      # A version saved while the harness declared capture-demo.
+      # A version saved with capture-demo, which the Qory harness does not list.
       document =
         Draft.update_stage(
           Processes.default_document("software"),
@@ -321,11 +329,13 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
 
+      # The page records the Qory harness's names when it opens.
       {:ok, view, _html} = live(conn, path)
+      render_async(view)
       select(view, "Build")
 
       undeclared =
-        "Build uses capture-demo, which the harness no longer declares. Add it to the harness, or choose another workflow for Build."
+        "Choose another workflow for Build, or choose a harness that lists capture-demo under workflows on the Workflow page. The Qory harness does not list capture-demo, so Build waits and starts no run."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", undeclared)
       assert undeclared in card(view, "Build")["alerts"]
@@ -334,9 +344,21 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, ~s(#stages-check [data-problem="missing_workflow"]), undeclared)
       stages_tab(view, path)
 
-      # Shown as the entry's value, and not offered: the harness declares explore-a-ticket.
-      assert has_element?(view, ~s{#stage-sequence option[value="capture-demo"][disabled]})
-      refute has_element?(view, ~s{#stage-sequence option[value="capture-demo"]:not([disabled])})
+      # The entry's value, in a text field that suggests the names the harness lists.
+      assert has_element?(view, ~s{#stage-entry-0-workflow[type="text"][value="capture-demo"]})
+      assert has_element?(view, ~s{#stage-entry-0-workflow[list="stage-entry-0-workflow-names"]})
+
+      assert has_element?(
+               view,
+               ~s{datalist#stage-entry-0-workflow-names option[value="explore-a-ticket"]}
+             )
+
+      refute has_element?(
+               view,
+               ~s{datalist#stage-entry-0-workflow-names option[value="capture-demo"]}
+             )
+
+      refute has_element?(view, "#stage-sequence select")
 
       view |> element("#stage-add-inputs") |> render_click()
       details(view, path)
@@ -825,6 +847,8 @@ defmodule ApiaryWeb.StagesLiveTest do
       {"R_harness", "stacks/other/qory-stack.yaml"} => @stack <> "workflows:\n  review: {}\n"
     }
 
+    # The workspace chooses the harness repository's stack `other`; its saved workflow
+    # document extends the stack `triage`, which the page no longer reads.
     setup %{scope: scope} do
       adapter = call_adapter_fixture()
       {connection, _nonce} = connection_fixture(scope, adapter.adapter, :listed)
@@ -832,38 +856,65 @@ defmodule ApiaryWeb.StagesLiveTest do
       harness_collection_fixture(connection, @harness, "acme/harness")
       covered = %{adapter.adapter.id => %{@harness => {"G_acme", "R_harness"}}}
       {:ok, _stack} = Apiary.Stacks.Sources.save(scope, @base, "fix")
+      # A branch is chosen at the commit it points to.
+      versions = %{"R_harness" => String.duplicate("c3", 20)}
+      serve_calls([adapter], covered: covered, files: @files, versions: versions)
+
+      {:ok, _choice} =
+        Apiary.Stacks.Sources.choose(
+          scope,
+          {:repository, %{git: @harness}, "other", {:branch, "main"}}
+        )
+
+      calls()
       %{adapter: adapter, covered: covered}
     end
 
-    test "read when the page opens: the saved source's stack is recorded, with its time",
+    test "read when the page opens: the chosen harness's stack is recorded, as Check again reads it",
          %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
       serve_calls([adapter], covered: covered, files: @files)
       {:ok, view, _html} = live(conn, path)
       render_async(view, 5_000)
 
-      # Only the stack the saved document extends is recorded.
-      assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
+      # The choice's stack, and not the stack the saved workflow document extends.
+      assert %{names: ["review"]} = Processes.declared_snapshot(scope.workspace)
 
-      # The line has the names the harness listed; explore-a-ticket, of the Qory harness,
-      # is only in the picker.
-      assert has_element?(view, ~s(#stage-panel select option[value="explore-a-ticket"]))
-      # The picker of Explore, the selected stage, offers them.
-      assert has_element?(view, ~s(#stage-panel select option[value="triage"]))
+      # The field of Explore, the selected stage, suggests the harness's names, explore-a-ticket
+      # of the Qory harness and fix, the saved workflow, among them.
+      for name <- ["explore-a-ticket", "fix", "review"] do
+        assert has_element?(view, ~s(#stage-panel datalist option[value="#{name}"])), name
+      end
+
+      # A name the harness repository does not list: list it in the stack, or choose another.
+      view
+      |> form("#stage-form",
+        stage: %{sequence: %{"0" => %{body: %{"0" => %{workflow: "capture-demo"}}}}}
+      )
+      |> render_change()
+
+      assert has_element?(
+               view,
+               "#stage-panel [data-stage-alert]",
+               "List capture-demo under workflows in the harness's qory-stack.yaml, or choose another workflow for Explore. Until then, Explore waits and starts no run."
+             )
 
       details(view, path)
 
       assert has_element?(
                view,
                "#stages-workflows-list",
-               "Workflows the harness listed just now: fix, triage."
+               "Workflows the harness listed just now: review."
              )
 
       refute has_element?(view, "#stages-workflows-error")
+
+      # The same read as Check again on a work item.
+      assert Apiary.Stacks.Sources.chosen_workflows(scope, scope.workspace) == {:ok, ["review"]}
     end
 
     test "a read that fails keeps the list of the last read, with the cause",
          %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
-      :ok = Processes.record_declared(scope.workspace, ["review"])
+      :ok = Processes.record_declared(scope.workspace, ["triage"])
       snapshot = Processes.declared_snapshot(scope.workspace)
       serve_calls([adapter], covered: covered, files: @files, down: true)
 
@@ -872,15 +923,15 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert Processes.declared_snapshot(scope.workspace) == snapshot
 
-      # fix, the saved workflow, is not in the snapshot: the picker offers it, the line
+      # fix, the saved workflow, is not in the snapshot: the field suggests it, the line
       # leaves it out.
-      assert has_element?(view, ~s(#stage-panel select option[value="fix"]))
+      assert has_element?(view, ~s(#stage-panel datalist option[value="fix"]))
       details(view, path)
 
       assert has_element?(
                view,
                "#stages-workflows-list",
-               "Workflows the harness listed just now: review."
+               "Workflows the harness listed just now: triage."
              )
 
       refute has_element?(view, "#stages-workflows-list", "fix")
@@ -890,6 +941,27 @@ defmodule ApiaryWeb.StagesLiveTest do
                "#stages-workflows-error",
                "Reading the harness failed, so the list is from the read just now."
              )
+    end
+
+    test "a first read that fails: the line, no marks, and the cause", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      adapter: adapter,
+      covered: covered
+    } do
+      serve_calls([adapter], covered: covered, files: @files, down: true)
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+
+      assert Processes.declared_snapshot(scope.workspace) == nil
+      assert Enum.all?(canvas_view(view)["stages"], &(&1["marks"] == %{}))
+      refute has_element?(view, "#stage-panel [data-mark]")
+
+      details(view, path)
+      assert has_element?(view, "#stages-workflows-list", "The harness has not been read yet.")
+      assert has_element?(view, "#stages-workflows-error", "Reading the harness failed.")
     end
 
     test "the page shows the stored list before the read ends", %{
@@ -965,7 +1037,7 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
-    test "a harness saved while the read runs keeps its snapshot", %{
+    test "a harness chosen while the read runs keeps its snapshot", %{
       conn: conn,
       path: path,
       scope: scope,
@@ -993,21 +1065,220 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, view, _html} = live(conn, path <> "?tab=details")
       assert_receive {:held, call}, 2_000
 
-      # The person saves the other stack while the read of triage runs.
+      # The person chooses the stack triage while the read of other runs.
       Agent.update(gate, fn _held -> :open end)
-      serve_calls([adapter], covered: covered, files: @files)
-      other = %{"git" => @harness, "ref" => "HEAD", "stack" => "other"}
-      {:ok, _stack} = Apiary.Stacks.Sources.save(scope, other, "review")
-      :ok = Processes.record_declared(scope.workspace, ["review"])
+      versions = %{"R_harness" => String.duplicate("c3", 20)}
+      serve_calls([adapter], covered: covered, files: @files, versions: versions)
+
+      {:ok, _choice} =
+        Apiary.Stacks.Sources.choose(
+          scope,
+          {:repository, %{git: @harness}, "triage", {:branch, "main"}}
+        )
+
+      :ok = Processes.record_declared(scope.workspace, ["fix", "triage"])
       snapshot = Processes.declared_snapshot(scope.workspace)
 
       send(call, :go)
       render_async(view, 5_000)
 
-      # The read of triage ended, and its workflows are not recorded over the snapshot.
+      # The read of other ended, and its workflows are not recorded over the snapshot.
       assert Enum.any?(calls(), &match?({"read", _call}, &1))
       assert Processes.declared_snapshot(scope.workspace) == snapshot
       refute has_element?(view, "#stages-workflows-error")
+    end
+  end
+
+  describe "the workflow's name and its mark" do
+    setup %{scope: scope} do
+      # Build runs explore-a-ticket, then a loop of it, then capture-demo.
+      document =
+        Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
+          stage
+          |> Draft.add_entry("explore-a-ticket", nil)
+          |> Draft.add_loop("explore-a-ticket")
+          |> Draft.add_entry("capture-demo", nil)
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      :ok
+    end
+
+    test "a typed name that matches the pattern is the entry's workflow; any other keeps it, with an error at the field",
+         %{conn: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{workflow: "triage-bugs"}}})
+      |> render_change()
+
+      assert hd(card(view, "Build")["sequence"]) == %{"workflow" => "triage-bugs"}
+      refute has_element?(view, "#stage-entry-0", "Write a workflow name")
+
+      for refused <- ["Triage", "triage bugs", "-triage", "", String.duplicate("a", 65)] do
+        view
+        |> form("#stage-form", stage: %{sequence: %{"0" => %{workflow: refused}}})
+        |> render_change()
+
+        assert hd(card(view, "Build")["sequence"]) == %{"workflow" => "triage-bugs"}, refused
+
+        assert has_element?(
+                 view,
+                 "#stage-entry-0",
+                 "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 64 characters."
+               ),
+               refused
+
+        assert has_element?(view, ~s{#stage-entry-0-workflow[aria-invalid="true"]}), refused
+      end
+
+      # The same in a loop, by the loop's place and the workflow's.
+      view
+      |> form("#stage-form", stage: %{sequence: %{"1" => %{body: %{"0" => %{workflow: "Nope"}}}}})
+      |> render_change()
+
+      assert has_element?(view, "#stage-entry-1-0", "Write a workflow name")
+
+      assert Enum.at(card(view, "Build")["sequence"], 1)["workflows"] == ["explore-a-ticket"]
+
+      # A save sends the typed name, which no harness lists.
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 3.")
+    end
+
+    test "Add workflow and Add loop start with the first name a stage may run", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      render_async(view)
+      select(view, "Shape")
+
+      view |> element("#stage-add-entry") |> render_click()
+      view |> element("#stage-add-loop") |> render_click()
+
+      assert card(view, "Shape")["sequence"] == [
+               %{"workflow" => "explore-a-ticket"},
+               %{"loop" => "at most 3 rounds", "workflows" => ["explore-a-ticket"]}
+             ]
+    end
+
+    test "on the Qory harness: no read and no failure line, the Qory names, and a check or a cross beside each workflow",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, view, _html} = live(conn, path)
+      render_async(view)
+      select(view, "Build")
+
+      # The Qory harness is not read: its names are recorded.
+      assert %{names: ["explore-a-ticket"]} = Processes.declared_snapshot(scope.workspace)
+
+      # On the card: explore-a-ticket, of the Qory harness, has a check; capture-demo a
+      # cross.
+      assert card(view, "Build")["marks"] == %{
+               "explore-a-ticket" => %{
+                 "listed" => true,
+                 "label" => "explore-a-ticket: a stage can run it"
+               },
+               "capture-demo" => %{
+                 "listed" => false,
+                 "label" => "capture-demo: not in the harness"
+               }
+             }
+
+      assert card(view, "Explore")["marks"] == %{
+               "explore-a-ticket" => %{
+                 "listed" => true,
+                 "label" => "explore-a-ticket: a stage can run it"
+               }
+             }
+
+      # In the panel, beside each field.
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-workflow-mark[data-mark="listed"]},
+               "A stage can run it"
+             )
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-1-0-workflow-mark[data-mark="listed"]},
+               "A stage can run it"
+             )
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-2-workflow-mark[data-mark="missing"]},
+               "Not in the harness"
+             )
+
+      # A typed name a stage may run gets a check.
+      view
+      |> form("#stage-form", stage: %{sequence: %{"2" => %{workflow: "explore-a-ticket"}}})
+      |> render_change()
+
+      assert has_element?(view, ~s{#stage-entry-2-workflow-mark[data-mark="listed"]})
+      assert card(view, "Build")["alerts"] == []
+
+      # Details: the Qory harness's workflows, with no time of a read, and no read that
+      # failed.
+      details(view, path)
+      assert has_element?(view, "#stages-workflows")
+      refute has_element?(view, "#stages-workflows-error")
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "The Qory harness's workflows: explore-a-ticket."
+             )
+
+      refute render(element(view, "#stages-details")) =~ "listed"
+
+      assert has_element?(view, "#stages-check-clear", "Every workflow is declared")
+
+      # A member reads the same marks, beside each line of the sequence.
+      %{user: user} = member_fixture(scope)
+      {:ok, member, _html} = live(log_in_user(build_conn(), user), path)
+      select(member, "Build")
+
+      assert card(member, "Build")["marks"]["capture-demo"]["listed"] == false
+      assert has_element?(member, ~s{#stage-panel dd [data-mark="missing"]}, "Not in the harness")
+      assert has_element?(member, ~s{#stage-panel dd [data-mark="listed"]}, "A stage can run it")
+    end
+
+    test "on the Qory harness, before its workflows are recorded: no marks, the Qory line, and no workflow listed as missing",
+         %{path: path, scope: scope} do
+      # A member's page reads nothing, so the harness stays unread.
+      %{user: user} = member_fixture(scope)
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+      render_async(view)
+      assert Processes.declared_snapshot(scope.workspace) == nil
+      select(view, "Build")
+
+      assert Enum.all?(canvas_view(view)["stages"], &(&1["marks"] == %{}))
+      assert card(view, "Build")["alerts"] == []
+      refute has_element?(view, "#stage-panel [data-mark]")
+      refute has_element?(view, "#stage-panel [data-stage-alert]")
+
+      # The Qory harness is never read: its workflows, and when they are checked.
+      details(view, path)
+
+      assert has_element?(
+               view,
+               "#stages-workflows-list",
+               "The Qory harness's workflows: explore-a-ticket."
+             )
+
+      assert has_element?(view, "#stages-check")
+      refute has_element?(view, ~s(#stages-check [data-problem="missing_workflow"]))
+
+      assert has_element?(
+               view,
+               "#stages-check-clear",
+               "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
+             )
+
+      refute render(element(view, "#stages-details")) =~ ~r/harness is read|been read/
     end
   end
 

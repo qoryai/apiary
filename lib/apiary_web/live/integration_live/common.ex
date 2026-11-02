@@ -463,7 +463,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   defp sentence(:release_not_ready, _), do: gettext("The release is not ready to add.")
 
   defp sentence(:integration_source_refused, _),
-    do: gettext("This instance no longer accepts integrations from this source.")
+    do: gettext("Qory Apiary no longer adds integrations from this source.")
 
   defp sentence({:integration_source_mismatch, :name}, _),
     do: gettext("That release is of another program.")

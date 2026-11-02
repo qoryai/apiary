@@ -35,6 +35,25 @@ defmodule Mix.Tasks.Docs.AllTest do
     end
   end
 
+  describe "unlink/2" do
+    test "makes each link to an admin guide its words, an anchor or a directory included" do
+      text = """
+      See [Install and configure](install.md), [Mail](install.md#mail), the
+      [hosting checklist](./hosting-checklist.md) and [Nodes](nodes.md#pools).
+      """
+
+      assert All.unlink(text, ["install.md", "hosting-checklist.md"]) == """
+             See Install and configure, Mail, the
+             hosting checklist and [Nodes](nodes.md#pools).
+             """
+    end
+
+    test "leaves a link to another site alone" do
+      text = "[Install](https://github.com/qoryai/apiary/blob/main/guides/install.md)"
+      assert All.unlink(text, ["install.md"]) == text
+    end
+  end
+
   describe "split!/2 and join/2" do
     @guide """
     Before.

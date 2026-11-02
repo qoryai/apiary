@@ -66,6 +66,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # have a key to the runs of the queue: down first, up last.
   @stages_version 20_261_031_130_000
   @stages Apiary.Repo.Migrations.KeepGateDecisionsAndEscalations
+  # The later migration that keeps what a starter reports of a machine's end, whose
+  # columns are on the dispatches: down first, up last.
+  @machine_end_version 20_261_102_120_000
+  @machine_end Apiary.Repo.Migrations.KeepWhatAStarterReportsOfAMachineSEnd
 
   setup_all do
     for {version, migration, name} <- [
@@ -78,7 +82,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@start_failed_version, @start_failed, "keep_a_run_that_failed_to_start"},
           {@leaked_version, @leaked, "keep_the_secrets_a_run_printed"},
           {@artifacts_version, @artifacts, "create_artifacts"},
-          {@stages_version, @stages, "keep_gate_decisions_and_escalations"}
+          {@stages_version, @stages, "keep_gate_decisions_and_escalations"},
+          {@machine_end_version, @machine_end, "keep_what_a_starter_reports_of_a_machine_s_end"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -999,6 +1004,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @machine_end_version, @machine_end, @options)
     assert :ok = Ecto.Migrator.down(Repo, @stages_version, @stages, @options)
     assert :ok = Ecto.Migrator.down(Repo, @artifacts_version, @artifacts, @options)
     assert :ok = Ecto.Migrator.down(Repo, @leaked_version, @leaked, @options)
@@ -1021,6 +1027,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @leaked_version, @leaked, @options)
     assert :ok = Ecto.Migrator.up(Repo, @artifacts_version, @artifacts, @options)
     assert :ok = Ecto.Migrator.up(Repo, @stages_version, @stages, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @machine_end_version, @machine_end, @options)
 
     # `DispatchRun` writes `image_requeue`, of the migration left down, on every insert.
     Repo.query!(

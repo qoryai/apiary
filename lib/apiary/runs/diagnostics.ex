@@ -321,11 +321,16 @@ defmodule Apiary.Runs.Diagnostics do
   defp stopped_member(%{cause: cause, step: step, fixer: fixer, text: line}) do
     %{
       "cause" => Atom.to_string(cause),
-      "fixer" => Atom.to_string(fixer),
+      "fixer" => fixer_role(fixer),
       "text" => nonempty(line) || "\u{FFFD}"
     }
     |> put("step", if(cause == :step_failed, do: step))
   end
+
+  # The contract's word for support (`priv/contract/diagnostics/v1/`), vendored from the
+  # integrations repository.
+  defp fixer_role(:support), do: "instance_admin"
+  defp fixer_role(fixer), do: Atom.to_string(fixer)
 
   # The machine log of the run's dispatch, where it has one that can be read.
   defp machine_log(%Dispatch{public_id: public_id}) do

@@ -238,7 +238,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert has_element?(lv, "#integration-install-form-install[disabled]")
 
     assert words(lv, "#integration-install-not-ready") ==
-             "#{adapter.name} can't be installed yet: this instance's admins are still setting it up."
+             "Contact support: #{adapter.name} can't be installed yet."
   end
 
   test "pending, its pass still good: who started it today and when", %{

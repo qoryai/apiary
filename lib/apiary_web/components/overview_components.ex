@@ -2086,7 +2086,11 @@ defmodule ApiaryWeb.OverviewComponents do
             <span class="q-onb-lbl">
               {gettext("What you run on %{node}", node: @target.name)}
             </span>
-            <ApiaryWeb.NodeComponents.unreachable_server id={"#{@id}-unreachable"} url={@server} />
+            <ApiaryWeb.NodeComponents.unreachable_server
+              id={"#{@id}-unreachable"}
+              url={@server}
+              instance_admin={Apiary.Access.instance_admin?(@scope)}
+            />
             <%!-- The gateway the command goes through, if any: a node on Default gateway
                  while none is the default reads nothing here. --%>
             <ApiaryWeb.NodeComponents.through_gateway
@@ -2180,13 +2184,17 @@ defmodule ApiaryWeb.OverviewComponents do
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
       when cause in [:ended, :silent] do
     assigns =
-      assign(assigns, step: Preparation.stopped_step(assigns.preparation), text: stopped.text)
+      assign(assigns,
+        step: Preparation.stopped_step(assigns.preparation),
+        what: stopped.what,
+        fix: ApiaryWeb.Support.stored_line(stopped.fix)
+      )
 
     ~H"""
     <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
       <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
-    {@text}
+    {@what} <.rich text={@fix} />
     <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
       {gettext("Open the run's Prepare machine section")}
     </.link>
@@ -2209,13 +2217,13 @@ defmodule ApiaryWeb.OverviewComponents do
 
     ~H"""
     {gettext("The test run ended before a machine started it.")}
-    {@words}
+    <.rich text={@words} />
     """
   end
 
   def test_failed(assigns) do
     assigns = assign(assigns, :line, failed_line(assigns.cause, assigns))
-    ~H"{@line}"
+    ~H|<.rich text={@line} />|
   end
 
   # What fixes a test run that ended at its claim, and why it ended
@@ -2235,8 +2243,9 @@ defmodule ApiaryWeb.OverviewComponents do
   # passes: its key allows them, and a key of either chain may be sealed for it.
   defp no_run_words(:secrets_not_allowed, _choice, item),
     do:
-      gettext(
-        "Set the run's pool to go through the Qory Gateway in the pool's Settings, or contact support with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is.",
+      rich_gettext(
+        "Set the run's pool to go through the Qory Gateway in the pool's Settings, or %{contact_support} with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is.",
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
         number: item
       )
 
@@ -2283,8 +2292,9 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp failed_line(:no_machine, %{item: item}),
     do:
-      gettext(
-        "Contact support with work item #%{number}. No machine has taken the test run yet.",
+      rich_gettext(
+        "%{contact_support} with work item #%{number}. No machine has taken the test run yet.",
+        contact_support: ApiaryWeb.Support.rich(),
         number: item
       )
 
@@ -2301,8 +2311,9 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp failed_line(:silent, %{run: run}),
     do:
-      gettext(
-        "Contact support with run %{run}. The machine stopped sending for 10 minutes.",
+      rich_gettext(
+        "%{contact_support} with run %{run}. The machine stopped sending for 10 minutes.",
+        contact_support: ApiaryWeb.Support.rich(),
         run: run.number
       )
 

@@ -79,6 +79,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its session started shows “The run stopped before its session started, at the step
   <step>.” above the Timeline. The section updates without a reload until the session
   starts or the run ends.
+- **Prepare machine** ends in **Clean up**, which shows what the node pool reported about
+  removing the run's machine: "Machine removed", "Machine removal requested" or "Removal
+  failed: the machine still exists", with the time of the report. With no report, a run
+  that ended shows "Waiting for a report" for 15 minutes, then "No removal report". A run
+  on a permanent machine shows "Machine stays registered" once it ended. A pool's starter
+  reports at `POST /v1/dispatches/<dispatch_id>/machine-end`, and the audit log records
+  its first report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
   for owners, admins and members who may read the run's log. The diagnostics contain the
   run, its queue entry and claim, how its machine was prepared, its latest 5,000 events at
@@ -363,11 +370,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
   ```
 
-  Under a pool that is not ready, an instance admin has **Check the nodes** for the
-  instance's pool. For a pool of the workspace, owners and admins have its name as a
-  link to its page. Anyone else reads who acts, such as “Only an instance admin checks
-  the Qory Pool and the Qory Gateway.” While the workspace has no pool, anyone who may not
-  add one sees the Qory Pool, read only. The step is done once a pool is ready. **About
+  Under a Qory Pool that is not ready, an instance admin has **Check the Qory Pool and
+  Qory Gateway**; anyone else sees no Qory Pool on this step; whoever may add a pool is
+  offered only a pool for the workspace. For a pool of the workspace, owners and admins have its name as a
+  link to its page. Anyone else reads who acts: “Only owners and admins add a pool and
+  join a machine to it.” While the workspace has no pool, anyone who may not add one sees
+  a ready Qory Pool, read only. The step is done once a pool is ready. **About
   this step** explains what a pool does, which pool takes the workspace's runs, what
   makes a pool ready, and that every run gets an isolated environment.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
@@ -488,9 +496,59 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it. After an add, the page opens the **Overview** of what was added. A workspace's
   purge takes the workspace from every list.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- A stage's workflow, in Workspace settings › **Stages** and Instance settings ›
+  **Workspace types**, is a text field: it suggests the workflows the harness lists and
+  takes any name of lower-case letters, digits and hyphens that starts with a letter.
+  Each workflow on the canvas and in the stage's panel shows a check, “A stage can run
+  it”, when it is `explore-a-ticket`, a workflow the harness listed at its last read, or
+  a workflow saved on the **Workflow** page; else a cross, “Not in the harness”, with
+  what to do and when the stage waits. Before the first read of the harness, **Stages**
+  shows “The harness has not been read yet.” and no marks.
+  **Stages**, **Workflow** and **Check again** read the same harness: the workspace's
+  choice, else the harness the organisation shares, else the Qory harness. The Qory
+  harness is not read: its workflow is `explore-a-ticket`, and **Stages** shows “The Qory
+  harness's workflows: explore-a-ticket.” A run that qory ends with
+  `workflow_not_in_harness`, because the harness it composed has no skill for the run's
+  workflow, shows that workflow and where the harness comes from on the run's page and
+  on the work item.
+<!-- /feature -->
+- **Instance settings › General** has a **Support address** under Support: an https
+  address or an email address where “Contact support” leads for people in an
+  organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
+  and Configuration then show it read only. With none, “Contact support” is plain text.
 
 ### Changed
 
+- A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
+  step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
+  the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
+  of a flat key fails with “Write bind by kind, then by role, such as bind: {agents:
+  {developer: web-developer}}: agents/developer is a flat key.”, of another kind with
+  “Use agents, commands or skills under bind: tools is not a kind.”, and of a list of
+  names with “Give one name per role: bind.agents.reviewer is a list.”
+- The pages people in an organisation read no longer contain “instance”, “instance admin”
+  or “this server”. Where only support can fix a case, the page shows “Contact support”,
+  which links to the support address where one is set, and what Qory Apiary offers is
+  named “Qory Apiary”. **Add an integration**, the work source and destination lists, and
+  a target's Environment card keep their old lines for an instance admin. An integration
+  that cannot be installed yet shows only to an instance admin, unless the organisation
+  already has a connection to it. A flash or a form error has no link, so the support
+  address follows “Contact support” there. The 503 error of the registry token endpoint
+  contains “contact support” in place of the instance's log.
+- `Apiary.Edition` has no callback `first_workspace_line/1`, and the callback
+  `machines_who_may/2` takes the scope and the workspace, with no `:instance` pool:
+  organisation people no longer see a Qory Pool that is not ready on the Machines step.
+  The fixer of a stopped
+  preparation (`Apiary.Runs.Preparation`) is `:support` in place of `:instance_admin`; the
+  diagnostics document keeps the value `instance_admin`.
+  The callback `connects_line/2` of `Apiary.Edition` returns an edition's sentence on who
+  connects a system, for the steps Work sources and Destinations, or nil for the core's.
+- The guides Install and configure and Hosting checklist are only for signed-in instance
+  admins: `/docs` leads an instance admin to `/docs/admin`, which has every guide, and
+  gives anyone else 404 there. The public documentation leaves them out of its pages,
+  sidebar and search, and a link to them is its words. `mix docs` builds both trees. The
+  guides stay in the repository's `guides` directory.
 - Every run has a number, one count for the whole server, and the console names and
   addresses a run by it: “Run 18342” at `/acme/main/runs/18342`, in the run page's header
   and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the
@@ -694,6 +752,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `dispatches`: two nullable columns, `machine_end_state` and `machine_end_at`, with a
+  check that scans `dispatches` under a lock that blocks writes. It changes no existing
+  row.
 - `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
   value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
   in the order they started, then the sequence goes on from the highest number. The
@@ -771,6 +832,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   by a scan that blocks no write, and a unique index `nodes_diagnostics_index` for kind
   `diagnostics`, built inside the migration, so writes to `nodes` wait until the build
   ends. They change no row.
+- `instance_settings`: a nullable column `support_address`, with a check on its length.
+  It changes no row.
 
 ## [0.1.0] - 2026-10-13
 

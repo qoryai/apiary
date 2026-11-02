@@ -116,6 +116,18 @@ const step = item =>
     ? {loop: text(item.loop), workflows: (item.workflows || []).map(text)}
     : {workflow: text(item?.workflow)}
 
+// Each workflow's mark, by name: whether the harness lists it, and its label as text.
+// None for a page with no list of the harness's workflows.
+const marks = value =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(
+        Object.entries(value).map(([name, mark]) => [
+          text(name),
+          {listed: mark?.listed === true, label: text(mark?.label)},
+        ]),
+      )
+    : {}
+
 // The nodes and edges React Flow draws for `view`, and the column's length: the stages in
 // a column, top to bottom, each joined to the next by an arrow; where the person may edit,
 // a "+" node before the first card, in each gap and after the last card, which adds a
@@ -130,6 +142,7 @@ export const layout = (view, heights = {}) => {
     sequence: (stage.sequence || []).map(step),
     gate: text(stage.gate),
     alerts: (stage.alerts || []).map(text),
+    marks: marks(stage.marks),
   }))
   const sizes = stages.map((stage, index) => heights[String(stage.id)] || estimateHeight(data[index]))
   const {tops, length} = column(sizes, editable)

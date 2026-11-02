@@ -673,7 +673,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
     test "401 for a credential that matches no run", ctx do
       message =
         "Send the token request through the gateway of a running run. The registry " <>
-          "credential in the request matches no run of this instance."
+          "credential in the request matches no run."
 
       for {user, secret} <- [
             {ctx.run.public_id, ctx.secret <> "x"},
@@ -776,8 +776,8 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
       assert error(conn) ==
                {503, "UNAVAILABLE",
-                "Try the pull or push again in 1 minute. Qory Apiary could not issue a " <>
-                  "registry token; the cause is in the instance's log."}
+                "Try the pull or push again in 1 minute. If it fails again, contact support. " <>
+                  "Qory Apiary could not issue a registry token."}
 
       assert log =~
                "Qory Apiary could not build the response to a registry token request: ArgumentError"

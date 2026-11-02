@@ -212,7 +212,7 @@ defmodule Apiary.Integrations do
         Ecto.Changeset.add_error(
           changeset,
           :source,
-          dgettext_noop("errors", "is not on a forge this instance adds integrations from")
+          dgettext_noop("errors", "is not on a forge Qory Apiary adds integrations from")
         )
 
       {:error, :url_sources_off} ->
@@ -221,7 +221,7 @@ defmodule Apiary.Integrations do
           :source,
           dgettext_noop(
             "errors",
-            "must be a repository's path: this instance adds no integration from an address"
+            "must be a repository's path: Qory Apiary adds no integration from an address"
           )
         )
 

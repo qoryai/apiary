@@ -67,7 +67,7 @@ defmodule Apiary.WorkItems.Explore do
 
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.Result
-  alias Apiary.Harnesses.RunHarness
+  alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Repo
   alias Apiary.Runs.{Event, Run}
   alias Apiary.WorkItems.{Answer, Confirmation, WorkItem, WorkItemEvent}
@@ -365,9 +365,12 @@ defmodule Apiary.WorkItems.Explore do
     rows = Repo.all(query)
 
     # The adapter of each run that stopped at a call to one, a third query only when one
-    # did, and the walk of each run whose harness walk failed, a fourth only when one did.
+    # did, and the walk of each run whose harness walk failed or whose harness had no skill
+    # for its workflow, a fourth only when one did.
+    gaps = for {d, %Run{reason: reason}} <- rows, reason == WorkflowGap.code(), do: d.id
+
     dispatch_runs =
-      rows |> Enum.map(&elem(&1, 0)) |> Repo.preload(:failed_adapter) |> failed_walks()
+      rows |> Enum.map(&elem(&1, 0)) |> Repo.preload(:failed_adapter) |> failed_walks(gaps)
 
     rows = Enum.zip_with(dispatch_runs, rows, fn d, {_d, r} -> {d, r} end)
 
@@ -378,12 +381,14 @@ defmodule Apiary.WorkItems.Explore do
         do: step(dispatch_run, run, run && Map.get(events, run.id), now)
   end
 
-  # The runs ended `harness_unresolved` with their walk (`harness_walk`), read in one
-  # query, and the adapter of each walk that names one (`failed_adapter`), in another only
-  # when one does, and every run's organisation and workspace, whose names the failure's
-  # words show; the others as they are.
-  defp failed_walks(dispatch_runs) do
-    case for(%DispatchRun{end_cause: :harness_unresolved, id: id} <- dispatch_runs, do: id) do
+  # The runs ended `harness_unresolved`, and the runs `gaps` whose registered run ended
+  # `workflow_not_in_harness`, with their walk (`harness_walk`), read in one query, and the
+  # adapter of each walk that names one (`failed_adapter`), in another only when one does,
+  # and every run's organisation and workspace, whose names the failure's words show; the
+  # others as they are.
+  defp failed_walks(dispatch_runs, gaps) do
+    case for(%DispatchRun{end_cause: :harness_unresolved, id: id} <- dispatch_runs, do: id) ++
+           gaps do
       [] ->
         dispatch_runs
 

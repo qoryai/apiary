@@ -138,6 +138,77 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(%{reason: nil}) == nil
     end
 
+    test "workflow_not_in_harness names the workflow and where the run's harness comes from" do
+      alias Apiary.Dispatches.DispatchRun
+      alias Apiary.Harnesses.RunHarness
+      alias Apiary.Runs.Run
+
+      ended = fn walk ->
+        %Run{
+          state: "failed",
+          reason: "workflow_not_in_harness",
+          exited_at: ~U[2026-11-02 09:00:00Z],
+          dispatch_run: %DispatchRun{
+            workflow: "explore-a-ticket",
+            harness_walk: walk && struct(%RunHarness{state: :resolved, workflow: "triage"}, walk),
+            work_item: %Apiary.WorkItems.WorkItem{target_path: "acme/web-shop"}
+          }
+        }
+      end
+
+      missing = "The run's harness has no skill named triage."
+      address = "https://code.example.com/acme/harness"
+      base = %{"git" => address, "ref" => "main"}
+      stack = Ecto.UUID.generate()
+
+      for {walk, from} <- [
+            {%{origin: :file},
+             " The harness comes from the harness file at the root of repository acme/web-shop."},
+            {%{
+               origin: :setting,
+               stack_id: stack,
+               document: %{"extends" => Map.put(base, "stack", "core")}
+             }, " The harness comes from #{address}, stack core."},
+            {%{
+               origin: :setting,
+               stack_id: stack,
+               document: %{"extends" => Map.put(base, "path", "web")}
+             }, " The harness comes from #{address}, folder web."},
+            {%{origin: :setting, stack_id: stack, document: %{"extends" => base}},
+             " The harness comes from #{address}."},
+            {%{origin: :setting, stack_id: stack, document: %{"modules" => []}},
+             " The harness is the workspace's harness."},
+            {%{origin: :setting, document: %{"extends" => base}},
+             " The harness is the Qory harness."},
+            {%{origin: :file, harness_hidden: true}, ""},
+            {%{origin: :setting, harness_hidden: true, document: %{"extends" => base}}, ""}
+          ] do
+        assert RunComponents.reason_words(ended.(walk)) == missing <> from, inspect(walk)
+      end
+
+      # The engine's words say target; the software domain's, repository.
+      Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+        assert RunComponents.reason_words(ended.(%{origin: :file})) ==
+                 missing <>
+                   " The harness comes from the harness file at the root of target acme/web-shop."
+      end)
+
+      # With no walk, the workflow of the run of the queue and no source; with no run of the
+      # queue loaded, neither, as an exit of the timeline without it reads.
+      assert RunComponents.reason_words(ended.(nil)) ==
+               "The run's harness has no skill named explore-a-ticket."
+
+      assert RunComponents.reason_words(%{reason: "workflow_not_in_harness", state: "failed"}) ==
+               "The run's harness has no skill with the name of the run's workflow."
+
+      assert RunComponents.reason_words(%Run{
+               state: "failed",
+               reason: "workflow_not_in_harness",
+               exited_at: ~U[2026-11-02 09:00:00Z]
+             }) ==
+               "The run's harness has no skill with the name of the run's workflow."
+    end
+
     test "a refused batch reads events refused, whatever the state" do
       for state <- [nil, "failed", :failed, "lost"] do
         assert RunComponents.reason_words(%{reason: "batch_refused", state: state}) ==
