@@ -3636,6 +3636,44 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert words_of(lv, "#run-announcer") == "Run cancelled: the starter released it."
     end
 
+    test "workflow_not_in_harness: the workflow and where the run's harness comes from, in the header, the rail and the timeline",
+         %{conn: conn, scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+      %{dispatch_run: dispatch_run} =
+        Apiary.WorkItemsFixtures.explore_run_fixture(work_item, registered: false)
+
+      Repo.insert!(%Apiary.Harnesses.RunHarness{
+        dispatch_run_id: dispatch_run.id,
+        state: :resolved,
+        origin: :file,
+        workflow: "explore-a-ticket"
+      })
+
+      run =
+        session_run(scope, %{
+          "state" => "failed",
+          "reason" => "workflow_not_in_harness",
+          "exit_code" => -1
+        })
+
+      Repo.update_all(from(r in Runs.Run, where: r.id == ^run.id),
+        set: [dispatch_run_id: dispatch_run.id]
+      )
+
+      {:ok, lv, _html} = run_page(conn, scope, run)
+
+      words =
+        "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of repository acme/shop."
+
+      assert words_of(lv, "#run-meta #run-state + #run-reason") == words
+      assert words_of(lv, "#run-facts #rail-reason") == words
+
+      # The timeline's end item too: a third time on the page.
+      text = lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
+      assert length(String.split(String.replace(text, ~r/\s+/, " "), words)) - 1 >= 3
+    end
+
     test "no end reason's words, nor the Exit row, nor the timeline, say issuer on the page", %{
       conn: conn,
       scope: scope

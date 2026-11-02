@@ -496,6 +496,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it. After an add, the page opens the **Overview** of what was added. A workspace's
   purge takes the workspace from every list.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- A stage's workflow, in Workspace settings › **Stages** and Instance settings ›
+  **Workspace types**, is a text field: it suggests the workflows the harness lists and
+  takes any name of lower-case letters, digits and hyphens that starts with a letter.
+  Each workflow on the canvas and in the stage's panel shows a check, “A stage can run
+  it”, when it is `explore-a-ticket`, a workflow the harness listed at its last read, or
+  a workflow saved on the **Workflow** page; else a cross, “Not in the harness”, with
+  what to do and when the stage waits. Before the first read of the harness, **Stages**
+  shows “The harness has not been read yet.” and no marks.
+  **Stages**, **Workflow** and **Check again** read the same harness: the workspace's
+  choice, else the harness the organisation shares, else the Qory harness. The Qory
+  harness is not read: its workflow is `explore-a-ticket`, and **Stages** shows “The Qory
+  harness's workflows: explore-a-ticket.” A run that qory ends with
+  `workflow_not_in_harness`, because the harness it composed has no skill for the run's
+  workflow, shows that workflow and where the harness comes from on the run's page and
+  on the work item.
+<!-- /feature -->
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an
   organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General

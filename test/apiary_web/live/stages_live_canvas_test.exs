@@ -72,6 +72,35 @@ defmodule ApiaryWeb.StagesLive.CanvasTest do
              "The canvas did not load. Reload the page to edit the stages."
   end
 
+  test "marks: each workflow listed has a check, any other a cross, each with its words; none without the list" do
+    [explore | _] = document()["stages"]
+
+    doc =
+      ApiaryWeb.StagesLive.Draft.update_stage(
+        document(),
+        explore["id"],
+        &ApiaryWeb.StagesLive.Draft.add_entry(&1, "constructor", nil)
+      )
+
+    view = data(canvas(%{document: doc, mode: :view, marks: ["explore-a-ticket"]}), "data-view")
+
+    assert hd(view["stages"])["marks"] == %{
+             "explore-a-ticket" => %{
+               "listed" => true,
+               "label" => "explore-a-ticket: a stage can run it"
+             },
+             "constructor" => %{"listed" => false, "label" => "constructor: not in the harness"}
+           }
+
+    # A stage with no workflow has no marks; nor has any stage without the list.
+    assert Enum.at(view["stages"], 1)["marks"] == %{}
+
+    assert Enum.all?(
+             data(canvas(%{document: doc, mode: :view}), "data-view")["stages"],
+             &(&1["marks"] == %{})
+           )
+  end
+
   test "a document with no stages draws an empty line" do
     assert %{editable: false, first: nil, stages: []} =
              Canvas.view(%{"stages" => []}, :view)

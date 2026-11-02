@@ -13,10 +13,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   and "How it works" text (`Apiary.Processes.type_texts/1`), the default machine type and
   the history. The version line, Save and Discard changes are beside the tabs, on both:
   one draft has the edits of both tabs, and a switch of tabs keeps it. Save makes a new
-  version at once, with its author; there are no trials and no work items. The workflow
-  picker offers the Qory harness's workflows alone
-  (`Apiary.Processes.TypeTemplates.workflows/0`), and a gate is none or
-  any member, since a type has no members to name. The history lists every version with
+  version at once, with its author; there are no trials and no work items. A stage's
+  workflow is a text field that suggests the Qory harness's workflows
+  (`Apiary.Processes.TypeTemplates.workflows/0`) and takes any name the schema's pattern
+  allows; each workflow has a check when the Qory harness lists it, else a cross. A gate
+  is none or any member, since a type has no members to name. The history lists every version with
   its changes against the version it started from. A type key no type has is a path that
   does not exist.
   """
@@ -69,6 +70,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
           save_note: nil,
           stage_errors: %{},
           rounds_errors: %{},
+          workflow_errors: %{},
           text_error: nil
         )
         |> load(entry.newest)
@@ -126,13 +128,14 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
     do:
       Canvas.view(assigns.draft, :edit,
         selected: assigns.selected,
-        alerts: canvas_alerts(assigns)
+        alerts: canvas_alerts(assigns),
+        marks: assigns.declared
       )
 
   defp canvas_alerts(assigns) do
     Map.new(assigns.draft["stages"], fn stage ->
       {stage["id"],
-       Inspector.stage_alerts(assigns.problems, stage) ++
+       Inspector.stage_alerts(assigns.problems, stage, :qory) ++
          Map.get(assigns.stage_errors, stage["id"], [])}
     end)
   end
@@ -141,7 +144,9 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   def handle_event("select", %{"id" => id}, %{assigns: %{live_action: :edit}} = socket)
       when is_binary(id) do
     if Processes.stage(socket.assigns.draft, id),
-      do: {:noreply, socket |> assign(selected: id, rounds_errors: %{}) |> refresh()},
+      do:
+        {:noreply,
+         socket |> assign(selected: id, rounds_errors: %{}, workflow_errors: %{}) |> refresh()},
       else: {:noreply, socket}
   end
 
@@ -323,6 +328,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
               mode={:edit}
               selected={@selected}
               alerts={canvas_alerts(assigns)}
+              marks={@declared}
             />
             <div class="q-canvas-side">
               <Inspector.stage_panel
@@ -337,8 +343,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
                 people={%{}}
                 stage_errors={@stage_errors}
                 rounds_errors={@rounds_errors}
+                workflow_errors={@workflow_errors}
                 problems={@problems}
                 machine={@draft["machine"]}
+                marks={@declared}
+                harness={:qory}
               />
             </div>
           </div>

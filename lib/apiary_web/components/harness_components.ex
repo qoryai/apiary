@@ -721,6 +721,52 @@ defmodule ApiaryWeb.HarnessComponents do
       )
 
   @doc false
+  # workflow_gap_words/1 is why a run ended with the reason `workflow_not_in_harness`, from
+  # its facts (`Apiary.Harnesses.WorkflowGap`): the workflow the run's harness has no skill
+  # for, then where that harness came from. A hidden harness, or a walk that shows no
+  # source, has the first sentence alone. The run page (`ApiaryWeb.RunComponents`) and the
+  # work item page show it.
+  @spec workflow_gap_words(Apiary.Harnesses.WorkflowGap.facts()) :: String.t()
+  def workflow_gap_words(%{workflow: workflow, source: source}) do
+    missing =
+      if workflow,
+        do: gettext("The run's harness has no skill named %{workflow}.", workflow: workflow),
+        else: gettext("The run's harness has no skill with the name of the run's workflow.")
+
+    case gap_source_words(source) do
+      nil -> missing
+      from -> missing <> " " <> from
+    end
+  end
+
+  defp gap_source_words({:target, target}),
+    do:
+      gettext("The harness comes from the harness file at the root of target %{target}.",
+        target: target
+      )
+
+  defp gap_source_words({:repository, address, {:stack, stack}}),
+    do:
+      gettext("The harness comes from %{address}, stack %{stack}.",
+        address: address,
+        stack: stack
+      )
+
+  defp gap_source_words({:repository, address, {:path, path}}),
+    do:
+      gettext("The harness comes from %{address}, folder %{path}.",
+        address: address,
+        path: path
+      )
+
+  defp gap_source_words({:repository, address, nil}),
+    do: gettext("The harness comes from %{address}.", address: address)
+
+  defp gap_source_words(:section), do: gettext("The harness is the workspace's harness.")
+  defp gap_source_words(:qory), do: gettext("The harness is the Qory harness.")
+  defp gap_source_words(nil), do: nil
+
+  @doc false
   # read_words/4 is `read_words/3` for the workspace named `workspace`, with the words of
   # a public repository's host that failed (`{:fetch, code, rule}`).
   @spec read_words(term, map | nil, String.t(), String.t() | nil) :: String.t() | list

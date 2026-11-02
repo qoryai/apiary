@@ -152,6 +152,16 @@ defmodule Apiary.StagesTest do
     test "waits for a workflow the snapshot does not list, until a check finds it", %{
       scope: scope
     } do
+      # A harness repository is chosen; the Qory harness has a different line (the next test).
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: scope.workspace.organisation_id,
+        workspace_id: scope.workspace.id,
+        choice: :repository,
+        version_kind: :commit,
+        version_name: String.duplicate("c3", 20),
+        harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: core\n"
+      })
+
       :ok = Processes.record_declared(scope.workspace, ["review"])
       %{read_at: read_at} = Processes.declared_snapshot(scope.workspace)
       save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
@@ -187,6 +197,29 @@ defmodule Apiary.StagesTest do
 
       other = sign_up_fixture().scope
       assert Stages.check_workflows(other, work_item, read.([])) == {:error, :not_found}
+    end
+
+    test "Check again on the Qory harness reads nothing and records the Qory names", %{
+      scope: scope
+    } do
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_workflow
+
+      # The waiting line has no time of a read, and Check again is not its fix.
+      assert Stages.status(work_item).gaps ==
+               "Explore uses capture-demo, which the Qory harness does not list. Choose " <>
+                 "another workflow for Explore, or choose a harness that lists capture-demo " <>
+                 "under workflows on the Workflow page."
+
+      # No adapter and no public host is called: the default read takes the Qory names.
+      for stub <- [Apiary.Adapters.Calls, Apiary.Harnesses.PublicGit] do
+        Req.Test.stub(stub, fn _conn -> raise "the Qory harness was read" end)
+      end
+
+      assert Stages.check_workflows(scope, work_item) == {:error, :still_missing}
+      assert %{names: ["explore-a-ticket"]} = Processes.declared_snapshot(scope.workspace)
     end
 
     test "passes through a stage with no workflow and no gate", %{scope: scope} do

@@ -19,11 +19,16 @@ defmodule ApiaryWeb.StagesLive.Index do
   #
   # Owners and admins (`process.edit`) edit; members read the page with no edit controls.
   #
-  # The workflow picker offers `Apiary.Processes.declared_workflows/1`. Once the page is
-  # connected, for whoever may save the harness (`harness.save`), it reads the workspace's
-  # saved harness source again (`Apiary.Stacks.Sources.read/2`, outside the page's
-  # process) and records the workflows of the stack the saved document extends, as the
-  # Workflow page does; a read that fails keeps the list of the last read, with its error.
+  # A stage's workflow is a text field that suggests `Apiary.Processes.declared_workflows/1`
+  # and takes any name the schema's pattern allows. Once the page is connected, for
+  # whoever may save the harness (`harness.save`), it reads the workspace's harness as
+  # Check again on a work item does (`Apiary.Stacks.Sources.chosen_workflows/2`, outside
+  # the page's process): the choice, else the harness the organisation shares, else the
+  # Qory harness. It records the names as the workspace's snapshot; a read that fails
+  # keeps the list of the last read, with its error. With a snapshot, each workflow on
+  # the canvas and in the inspector has a check when `declared_workflows/1` has it, else a
+  # cross, the workflow a stage waits for (`Apiary.Stages`); before the first read, no
+  # workflow has a mark and no stage waits.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -32,7 +37,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Organisations, Processes, Repo, WorkItems}
-  alias Apiary.Stacks.{Document, Sources}
+  alias Apiary.Stacks.Sources
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{People, SettingsComponents}
   alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, Words}
@@ -58,6 +63,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         sections: SettingsComponents.sections(scope, :workspace),
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         harness: harness_name(Sources.chosen(workspace)),
+        cross: cross(Sources.chosen(workspace)),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
         snapshot: Processes.declared_snapshot(workspace),
@@ -72,12 +78,13 @@ defmodule ApiaryWeb.StagesLive.Index do
         stage_errors: %{},
         save_note: nil,
         rounds_errors: %{},
+        workflow_errors: %{},
         assigned: nil,
         notice: nil
       )
       |> load(current)
       |> load_work_items()
-      |> read_declared(Sources.current(workspace))
+      |> read_declared()
 
     {:ok, socket}
   end
@@ -89,52 +96,33 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   ## The harness's workflows
 
-  # The saved harness source read again once the page is connected, for whoever may save
-  # the harness: the source of the base the workspace's saved document extends, and no
-  # other. With no saved document, or one with no base, nothing is read.
-  defp read_declared(socket, %{base: %{} = base}) do
-    if connected?(socket) and socket.assigns.may_harness do
+  # The workspace's harness read again once the page is connected, for whoever may save
+  # the harness: the source Check again reads (`Apiary.Stacks.Sources.chosen_source/1`).
+  # An address that source cannot have reads nothing.
+  defp read_declared(socket) do
+    workspace = socket.assigns.current_scope.workspace
+
+    with true <- connected?(socket) and socket.assigns.may_harness,
+         {:ok, source, _stack} <- Sources.chosen_source(workspace) do
       scope = socket.assigns.current_scope
-      source = saved_source(base)
+      chosen = Sources.chosen(workspace)
 
       socket
-      |> assign(harness_source: %{source: source, base: base})
-      |> start_async(:declared, fn -> Sources.read(scope, source) end)
+      |> assign(harness_source: %{source: source, chosen: chosen})
+      |> start_async(:declared, fn -> Sources.chosen_workflows(scope, workspace) end)
     else
-      socket
+      _no_read -> socket
     end
-  end
-
-  defp read_declared(socket, _none), do: socket
-
-  # The source a document's base is read from: its address and version, narrowed to its
-  # stack or folder, as a source the Workflow page offers (`t:Apiary.Stacks.Sources.source/0`).
-  defp saved_source(base) do
-    %{
-      id: "saved",
-      kind: :address,
-      label: Document.shown(base["git"]),
-      git: base["git"],
-      ref: base["ref"],
-      narrowing: Map.take(base, ["path", "stack"]),
-      location: nil,
-      version: nil,
-      stacks: nil
-    }
   end
 
   @impl true
-  def handle_async(:declared, {:ok, {:ok, stacks}}, socket) when is_list(stacks) do
+  def handle_async(:declared, {:ok, {:ok, names}}, socket) when is_list(names) do
     workspace = socket.assigns.current_scope.workspace
-    base = socket.assigns.harness_source.base
 
-    # Only the stack the saved document extends, as the Workflow page records it
-    # (`ApiaryWeb.WorkflowLive`); with none, nothing is recorded. A harness saved while
-    # the read ran has a newer snapshot, which this read does not replace.
-    with %{base: ^base} <- Sources.current(workspace),
-         %{workflows: workflows} <- Enum.find(stacks, &(&1.base == base)) do
-      :ok = Processes.record_declared(workspace, workflows)
-    end
+    # A harness chosen while the read ran has a newer snapshot, which this read does not
+    # replace.
+    if Sources.chosen(workspace) == socket.assigns.harness_source.chosen,
+      do: :ok = Processes.record_declared(workspace, names)
 
     {:noreply,
      socket
@@ -209,17 +197,24 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   # The check and the canvas follow every change of the draft.
   defp refresh(socket) do
-    %{draft: draft, declared: declared, types: types} = socket.assigns
+    %{draft: draft, declared: declared, types: types, snapshot: snapshot} = socket.assigns
     # Every workflow writes any type until the harness declares `writes` (spec addition 9),
-    # so an output that nothing writes is not listed.
+    # so an output that nothing writes is not listed. Before the first read of the harness
+    # no stage waits for a workflow, so none is listed as missing.
     problems =
       draft
       |> Processes.placement_check(declared, types)
       |> Enum.reject(&match?({:output_not_written, _id, _type}, &1))
+      |> Enum.reject(&(is_nil(snapshot) and match?({:missing_workflow, _id, _name}, &1)))
 
     socket = assign(socket, problems: problems)
     push_event(socket, "stages:view", view(socket.assigns))
   end
+
+  # The workflows a check marks: with a snapshot, the names a stage may run without
+  # waiting; before the first read, nil, and no workflow has a mark.
+  defp marks(%{snapshot: nil}), do: nil
+  defp marks(%{declared: declared}), do: declared
 
   # The canvas's mode: owners and admins (`process.edit`) edit; members view.
   defp mode(%{may: true}), do: :edit
@@ -230,7 +225,8 @@ defmodule ApiaryWeb.StagesLive.Index do
     Canvas.view(assigns.draft, mode(assigns),
       selected: assigns.selected,
       people: assigns.people,
-      alerts: canvas_alerts(assigns)
+      alerts: canvas_alerts(assigns),
+      marks: marks(assigns)
     )
   end
 
@@ -239,7 +235,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp canvas_alerts(assigns) do
     Map.new(assigns.draft["stages"], fn stage ->
       {stage["id"],
-       Inspector.stage_alerts(assigns.problems, stage) ++
+       Inspector.stage_alerts(assigns.problems, stage, assigns.cross) ++
          Map.get(assigns.stage_errors, stage["id"], [])}
     end)
   end
@@ -249,7 +245,9 @@ defmodule ApiaryWeb.StagesLive.Index do
   @impl true
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
     if Processes.stage(socket.assigns.draft, id),
-      do: {:noreply, socket |> assign(selected: id, rounds_errors: %{}) |> refresh()},
+      do:
+        {:noreply,
+         socket |> assign(selected: id, rounds_errors: %{}, workflow_errors: %{}) |> refresh()},
       else: {:noreply, socket}
   end
 
@@ -595,6 +593,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               selected={@selected}
               people={@people}
               alerts={canvas_alerts(assigns)}
+              marks={marks(assigns)}
             />
             <div class="q-canvas-side">
               <Inspector.stage_panel
@@ -608,8 +607,11 @@ defmodule ApiaryWeb.StagesLive.Index do
                 people={@people}
                 stage_errors={@stage_errors}
                 rounds_errors={@rounds_errors}
+                workflow_errors={@workflow_errors}
                 problems={@problems}
+                harness={@cross}
                 machine={@draft["machine"]}
+                marks={marks(assigns)}
               />
             </div>
           </div>
@@ -637,7 +639,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               </.link>
             </p>
             <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
-              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot)}</p>
+              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot, @cross)}</p>
               <p :if={@declared_error} id="stages-workflows-error" class="text-error">
                 <.rich text={Words.read_failed(@declared_error, @snapshot)} />
               </p>
@@ -671,13 +673,11 @@ defmodule ApiaryWeb.StagesLive.Index do
                 {gettext("Placement check")}
               </h2>
               <p :if={@problems == []} id="stages-check-clear" class="text-[13.5px]/5">
-                {gettext(
-                  "Every workflow is declared, every type exists, and every input is an output of an earlier stage."
-                )}
+                {check_clear(@snapshot, @cross)}
               </p>
               <ul :if={@problems != []} class="grid gap-1 text-[13.5px]/5">
                 <li :for={problem <- @problems} data-problem={elem(problem, 0)}>
-                  {problem_words(problem, @draft)}
+                  {problem_words(problem, @draft, @cross)}
                   <.link
                     :if={elem(problem, 0) == :missing_type and @may}
                     navigate={
@@ -834,8 +834,36 @@ defmodule ApiaryWeb.StagesLive.Index do
     end
   end
 
-  defp problem_words({:missing_workflow, id, name}, doc),
-    do: Words.undeclared(stage_name(doc, id), name)
+  # The placement check with nothing to list. Before the first read of the harness it
+  # leaves the workflows out, as it does not check them. The Qory harness is never read:
+  # its workflows are recorded once an owner or admin opens this page or Workflow.
+  defp check_clear(nil, :qory_workspace),
+    do:
+      gettext(
+        "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
+      )
+
+  defp check_clear(nil, _harness),
+    do:
+      gettext(
+        "Every type exists, and every input is an output of an earlier stage. The workflows are checked once the harness is read."
+      )
+
+  defp check_clear(_snapshot, _harness),
+    do:
+      gettext(
+        "Every workflow is declared, every type exists, and every input is an output of an earlier stage."
+      )
+
+  # The cross's line for the workspace's harness: the Qory harness, whose workflows the
+  # workspace cannot add to, or a harness repository (`Words.undeclared/3`).
+  defp cross(%{choice: :qory}), do: :qory_workspace
+  defp cross(_chosen), do: :workspace
+
+  defp problem_words({:missing_workflow, id, name}, doc, cross),
+    do: Words.undeclared(stage_name(doc, id), name, cross)
+
+  defp problem_words(problem, doc, _cross), do: problem_words(problem, doc)
 
   defp problem_words({:missing_type, id, type}, doc),
     do: Words.missing_type(stage_name(doc, id), type)

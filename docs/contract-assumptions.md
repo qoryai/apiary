@@ -1133,7 +1133,11 @@ code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
-starter gave, carried as given. Events are read as untrusted, so a `state` other than the
+starter gave, carried as given. qory gives `workflow_not_in_harness` when the harness it
+composed for a run has no skill or command with the name of the run's workflow: it closes
+the run failed before the runtime starts. Qory Apiary reads the code and shows the
+workflow and where the run's harness came from (`ApiaryWeb.RunComponents.reason_words/1`,
+`Apiary.Harnesses.WorkflowGap`). Events are read as untrusted, so a `state` other than the
 three, or a `reason` that breaks the pattern, is read as absent (`Apiary.Runs.Fold`).
 
 A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,

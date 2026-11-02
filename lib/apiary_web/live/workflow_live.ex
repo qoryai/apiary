@@ -102,6 +102,7 @@ defmodule ApiaryWeb.WorkflowLive do
           |> start_async(:linked, fn ->
             {Sources.repositories(scope), Sources.unplaced(scope)}
           end)
+          |> record_declared()
           |> preselect_assigned(),
         else: socket
 
@@ -161,6 +162,7 @@ defmodule ApiaryWeb.WorkflowLive do
     |> assign(chosen: chosen, editing: false, harness_refusal: nil)
     |> assign_harness_form(nil)
     |> load_targets()
+    |> record_declared()
   end
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
@@ -311,7 +313,6 @@ defmodule ApiaryWeb.WorkflowLive do
         {:noreply,
          socket
          |> assign(current: Sources.current(scope.workspace), save_error: nil)
-         |> record_declared()
          |> put_flash(
            :info,
            gettext("Saved. Runs of %{workspace} now follow the workflow %{workflow}.",
@@ -507,7 +508,6 @@ defmodule ApiaryWeb.WorkflowLive do
           {:ok, stacks} ->
             socket
             |> assign(stacks: stacks, reading: false)
-            |> record_declared()
             |> preselect_workflow()
 
           {:error, reason} ->
@@ -519,6 +519,17 @@ defmodule ApiaryWeb.WorkflowLive do
 
     {:noreply, assign_form(socket)}
   end
+
+  def handle_async(:declared, {:ok, {chosen, {:ok, names}}}, socket) when is_list(names) do
+    workspace = socket.assigns.current_scope.workspace
+
+    if Sources.chosen(workspace) == chosen,
+      do: :ok = Apiary.Processes.record_declared(workspace, names)
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:declared, _failed, socket), do: {:noreply, socket}
 
   def handle_async(:read, {:exit, _reason}, socket),
     do: {:noreply, socket |> assign(read_error: :exited, reading: false) |> assign_form()}
@@ -604,28 +615,20 @@ defmodule ApiaryWeb.WorkflowLive do
     end
   end
 
-  # The workflows of the stack read under the saved document's base, kept as the
-  # workspace's snapshot (`Apiary.Processes.record_declared/2`), once read and again once
-  # saved. A source only tried in Source changes no snapshot.
-  defp record_declared(
-         %{assigns: %{current: %{base: %{} = base}, stacks: [_ | _] = stacks}} = socket
-       ) do
-    case Enum.find(stacks, &(&1.base == base)) do
-      nil ->
-        socket
+  # The workflows of the workspace's harness, read outside the page's process as Check
+  # again on a work item reads them (`Apiary.Stacks.Sources.chosen_workflows/2`) and kept
+  # as the workspace's snapshot (`Apiary.Processes.record_declared/2`): once the page is
+  # connected, and again once a harness choice is saved. A read that fails, or a source
+  # only tried in Source, changes no snapshot; a harness chosen while the read ran keeps
+  # the snapshot of its later read.
+  defp record_declared(socket) do
+    %{current_scope: scope} = socket.assigns
+    chosen = Sources.chosen(scope.workspace)
 
-      stack ->
-        :ok =
-          Apiary.Processes.record_declared(
-            socket.assigns.current_scope.workspace,
-            stack.workflows
-          )
-
-        socket
-    end
+    socket
+    |> cancel_async(:declared)
+    |> start_async(:declared, fn -> {chosen, Sources.chosen_workflows(scope, scope.workspace)} end)
   end
-
-  defp record_declared(socket), do: socket
 
   # The current workflow, where the chosen source's stacks have it under the current base.
   defp preselect_workflow(%{assigns: %{current: %{workflow: workflow, base: base}}} = socket) do

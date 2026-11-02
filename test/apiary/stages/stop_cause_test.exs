@@ -219,4 +219,104 @@ defmodule Apiary.Stages.StopCauseTest do
                  "Owners and admins of #{org} connect an integration that covers #{source} in Organisation settings › Integrations."
     end
   end
+
+  describe "a run whose harness has no skill for its workflow" do
+    @describetag needs: :factory
+
+    # The run of a work item queued, its walk resolved with `walk`, and its registered run
+    # failed with `reason`.
+    defp gap(scope, walk, reason \\ "workflow_not_in_harness") do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+          set: Keyword.merge([state: :resolved, workflow: "explore-a-ticket"], walk)
+        )
+
+      Repo.insert!(%Apiary.Runs.Run{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        node_run_id: run.run_id,
+        dispatch_run_id: run.id,
+        state: "failed",
+        exit_state: "failed",
+        reason: reason
+      })
+
+      run = %{run | state: :ended, end_cause: :run_ended, result_outcome: :none}
+      {run, %{work_item | target_path: "acme/web-shop"}}
+    end
+
+    test "names the workflow and where the harness comes from, by the walk's origin" do
+      %{scope: scope} = sign_up_fixture()
+      {:ok, choice} = Apiary.Stacks.Sources.choose(scope, :qory)
+      missing = "The run's harness has no skill named explore-a-ticket."
+
+      {run, work_item} = gap(scope, origin: :file)
+
+      assert StopCause.text(run, work_item) ==
+               missing <>
+                 " The harness comes from the harness file at the root of repository acme/web-shop."
+
+      base = %{"git" => "https://code.example.com/acme/harness", "ref" => "main"}
+
+      for {extends, from} <- [
+            {Map.put(base, "stack", "triage"), " stack triage."},
+            {Map.put(base, "path", "stacks/web"), " folder stacks/web."}
+          ] do
+        {run, work_item} =
+          gap(scope, origin: :setting, stack_id: choice.id, document: %{"extends" => extends})
+
+        assert StopCause.text(run, work_item) ==
+                 missing <>
+                   " The harness comes from https://code.example.com/acme/harness," <> from
+      end
+
+      {run, work_item} =
+        gap(scope, origin: :setting, stack_id: choice.id, document: %{"extends" => base})
+
+      assert StopCause.text(run, work_item) ==
+               missing <> " The harness comes from https://code.example.com/acme/harness."
+
+      {run, work_item} =
+        gap(scope,
+          origin: :setting,
+          stack_id: choice.id,
+          document: %{"modules" => [%{"name" => "core"}]}
+        )
+
+      assert StopCause.text(run, work_item) ==
+               missing <> " The harness is the workspace's harness."
+
+      {run, work_item} = gap(scope, origin: :setting, document: %{"extends" => base})
+      assert StopCause.text(run, work_item) == missing <> " The harness is the Qory harness."
+
+      # A hidden harness shows no source.
+      {run, work_item} = gap(scope, origin: :file, harness_hidden: true)
+      assert StopCause.text(run, work_item) == missing
+    end
+
+    test "a target is a repository only in a software workspace" do
+      %{scope: scope} = sign_up_fixture()
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [domain: "example"]
+        )
+
+      {run, work_item} = gap(scope, origin: :file)
+
+      assert StopCause.text(run, work_item) ==
+               "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of target acme/web-shop."
+    end
+
+    test "any other reason is a run that ended without a result" do
+      %{scope: scope} = sign_up_fixture()
+      {run, work_item} = gap(scope, [origin: :file], "no_session")
+      assert StopCause.text(run, work_item) == "The run ended without a result."
+    end
+  end
 end

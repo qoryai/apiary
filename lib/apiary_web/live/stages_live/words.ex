@@ -97,21 +97,33 @@ defmodule ApiaryWeb.StagesLive.Words do
   def add_after(name), do: gettext("Add a stage after %{stage}", stage: name)
 
   # The workflows the harness listed at its last read (`Apiary.Processes.declared_snapshot/1`),
-  # with the time of that read; before the first read, the workflows a stage may take
-  # (`declared`, `Apiary.Processes.declared_workflows/1`).
+  # with the time of that read; before the first read, that it has not been read. The
+  # Qory harness (`:qory_workspace`) is never read: its workflows, with no time.
   @doc false
-  def workflows_line(_declared, %{names: [], read_at: at}),
+  def workflows_line(declared, snapshot, harness \\ :workspace)
+
+  def workflows_line(_declared, _snapshot, :qory_workspace),
+    do:
+      gettext("The Qory harness's workflows: %{names}.",
+        names: Enum.join(Apiary.Processes.qory_workflows(), ", ")
+      )
+
+  def workflows_line(_declared, %{names: [], read_at: at}, _harness),
     do: gettext("The harness listed no workflows %{time}.", time: read_time(at))
 
-  def workflows_line(_declared, %{names: names, read_at: at}),
+  def workflows_line(_declared, %{names: names, read_at: at}, _harness),
     do:
       gettext("Workflows the harness listed %{time}: %{names}.",
         time: read_time(at),
         names: Enum.join(names, ", ")
       )
 
-  def workflows_line(declared, nil),
-    do: gettext("Workflows a stage can run: %{names}.", names: Enum.join(declared, ", "))
+  def workflows_line(_declared, nil, _harness), do: not_read()
+
+  # Before the first read of the harness: the canvas shows no marks, and no stage waits
+  # for a workflow.
+  @doc false
+  def not_read, do: gettext("The harness has not been read yet.")
 
   # The time of a read in a sentence: "just now", "5 minutes ago", "yesterday, 17:20".
   defp read_time(at), do: ApiaryWeb.Format.time_ago(at, DateTime.utc_now(), case: :inline)
@@ -134,14 +146,59 @@ defmodule ApiaryWeb.StagesLive.Words do
   @doc false
   def add_before(name), do: gettext("Add a stage before %{stage}", stage: name)
 
-  # A workflow the harness no longer declares (spec addition 2).
+  # A workflow the harness does not list under `workflows` (spec addition 2): the red
+  # cross's line. On the Stages page, `:workspace` for a harness repository and
+  # `:qory_workspace` for the Qory harness; `:qory` for the Qory harness on Instance
+  # settings › Workspace types.
   @doc false
-  def undeclared(stage_name, workflow),
+  def undeclared(stage_name, workflow, harness \\ :workspace)
+
+  def undeclared(stage_name, workflow, :workspace),
     do:
       gettext(
-        "%{stage} uses %{workflow}, which the harness no longer declares. Add it to the harness, or choose another workflow for %{stage}.",
+        "List %{workflow} under workflows in the harness's qory-stack.yaml, or choose another workflow for %{stage}. Until then, %{stage} waits and starts no run.",
         stage: stage_name,
         workflow: workflow
+      )
+
+  def undeclared(stage_name, workflow, :qory_workspace),
+    do:
+      gettext(
+        "Choose another workflow for %{stage}, or choose a harness that lists %{workflow} under workflows on the Workflow page. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run.",
+        stage: stage_name,
+        workflow: workflow
+      )
+
+  def undeclared(stage_name, workflow, :qory),
+    do:
+      gettext(
+        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages or Workflow page, or someone uses Check again on a work item.",
+        stage: stage_name,
+        workflow: workflow
+      )
+
+  # A workflow's mark, in words beside the check or the cross: a check for a name a stage
+  # may run (`Apiary.Processes.declared_workflows/1`: explore-a-ticket, the names the
+  # harness listed at its last read, and the workflows saved on the Workflow page), a
+  # cross for any other.
+  @doc false
+  def mark_text(true), do: gettext("A stage can run it")
+  def mark_text(false), do: gettext("Not in the harness")
+
+  # The same with the workflow's name, for a mark on a card.
+  @doc false
+  def mark_label(workflow, true),
+    do: gettext("%{workflow}: a stage can run it", workflow: workflow)
+
+  def mark_label(workflow, false),
+    do: gettext("%{workflow}: not in the harness", workflow: workflow)
+
+  # A typed workflow name that breaks the schema's pattern, under its field.
+  @doc false
+  def workflow_refused,
+    do:
+      gettext(
+        "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 64 characters."
       )
 
   @doc false
