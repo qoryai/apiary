@@ -1,7 +1,7 @@
 defmodule Apiary.Harnesses.QoryCopyTest do
   # The copy of the Qory harness in priv/harness/qory/ (`mix apiary.harness.update`):
-  # the commit it was copied from is the pin this release ships, and its files are the
-  # bytes of that commit.
+  # the commit it was copied from is in `.harness-ref`, and its files are the bytes of
+  # that commit.
   use ExUnit.Case, async: true
 
   alias Apiary.Harnesses.{QoryCopy, Reader}
@@ -26,7 +26,6 @@ defmodule Apiary.Harnesses.QoryCopyTest do
   }
 
   test "the copy's ref is the commit the copy was made from" do
-    # Definition.qory_harness().latest is this commit too once the pin moves to it.
     assert File.read!(Path.join(@dir, ".harness-ref")) == @harness_ref <> "\n"
     assert QoryCopy.ref() == @harness_ref
   end
