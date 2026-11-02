@@ -84,6 +84,29 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
   defp ids(items), do: Enum.map(items, &"work-item-#{&1.public_id}")
 
+  # The reader is not shown the feature `workflow_model`, whose board replaces the stages
+  # strip, the bands and their rows (`ApiaryWeb.WorkItemLive.WorkflowTest` tests the
+  # board).
+  defp before_the_workflow_model! do
+    :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+    :ok = EditionStubs.HidesNamed.put([:workflow_model])
+  end
+
+  # The work items on the board, where the instance has the feature `workflow_model`, else
+  # the rows: their DOM ids, as `ids/1` makes them.
+  defp listed(view) do
+    if has_element?(view, "#work-items-board") do
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#work-items-board li[id^='work-items-board-item-']")
+      |> LazyHTML.attribute("id")
+      |> Enum.map(&String.replace_prefix(&1, "work-items-board-item-", "work-item-"))
+    else
+      rows(view)
+    end
+  end
+
   defp words(view, selector) do
     view
     |> element(selector)
@@ -117,12 +140,12 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       work_item = item!(scope)
 
       {:ok, view, _html} = live(conn, page(scope))
-      assert has_element?(view, row(work_item))
+      assert listed(view) == ids([work_item])
 
       for level <- [:member, :admin] do
         %{user: user} = member_fixture(scope, level)
         {:ok, view, _html} = live(log_in_user(build_conn(), user), page(scope))
-        assert has_element?(view, row(work_item))
+        assert listed(view) == ids([work_item])
         assert has_element?(view, "h1", "Work items")
       end
     end
@@ -161,12 +184,12 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       refute other.resp_body =~ "Discount codes"
 
       {:ok, view, html} = live(member_conn, page(scope))
-      assert rows(view) == ids([ours])
+      assert listed(view) == ids([ours])
       refute html =~ "Discount codes"
 
       # The owner reaches both.
       {:ok, view, _html} = live(conn, page(%{scope | workspace: platform}))
-      assert rows(view) == ids([theirs])
+      assert listed(view) == ids([theirs])
     end
   end
 
@@ -187,6 +210,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "shows the stages as a strip and as bands, each row with its status", ctx do
+      before_the_workflow_model!()
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       for {stage, count, attention} <- [
@@ -210,11 +234,11 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
       for {work_item, status} <- [
             {ctx.queued, "Explore is queued"},
-            {ctx.running, "Qory is exploring"},
-            {ctx.questions, "Waits for answers"},
+            {ctx.running, "Explore is running"},
+            {ctx.questions, "Needs answers"},
             {ctx.used_up, "Explore used its 3 runs"},
-            {ctx.mine, "Waits for you to confirm"},
-            {ctx.theirs, "Waits for #{name(ctx.member)} to confirm"},
+            {ctx.mine, "You confirm next"},
+            {ctx.theirs, "#{name(ctx.member)} confirms next"},
             {ctx.shape, "Ready for Shape"}
           ] do
         assert words(view, row(work_item) <> " .q-wl-nx") == status
@@ -230,6 +254,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "a stage alone is a band of its rows, from its strip's link", ctx do
+      before_the_workflow_model!()
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       view |> element("#work-items-stages-confirm") |> render_click()
@@ -248,6 +273,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "Show all leads to a stage that holds more than its band", %{conn: conn, scope: scope} do
+      before_the_workflow_model!()
       for _n <- 1..WorkList.band_size(), do: item!(scope)
       {:ok, view, _html} = live(conn, page(scope))
 
@@ -349,7 +375,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     test "a forged view is Open", %{conn: conn, scope: scope} do
       work_item = item!(scope)
       {:ok, view, _html} = live(conn, page(scope, "?view=nonsense"))
-      assert rows(view) == ids([work_item])
+      assert listed(view) == ids([work_item])
     end
   end
 
@@ -630,6 +656,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "orders the Open view's bands", ctx do
+      before_the_workflow_model!()
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?sort=created"))
       assert rows(view, "#work-items-explore") == ids([ctx.newer, ctx.older])
 
@@ -653,6 +680,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "is kept as the view, the stage and the search change", ctx do
+      before_the_workflow_model!()
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?sort=created"))
 
       view |> element("#work-items-views-closed") |> render_click()
@@ -755,6 +783,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       conn: conn,
       scope: scope
     } do
+      before_the_workflow_model!()
       work_item = item!(scope) |> set!(title: "Basket \u202Eflow")
       {:ok, view, html} = live(conn, page(scope))
 
@@ -766,6 +795,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       conn: conn,
       scope: scope
     } do
+      before_the_workflow_model!()
       work_item = item!(scope) |> set!(title: "\u200B\u202E\u2066")
       {:ok, view, _html} = live(conn, page(scope))
 
@@ -776,6 +806,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       conn: conn,
       scope: scope
     } do
+      before_the_workflow_model!()
+
       for title <- ["\u00A0", "\u202E\u200B"] do
         work_item = item!(scope) |> set!(title: title)
         {:ok, view, _html} = live(conn, page(scope))
@@ -811,10 +843,11 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   describe "live" do
     test "a message of the workspace's work items reads the list and the sidebar's count again",
          %{conn: conn, scope: scope} do
+      before_the_workflow_model!()
       work_item = at!(scope, :running)
       {:ok, view, _html} = live(conn, page(scope))
 
-      assert words(view, row(work_item) <> " .q-wl-nx") == "Qory is exploring"
+      assert words(view, row(work_item) <> " .q-wl-nx") == "Explore is running"
       refute has_element?(view, "#nav-work_items .q-nav-count")
 
       Repo.delete_all(
@@ -829,7 +862,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
         {:work_items_changed, [work_item.public_id]}
       )
 
-      assert words(view, row(work_item) <> " .q-wl-nx") == "Waits for you to confirm"
+      assert words(view, row(work_item) <> " .q-wl-nx") == "You confirm next"
       assert words(view, "#nav-work_items .q-nav-count") == "1"
       assert words(view, "#work-items-views") == "Open 1 Waiting on you 1 Declined 0 Closed 0"
     end
@@ -850,7 +883,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
         {:work_items_changed, []}
       )
 
-      assert rows(view) == ids([first])
+      assert listed(view) == ids([first])
     end
 
     test "a member removed behind the page's back is sent away on a message of its work items",
@@ -872,7 +905,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
       render_hook(view, "nonsense", %{"q" => "x"})
       render_hook(view, "answer", %{})
-      assert rows(view) == ids([work_item])
+      assert listed(view) == ids([work_item])
     end
   end
 end

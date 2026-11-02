@@ -31,10 +31,10 @@ defmodule ApiaryWeb.SetUpComponents do
   # `steps/1` is this module's progress indicator, not the core's numbered list.
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
-  alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
+  alias Apiary.{Access, Adapters, Features, Mail, Organisations, Processes, WorkspaceSetup}
   alias Apiary.Processes.TypeTemplates
   alias Apiary.Stacks.Sources
-  alias ApiaryWeb.{HarnessComponents, WorkspaceComponents}
+  alias ApiaryWeb.HarnessComponents
   alias Apiary.Accounts.Scope
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.{Invitation, Organisation, Workspace}
@@ -838,34 +838,26 @@ defmodule ApiaryWeb.SetUpComponents do
   ## The kind cards
 
   @doc """
-  kind_cards/1 is the choice of what a new workspace does: one card per domain of
-  `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
-  type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
-  connect, and Choose, which sends the event `choose_kind` with the domain's name as
-  `type`. The cards are 20rem wide, or the column's width where the column is narrower,
-  in a grid that wraps a further card to the next line; Choose is at the foot of its
-  card. A card's title is one heading level below `heading`. The empty
-  organisation overview (`ApiaryWeb.OrganisationLive`) and New workspace
-  (`/:org/workspaces/new`) show it, and each takes the event with `choose_kind/3`. With
+  kind_cards/1 is the choice of what a new workspace does: one card per type with a card
+  (`card_domains/0`), each a link to the type's page, `/:org/workspaces/new/<type key>`
+  (`ApiaryWeb.WorkspaceTypeLive`), with the type's name and summary as its newest version
+  shows them (`Apiary.Processes.type_texts/1`) and an arrow. The link's name is the type's
+  name, and the summary describes it. The cards are 20rem wide, or the column's width
+  where the column is narrower, in a grid that wraps a further card to the next line. A
+  card's title is one heading level below `heading`. The empty organisation overview
+  (`ApiaryWeb.OrganisationLive`) and New workspace (`/:org/workspaces/new`) show it. With
   `limit`, that line shows in an information notice in place of the cards.
   """
   attr :id, :string, default: "set-up-cards"
   attr :title, :string, required: true
+  attr :organisation, Organisation, required: true, doc: "the organisation the cards are in"
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
   attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
-
-  attr :previews, :map,
-    default: %{},
-    doc:
-      "a domain's name to the process its workspace starts with (`previews/1`), shown under the cards"
 
   def kind_cards(assigns) do
     assigns =
       assigns
-      |> assign(
-        :cards,
-        for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
-      )
+      |> assign(:cards, if(assigns.limit, do: [], else: cards()))
       |> assign(:card_heading, if(assigns.heading == "h1", do: "h2", else: "h3"))
 
     ~H"""
@@ -892,77 +884,68 @@ defmodule ApiaryWeb.SetUpComponents do
         role="list"
         class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
       >
-        <li
-          :for={{domain, card} <- @cards}
-          id={"set-up-card-#{domain.name()}"}
-          class="flex min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4"
-        >
-          <.dynamic_tag tag_name={@card_heading} class="font-semibold">
-            {domain.type_name()}
-          </.dynamic_tag>
-          <p class="text-[13.5px]/5">{card.what}</p>
-          <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
-          <div class="mt-auto pt-1">
-            <.button
-              id={"set-up-card-#{domain.name()}-choose"}
-              variant="primary"
-              size="md"
-              phx-click="choose_kind"
-              phx-value-type={domain.name()}
-              phx-disable-with={gettext("Creating")}
+        <li :for={card <- @cards} id={"set-up-card-#{card.domain.name()}"} class="flex min-w-0">
+          <.link
+            id={"set-up-card-#{card.domain.name()}-link"}
+            navigate={~p"/#{@organisation}/workspaces/new/#{card.type}"}
+            aria-label={card.texts.name}
+            aria-describedby={card.texts.summary && "set-up-card-#{card.domain.name()}-summary"}
+            class="group flex w-full min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4 transition-colors hover:border-line-strong"
+          >
+            <span class="flex items-start justify-between gap-3">
+              <.dynamic_tag tag_name={@card_heading} class="min-w-0 break-words font-semibold">
+                {card.texts.name}
+              </.dynamic_tag>
+              <.icon
+                name="hero-arrow-right-micro"
+                class="mt-0.5 size-4 flex-none text-muted group-hover:text-base-content"
+              />
+            </span>
+            <span
+              :if={card.texts.summary}
+              id={"set-up-card-#{card.domain.name()}-summary"}
+              class="text-[13.5px]/5"
             >
-              {gettext("Choose")}
-            </.button>
-          </div>
+              {card.texts.summary}
+            </span>
+          </.link>
         </li>
       </ul>
-      <%= for {domain, _card} <- @cards, document = !@limit && @previews[domain.name()] do %>
-        <WorkspaceComponents.process_preview
-          id={"#{@id}-preview-#{domain.name()}"}
-          document={document}
-        />
-      <% end %>
     </div>
     """
   end
 
-  @doc """
-  previews/1 is, with the feature `workflow_model` where `scope` is, the process a new
-  workspace of each type with a kind card starts with, the newest version of its type's
-  default (`Apiary.Processes.TypeTemplates.newest/1`), by the domain's name, for
-  `kind_cards/1`'s `previews`; else none.
-  """
-  @spec previews(Scope.t()) :: %{String.t() => map}
-  def previews(%Scope{} = scope) do
-    if Features.visible?(scope, :workflow_model) do
-      for domain <- Domain.choices(),
-          kind_card_words(domain) != nil,
-          %{document: document} <- [TypeTemplates.newest(Domain.definition(domain).key)],
-          into: %{},
-          do: {domain.name(), document}
-    else
-      %{}
+  # Each type with a card, in the order a person picks one: its domain, its key and its
+  # texts as its newest version shows them.
+  defp cards do
+    for domain <- card_domains() do
+      type = Domain.definition(domain).key
+      %{domain: domain, type: type, texts: Processes.type_texts(TypeTemplates.newest(type))}
     end
   end
 
-  # The words of a domain's card, nil for a domain without one, which shows no card. A
-  # person reads a card's line where they pick a type, in any locale, so the line is in the
-  # `workspace type` context and keeps the type's words.
-  defp kind_card_words(Domain.Software) do
-    %{
-      what: pgettext("workspace type", "Agents change code in your repositories."),
-      connect: gettext("You connect: where work comes from, where changes go, a model.")
-    }
-  end
-
-  defp kind_card_words(_domain), do: nil
+  @doc """
+  card_domains/0 is the domains of `Apiary.Lingo.Domain.choices/0` that have a kind card
+  and a type page, in their order: the software domain alone. A domain without one, such
+  as the tests' example domain, has neither, and no workspace is created of it here.
+  """
+  @spec card_domains() :: [module]
+  def card_domains, do: Enum.filter(Domain.choices(), &(&1 == Domain.Software))
 
   @doc """
-  choose_kind/3 takes Choose of a kind card (`kind_cards/1`) on `socket`'s page: it creates
-  a workspace of that type in the scope's organisation, named after the type
-  (`Apiary.Organisations.create_workspace_of_kind/3`, with `which`, `:first` on the empty
-  organisation overview), and opens its first set-up step, Name. A type with no card
-  changes nothing. Where someone else created the organisation's first workspace a moment
+  card_domain/1 is the domain of `card_domains/0` whose type has the key `type`, such as
+  `qory.software`; nil for any other key.
+  """
+  @spec card_domain(String.t()) :: module | nil
+  def card_domain(type) when is_binary(type),
+    do: Enum.find(card_domains(), &(Domain.definition(&1).key == type))
+
+  @doc """
+  choose_kind/3 takes Create workspace on a type's page (`ApiaryWeb.WorkspaceTypeLive`),
+  with `type` the domain's name: it creates a workspace of that type in the scope's
+  organisation, named after the type (`Apiary.Organisations.create_workspace_of_kind/3`,
+  with `which`, `:first` where the organisation has no workspace yet), and opens its first
+  set-up step, Name. A type with no card (`card_domains/0`) changes nothing. Where someone else created the organisation's first workspace a moment
   before, or the person may no longer create one, the organisation's overview opens
   again; where the organisation may have no more, the page shows the reason in an
   information notice (`limit_line/1`), not an error.
@@ -973,7 +956,7 @@ defmodule ApiaryWeb.SetUpComponents do
     scope = socket.assigns.current_scope
     organisation = scope.organisation
 
-    case Enum.find(Domain.choices(), &(&1.name() == type and kind_card_words(&1) != nil)) do
+    case Enum.find(card_domains(), &(&1.name() == type)) do
       nil ->
         socket
 

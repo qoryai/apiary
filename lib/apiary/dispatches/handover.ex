@@ -40,7 +40,9 @@ defmodule Apiary.Dispatches.Handover do
   # over: `handed_over_at` the clock, the run of the queue `handed_over`. From then on the
   # dispatch keeps no lease: it never goes stale, and its slot stays held until its run
   # ends (`Apiary.Dispatches.RunEnd`). The run counts toward its pool's limit by its
-  # dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`).
+  # dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`). Once the first
+  # `dispatched` commits, the run the claim registered is broadcast as changed
+  # (`Apiary.Runs.broadcast_changed/1`).
   #
   # ## At the claim: `register/2`
   #
@@ -258,6 +260,7 @@ defmodule Apiary.Dispatches.Handover do
         end
       end)
       |> answered()
+      |> broadcast_dispatched()
     else
       {:error, :forbidden}
     end
@@ -593,10 +596,15 @@ defmodule Apiary.Dispatches.Handover do
   ## Dispatched
 
   # A dispatch handed over keeps no lease: its first `dispatched` is recorded, and a
-  # later one changes nothing, whatever the clock.
+  # later one changes nothing, whatever the clock. The value is `{:dispatched, id}`, the
+  # id of the dispatch's run of the queue, when the dispatch changed, else `:ok`.
   defp record_dispatched(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, external) do
-    if is_nil(locked.dispatch.dispatched_at), do: set_dispatched(locked, external)
-    {:done, :ok, []}
+    if is_nil(locked.dispatch.dispatched_at) do
+      set_dispatched(locked, external)
+      {:done, {:dispatched, locked.run.id}, []}
+    else
+      {:done, :ok, []}
+    end
   end
 
   # The first `dispatched` of a claimed dispatch, within its lease, hands it over.
@@ -604,9 +612,28 @@ defmodule Apiary.Dispatches.Handover do
     with :ok <- lease_held(locked) do
       set_dispatched(locked, external)
       :ok = hand_over(locked.run, locked.dispatch, locked.now)
-      {:done, :ok, [locked.dispatch.workspace_id]}
+      {:done, {:dispatched, locked.run.id}, [locked.dispatch.workspace_id]}
     end
   end
+
+  # Once the first `dispatched` committed, the run its claim registered is broadcast as
+  # changed, so its page shows Machine started at once (`broadcast_run/1`). A run of the
+  # queue with no registered run has nothing to broadcast. The answer is `:ok` either way.
+  defp broadcast_dispatched({:dispatched, dispatch_run_id}) do
+    run = Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run_id)
+    if run, do: broadcast_run({:ok, %{run: run}})
+    :ok
+  rescue
+    exception ->
+      not_told(exception)
+      :ok
+  catch
+    kind, _reason ->
+      not_told(kind)
+      :ok
+  end
+
+  defp broadcast_dispatched(answer), do: answer
 
   defp set_dispatched(%{dispatch: dispatch, now: now}, external) do
     external =

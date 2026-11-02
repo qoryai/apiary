@@ -1,7 +1,8 @@
 defmodule Apiary.Processes.TypeTemplatesTest do
   # The default process of each workspace type: version 1 from the release's default, a
   # later release's default, an instance admin's saves and what refuses one, its entry in
-  # the instance's trail, and the copy a new workspace makes of the newest version.
+  # the instance's trail, the copy a new workspace makes of the newest version, and the
+  # type's name, summary and description, kept or from code.
   #
   # Not async: a save keeps the type's advisory lock until the test's transaction ends.
   use Apiary.DataCase, async: false
@@ -194,6 +195,115 @@ defmodule Apiary.Processes.TypeTemplatesTest do
                TypeTemplates.save(instance_admin(), @type_key, document)
 
       assert List.last(stages)["id"] =~ ~r/\Ast_[0-9a-hjkmnp-tv-z]{10}\z/
+    end
+  end
+
+  describe "the texts" do
+    @describetag needs: :workflow_model
+
+    @summary "Agents change code in your repositories. Each ticket needs a repository."
+
+    test "a copy of the release's default shows the texts from code" do
+      version = TypeTemplates.newest(@type_key)
+      assert %{name: nil, summary: nil, description: nil} = version
+
+      assert %{name: "Software factory", summary: @summary, description: description} =
+               Processes.type_texts(version)
+
+      assert description =~
+               ~r/\AEach ticket comes from a work source, such as an issue tracker\..*connect\.\n\nYou connect: where work comes from, where changes go, and a model\.\z/s
+
+      # Another domain's summary is its line, with no description.
+      assert %{name: "Example", summary: "For the tests only.", description: nil} =
+               Processes.type_texts(TypeTemplates.newest("qory.example"))
+    end
+
+    test "a save keeps the texts it is given, and a stored text wins" do
+      admin = instance_admin()
+
+      texts = %{
+        name: "  Web shop factory  ",
+        summary: "Agents change the Web shop's code.",
+        description: "Agents work on the Web shop.\r\n\r\nDana approves each stage."
+      }
+
+      assert {:ok, version} = TypeTemplates.save(admin, @type_key, default(), texts: texts)
+
+      assert %{
+               number: 2,
+               document: document,
+               name: "Web shop factory",
+               summary: "Agents change the Web shop's code.",
+               description: "Agents work on the Web shop.\n\nDana approves each stage."
+             } = version
+
+      assert document == default()
+      assert Processes.type_texts(version).name == "Web shop factory"
+      assert Enum.find(TypeTemplates.list(), &(&1.type == @type_key)).name == "Web shop factory"
+
+      # Without texts, the next save keeps the newest version's.
+      assert {:ok, %{number: 3, name: "Web shop factory"}} =
+               TypeTemplates.save(admin, @type_key, renamed("Understand"))
+
+      assert [_entry, _other] =
+               Repo.all(from e in Entry, where: e.action == "workspace_type.edit")
+    end
+
+    test "a blank text, or one the same as the code's, is kept as nil" do
+      assert {:ok, %{name: nil, summary: nil, description: "Dana approves each stage."}} =
+               TypeTemplates.save(instance_admin(), @type_key, default(),
+                 texts: %{
+                   name: "Software factory",
+                   summary: " ",
+                   description: "Dana approves each stage."
+                 }
+               )
+    end
+
+    test "the same document and texts as the newest version is unchanged" do
+      texts = Processes.type_texts(TypeTemplates.newest(@type_key))
+
+      assert {:error, [%{path: "#", error: :unchanged}]} =
+               TypeTemplates.save(instance_admin(), @type_key, default(), texts: texts)
+    end
+
+    test "a text over its limit, in code points, is refused" do
+      admin = instance_admin()
+      # 60 characters of two code points each: 120 code points.
+      accented = String.duplicate("e\u0301", 60)
+
+      assert {:error, {:too_long, :name, 60}} =
+               TypeTemplates.save(admin, @type_key, default(), texts: %{name: accented})
+
+      assert {:error, {:too_long, :summary, 200}} =
+               TypeTemplates.save(admin, @type_key, default(),
+                 texts: %{summary: String.duplicate("a", 201)}
+               )
+
+      assert {:error, {:too_long, :description, 1200}} =
+               TypeTemplates.save(admin, @type_key, default(),
+                 texts: %{description: String.duplicate("a", 1201)}
+               )
+
+      assert {:ok, %{description: kept}} =
+               TypeTemplates.save(admin, @type_key, default(),
+                 texts: %{description: String.duplicate("a", 1200)}
+               )
+
+      assert String.length(kept) == 1200
+    end
+
+    test "a description over 80 words is refused" do
+      admin = instance_admin()
+      eighty = Enum.map_join(1..80, " ", fn _n -> "shop" end)
+
+      assert {:error, {:too_many_words, :description, 80}} =
+               TypeTemplates.save(admin, @type_key, default(),
+                 texts: %{description: eighty <> "\n\nshop"}
+               )
+
+      assert {:ok, %{description: ^eighty}} =
+               TypeTemplates.save(admin, @type_key, default(), texts: %{description: eighty})
     end
   end
 
