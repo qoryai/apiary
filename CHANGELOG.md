@@ -512,6 +512,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `workflow_not_in_harness`, because the harness it composed has no skill for the run's
   workflow, shows that workflow and where the harness comes from on the run's page and
   on the work item.
+- In Workspace settings › Artifact types, owners and admins switch each standard type on
+  or off, and each change is an audit entry. Forms and the stage editor offer only the
+  types that are on. A push of a type that is off returns `422 unknown_type`, and the
+  message says to switch the type on. `proposal`, `questions` and `verdict` are always
+  on. A type stays on while an artifact of the workspace has it, or while the current
+  process or a process version in use includes it. A workspace keeps every standard
+  type until a person switches one off.
 <!-- /feature -->
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an
@@ -752,6 +759,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `workspaces`: a nullable `shown_standard_types` column, `text[]`. It changes no existing
+  row, and every workspace keeps every standard type.
 - `dispatches`: two nullable columns, `machine_end_state` and `machine_end_at`, with a
   check that scans `dispatches` under a lock that blocks writes. It changes no existing
   row.
