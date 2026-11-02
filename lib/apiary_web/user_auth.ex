@@ -521,10 +521,13 @@ defmodule ApiaryWeb.UserAuth do
     Phoenix.Component.assign(socket, :nav_counts, counts)
   end
 
-  # The sidebar's count of alive runs follows the workspace on every page. It listens on a
-  # topic of its own (`Apiary.Runs.touched_topic/1`), so no page has to handle a message
-  # it did not ask for. The count is one indexed query, made at once on the first change
-  # and then at most once a second while changes keep coming.
+  # The sidebar's count of alive runs, and its group Set up while the set-up is not
+  # finished, follow the workspace on every page, so a test run that passes finishes the
+  # set-up on a page that is open. They listen on `Apiary.Runs.touched_topic/1`, which
+  # no page subscribes to, so no page has to handle a message it did not ask for. They
+  # are read at once on the first change and then at most once a second while changes
+  # keep coming. A projection broadcasts on the topic after the queue's run ended with it
+  # (`Apiary.Runs.Projector`), so the read finds the ended run of the queue.
   @alive_window 1_000
 
   defp follow_alive_runs(socket) do
@@ -570,12 +573,23 @@ defmodule ApiaryWeb.UserAuth do
     scope = socket.assigns.current_scope
 
     if scope && scope.workspace do
-      counts = Map.put(socket.assigns.nav_counts || %{}, :alive, Apiary.Runs.count_alive(scope))
+      counts =
+        (socket.assigns.nav_counts || %{})
+        |> Map.put(:alive, Apiary.Runs.count_alive(scope))
+        |> refresh_set_up(scope)
+
       Phoenix.Component.assign(socket, :nav_counts, counts)
     else
       socket
     end
   end
+
+  # The group Set up is read again only while the page shows it, so a page of a finished
+  # set-up makes no more reads of its steps.
+  defp refresh_set_up(%{set_up: %{}} = counts, scope),
+    do: Map.put(counts, :set_up, ApiaryWeb.SetUpComponents.workspace_set_up(scope))
+
+  defp refresh_set_up(counts, _scope), do: counts
 
   # An open page follows a change of the user's membership and of the workspaces they
   # reach: a new level is loaded into the scope, a membership that is gone, or a workspace
