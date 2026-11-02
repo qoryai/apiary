@@ -369,12 +369,12 @@ defmodule ApiaryWeb.HarnessComponents do
 
   attr :chosen, :map, required: true, doc: "the choice, `t:Apiary.Stacks.Sources.chosen/0`"
 
-  # The choice and its version: "Qory harness", then "Always the latest version"; a
-  # harness repository, then its stack, repository and version.
+  # The choice and its version: "Qory harness, stack software", then "Always the latest
+  # version"; a harness repository, then its stack, repository and version.
   def line(assigns) do
     ~H"""
     <span id="harness-line" class="grid gap-0.5">
-      <span>{choice_title(@chosen.choice)}</span>
+      <span>{chosen_title(@chosen)}</span>
       <span id="harness-line-version" class="text-muted">
         {if @chosen.choice == :qory,
           do: version_line(@chosen),
@@ -383,6 +383,18 @@ defmodule ApiaryWeb.HarnessComponents do
     </span>
     """
   end
+
+  @doc false
+  # qory_line/1 is the Qory harness of a choice with its stack, "Qory harness, stack
+  # software"; with no stack, "Qory harness".
+  @spec qory_line(map) :: String.t()
+  def qory_line(%{stack: stack}) when is_binary(stack),
+    do: gettext("Qory harness, stack %{stack}", stack: stack)
+
+  def qory_line(_chosen), do: gettext("Qory harness")
+
+  defp chosen_title(%{choice: :qory} = chosen), do: qory_line(chosen)
+  defp chosen_title(%{choice: choice}), do: choice_title(choice)
 
   @doc false
   # chosen_line/1 is a stack as a page shows it, "%{stack} · %{harness} · %{version}":

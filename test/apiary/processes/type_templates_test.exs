@@ -359,7 +359,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
     test "copies the newest version and keeps its type and number; an earlier one keeps its copy" do
       admin = instance_admin()
       earlier = Processes.current(admin.workspace)
-      assert earlier.template == %{"type" => @type_key, "version" => 1}
+      assert %{"type" => @type_key, "version" => 1} = earlier.template
 
       {:ok, _version} = TypeTemplates.save(admin, @type_key, renamed("Understand"), based_on: 1)
 
@@ -367,7 +367,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       %{workspace: workspace} = sign_up_fixture()
 
       copy = Processes.current(workspace)
-      assert copy.template == %{"type" => @type_key, "version" => 2}
+      assert %{"type" => @type_key, "version" => 2} = copy.template
       assert Processes.stage(copy, @explore)["name"] == "Understand"
       assert Processes.template(Apiary.Lingo.Domain.Software)["version"] == 2
 

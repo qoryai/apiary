@@ -726,7 +726,10 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = open(conn, path)
 
       assert has_element?(view, "#workflow-harness", "Harness")
-      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+
+      assert words(view, "#harness-line") ==
+               "Qory harness, stack software Always the latest version"
+
       refute render(view) =~ "fe3b3ab"
       assert has_element?(view, "#workflow-harness-change", "Change")
       refute has_element?(view, "#workflow-harness-form")
@@ -758,7 +761,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "qory"})
       |> render_submit()
 
-      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+      assert words(view, "#harness-line") ==
+               "Qory harness, stack software Always the latest version"
+
       refute has_element?(view, "#workflow-harness-form")
       assert %{choice: :qory, version_kind: :latest} = Stacks.choice(scope.workspace)
       refute has_element?(view, "#workflow-file-first")
@@ -769,13 +774,31 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(view, "#workflow-harness-form")
     end
 
+    test "a workspace with no template shows the stack core", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [qory_stack: nil]
+        )
+
+      view = open(conn, path)
+
+      assert words(view, "#harness-line") == "Qory harness, stack core Always the latest version"
+    end
+
     test "without a choice of the workspace: the shared harness and its version as a line, with no version field",
          %{conn: conn, path: path, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
       view = open(conn, path)
 
-      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+      assert words(view, "#harness-line") ==
+               "Qory harness, stack software Always the latest version"
+
       refute has_element?(view, "#harness-qory-version")
       refute has_element?(view, "#harness-version")
 
@@ -1012,7 +1035,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                "acme/harness lists the stack triage under exports, but stacks/triage has no " <>
                  "qory-stack.yaml. Add that file."
 
-      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+      assert words(view, "#harness-line") ==
+               "Qory harness, stack software Always the latest version"
+
       assert Stacks.choice(scope.workspace) == nil
     end
 
@@ -1037,7 +1062,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert words(view, "#workflow-harness-refusal") ==
                "acme/harness has no branch, tag or commit named v9. Correct the version."
 
-      assert words(view, "#harness-line") == "Qory harness Always the latest version"
+      assert words(view, "#harness-line") ==
+               "Qory harness, stack software Always the latest version"
+
       assert Stacks.choice(scope.workspace) == nil
     end
   end

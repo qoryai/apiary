@@ -21,6 +21,7 @@ defmodule Apiary.Harnesses.WalkTest do
   alias Apiary.Harnesses.{Assignment, Builtin, Reader, RunHarness, Walk, WalkJob}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Workspace
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Stacks.{Document, Sources}
   alias Apiary.PublicGitServer
@@ -493,7 +494,7 @@ defmodule Apiary.Harnesses.WalkTest do
     test "with neither a file nor a choice, the Qory harness applies, with the target's version",
          ctx do
       serve([ctx.run], covered: covering(ctx))
-      qory = Domain.definition(Domain.Software).harness
+      qory = Map.put(Domain.definition(Domain.Software).harness, "stack", "software")
 
       assert {:ok, walked} = Walk.run(ctx.input)
       assert %{origin: :setting, target_version: "c-R_app", stack_id: nil} = walked
@@ -2775,7 +2776,7 @@ defmodule Apiary.Harnesses.WalkTest do
                %{
                  choice: :qory,
                  git: @qory_git,
-                 stack: "core",
+                 stack: "software",
                  version: :latest,
                  pin: @qory_ref,
                  saved: false,
@@ -2787,7 +2788,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert walked.origin == :setting
 
       assert walked.document == %{
-               "extends" => %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "core"}
+               "extends" => %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "software"}
              }
 
       assert %{target_version: "c-R_app", stack_id: nil, owner_organisation_id: nil} = walked
@@ -2813,6 +2814,27 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{origin: :file, target_version: "c-R_app"}} = Walk.run(ctx.input)
     end
 
+    test "a workspace with no template: the walk, its choice and a saved row keep the stack core",
+         ctx do
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^ctx.scope.workspace.id),
+          set: [qory_stack: nil]
+        )
+
+      workspace = Repo.reload!(ctx.scope.workspace)
+      core = %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "core"}
+      input = %{ctx.input | workspace: workspace}
+      workflow_row!(ctx)
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert %{choice: :qory, stack: "core", saved: false} = Sources.chosen(workspace)
+      assert {:ok, %{document: %{"extends" => ^core}}} = Walk.run(input)
+
+      assert {:ok, _row} = Sources.choose(%{ctx.scope | workspace: workspace}, :qory)
+      assert %{choice: :qory, stack: "core", saved: true} = Sources.chosen(workspace)
+      assert {:ok, %{document: %{"extends" => ^core}}} = Walk.run(input)
+    end
+
     test "the Qory harness: saved at latest with no read; the target's file first, else its row's document at the newest version",
          ctx do
       serve([ctx.run], covered: covering(ctx), files: @base_files)
@@ -2828,7 +2850,7 @@ defmodule Apiary.Harnesses.WalkTest do
                %{
                  choice: :qory,
                  git: @qory_git,
-                 stack: "core",
+                 stack: "software",
                  version: :latest,
                  pin: @qory_ref,
                  saved: true,
@@ -2838,7 +2860,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, walked} = Walk.run(ctx.input)
 
       assert walked.document == %{
-               "extends" => %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "core"}
+               "extends" => %{"git" => @qory_git, "ref" => @qory_ref, "stack" => "software"}
              }
 
       assert walked.stack_id == stack.id
@@ -3052,7 +3074,11 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{origin: :file}} = walk.(extends)
       assert {:ok, walked} = walk.(neither)
       assert %{origin: :setting, stack_id: nil, target_version: "c-R_app"} = walked
-      assert walked.document == %{"extends" => Domain.definition(Domain.Software).harness}
+
+      assert walked.document == %{
+               "extends" =>
+                 Map.put(Domain.definition(Domain.Software).harness, "stack", "software")
+             }
     end
 
     test "a target of a domain without harness files: no file is read under any choice", ctx do

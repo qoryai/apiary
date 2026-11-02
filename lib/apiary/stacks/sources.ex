@@ -120,6 +120,24 @@ defmodule Apiary.Stacks.Sources do
   # workspace's choice as a page shows it, and `targets_chosen/1` the stacks chosen for
   # its targets.
   #
+  # ## A workspace's first harness
+  #
+  # A workspace made from a template gets its harness in the transaction that makes it
+  # (`Apiary.Organisations.create_workspace_from_template/3`), with no read: the commit is
+  # the one `templates/2` gave, recorded as given, and a run's walk reads the row as any
+  # other. `check_start/2`, before the transaction, takes a connected repository under
+  # `harness.save`, and an assigned or a shared source with the feature `factory` visible;
+  # it refuses a source that offers no template.
+  #
+  # `save_start/3` writes a row at the workspace: the source's repository, the template's
+  # stack, and the commit as the row's `ref`, with no version. A row of an assigned source
+  # has the assignment's `ref`, the only one the assignment covers, and the commit is in
+  # the record alone. A row of the shared harness keeps the shared row's owner, so a
+  # harness that runs hide stays hidden (`Apiary.Stacks.Resolution`), and the record then
+  # has no address. `save_qory_start/2` writes a `:qory` row only where the organisation
+  # shares another harness, which the workspace would otherwise take. Both hold the lock
+  # of the organisation's shares where they read its shared row.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -127,7 +145,7 @@ defmodule Apiary.Stacks.Sources do
 
   require Logger
 
-  alias Apiary.{Access, Harnesses, Repo, Stacks}
+  alias Apiary.{Access, Edition, Features, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
   alias Apiary.Harnesses.{Assignment, PublicGit, Reader, Walk}
@@ -136,7 +154,7 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{RateLimit, Target}
-  alias Apiary.Stacks.{Document, Stack}
+  alias Apiary.Stacks.{Document, Resolution, Stack}
 
   @head "HEAD"
   @stack_file "qory-stack.yaml"
@@ -160,7 +178,7 @@ defmodule Apiary.Stacks.Sources do
   """
   @type source :: %{
           id: String.t(),
-          kind: :linked | :assigned | :address,
+          kind: :linked | :assigned | :address | :shared,
           label: String.t(),
           git: String.t(),
           ref: String.t(),
@@ -169,6 +187,12 @@ defmodule Apiary.Stacks.Sources do
           version: String.t() | nil,
           stacks: [map] | nil
         }
+
+  @typedoc """
+  A template to make a workspace from: the source it was read from, `commit`, the commit
+  that read gave (`t:templates/0`), and the template.
+  """
+  @type start :: %{source: source, commit: String.t(), template: template}
 
   @typedoc "A stack of a source: its export name, nil for none, the base a document extends, and its workflows."
   @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
@@ -1855,9 +1879,158 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # The base of the Qory harness of `workspace`'s type, at the newest version the release
-  # ships (`Apiary.Lingo.Domain`).
-  defp qory_harness(workspace),
-    do: workspace |> Domain.for_workspace() |> Domain.definition() |> Map.fetch!(:harness)
+  # ships (`Apiary.Lingo.Domain`) and the workspace's stack (`Workspace.qory_stack/1`).
+  defp qory_harness(workspace) do
+    workspace
+    |> Domain.for_workspace()
+    |> Domain.definition()
+    |> Map.fetch!(:harness)
+    |> Map.put("stack", Workspace.qory_stack(workspace))
+  end
+
+  ## A workspace's first harness
+
+  @doc false
+  # template_key/2 is the page key of the template of the module `module` of `source`: the
+  # repository's public id, `assigned-<id>` or `shared`, a dot, and the module. A module's
+  # name may contain dots, so a key splits on its first dot.
+  @spec template_key(source, String.t()) :: String.t()
+  def template_key(%{kind: :shared}, module), do: "shared." <> module
+  def template_key(%{id: "assigned:" <> id}, module), do: "assigned-" <> id <> "." <> module
+  def template_key(%{id: "linked:" <> id}, module), do: id <> "." <> module
+
+  @doc false
+  # check_start/2 is whether the scope's person may make a workspace from `start` (the
+  # moduledoc), asked before the transaction: `:ok`; `{:error, :forbidden}` or `{:error,
+  # :not_found}` from the access check or with the feature off; `{:error, :invalid}` for a
+  # source that offers no template; or `{:error, errors}` for a process
+  # `Apiary.Processes.validate/1` refuses.
+  @spec check_start(Scope.t(), start) ::
+          :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
+  def check_start(
+        %Scope{} = scope,
+        %{source: %{narrowing: narrowing} = source, commit: commit, template: template}
+      )
+      when is_binary(commit) do
+    with :ok <- source_allowed(scope, source),
+         false <- narrowed?(narrowing) do
+      Apiary.Processes.validate(template.process)
+    else
+      true -> {:error, :invalid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def check_start(%Scope{}, _start), do: {:error, :invalid}
+
+  defp source_allowed(%Scope{organisation: organisation} = scope, %{kind: :linked}),
+    do: Access.authorize(scope, :"harness.save", organisation)
+
+  defp source_allowed(%Scope{} = scope, %{kind: kind}) when kind in [:assigned, :shared],
+    do: if(Features.visible?(scope, :factory), do: :ok, else: {:error, :not_found})
+
+  defp source_allowed(%Scope{}, _source), do: {:error, :invalid}
+
+  @doc false
+  # save_start/3 saves the harness of `workspace`, new, made from `start` (the moduledoc),
+  # inside the caller's transaction: `{:ok, record}`, the record of the template
+  # `Apiary.Processes.copy_template/4` keeps; `{:error, :not_found}` for a shared harness
+  # of another repository or none, as the source was read; `{:error, :invalid}` for a row
+  # the save rules refuse; or `{:error, :forbidden}` when the edition gives no owner.
+  @spec save_start(Scope.t(), Workspace.t(), start) ::
+          {:ok, map} | {:error, :not_found | :invalid | :forbidden}
+  def save_start(
+        %Scope{} = scope,
+        %Workspace{} = workspace,
+        %{source: source, commit: commit, template: template}
+      ) do
+    base = %{"git" => source.git, "ref" => row_ref(source, commit), "stack" => template.stack}
+
+    with {:ok, opts, git} <- row_options(scope, source),
+         {:ok, _row} <-
+           saved(
+             Stacks.put_stack(
+               scope,
+               {:workspace, workspace},
+               document(base),
+               [choice: :repository] ++ opts
+             )
+           ) do
+      {:ok,
+       %{
+         "source" => "repository",
+         "git" => git,
+         "commit" => commit,
+         "module" => template.module,
+         "stack" => template.stack,
+         "type" => template_key(source, template.module),
+         "version" => nil
+       }}
+    end
+  end
+
+  defp row_ref(%{kind: :assigned, ref: ref}, _commit), do: ref
+  defp row_ref(_source, commit), do: commit
+
+  # The options of the row of `source`, and the address its record has.
+  defp row_options(%Scope{organisation: organisation}, %{kind: :shared, git: git}) do
+    lock_shares(organisation)
+
+    case Stacks.shared(organisation) do
+      %Stack{harness: harness, owner_organisation_id: owner} ->
+        if extended(harness)["git"] == git,
+          do: {:ok, [owner: owner], if(not hides?(owner, organisation), do: git)},
+          else: {:error, :not_found}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp row_options(%Scope{}, %{git: git}), do: {:ok, [], git}
+
+  defp hides?(owner, %Organisation{id: id} = organisation) do
+    Resolution.hidden?(owner, %{
+      operated: Edition.operated?(organisation),
+      organisation_id: id
+    })
+  end
+
+  @doc false
+  # save_qory_start/2 saves the harness of `workspace`, new, made from the Qory template,
+  # inside the caller's transaction (the moduledoc): `{:ok, stack}`, `{:ok, nil}` where the
+  # workspace needs no row, or `{:error, :invalid}`. The row's owner is the organisation:
+  # no person chose it, and no run hides the Qory harness.
+  @spec save_qory_start(Scope.t(), Workspace.t()) :: {:ok, Stack.t() | nil} | {:error, :invalid}
+  def save_qory_start(%Scope{organisation: organisation} = scope, %Workspace{} = workspace) do
+    base = qory_harness(workspace)
+    lock_shares(organisation)
+
+    if shares_another?(Stacks.shared(organisation), base) do
+      scope
+      |> Stacks.put_stack({:workspace, workspace}, document(base),
+        choice: :qory,
+        version: {:latest, nil},
+        owner: organisation.id
+      )
+      |> saved()
+    else
+      {:ok, nil}
+    end
+  end
+
+  # Whether a workspace with no row would take another harness than the Qory harness at
+  # `base`: a shared Qory harness at another stack or version is one.
+  defp shares_another?(nil, _base), do: false
+
+  defp shares_another?(%Stack{choice: :qory, version_kind: :latest} = row, base),
+    do: extended(row.harness)["stack"] != base["stack"]
+
+  defp shares_another?(%Stack{}, _base), do: true
+
+  # A row the save rules refuse: the caller's `{:error, changeset}` is for a workspace's.
+  defp saved({:error, %Ecto.Changeset{}}), do: {:error, :invalid}
+  defp saved(result), do: result
 
   # Saves of one workspace take turns: the second waits for the first's transaction, then
   # sees its row and replaces it, so the workspace keeps one workflow.

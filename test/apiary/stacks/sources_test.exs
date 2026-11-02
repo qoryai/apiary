@@ -1097,7 +1097,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert {:ok, walked} = Walk.run(input)
       assert walked.origin == :setting
       assert walked.stack_id == nil
-      assert walked.document == %{"extends" => qory.harness}
+      assert walked.document == %{"extends" => Map.put(qory.harness, "stack", "software")}
     end
 
     test "another workflow replaces the one before, so the runs have one", ctx do
@@ -1141,7 +1141,7 @@ defmodule Apiary.Stacks.SourcesTest do
       git = qory.harness["git"]
       pin = qory.harness["ref"]
 
-      qory_chosen = %{choice: :qory, git: git, stack: "core", version: :latest, pin: pin}
+      qory_chosen = %{choice: :qory, git: git, stack: "software", version: :latest, pin: pin}
 
       assert Sources.chosen(ctx.scope.workspace) ==
                Map.merge(qory_chosen, %{saved: false, shared: false})
@@ -1336,7 +1336,7 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert calls() == []
 
-      assert %{choice: :qory, git: git, stack: "core", version: :latest, pin: pin} =
+      assert %{choice: :qory, git: git, stack: "software", version: :latest, pin: pin} =
                Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
 
       assert {git, pin} == {qory.harness["git"], qory.harness["ref"]}
@@ -1831,7 +1831,9 @@ defmodule Apiary.Stacks.SourcesTest do
       assert {:ok, %Stack{version_kind: :latest, version_name: nil}} =
                Sources.choose(ctx.scope, {:qory, :latest})
 
-      assert %{version: :latest, pin: pin, stack: "core"} = Sources.chosen(ctx.scope.workspace)
+      assert %{version: :latest, pin: pin, stack: "software"} =
+               Sources.chosen(ctx.scope.workspace)
+
       assert pin == qory.latest
       assert Sources.choose(ctx.scope, {:qory, "v1"}) == {:error, :invalid}
     end

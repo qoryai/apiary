@@ -133,6 +133,9 @@ defmodule Apiary.Stacks.Resolution do
     end
   end
 
-  defp hidden?(_owner, %{operated: true}), do: true
-  defp hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
+  @doc false
+  # hidden?/2 is `harness_hidden` for a document of `owner` (the moduledoc).
+  @spec hidden?(owner, %{operated: boolean, organisation_id: Ecto.UUID.t()}) :: boolean
+  def hidden?(_owner, %{operated: true}), do: true
+  def hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
 end

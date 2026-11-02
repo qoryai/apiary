@@ -19,7 +19,8 @@ defmodule Apiary.Stacks do
   # workspace's row, the workspace's choice (`choice/1`); the organisation's row, the
   # harness it shares with every workspace (`shared/1`). The choice `:qory` is the Qory
   # harness, with the document that extends the harness of the workspace's type
-  # (`Apiary.Lingo.Domain.definition/1`); `:repository` a harness repository or a stack of
+  # (`Apiary.Lingo.Domain.definition/1`) at the workspace's stack
+  # (`Apiary.Organisations.Workspace.qory_stack/1`); `:repository` a harness repository or a stack of
   # one, with the document that extends it. The row's version (`Apiary.Stacks.Stack`)
   # gives the `ref` a run reads the base at (`version_ref/3`); a row with no version is
   # read at its document's `ref`. `chosen_for/4` reads the choice for a run, and
@@ -368,15 +369,15 @@ defmodule Apiary.Stacks do
   # none (the default), so a write there without one removes the choice. `{:ok, stack}`;
   # `{:error, :forbidden}` when the edition gives none; or `{:error, changeset}` with the
   # reason on its field. `version`, `{kind, name}`, is the version of a choice
-  # (`Apiary.Stacks.Stack`), nil for none (the default). It checks no access (the
-  # moduledoc).
+  # (`Apiary.Stacks.Stack`), nil for none (the default). `owner` is the organisation that
+  # owns the row, in place of the edition's answer. It checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
 
-    case Edition.harness_owner(scope) do
+    case Keyword.get_lazy(opts, :owner, fn -> Edition.harness_owner(scope) end) do
       owner when is_binary(owner) ->
         Repo.transact(fn ->
           current = lock_row(columns)
