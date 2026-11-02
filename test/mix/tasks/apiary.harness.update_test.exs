@@ -127,6 +127,19 @@ defmodule Mix.Tasks.Apiary.Harness.UpdateTest do
     refute File.exists?(ctx.texts)
   end
 
+  test "stops before writing when the hex digits are a branch's name, not the commit's", ctx do
+    later = commit!(ctx.env, ctx.checkout, %{"qory.yaml" => "exports:\n  stacks: [core]\n"})
+    name = Enum.find(["abcdef1", "1234567"], &(not String.starts_with?(later, &1)))
+    git!(ctx.env, ["-C", ctx.checkout, "branch", name, later])
+
+    assert_raise Mix.Error, ~r/\AGive the full commit id: #{name} is a branch or tag/, fn ->
+      run(ctx, name)
+    end
+
+    refute File.exists?(ctx.output)
+    refute File.exists?(ctx.texts)
+  end
+
   test "takes only lower-case hex digits as the commit", ctx do
     for given <- ["HEAD", "ABCDEF1", "abc", "main~1"] do
       assert_raise Mix.Error, ~r/7 to 64 lower-case hex digits/, fn -> run(ctx, given) end

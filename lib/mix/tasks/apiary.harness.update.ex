@@ -14,7 +14,7 @@ defmodule Mix.Tasks.Apiary.Harness.Update do
   #     mix apiary.harness.update ../harness 0968239f --output out --texts out/texts.ex
   #
   # The commit is 7 to 64 lower-case hex digits; `git rev-parse` turns it into the full
-  # id. Each file is read at that commit with `git show <commit>:<path>`, never from the
+  # id, which must start with those digits: a branch or tag with that name stops the task. Each file is read at that commit with `git show <commit>:<path>`, never from the
   # checkout's working tree, and must pass `Apiary.Harnesses.Reader.parse/1`. A missing
   # file, or a file the reader refuses, stops the task before anything is written.
   #
@@ -95,9 +95,20 @@ defmodule Mix.Tasks.Apiary.Harness.Update do
       {out, 0} ->
         commit = String.trim(out)
 
-        if Regex.match?(@full_commit, commit),
-          do: commit,
-          else: Mix.raise("git rev-parse returned #{inspect(commit)} for #{given}.")
+        cond do
+          not Regex.match?(@full_commit, commit) ->
+            Mix.raise("git rev-parse returned #{inspect(commit)} for #{given}.")
+
+          # git takes a branch or tag of that name before an abbreviated commit id.
+          not String.starts_with?(commit, given) ->
+            Mix.raise(
+              "Give the full commit id: #{given} is a branch or tag of #{checkout}, " <>
+                "at #{commit}."
+            )
+
+          true ->
+            commit
+        end
 
       {_out, _status} ->
         Mix.raise("The checkout #{checkout} has no commit #{given}.")
