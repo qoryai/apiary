@@ -169,18 +169,17 @@ defmodule Apiary.Processes.TypeTemplates do
   def workflows, do: Processes.qory_workflows()
 
   @doc """
-  artifact_types/0 is the artifact types a process with no template may name: the
-  standard types, each with its base view. A template's custom types are in
-  `artifact_types/1`.
+  artifact_types/0 is the standard artifact types, each with its base view. A template's
+  custom types are in `artifact_types/1`.
   """
   @spec artifact_types() :: [%{name: String.t(), base_view: atom}]
   def artifact_types, do: for({name, view} <- @standard_types, do: %{name: name, base_view: view})
 
   @doc """
-  artifact_types/1 is the artifact types a template's process may name: the standard types
-  and the custom types of `listed`, each with its base view. `listed` is the
-  `artifact_types` of a template that `Apiary.Harnesses.Reader.template/1` read and that
-  passed the check of its types, nil for none.
+  artifact_types/1 is the standard artifact types and the custom types of `listed`, each
+  with its base view. `listed` is the `artifact_types` of a template that
+  `Apiary.Harnesses.Reader.template/1` read and that passed the check of its types, nil
+  for none.
   """
   @spec artifact_types([map] | nil) :: [%{name: String.t(), base_view: atom}]
   def artifact_types(nil), do: artifact_types()

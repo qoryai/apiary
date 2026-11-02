@@ -61,7 +61,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
           | {:size_limit | :max_files, Type.base_view()}
           | :json_schema
 
-  @typedoc "Why a template's types are refused."
+  @typedoc "What is wrong with a template's types."
   @type refusal ::
           {:not_standard, String.t()}
           | {:standard_name, String.t()}
