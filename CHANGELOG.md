@@ -523,6 +523,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A run page shows a run's `push` steps in a section **After the session**, under the
   timeline, as they happen. A failed push opens its row with the step's output, and it
   does not count as a failed preparation.
+<!-- feature: factory -->
+- Qory Apiary reads a harness source's templates: `process.yaml` in each of the first 20
+  modules that the root `qory.yaml` or `harness.yaml` lists under `exports`, as one of
+  the 10 reads of a source a person has each minute. A module with no such file is left
+  out, and a file that is not a usable template is listed with the reason. A source
+  narrowed to a stack or a folder has no templates, and its modules are not read. No
+  page changes.
+<!-- /feature -->
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an
   organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
