@@ -45,6 +45,7 @@ defmodule Apiary.Processes do
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.QoryCopy
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
@@ -58,73 +59,14 @@ defmodule Apiary.Processes do
   # They leave room for the fields the schema does not list, which a save keeps.
   @limits [list: 64, members: 64, nodes: 20_000, string: 4_096, depth: 16]
 
-  # The version of the default processes below, as the release ships them: a type's
-  # versions keep it (`Apiary.Processes.TypeTemplates`), and a higher one here adds the
-  # changed default as a new version of each type no instance admin has saved.
-  @template_version 1
+  # The version of the default process, the copied template (`Apiary.Harnesses.QoryCopy`):
+  # a type's versions keep it (`Apiary.Processes.TypeTemplates`), and a higher one here
+  # adds the changed default as a new version of each type no instance admin has saved.
+  # Raise it when a copy changes the template's process.
+  @template_version 2
 
   # Crockford base32 without i, l, o and u, as `Apiary.PublicId` writes its ids.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"
-
-  @person_gate %{"kind" => "person", "approvers" => "members"}
-
-  # The software type's default process (§ 8 of the workflow model): Explore runs
-  # explore-a-ticket, the one workflow of the Qory harness, in a loop of 3 rounds and
-  # outputs the proposal; Shape, Build, Verify and Release start with their gates, with no
-  # workflow and no inputs or outputs. The stage ids are minted once and fixed here; the
-  # migration that gave every workspace its first version copies this document.
-  @software %{
-    "schema" => "qory.process/v1",
-    "machine" => "default",
-    "stages" => [
-      %{
-        "id" => "st_r79kph11eg",
-        "name" => "Explore",
-        "inputs" => [],
-        "sequence" => [
-          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
-        ],
-        "outputs" => [%{"type" => "proposal", "required" => true}],
-        "gate" => @person_gate
-      },
-      %{
-        "id" => "st_p9w5cvh311",
-        "name" => "Shape",
-        "inputs" => [],
-        "sequence" => [],
-        "outputs" => [],
-        "gate" => @person_gate
-      },
-      %{
-        "id" => "st_6ns22c4pav",
-        "name" => "Build",
-        "inputs" => [],
-        "sequence" => [],
-        "outputs" => [],
-        "gate" => @person_gate
-      },
-      %{
-        "id" => "st_m1mqbeywdg",
-        "name" => "Verify",
-        "inputs" => [],
-        "sequence" => [],
-        "outputs" => [],
-        "gate" => @person_gate
-      },
-      %{
-        "id" => "st_k9kpv17xmy",
-        "name" => "Release",
-        "inputs" => [],
-        "sequence" => [],
-        "outputs" => [],
-        "gate" => @person_gate
-      }
-    ]
-  }
-
-  # The default process of each domain, by its name. A domain not listed takes the
-  # software type's.
-  @defaults %{"software" => @software}
 
   # Transition: the Qory harness's core stack does not list explore-a-ticket in its
   # workflows yet, so `declared_workflows/1` adds it by hand. Remove this once that stack
@@ -183,15 +125,11 @@ defmodule Apiary.Processes do
 
   @doc """
   default_document/1 is the default process of a workspace type, given as its domain
-  (`Apiary.Lingo.Domain`, a module or its name) or a workspace. A domain without a
-  default of its own takes the software type's.
+  (`Apiary.Lingo.Domain`, a module or its name) or a workspace: the process of the copied
+  template (`Apiary.Harnesses.QoryCopy.template/0`). Every domain takes that one.
   """
   @spec default_document(module | String.t() | %Workspace{}) :: document
-  def default_document(%Workspace{} = workspace),
-    do: default_document(Domain.for_workspace(workspace))
-
-  def default_document(domain) when is_binary(domain), do: Map.get(@defaults, domain, @software)
-  def default_document(domain) when is_atom(domain), do: default_document(domain.name())
+  def default_document(_domain_or_workspace), do: QoryCopy.template().process
 
   @doc """
   default_version/1 is the version of the default process the release ships for the
@@ -219,7 +157,7 @@ defmodule Apiary.Processes do
   type_texts/1 is what a page shows of the workspace type of `version`, a version of the
   type's default process: its name, its summary and its description, the "How it works"
   text. Each is the version's text where it has one (`Apiary.Processes.TypeTemplate`),
-  else the text the release ships in code (`type_text_defaults/1`).
+  else the text the release ships (`type_text_defaults/1`).
   """
   @spec type_texts(TypeTemplate.t()) :: %{TypeTemplate.text() => String.t() | nil}
   def type_texts(%TypeTemplate{} = version) do
@@ -229,10 +167,10 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  type_text_defaults/1 is the texts the release ships in code for the workspace type with
-  the key `type`, translated in the locale of the caller's process. The name is the
-  domain's `c:Apiary.Lingo.Domain.type_name/0`. This module has the software type's
-  summary and description; another domain's summary is its
+  type_text_defaults/1 is the texts the release ships for the workspace type with the key
+  `type`, translated in the locale of the caller's process: the copied template's texts
+  for its type (`Apiary.Harnesses.QoryCopy.texts/0`). Another domain's name is its
+  `c:Apiary.Lingo.Domain.type_name/0` and its summary its
   `c:Apiary.Lingo.Domain.type_line/0`, with no description. For a key no type has, the
   name is the key, with no summary or description.
   """
@@ -243,31 +181,11 @@ defmodule Apiary.Processes do
         %{name: type, summary: nil, description: nil}
 
       domain ->
-        Map.merge(
-          %{name: domain.type_name(), summary: domain.type_line(), description: nil},
-          shipped_texts(domain.name())
-        )
+        if type == QoryCopy.template().type,
+          do: QoryCopy.texts(),
+          else: %{name: domain.type_name(), summary: domain.type_line(), description: nil}
     end
   end
-
-  # A person reads these where they pick a type, in any locale, so they are in the
-  # `workspace type` context and keep the type's words.
-  defp shipped_texts("software") do
-    %{
-      summary:
-        pgettext(
-          "workspace type",
-          "Agents change code in your repositories. Each ticket needs a repository."
-        ),
-      description:
-        pgettext(
-          "workspace type",
-          "Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.\n\nYou connect: where work comes from, where changes go, and a model."
-        )
-    }
-  end
-
-  defp shipped_texts(_name), do: %{}
 
   @doc """
   qory_workflows/0 is the workflows the Qory harness declares, which every workspace

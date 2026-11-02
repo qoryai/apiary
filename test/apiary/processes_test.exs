@@ -15,6 +15,7 @@ defmodule Apiary.ProcessesTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.QoryCopy
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.Version
   alias Apiary.WorkItems.WorkItem
@@ -104,6 +105,17 @@ defmodule Apiary.ProcessesTest do
         assert stage["gate"] == %{"kind" => "person", "approvers" => "members"}
         assert stage["id"] =~ ~r/\Ast_[0-9a-hjkmnp-tv-z]{10}\z/
       end
+    end
+
+    test "is the copied template's process" do
+      assert default() == QoryCopy.template().process
+    end
+
+    test "places only workflows the copied stack lists, so its stages do not wait on a harness update" do
+      placed = Enum.flat_map(default()["stages"], &Processes.workflows/1)
+
+      assert placed != []
+      assert placed -- Processes.qory_workflows() == []
     end
 
     test "is the software type's for a domain without a default, and the template names the type" do

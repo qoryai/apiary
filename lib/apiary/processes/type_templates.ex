@@ -9,10 +9,11 @@ defmodule Apiary.Processes.TypeTemplates do
   A type is known by the key of its definition (`Apiary.Lingo.Domain.Definition`), such
   as `qory.software`; the types are the domains of `Apiary.Lingo.Domain.choices/0`. The
   first read of a type inserts its version 1, a copy of the default the release ships
-  (`Apiary.Processes.default_document/1`), with no author. A release whose default has a
-  higher version (`Apiary.Processes.default_version/1`) adds it as a new version at the
-  next read, but only while every version of the type is a copy of a release's default:
-  once an instance admin has saved one, a release's default changes nothing.
+  (`Apiary.Processes.default_document/1`, the stages of the copied template of the Qory
+  harness), with no author. A release whose default has a higher version
+  (`Apiary.Processes.default_version/1`) adds it as a new version at the next read, but
+  only while every version of the type is a copy of a release's default: once an instance
+  admin has saved one, a release's default changes nothing.
 
   A save (`save/4`) is a new version, the newest at once; there is no trial.
 
@@ -20,7 +21,7 @@ defmodule Apiary.Processes.TypeTemplates do
 
   Each version also keeps the type's name, summary and description, the "How it works"
   text (`Apiary.Processes.TypeTemplate`). A copy of the release's default keeps none, and
-  a page shows the texts the release ships in code instead (`Apiary.Processes.type_texts/1`).
+  a page shows the texts the release ships instead (`Apiary.Processes.type_texts/1`).
   A save keeps the texts it is given, or the newest version's; a change of a text alone is
   a new version too.
 

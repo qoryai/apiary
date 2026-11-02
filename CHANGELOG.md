@@ -527,6 +527,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- The software workspace type's default stages and texts come from the copy of the Qory
+  harness in the release, and they are unchanged. An instance with no save on
+  Instance settings › Workspace types gets them as one more version of the type, so the
+  version number rises by 1. New workspaces copy that version.
+<!-- feature: workflow_model -->
 - A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
   the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
