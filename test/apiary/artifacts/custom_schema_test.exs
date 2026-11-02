@@ -75,7 +75,7 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
       assert {:error, :total} = CustomSchema.check_within(schema, left)
     end
 
-    # The single budget of `check/1` with `changes`: no real schema reaches that budget.
+    # The single budget of `check/1` with `changes`: no schema tried reaches that budget.
     defp single(changes) do
       Keyword.merge([reductions: 10_000_000, heap_words: 4_194_304, ms: 10_000], changes)
     end

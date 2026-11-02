@@ -87,7 +87,7 @@ defmodule Apiary.Artifacts.CustomSchema do
 
   # check_within/3 is `check/1` under what is left of a total: `{:ok, left}`, with the
   # schema's reductions taken off, `{:error, :total}`, or `check/1`'s `{:error, refusal}`.
-  # `single` is the single budget: the tests' seam, as no real schema reaches 10,000,000
+  # `single` is the single budget: the tests' seam, as no schema tried reaches 10,000,000
   # reductions.
   @doc false
   @spec check_within(term, left, Budget.budget()) :: {:ok, left} | {:error, refusal | :total}
