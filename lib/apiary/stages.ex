@@ -1128,7 +1128,8 @@ defmodule Apiary.Stages do
   end
 
   defp facts(work_item, version, stage) do
-    workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
+    # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
     artifacts = Artifacts.list(work_item)
 
     declarations =
@@ -1800,7 +1801,7 @@ defmodule Apiary.Stages do
   end
 
   # not_in_qory/2 is why a stage waits for a workflow on the Qory harness, which is never
-  # read: its workflows are fixed (`Apiary.Processes.qory_workflows/0`).
+  # read: its workflows are fixed (`Apiary.Processes.qory_workflows/1`).
   @doc false
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
@@ -1842,7 +1843,7 @@ defmodule Apiary.Stages do
   defp text(_other), do: nil
 
   defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
-    workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
 
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})

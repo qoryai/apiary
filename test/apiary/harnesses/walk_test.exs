@@ -2978,6 +2978,39 @@ defmodule Apiary.Harnesses.WalkTest do
                %{workflow: "explore-a-ticket", source: :qory}
     end
 
+    test "a repository template's workspace moved to the Qory harness waits: core lists none",
+         ctx do
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  explore-a-ticket: {access: read}\n")
+      )
+
+      ctx = moved_to(ctx, repository_template!(ctx))
+      workspace = ctx.scope.workspace
+      assert workspace.qory_stack == nil
+
+      # The repository's stack listed it, the workspace's snapshot has it.
+      assert {:ok, names} = Sources.chosen_workflows(ctx.scope, workspace)
+      assert "explore-a-ticket" in names
+      :ok = Apiary.Processes.record_declared(workspace, names)
+
+      assert {:ok, _row} = Sources.choose(ctx.scope, :qory)
+      assert %{choice: :qory, stack: "core", saved: true} = Sources.chosen(workspace)
+
+      # What the Workflow page, the Stages page and Check again record once it moved.
+      assert Sources.chosen_workflows(ctx.scope, workspace) == {:ok, []}
+      :ok = Apiary.Processes.record_declared(workspace, [])
+      assert Apiary.Processes.declared_workflows(workspace) == []
+
+      work_item =
+        work_item_fixture(ctx.scope, target_system: "code.example.com", target_path: "acme/app")
+
+      assert {:ok, nil} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      assert %Apiary.WorkItems.WorkItem{stage_state: :waiting_workflow} =
+               Repo.reload!(work_item)
+    end
+
     test "a row of its workflow lowers it", ctx do
       declared!(ctx, "  explore-a-ticket: {access: write}\n")
       recording(ctx, "explore-a-ticket", :read)

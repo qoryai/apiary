@@ -197,12 +197,29 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  qory_workflows/0 is the workflows the Qory harness declares: the names of the copied
-  `software` stack (Apiary.Harnesses.QoryCopy.workflows/1). It does not follow
-  `Apiary.Lingo.Domain.Definition.qory_harness/0`, whose stack `core` lists no workflows.
+  qory_workflows/0 is the workflows of the copied `software` stack of the Qory harness
+  (Apiary.Harnesses.QoryCopy.workflows/1), the stack of the type's template: for what
+  has no workspace, and for the name that makes a run Explore
+  (`Apiary.Stages.explore_workflow/0`). A workspace's marks read `qory_workflows/1`.
   """
   @spec qory_workflows() :: [String.t()]
   def qory_workflows, do: QoryCopy.workflows("software")
+
+  @doc """
+  qory_workflows/1 is the workflows the stack of a workspace on the Qory harness lists,
+  given the harness as `Apiary.Stacks.Sources.chosen/1` returns it: the stack its runs
+  compose. With no row that is `Workspace.qory_stack/1`, and `core` lists none. With a
+  row, it is the stack of the row's document, which a harness the organisation shares
+  sets for every workspace. A stack the copy does not have lists none.
+  """
+  @spec qory_workflows(%{choice: :qory, stack: String.t() | nil}) :: [String.t()]
+  def qory_workflows(%{choice: :qory, stack: stack}) when is_binary(stack) do
+    if QoryCopy.file("stacks/#{stack}/qory-stack.yaml"),
+      do: QoryCopy.workflows(stack),
+      else: []
+  end
+
+  def qory_workflows(%{choice: :qory}), do: []
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
@@ -841,7 +858,7 @@ defmodule Apiary.Processes do
   (`declared_snapshot/1`). Call it with the names that
   Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
   choice, else the harness the organisation shares, else the Qory harness, whose names
-  are `qory_workflows/0`, with no read. The Stages page calls it on open, Workspace
+  are `qory_workflows/1`, with no read. The Stages page calls it on open, Workspace
   settings > Workflow on open and after a harness choice is saved, and Check again on a
   work item; a saved workflow does not change it. Each name is kept once, sorted, at
   most 1,000. `:ok`.
@@ -885,7 +902,7 @@ defmodule Apiary.Processes do
 
   @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
-  sorted: for a workspace on the Qory harness, `qory_workflows/0`; the names of the
+  sorted: for a workspace on the Qory harness, `qory_workflows/1`; the names of the
   workspace's snapshot (`declared_snapshot/1`), which covers only the workspace's harness,
   as Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
   workspace's Workflow page, at the workspace or a target of it. Before the first
@@ -905,7 +922,7 @@ defmodule Apiary.Processes do
   defp declared_names(workspace, saved) do
     harness =
       case Sources.chosen(workspace) do
-        %{choice: :qory} -> qory_workflows()
+        %{choice: :qory} = qory -> qory_workflows(qory)
         _repository -> []
       end
 

@@ -14,6 +14,7 @@ defmodule Apiary.StagesTest do
   alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
+  alias Apiary.Organisations.Workspace
   alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.{Confirmation, Moves, WorkItem}
 
@@ -485,6 +486,53 @@ defmodule Apiary.StagesTest do
 
       assert [%{check: :passed}, %{check: :missing}, %{check: :not_checked}] =
                Stages.status(work_item).outputs
+    end
+  end
+
+  describe "a workspace's stack" do
+    defp no_stack!(scope) do
+      id = scope.workspace.id
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [qory_stack: nil])
+
+      %{scope | workspace: Repo.reload!(scope.workspace)}
+    end
+
+    test "a stage waits for a workflow the stack lists no longer: core lists none", %{
+      scope: scope
+    } do
+      scope = no_stack!(scope)
+      :ok = Processes.record_declared(scope.workspace, [])
+
+      work_item = take_in!(scope)
+
+      assert work_item.stage_state == :waiting_workflow
+      assert runs(work_item) == []
+
+      assert %{waiting_workflow: "explore-a-ticket", gaps: gaps} = Stages.status(work_item)
+      assert gaps == Stages.not_in_qory("Explore", "explore-a-ticket")
+    end
+
+    test "a stage starts on a workflow the stack lists, whatever the snapshot", %{scope: scope} do
+      :ok = Processes.record_declared(scope.workspace, [])
+
+      assert %WorkItem{stage_state: :running} = take_in!(scope)
+    end
+
+    test "a stage waits for its unlisted workflow, not for one the stack lists", %{scope: scope} do
+      save!(scope, [
+        stage(@explore, "Explore", [
+          %{"workflow" => "explore-a-ticket"},
+          %{"workflow" => "zeta"}
+        ])
+      ])
+
+      :ok = Processes.record_declared(scope.workspace, [])
+      work_item = take_in!(scope)
+
+      assert work_item.stage_state == :waiting_workflow
+      assert %{waiting_workflow: "zeta"} = Stages.status(work_item)
     end
   end
 

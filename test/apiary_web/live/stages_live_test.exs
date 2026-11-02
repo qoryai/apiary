@@ -1218,6 +1218,38 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a workspace on the Qory harness whose stack lists no workflows" do
+    test "shows the cross, the harness's empty read, and no name of another stack", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      id = scope.workspace.id
+
+      {1, _rows} =
+        Repo.update_all(from(w in Apiary.Organisations.Workspace, where: w.id == ^id),
+          set: [qory_stack: nil]
+        )
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+
+      assert Processes.declared_snapshot(scope.workspace).names == []
+
+      assert card(view, "Explore")["marks"] == %{
+               "explore-a-ticket" => %{
+                 "listed" => false,
+                 "label" => "explore-a-ticket: not in the harness"
+               }
+             }
+
+      details(view, path)
+
+      assert has_element?(view, "#stages-workflows-list", "The harness listed no workflows")
+      refute has_element?(view, "#stages-workflows-list", "The Qory harness's workflows")
+    end
+  end
+
   describe "a harness repository with no workflows and no saved workflow" do
     test "a new entry starts with the Qory harness's first name", %{
       conn: conn,

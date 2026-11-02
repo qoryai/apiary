@@ -98,27 +98,23 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   # The workflows the harness listed at its last read (`Apiary.Processes.declared_snapshot/1`),
   # with the time of that read; before the first read, that it has not been read. The
-  # Qory harness (`:qory_workspace`) is never read: its workflows, with no time.
+  # Qory harness is never read: `qory`, the workflows of its stack, with no time. A stack
+  # with none, `core`, reads as any harness that listed none.
   @doc false
-  def workflows_line(declared, snapshot, harness \\ :workspace)
+  def workflows_line(_snapshot, [_ | _] = qory),
+    do: gettext("The Qory harness's workflows: %{names}.", names: Enum.join(qory, ", "))
 
-  def workflows_line(_declared, _snapshot, :qory_workspace),
-    do:
-      gettext("The Qory harness's workflows: %{names}.",
-        names: Enum.join(Apiary.Processes.qory_workflows(), ", ")
-      )
-
-  def workflows_line(_declared, %{names: [], read_at: at}, _harness),
+  def workflows_line(%{names: [], read_at: at}, _qory),
     do: gettext("The harness listed no workflows %{time}.", time: read_time(at))
 
-  def workflows_line(_declared, %{names: names, read_at: at}, _harness),
+  def workflows_line(%{names: names, read_at: at}, _qory),
     do:
       gettext("Workflows the harness listed %{time}: %{names}.",
         time: read_time(at),
         names: Enum.join(names, ", ")
       )
 
-  def workflows_line(_declared, nil, _harness), do: not_read()
+  def workflows_line(nil, _qory), do: not_read()
 
   # Before the first read of the harness: the canvas shows no marks, and no stage waits
   # for a workflow.

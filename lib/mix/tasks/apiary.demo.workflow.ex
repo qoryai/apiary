@@ -311,7 +311,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     # A stage waits for a workflow only against a recorded read of the harness: with none,
     # its run starts.
-    :ok = Processes.record_declared(dana_scope.workspace, Processes.qory_workflows())
+    workspace = dana_scope.workspace
+    chosen = Apiary.Stacks.Sources.chosen(workspace)
+    :ok = Processes.record_declared(workspace, Processes.qory_workflows(chosen))
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"

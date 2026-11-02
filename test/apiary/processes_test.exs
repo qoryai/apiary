@@ -27,6 +27,14 @@ defmodule Apiary.ProcessesTest do
 
   defp default, do: Processes.default_document("software")
 
+  # `workspace` as one from no Qory template stands: with no stack recorded.
+  defp no_stack!(workspace) do
+    {1, _rows} =
+      Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id), set: [qory_stack: nil])
+
+    Repo.reload!(workspace)
+  end
+
   # A harness repository chosen for the workspace `workspace_id`, or shared with every
   # workspace of the organisation for nil.
   defp repository_harness!(scope, workspace_id) do
@@ -478,8 +486,9 @@ defmodule Apiary.ProcessesTest do
       assert Processes.workflow_declaration(scope.workspace, "review") ==
                %{name: "review", access: nil, time_limit: nil, reads: nil, writes: nil}
 
+      # `workspace_fixture/2` records no stack, so `other` composes `core`, which lists none.
       assert Processes.declared_snapshot(other) == nil
-      assert Processes.declared_workflows(other) == ["explore-a-ticket"]
+      assert Processes.declared_workflows(other) == []
 
       :ok = Processes.record_declared(scope.workspace, ["capture-demo"])
 
@@ -491,7 +500,7 @@ defmodule Apiary.ProcessesTest do
       assert Processes.workflow_declaration(scope.workspace, "review") == nil
     end
 
-    test "on the Qory harness come from the copied software stack, not the stack a workspace starts with" do
+    test "on the Qory harness come from the stack the workspace recorded, not the definition's" do
       %{scope: scope} = sign_up_fixture()
 
       assert Definition.qory_harness().stack == "core"
@@ -499,6 +508,35 @@ defmodule Apiary.ProcessesTest do
       assert Processes.qory_workflows() == QoryCopy.workflows("software")
       assert Processes.declared_workflows(scope.workspace) == Processes.qory_workflows()
       assert {:ok, ["explore-a-ticket"]} = Sources.chosen_workflows(scope, scope.workspace)
+    end
+
+    test "qory_workflows/1 is the workspace's stack: a nil stack composes core, which lists none" do
+      %{scope: scope} = sign_up_fixture()
+      workspace = no_stack!(scope.workspace)
+
+      assert %{choice: :qory, stack: "core", saved: false} = chosen = Sources.chosen(workspace)
+      assert Processes.qory_workflows(chosen) == []
+      assert Processes.qory_workflows() == ["explore-a-ticket"]
+      assert Processes.declared_workflows(workspace) == []
+      assert Processes.workflow_declaration(workspace, "explore-a-ticket") == nil
+      assert Sources.chosen_workflows(scope, workspace) == {:ok, []}
+    end
+
+    test "qory_workflows/1 is the stack of a harness the organisation shares, which its runs compose" do
+      %{scope: scope} = sign_up_fixture()
+
+      # Shared from a workspace on `software`: a workspace of the stack `core` runs on it.
+      assert {:ok, _row} = Sources.choose(scope, :qory, shared: true)
+      workspace = no_stack!(scope.workspace)
+
+      assert %{choice: :qory, stack: "software", shared: true} = Sources.chosen(workspace)
+      assert Processes.declared_workflows(workspace) == ["explore-a-ticket"]
+      assert Sources.chosen_workflows(scope, workspace) == {:ok, ["explore-a-ticket"]}
+    end
+
+    test "qory_workflows/1 is empty for a stack the copy does not have" do
+      assert Processes.qory_workflows(%{choice: :qory, stack: "web"}) == []
+      assert Processes.qory_workflows(%{choice: :qory, stack: nil}) == []
     end
 
     test "on a harness repository are its snapshot, without the Qory harness's names" do
@@ -525,19 +563,28 @@ defmodule Apiary.ProcessesTest do
       assert Processes.declared_workflows(scope.workspace) == []
     end
 
-    test "on the Qory harness chosen by a row keep the copied names" do
+    test "on the Qory harness chosen by a row are the names of the row's stack, which its runs compose" do
       %{scope: scope} = sign_up_fixture()
 
-      Repo.insert!(%Stack{
-        organisation_id: scope.workspace.organisation_id,
-        workspace_id: scope.workspace.id,
-        choice: :qory,
-        version_kind: :latest,
-        harness: "extends:\n  git: https://github.com/qoryai/harness\n  stack: core\n"
-      })
+      row =
+        Repo.insert!(%Stack{
+          organisation_id: scope.workspace.organisation_id,
+          workspace_id: scope.workspace.id,
+          choice: :qory,
+          version_kind: :latest,
+          harness: "extends:\n  git: https://github.com/qoryai/harness\n  stack: software\n"
+        })
 
       assert Sources.chosen(scope.workspace).saved
       assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket"]
+
+      row
+      |> Ecto.Changeset.change(
+        harness: "extends:\n  git: https://github.com/qoryai/harness\n  stack: core\n"
+      )
+      |> Repo.update!()
+
+      assert Processes.declared_workflows(scope.workspace) == []
     end
   end
 
