@@ -1,12 +1,13 @@
 defmodule ApiaryWeb.ArtifactLive.Types do
   # Workspace settings › Artifact types, `/:org/:workspace/settings/artifact-types`, under
   # the feature `workflow_model`, for owners and admins (`artifact_type.edit`): the
-  # standard types, read only, each with its base view, size limit and most files; then
-  # the workspace's custom types (`Apiary.Artifacts.all_types/1`), with Add a type
-  # (`…/new`), Edit (`…/:type_id/edit`: size limit, most files and, for a structured
-  # type, the JSON Schema) and Delete, confirmed in its row (`…/:type_id/delete`). A
-  # custom type's name and base view are fixed once it is made. A type that artifacts of
-  # the workspace have is kept, and a line under the table says why (`:in_use`).
+  # standard types, read only, each with its base view, size limit and most files, and
+  # the mark Always on for a type no workspace can hide (`Type.always_on/0`); then the
+  # workspace's custom types (`Apiary.Artifacts.all_types/1`), with Add a type (`…/new`),
+  # Edit (`…/:type_id/edit`: size limit, most files and, for a structured type, the JSON
+  # Schema) and Delete, confirmed in its row (`…/:type_id/delete`). A custom type's name
+  # and base view are fixed once it is made. A type that artifacts of the workspace have
+  # is kept, and a line under the table says why (`:in_use`).
   #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.
@@ -147,7 +148,9 @@ defmodule ApiaryWeb.ArtifactLive.Types do
             count={length(@standard)}
           >
             <p class="text-[13px]/5 text-muted">
-              {gettext("Qory Apiary ships these types. They cannot be changed.")}
+              {gettext(
+                "Qory Apiary ships these types, and their limits cannot be changed. Forms and the stage editor offer only the types that are on."
+              )}
             </p>
             <.table
               id="artifact-types-standard-table"
@@ -162,6 +165,9 @@ defmodule ApiaryWeb.ArtifactLive.Types do
               </:col>
               <:col :let={type} label={gettext("Most files")} kind="num">
                 {Format.number(type.max_files)}
+              </:col>
+              <:col :let={type} label={gettext("On")}>
+                <.badge :if={type.name in Type.always_on()}>{gettext("Always on")}</.badge>
               </:col>
             </.table>
           </SettingsComponents.part>

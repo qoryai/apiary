@@ -4812,6 +4812,11 @@ msgstr ""
 msgid "Always"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Always on"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Always the latest on"
@@ -13297,6 +13302,7 @@ msgstr ""
 msgid "Oldest"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/types.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "On"
@@ -14721,7 +14727,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary ships these types. They cannot be changed."
+msgid "Qory Apiary ships these types, and their limits cannot be changed. Forms and the stage editor offer only the types that are on."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ArtifactLive.TypesTest do
   # Workspace settings › Artifact types (`ApiaryWeb.ArtifactLive.Types`): listed for
-  # owners and admins, not for members; the standard types read only; a custom type
-  # added, edited and deleted, a type in use kept with a line why; the add form filled
+  # owners and admins, not for members; the standard types read only, the always-on ones
+  # marked; a custom type added, edited and deleted, a type in use kept with a line why; the add form filled
   # from `?name=` when the name is free and well formed; and the section absent with
   # `workflow_model` off. Not async: a test sets the store's folder in the application's
   # environment, which every test reads.
@@ -71,6 +71,20 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     assert has_element?(view, "#artifact-type-#{type.public_id}", "Structured")
     assert has_element?(view, "#artifact-type-#{type.public_id}-menu")
     refute render(view) =~ "Workflows</th>"
+  end
+
+  test "marks proposal, questions and verdict Always on, and no other type", ctx do
+    {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+
+    for name <- ~w(proposal questions verdict),
+        do: assert(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
+
+    for name <- Apiary.Artifacts.Type.standard_names() -- ~w(proposal questions verdict),
+        do: refute(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
+
+    assert render(view) =~
+             "Qory Apiary ships these types, and their limits cannot be changed. " <>
+               "Forms and the stage editor offer only the types that are on."
   end
 
   test "keeps listing a standard type the workspace hides", ctx do
