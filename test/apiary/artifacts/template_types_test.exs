@@ -327,7 +327,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                "the custom type mockup has a standard type's name"
 
       assert TemplateTypes.message({:repeated, "mockup"}) ==
-               "artifact_types lists mockup more than once: list this name once"
+               "list mockup once in artifact_types"
 
       assert TemplateTypes.message({:schema, "reply-draft"}) ==
                "the entry reply-draft in artifact_types does not match process.schema.json"

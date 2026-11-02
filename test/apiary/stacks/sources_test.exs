@@ -828,7 +828,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert refusal == {:repeated, "mockup"}
 
       assert TemplateTypes.message(refusal) ==
-               "artifact_types lists mockup more than once: list this name once"
+               "list mockup once in artifact_types"
     end
 
     test "an entry of artifact_types the schema refuses is not readable, with the type's name",

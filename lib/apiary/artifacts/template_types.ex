@@ -241,7 +241,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
       )
 
   def message({:repeated, type}),
-    do: gettext("artifact_types lists %{type} more than once: list this name once", type: type)
+    do: gettext("list %{type} once in artifact_types", type: type)
 
   def message({:schema, type}),
     do:

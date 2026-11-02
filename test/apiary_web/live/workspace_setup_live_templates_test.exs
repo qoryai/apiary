@@ -404,7 +404,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       )
 
       assert texts(open(ctx), "#set-up-group-connected p") == [
-               "a in acme/harness is not a template: artifact_types lists mockup more than once: list this name once.",
+               "a in acme/harness is not a template: list mockup once in artifact_types.",
                "b in acme/harness is not a template: the entry reply-draft in artifact_types does not match process.schema.json."
              ]
     end
