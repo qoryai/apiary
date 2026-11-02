@@ -35,8 +35,8 @@ The task reads the files at the commit, not from the checkout's working tree. It
 the root `qory.yaml`, the `process.yaml` of the module `software-factory`, and the
 `qory-stack.yaml` of the stacks `core` and `software` into `priv/harness/qory/`, writes
 the commit to `priv/harness/qory/.harness-ref`, and writes the template's name, summary
-and description to `lib/apiary/harnesses/qory_copy/texts.ex` for translation. Commit what
-it writes. The tests fail while `.harness-ref` and `latest` differ.
+and description to `lib/apiary/harnesses/qory_copy/texts.ex` for translation. Set
+`latest` to the same commit, and commit what the task writes.
 
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for

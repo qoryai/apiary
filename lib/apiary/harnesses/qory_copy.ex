@@ -1,10 +1,9 @@
 defmodule Apiary.Harnesses.QoryCopy do
   # The files of the Qory harness that `mix apiary.harness.update` copied into
-  # priv/harness/qory/, at the commit in priv/harness/qory/.harness-ref, which is the
-  # newest version this release ships (`Apiary.Lingo.Domain.Definition.qory_harness/0`).
-  # Read when the module is compiled, so a release has the copy and nothing reads the
-  # folder while it runs. The ref file's one line is 40 or 64 lower-case hex digits, or
-  # the compile stops. The templates' texts are in `Apiary.Harnesses.QoryCopy.Texts`.
+  # priv/harness/qory/, at the commit in priv/harness/qory/.harness-ref. Read when the
+  # module is compiled, so a release has the copy and nothing reads the folder while it
+  # runs. The ref file's one line is 40 or 64 lower-case hex digits, or the compile
+  # stops. The templates' texts are in `Apiary.Harnesses.QoryCopy.Texts`.
   @moduledoc false
 
   @dir Path.expand("../../../priv/harness/qory", __DIR__)
