@@ -3010,13 +3010,20 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def harness_problem_words(rule), do: harness_rule_words(rule)
 
+  # A save check's message goes inside a sentence that ends in ".": a message that is a
+  # sentence of its own, such as the bind messages of `Apiary.Stacks.Document`, loses its
+  # "." here, so the line does not end in "..".
   defp saved_rule_words(message, values) when is_binary(message) do
     values =
       for {key, value} <- values || %{}, atom = @rule_values[key], atom != nil do
         {atom, value || gettext("the workspace's harness setting")}
       end
 
-    ApiaryWeb.CoreComponents.translate_error({message, values})
+    words = ApiaryWeb.CoreComponents.translate_error({message, values})
+
+    if String.ends_with?(message, "."),
+      do: String.replace_suffix(words, ".", ""),
+      else: words
   end
 
   defp walk_rule_words("both_files", _values),

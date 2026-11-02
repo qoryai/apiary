@@ -1399,6 +1399,17 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                }
              },
              "Correct #{setting}, then run Explore again. The source breaks the harness format: give the base web as a git source and an export: extends: {git: <https address>, ref: <ref>, stack: web}."},
+            # A save check's message that is a sentence: one "." at the end of the line.
+            {%{
+               code: "invalid",
+               source: harness,
+               rule: %{
+                 "message" =>
+                   "Write bind by kind, then by role, such as bind: {agents: {developer: web-developer}}: %{key} is a flat key.",
+                 "values" => %{"key" => "agents/developer"}
+               }
+             },
+             "Correct #{harness}, then run Explore again. The source breaks the harness format: Write bind by kind, then by role, such as bind: {agents: {developer: web-developer}}: agents/developer is a flat key."},
             {%{
                code: "invalid",
                source: harness,

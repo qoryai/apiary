@@ -2598,6 +2598,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(failure.(:no_harness, nil, nil)) ==
                harness <> "it has no harness file and no harness is set."
 
+      # A save check's message that is a sentence: one "." at the end of the line, in the
+      # harness's words and in a file's.
+      flat =
+        "Write bind by kind, then by role, such as " <>
+          "bind: {agents: {developer: web-developer}}: %{key} is a flat key."
+
+      flat_words =
+        "Write bind by kind, then by role, such as " <>
+          "bind: {agents: {developer: web-developer}}: agents/developer is a flat key."
+
+      assert words.(
+               failure.(:invalid, "https://code.example.com/acme/x", %{
+                 "message" => flat,
+                 "values" => %{"key" => "agents/developer"}
+               })
+             ) == harness <> flat_words
+
+      assert words.(
+               failure.(:invalid, chosen, %{
+                 "rule" => "yaml",
+                 "values" => %{"file" => "harness.yaml"},
+                 "message" => flat,
+                 "message_values" => %{"key" => "agents/developer"}
+               })
+             ) == "Correct harness.yaml in acme/harness: " <> flat_words
+
       assert words.(failure.(:walk_error, nil, nil)) ==
                "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
                  "again. If it repeats, contact support."
