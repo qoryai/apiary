@@ -11,7 +11,7 @@ defmodule ApiaryWeb.OrganisationLive do
   (`ApiaryWeb.SetUpComponents.workspace_set_up/1`).
 
   An organisation with no workspace in use yet shows, in place of its workspaces, the kind
-  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), as New workspace shows them, to a
+  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), the Qory card alone, to a
   person `workspace.create` allows there, each a link to its type's page, whose Create
   workspace creates the first workspace and opens its Name step
   (`ApiaryWeb.WorkspaceTypeLive`), and to anyone else one line on who creates it
