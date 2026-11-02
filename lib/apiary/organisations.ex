@@ -1983,7 +1983,6 @@ defmodule Apiary.Organisations do
              |> new_workspace_changeset(attrs)
              |> put_qory_stack(start)
              |> PublicId.Insert.insert(),
-           {:ok, workspace} <- start_workspace(scope, workspace, start),
            {:ok, _entry} <-
              Audit.record(
                Repo,
@@ -1993,6 +1992,7 @@ defmodule Apiary.Organisations do
                %{after: %{name: workspace.name, slug: workspace.slug}},
                place: :organisation
              ),
+           {:ok, workspace} <- start_workspace(scope, workspace, start),
            :ok <- Edition.workspace_created(Repo, workspace, scope) do
         {:ok, workspace}
       end

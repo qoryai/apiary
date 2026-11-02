@@ -112,6 +112,14 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       )
   end
 
+  # The actions of the organisation's trail, oldest first, as `Audit.list_entries` orders it.
+  defp trail(%Scope{organisation: %{id: id}}) do
+    from e in Entry,
+      where: e.organisation_id == ^id,
+      order_by: [asc: e.inserted_at, asc: e.id],
+      select: e.action
+  end
+
   # What the organisation has, to compare before and after a create that fails.
   defp held(%Scope{organisation: %{id: id}}) do
     %{
@@ -523,6 +531,23 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert Repo.all(from t in Type, where: t.workspace_id == ^workspace.id) == []
     end
 
+    test "the workspace's entry comes before the entries of the template's types" do
+      scope = scope_fixture()
+      type = %{"name" => "reply-draft", "base_view" => "document"}
+      type = Map.merge(type, %{"size_limit" => 65_536, "max_files" => 1})
+      source = linked!(scope)
+      before = Repo.all(trail(scope))
+
+      assert {:ok, _workspace} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{artifact_types: [type]})
+               )
+
+      assert ["workspace.create", "artifact_type.edit"] =
+               Enum.drop(Repo.all(trail(scope)), length(before))
+    end
+
     test "a failed insert of a template's type rolls the workspace back" do
       scope = scope_fixture()
       source = linked!(scope)
@@ -622,6 +647,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       scope = scope_fixture()
       refused = assigned!(scope, %{"git" => "http://code.example.com/acme", "ref" => "v1"})
       before = held(scope)
+      entries = Repo.all(trail(scope))
       :ok = Organisations.subscribe_workspaces(scope)
 
       # A row the save rules refuse, and a shared harness gone since the page read it.
@@ -634,6 +660,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
              ) == {:error, :not_found}
 
       assert held(scope) == before
+      assert Repo.all(trail(scope)) == entries
       refute_received {:workspace_created, _ids}
     end
 
@@ -708,18 +735,33 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
     assert [%Version{template: %{"source" => "qory"}}] = Processes.list_versions(workspace)
   end
 
+  # The actions of the organisation's trail, oldest first, as `Audit.list_entries` orders it.
+  defp actions(%{organisation: %{id: id}}) do
+    Repo.all(
+      from e in Entry,
+        where: e.organisation_id == ^id,
+        order_by: [asc: e.inserted_at, asc: e.id],
+        select: e.action
+    )
+  end
+
+  defp actions_since(scope, before), do: Enum.drop(actions(scope), length(before))
+
   describe "the Qory template's artifact types" do
     @standard ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video change)
 
     test "the copy lists types, and create_workspace_of_kind/3 gives the workspace them" do
       scope = scope_fixture()
       assert [_type | _more] = QoryCopy.template().artifact_types
+      before = actions(scope)
 
       assert {:ok, %Workspace{shown_standard_types: @standard} = workspace} =
                Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
 
       assert [%Type{name: "branch", standard: false, base_view: :structured}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
+
+      assert ["workspace.create", "artifact_type.edit"] = actions_since(scope, before)
     end
 
     test "a sign-up's first workspace gets them, after the entry that begins the trail" do
@@ -747,7 +789,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
       assert Repo.all(
                from e in Entry,
                  where: e.organisation_id == ^workspace.organisation_id,
-                 order_by: [asc: e.inserted_at],
+                 order_by: [asc: e.inserted_at, asc: e.id],
                  select: e.action
              ) == ["organisation.create", "artifact_type.edit"]
     end
