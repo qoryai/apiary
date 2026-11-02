@@ -198,6 +198,14 @@ defmodule Apiary.Lingo.Domain do
   @spec definition(module) :: Definition.t()
   def definition(domain) when is_atom(domain), do: domain.definition()
 
+  @doc """
+  Whether `key` is the key of a workspace type (`c:definition/0`) of a domain of
+  `domains/0`, such as `qory.software`.
+  """
+  @spec known_type?(String.t()) :: boolean
+  def known_type?(key),
+    do: Enum.any?(@domains, fn {_name, domain} -> definition(domain).key == key end)
+
   @doc "The target a run's labels name in the workspace: `target/1` of the workspace's domain."
   @spec target(%Workspace{} | nil, term) :: {:ok, target} | :none
   def target(workspace, %{} = labels), do: for_workspace(workspace).target(labels)

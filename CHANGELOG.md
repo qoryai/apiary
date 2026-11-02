@@ -521,6 +521,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type until a person switches one off.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
+- A workspace made from the software template runs on the `software` stack of the Qory
+  harness. The first workspace of an organisation starts from that template. A workspace
+  with no template uses the `core` stack. Stages and Workflow show the stack: “Harness:
+  Qory harness, stack software”.
 <!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
   timeline, as they happen. A failed push opens its row with the step's output, and it
@@ -537,6 +541,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   address or an email address where “Contact support” leads for people in an
   organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
   and Configuration then show it read only. With none, “Contact support” is plain text.
+- The Qory harness is pinned at harness commit e49953e4, which exports the stacks `core`
+  and `software`. On the Qory harness, the Stack select of each repository lists
+  `software`.
 
 ### Changed
 
@@ -868,6 +875,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   ends. They change no row.
 - `instance_settings`: a nullable column `support_address`, with a check on its length.
   It changes no row.
+- `workspaces`: a nullable `qory_stack` column, `text`. An empty value means the stack
+  `core`.
 
 ## [0.1.0] - 2026-10-13
 

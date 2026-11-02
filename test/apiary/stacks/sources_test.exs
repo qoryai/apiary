@@ -698,7 +698,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert %{
                module: "support-desk",
                name: "Support desk",
-               type: "customer-care",
+               type: "qory.software",
                stack: "support",
                process: %{"schema" => "qory.process/v1", "stages" => [_answer, _check]}
              } = template
@@ -763,6 +763,33 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert {:ok, %{not_readable: [%{module: "a", reason: :stack_not_exported}]}} =
                Sources.templates(ctx.scope, source)
+    end
+
+    test "a type that is no domain's is not readable, and a known type is listed", ctx do
+      for type <- ["customer-care", "software"] do
+        file = String.replace(template_file(), "type: qory.software", "type: " <> type)
+        source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+        assert {:ok, read} = Sources.templates(ctx.scope, source)
+        assert [%{module: "b", type: "qory.software"}] = read.templates
+        assert read.not_readable == [%{module: "a", reason: {:unknown_type, type}}]
+      end
+    end
+
+    test "the type is checked after the stack and before the process", ctx do
+      file = String.replace(template_file(), "type: qory.software", "type: customer-care")
+      other_stack = String.replace(file, "stack: support", "stack: other")
+      bad_process = String.replace(file, "name: Check", "name: Answer")
+
+      source = template_source(ctx, root("[a, b]"), %{"a" => other_stack, "b" => bad_process})
+
+      assert {:ok, %{templates: [], not_readable: not_readable}} =
+               Sources.templates(ctx.scope, source)
+
+      assert not_readable == [
+               %{module: "a", reason: :stack_not_exported},
+               %{module: "b", reason: {:unknown_type, "customer-care"}}
+             ]
     end
 
     test "a process Processes.validate/1 does not pass is not readable, with its errors", ctx do

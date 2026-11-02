@@ -43,7 +43,8 @@ defmodule Apiary.Stacks.Sources do
   # file, as `exports/2` reads the source. A template is the `process.yaml` of a module the
   # file's `exports` list, read at the commit of the root file, in the module's folder
   # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
-  # the result's lists. A module whose file has a `stack` the `exports` do not list or a
+  # the result's lists. A module whose file has a `stack` the `exports` do not list, a
+  # `type` that is the key of no domain's type (`Apiary.Lingo.Domain.known_type?/1`) or a
   # `process` that does not pass `Apiary.Processes.validate/1`, and a module whose file is
   # not read, is in `not_readable` with the reason (`t:not_readable/0`), and the other
   # modules are read.
@@ -216,6 +217,8 @@ defmodule Apiary.Stacks.Sources do
   `:modules_invalid`, which is about every module of the source:
 
     * `:stack_not_exported`: the file's `stack` is not among the stacks of `exports`;
+    * `{:unknown_type, type}`: the file's `type` is the key of no domain's workspace type
+      (`Apiary.Lingo.Domain.known_type?/1`), so a workspace cannot be made from it;
     * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
     * `:unreadable`: the module's folder is at no path a read takes, a read of the file
       failed, or the file does not pass `Apiary.Harnesses.Reader.template/1`;
@@ -225,6 +228,7 @@ defmodule Apiary.Stacks.Sources do
           module: String.t() | nil,
           reason:
             :stack_not_exported
+            | {:unknown_type, String.t()}
             | {:invalid, [Apiary.Processes.error()]}
             | :unreadable
             | :modules_invalid
@@ -781,18 +785,24 @@ defmodule Apiary.Stacks.Sources do
     if source_failed?(reason), do: {:error, reason}, else: {:not_readable, :unreadable}
   end
 
-  # `content`, a module's file, as a template of `name`: its `stack` is checked first.
+  # `content`, a module's file, as a template of `name`: its `stack` is checked first, then
+  # its `type`, then its `process`.
   defp checked_template(content, name, %{stacks: stacks}) do
     with {:ok, template} <- Reader.template(content),
          true <- template.stack in stacks,
+         :ok <- known_type(template.type),
          :ok <- Apiary.Processes.validate(template.process) do
       {:ok, Map.put(template, :module, name)}
     else
       false -> {:not_readable, :stack_not_exported}
+      {:unknown_type, _type} = reason -> {:not_readable, reason}
       {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
       {:error, _file_reason} -> {:not_readable, :unreadable}
     end
   end
+
+  defp known_type(type),
+    do: if(Domain.known_type?(type), do: :ok, else: {:unknown_type, type})
 
   # Whether `reason`, why a read of one file failed, is about the source rather than the
   # file: the source is out of reach, out of time, no longer covered or not at the version.
@@ -1903,8 +1913,9 @@ defmodule Apiary.Stacks.Sources do
   # check_start/2 is whether the scope's person may make a workspace from `start` (the
   # moduledoc), asked before the transaction: `:ok`; `{:error, :forbidden}` or `{:error,
   # :not_found}` from the access check or with the feature off; `{:error, :invalid}` for a
-  # source that offers no template; or `{:error, errors}` for a process
-  # `Apiary.Processes.validate/1` refuses.
+  # source that offers no template or a template of a type that is the key of no domain's
+  # type, which a page read before can still send (`Apiary.Lingo.Domain.known_type?/1`);
+  # or `{:error, errors}` for a process `Apiary.Processes.validate/1` refuses.
   @spec check_start(Scope.t(), start) ::
           :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
   def check_start(
@@ -1913,10 +1924,10 @@ defmodule Apiary.Stacks.Sources do
       )
       when is_binary(commit) do
     with :ok <- source_allowed(scope, source),
-         false <- narrowed?(narrowing) do
+         true <- not narrowed?(narrowing) and Domain.known_type?(template.type) do
       Apiary.Processes.validate(template.process)
     else
-      true -> {:error, :invalid}
+      false -> {:error, :invalid}
       {:error, reason} -> {:error, reason}
     end
   end

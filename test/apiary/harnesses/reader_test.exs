@@ -287,7 +287,7 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert %{
                name: "Support desk",
                summary: "Agents draft answers to support tickets. A person checks each answer.",
-               type: "customer-care",
+               type: "qory.software",
                stack: "support",
                process: %{"schema" => "qory.process/v1", "stages" => [answer, check]}
              } = template

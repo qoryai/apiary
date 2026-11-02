@@ -1737,10 +1737,11 @@ defmodule Apiary.Organisations do
   shared source needs the feature `factory` (Apiary.Stacks.Sources.check_start/2).
 
   `create_workspace_of_kind/3`'s answers, and `{:error, :invalid}` for a source that
-  offers no template or a row the save rules refuse; `{:error, errors}` for a process
-  Apiary.Processes.validate/1 refuses; and `{:error, :not_found}` where the feature is
-  off, or the source is the shared harness and the organisation no longer shares that
-  repository. Nothing is made on any error.
+  offers no template, a template whose `type` is the key of no domain's type
+  (`Apiary.Lingo.Domain.known_type?/1`), or a row the save rules refuse; `{:error,
+  errors}` for a process Apiary.Processes.validate/1 refuses; and `{:error, :not_found}`
+  where the feature is off, or the source is the shared harness and the organisation no
+  longer shares that repository. Nothing is made on any error.
   """
   @spec create_workspace_from_template(Scope.t(), map, :first | :any) ::
           {:ok, %Workspace{}}

@@ -443,6 +443,22 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert held(scope) == before
     end
 
+    test "a template of a type that is no domain's is refused, and nothing is made" do
+      scope = scope_fixture()
+      before = held(scope)
+      :ok = Organisations.subscribe_workspaces(scope)
+
+      for source <- [source(:linked, "linked:cl_0"), source(:assigned, "assigned:1")] do
+        assert Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{type: "customer-care"})
+               ) == {:error, :invalid}
+      end
+
+      assert held(scope) == before
+      refute_received {:workspace_created, _ids}
+    end
+
     test "a create that fails after the workspace row leaves nothing" do
       scope = scope_fixture()
       before = held(scope)
