@@ -3040,8 +3040,12 @@ defmodule Apiary.Harnesses.WalkTest do
       declared!(ctx, "  explore-a-ticket: {access: read}\n")
       recording(ctx, "review", :write)
       recording(ctx, "lint", :write)
+      run = queued(ctx)
 
-      assert walked_level(queued(ctx)) == :read
+      assert walked_level(run) == :read
+
+      assert %RunHarness{origin: :setting, workflow: "explore-a-ticket"} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
     end
 
     test "a level its harness declares stays with no row, and with a row removed", ctx do
