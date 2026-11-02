@@ -98,6 +98,30 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  # Moves `work_item` to a trial version of the workspace's current one with 2 Explore
+  # rounds instead of 3; its queued run moves with it and keeps its stored `of`.
+  defp two_rounds!(scope, work_item) do
+    document =
+      Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+        Enum.map(stages, fn
+          %{"id" => @explore} = stage ->
+            Map.update!(stage, "sequence", fn sequence ->
+              Enum.map(sequence, fn
+                %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
+                entry -> entry
+              end)
+            end)
+
+          stage ->
+            stage
+        end)
+      end)
+
+    {:ok, trial} = Processes.save(scope, scope.workspace, document, trial: true)
+    {:ok, work_item} = Processes.assign(scope, Repo.get!(WorkItem, work_item.id), trial)
+    work_item
+  end
+
   defp place!(work_item, version, stage_id, state, fields \\ []) do
     {1, _} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -277,24 +301,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = taken_in_fixture(scope)
       assert %DispatchRun{attempt: 1, of: 3} = newest_run(work_item)
 
-      document =
-        Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
-          Enum.map(stages, fn
-            %{"id" => @explore} = stage ->
-              Map.update!(stage, "sequence", fn sequence ->
-                Enum.map(sequence, fn
-                  %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
-                  entry -> entry
-                end)
-              end)
-
-            stage ->
-              stage
-          end)
-        end)
-
-      {:ok, trial} = Processes.save(scope, scope.workspace, document, trial: true)
-      {:ok, _work_item} = Processes.assign(scope, Repo.get!(WorkItem, work_item.id), trial)
+      two_rounds!(scope, work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       # The runner stops after round 2 of the version the work item is on, whatever the
@@ -302,6 +309,20 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-round", "Round 1 of 2")
       assert has_element?(view, "#work-item-details-runs", "Run 1 of 2 is queued.")
       refute render(view) =~ "Run 1 of 3 is queued."
+    end
+
+    test "a later queued run moved to a version with fewer rounds: the step card counts that version's limit",
+         %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
+
+      two_rounds!(scope, work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-round", "Round 2 of 2")
+      assert has_element?(view, "#work-item-step-run", "Run 2 of 2 is queued.")
+      refute render(view) =~ "Run 2 of 3 is queued."
     end
 
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do

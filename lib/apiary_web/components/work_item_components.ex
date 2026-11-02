@@ -614,6 +614,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
+  attr :queued_of, :integer,
+    default: nil,
+    doc:
+      "the most runs of the take in for a later run that is queued, where the round limit of the work item's version sets it; nil for `:run`'s `:of`"
+
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
@@ -664,6 +669,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         cancel={@cancel}
         item={@item}
         now={@now}
+        queued_of={@queued_of}
       />
     </section>
     """
@@ -728,6 +734,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :cancel, :any, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
+  attr :queued_of, :integer, default: nil
 
   defp step_body(%{status: status, asking: :decline, can_act: true} = assigns)
        when status in @declinable do
@@ -816,7 +823,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         queued:
           gettext("Run %{attempt} of %{of} is queued.",
             attempt: Format.number(run.attempt),
-            of: Format.number(run.of)
+            of: Format.number(assigns.queued_of || run.of)
           )
       )
 

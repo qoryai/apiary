@@ -179,6 +179,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             asking={if @asking == :decline, do: :decline}
             item_noun={@source.item_noun}
             now={@now}
+            queued_of={queued_of(@flow, @item)}
           />
           <.work_item_details
             work_item={@item}
@@ -941,18 +942,31 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Details' Runs under the workflow model, while the newest run waits for a machine and
-  # none has started: that run, in place of None yet. The runner applies the round limit
-  # of the work item's version, so the count follows the stage card's rounds: a run
-  # queued under a version with a higher limit keeps its stored `of`.
-  defp queued_run(%{runs: [%{shows: :queued} | _]} = flow, %{run: %{attempt: attempt, of: of}})
-       when is_integer(attempt) and is_integer(of),
-       do:
-         gettext("Run %{attempt} of %{of} is queued.",
-           attempt: Format.number(attempt),
-           of: Format.number(runs_of(flow, attempt, of))
-         )
+  # none has started: that run, in place of None yet, counted as the step card counts it.
+  defp queued_run(%{runs: [%{shows: :queued} | _]} = flow, %{run: %{attempt: attempt}} = item)
+       when is_integer(attempt) do
+    case queued_of(flow, item) do
+      of when is_integer(of) ->
+        gettext("Run %{attempt} of %{of} is queued.",
+          attempt: Format.number(attempt),
+          of: Format.number(of)
+        )
+
+      nil ->
+        nil
+    end
+  end
 
   defp queued_run(_flow, _item), do: nil
+
+  # The most runs of the take in for its latest run. The runner applies the round limit of
+  # the work item's version, so the count follows the stage card's rounds: a run queued
+  # under a version with a higher limit keeps its stored `of`. Nil without a run.
+  defp queued_of(flow, %{run: %{attempt: attempt, of: of}})
+       when is_integer(attempt) and is_integer(of),
+       do: runs_of(flow, attempt, of)
+
+  defp queued_of(_flow, _item), do: nil
 
   defp runs_of(%{rounds: rounds} = flow, attempt, _of) when is_integer(rounds),
     do: attempt + max(rounds - (Map.get(flow, :round) || 1), 0)
