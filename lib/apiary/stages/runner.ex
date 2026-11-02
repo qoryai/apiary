@@ -252,17 +252,25 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # limits/3 is the time limit, in seconds, and the access level of a run of the entry at
+  # limits/4 is the time limit, in seconds, and the access level of a run of the entry at
   # `position` of `stage`, given the harness's declaration of its workflow (nil for
   # none): the lower of the entry's and the declaration's (addition 10). nil where the
   # position has no workflow entry.
+  #
+  # `workflow` is the workflow of a stage's run (`Apiary.Stages.run_workflow/1`), nil for
+  # any other run. `Apiary.Processes.assign/3` moves a waiting run to a version that may
+  # have another workflow at the run's position, or no entry. The level of that entry
+  # does not apply to the run, so its access level is `:read`. Its time limit is that
+  # entry's, nil for no entry.
   @doc false
-  @spec limits(map, position, map | nil) ::
+  @spec limits(map, position, map | nil, String.t() | nil) ::
           %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
-  def limits(stage, position, declaration) do
+  def limits(stage, position, declaration, workflow \\ nil) do
     case entry_at(stage, position) do
-      %{"workflow" => _name} = entry -> lowered(entry, declaration)
-      _none -> nil
+      %{"workflow" => name} = entry when workflow in [nil, name] -> lowered(entry, declaration)
+      %{"workflow" => _other} = entry -> %{lowered(entry, declaration) | access: :read}
+      _none when is_nil(workflow) -> nil
+      _none -> %{time_limit: nil, access: :read}
     end
   end
 

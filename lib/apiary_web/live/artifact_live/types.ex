@@ -22,7 +22,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   on_mount {ApiaryWeb.Access, :"artifact_type.edit"}
 
   alias Apiary.Artifacts
-  alias Apiary.Artifacts.Type
+  alias Apiary.Artifacts.{Type, TypeRules}
   alias ApiaryWeb.ArtifactLive.Load
   alias ApiaryWeb.SettingsComponents
 
@@ -244,7 +244,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
           label={gettext("Size limit in MiB")}
           hint={
             gettext("All files of one version together. At most %{size}.",
-              size: form_size(Type.max_size_limit(@base_view))
+              size: TypeRules.form_size(Type.max_size_limit(@base_view))
             )
           }
         />
@@ -334,7 +334,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     params = %{
       "name" => name,
       "base_view" => "document",
-      "size_mib" => mib(Type.default_size_limit(:document)),
+      "size_mib" => TypeRules.mib(Type.default_size_limit(:document)),
       "max_files" => "1",
       "json_schema" => ""
     }
@@ -355,7 +355,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     case custom(socket, id) do
       %Type{} = type ->
         params = %{
-          "size_mib" => mib(type.size_limit),
+          "size_mib" => TypeRules.mib(type.size_limit),
           "max_files" => Integer.to_string(type.max_files),
           "json_schema" =>
             if(type.json_schema, do: Jason.encode!(type.json_schema, pretty: true), else: "")
@@ -542,21 +542,19 @@ defmodule ApiaryWeb.ArtifactLive.Types do
         gettext("Choose another name: %{name} is a standard type.", name: params["name"])
 
       :unique ->
-        gettext("Choose another name: this workspace has a type called %{name}.",
-          name: params["name"]
-        )
+        TypeRules.taken(params["name"])
 
       _format ->
-        name_rule()
+        TypeRules.name()
     end
   end
 
-  defp field_line(:base_view, _opts, _params, _base_view), do: gettext("Choose a base view.")
+  defp field_line(:base_view, _opts, _params, _base_view), do: TypeRules.base_view()
 
-  defp field_line(:size_limit, _opts, _params, base_view), do: size_rule(base_view)
-  defp field_line(:max_files, _opts, _params, base_view), do: files_rule(base_view)
+  defp field_line(:size_limit, _opts, _params, base_view), do: TypeRules.size(base_view)
+  defp field_line(:max_files, _opts, _params, base_view), do: TypeRules.files(base_view)
 
-  defp field_line(_json_schema, _opts, _params, _base_view), do: schema_rule()
+  defp field_line(_json_schema, _opts, _params, _base_view), do: TypeRules.schema()
 
   # The form's values as `Apiary.Artifacts.create_type/3` takes them, or the lines of the
   # fields that are not numbers.
@@ -567,8 +565,8 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     errors =
       Enum.reject(
         [
-          size == :error && {:size_mib, {size_rule(base_view), []}},
-          files == :error && {:max_files, {files_rule(base_view), []}}
+          size == :error && {:size_mib, {TypeRules.size(base_view), []}},
+          files == :error && {:max_files, {TypeRules.files(base_view), []}}
         ],
         &(&1 == false)
       )
@@ -615,32 +613,6 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     Enum.find(Type.base_views(), :document, &(Atom.to_string(&1) == name))
   end
 
-  defp name_rule,
-    do:
-      gettext(
-        "Use lowercase letters and digits, in groups joined by single hyphens, at most 64 characters."
-      )
-
-  defp size_rule(base_view),
-    do:
-      gettext("Set a size limit above 0 and at most %{size}.",
-        size: form_size(Type.max_size_limit(base_view))
-      )
-
-  defp files_rule(:structured), do: gettext("A structured type has one file.")
-
-  defp files_rule(_base_view),
-    do:
-      gettext("Set most files to a whole number from 1 to %{number}.",
-        number: Type.max_files_limit()
-      )
-
-  defp schema_rule,
-    do:
-      gettext(
-        "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."
-      )
-
   defp base_view_hint(:document), do: gettext("Markdown, with Mermaid diagrams.")
   defp base_view_hint(:image), do: gettext("PNG, JPEG, GIF, WebP or SVG images.")
   defp base_view_hint(:video), do: gettext("MP4 or WebM videos, with WebVTT captions.")
@@ -648,21 +620,6 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp base_view_hint(:structured), do: gettext("One JSON document, shown as a table.")
 
   defp size(bytes), do: ApiaryWeb.ArtifactComponents.size(bytes)
-
-  # A size in MiB, the unit the form takes, as its hint and its lines say it: "2,048 MiB".
-  defp form_size(bytes) when rem(bytes, @mib) == 0,
-    do: gettext("%{number} MiB", number: Format.number(div(bytes, @mib)))
-
-  defp form_size(bytes), do: gettext("%{number} MiB", number: mib(bytes))
-
-  # A size limit in MiB, as the form shows it: at most four decimals, without trailing
-  # zeros.
-  defp mib(bytes) do
-    (bytes / @mib)
-    |> :erlang.float_to_binary(decimals: 4)
-    |> String.trim_trailing("0")
-    |> String.trim_trailing(".")
-  end
 
   defp types_path(scope, :index),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/artifact-types"

@@ -524,6 +524,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on. A type stays on while an artifact of the workspace has it, or while the current
   process or a process version in use includes it. A workspace keeps every standard
   type until a person switches one off.
+- A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
+  a **Workflow** page row with that workflow, lowers it.
 <!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
   timeline, as they happen. A failed push opens its row with the step's output, and it

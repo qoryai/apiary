@@ -477,6 +477,41 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
     end
 
+    test "limits/4 reads for a stage's run whose position has another workflow or no entry" do
+      seq =
+        put_in(build(), ["sequence"], [
+          wf("implement", %{"time_limit" => "1h"}),
+          loop([wf("capture-demo"), wf("fix-demo-findings")])
+        ])
+
+      declaration = %{time_limit: nil, access: :write}
+
+      assert Runner.limits(seq, pos(0, nil, 1), declaration, "lint") == %{
+               time_limit: 3600,
+               access: :read
+             }
+
+      assert Runner.limits(seq, pos(1, 1, 1), declaration, "lint").access == :read
+
+      for {position, stage} <- [{pos(2, nil, 1), seq}, {pos(0, nil, 1), %{}}] do
+        assert Runner.limits(stage, position, declaration, "lint") == %{
+                 time_limit: nil,
+                 access: :read
+               }
+      end
+    end
+
+    test "limits/4 leaves a run alone at an entry of its workflow, or with no workflow" do
+      seq = put_in(build(), ["sequence"], [wf("implement", %{"time_limit" => "1h"})])
+      declaration = %{time_limit: nil, access: :write}
+      limits = %{time_limit: 3600, access: :write}
+
+      assert Runner.limits(seq, pos(0, nil, 1), declaration, "implement") == limits
+      assert Runner.limits(seq, pos(0, nil, 1), declaration, nil) == limits
+      assert Runner.limits(seq, pos(1, nil, 1), declaration, nil) == nil
+      assert Runner.limits(%{}, pos(0, nil, 1), declaration, nil) == nil
+    end
+
     test "reads durations" do
       assert Runner.seconds("1h30m") == 5400
       assert Runner.seconds("15m") == 900

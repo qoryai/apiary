@@ -13,6 +13,18 @@ defmodule Apiary.Artifacts.CustomSchema do
   # build, the patterns it would compile are estimated (`Apiary.Kinds.PatternMemory`),
   # and a schema whose patterns would take more than 16 MiB is refused.
   #
+  # `check_within/2` is `check/1` under a total over several schemas, for a file that
+  # lists them (`Apiary.Artifacts.TemplateTypes`). `total/1` starts a total, of reductions
+  # and of time from one deadline, and each call takes what is left and returns what is
+  # left. Each schema keeps every bound of `check/1` and runs in a separate process,
+  # because compiled patterns are outside the heap a budget counts: a shared process
+  # would weaken that bound. A run gets the smaller of the single budget and what is
+  # left, and its reductions, read in its process at the end, come off the total.
+  # `{:error, :total}` is a total that ran out: nothing left before a run, a run cut short
+  # only because what was left was smaller than the single budget, or a run that ended
+  # past what was left, whether its schema passed or not. `{:error, :budget}` is a run
+  # over the single budget with more of the total left.
+  #
   # `validate/2`, for a push: the document is checked against the bounds below before
   # JSV is given it, and JSV builds the schema and validates the document in the budget's
   # process. A `jsv-cast` or `x-jsv-cast` keyword is dropped everywhere before the build,
@@ -41,6 +53,9 @@ defmodule Apiary.Artifacts.CustomSchema do
   @pattern_bytes 16_777_216
   @casts ~w(jsv-cast x-jsv-cast)
 
+  @typedoc "What is left of a total: its reductions, and its deadline in monotonic ms."
+  @type left :: %{reductions: integer, deadline: integer}
+
   @typedoc "Why a schema or a document is refused."
   @type refusal ::
           :not_an_object
@@ -64,6 +79,61 @@ defmodule Apiary.Artifacts.CustomSchema do
   end
 
   def check(_schema), do: {:error, :not_an_object}
+
+  # total/1 starts a total of `reductions` and of `ms` from now.
+  @doc false
+  @spec total(reductions: non_neg_integer, ms: non_neg_integer) :: left
+  def total(reductions: reductions, ms: ms), do: %{reductions: reductions, deadline: now() + ms}
+
+  # check_within/3 is `check/1` under what is left of a total: `{:ok, left}`, with the
+  # schema's reductions taken off, `{:error, :total}`, or `check/1`'s `{:error, refusal}`.
+  # `single` is the single budget: the tests' seam, as no schema tried reaches 10,000,000
+  # reductions.
+  @doc false
+  @spec check_within(term, left, Budget.budget()) :: {:ok, left} | {:error, refusal | :total}
+  def check_within(schema, left, single \\ @budget)
+
+  def check_within(schema, %{reductions: reductions, deadline: deadline} = left, single)
+      when is_map(schema) do
+    ms = deadline - now()
+
+    cond do
+      not Bounds.within?(schema, @schema_limits) -> {:error, :limits}
+      byte_size(CanonicalJSON.encode!(schema)) > @schema_bytes -> {:error, :too_large}
+      reductions <= 0 or ms <= 0 -> {:error, :total}
+      true -> counted(schema, left, ms, single)
+    end
+  end
+
+  def check_within(_schema, %{}, _single), do: {:error, :not_an_object}
+
+  # A run past what was left is the total's, whether or not a read of its reductions came
+  # in time to cut it: the same schemas get the same result. A run past the deadline is
+  # the total's too.
+  defp counted(schema, %{reductions: reductions, deadline: deadline} = left, ms, single) do
+    most = single[:reductions]
+    longest = single[:ms]
+    budget = Keyword.merge(single, reductions: min(reductions, most), ms: min(ms, longest))
+
+    result = Budget.run(fn -> {build(copy(schema)), reductions_here()} end, budget)
+    late? = now() > deadline
+
+    case result do
+      {:ok, {_result, used}} when late? or used > reductions -> {:error, :total}
+      {:ok, {:ok, used}} -> {:ok, %{left | reductions: reductions - used}}
+      {:ok, {{:error, refusal}, _used}} -> {:error, refusal}
+      {:error, :reductions} when reductions < most -> {:error, :total}
+      {:error, :time} when ms < longest -> {:error, :total}
+      {:error, _reason} -> {:error, :budget}
+    end
+  end
+
+  defp reductions_here do
+    {:reductions, reductions} = Process.info(self(), :reductions)
+    reductions
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   # validate/2 is `:ok` for `document`, decoded JSON, valid against `schema`, else
   # `{:error, refusal}`: `:limits` (the document is over the bounds),

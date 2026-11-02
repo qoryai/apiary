@@ -45,6 +45,8 @@ defmodule Apiary.Processes.TypeTemplates do
 
   alias Apiary.{Access, Audit, Features, Processes, Repo}
   alias Apiary.Accounts.Scope
+  alias Apiary.Artifacts.Type
+  alias Apiary.Harnesses.QoryCopy
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Organisation
   alias Apiary.Processes.TypeTemplate
@@ -169,12 +171,40 @@ defmodule Apiary.Processes.TypeTemplates do
   def workflows, do: Processes.qory_workflows()
 
   @doc """
-  artifact_types/0 is the artifact types a type's process may name: the standard types,
-  each with its base view. A type has no custom types: a workspace adds those after it is
-  created.
+  artifact_types/0 is the standard artifact types, each with its base view. A template's
+  custom types are in `artifact_types/1`.
   """
   @spec artifact_types() :: [%{name: String.t(), base_view: atom}]
   def artifact_types, do: for({name, view} <- @standard_types, do: %{name: name, base_view: view})
+
+  @doc """
+  artifact_types/1 is the standard artifact types and the custom types of `listed`, each
+  with its base view. `listed` is the `artifact_types` of a template that
+  `Apiary.Harnesses.Reader.template/1` read and that passed the check of its types, nil
+  for none.
+  """
+  @spec artifact_types([map] | nil) :: [%{name: String.t(), base_view: atom}]
+  def artifact_types(nil), do: artifact_types()
+
+  def artifact_types(listed) when is_list(listed) do
+    custom =
+      for %{"name" => name, "base_view" => view} <- listed,
+          do: %{name: name, base_view: base_view(view)}
+
+    artifact_types() ++ custom
+  end
+
+  defp base_view(view), do: Enum.find(Type.base_views(), &(Atom.to_string(&1) == view))
+
+  @doc """
+  offered_types/0 is the artifact types the page of a type offers for a stage's inputs and
+  outputs, and the list `Apiary.Processes.placement_check/3` checks them against on that
+  page: the standard types and the custom types of the copied template
+  (Apiary.Harnesses.QoryCopy.template/0). That template is the default process of every
+  type (`Apiary.Processes.default_document/1`).
+  """
+  @spec offered_types() :: [%{name: String.t(), base_view: atom}]
+  def offered_types, do: artifact_types(QoryCopy.template().artifact_types)
 
   @doc """
   may_edit?/1 says whether the person of `scope` may save a version of a type's default
