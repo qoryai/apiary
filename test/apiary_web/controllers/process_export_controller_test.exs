@@ -79,6 +79,10 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
     test "the route is not found", %{conn: conn, scope: scope} do
       assert status(conn, path(scope)) == 404
     end
+
+    test "a request with no session gets 404, not the way to sign in", %{scope: scope} do
+      assert status(build_conn(), path(scope)) == 404
+    end
   end
 
   describe "with factory off" do
@@ -86,6 +90,10 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
 
     test "the route is not found", %{conn: conn, scope: scope} do
       assert status(conn, path(scope)) == 404
+    end
+
+    test "a request with no session gets 404, not the way to sign in", %{scope: scope} do
+      assert status(build_conn(), path(scope)) == 404
     end
   end
 end

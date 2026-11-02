@@ -548,6 +548,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `software`.
 - A workspace made from the software template gets the artifact type `branch`, and every
   standard type stays shown.
+<!-- feature: factory, workflow_model -->
+- Owners and admins can export a workspace's process as process.yaml from the Stages page.
+<!-- /feature -->
 
 ### Changed
 
