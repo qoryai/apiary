@@ -327,7 +327,7 @@ defmodule ApiaryWeb.UserLive.LoginTest do
       assert has_element?(lv, ~s|#login_form input[type=checkbox][name="user[remember_me]"]|)
 
       assert lv |> element("#login_forgot") |> render() |> visible_text() ==
-               "Forgot your password? Ask an admin of this Qory Apiary for a password link."
+               "Forgot your password? Contact support for a password link."
 
       refute has_element?(lv, "#login_forgot button")
       refute has_element?(lv, "button[phx-click=toggle_mode]")

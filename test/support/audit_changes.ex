@@ -94,6 +94,7 @@ defmodule Apiary.AuditChanges do
       :"instance.mail_on",
       :"instance.rename",
       :"instance.configure",
+      :"instance.support_save",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -296,6 +297,24 @@ defmodule Apiary.AuditChanges do
     admin = password_link_admin()
     before = entries()
     {:ok, "Acme Agents"} = Apiary.ProductName.rename(admin, %{"product_name" => "Acme Agents"})
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
+  # An instance admin's, in the trail of the instance's organisation, about the
+  # organisation.
+  def make(:"instance.support_save", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+
+    {:ok, "support@example.com"} =
+      Apiary.SupportAddress.save(admin, %{"support_address" => "support@example.com"})
+
     instance = instance_organisation()
 
     %{
@@ -1080,6 +1099,11 @@ defmodule Apiary.AuditChanges do
   end
 
   # Anyone but an instance admin: the owner of an organisation that is not the instance's.
+  def refuse(:"instance.support_save", %{scope: scope}) do
+    before = entries()
+    {before, Apiary.SupportAddress.save(scope, %{"support_address" => "support@example.com"})}
+  end
+
   def refuse(:"workspace_type.edit", %{scope: scope}) do
     before = entries()
     {before, attempt(:"workspace_type.edit", scope, nil)}

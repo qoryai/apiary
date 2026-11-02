@@ -182,7 +182,7 @@ defmodule Apiary.Accounts.User do
     |> validate_change(:language, fn :language, language ->
       if Preferences.language?(language),
         do: [],
-        else: [language: dgettext_noop("errors", "is not a language this instance has")]
+        else: [language: dgettext_noop("errors", "is not a language Qory Apiary offers")]
     end)
     |> validate_change(:time_zone, fn :time_zone, zone ->
       if Preferences.time_zone?(zone),

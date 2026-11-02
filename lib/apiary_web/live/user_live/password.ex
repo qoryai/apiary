@@ -31,16 +31,12 @@ defmodule ApiaryWeb.UserLive.Password do
       <Layouts.auth_heading>
         {gettext("That password link has expired")}
         <:subtitle>
-          {if name = Apiary.ProductName.get(),
-            do:
-              gettext(
-                "Password links work once and for a short time. Ask an admin of %{name} for a new one.",
-                name: name
-              ),
-            else:
-              gettext(
-                "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
-              )}
+          <.rich text={
+            rich_gettext(
+              "%{contact_support} for a new password link. Password links work once and for a short time.",
+              contact_support: ApiaryWeb.Support.rich()
+            )
+          } />
         </:subtitle>
       </Layouts.auth_heading>
       <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
@@ -177,19 +173,15 @@ defmodule ApiaryWeb.UserLive.Password do
 
   @doc """
   refused_line/0 is what the log-in page tells an account the edition refuses, here and
-  in `ApiaryWeb.UserSessionController`: it names the instance by the name an instance
-  admin set, and says "this Qory Apiary" where none is set.
+  in `ApiaryWeb.UserSessionController`. It is a flash, so it has the words of
+  `ApiaryWeb.Support` without their link.
   """
   @spec refused_line() :: String.t()
   def refused_line do
-    case Apiary.ProductName.get() do
-      nil ->
-        gettext("This account cannot log in at the moment. Ask the admins of this Qory Apiary.")
-
-      name ->
-        gettext("This account cannot log in at the moment. Ask the admins of %{name}.",
-          name: name
-        )
-    end
+    plain_text(
+      rich_gettext("%{contact_support}. This account cannot log in at the moment.",
+        contact_support: ApiaryWeb.Support.plain()
+      )
+    )
   end
 end

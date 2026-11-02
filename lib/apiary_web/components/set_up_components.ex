@@ -355,7 +355,7 @@ defmodule ApiaryWeb.SetUpComponents do
   workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
   titles of the collections the step's done rule counts, or their number from 3 on, Model
   the chosen model as the step shows it, Harness the chosen harness as the step shows it,
-  and Machines the node pool that runs the workspace's runs. Each value is read for the
+  and Machines the pool that runs the workspace's runs. Each value is read for the
   scope's person with the reads of its step's page: Work sources and Destinations only
   where `adapter.read` allows the tick list, Model only where the person may read the
   choices of the workspace's chain as the Model step reads them. Test run shows

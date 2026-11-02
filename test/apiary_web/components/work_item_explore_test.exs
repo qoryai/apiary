@@ -1201,6 +1201,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "explore_tab/1, a run without a result" do
+    # Contact support reads the support address.
+    setup do: Ecto.Adapters.SQL.Sandbox.checkout(Apiary.Repo)
+
     test "what happened, and the run's page" do
       for {status, overrides, run_state, heading, body} <- [
             {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended}, "Failed",
@@ -1303,19 +1306,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a run that stopped at a call to an adapter says which, what for and what to do, beside its end words" do
       for {failure, line} <- [
             {%{cause: :timeout, call: "run-credential", code: nil},
-             "Ask an instance admin to check that code-host is running. The run did not start: the call to code-host for the run's credentials timed out."},
+             "Contact support. The run did not start: the call to code-host for the run's credentials timed out."},
             {%{cause: :unreachable, call: "resolve", code: nil},
-             "Ask an instance admin to check that code-host is running and that its host name resolves. The run did not start: the call to code-host for the harness sources failed to connect, found no address for the host name, or got 502, 503 or 504 from the reverse proxy."},
+             "Contact support. The run did not start: the call to code-host for the harness sources did not reach it."},
             {%{cause: :refused, call: "read", code: "grant_unknown"},
-             "Ask an instance admin to check code-host. The run did not start: the call to code-host for the harness files returned the error grant_unknown."},
+             "Contact support. The run did not start: the call to code-host for the harness files returned the error grant_unknown."},
             {%{cause: :refused, call: "read", code: nil},
-             "Ask an instance admin to check code-host. The run did not start: the call to code-host for the harness files returned the error unauthorized."},
+             "Contact support. The run did not start: the call to code-host for the harness files returned the error unauthorized."},
             {%{cause: :invalid_answer, call: "resolve", code: nil},
-             "Ask an instance admin to check code-host. The run did not start: the response of code-host to the call for the harness sources failed its signature check or format check, or was over 1 MiB."},
+             "Contact support. The run did not start: the response of code-host failed its signature check or format check, or was over 1 MiB."},
             {%{cause: :no_address, call: "resolve", code: nil},
-             "Ask an instance admin to check the call address of code-host. The run did not start: code-host has no call address, so Qory Apiary could not call it for the harness sources."},
+             "Contact support. The run did not start: code-host has no call address."},
             {%{cause: :not_allowed, call: "resolve", code: nil},
-             "Ask an instance admin to check the call address of code-host and the instance's public address. The run did not start: the call address is not an https address at the adapter's name under the instance's name, its host resolves to an address that Qory Apiary does not call, or the instance's public address has no host name."},
+             "Contact support. The run did not start: Qory Apiary does not call the call address of code-host."},
             {%{cause: :too_large, call: "resolve", code: nil},
              "Remove harness sources or files, then run Explore again. The run did not start: the call to code-host for the harness sources was over 256 KiB."}
           ] do
@@ -1389,7 +1392,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
              "Correct #{setting}, then run Explore again. The source breaks the harness format: it is larger than 65536 bytes as JSON."},
             {%{code: "walk_error"},
-             "Run Explore again. If the run ends the same way, ask an instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."},
+             "Run Explore again. If the run ends the same way, contact support. The harness walk stopped on an error in Qory Apiary."},
             {%{
                code: "invalid",
                rule: %{
@@ -1471,7 +1474,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {%{code: "too_many"},
              "Take the harness sources from at most 5 accounts, then run Explore again. A run takes 5 harness credentials at most."},
             {%{code: "adapter_unavailable", adapter: "code-host"},
-             "Check the adapter code-host on the instance's Integrations page, then run Explore again. Three calls to the adapter failed."}
+             "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."}
           ] do
         r =
           run(%{
@@ -1516,7 +1519,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert texts(html, "#work-item-explore-none p") == [
                "The run did not start.",
-               "Ask an instance admin to check code-host. The run did not start: the call to code-host for the harness sources returned the error bad."
+               "Contact support. The run did not start: the call to code-host for the harness sources returned the error bad."
              ]
     end
 

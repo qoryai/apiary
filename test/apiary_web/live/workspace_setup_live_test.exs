@@ -893,8 +893,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         conn |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/sources")
 
       assert words(lv, "#set-up-no-adapter") ==
-               "No work source for this type is set up on this instance. An instance admin " <>
-                 "sets one up in Instance settings › Adapters."
+               "Contact support to add a work source. Qory Apiary offers none for this type yet."
 
       refute has_element?(lv, "#set-up-connect")
       assert has_element?(lv, "#set-up-skip")
@@ -1017,6 +1016,53 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert steps == guide["connect"]["steps"]
     end
 
+    test "the core returns nil for the edition's who connects line" do
+      %{organisation: organisation} = sign_up_fixture()
+
+      assert Apiary.Edition.Core.connects_line(organisation, :sources) == nil
+      assert Apiary.Edition.Core.connects_line(organisation, :destinations) == nil
+    end
+
+    test "with no sentence from the edition, the step keeps its line on who may connect", %{
+      conn: conn
+    } do
+      %{organisation: organisation} = sign_up_fixture()
+      member = joined(organisation, :member)
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(member) |> live(~p"/#{organisation}/main/set-up/sources")
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system such as an issue tracker. Owners and admins " <>
+                 "of #{organisation.name} connect it once for the organisation."
+
+      assert has_element?(lv, "#set-up-connect-who-may")
+    end
+
+    test "an edition's sentence replaces the second sentence, and the line on who may connect",
+         %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ConnectsLine)
+      %{organisation: organisation} = sign_up_fixture()
+      member = joined(organisation, :member)
+      conn = log_in_user(conn, member)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/main/set-up/sources")
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Bring tickets in from a system such as an issue tracker. " <>
+                 "Example Operator connects work sources."
+
+      refute has_element?(lv, "#set-up-connect-who-may")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/main/set-up/destinations")
+
+      assert words(lv, "#set-up-context #set-up-what") ==
+               "Runs change repositories in a system such as a forge. " <>
+                 "Example Operator connects destinations."
+
+      refute has_element?(lv, "#set-up-connect-who-may")
+    end
+
     test "shows a member who may not connect who may, with no connect control and no guide", %{
       conn: conn
     } do
@@ -1064,8 +1110,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         |> live(~p"/#{organisation}/main/set-up/destinations")
 
       assert words(lv, "#set-up-no-adapter") ==
-               "No work destination for this type is set up on this instance. An instance " <>
-                 "admin sets one up in Instance settings › Adapters."
+               "Contact support to add a work destination. Qory Apiary offers none for this " <>
+                 "type yet."
 
       refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
       assert has_element?(lv, "#set-up-skip")
@@ -2381,7 +2427,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     # `:exited`'s words. A stub cannot make the read task raise: each call runs in a task
     # under `Apiary.Adapters.Calls.Supervisor`, and a raise there is an unreachable adapter.
     test "a read whose task exits: try again" do
-      assert ApiaryWeb.HarnessComponents.read_words(:exited, %{label: "acme/harness"}, "Acme") ==
+      assert read_words(:exited, %{label: "acme/harness"}, "Acme") ==
                "Qory Apiary could not read acme/harness because of an error in Qory Apiary. Try " <>
                  "again. If it repeats, contact support."
     end
@@ -2406,7 +2452,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
          }}
       end
 
-      words = &ApiaryWeb.HarnessComponents.refusal_words(&1, source, "main", "Acme")
+      words = &refusal_words(&1, source, "main", "Acme")
       harness = "Correct the harness in acme/harness: "
 
       # The chosen source's address or folder, before any call: the form rule it breaks.
@@ -2425,7 +2471,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {"path_form", "a%2f",
              "Correct the folder: write a%2f with / and no backslash or percent sign."}
           ] do
-        assert ApiaryWeb.HarnessComponents.refusal_words(
+        assert refusal_words(
                  failure.(:invalid, chosen, %{"rule" => rule, "values" => %{"path" => path}}),
                  %{source | narrowing: %{"path" => path}},
                  "main",
@@ -2464,7 +2510,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(failure.(:credential_in_address, chosen, nil)) ==
                "Correct the address: remove the user name and password from it."
 
-      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+      reads = &read_words(&1, source, "Acme")
 
       not_covered =
         "Owners and admins of Acme connect an integration that covers acme/harness in " <>
@@ -2491,7 +2537,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       # An address the person typed is the person's to correct; a connected repository's
       # or an assignment's is not.
-      assert ApiaryWeb.HarnessComponents.read_words(
+      assert read_words(
                {:unreadable, :address},
                Map.put(source, :kind, :address),
                "Acme"
@@ -2512,7 +2558,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Correct the version: a branch, tag or commit name has 1 to 255 letters, digits, " <>
                  "dots, underscores, slashes and hyphens, and no spaces."
 
-      assert ApiaryWeb.HarnessComponents.read_words(
+      assert read_words(
                {:unreadable, :version, "v 9"},
                Map.put(source, :kind, :assigned),
                "Acme"
@@ -2639,7 +2685,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     # not reach through a stub adapter.
     test "a read refused for a stack, a folder, a file or a version: the cause" do
       source = %{label: "acme/harness", git: @harness_git, narrowing: %{"path" => "stacks/web"}}
-      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+      reads = &read_words(&1, source, "Acme")
 
       assert reads.({:no_stack_file, "stacks/web/qory-stack.yaml"}) ==
                "acme/harness has no qory-stack.yaml in the folder stacks/web. Add that file."
@@ -2655,7 +2701,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # A version an instance admin assigned, which no field on the page changes.
       assigned = Map.merge(source, %{kind: :assigned, ref: "v9"})
 
-      assert ApiaryWeb.HarnessComponents.read_words({:no_version, "v9"}, assigned, "Acme") ==
+      assert read_words({:no_version, "v9"}, assigned, "Acme") ==
                "acme/harness has no branch, tag or commit named v9. Contact support to correct " <>
                  "the version of this harness source."
 
@@ -2673,7 +2719,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       walk = %{failure: :adapter_unavailable, call_cause: :late, call: late}
 
-      assert ApiaryWeb.HarnessComponents.refusal_words({:walk, walk}, source, "main", "Acme") ==
+      assert refusal_words({:walk, walk}, source, "main", "Acme") ==
                "Qory Apiary stopped reading acme/harness after 30 seconds, before it read " <>
                  "every file. Try again."
 
@@ -2691,7 +2737,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         {:call, %{adapter: "GitHub", cause: cause, code: code, seconds: nil}}
       end
 
-      reads = &ApiaryWeb.HarnessComponents.read_words(&1, source, "Acme")
+      reads = &read_words(&1, source, "Acme")
 
       assert reads.({:call, %{adapter: "GitHub", cause: :timeout, code: nil, seconds: 10}}) ==
                "The GitHub adapter did not answer within 10 seconds. Try again. If it repeats, " <>
@@ -2747,7 +2793,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
            call: %{adapter: "GitHub", cause: :too_large, code: nil, seconds: nil}
          }}
 
-      assert ApiaryWeb.HarnessComponents.refusal_words(walk, source, "main", "Acme") ==
+      assert refusal_words(walk, source, "main", "Acme") ==
                "Contact support: Qory Apiary could not call the GitHub adapter."
     end
 
@@ -4046,6 +4092,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     assert conn |> get(~p"/#{organisation}/#{billing.slug}/set-up/sources") |> Map.fetch!(:status) ==
              404
   end
+
+  # The words of a failed read or a refused save, as text: a "Contact support" in them is
+  # a link only where a support address is set, and none is here.
+  defp read_words(reason, source, organisation),
+    do:
+      reason
+      |> ApiaryWeb.HarnessComponents.read_words(source, organisation)
+      |> ApiaryWeb.RichText.plain_text()
+
+  defp refusal_words(reason, source, ref, organisation) do
+    case ApiaryWeb.HarnessComponents.refusal_words(reason, source, ref, organisation) do
+      nil -> nil
+      words -> ApiaryWeb.RichText.plain_text(words)
+    end
+  end
 end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
@@ -4647,8 +4708,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   defmodule Worded do
     # An edition whose line on who acts on a pool that is not ready differs from the core's.
-    def machines_who_may(_scope, _workspace, :instance), do: "Harbour Ops checks the pool."
-    def machines_who_may(_scope, _workspace, :workspace), do: "Harbour Ops enrols the pool."
+    def machines_who_may(_scope, _workspace), do: "Harbour Ops enrols the pool."
   end
 
   setup %{conn: conn} do
@@ -4711,6 +4771,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     pool
   end
 
+  # The step as an instance admin reads it, on the workspace of the instance's organisation.
+  defp open_admin(ctx) do
+    %{user: user, organisation: organisation, workspace: workspace} = ctx.admin
+
+    ctx.conn
+    |> log_in_user(user)
+    |> live(~p"/#{organisation}/#{workspace}/set-up/machines")
+    |> elem(1)
+  end
+
   # Nothing on the step writes: no form, no button, no event.
   defp read_only?(lv) do
     html = lv |> element("#set-up-pools") |> render()
@@ -4748,6 +4818,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "About this step shows what a pool does, which pool takes which runs, and when it is ready",
        ctx do
+    _instance_pool = ready_instance!()
     lv = open(ctx)
     workspace = ctx.scope.workspace.name
 
@@ -4758,18 +4829,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
            |> LazyHTML.from_fragment()
            |> LazyHTML.query("#set-up-context p")
            |> LazyHTML.attribute("id") ==
-             ["set-up-what", "set-up-machines-pools", "set-up-machines-why"]
+             [
+               "set-up-what",
+               "set-up-machines-pools",
+               "set-up-machines-join",
+               "set-up-machines-why"
+             ]
 
     assert words(lv, "#set-up-context #set-up-what") ==
              "A pool takes the waiting runs of #{workspace} and starts each run on a machine " <>
                "that joined the pool."
 
     assert words(lv, "#set-up-context #set-up-machines-pools") ==
-             "The Qory Pool is the instance's pool, where the instance has one. It takes " <>
-               "the runs of every workspace that has no pool. A pool for #{workspace} takes " <>
-               "the runs of #{workspace} alone: once you add it, the Qory Pool stops taking " <>
-               "them. To join a machine to the pool, get the command and run it on that machine. " <>
-               "Every run gets an isolated environment."
+             "The Qory Pool: machines Qory Apiary provides for the runs of every workspace " <>
+               "that has no pool."
+
+    assert words(lv, "#set-up-context #set-up-machines-join") ==
+             "A pool for #{workspace} takes the runs of #{workspace} alone. To join a machine " <>
+               "to the pool, get the command and run it on that machine. Every run gets an " <>
+               "isolated environment."
 
     assert words(lv, "#set-up-context #set-up-machines-why") ==
              "A pool is ready when a machine has joined it and its runs go through a gateway " <>
@@ -4777,41 +4855,119 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
                "Qory Apiary sends a run's secrets, such as its model key, only to a gateway."
   end
 
-  test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
+  test "the instance's pool not ready, for an instance admin: no pool, no active key, no gateway, no gateway key, then ready",
        ctx do
-    line = "Only an instance admin checks the Qory Pool and the Qory Gateway."
+    check = "Check the Qory Pool and Qory Gateway"
 
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
-    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert words(lv, "#set-up-pool-instance-check") == check
     assert words(lv, "#set-up-skip") == "Skip"
-    assert href(lv, "#set-up-skip") == ctx.test_path
     refute has_element?(lv, "#set-up-continue")
 
     pool = instance_pool_fixture()
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no active key"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert words(lv, "#set-up-pool-instance-check") == check
 
     _pool_key = installed_key_fixture(pool)
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no gateway"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert words(lv, "#set-up-pool-instance-check") == check
     assert has_element?(lv, "#set-up-skip")
 
     gateway = instance_gateway_fixture(name: "instance gateway")
-    lv = open(ctx)
+    lv = open_admin(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: the gateway has no active key"
-    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert words(lv, "#set-up-pool-instance-check") == check
+
+    _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
+    lv = open_admin(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
+    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "an owner sees no Qory Pool until it is ready, and only the pool for the workspace", ctx do
+    workspace = ctx.scope.workspace
+
+    no_qory_pool = fn lv ->
+      refute has_element?(lv, "#set-up-pool-instance")
+      refute has_element?(lv, "#set-up-machines-pools")
+      refute render(lv) =~ "Qory Pool"
+      refute render(lv) =~ "instance"
+      assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+      assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
+
+      assert words(lv, "#set-up-pool-workspace-line") ==
+               "Runs in #{workspace.name} then wait for this pool."
+
+      assert words(lv, "#set-up-pool-add-button") == "Add pool"
+      assert words(lv, "#set-up-skip") == "Skip"
+    end
+
+    no_qory_pool.(open(ctx))
+
+    pool = instance_pool_fixture()
+    no_qory_pool.(open(ctx))
+
+    _pool_key = installed_key_fixture(pool)
+    no_qory_pool.(open(ctx))
+
+    gateway = instance_gateway_fixture(name: "instance gateway")
+    no_qory_pool.(open(ctx))
 
     _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
     lv = open(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
-    refute has_element?(lv, "#set-up-pool-instance-who-may")
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert has_element?(lv, "#set-up-machines-pools")
     assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "an owner who sends the choice of a hidden Qory Pool keeps the pool for the workspace",
+       ctx do
+    lv = open(ctx)
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert has_element?(lv, "#set-up-pool-add-button")
+
+    render_click(lv, "add_pool", %{})
+    assert [%{name: name}] = workspace_pools(ctx.scope.workspace)
+    assert name == WorkspaceSetup.pool_name(ctx.scope.workspace)
+  end
+
+  test "a member sees no Qory Pool until it is ready, and reads who adds a pool", ctx do
+    member = member(ctx.organisation)
+    lv = open(ctx, member)
+
+    refute has_element?(lv, "#set-up-pool-instance")
+    refute has_element?(lv, "#set-up-pools")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    refute render(lv) =~ "Qory Pool"
+
+    assert words(lv, "#set-up-pool-who-may") ==
+             "Only owners and admins add a pool and join a machine to it."
+
+    assert has_element?(lv, "#set-up-skip")
+
+    _instance_pool = ready_instance!()
+    lv = open(ctx, member)
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: Qory Gateway"
+    refute has_element?(lv, "#set-up-pool-who-may")
+    assert read_only?(lv)
+  end
+
+  test "About this step explains the Qory Pool only while it is ready, for an instance admin too",
+       ctx do
+    lv = open_admin(ctx)
+    refute has_element?(lv, "#set-up-machines-pools")
+    assert has_element?(lv, "#set-up-machines-join")
+
+    _instance_pool = ready_instance!()
+    assert has_element?(open_admin(ctx), "#set-up-machines-pools")
   end
 
   test "the instance's pool not ready for its gateway choice: Direct, or a gateway its runs may not go through",
@@ -4821,10 +4977,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
     pool = instance_pool_fixture(gateway_choice: :direct)
     _pool_key = installed_key_fixture(pool)
-    lv = open(ctx)
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-state") ==
              "Not ready: the pool is set to Direct, and runs need a gateway"
+
+    refute has_element?(open(ctx), "#set-up-pool-instance")
 
     # The instance's pool names a gateway of the workspace: its runs go through the
     # instance's gateway alone.
@@ -4832,35 +4990,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     |> Ecto.Changeset.change(gateway_choice: :named, gateway_id: gateway.id)
     |> Repo.update!()
 
-    lv = open(ctx)
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-state") ==
              "Not ready: the pool's runs may not go through the chosen gateway"
 
     assert has_element?(lv, "#set-up-skip")
+    refute has_element?(open(ctx), "#set-up-pool-instance")
   end
 
-  test "an instance admin sees Check the nodes; a member reads who acts", ctx do
-    admin = ctx.admin
-
-    {:ok, lv, _html} =
-      ctx.conn
-      |> log_in_user(admin.user)
-      |> live(~p"/#{admin.organisation}/#{admin.workspace}/set-up/machines")
+  test "an instance admin sees Check the Qory Pool and Qory Gateway", ctx do
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
     assert words(lv, "#set-up-pool-instance-check") == "Check the Qory Pool and Qory Gateway"
     assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/qory-pool-and-gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
-
-    lv = open(ctx, member(ctx.organisation))
-    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
-
-    assert words(lv, "#set-up-pool-instance-who-may") ==
-             "Only an instance admin checks the Qory Pool and the Qory Gateway."
-
-    refute has_element?(lv, "#set-up-pool-instance-check")
-    assert has_element?(lv, "#set-up-skip")
   end
 
   test "a pool of the workspace: not enrolled, an owner gets its page, a member who acts",
@@ -5015,6 +5160,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a second click, or a pool made meanwhile, makes no other pool and shows the one there",
        ctx do
+    _instance_pool = ready_instance!()
     workspace = ctx.scope.workspace
     lv = open(ctx)
     other = open(ctx)
@@ -5250,6 +5396,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "a member sends the step's events: nothing is made", ctx do
+    _instance_pool = ready_instance!()
     member = member(ctx.organisation)
     lv = open(ctx, member)
     render_click(lv, "choose_pool", %{"pool" => %{"choice" => "workspace"}})
@@ -5319,7 +5466,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     member = member(ctx.organisation)
 
     lv = open(ctx, member)
-    assert words(lv, "#set-up-pool-instance-who-may") == "Harbour Ops checks the pool."
+    assert words(lv, "#set-up-pool-who-may") == "Harbour Ops enrols the pool."
 
     pool = pool_fixture(ctx.scope)
     lv = open(ctx, member)
@@ -5407,7 +5554,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "the line on the pool's machines shows only where a machine enrolled on the pool", ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5429,7 +5576,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   end
 
   test "a person whom node.delete no longer allows is refused, and the pool stays", ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5450,7 +5597,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a pool deleted meanwhile: Remove pool reads the step again, and Shared shows chosen",
        ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5466,7 +5613,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
 
   test "a second pool added elsewhere while the removal is open: Remove pool deletes nothing, and no removal is offered",
        ctx do
-    _instance_pool = instance_pool_fixture()
+    _instance_pool = ready_instance!()
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
     choose_shared(lv)
@@ -5483,10 +5630,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-pool-#{second.public_id}")
   end
 
-  test "with no pool of the instance, Shared shows not ready for no pool, and no removal is offered",
-       ctx do
+  test "with no pool of the instance, an owner's pool shows alone, with no removal", ctx do
     pool = pool_fixture(ctx.scope)
     lv = open(ctx)
+
+    refute has_element?(lv, "#set-up-pool-instance")
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert has_element?(lv, "#set-up-pool-#{pool.public_id}-radio[checked][disabled]")
+
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "shared"}})
+    render_click(lv, "remove_pool", %{})
+    refute deleted?(pool)
+  end
+
+  test "with no pool of the instance, Shared shows not ready for no pool, for an instance admin, and no removal is offered",
+       ctx do
+    pool = pool_fixture(ctx.admin)
+    lv = open_admin(ctx)
 
     assert words(lv, "#set-up-pool-instance-name") == "Qory Pool"
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"

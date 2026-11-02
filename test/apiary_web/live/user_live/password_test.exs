@@ -137,7 +137,7 @@ defmodule ApiaryWeb.UserLive.PasswordTest do
     for token <- ["not-a-token", Base.url_encode64(:crypto.strong_rand_bytes(32)), expired] do
       {:ok, _lv, html} = live(conn, ~p"/users/password/#{token}")
       assert html =~ "That password link has expired"
-      assert html =~ "Ask an admin of this Qory Apiary for a new one."
+      assert html =~ "Contact support for a new password link."
       refute html =~ user.email
       refute html =~ "password_form"
     end

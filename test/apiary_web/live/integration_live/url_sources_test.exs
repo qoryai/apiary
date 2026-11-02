@@ -93,7 +93,7 @@ defmodule ApiaryWeb.IntegrationLive.UrlSourcesTest do
         assert has_element?(
                  lv,
                  "#connection-version-refused",
-                 "This instance no longer accepts integrations from this source, so its version can't be changed."
+                 "Qory Apiary no longer adds integrations from this source, so its version can't be changed."
                )
 
         refute has_element?(lv, "#change-version")

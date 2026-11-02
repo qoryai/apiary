@@ -363,11 +363,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   curl -fsSL https://raw.githubusercontent.com/qoryai/qory/main/install.sh | sh
   ```
 
-  Under a pool that is not ready, an instance admin has **Check the nodes** for the
-  instance's pool. For a pool of the workspace, owners and admins have its name as a
-  link to its page. Anyone else reads who acts, such as “Only an instance admin checks
-  the Qory Pool and the Qory Gateway.” While the workspace has no pool, anyone who may not
-  add one sees the Qory Pool, read only. The step is done once a pool is ready. **About
+  Under a Qory Pool that is not ready, an instance admin has **Check the Qory Pool and
+  Qory Gateway**; anyone else sees no Qory Pool on this step; whoever may add a pool is
+  offered only a pool for the workspace. For a pool of the workspace, owners and admins have its name as a
+  link to its page. Anyone else reads who acts: “Only owners and admins add a pool and
+  join a machine to it.” While the workspace has no pool, anyone who may not add one sees
+  a ready Qory Pool, read only. The step is done once a pool is ready. **About
   this step** explains what a pool does, which pool takes the workspace's runs, what
   makes a pool ready, and that every run gets an isolated environment.
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
@@ -488,9 +489,35 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it. After an add, the page opens the **Overview** of what was added. A workspace's
   purge takes the workspace from every list.
 <!-- /feature -->
+- **Instance settings › General** has a **Support address** under Support: an https
+  address or an email address where “Contact support” leads for people in an
+  organisation. `SUPPORT_ADDRESS` sets it in the server's environment and wins; General
+  and Configuration then show it read only. With none, “Contact support” is plain text.
 
 ### Changed
 
+- The pages people in an organisation read no longer contain “instance”, “instance admin”
+  or “this server”. Where only support can fix a case, the page shows “Contact support”,
+  which links to the support address where one is set, and what Qory Apiary offers is
+  named “Qory Apiary”. **Add an integration**, the work source and destination lists, and
+  a target's Environment card keep their old lines for an instance admin. An integration
+  that cannot be installed yet shows only to an instance admin, unless the organisation
+  already has a connection to it. A flash or a form error has no link, so the support
+  address follows “Contact support” there. The 503 error of the registry token endpoint
+  contains “contact support” in place of the instance's log.
+- `Apiary.Edition` has no callback `first_workspace_line/1`, and the callback
+  `machines_who_may/2` takes the scope and the workspace, with no `:instance` pool:
+  organisation people no longer see a Qory Pool that is not ready on the Machines step.
+  The fixer of a stopped
+  preparation (`Apiary.Runs.Preparation`) is `:support` in place of `:instance_admin`; the
+  diagnostics document keeps the value `instance_admin`.
+  The callback `connects_line/2` of `Apiary.Edition` returns an edition's sentence on who
+  connects a system, for the steps Work sources and Destinations, or nil for the core's.
+- The guides Install and configure and Hosting checklist are only for signed-in instance
+  admins: `/docs` leads an instance admin to `/docs/admin`, which has every guide, and
+  gives anyone else 404 there. The public documentation leaves them out of its pages,
+  sidebar and search, and a link to them is its words. `mix docs` builds both trees. The
+  guides stay in the repository's `guides` directory.
 - Every run has a number, one count for the whole server, and the console names and
   addresses a run by it: “Run 18342” at `/acme/main/runs/18342`, in the run page's header
   and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the
@@ -771,6 +798,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   by a scan that blocks no write, and a unique index `nodes_diagnostics_index` for kind
   `diagnostics`, built inside the migration, so writes to `nodes` wait until the build
   ends. They change no row.
+- `instance_settings`: a nullable column `support_address`, with a check on its length.
+  It changes no row.
 
 ## [0.1.0] - 2026-10-13
 

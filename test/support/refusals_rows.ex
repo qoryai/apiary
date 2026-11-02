@@ -140,6 +140,13 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"instance.configure", :admin, "/instance/configuration", "save",
        %{"part" => "invitations", "config" => %{"invitations_per_day" => "50"}},
        answer: :not_found_at_mount},
+      # So is the support address.
+      {:"instance.support_save", :owner, "/instance/general", "save_support",
+       %{"support" => %{"support_address" => "support@example.com"}},
+       answer: :not_found_at_mount},
+      {:"instance.support_save", :admin, "/instance/general", "save_support",
+       %{"support" => %{"support_address" => "support@example.com"}},
+       answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",

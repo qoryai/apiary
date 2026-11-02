@@ -155,9 +155,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert words(view, "#page-context p#workflow-list") ==
                "The list shows the repositories connected to #{scope.organisation.name}, and " <>
-                 "the harness sources an instance admin assigned to #{scope.organisation.name}. " <>
+                 "the harness sources Qory Apiary provides to #{scope.organisation.name}. " <>
                  "If your harness repository is missing, connect it to " <>
-                 "#{scope.organisation.name}, or ask an instance admin to assign it."
+                 "#{scope.organisation.name}, or contact support."
 
       # The steps that repeated the form are gone.
       refute has_element?(view, "#workflow-help")

@@ -134,6 +134,12 @@ defmodule Apiary.Access do
       "change the instance's settings in Instance settings › Configuration: an instance admin after a recent sign-in, which no role takes (Apiary.InstanceConfig.save/3)",
       asked_of: :organisation
     ),
+    # The support address, in Instance settings › General.
+    Action.new(
+      :"instance.support_save",
+      "save the support address, where Contact support leads: an instance admin, which no role takes (Apiary.SupportAddress.save/2)",
+      asked_of: :organisation
+    ),
     # The audit trail.
     Action.new(:"audit.read", "read the organisation's audit trail, its Activity page",
       roles: @admins,
@@ -866,7 +872,8 @@ defmodule Apiary.Access do
   `instance.mail_on`, `Apiary.Mail.turn_on/2`) and changing the instance's settings
   (`instance.configure`, `Apiary.InstanceConfig.save/3`), which also ask for a recent
   sign-in, and setting the product's name (`instance.rename`,
-  `Apiary.ProductName.rename/2`), which asks for none.
+  `Apiary.ProductName.rename/2`) and saving the support address (`instance.support_save`,
+  `Apiary.SupportAddress.save/2`), which ask for none.
 
   ## Features
 
