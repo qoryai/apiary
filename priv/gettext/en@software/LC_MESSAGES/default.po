@@ -4496,6 +4496,7 @@ msgstr ""
 msgid "Agent"
 msgstr ""
 
+#: lib/apiary/harnesses/qory_copy/texts.ex
 #: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
@@ -8030,6 +8031,7 @@ msgstr ""
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
 msgstr ""
 
+#: lib/apiary/harnesses/qory_copy/texts.ex
 #: lib/apiary/processes.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
@@ -17316,6 +17318,7 @@ msgstr ""
 msgid "Smaller text"
 msgstr ""
 
+#: lib/apiary/harnesses/qory_copy/texts.ex
 #: lib/apiary/lingo/domain/software.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
