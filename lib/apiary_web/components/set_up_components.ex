@@ -1160,11 +1160,12 @@ defmodule ApiaryWeb.SetUpComponents do
   @spec template_card_id(String.t()) :: String.t()
   def template_card_id(key), do: "set-up-card-" <> slug(key)
 
-  # An id's text for an element id: letters, digits and `-` stay, and every other byte,
-  # `_` included, is `_` and its two hex digits, so two texts never give one id.
+  # An id's text for an element id: letters and digits stay, and every other byte, `-` and
+  # `_` included, is `_` and its two hex digits. Two texts never give one id, and the
+  # text has no `-`, so a suffix such as `-link` after it starts no other text's id.
   defp slug(text), do: for(<<byte <- text>>, into: "", do: slug_byte(byte))
 
-  defp slug_byte(byte) when byte in ?a..?z or byte in ?A..?Z or byte in ?0..?9 or byte == ?-,
+  defp slug_byte(byte) when byte in ?a..?z or byte in ?A..?Z or byte in ?0..?9,
     do: <<byte>>
 
   defp slug_byte(byte), do: "_" <> Base.encode16(<<byte>>, case: :lower)

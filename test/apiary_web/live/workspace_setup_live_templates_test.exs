@@ -314,18 +314,30 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       assert reads == [:read]
     end
 
-    test "modules whose names differ by a dot, a hyphen or an underscore get one card each",
+    test "modules whose names differ by one character get one card each, with unique ids",
          ctx do
-      names = ["a.b", "a-b", "a_b"]
+      names = ["a.b", "a-b", "a_b", "x", "x-link", "x-summary", "x-label"]
       serve(ctx, harness_files(Map.new(names, &{&1, support_desk_file()})))
       lv = open(ctx)
 
       ids = Enum.map(names, &card(ctx.harness, &1))
-      assert length(Enum.uniq(ids)) == 3
+      assert length(Enum.uniq(ids)) == length(names)
       for id <- ids, do: assert(has_element?(lv, id))
-      assert length(texts(lv, "#set-up-group-connected h3")) == 3
+      assert length(texts(lv, "#set-up-group-connected h3")) == length(names)
+
+      # Every id of the page is the id of one element, the links, summaries and labels of
+      # the cards included.
+      page_ids =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id]")
+        |> LazyHTML.attribute("id")
+
+      assert page_ids -- Enum.uniq(page_ids) == []
 
       assert template_card_id("a_2eb") != template_card_id("a.b")
+      refute String.contains?(template_card_id("x-link"), "-link")
     end
 
     test "a connected repository with nothing to show shows nothing", ctx do
