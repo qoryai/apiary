@@ -805,6 +805,79 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "Export process.yaml" do
+    # The document of the workspace's current version, with a first stage whose gate
+    # lists the person.
+    defp listing_people(scope) do
+      document = Processes.current(scope.workspace).document
+
+      update_in(document["stages"], fn [first | rest] ->
+        gate = %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}}
+        [Map.put(first, "gate", gate) | rest]
+      end)
+    end
+
+    test "an owner gets the button and the line, on both tabs", %{conn: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+
+      href = path <> "/process.yaml"
+      assert has_element?(view, ~s(#stages-export-button[href="#{href}"][download]), "Export")
+      assert has_element?(view, "#stages-export-button", "Export process.yaml")
+
+      assert has_element?(
+               view,
+               "#stages-export-line",
+               "Commit this file to a harness repository. Only new workspaces made from it use it."
+             )
+
+      refute has_element?(view, "#stages-export-people")
+
+      details(view, path)
+      assert has_element?(view, "#stages-export-button")
+    end
+
+    test "the line adds the people's gates when the current version lists people", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _version} = Processes.save(scope, scope.workspace, listing_people(scope))
+
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(
+               view,
+               "#stages-export-people",
+               "Gates that list people export as all members."
+             )
+    end
+
+    test "a trial that lists people adds nothing, since the file has the current version", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _trial} =
+        Processes.save(scope, scope.workspace, listing_people(scope), trial: true)
+
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(view, "#stages-export-button")
+      refute has_element?(view, "#stages-export-people")
+    end
+
+    test "a member gets no button and no line", %{path: path, scope: scope} do
+      {:ok, _version} = Processes.save(scope, scope.workspace, listing_people(scope))
+      %{user: user} = member_fixture(scope)
+
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+
+      refute has_element?(view, "#stages-export")
+      refute render(view) =~ "Export process.yaml"
+      refute render(view) =~ "harness repository"
+    end
+  end
+
   describe "a member" do
     setup %{scope: scope} do
       %{user: user} = member_fixture(scope)
