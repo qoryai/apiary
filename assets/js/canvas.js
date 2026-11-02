@@ -16,8 +16,8 @@
 //
 // In a box that fills the window (`.q-canvas-fill`, app.css) the wheel scrolls the
 // column; elsewhere the canvas is as tall as the column and the wheel scrolls the page. A
-// pinch or the zoom buttons zoom. Focus (`f`) gives the box the window until Escape, and
-// Full screen gives it the screen. All text reaches React as props and is rendered as text.
+// pinch or the zoom buttons zoom. Focus (`f`) sets the box to fill the window until
+// Escape, and Full screen sets it to fill the screen. All text reaches React as props and is rendered as text.
 import {
   createContext,
   createElement as h,
@@ -321,8 +321,8 @@ function Flow({initial, words, push, subscribe, el}) {
     return () => cancelAnimationFrame(frame)
   }, [view, el])
 
-  // Focus: the <html> class gives the box the window (app.css) until Escape, or until the
-  // canvas goes. `f` anywhere on the page but in a field turns it on and off, as on the
+  // Focus: the <html> class sets the box to fill the window (app.css) until Escape, or
+  // until the canvas goes. `f` anywhere on the page but in a field turns it on and off, as on the
   // Terminal.
   useEffect(() => {
     document.documentElement.classList.toggle(FOCUS_CLASS, focused)
@@ -376,8 +376,8 @@ function Flow({initial, words, push, subscribe, el}) {
 
   const onNodesChange = useCallback(changes => setNodes(current => applyNodeChanges(changes, current)), [])
 
-  // A canvas whose cards open nothing (`selectable` false, such as New workspace's
-  // preview) sends no "select".
+  // A canvas whose cards open nothing (`selectable` false, such as on a workspace type's
+  // page) sends no "select".
   const select = useCallback(
     id => {
       if (viewRef.current.selectable === false) return

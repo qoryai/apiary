@@ -212,7 +212,7 @@ test("the cards start at zoom 1, and a pinch or the buttons zoom from 0.75 to 1.
 })
 
 test("outside a filling box the canvas is as tall as the column at its zoom, with the margins", () => {
-  // The top margin holds the zoom, Focus and Full screen buttons (28 px, 12 px from the
+  // The top margin has the zoom, Focus and Full screen buttons (28 px, 12 px from the
   // top) above the column, so they cover none of it.
   assert.ok(MARGIN_TOP >= 12 + 28 + 8)
   assert.equal(paneHeight(500, 1), 500 + MARGIN_TOP + MARGIN_BOTTOM)

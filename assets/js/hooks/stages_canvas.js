@@ -1,6 +1,6 @@
 // The Stages canvas (ApiaryWeb.StagesLive.Canvas), registered as the component's colocated
-// hook, on Workspace settings › Stages, Instance settings › Workspace types and New
-// workspace. The page owns the process document: this hook only draws the view the page
+// hook, on Workspace settings › Stages, Instance settings › Workspace types and a
+// workspace type's page. The page owns the process document: this hook only draws the view the page
 // sends (data-view on mount, then "stages:view" events) and sends back a selection
 // ("select"), an order of stages ("reorder"), a move by the arrow keys ("move") and a new
 // stage at a place ("add_stage"). The inspector beside the canvas edits the selected stage.
@@ -15,7 +15,7 @@
 // tall as its lines; React Flow measures it, and until then its height is estimated. Where
 // the person may edit, a gap with a "+" sits before the first card and after the last.
 export const CARD_WIDTH = 360
-// The gap between two cards, in the canvas's units: wider where it holds a "+".
+// The gap between two cards, in the canvas's units: wider where it has a "+".
 export const GAP = {edit: 72, view: 56}
 // The "+" button's size.
 export const ADD_SIZE = 28
@@ -153,8 +153,8 @@ export const layout = (view, heights = {}) => {
     data: data[index],
   }))
   // A "+" at place `at`: in the middle of the gap before the card there, or of the gap
-  // after the last. Its node is neither dragged nor selected, so React Flow gives it no
-  // pointer events; the style gives them back, so a click reaches the button.
+  // after the last. Its node is neither dragged nor selected, so React Flow sets its
+  // pointer events to none; the style sets them to all, so a click reaches the button.
   const add = at => ({
     id: `add:${at}`,
     type: "add",

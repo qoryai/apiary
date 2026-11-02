@@ -14334,7 +14334,7 @@
 
 /* ==== The Stages canvas (`ApiaryWeb.StagesLive.Canvas`, assets/js/canvas.js) ==============
    The canvas's box, and `.q-canvas-fill`: a box that takes the rest of the window, with
-   the canvas and, beside it, a `.q-canvas-side` (the inspector or a side panel). It reuses
+   the canvas and, beside it, a `.q-canvas-side` (the inspector or a side panel). It follows
    the Terminal's sizing: the page fills the window, each element down to the box
    stretches, and the box takes the rest. */
 @layer qory {

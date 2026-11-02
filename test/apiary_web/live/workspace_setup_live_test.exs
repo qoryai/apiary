@@ -474,8 +474,8 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, ".bg-error-soft #set-up-limit")
       refute has_element?(lv, "#set-up-cards")
 
-      # The type's page says nothing of the limit; its Create workspace is refused, and
-      # says so as information.
+      # The type's page shows nothing of the limit; its Create workspace creates no
+      # workspace and shows the edition's line as information.
       {:ok, page, _html} = live(conn, ~p"/#{organisation}/workspaces/new/qory.software")
       refute has_element?(page, "#workspace-type", "allows one workspace")
       page |> element("#workspace-type-create") |> render_click()

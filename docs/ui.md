@@ -1278,8 +1278,8 @@ mark and the theme menu.
   **Create workspace** under the text. Without the feature there is no canvas: "How it
   works" takes the main area, and the side panel has the name, the summary and Create
   workspace. **Create workspace** creates the workspace, named after the type ("Software
-  factory", then "Software factory 2"), and opens its step Name. The page says nothing of
-  the workspace limit; at the limit, Create workspace shows the edition's line as
+  factory", then "Software factory 2"), and opens its step Name. The page shows nothing
+  of the workspace limit; at the limit, Create workspace shows the edition's line as
   information. A key of no type with a card is a page that does not exist.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a

@@ -389,7 +389,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
                 label={gettext("How it works")}
                 hint={
                   gettext(
-                    "At most 80 words, beside the stages on the type's page. A blank line starts a new paragraph."
+                    "At most 80 words, on the type's page. A blank line starts a new paragraph."
                   )
                 }
                 maxlength={@limits.description}

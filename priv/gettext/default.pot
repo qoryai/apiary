@@ -5164,7 +5164,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
-msgid "At most 80 words, beside the stages on the type's page. A blank line starts a new paragraph."
+msgid "At most 80 words, on the type's page. A blank line starts a new paragraph."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
