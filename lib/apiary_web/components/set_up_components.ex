@@ -257,9 +257,10 @@ defmodule ApiaryWeb.SetUpComponents do
   (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and what the page sets
   up: `:set_up`, the steps of a workspace, in the workspace
   (`/:org/:workspace/set-up/<step>`), or `:new`. Before the workspace exists, the steps'
-  paths lead to the organisation's overview, whose kind cards create it. `type` is
-  whether the flow names the type; no page of the core sets it, since a card's
-  **Choose** creates the workspace.
+  paths lead to the organisation's overview, `/:org`, whose kind cards link to the types'
+  pages (`ApiaryWeb.WorkspaceTypeLive`), where **Create workspace** creates it. `type` is
+  true where `flow/5` has `type: true` in its options; no page of the core passes it, and
+  `flow_path/2` does not read it.
   """
   @type flow :: %{
           organisation: %Organisation{},
