@@ -77,6 +77,11 @@ defmodule Apiary.Harnesses.QoryCopy do
   end
 
   @doc false
+  # template_module/0 is the name of the module of the Qory harness with that template.
+  @spec template_module() :: String.t()
+  def template_module, do: @template
+
+  @doc false
   # texts/0 is the name, summary and description of the copied template, translated in
   # the locale of the caller's process.
   @spec texts() :: %{name: String.t(), summary: String.t(), description: String.t()}

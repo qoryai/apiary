@@ -382,7 +382,10 @@ defmodule Apiary.ProcessesTest do
 
       assert %Version{number: 1, status: :current, author_id: nil, based_on_id: nil} = version
       assert version.document == default()
-      assert version.template == %{"type" => "qory.software", "version" => 1}
+
+      assert %{"source" => "qory", "type" => "qory.software", "version" => 1} =
+               version.template
+
       assert version.public_id =~ ~r/\Apv_[0-9a-hjkmnp-tv-z]{16}\z/
       assert Processes.current(scope.workspace).id == version.id
     end

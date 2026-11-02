@@ -3058,6 +3058,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert row_options(lv, destination) == [
                {"Workspace's harness", "default"},
                {"core · Qory harness · latest", "workspace:core"},
+               {"software · Qory harness · latest", "workspace:software"},
                {"A stack of another repository…", "other"}
              ]
 

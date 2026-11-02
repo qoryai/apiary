@@ -145,7 +145,7 @@ defmodule ApiaryWeb.StagesLiveTest do
                "Every work item of #{scope.workspace.name} goes through these stages, in order."
              )
 
-      assert has_element?(view, "#stages-harness", "Harness: Qory harness")
+      assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack software")
 
       assert has_element?(
                view,
@@ -790,6 +790,21 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a workspace with no template" do
+    test "the harness line shows the stack core", %{conn: conn, path: path, scope: scope} do
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [qory_stack: nil]
+        )
+
+      {:ok, view, _html} = live(conn, path)
+      details(view, path)
+
+      assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack core")
+    end
+  end
+
   describe "a member" do
     setup %{scope: scope} do
       %{user: user} = member_fixture(scope)
@@ -806,7 +821,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
 
       details(view, path)
-      assert has_element?(view, "#stages-harness", "Harness: Qory harness")
+      assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack software")
       refute has_element?(view, "#stages-harness-change")
       assert has_element?(view, "#stages-machine-read", "Default machine type: default")
 

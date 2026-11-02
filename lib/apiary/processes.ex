@@ -7,10 +7,17 @@ defmodule Apiary.Processes do
 
   ## Versions
 
-  A workspace is made with version 1, a copy of the newest version of its type's default
-  process (`Apiary.Processes.TypeTemplates.newest/1`), with that version's `{type,
-  number}` kept as its `template` (`copy_default/1`). A workspace made another way, before the process was kept or by a
-  test that inserts it, gets that copy the first time `current/1` reads it.
+  A workspace is made with version 1, the process of the template it is made from, and
+  `template` records where that came from, with the keys `source` (`qory` or
+  `repository`), `git`, `commit`, `module`, `stack`, `type` and `version`. The Qory
+  template's process is the newest version of the type's default process
+  (`Apiary.Processes.TypeTemplates.newest/1`, `copy_qory_template/1`). A template of a
+  harness source is copied as it was read (`copy_template/4`); `type` is its page key
+  (Apiary.Stacks.Sources.template_key/2), and `version` is nil.
+
+  A workspace made with no template gets a copy of that newest version with its `{type,
+  number}` as its `template` (`copy_default/1`). One made another way, before the process
+  was kept or by a test that inserts it, gets that copy the first time `current/1` reads it.
 
   A save (`save/4`) makes a new current version, and the version before it past; work
   items taken in after it run under it, and every other work item stays on its version
@@ -48,6 +55,7 @@ defmodule Apiary.Processes do
   alias Apiary.Harnesses.QoryCopy
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
   alias Apiary.Stacks.{Sources, Stack}
@@ -318,16 +326,66 @@ defmodule Apiary.Processes do
     key = Domain.definition(Domain.for_workspace(workspace)).key
     newest = TypeTemplates.newest(key)
 
+    insert_first(workspace, newest.document, %{"type" => key, "version" => newest.number}, opts)
+  end
+
+  @doc """
+  copy_qory_template/1 inserts version 1 of `workspace`, made from the Qory template, with
+  no author: the newest version of its type's default process, and the record of the
+  template (the moduledoc). Called where the workspace is created, in that transaction.
+  `{:ok, version}`.
+  """
+  @spec copy_qory_template(%Workspace{}) :: {:ok, Version.t()} | {:error, term}
+  def copy_qory_template(%Workspace{} = workspace) do
+    key = Domain.definition(Domain.for_workspace(workspace)).key
+    newest = TypeTemplates.newest(key)
+    harness = Definition.qory_harness()
+
+    insert_first(
+      workspace,
+      newest.document,
+      %{
+        "source" => "qory",
+        "git" => harness.git,
+        "commit" => harness.latest,
+        "module" => QoryCopy.template_module(),
+        "stack" => Workspace.qory_stack(workspace),
+        "type" => key,
+        "version" => newest.number
+      },
+      []
+    )
+  end
+
+  @doc """
+  copy_template/4 inserts version 1 of `workspace`, made from a template of a harness
+  source by the person `author_id`: `document`, the template's process, and `template`, its
+  record (Apiary.Stacks.Sources.save_start/3). The author is the scope's person, because
+  a version with no author reads as copied from the workspace type on the Stages page.
+  Called where the workspace is created, in that transaction. `{:ok, version}`.
+  """
+  @spec copy_template(%Workspace{}, document, map, Ecto.UUID.t() | nil) ::
+          {:ok, Version.t()} | {:error, term}
+  def copy_template(%Workspace{} = workspace, document, %{} = template, author_id) do
+    workspace
+    |> first_version(document, template)
+    |> Map.put(:author_id, author_id)
+    |> Repo.insert()
+  end
+
+  defp insert_first(%Workspace{} = workspace, document, template, opts),
+    do: workspace |> first_version(document, template) |> Repo.insert(opts)
+
+  defp first_version(%Workspace{} = workspace, document, template) do
     %Version{
       organisation_id: workspace.organisation_id,
       workspace_id: workspace.id,
       public_id: Apiary.PublicId.generate("pv"),
       number: 1,
       status: :current,
-      document: newest.document,
-      template: %{"type" => key, "version" => newest.number}
+      document: document,
+      template: template
     }
-    |> Repo.insert(opts)
   end
 
   @doc """

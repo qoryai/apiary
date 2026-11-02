@@ -19,7 +19,8 @@ defmodule Apiary.Stacks do
   # workspace's row, the workspace's choice (`choice/1`); the organisation's row, the
   # harness it shares with every workspace (`shared/1`). The choice `:qory` is the Qory
   # harness, with the document that extends the harness of the workspace's type
-  # (`Apiary.Lingo.Domain.definition/1`); `:repository` a harness repository or a stack of
+  # (`Apiary.Lingo.Domain.definition/1`) at the workspace's stack
+  # (`Apiary.Organisations.Workspace.qory_stack/1`); `:repository` a harness repository or a stack of
   # one, with the document that extends it. The row's version (`Apiary.Stacks.Stack`)
   # gives the `ref` a run reads the base at (`version_ref/3`); a row with no version is
   # read at its document's `ref`. `chosen_for/4` reads the choice for a run, and
@@ -31,9 +32,14 @@ defmodule Apiary.Stacks do
   # access and write no audit entry. Tests call them, the demo (`mix apiary.demo.console`)
   # calls `put_stack/3`, and Workspace settings › Workflow calls both through
   # `Apiary.Stacks.Sources.save/3`, which asks `harness.save`, the access action for a
-  # save, first. A write records the person who saved the value and, in
-  # `owner_organisation_id`, the organisation the edition gives for the scope
-  # (`Apiary.Edition.harness_owner/1`). The core gives the scope's organisation when the
+  # save, first. A new workspace's harness calls `put_stack/4` through
+  # `Apiary.Stacks.Sources.save_start/3` and `save_qory_start/2`, after the checks of
+  # `Apiary.Organisations.create_workspace_from_template/3` or
+  # `create_workspace_of_kind/3`. A write records the person who saved the value and, in
+  # `owner_organisation_id`, the option `owner:` where the caller gives it, as
+  # `save_start/3` does with the shared row's owner, else the organisation the edition
+  # gives for the scope (`Apiary.Edition.harness_owner/1`). The core gives the scope's
+  # organisation when the
   # scope reaches it through a membership there alone (`saved_by/1`), and the instance's
   # organisation for an instance admin who reaches it any other way. A scope the edition
   # gives no organisation for, such as the instance acting by itself, saves nothing
@@ -368,15 +374,15 @@ defmodule Apiary.Stacks do
   # none (the default), so a write there without one removes the choice. `{:ok, stack}`;
   # `{:error, :forbidden}` when the edition gives none; or `{:error, changeset}` with the
   # reason on its field. `version`, `{kind, name}`, is the version of a choice
-  # (`Apiary.Stacks.Stack`), nil for none (the default). It checks no access (the
-  # moduledoc).
+  # (`Apiary.Stacks.Stack`), nil for none (the default). `owner` is the organisation that
+  # owns the row, in place of the edition's answer. It checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
 
-    case Edition.harness_owner(scope) do
+    case Keyword.get_lazy(opts, :owner, fn -> Edition.harness_owner(scope) end) do
       owner when is_binary(owner) ->
         Repo.transact(fn ->
           current = lock_row(columns)

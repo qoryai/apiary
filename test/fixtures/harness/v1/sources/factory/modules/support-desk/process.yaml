@@ -5,7 +5,7 @@ description: >-
   Each ticket goes through two stages. In Answer, an agent drafts an answer and
   then checks its tone, for up to three rounds. In Check, a person reads the
   draft and sends it or sends it back.
-type: customer-care
+type: qory.software
 stack: support
 process:
   schema: qory.process/v1

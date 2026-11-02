@@ -325,8 +325,8 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert_patch(view, "/#{scope.organisation.slug}/audit-log?page=2")
       render_async(view)
 
-      # The 55 renames and the sign-up.
-      assert length(row_ids(view)) == 6
+      # The 55 renames, the sign-up and the custom type of the Qory template.
+      assert length(row_ids(view)) == 7
       assert has_element?(view, "#activity-newer")
       refute has_element?(view, "#activity-older")
     end
@@ -343,7 +343,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
         view |> element("#activity-first-page") |> render_click()
         assert_patch(view, "/#{scope.organisation.slug}/audit-log")
         render_async(view)
-        assert length(row_ids(view)) == 1
+        assert length(row_ids(view)) == 2
       end
     end
 

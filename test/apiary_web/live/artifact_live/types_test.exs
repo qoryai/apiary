@@ -136,6 +136,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
   end
 
   test "keeps a type in use on with a line why, until a change clears the line", ctx do
+    show!(ctx.scope, nil)
     {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("mockup"))
 
     {:ok, _trial} =
@@ -199,6 +200,8 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     end
 
     test "shows no old line after a switch by a person who lost the level", ctx do
+      show!(ctx.scope, nil)
+
       {1, _rows} =
         Repo.update_all(
           from(m in Apiary.Organisations.Membership, where: m.id == ^ctx.scope.membership.id),
