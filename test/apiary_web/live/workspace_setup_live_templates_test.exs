@@ -324,6 +324,19 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
              ]
     end
 
+    test "a template whose types are refused has a line for each refusal", ctx do
+      types = "artifact_types:\n  - name: reply-draft\n  - name: tone-note\n"
+      serve(ctx, harness_files(%{"a" => support_desk_file() <> types}))
+      lv = open(ctx)
+
+      refute has_element?(lv, "#set-up-group-connected ul")
+
+      assert texts(lv, "#set-up-group-connected p") == [
+               "a in acme/harness is not a template: reply-draft is not a standard type, so it needs a definition.",
+               "a in acme/harness is not a template: tone-note is not a standard type, so it needs a definition."
+             ]
+    end
+
     test "modules that are not a list of names", ctx do
       serve(ctx, harness_files(%{}, root: "a"))
       lv = open(ctx)

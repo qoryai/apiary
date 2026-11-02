@@ -36,6 +36,7 @@ defmodule ApiaryWeb.SetUpComponents do
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
   alias Apiary.{Access, Adapters, Features, Mail, Organisations, Processes, WorkspaceSetup}
+  alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Processes.TypeTemplates
   alias Apiary.Stacks.Sources
   alias ApiaryWeb.HarnessComponents
@@ -1072,23 +1073,9 @@ defmodule ApiaryWeb.SetUpComponents do
 
     lines =
       not_readable
+      |> Enum.flat_map(&not_readable_lines(&1, source))
       |> Enum.with_index()
-      |> Enum.map(fn {%{module: module, reason: reason}, index} ->
-        text =
-          if module do
-            gettext("%{module} in %{repository} is not a template: %{reason}.",
-              module: module,
-              repository: source.label,
-              reason: not_readable_words(reason)
-            )
-          else
-            pgettext(
-              "plain",
-              "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
-              repository: source.label
-            )
-          end
-
+      |> Enum.map(fn {text, index} ->
         %{id: "set-up-line-#{slug(place.prefix)}-#{index}", text: text}
       end)
 
@@ -1107,9 +1094,32 @@ defmodule ApiaryWeb.SetUpComponents do
     end
   end
 
-  defp not_readable_words(:stack_not_exported), do: gettext("its stack is not exported")
-  defp not_readable_words({:invalid, _errors}), do: gettext("its process is not valid")
-  defp not_readable_words(:unreadable), do: gettext("Qory Apiary cannot read its process.yaml")
+  # The lines of one module that is not a template: one, and one for each refusal of its
+  # types.
+  defp not_readable_lines(%{module: nil}, source) do
+    [
+      pgettext(
+        "plain",
+        "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
+        repository: source.label
+      )
+    ]
+  end
+
+  defp not_readable_lines(%{module: module, reason: reason}, source) do
+    for words <- not_readable_words(reason) do
+      gettext("%{module} in %{repository} is not a template: %{reason}.",
+        module: module,
+        repository: source.label,
+        reason: words
+      )
+    end
+  end
+
+  defp not_readable_words(:stack_not_exported), do: [gettext("its stack is not exported")]
+  defp not_readable_words({:invalid, _errors}), do: [gettext("its process is not valid")]
+  defp not_readable_words({:types, refusals}), do: Enum.map(refusals, &TemplateTypes.message/1)
+  defp not_readable_words(:unreadable), do: [gettext("Qory Apiary cannot read its process.yaml")]
 
   @doc false
   # read_line/3 is why the read of the place `place` (`t:Apiary.Stacks.Sources.listed/0`)
