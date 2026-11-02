@@ -5771,6 +5771,7 @@ msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then."
 msgstr ""
 
@@ -6852,6 +6853,7 @@ msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Connected repositories"
 msgstr ""
 

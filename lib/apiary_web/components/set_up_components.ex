@@ -1021,7 +1021,7 @@ defmodule ApiaryWeb.SetUpComponents do
     for {group, title} <- [
           shared: gettext("Shared harness"),
           assigned: gettext("Assigned harnesses"),
-          connected: gettext("Connected repositories")
+          connected: pgettext("plain", "Connected repositories")
         ],
         parts = group_parts(Enum.filter(places, &(&1.group == group)), reads, organisation),
         parts.cards != [] or parts.lines != [] or parts.reading do
@@ -1082,7 +1082,8 @@ defmodule ApiaryWeb.SetUpComponents do
               reason: not_readable_words(reason)
             )
           else
-            gettext(
+            pgettext(
+              "plain",
               "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
               repository: source.label
             )
