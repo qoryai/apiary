@@ -56,6 +56,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.SetupLive,
     ApiaryWeb.InstanceLive.SetUp,
     ApiaryWeb.WorkspaceSetupLive,
+    ApiaryWeb.WorkspaceTypeLive,
     ApiaryWeb.InstanceLive.General,
     ApiaryWeb.InstanceLive.Mail,
     ApiaryWeb.InstanceMailController,
