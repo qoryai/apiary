@@ -10,6 +10,10 @@ defmodule ApiaryWeb.SetUpComponents do
     from 1280 px. Below 1280 px the indicator is a bar on top; below 1024 px the context
     stacks under the form.
   - `heading/1` is a step's title, and `back/1` the Back button at the form's foot.
+  - `kind_cards/1` is the empty organisation overview's choice of what the first workspace
+    does, and `template_cards/1` New workspace's: a card for each template of the Qory
+    harness, the organisation's shared harness, the sources assigned to it and its
+    connected repositories. `read_line/3` is why a source was not read.
 
   Each step belongs to one of two progresses, its `:progress`. The instance's,
   `:instance`, is set up once, by the instance admin: Your account, one step for each
@@ -846,8 +850,9 @@ defmodule ApiaryWeb.SetUpComponents do
   name, and the summary describes it. The cards are 20rem wide, or the column's width
   where the column is narrower, in a grid that wraps a further card to the next line. A
   card's title is one heading level below `heading`. The empty organisation overview
-  (`ApiaryWeb.OrganisationLive`) and New workspace (`/:org/workspaces/new`) show it. With
-  `limit`, that line shows in an information notice in place of the cards.
+  (`ApiaryWeb.OrganisationLive`) shows it; New workspace (`/:org/workspaces/new`) shows
+  `template_cards/1`. With `limit`, that line shows in an information notice in place of
+  the cards.
   """
   attr :id, :string, default: "set-up-cards"
   attr :title, :string, required: true
@@ -885,34 +890,281 @@ defmodule ApiaryWeb.SetUpComponents do
         role="list"
         class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
       >
-        <li :for={card <- @cards} id={"set-up-card-#{card.domain.name()}"} class="flex min-w-0">
-          <.link
-            id={"set-up-card-#{card.domain.name()}-link"}
-            navigate={~p"/#{@organisation}/workspaces/new/#{card.type}"}
-            aria-label={card.texts.name}
-            aria-describedby={card.texts.summary && "set-up-card-#{card.domain.name()}-summary"}
-            class="group flex w-full min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4 transition-colors hover:border-line-strong"
-          >
-            <span class="flex items-start justify-between gap-3">
-              <.dynamic_tag tag_name={@card_heading} class="min-w-0 break-words font-semibold">
-                {card.texts.name}
-              </.dynamic_tag>
-              <.icon
-                name="hero-arrow-right-micro"
-                class="mt-0.5 size-4 flex-none text-muted group-hover:text-base-content"
-              />
-            </span>
-            <span
-              :if={card.texts.summary}
-              id={"set-up-card-#{card.domain.name()}-summary"}
-              class="text-[13.5px]/5"
-            >
-              {card.texts.summary}
-            </span>
-          </.link>
-        </li>
+        <.template_card
+          :for={card <- @cards}
+          id={"set-up-card-#{card.domain.name()}"}
+          href={~p"/#{@organisation}/workspaces/new/#{card.type}"}
+          name={card.texts.name}
+          summary={card.texts.summary}
+          heading={@card_heading}
+        />
       </ul>
     </div>
+    """
+  end
+
+  @doc """
+  template_cards/1 is New workspace's choice of what a new workspace does: one card per
+  template, in groups under headings, each card a link to the template's page,
+  `/:org/workspaces/new/<key>` (`ApiaryWeb.WorkspaceTypeLive`). The groups, in order:
+
+    * "Qory harness": the Qory template, as `kind_cards/1` shows it, always;
+    * "Shared harness", "Assigned harnesses" and "Connected repositories": the templates
+      each place of `places` gave, as `reads` has them.
+
+  `places` are the places the person may list templates from. `reads` maps a place's
+  `prefix` to `:waiting` or `:reading`, `{:ok, templates}` or `{:error, reason}`. A place in
+  the assigned or connected group shows its `label` under each summary. A place shows, in
+  its group, "Reading harnesses…" while it is not read, a line for each module that is not
+  a template, a line for the modules past the first 20, and the words of a failed read.
+  A group with no card and no line is left out, so a connected repository with no template
+  shows nothing. A hidden shared harness is named "the shared harness" and its address is
+  not in the page. `limited` is the place whose read the person's limit stopped, shown as
+  a line above the groups. With `limit`, that line shows in an information notice in place
+  of the groups.
+  """
+  attr :id, :string, default: "set-up-cards"
+  attr :title, :string, required: true
+  attr :organisation, Organisation, required: true, doc: "the organisation the cards are in"
+  attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
+  attr :places, :list, default: [], doc: "the places to read, but the Qory one"
+  attr :reads, :map, default: %{}, doc: "the state of each place's read, by its prefix"
+  attr :limited, :map, default: nil, doc: "`%{seconds: pos_integer, place: map}`"
+
+  def template_cards(assigns) do
+    assigns =
+      assigns
+      |> assign(:cards, if(assigns.limit, do: [], else: cards()))
+      |> assign(:groups, if(assigns.limit, do: [], else: groups(assigns)))
+
+    ~H"""
+    <div class="grid gap-4">
+      <h1 id={"#{@id}-title"} class="text-2xl/8 font-semibold tracking-[-0.025em]">
+        {@title}
+      </h1>
+      <.notice :if={@limit} kind={:info}>
+        <span id="set-up-limit">{@limit}</span>
+      </.notice>
+      <div :if={!@limit} id={@id} class="grid gap-6">
+        <.notice :if={@limited} kind={:info}>
+          <span id="set-up-templates-limited">
+            <.rich text={read_line({:limited, @limited.seconds}, @limited.place, @organisation)} />
+          </span>
+        </.notice>
+        <section id="set-up-group-qory" aria-labelledby="set-up-group-qory-title" class="grid gap-3">
+          <h2 id="set-up-group-qory-title" class="text-lg/7 font-semibold tracking-[-0.015em]">
+            {gettext("Qory harness")}
+          </h2>
+          <ul
+            role="list"
+            class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
+          >
+            <.template_card
+              :for={card <- @cards}
+              id={"set-up-card-#{card.domain.name()}"}
+              href={~p"/#{@organisation}/workspaces/new/#{card.type}"}
+              name={card.texts.name}
+              summary={card.texts.summary}
+              heading="h3"
+            />
+          </ul>
+        </section>
+        <section
+          :for={group <- @groups}
+          id={"set-up-group-#{group.id}"}
+          aria-labelledby={"set-up-group-#{group.id}-title"}
+          class="grid gap-3"
+        >
+          <h2
+            id={"set-up-group-#{group.id}-title"}
+            class="text-lg/7 font-semibold tracking-[-0.015em]"
+          >
+            {group.title}
+          </h2>
+          <ul
+            :if={group.cards != []}
+            role="list"
+            class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
+          >
+            <.template_card
+              :for={card <- group.cards}
+              id={card.id}
+              href={~p"/#{@organisation}/workspaces/new/#{card.key}"}
+              name={card.name}
+              summary={card.summary}
+              label={card.label}
+              heading="h3"
+            />
+          </ul>
+          <p
+            :if={group.reading}
+            id={"set-up-group-#{group.id}-reading"}
+            class="text-[13px]/5 text-muted"
+          >
+            {gettext("Reading harnesses…")}
+          </p>
+          <p :for={line <- group.lines} id={line.id} class="text-[13px]/5 text-muted">
+            <.rich text={line.text} />
+          </p>
+        </section>
+      </div>
+    </div>
+    """
+  end
+
+  # The groups after the Qory one that have a card or a line, in order.
+  defp groups(%{places: places, reads: reads, organisation: organisation}) do
+    for {group, title} <- [
+          shared: gettext("Shared harness"),
+          assigned: gettext("Assigned harnesses"),
+          connected: gettext("Connected repositories")
+        ],
+        parts = group_parts(Enum.filter(places, &(&1.group == group)), reads, organisation),
+        parts.cards != [] or parts.lines != [] or parts.reading do
+      Map.merge(parts, %{id: Atom.to_string(group), title: title})
+    end
+  end
+
+  defp group_parts(places, reads, organisation) do
+    Enum.reduce(places, %{cards: [], lines: [], reading: false}, fn place, parts ->
+      case Map.get(reads, place.prefix, :waiting) do
+        pending when pending in [:waiting, :reading] ->
+          %{parts | reading: true}
+
+        {:ok, result} ->
+          %{
+            parts
+            | cards: parts.cards ++ place_cards(place, result.templates),
+              lines: parts.lines ++ place_lines(place, result)
+          }
+
+        {:error, reason} ->
+          line = %{
+            id: "set-up-line-#{slug(place.prefix)}",
+            text: read_line(reason, place, organisation)
+          }
+
+          %{parts | lines: parts.lines ++ [line]}
+      end
+    end)
+  end
+
+  defp place_cards(place, templates) do
+    for template <- templates do
+      key = place.prefix <> "." <> template.module
+
+      %{
+        id: "set-up-card-#{slug(key)}",
+        key: key,
+        name: template.name,
+        summary: template.summary,
+        label: if(place.group in [:assigned, :connected], do: place.source.label)
+      }
+    end
+  end
+
+  defp place_lines(place, %{not_readable: not_readable, more: more}) do
+    source = named(place)
+
+    lines =
+      not_readable
+      |> Enum.with_index()
+      |> Enum.map(fn {%{module: module, reason: reason}, index} ->
+        text =
+          if module do
+            gettext("%{module} in %{repository} is not a template: %{reason}.",
+              module: module,
+              repository: source.label,
+              reason: not_readable_words(reason)
+            )
+          else
+            gettext(
+              "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
+              repository: source.label
+            )
+          end
+
+        %{id: "set-up-line-#{slug(place.prefix)}-#{index}", text: text}
+      end)
+
+    if more > 0 do
+      text =
+        ngettext(
+          "%{repository} lists %{count} more module. New workspace reads the first 20.",
+          "%{repository} lists %{count} more modules. New workspace reads the first 20.",
+          more,
+          repository: source.label
+        )
+
+      lines ++ [%{id: "set-up-line-#{slug(place.prefix)}-more", text: text}]
+    else
+      lines
+    end
+  end
+
+  defp not_readable_words(:stack_not_exported), do: gettext("its stack is not exported")
+  defp not_readable_words({:invalid, _errors}), do: gettext("its process is not valid")
+  defp not_readable_words(:unreadable), do: gettext("Qory Apiary cannot read its process.yaml")
+
+  @doc false
+  # read_line/3 is why the read of the place `place` (`t:Apiary.Stacks.Sources.listed/0`)
+  # failed, for a reason of `Apiary.Stacks.Sources` or `:exited`, in the words of
+  # `ApiaryWeb.HarnessComponents.read_words/3`. A failed read of a public repository's host
+  # has its words from `read_words/4`, which takes the organisation's name where a
+  # workspace's is asked, as New workspace has no workspace.
+  @spec read_line(term, map, %Organisation{}) :: String.t() | list
+  def read_line(reason, place, %Organisation{name: name}),
+    do: HarnessComponents.read_words(reason, named(place), name, name)
+
+  @doc false
+  # named/1 is the source of `place` (`t:Apiary.Stacks.Sources.listed/0`) as a page names
+  # it: a hidden shared harness is "the shared harness", with no address.
+  @spec named(map) :: map
+  def named(%{hidden: true, source: source}),
+    do: %{source | label: gettext("the shared harness")}
+
+  def named(%{source: source}), do: source
+
+  # An id's text for an element id: a key's dots and any other mark become hyphens.
+  defp slug(text), do: String.replace(text, ~r/[^A-Za-z0-9_-]/, "-")
+
+  attr :id, :string, required: true
+  attr :href, :string, required: true
+  attr :name, :string, required: true
+  attr :summary, :string, default: nil
+  attr :label, :string, default: nil, doc: "the source the template is read from"
+  attr :heading, :string, required: true, values: ~w(h2 h3)
+
+  # template_card/1 is one card: a link named after the template, with its summary and,
+  # where there is one, the label of its source. Both `kind_cards/1` and `template_cards/1`
+  # show it.
+  defp template_card(assigns) do
+    ~H"""
+    <li id={@id} class="flex min-w-0">
+      <.link
+        id={"#{@id}-link"}
+        navigate={@href}
+        aria-label={@name}
+        aria-describedby={@summary && "#{@id}-summary"}
+        class="group flex w-full min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4 transition-colors hover:border-line-strong"
+      >
+        <span class="flex items-start justify-between gap-3">
+          <.dynamic_tag tag_name={@heading} class="min-w-0 break-words font-semibold">
+            {@name}
+          </.dynamic_tag>
+          <.icon
+            name="hero-arrow-right-micro"
+            class="mt-0.5 size-4 flex-none text-muted group-hover:text-base-content"
+          />
+        </span>
+        <span :if={@summary} id={"#{@id}-summary"} class="text-[13.5px]/5">
+          {@summary}
+        </span>
+        <span :if={@label} id={"#{@id}-label"} class="break-words text-[12px]/4 text-muted">
+          {@label}
+        </span>
+      </.link>
+    </li>
     """
   end
 

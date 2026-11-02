@@ -1004,6 +1004,11 @@ msgstr ""
 msgid "%{mode} is the mode now."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{module} in %{repository} is not a template: %{reason}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{ms} ms"
@@ -2614,6 +2619,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{ref} · by %{who} · %{ago}"
 msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{repository} lists %{count} more module. New workspace reads the first 20."
+msgid_plural "%{repository} lists %{count} more modules. New workspace reads the first 20."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5277,6 +5289,11 @@ msgstr[1] ""
 msgid "Assigned a work item to version %{number} of the process"
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned harnesses"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Assigned to this organisation"
@@ -5750,6 +5767,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change Qory's proposal · #%{number}"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Change `modules` in %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then."
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -6826,6 +6848,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connected by itself, with a code from Qory Apiary, %{date}"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Connected repositories"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -9567,6 +9594,21 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Harness: %{harness}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "Harness: %{repository}, stack %{stack}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "Harness: Qory harness, stack %{stack}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "Harness: shared harness, stack %{stack}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -14683,6 +14725,11 @@ msgstr ""
 msgid "Qory Apiary allows these hosts for every run. Host rules do not remove them."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary cannot read its process.yaml"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary closed this work item on %{date}, when its integration was removed."
@@ -14890,6 +14937,7 @@ msgid "Qory accepts a result only in Explore's format and up to 128 KiB. This re
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Qory harness"
@@ -15055,6 +15103,12 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the log as text"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#: lib/apiary_web/live/workspace_type_live.ex
+#, elixir-autogen, elixir-format
+msgid "Reading harnesses…"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -17024,6 +17078,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shape"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shared harness"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -22953,6 +23012,11 @@ msgstr ""
 msgid "its host is an IP address or a local name: give a public host name"
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "its process is not valid"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "its ref is no version of its source"
@@ -22966,6 +23030,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "its root has no qory-stack.yaml and no harness section"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "its stack is not exported"
 msgstr ""
 
 #: lib/apiary_web/format.ex
@@ -23692,6 +23761,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "the shared harness"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

@@ -1063,6 +1063,168 @@ defmodule Apiary.Stacks.SourcesTest do
     end
   end
 
+  describe "the places New workspace lists" do
+    # The organisation's shared harness, a harness repository at `git` and `ref`.
+    defp share!(ctx, git, ref \\ "HEAD") do
+      document =
+        "extends:\n  git: #{Jason.encode!(git)}\n  stack: \"support\"\n  ref: #{Jason.encode!(ref)}\n"
+
+      {:ok, row} =
+        Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, document,
+          choice: :repository,
+          version: {:branch, ref}
+        )
+
+      row
+    end
+
+    test "the Qory template, the shared harness, the assigned sources, then the connected repositories",
+         ctx do
+      share!(ctx, @public)
+      admin = instance_admin_scope()
+      assignment(nil, %{"git" => @team, "ref" => "v1"}, admin)
+      calls()
+
+      assert [qory, shared, assigned, app, harness] = Sources.listed(ctx.scope)
+
+      assert %{group: :qory, prefix: "qory", source: nil, hidden: false} = qory
+
+      assert %{
+               group: :shared,
+               prefix: "shared",
+               hidden: false,
+               source: %{
+                 git: @public,
+                 ref: "HEAD",
+                 narrowing: %{},
+                 label: "example-org/public-harness"
+               }
+             } = shared
+
+      assert %{group: :assigned, prefix: "assigned-" <> _, source: %{git: @team, ref: "v1"}} =
+               assigned
+
+      assert %{group: :connected, prefix: "sc_" <> _, source: %{label: "acme/app"}} = app
+      assert %{group: :connected, source: %{label: "acme/harness", git: @harness}} = harness
+      assert harness.prefix == "sc_" <> String.replace_prefix(harness.source.id, "linked:sc_", "")
+
+      # Nothing is called to list.
+      assert calls() == []
+    end
+
+    test "the Qory harness shared, or nothing shared, lists no shared place", ctx do
+      assert [%{group: :qory}, %{group: :connected}, %{group: :connected}] =
+               Sources.listed(ctx.scope)
+
+      {:ok, _shared} = Sources.choose(ctx.scope, :qory, shared: true)
+      assert Enum.map(Sources.listed(ctx.scope), & &1.group) == [:qory, :connected, :connected]
+    end
+
+    test "an assigned source narrowed to a stack or a folder is not listed", ctx do
+      admin = instance_admin_scope()
+      assignment(nil, %{"git" => @team, "ref" => "v1", "stack" => "web"}, admin)
+      assignment(nil, %{"git" => @team, "ref" => "v2", "path" => "stacks/web"}, admin)
+      assignment(nil, %{"git" => @team, "ref" => "v3", "module" => "m"}, admin)
+
+      assert Enum.map(Sources.listed(ctx.scope), & &1.group) == [:qory, :connected, :connected]
+    end
+
+    test "a repository an earlier place has at the same ref is listed once", ctx do
+      share!(ctx, @harness)
+      admin = instance_admin_scope()
+      assignment(nil, %{"git" => @app, "ref" => "HEAD"}, admin)
+
+      assert [
+               %{group: :qory},
+               %{group: :shared, source: %{git: @harness}},
+               %{group: :assigned, source: %{git: @app}}
+             ] = Sources.listed(ctx.scope)
+
+      # The same address at another ref is another read.
+      share!(ctx, @harness, "v1")
+
+      assert [
+               %{group: :qory},
+               %{group: :shared, source: %{git: @harness, ref: "v1"}},
+               %{group: :assigned, source: %{git: @app}},
+               %{group: :connected, source: %{git: @harness, ref: "HEAD"}}
+             ] = Sources.listed(ctx.scope)
+    end
+
+    test "a shared harness that runs hide has no label, and the others show their address",
+         ctx do
+      row = share!(ctx, @public)
+      instance_org = Apiary.Edition.instance_organisation_id()
+
+      {1, _} =
+        Repo.update_all(from(s in Stack, where: s.id == ^row.id),
+          set: [owner_organisation_id: instance_org]
+        )
+
+      assert [_qory, %{group: :shared, hidden: true, source: %{label: ""}}, _app, _harness] =
+               Sources.listed(ctx.scope)
+    end
+
+    test "only a person workspace.create allows lists anything", ctx do
+      %{scope: member} = member_fixture(ctx.scope)
+      %{scope: admin} = member_fixture(ctx.scope, :admin)
+
+      assert Sources.listed(member) == []
+      assert Sources.listed(admin) == []
+      assert Sources.find_listed(admin, "qory.software") == :error
+    end
+
+    test "a page key splits at its first dot, as a module's name may have dots", ctx do
+      share!(ctx, @public)
+      [_qory, _shared, app | _] = Sources.listed(ctx.scope)
+
+      assert {:ok, %{prefix: "shared"}, "a.b.c"} = Sources.find_listed(ctx.scope, "shared.a.b.c")
+      assert {:ok, %{prefix: prefix}, "x"} = Sources.find_listed(ctx.scope, app.prefix <> ".x")
+      assert prefix == app.prefix
+
+      for key <- ["qory.software", "shared.", "shared", "nobody.x", "assigned-none.x", ""] do
+        assert Sources.find_listed(ctx.scope, key) == :error
+      end
+    end
+
+    test "a shared row of a repository lists its templates", ctx do
+      share!(ctx, @harness)
+
+      files = %{
+        {"R_harness", "qory.yaml"} => root("[support-desk]"),
+        {"R_harness", module_path("support-desk")} => template_file()
+      }
+
+      serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+      [_qory, %{group: :shared, source: source}, _app] = Sources.listed(ctx.scope)
+
+      assert source.narrowing == %{}
+
+      assert {:ok, %{templates: [%{module: "support-desk", stack: "support"}]}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "a shared row whose repository only a narrowed assignment covers has no template",
+         ctx do
+      admin = instance_grant(ctx)
+
+      assignment(
+        ctx.scope.organisation.id,
+        %{"git" => @team, "ref" => "v1", "stack" => "web"},
+        admin
+      )
+
+      share!(ctx, @team, "v1")
+      calls()
+
+      assert [_qory, %{group: :shared, source: source}, _app, _harness] =
+               Sources.listed(ctx.scope)
+
+      assert source.narrowing == %{}
+      assert Sources.templates(ctx.scope, source) == {:error, :not_covered}
+    end
+  end
+
   describe "the save" do
     setup ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)

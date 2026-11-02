@@ -59,6 +59,60 @@ defmodule Apiary.HarnessReadsFixtures do
     })
   end
 
+  @template_source Path.expand("../../fixtures/harness/v1/sources/factory", __DIR__)
+
+  @doc """
+  The `process.yaml` of the module `support-desk` of the fixture harness source
+  (`test/fixtures/harness/v1/sources/factory`): a template on the stack `support`.
+  """
+  def support_desk_file,
+    do: File.read!(Path.join(@template_source, "modules/support-desk/process.yaml"))
+
+  @doc """
+  The files, for the `files:` of `serve_calls/2`, of the harness repository whose resource
+  is `resource_ref`: a root `qory.yaml` that exports the stack `support` and lists
+  `modules` (a map of a module's name to its `process.yaml`, in the order of its names),
+  and the file of each module. `root:` replaces the `modules` line of the root file, as
+  YAML, such as `"[a, b]"`.
+  """
+  def repository_files(resource_ref, modules, opts \\ []) do
+    names = modules |> Map.keys() |> Enum.sort()
+    listed = Keyword.get(opts, :root, "[" <> Enum.join(names, ", ") <> "]")
+
+    Map.new(modules, fn {name, file} ->
+      {{resource_ref, "modules/#{name}/process.yaml"}, file}
+    end)
+    |> Map.put(
+      {resource_ref, "qory.yaml"},
+      "exports:\n  stacks: [support]\n  modules: #{listed}\n"
+    )
+  end
+
+  @doc """
+  Serves the calls of `adapter` for `count` connected repositories of `connection`, each
+  at `https://code.example.com/acme/repo-NN`, titled `acme/repo-NN`, with one module
+  `support-desk` whose file is `support_desk_file/0`. Returns the collections.
+  """
+  def many_repositories(adapter, connection, grant_ref, count) do
+    for n <- 1..count do
+      number = String.pad_leading(Integer.to_string(n), 2, "0")
+      git = "https://code.example.com/acme/repo-#{number}"
+      {git, harness_collection_fixture(connection, git, "acme/repo-#{number}"), "R_#{number}"}
+    end
+    |> then(fn repos ->
+      covered =
+        %{adapter.adapter.id => Map.new(repos, fn {git, _c, ref} -> {git, {grant_ref, ref}} end)}
+
+      files =
+        Enum.reduce(repos, %{}, fn {_git, _c, ref}, files ->
+          Map.merge(files, repository_files(ref, %{"support-desk" => support_desk_file()}))
+        end)
+
+      serve_calls([adapter], covered: covered, files: files)
+      Enum.map(repos, fn {_git, collection, _ref} -> collection end)
+    end)
+  end
+
   @doc """
   Serves the calls of `adapters`, each `%{adapter, host, seed}`. `covered` maps an
   adapter's id to a map of an address to its `{grant_ref, resource_ref}`; `files` maps

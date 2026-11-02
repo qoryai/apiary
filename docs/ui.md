@@ -1246,42 +1246,67 @@ hides its parts on phones in that block.
 The set-up is the pages a person goes through before the console: the set-up link
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
 (`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up: the kind cards, on
-the empty organisation overview `/<org>` and on New workspace `/<org>/workspaces/new`,
-each a link to its type's page `/<org>/workspaces/new/<type key>`, whose Create workspace
+the empty organisation overview `/<org>`, and the template cards on New workspace
+`/<org>/workspaces/new`, each a link to its template's page
+`/<org>/workspaces/new/<key>`, whose Create workspace (the Qory template's alone)
 creates the workspace, then each step a page of the workspace,
 `/<org>/<workspace>/set-up/<step>`. Each step has its URL,
 so a reload or a link opens that step. The signed-in pages show the top bar and no
-sidebar, but for the kind cards and the type's page, which show the organisation's sidebar, and the steps of
+sidebar, but for the kind cards, the template cards and the template's page, which show the organisation's sidebar, and the steps of
 a workspace that exists, which show the workspace's sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the product's
 mark and the theme menu.
 
 - **The kind cards** (`SetUpComponents.kind_cards/1`) come before the workspace set-up:
   on the organisation's overview (`/<org>`) while it has no workspace, under "What will
-  your first workspace do?", and on `/<org>/workspaces/new`, under "What will this
-  workspace do?". There is one card per type of workspace, "Software factory" the one,
-  each with the type's name, its summary and an arrow, as the type's newest version shows
-  them (`Apiary.Processes.type_texts/1`). The whole card is one link to the type's page,
-  named after the type. Each card is 20rem wide, or the column's width where the column
-  is narrower, and a further card wraps to the next line. A person who may not create the first workspace sees "An owner of
-  Acme creates the first workspace." in place of the cards. Where the organisation has as
-  many workspaces as the edition allows, New workspace is headed "New workspace", with no
-  question, and shows the edition's line in an information notice in place of the cards:
-  "Qory Apiary Community allows one workspace per organisation, and Acme has it." The
-  cards show no indicator:
-  the count starts at the step Name, in the sidebar's group Set up.
-- **The type's page** (`WorkspaceTypeLive`, `/<org>/workspaces/new/qory.software`), for
-  the people New workspace is for; its breadcrumb is the organisation, New workspace,
-  then the type's name. With `workflow_model`, the stages a new workspace starts with fill
-  the window on the view-only canvas (The stages canvas), and a 24rem side panel beside it
-  has the type's name as the page's heading, its summary, "How it works" with its
-  description, "Stages" with "The workspace starts with the stages shown. After you
-  create it, owners and admins can change them in Workspace settings › Stages.", and
-  **Create workspace** under the text. Without the feature there is no canvas: "How it
-  works" takes the main area, and the side panel has the name, the summary and Create
-  workspace. **Create workspace** creates the workspace, named after the type ("Software
-  factory", then "Software factory 2"), and opens its step Name. The page shows nothing
-  of the workspace limit; at the limit, Create workspace shows the edition's line as
-  information. A key of no type with a card is a page that does not exist.
+  your first workspace do?". There is one card per type of workspace, "Software factory"
+  the one, each with the type's name, its summary and an arrow, as the type's newest
+  version shows them (`Apiary.Processes.type_texts/1`). The whole card is one link to the
+  type's page, named after the type. Each card is 20rem wide, or the column's width where
+  the column is narrower, and a further card wraps to the next line. A person who may not
+  create the first workspace sees "An owner of Acme creates the first workspace." in place
+  of the cards. The cards show no indicator: the count starts at the step Name, in the
+  sidebar's group Set up.
+- **The template cards** (`SetUpComponents.template_cards/1`) are New workspace
+  (`/<org>/workspaces/new`), under "What will this workspace do?": the same card for each
+  template, in groups under a heading each. "Qory harness" has the Software factory card.
+  With the feature `factory`, "Shared harness" has the templates of the harness repository
+  the organisation shares, "Assigned harnesses" those of the sources an instance admin
+  assigned to it, and "Connected repositories" those of its connected repositories, for a
+  person `harness.save` allows (`Apiary.Stacks.Sources.listed/1`). A card of the last two
+  groups shows the label of its repository under the summary. A group with no card and
+  no line is not shown. The page reads each repository once the page is connected, at most
+  4 at a time, and each group shows "Reading harnesses…" until its repositories are read.
+  A module that is not a template, modules past the first 20 and a repository that cannot
+  be read have a line in their group. Where the person has used their 10 reads of a
+  minute, the page keeps the cards it has, shows the limit line, and reads the rest when
+  the minute ends. A shared harness that runs hide shows no address: it is "the shared
+  harness". Where the organisation has as many workspaces as the edition allows, New
+  workspace is headed "New workspace", with no question, and shows the edition's line in
+  an information notice in place of the cards, and nothing is read: "Qory Apiary
+  Community allows one workspace per organisation, and Acme has it."
+- **The template's page** (`WorkspaceTypeLive`, `/<org>/workspaces/new/<key>`), for the
+  people New workspace is for; its breadcrumb is the organisation, New workspace, then the
+  template's name. The Qory template's key is `qory.software`. With `workflow_model`, the
+  stages a new workspace starts with fill the window on the view-only canvas (The stages
+  canvas), and a 24rem side panel beside it has the template's name as the page's
+  heading, its summary, "How it works" with its description, "Stages" with "The workspace
+  starts with the stages shown. After you create it, owners and admins can change them in
+  Workspace settings › Stages.", the harness line "Harness: Qory harness, stack software",
+  and **Create workspace** under the text. Without the feature there is no canvas: "How it
+  works" takes the main area, and the side panel has the name, the summary, the harness
+  line and Create workspace. **Create workspace** creates the workspace, named after the
+  template ("Software factory", then "Software factory 2"), and opens its step Name. The
+  page shows nothing of the workspace limit; at the limit, Create workspace shows the
+  edition's line as information.
+  A template of a harness repository has the key `<prefix>.<module>`, split at the first
+  dot. The page reads the repository, shows "Reading harnesses…", then the canvas or "How
+  it works" from the template's process, its name, summary and description, and the harness
+  line "Harness: acme/harness, stack support" (for a shared harness that runs hide,
+  "Harness: shared harness, stack support") where Create workspace stands on the Qory page.
+  It has no Create workspace. A read that fails shows its reason and a link to New
+  workspace; a module that gave no template opens New workspace. A key of no template
+  place, and any key but `qory.software` without the feature `factory`, is a page that
+  does not exist.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
   settings page's column **About this step** (`.q-context`): the muted colour, no box.

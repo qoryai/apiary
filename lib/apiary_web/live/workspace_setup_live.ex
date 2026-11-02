@@ -6,17 +6,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # the steps with a tick on each one done and the step current (`ApiaryWeb.Layouts.app/1`),
   # so the frame shows no indicator.
   #
-  # **New workspace.** A page of the organisation, in its sidebar: the kind cards
-  # (`ApiaryWeb.SetUpComponents.kind_cards/1`) under "What will this workspace do?", which
-  # the empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Each card
-  # leads to its type's page (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace
+  # **New workspace.** A page of the organisation, in its sidebar: the template cards
+  # (`ApiaryWeb.SetUpComponents.template_cards/1`) under "What will this workspace do?",
+  # in groups: the Qory harness, and, with the `factory` feature, the organisation's shared
+  # harness, the sources assigned to it and its connected repositories
+  # (`Apiary.Stacks.Sources.listed/1`). The Qory card is on the page at once. Once the
+  # socket is connected, `ApiaryWeb.TemplateReads` reads the templates of each other place
+  # outside the page's process, at most 4 at a time, and each result shows when its read
+  # ends. A read that the person's limit stops (`{:limited, seconds}`) keeps the results
+  # shown, shows the limit line, and the reads start again after `seconds`
+  # (`:templates_resume`). Each card leads to its template's page
+  # (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace, on the Qory template alone,
   # creates the workspace at once, named after its type, and opens its Name step
-  # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The page is only for a person
-  # `workspace.create` allows (`Apiary.Access`); where the organisation has as many
+  # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The empty organisation overview shows the
+  # Qory card alone (`ApiaryWeb.SetUpComponents.kind_cards/1`). The page is only for a
+  # person `workspace.create` allows (`Apiary.Access`); where the organisation has as many
   # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page is headed
-  # "New workspace" and shows the edition's line on why
-  # (`c:Apiary.Edition.workspace_limit_line/1`) in an information notice, in place of the
-  # cards.
+  # "New workspace", shows the edition's line on why
+  # (`c:Apiary.Edition.workspace_limit_line/1`) in an information notice in place of the
+  # cards, and reads nothing.
   #
   # **The flow.** A step is named by its id in the path (`Apiary.WorkspaceSetup.flow/0`);
   # a step the person does not see, or no step's id, is a path that does not exist. The
@@ -225,7 +233,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     NodeComponents,
     OverviewComponents,
     SetUpComponents,
-    SettingsComponents
+    SettingsComponents,
+    TemplateReads
   }
 
   alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
@@ -255,7 +264,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        listing: false,
        harness_exports: nil,
        workspace_stacks: nil,
-       workspace_stacks_of: nil
+       workspace_stacks_of: nil,
+       template_places: [],
+       template_reads: %{},
+       template_limit: nil
      )}
   end
 
@@ -307,11 +319,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp connect_label(:destinations, false), do: gettext("Connect a destination")
   defp connect_label(:destinations, true), do: gettext("Connect another destination")
 
-  # New workspace: the kind cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), or the line
-  # of an organisation that has as many workspaces as the edition allows.
+  # New workspace: the template cards (`ApiaryWeb.SetUpComponents.template_cards/1`), or the
+  # line of an organisation that has as many workspaces as the edition allows.
   defp assign_cards(socket) do
     scope = socket.assigns.current_scope
     at_limit = SetUpComponents.at_limit?(scope)
+
+    # At the limit the page makes no read.
+    places =
+      if at_limit,
+        do: [],
+        else: Enum.reject(Sources.listed(scope), &(&1.group == :qory))
 
     assign(socket,
       view: :cards,
@@ -326,6 +344,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         ),
       limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
+    |> TemplateReads.init(places)
+    |> TemplateReads.start()
   end
 
   ## The flow
@@ -1683,6 +1703,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_async(:harness_linked, _exit, socket),
     do: {:noreply, harness_listed(socket, [])}
 
+  def handle_async({:templates, prefix}, result, socket),
+    do: {:noreply, TemplateReads.done(socket, prefix, result)}
+
   def handle_async(:harness_exports, {:ok, {id, result}}, socket),
     do: {:noreply, exports_read(socket, id, result)}
 
@@ -1783,6 +1806,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_info({Dispatches, :changed}, socket), do: {:noreply, reload(socket)}
   def handle_info(:setup_tick, socket), do: {:noreply, reload(socket)}
 
+  # The window of the person's reads is over: New workspace reads the places left.
+  def handle_info(:templates_resume, socket),
+    do: {:noreply, TemplateReads.resume(socket)}
+
   # A change of the test run's registered run.
   def handle_info(
         {:run_changed, %Run{dispatch_run_id: id}},
@@ -1840,10 +1867,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:organisation}
     >
       <:crumb>{gettext("New workspace")}</:crumb>
-      <SetUpComponents.kind_cards
+      <SetUpComponents.template_cards
         title={@page_title}
         limit={@limit}
         organisation={@current_scope.organisation}
+        places={@template_places}
+        reads={@template_reads}
+        limited={@template_limit}
       />
     </Layouts.app>
     """

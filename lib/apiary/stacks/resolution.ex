@@ -133,6 +133,15 @@ defmodule Apiary.Stacks.Resolution do
     end
   end
 
-  defp hidden?(_owner, %{operated: true}), do: true
-  defp hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
+  @doc false
+  # hidden?/2 is whether a run of `input`'s organisation hides the text of a document that
+  # `owner` owns (the moduledoc, Hidden). Only `organisation_id` and `operated` of `input`
+  # are read.
+  @spec hidden?(owner, %{
+          required(:organisation_id) => Ecto.UUID.t(),
+          required(:operated) => boolean,
+          optional(atom) => term
+        }) :: boolean
+  def hidden?(_owner, %{operated: true}), do: true
+  def hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
 end

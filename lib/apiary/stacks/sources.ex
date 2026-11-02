@@ -56,6 +56,15 @@ defmodule Apiary.Stacks.Sources do
   # root file may list modules outside that limit. A read of such a source reads
   # `harness.yaml` for its commit, and no `qory.yaml` and no module's file.
   #
+  # ## The places New workspace lists
+  #
+  # `listed/1` is the places a person may list templates from, with no call: the Qory
+  # template for a person `workspace.create` allows, and, with the feature `factory`, the
+  # harness repository the organisation shares, the assigned sources without a `path` or
+  # `stack`, and the connected repositories for a person `harness.save` allows. A page key
+  # is the place's prefix, a dot and a module's name (`find_listed/2`). A place whose `git`
+  # and `ref` an earlier place has is left out.
+  #
   # ## Limits
   #
   # A person's reads are counted in a fixed window of a minute, by the person's account
@@ -127,7 +136,7 @@ defmodule Apiary.Stacks.Sources do
 
   require Logger
 
-  alias Apiary.{Access, Harnesses, Repo, Stacks}
+  alias Apiary.{Access, Edition, Features, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
   alias Apiary.Harnesses.{Assignment, PublicGit, Reader, Walk}
@@ -136,7 +145,7 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{RateLimit, Target}
-  alias Apiary.Stacks.{Document, Stack}
+  alias Apiary.Stacks.{Document, Resolution, Stack}
 
   @head "HEAD"
   @stack_file "qory-stack.yaml"
@@ -545,6 +554,125 @@ defmodule Apiary.Stacks.Sources do
 
       true ->
         nil
+    end
+  end
+
+  @typedoc """
+  A place New workspace lists templates from: its `group` (`:qory`, `:shared`, `:assigned`
+  or `:connected`), the `prefix` of its page keys, its `source` (nil for the Qory
+  template, which is read from the copy), and whether runs hide the harness
+  (`hidden`). A page key is `prefix <> "." <> module`.
+  """
+  @type listed :: %{
+          group: :qory | :shared | :assigned | :connected,
+          prefix: String.t(),
+          source: source | nil,
+          hidden: boolean
+        }
+
+  @doc false
+  # listed/1 is the places the scope's person may list templates from (the moduledoc), in
+  # the order New workspace shows them, with no call: the Qory template for everyone
+  # `workspace.create` allows, and, with the feature `factory`:
+  #
+  #   * the harness the organisation shares, when it is a harness repository;
+  #   * each assigned source with no `path` or `stack` (`templates/2` reads no template of
+  #     one);
+  #   * each connected repository, for a person `harness.save` allows.
+  #
+  # A source whose `git` and `ref` an earlier place has is left out, so one read serves
+  # both. A shared row converts with `narrowing: %{}`: the row has no field for where it
+  # came from, and `locate` still asks `Apiary.Harnesses.allowed?/3`, so a repository only
+  # a narrowed assignment covers is `:not_covered`. The `label` of a hidden shared harness
+  # is "", for the page to name.
+  @spec listed(Scope.t()) :: [listed]
+  def listed(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    if Access.can?(scope, :"workspace.create", organisation) do
+      qory = %{group: :qory, prefix: "qory", source: nil, hidden: false}
+
+      if Features.visible?(scope, :factory) do
+        others =
+          shared_listed(organisation) ++
+            assigned_listed(scope) ++ connected_listed(scope, organisation)
+
+        [qory | Enum.uniq_by(others, &{&1.source.git, &1.source.ref})]
+      else
+        [qory]
+      end
+    else
+      []
+    end
+  end
+
+  @doc false
+  # find_listed/2 is the place of the page key `key` among `listed/1` and the module the
+  # key names: `{:ok, listed, module}`, or `:error` for a key of no place with a source.
+  # The key splits at its first dot, as a module's name may have dots.
+  @spec find_listed(Scope.t(), String.t()) :: {:ok, listed, String.t()} | :error
+  def find_listed(%Scope{} = scope, key) when is_binary(key) do
+    with [prefix, module] when module != "" <- String.split(key, ".", parts: 2),
+         %{source: %{}} = place <- Enum.find(listed(scope), &(&1.prefix == prefix)) do
+      {:ok, place, module}
+    else
+      _none -> :error
+    end
+  end
+
+  defp shared_listed(%Organisation{} = organisation) do
+    with %{choice: :repository, git: git} = chosen when is_binary(git) <- shared(organisation),
+         %Stack{owner_organisation_id: owner} <- Stacks.shared(organisation) do
+      hidden =
+        Resolution.hidden?(owner, %{
+          organisation_id: organisation.id,
+          operated: Edition.operated?(organisation)
+        })
+
+      [
+        %{
+          group: :shared,
+          prefix: "shared",
+          hidden: hidden,
+          source: %{
+            id: "shared",
+            kind: :linked,
+            label: if(hidden, do: "", else: repository(git)),
+            git: git,
+            ref: chosen.pin || @head,
+            narrowing: %{},
+            location: nil,
+            version: nil,
+            stacks: nil
+          }
+        }
+      ]
+    else
+      _none -> []
+    end
+  end
+
+  defp assigned_listed(scope) do
+    for source <- assigned(scope), not narrowed?(source.narrowing) do
+      %{
+        group: :assigned,
+        prefix: String.replace_prefix(source.id, "assigned:", "assigned-"),
+        source: source,
+        hidden: false
+      }
+    end
+  end
+
+  defp connected_listed(scope, organisation) do
+    if Access.can?(scope, :"harness.save", organisation) do
+      for source <- repositories(scope) do
+        %{
+          group: :connected,
+          prefix: String.replace_prefix(source.id, "linked:", ""),
+          source: source,
+          hidden: false
+        }
+      end
+    else
+      []
     end
   end
 

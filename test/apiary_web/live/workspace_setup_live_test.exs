@@ -183,7 +183,8 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new")
 
       assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
-      assert has_element?(lv, "#set-up-card-software h2", "Software factory")
+      assert has_element?(lv, "h2#set-up-group-qory-title", "Qory harness")
+      assert has_element?(lv, "#set-up-group-qory #set-up-card-software h3", "Software factory")
 
       assert has_element?(
                lv,
