@@ -149,9 +149,9 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
     lv = open(ctx.conn, ctx.scope, run)
 
-    assert has_element?(lv, "#after-session-step-2[open]")
+    assert has_element?(lv, "#after-session-step-2-failed[open]")
 
-    assert lv |> element("#after-session-step-2-output") |> render() =~
+    assert lv |> element("#after-session-step-2-failed-output") |> render() =~
              "rejected: the branch moved"
 
     refute has_element?(lv, "#prepare-machine-step-2")
@@ -234,7 +234,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -304,11 +304,11 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
       assert settled?(lv)
 
       arrive!(lv, run, failed_push(8))
-      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
 
       arrive!(lv, run, [failed_exit(10)])
-      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -319,7 +319,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
       arrive!(lv, run, failed_push(8) ++ [failed_exit(10)])
 
-      assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -347,6 +347,47 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
     arrive!(lv, run, [push_started(6)])
 
     assert has_element?(lv, "#after-session-step-1[data-state='running']")
+  end
+
+  # The test reads the page as the server sends it, so it shows the new `id` and `open`.
+  # That a browser's `details` opens needs a browser: `row/1` keeps the `open` of a row
+  # that has mounted.
+  test "a push that fails on an open page gets a new row, open; a success keeps the row",
+       ctx do
+    run = session_over(ctx.scope, [push_started(6)])
+    lv = open(ctx.conn, ctx.scope, run)
+    assert has_element?(lv, "#after-session-step-1:not([open])")
+
+    arrive!(lv, run, [push_exited(7, "failed", 1)])
+
+    refute has_element?(lv, "#after-session-step-1")
+    assert has_element?(lv, "#after-session-step-1-failed[open][phx-mounted]")
+
+    other = session_over(ctx.scope, [push_started(6)])
+    lv = open(ctx.conn, ctx.scope, other)
+
+    arrive!(lv, other, [push_exited(7, "succeeded", 0)])
+
+    assert has_element?(lv, "#after-session-step-1:not([open])")
+  end
+
+  test "a Prepare machine row keeps its id when its step fails", ctx do
+    run =
+      ctx.scope
+      |> run_fixture()
+      |> project!([
+        {1, "run.started", started_data()},
+        {2, "run.step_started", %{"step" => 1, "name" => "set up", "kind" => "setup"}}
+      ])
+
+    lv = open(ctx.conn, ctx.scope, run)
+
+    arrive!(lv, run, [
+      {3, "run.step_exited",
+       %{"step" => 1, "state" => "failed", "exit_code" => 2, "duration_ms" => 100}}
+    ])
+
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='failed']")
   end
 
   test "a run's exit cancels an open push step on the page", ctx do
@@ -377,8 +418,8 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
     lv = open(ctx.conn, ctx.scope, run)
 
-    assert has_element?(lv, "#after-session-step-1[data-state='failed']")
-    refute has_element?(lv, "#after-session-step-1-output")
+    assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+    refute has_element?(lv, "#after-session-step-1-failed-output")
     refute render(lv) =~ "web-shop.git"
   end
 

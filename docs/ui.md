@@ -1835,7 +1835,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   not show an earlier failed tool under How it ended; a failed result or a failed turn
   still shows there. An open page shows a push step's
   start, its end, and the Cancelled of a run's exit with no reload; its output shows at
-  the step's end.
+  the step's end. A row that fails on an open page opens, as its `id` changes to a new
+  one that ends in `-failed`, so the page mounts it again; a person's open or close of a
+  row stays until then.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

@@ -21,7 +21,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
   After the session has one row per push step, the same row as a step's above, with no
   total, no cause line and no Clean up row (`after_session/1`). A failed push is no failed
-  preparation (`Apiary.Runs.Preparation`).
+  preparation (`Apiary.Runs.Preparation`), and its row opens when it fails on an open page.
 
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
@@ -265,7 +265,7 @@ defmodule ApiaryWeb.PreparationComponents do
       <ol class="q-prep-steps">
         <li :for={step <- @preparation.after_session}>
           <.step_row
-            id={"#{@id}-step-#{step.number}"}
+            id={after_session_row(@id, step)}
             step={step}
             alive={@alive}
             pruned_at={@preparation.log_pruned_at}
@@ -275,6 +275,14 @@ defmodule ApiaryWeb.PreparationComponents do
     </section>
     """
   end
+
+  # A row's `id` changes when the step fails, as a push fails on an open page. `row/1` keeps
+  # the `open` a row mounted with, so only a new row opens; after that, a person's open or
+  # close stays.
+  defp after_session_row(id, %{state: "failed", number: number}),
+    do: "#{id}-step-#{number}-failed"
+
+  defp after_session_row(id, %{number: number}), do: "#{id}-step-#{number}"
 
   attr :id, :string, required: true
   attr :step, :map, required: true
