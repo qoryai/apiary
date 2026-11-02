@@ -6287,6 +6287,11 @@ msgstr ""
 msgid "Chosen when the workspace was created, and can't be changed. The type sets the words on the workspace's pages and the integrations offered to the workspace."
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Clean up"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -11168,6 +11173,21 @@ msgstr[1] ""
 msgid "Machine or pool"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Machine removal reports"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Machine removal requested"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Machine removed"
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Machine requested"
@@ -11177,6 +11197,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Machine started"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Machine stays registered"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -12318,6 +12343,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "No prune has run yet. The job runs every day."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "No removal report"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15061,6 +15091,11 @@ msgstr ""
 msgid "Reloaded."
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Removal failed: the machine still exists"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/artifact_live/new.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -15491,6 +15526,21 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Replaces this target's allow rule."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Reported that a run's machine was removed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Reported that the removal of a run's machine failed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Reported that the removal of a run's machine was requested"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -20736,6 +20786,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for %{node} to run it."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a report"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
