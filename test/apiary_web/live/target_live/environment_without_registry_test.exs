@@ -7,11 +7,19 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutRegistryTest do
 
   import Phoenix.LiveViewTest
   import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
   alias Apiary.{Dispatches, Repo, Targets}
 
   @moduletag needs: :factory
+
+  # The instance's organisation comes first, so the person signed up here is no instance
+  # admin.
+  setup do
+    _organisation = ensure_instance_organisation!()
+    :ok
+  end
 
   setup :register_and_log_in_user
   setup {Apiary.DataCase, :without_registry}
@@ -54,7 +62,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutRegistryTest do
     assert has_element?(
              view,
              "#target-environment-no-registry",
-             "Ask an instance admin to set up a registry to build this repository's environment image. Until then, runs start in the pool's default image."
+             "Runs of this repository start in the pool's default image."
            )
 
     refute has_element?(view, "#target-environment-pools")
@@ -63,6 +71,34 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutRegistryTest do
     refute has_element?(view, "#target-environment-rebuild")
     refute render(view) =~ "Runs wait until this repository's environment image is built."
     refute render(view) =~ "A build is waiting."
+  end
+
+  test "an instance admin reads how to get a registry" do
+    admin = instance_admin_scope()
+    admin = %{admin | workspace: workspace_fixture(admin.organisation, "Build")}
+
+    started_run(admin, %{"forge" => @system, "repository" => @path})
+    shop = Targets.get(admin, @system, @path)
+    pool_fixture(admin, name: "mac-pool")
+
+    collection_fixture(admin,
+      external_ref: "SHOP",
+      target_system: @system,
+      target_path: @path,
+      environment_ref: "env-1"
+    )
+
+    view =
+      open(
+        log_in_user(build_conn(), admin.user),
+        workspace_path(admin, "/targets/#{shop.public_id}")
+      )
+
+    assert has_element?(
+             view,
+             "#target-environment-no-registry",
+             "Ask an instance admin to set up a registry"
+           )
   end
 
   test "a target that names no environment: the line it had", %{

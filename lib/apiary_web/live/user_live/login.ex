@@ -149,9 +149,11 @@ defmodule ApiaryWeb.UserLive.Login do
           <%= if @mail? do %>
             <.button variant="link" type="button" phx-click="email_link">{gettext("Email me a link")}</.button>.
           <% else %>
-            {if name = Apiary.ProductName.get(),
-              do: gettext("Ask an admin of %{name} for a password link.", name: name),
-              else: gettext("Ask an admin of this Qory Apiary for a password link.")}
+            <.rich text={
+              rich_gettext("%{contact_support} for a password link.",
+                contact_support: ApiaryWeb.Support.rich()
+              )
+            } />
           <% end %>
         </p>
 

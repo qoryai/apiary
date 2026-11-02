@@ -134,6 +134,12 @@ defmodule Apiary.Access do
       "change the instance's settings in Instance settings › Configuration: an instance admin after a recent sign-in, which no role takes (Apiary.InstanceConfig.save/3)",
       asked_of: :organisation
     ),
+    # The support address, in Instance settings › General.
+    Action.new(
+      :"instance.support_save",
+      "save the support address, where Contact support leads: an instance admin, which no role takes (Apiary.SupportAddress.save/2)",
+      asked_of: :organisation
+    ),
     # The audit trail.
     Action.new(:"audit.read", "read the organisation's audit trail, its Activity page",
       roles: @admins,
@@ -642,6 +648,12 @@ defmodule Apiary.Access do
         {:not,
          "a machine log is kept as a file with its record, which has its size and when it was uploaded, not in the audit trail"}
     ),
+    # The trail keeps three entries of a dispatch at most: its first report, its first
+    # `delete_failed` and its `gone` (`Apiary.Dispatches.MachineEnds`).
+    Action.new(:"dispatch.machine_end", "report the removal of a claimed run's machine",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
     # A member asks for a build of a target's environment, for each node pool of its
     # workspace (`Apiary.Environments.rebuild/2`).
     Action.new(:"target.rebuild_environment", "rebuild the environment of a target",
@@ -655,7 +667,8 @@ defmodule Apiary.Access do
     :"dispatch.claim",
     :"dispatch.dispatched",
     :"dispatch.release",
-    :"dispatch.machine_log"
+    :"dispatch.machine_log",
+    :"dispatch.machine_end"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the
@@ -866,7 +879,8 @@ defmodule Apiary.Access do
   `instance.mail_on`, `Apiary.Mail.turn_on/2`) and changing the instance's settings
   (`instance.configure`, `Apiary.InstanceConfig.save/3`), which also ask for a recent
   sign-in, and setting the product's name (`instance.rename`,
-  `Apiary.ProductName.rename/2`), which asks for none.
+  `Apiary.ProductName.rename/2`) and saving the support address (`instance.support_save`,
+  `Apiary.SupportAddress.save/2`), which ask for none.
 
   ## Features
 

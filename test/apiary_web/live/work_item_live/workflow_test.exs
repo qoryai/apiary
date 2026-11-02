@@ -22,7 +22,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Artifacts, Processes, Repo, Stages}
+  alias Apiary.{Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Artifacts.Artifact
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Stages.{Escalation, GateDecision}
@@ -96,6 +96,33 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, version} -> version
       {:error, [%{error: :unchanged} | _]} -> Processes.current(scope.workspace)
     end
+  end
+
+  # The document of the workspace's current version, with `fun` applied to Explore's
+  # sequence.
+  defp explore_sequence(scope, fun) do
+    Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+      Enum.map(stages, fn
+        %{"id" => @explore} = stage -> Map.update!(stage, "sequence", fun)
+        stage -> stage
+      end)
+    end)
+  end
+
+  # Moves `work_item` to a trial version of the workspace's current one with 2 Explore
+  # rounds instead of 3; its queued run moves with it and keeps its stored `of`.
+  defp two_rounds!(scope, work_item) do
+    document =
+      explore_sequence(scope, fn sequence ->
+        Enum.map(sequence, fn
+          %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
+          entry -> entry
+        end)
+      end)
+
+    {:ok, trial} = Processes.save(scope, scope.workspace, document, trial: true)
+    {:ok, work_item} = Processes.assign(scope, Repo.get!(WorkItem, work_item.id), trial)
+    work_item
   end
 
   defp place!(work_item, version, stage_id, state, fields \\ []) do
@@ -253,11 +280,132 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # Explore runs as before the model: today's step card stays beside the stage card.
       assert has_element?(view, "#work-item-step")
 
-      assert has_element?(view, "#work-item-stage-state", "Running")
+      # The run waits for a machine: the stage card reads queued, as the head and the step
+      # card do, and says nothing runs.
+      assert has_element?(view, "#work-item-stage-state", "Queued")
+      refute has_element?(view, "#work-item-stage-state", "Running")
+      refute has_element?(view, "#work-item-stage-line")
+      refute render(view) =~ "Explore is running."
+      assert has_element?(view, "#work-item-head-meta", "Explore is queued")
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
       assert has_element?(view, "#work-item-stage-round", "Round 1 of 3")
       assert has_element?(view, "#work-item-stage-version", "Process version 1")
-      assert has_element?(view, "#work-item-stage-line", "Explore is running.")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · queued"
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · queued"
+
+      # Details names the queued run, as the run list does, and not None yet.
+      assert has_element?(view, "#work-item-details-runs", "Attempt 1 of 3 is queued.")
+      refute has_element?(view, "#work-item-details-runs", "None yet")
+    end
+
+    test "a queued run moved to a version with fewer rounds counts that version's limit", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = taken_in_fixture(scope)
+      assert %DispatchRun{attempt: 1, of: 3} = newest_run(work_item)
+
+      two_rounds!(scope, work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # The runner stops after round 2 of the version the work item is on, whatever the
+      # stored run says.
+      assert has_element?(view, "#work-item-stage-round", "Round 1 of 2")
+      assert has_element?(view, "#work-item-details-runs", "Attempt 1 of 2 is queued.")
+      refute render(view) =~ "Attempt 1 of 3 is queued."
+    end
+
+    test "a later queued run moved to a version with fewer rounds: the step card counts that version's limit",
+         %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
+
+      two_rounds!(scope, work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-round", "Round 2 of 2")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 2 is queued.")
+      refute render(view) =~ "Attempt 2 of 3 is queued."
+    end
+
+    test "a run queued after Explore's loop counts the runs its entry may have", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Explore: the loop of explore-a-ticket, 3 rounds, then one more workflow outside it.
+      save!(
+        scope,
+        explore_sequence(scope, fn sequence ->
+          sequence ++ [%{"workflow" => "explore-a-ticket"}]
+        end)
+      )
+
+      work_item =
+        Enum.reduce(1..2, taken_in_fixture(scope), fn attempt, work_item ->
+          work_item = end_run!(work_item, questions_result())
+          {:ok, _} = WorkItems.answer(scope, work_item, attempt, %{"1" => "a", "2" => "b"})
+          Repo.get!(WorkItem, work_item.id)
+        end)
+
+      # Round 3 proposes; the workflow after the loop is queued with the runs it may have
+      # in its round, not the loop's rounds.
+      work_item = end_run!(work_item, understood_result())
+      assert %DispatchRun{attempt: 4, of: 6} = newest_run(work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert render(view) =~ "Attempt 4 of 6 is queued."
+      refute render(view) =~ "Attempt 4 of 4 is queued."
+    end
+
+    test "a second take in: the stage card counts its attempts as the step card does", %{
+      conn: conn,
+      scope: scope
+    } do
+      answers = %{"1" => "a", "2" => "b"}
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      # Take in 1: two runs, then the work item is closed and taken in again.
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+      {:ok, _} = WorkItems.close(scope, work_item)
+      {:ok, _} = WorkItems.take_in_again(scope, ticket.public_id)
+
+      # Take in 2: run 1 asks, the answer queues attempt 2.
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+      assert %DispatchRun{take_in: 2, attempt: 2, of: 3} = newest_run(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
+      assert has_element?(view, "#work-item-runs-0", "queued")
+      assert has_element?(view, "#work-item-runs-1", "Attempt 1 · explore-a-ticket")
+      refute has_element?(view, "#work-item-runs-2")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      refute render(view) =~ "Attempt 4"
+    end
+
+    test "a run before the work item was placed: the stage card counts as the step card does",
+         %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
+
+      # As the migration placed the work item: its first run has no stage.
+      {1, _} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^newest_run(work_item).id),
+          set: [stage_id: nil]
+        )
+
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
+      refute has_element?(view, "#work-item-runs-1")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      refute render(view) =~ "Attempt 1 · explore-a-ticket"
     end
 
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
@@ -271,7 +419,28 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · queued"
+      assert has_element?(view, "#work-item-stage-state", "Queued")
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · queued"
+    end
+
+    test "a run handed over to a machine reads running", %{conn: conn, scope: scope} do
+      # Past Explore, where the stage card stands alone.
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :running)
+
+      work_item
+      |> newest_run()
+      |> Ecto.Changeset.change(state: :handed_over)
+      |> Repo.update!()
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-state", "Running")
+      assert has_element?(view, "#work-item-stage-line", "Build is running.")
+      assert has_element?(view, "#work-item-head-stage-status", "Build · Running")
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · running"
     end
 
     test "waiting for answers: a link to the questions", %{conn: conn, scope: scope} do
@@ -290,7 +459,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-answers")
       assert length(String.split(html, "Answer the questions")) == 2
       assert has_element?(view, ~s|#work-item-step a[href$="/explore"]|, "Answer the questions")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · questions"
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · questions"
     end
 
     test "waiting for answers past Explore: the stage card has the link", %{
@@ -320,8 +489,25 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-step-confirm")
       refute has_element?(view, "#work-item-stage-gate-approve")
       refute has_element?(view, "#work-item-stage-gate-ask-changes")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · passed"
+      # The decision is Confirm's: the gate card says nothing of who approves.
+      refute has_element?(view, "#work-item-stage-gate-approvers")
+      refute render(view) =~ "Any member approves."
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · passed"
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
+
+      # The stage card counts attempts of the work item; Artifacts and Details name the run
+      # by its number on the server.
+      number =
+        Repo.one(
+          from r in Apiary.Runs.Run,
+            where: r.dispatch_run_id == ^newest_run(work_item).id,
+            select: r.number
+        )
+
+      assert has_element?(view, "#work-item-artifact-list", "Run #{number} · round 1")
+      assert has_element?(view, "#work-item-details-runs", "Run #{number}")
+      refute html =~ "Run 1 · explore-a-ticket"
+      refute html =~ "rn_"
 
       render_hook(view, "stage_approve", %{
         "number" => "#{work_item.number}",
@@ -341,7 +527,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-state", "Waits for a person")
-      assert has_element?(view, "#work-item-stage-escalation-h", "Explore waits for you")
+      # Waiting on you counts no escalation, so the card addresses no one.
+      refute has_element?(view, "#work-item-stage-escalation-h")
+      refute render(view) =~ "waits for you"
+
+      # The run gave no result, so there is nothing to accept.
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      assert has_element?(view, "#work-item-stage-escalation-another")
 
       assert has_element?(
                view,
@@ -358,11 +550,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-escalation-run",
-               "From run 1 · explore-a-ticket"
+               "From attempt 1 · explore-a-ticket"
              )
 
       refute has_element?(view, "#work-item-stage-escalation-move")
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
 
       # The escalation card's Run another round runs Explore again: the step card offers no
       # Run Explore again, and the event does nothing.
@@ -383,8 +575,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> render_submit(%{"how" => "another_round"})
 
       html = render(view)
-      assert html =~ "Run 2 · explore-a-ticket · round 2"
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert html =~ "Attempt 2 · explore-a-ticket · round 2"
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
     end
 
     test "a run that ended at its claim keeps its line after another round", %{
@@ -410,15 +602,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute Repo.exists?(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      assert render(view) =~ "Run 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert render(view) =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
 
       view
       |> form("#work-item-stage-escalation-form", %{"note" => ""})
       |> render_submit(%{"how" => "another_round"})
 
       html = render(view)
-      assert html =~ "Run 2 · explore-a-ticket · round 2"
-      assert html =~ "Run 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert html =~ "Attempt 2 · explore-a-ticket · round 2"
+      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
     end
   end
 
@@ -862,6 +1054,77 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-check")
     end
 
+    defp check_line(view) do
+      view
+      |> element("#work-item-stage-check-result")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    test "for a workflow: a check that stops on an error sends the reader to support", %{
+      conn: conn,
+      scope: scope
+    } do
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+      work_item = at_build(scope, :waiting_workflow)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      WorkflowFake.check_result(scope.workspace, fn -> raise "the check failed" end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        view |> form("#work-item-stage-check") |> render_submit()
+        render_async(view)
+      end)
+
+      assert check_line(view) ==
+               "Try again, and contact support if it fails again. " <>
+                 "The check of the harness stopped with an error in Qory Apiary."
+
+      Application.put_env(:apiary, :support_address, "support@example.com")
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        view |> form("#work-item-stage-check") |> render_submit()
+        render_async(view)
+      end)
+
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-check-result a[href="mailto:support@example.com"]),
+               "contact support"
+             )
+
+      assert check_line(view) ==
+               "Try again, and contact support if it fails again. " <>
+                 "The check of the harness stopped with an error in Qory Apiary."
+
+      # A read that failed, in the harness's words, links Contact support too.
+      WorkflowFake.check_result(scope.workspace, {:error, {:unreadable, :address}})
+      view |> form("#work-item-stage-check") |> render_submit()
+      render_async(view)
+
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-check-result a[href="mailto:support@example.com"]),
+               "Contact support"
+             )
+    end
+
+    test "a refusal the page has no words for sends the reader to support" do
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+
+      assert ApiaryWeb.WorkItemLive.Show.refused(:busy, nil) ==
+               "Reload the page and act again, and contact support if it fails again. " <>
+                 "Qory Apiary could not act on the stage."
+
+      Application.put_env(:apiary, :support_address, "support@example.com")
+
+      assert ApiaryWeb.WorkItemLive.Show.refused(:busy, nil) ==
+               "Reload the page and act again, and contact support at support@example.com " <>
+                 "if it fails again. Qory Apiary could not act on the stage."
+    end
+
     # A work item at Build, which needs no input here, waiting for a workflow the harness
     # now lists: a check that finds it queues Build's run.
     defp waiting_for_found_workflow(scope) do
@@ -1010,7 +1273,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         )
 
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
-        assert has_element?(view, "#work-item-stage-escalation-h", "Build waits for you")
+        refute has_element?(view, "#work-item-stage-escalation-h")
         assert has_element?(view, "#work-item-stage-escalation-cause", words)
 
         assert has_element?(
@@ -1033,7 +1296,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
         moved = at_build(scope, :escalated, round: 3)
         escalate!(moved, :escalate, "Blocked")
-        {:ok, view, _html} = live(conn, page(scope, moved.number))
+        {:ok, view, html} = live(conn, page(scope, moved.number))
+        refute html =~ "waits for you"
 
         view
         |> form("#work-item-stage-escalation-form", %{"note" => "Plan again", "stage" => @shape})
@@ -1058,7 +1322,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "Accept as it is, and Run another round", %{conn: conn, scope: scope} do
       for how <- ["accept", "another_round"] do
-        work_item = scope |> taken_in_fixture() |> end_run!(nil)
+        work_item = at_build(scope, :escalated, round: 3)
+        push!({:person, scope}, work_item, "explainer", @build)
+        escalate!(work_item, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
         view
@@ -1068,6 +1334,69 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert %Escalation{resolution: resolution} = escalation(work_item)
         assert Atom.to_string(resolution) == how
       end
+    end
+
+    test "no result: no Accept as it is, and a sent accept is refused", %{
+      conn: conn,
+      scope: scope
+    } do
+      stopped = scope |> taken_in_fixture() |> end_run!(nil)
+
+      # Every output of the stage is missing: the agent escalated with nothing made.
+      empty = at_build(scope, :escalated, round: 3)
+      escalate!(empty, :escalate, "Blocked")
+
+      for {work_item, stage} <- [{stopped, @explore}, {empty, @build}] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        refute has_element?(view, "#work-item-stage-escalation-accept")
+        assert has_element?(view, "#work-item-stage-escalation-another")
+
+        render_hook(view, "stage_resolve", %{
+          "number" => "#{work_item.number}",
+          "seen" => stage,
+          "how" => "accept",
+          "note" => ""
+        })
+
+        assert %Escalation{resolution: nil} = escalation(work_item)
+        assert Repo.get!(WorkItem, work_item.id).stage_state == :escalated
+      end
+    end
+
+    test "questions at Explore's last run: Run another round queues one more run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        Enum.reduce(1..2, taken_in_fixture(scope), fn attempt, work_item ->
+          work_item = end_run!(work_item, questions_result())
+          {:ok, _} = WorkItems.answer(scope, work_item, attempt, %{"1" => "a", "2" => "b"})
+          Repo.get!(WorkItem, work_item.id)
+        end)
+
+      work_item = end_run!(work_item, questions_result())
+      assert %Escalation{cause: :round_limit} = escalation(work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # The step card's "the last run of this take in" is false while Run another round is
+      # on the escalation card: the step card is not shown.
+      assert has_element?(view, "#work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      refute has_element?(view, "#work-item-step")
+      refute render(view) =~ "the last run of this take in."
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "another_round"})
+
+      assert %DispatchRun{attempt: 4, of: 4} = newest_run(work_item)
+      assert render(view) =~ "Attempt 4 · explore-a-ticket · round 4 · queued"
+
+      # The round past the limit is the last before the stage escalates again: the count
+      # is never under the round.
+      assert has_element?(view, "#work-item-stage-round", "Round 4 of 4")
+      refute render(view) =~ "Round 4 of 3"
     end
 
     test "a move back to a later stage, or an action it does not know, is refused", %{
@@ -1141,6 +1470,22 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
         assert has_element?(view, "#work-item-head-stage-status", unquote(words))
       end
+    end
+
+    test "past Explore, a run waiting for a machine: the stage and Queued", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :running)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-head-stage-status", "Build · Queued")
+      assert has_element?(view, "#work-item-stage-state", "Queued")
+      refute has_element?(view, "#work-item-stage-line")
     end
 
     test "after Approve at Shape, it follows the stage", %{conn: conn, scope: scope} do
@@ -1665,6 +2010,40 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, list(scope) <> "?q=gift")
       refute has_element?(view, "#work-items-board")
+    end
+
+    test "the Open view lists its work items under the board", %{conn: conn, scope: scope} do
+      explored = backfilled!(scope, @explore, :running)
+      shaped = backfilled!(scope, @shape, :at_gate)
+      {:ok, view, _html} = live(conn, list(scope))
+
+      assert has_element?(view, "#work-items-board")
+      assert has_element?(view, "#work-items-views", "Open")
+
+      for work_item <- [explored, shaped] do
+        assert has_element?(view, "#work-items-rows #work-item-#{work_item.public_id}")
+      end
+    end
+
+    test "each row shows the stage its work item is at", %{conn: conn, scope: scope} do
+      queued = taken_in_fixture(scope)
+      shaped = shape_gate_fixture(scope)
+      stopped = scope |> taken_in_fixture() |> end_run!(nil)
+
+      built =
+        scope
+        |> shape_gate_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :waiting_inputs)
+
+      row = &"#work-items-rows #work-item-#{&1.public_id}"
+      {:ok, view, _html} = live(conn, list(scope))
+
+      assert has_element?(view, row.(queued), "Explore is queued")
+      assert has_element?(view, row.(shaped), "Shape · At the gate")
+      assert has_element?(view, row.(stopped), "Explore · Waits for a person")
+      assert has_element?(view, row.(built), "Build · Waits for inputs")
+      refute has_element?(view, row.(built), "Ready for Shape")
+      refute has_element?(view, row.(shaped), "Ready for Shape")
     end
 
     test "a work item's number, its title without invisible characters, and the mark Test", %{

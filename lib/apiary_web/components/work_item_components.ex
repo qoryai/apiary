@@ -614,6 +614,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
+  attr :queued_of, :integer,
+    default: nil,
+    doc:
+      "the most runs of the take in for a later run that is queued, where the round limit of the work item's version sets it; nil for `:run`'s `:of`"
+
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
@@ -664,6 +669,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         cancel={@cancel}
         item={@item}
         now={@now}
+        queued_of={@queued_of}
       />
     </section>
     """
@@ -728,6 +734,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :cancel, :any, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
+  attr :queued_of, :integer, default: nil
 
   defp step_body(%{status: status, asking: :decline, can_act: true} = assigns)
        when status in @declinable do
@@ -816,7 +823,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         queued:
           gettext("Attempt %{attempt} of %{of} is queued.",
             attempt: Format.number(run.attempt),
-            of: Format.number(run.of)
+            of: Format.number(assigns.queued_of || run.of)
           )
       )
 
@@ -1677,6 +1684,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
+  attr :queued, :string,
+    default: nil,
+    doc: "Runs' line while a run waits for a machine and none has started, in place of None yet"
+
   def work_item_details(assigns) do
     work_item = assigns.work_item
     now = now(assigns)
@@ -1762,7 +1773,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         <dt>{gettext("Runs")}</dt>
         <dd id={"#{@id}-runs"}>
           <span :if={@runs} class="q-wi-runs"><.rich text={runs_line(@runs)} /></span>
-          <span :if={!@runs} class="q-faint">{gettext("None yet")}</span>
+          <span :if={!@runs and @queued} id={"#{@id}-runs-queued"}>{@queued}</span>
+          <span :if={!@runs and !@queued} class="q-faint">{gettext("None yet")}</span>
         </dd>
         <%= if @ended do %>
           <dt>{elem(@ended, 0)}</dt>
@@ -2790,9 +2802,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.icon name={@icon} class="q-xp-bad-i size-4" />
       <div>
         <p id={"#{@id}-h"}><b>{@heading}</b></p>
-        <p :if={@body}>{@body}</p>
+        <p :if={@body}><.rich text={@body} /></p>
         <p :if={@run[:adapter_failure]} id={"#{@id}-adapter"}>
-          {adapter_failure_words(@run.adapter_failure)}
+          <.rich text={adapter_failure_words(@run.adapter_failure)} />
         </p>
         <p :if={@run[:id]}>
           <.rich text={rich_gettext("The page of run %{run} shows what it did.", run: run_ref(@run))} />
@@ -2858,44 +2870,48 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     case cause do
       :timeout ->
-        gettext(
-          "Ask an instance admin to check that %{adapter} is running. The run did not start: the call to %{adapter} for %{what} timed out.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} timed out.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
         )
 
       :unreachable ->
-        gettext(
-          "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run did not start: the call to %{adapter} for %{what} failed to connect, found no address for the host name, or got 502, 503 or 504 from the reverse proxy.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} did not reach it.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what
         )
 
       :refused ->
-        gettext(
-          "Ask an instance admin to check %{adapter}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: the call to %{adapter} for %{what} returned the error %{code}.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter,
           what: what,
           code: failure.code || "unauthorized"
         )
 
       :invalid_answer ->
-        gettext(
-          "Ask an instance admin to check %{adapter}. The run did not start: the response of %{adapter} to the call for %{what} failed its signature check or format check, or was over 1 MiB.",
-          adapter: adapter,
-          what: what
+        rich_gettext(
+          "%{contact_support}. The run did not start: the response of %{adapter} failed its signature check or format check, or was over 1 MiB.",
+          contact_support: ApiaryWeb.Support.rich(),
+          adapter: adapter
         )
 
       :no_address ->
-        gettext(
-          "Ask an instance admin to check the call address of %{adapter}. The run did not start: %{adapter} has no call address, so Qory Apiary could not call it for %{what}.",
-          adapter: adapter,
-          what: what
+        rich_gettext(
+          "%{contact_support}. The run did not start: %{adapter} has no call address.",
+          contact_support: ApiaryWeb.Support.rich(),
+          adapter: adapter
         )
 
       :not_allowed ->
-        gettext(
-          "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run did not start: the call address is not an https address at the adapter's name under the instance's name, its host resolves to an address that Qory Apiary does not call, or the instance's public address has no host name.",
+        rich_gettext(
+          "%{contact_support}. The run did not start: Qory Apiary does not call the call address of %{adapter}.",
+          contact_support: ApiaryWeb.Support.rich(),
           adapter: adapter
         )
 
@@ -2971,14 +2987,16 @@ defmodule ApiaryWeb.WorkItemComponents do
         )
 
       "adapter_unavailable" ->
-        gettext(
-          "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. Three calls to the adapter failed.",
+        rich_gettext(
+          "Run Explore again. If the run ends the same way, %{contact_support}. Three calls to the adapter %{adapter} failed.",
+          contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
           adapter: failure.adapter
         )
 
       "walk_error" ->
-        gettext(
-          "Run Explore again. If the run ends the same way, ask an instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
+        rich_gettext(
+          "Run Explore again. If the run ends the same way, %{contact_support}. The harness walk stopped on an error in Qory Apiary.",
+          contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
         )
 
       _adapter_failed ->

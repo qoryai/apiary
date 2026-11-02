@@ -219,6 +219,7 @@ defmodule Apiary.Runs.PreparationTest do
                step: nil,
                fixer: :workspace_admin,
                text: "No machine was made: No capacity in the region. " <> fix,
+               what: "No machine was made: No capacity in the region.",
                fix: fix
              }
     end
@@ -266,14 +267,19 @@ defmodule Apiary.Runs.PreparationTest do
       assert stopped == %{
                cause: :code_not_redeemed,
                step: nil,
-               fixer: :instance_admin,
+               fixer: :support,
                text:
                  "The machine did not start the run within 15 minutes of the request. " <>
-                   "An instance admin finds the cause in the machine log of the Machine " <>
-                   "started step.",
-               fix:
-                 "An instance admin finds the cause in the machine log of the Machine started step."
+                   "Contact support with run #{run.number}.",
+               what: "The machine did not start the run within 15 minutes of the request.",
+               fix: "Contact support with run #{run.number}."
              }
+
+      refute stopped.fix =~ run.public_id
+
+      # Version 1 of the diagnostics contract has `instance_admin` for this fixer.
+      document = Apiary.Runs.Diagnostics.document(run, :instance)
+      assert document["preparation"]["stopped"]["fixer"] == "instance_admin"
     end
 
     @tag :tmp_dir
@@ -342,6 +348,7 @@ defmodule Apiary.Runs.PreparationTest do
                text:
                  "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
                    "#{ctx.scope.workspace.name} reads the cause in the step's output.",
+               what: "Fetch git.example.com/acme/shop failed with exit code 128.",
                fix:
                  "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
              }
@@ -362,11 +369,11 @@ defmodule Apiary.Runs.PreparationTest do
         ])
 
       assert %{stopped: stopped} = Preparation.read(ctx.scope, run)
-      assert %{cause: :step_failed, step: 1, fixer: :instance_admin} = stopped
+      assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
 
       assert stopped.text ==
-               "Fetch image registry.example/agent failed with exit code 0. An instance admin " <>
-                 "reads the cause in the step's output."
+               "Fetch image registry.example/agent failed with exit code 0. " <>
+                 "Contact support with run #{run.number}."
     end
 
     test "a refused join has no exit status: its line shows no exit code", ctx do
@@ -478,5 +485,45 @@ defmodule Apiary.Runs.PreparationTest do
     %{scope: other} = sign_up_fixture()
 
     assert %{machine: nil, steps: [], stopped: nil} = Preparation.read(other, run)
+  end
+
+  describe "the machine's end" do
+    test "is nil before the starter's first report, and the last report after", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+
+      assert %{machine: %{end: nil, handed_over_at: handed_over_at, ended_at: nil}} =
+               Preparation.read(ctx.scope, run)
+
+      assert handed_over_at == dispatch.handed_over_at
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :deleting})
+      at = Repo.get!(Dispatch, dispatch.id).machine_end_at
+
+      assert %{machine: %{end: %{state: :deleting, at: ^at}}} = Preparation.read(ctx.scope, run)
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+      assert %{machine: %{end: %{state: :gone}}} = Preparation.read(ctx.scope, run)
+    end
+
+    test "ended_at is the dispatch's end, else the run's end once the run ended", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      exited = DateTime.add(DateTime.utc_now(), -120, :second)
+      run = run |> Ecto.Changeset.change(state: "failed", exited_at: exited) |> Repo.update!()
+
+      assert %{machine: %{ended_at: ^exited}} = Preparation.read(ctx.scope, run)
+
+      ended = DateTime.add(DateTime.utc_now(), -60, :second)
+      change_dispatch!(dispatch, ended_at: ended, end_cause: :run_ended)
+      assert %{machine: %{ended_at: ^ended}} = Preparation.read(ctx.scope, run)
+    end
+
+    test "a dispatch released before its handover has no handover", ctx do
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No capacity."})
+      run = Repo.get!(Run, registered.id)
+
+      assert %{machine: %{handed_over_at: nil, end: nil, ended_at: %DateTime{}}} =
+               Preparation.read(ctx.scope, run)
+    end
   end
 end

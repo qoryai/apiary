@@ -15,8 +15,9 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   (`Apiary.Integrations.Source.url_sources?/0`, `INTEGRATION_URL_SOURCES`), how long the
   audit trail keeps an entry and its address, the grace period before a deleted workspace
   or organisation is purged, the invitations an organisation sends a day
-  (`Apiary.InstanceConfig`), and whether and when the server prunes runs by their
-  workspace's retention (`Apiary.Retention.Scheduler`, the application's configuration,
+  (`Apiary.InstanceConfig`), the support address (`Apiary.SupportAddress`), read only
+  here and changed on General unless `SUPPORT_ADDRESS` sets it, and whether and when the
+  server prunes runs by their workspace's retention (`Apiary.Retention.Scheduler`, the application's configuration,
   which no setting of the environment changes).
 
   The audit trail's two periods, the grace period and the invitations a day are forms an
@@ -202,6 +203,21 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           </.part_form>
         </SettingsComponents.part>
 
+        <SettingsComponents.part id="config-support" title={gettext("Support")}>
+          <dl class="grid gap-4">
+            <ConfigurationComponents.setting
+              id="config-support-address"
+              label={gettext("Support address")}
+              value={@support.address || gettext("None")}
+              source={@support.source}
+            >
+              {gettext(
+                "Where “Contact support” leads on the pages and in the emails people in an organisation read. With none, “Contact support” shows as plain text."
+              )}
+            </ConfigurationComponents.setting>
+          </dl>
+        </SettingsComponents.part>
+
         <.live_component
           :for={{module, i} <- Enum.with_index(@edition_parts, 1)}
           module={module}
@@ -356,6 +372,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
          url_sources: Source.url_sources?(),
          pruning: Scheduler.enabled?() && pruning_hour(),
          sources: sources(),
+         support: support(),
          edition_parts: ApiaryWeb.Edition.configuration_parts(scope),
          forms: %{}
        )
@@ -503,6 +520,30 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   defp description(:path_rules), do: gettext("Paths on a policy rule's form.")
 
   defp description(_feature), do: nil
+
+  # The support address (`Apiary.SupportAddress`), read only here: the variable's, with
+  # the variable, where SUPPORT_ADDRESS sets it; else the one saved on General, with a
+  # link there to change it.
+  defp support do
+    case Apiary.SupportAddress.source() do
+      :env ->
+        %{
+          address: Apiary.SupportAddress.env(),
+          source: ConfigurationComponents.env_line("SUPPORT_ADDRESS")
+        }
+
+      _saved_or_none ->
+        %{
+          address: Apiary.SupportAddress.stored(),
+          source:
+            rich_gettext("Changed in %{page}",
+              page:
+                {:link, ~p"/instance/general",
+                 gettext("Instance settings › %{page}", page: gettext("General"))}
+            )
+        }
+    end
+  end
 
   # Where each value read only at start comes from: the setting of the server's
   # environment, as `config/runtime.exs` read it, where whoever runs the server set it; the

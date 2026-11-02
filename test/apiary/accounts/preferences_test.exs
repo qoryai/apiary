@@ -101,7 +101,7 @@ defmodule Apiary.Accounts.PreferencesTest do
       user = user_fixture()
 
       assert {:error, changeset} = Accounts.update_user_preferences(user, %{language: "xx"})
-      assert %{language: ["is not a language this instance has"]} = errors_on(changeset)
+      assert %{language: ["is not a language Qory Apiary offers"]} = errors_on(changeset)
 
       assert {:error, _changeset} =
                Accounts.update_user_preferences(user, %{language: "en@software"})

@@ -810,7 +810,7 @@ defmodule ApiaryWeb.NodeLive.Index do
                 id={"node-#{node.public_id}-level"}
                 text={
                   gettext(
-                    "The instance provides the Qory Pool to every workspace that has no pool. It belongs to no workspace or organisation."
+                    "Qory Pool: machines Qory Apiary provides for the runs of every workspace that has no pool."
                   )
                 }
               />
@@ -818,9 +818,7 @@ defmodule ApiaryWeb.NodeLive.Index do
                 :if={instance?(node) and node.kind == :gateway}
                 id={"node-#{node.public_id}-level"}
                 text={
-                  gettext(
-                    "The instance provides the Qory Gateway to every organisation. It belongs to no workspace or organisation."
-                  )
+                  gettext("Qory Gateway: the gateway Qory Apiary provides to every organisation.")
                 }
               />
               <.side_words

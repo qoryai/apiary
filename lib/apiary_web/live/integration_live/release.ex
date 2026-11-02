@@ -110,7 +110,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <%= if @release.state == "ready" and @description do %>
           <.notice :if={!@accepted} kind={:warning}>
             {gettext(
-              "This instance no longer accepts integrations from this source, so it can't be added."
+              "Qory Apiary no longer adds integrations from this source, so this one can't be added."
             )}
           </.notice>
 
@@ -328,7 +328,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   end
 
   defp failure("integration_source_refused"),
-    do: gettext("This instance doesn't accept integrations from this source.")
+    do: gettext("Qory Apiary doesn't add integrations from this source.")
 
   defp failure("fetch_failed"),
     do:

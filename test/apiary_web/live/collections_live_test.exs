@@ -420,16 +420,15 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     {:ok, lv, _html} = live(ctx.conn, ctx.sources)
 
     assert words(lv, "#work-sources-no-adapter") ==
-             "No work source for this type is set up on this instance. An instance admin " <>
-               "sets one up in Instance settings › Adapters."
+             "Contact support to add a work source. Qory Apiary offers none for this type yet."
 
     refute has_element?(lv, "#work-sources-connect")
 
     {:ok, lv, _html} = live(ctx.conn, ctx.destinations)
 
     assert words(lv, "#destinations-no-adapter") ==
-             "No work destination for this type is set up on this instance. An instance " <>
-               "admin sets one up in Instance settings › Adapters."
+             "Contact support to add a work destination. Qory Apiary offers none for this " <>
+               "type yet."
 
     %{adapter: adapter} = connectable_adapter_fixture()
     {:ok, lv, _html} = live(ctx.conn, ctx.sources)

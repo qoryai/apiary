@@ -83,6 +83,9 @@ defmodule ApiaryWeb.Edition.Core do
   def reserved_slugs, do: %{}
 
   @impl true
+  def admin_guides, do: []
+
+  @impl true
   def product_name, do: "Qory Apiary"
 
   @impl true

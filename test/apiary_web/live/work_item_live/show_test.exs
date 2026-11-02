@@ -390,7 +390,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(
                view,
                "#work-item-explore-none-adapter",
-               "Ask an instance admin to check that #{name} is running and that its host name resolves. The run did not start: the call to #{name} for the harness sources failed to connect, found no address for the host name, or got 502, 503 or 504 from the reverse proxy."
+               "Contact support. The run did not start: the call to #{name} for the harness sources did not reach it."
              )
     end
 

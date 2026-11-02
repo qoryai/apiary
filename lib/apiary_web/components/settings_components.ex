@@ -640,7 +640,8 @@ defmodule ApiaryWeb.SettingsComponents do
   for that reader, the note under the list, what a deletion does, or why the only
   workspace can't be deleted alone. A ⋯ menu with no item is not shown. With no workspace
   in use, one line in place of the list and its note: the organisation has none, and a
-  link to its overview, where the kind cards create the first.
+  link to its overview, whose kind cards link to the types' pages, where **Create
+  workspace** creates the first.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"

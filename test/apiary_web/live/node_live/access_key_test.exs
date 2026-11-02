@@ -844,7 +844,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert ApiaryWeb.NodeComponents.loopback?(server)
 
       assert words(lv, "#code-issued-unreachable") ==
-               "Machines can't reach this address. #{server} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
+               "Contact support. Machines can't reach #{server}, the address in this command."
     end
 
     test "loopback?/1 is localhost and the loopback addresses alone" do

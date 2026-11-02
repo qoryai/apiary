@@ -44,8 +44,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
   test "lists the instance's adapters by name, none installed, with Add for an owner",
        %{conn: conn, scope: scope} do
-    shop = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
-    acme = adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+    %{adapter: shop} = connectable_adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
 
     {:ok, lv, html} = live(conn, list_path(scope))
 
@@ -54,7 +54,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert has_element?(lv, ~s{#settings-tab-integrations[aria-current="page"]})
 
     assert words(lv, ".q-settings-head-sub") ==
-             "This instance's integrations, and whether each is installed for #{scope.organisation.name}."
+             "The integrations Qory Apiary offers, and whether each is installed for #{scope.organisation.name}."
 
     assert html =~ ~r{<th[^>]*>\s*Integration\s*</th>}
     assert html =~ ~r{<th[^>]*>\s*In #{Regex.escape(scope.organisation.name)}\s*</th>}
@@ -82,7 +82,9 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     %{adapter: titled} =
       connectable_adapter_fixture(%{name: unique_adapter_name("acme-tracker")})
 
-    untitled = adapter_fixture(%{name: unique_adapter_name("shop-tracker")})
+    %{adapter: untitled} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("shop-tracker")})
+
     titled = describe_title(titled, "Acme Tracker")
     connection_fixture(scope, titled, :connected)
 
@@ -188,7 +190,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     conn: conn,
     scope: scope
   } do
-    adapter_fixture(%{name: unique_adapter_name("Beta")})
+    connectable_adapter_fixture(%{name: unique_adapter_name("Beta")}).adapter
     |> describe_source("example-tracker.json")
 
     {:ok, lv, _html} = live(conn, list_path(scope))
@@ -196,13 +198,15 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert words(lv, "#integrations-serve") ==
              "An integration installed here serves each workspace through the projects assigned to it."
 
-    adapter_fixture(%{name: unique_adapter_name("Gamma")}) |> describe_source("acme-tracker.json")
+    connectable_adapter_fixture(%{name: unique_adapter_name("Gamma")}).adapter
+    |> describe_source("acme-tracker.json")
+
     {:ok, lv, _html} = live(conn, list_path(scope))
 
     assert words(lv, "#integrations-serve") ==
              "An integration installed here serves each workspace through the projects and collections assigned to it."
 
-    alpha = adapter_fixture(%{name: unique_adapter_name("Alpha")})
+    %{adapter: alpha} = connectable_adapter_fixture(%{name: unique_adapter_name("Alpha")})
 
     {1, _} =
       Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^alpha.id),
@@ -238,14 +242,14 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   end
 
   test "an admin has Add too", %{scope: scope} do
-    adapter = adapter_fixture()
+    %{adapter: adapter} = connectable_adapter_fixture()
     {:ok, lv, _html} = live(member_conn(scope, :admin), list_path(scope))
     assert has_element?(lv, "#integration-#{adapter.public_id}-add")
     refute has_element?(lv, "#integrations-who")
   end
 
   test "a member reads the list, with no Add, and who installs them", %{scope: scope} do
-    adapter = adapter_fixture()
+    %{adapter: adapter} = connectable_adapter_fixture()
     {:ok, lv, _html} = live(member_conn(scope), list_path(scope))
 
     assert words(lv, "#integration-#{adapter.public_id}-state") == "Not installed"
@@ -259,7 +263,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
        %{scope: scope} do
     Edition.put_test_stub(EditionStubs.ManyWorkspaces)
     workspace_fixture(scope.organisation, "Platform")
-    adapter_fixture()
+    connectable_adapter_fixture()
 
     {:ok, lv, _html} = live(member_conn(scope), list_path(scope))
 
@@ -276,15 +280,17 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert has_element?(lv, "h2", "No integration yet")
 
     assert words(lv, "#integrations-none") ==
-             "An instance admin adds integrations in Instance settings › Adapters. " <>
-               "#{scope.organisation.name} can install them here once they are added."
+             "Contact support to add an integration. #{scope.organisation.name} installs it " <>
+               "here once Qory Apiary offers it."
 
     # The foot note about what an integration installed here does waits for one.
     refute has_element?(lv, "#integrations-serve")
   end
 
   test "with an adapter, the table and no empty state", %{conn: conn, scope: scope} do
-    adapter = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    %{adapter: adapter} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+
     {:ok, lv, _html} = live(conn, list_path(scope))
     assert has_element?(lv, "#integrations #integration-#{adapter.public_id}")
     refute has_element?(lv, "#integrations-none")
@@ -330,7 +336,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       assert has_element?(lv, ~s{#breadcrumb-section[href="#{list_path(scope)}"]})
 
       assert words(lv, ".q-settings-head-sub") ==
-               "Install one of this instance's integrations for #{org}."
+               "Install an integration Qory Apiary offers for #{org}."
 
       id = "#add-#{acme.public_id}"
       assert words(lv, "#{id}-name") == acme.name
@@ -393,8 +399,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       {:ok, lv, html} = live(conn, new_path(scope))
 
       assert words(lv, "#add-none-set-up") ==
-               "No integration is set up on this instance yet. An instance admin sets one up " <>
-                 "in Instance settings › Adapters."
+               "Contact support to add an integration. Qory Apiary offers none yet."
 
       assert has_element?(lv, "h1", "Add an integration")
       refute has_element?(lv, ".q-settings-head-sub")
@@ -416,8 +421,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       assert words(lv, "#add-none-for-type") ==
-               "No integration that serves this organisation's workspaces is set up on this " <>
-                 "instance. An instance admin sets one up in Instance settings › Adapters."
+               "Contact support to add an integration. Qory Apiary offers none for the " <>
+                 "workspaces of this organisation yet."
 
       refute has_element?(lv, "#add-none-set-up")
       refute has_element?(lv, ".q-settings-head-sub")

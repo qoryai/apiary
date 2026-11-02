@@ -55,6 +55,15 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule ConnectsLine do
+    @moduledoc """
+    An edition with its sentence on who connects a system, for each step
+    (`c:Apiary.Edition.connects_line/2`).
+    """
+    def connects_line(_organisation, :sources), do: "Example Operator connects work sources."
+    def connects_line(_organisation, :destinations), do: "Example Operator connects destinations."
+  end
+
   defmodule ScopeSetting do
     @moduledoc """
     Each form that adds a thing shows the setting "Available to every workspace in
@@ -938,6 +947,14 @@ defmodule Apiary.EditionStubs do
           end
       end)
     end
+  end
+
+  defmodule AdminGuide do
+    @moduledoc """
+    A guide for instance admins beyond the core's (`c:ApiaryWeb.Edition.admin_guides/0`),
+    `admin.md`, with one of the core's named again, as an edition might.
+    """
+    def admin_guides, do: ["admin.md", "install.md"]
   end
 
   defmodule AnotherName do

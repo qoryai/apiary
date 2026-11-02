@@ -134,8 +134,9 @@ defmodule ApiaryWeb.MemberLive.PasswordLinkTest do
 
     render_click(lv, "password_link", %{"membership_id" => membership.id})
 
-    assert render(lv) =~
-             "Only an admin of this Qory Apiary makes password links, while it sends no email."
+    html = render(lv)
+    assert html =~ "Contact support for a password link."
+    assert html =~ "Qory Apiary sends no email yet."
 
     refute has_element?(lv, "#password-link")
     assert tokens(member) == []
@@ -157,8 +158,9 @@ defmodule ApiaryWeb.MemberLive.PasswordLinkTest do
 
     render_click(lv, "password_link", %{"membership_id" => membership.id})
 
-    assert render(lv) =~
-             "Only an admin of this Qory Apiary makes password links, while it sends no email."
+    html = render(lv)
+    assert html =~ "Contact support for a password link."
+    assert html =~ "Qory Apiary sends no email yet."
 
     refute has_element?(lv, "#password-link")
     assert tokens(member) == []

@@ -54,12 +54,14 @@ defmodule ApiaryWeb.UserLive.Registration do
             {gettext("Sign-up is by invitation")}
             <:subtitle :if={@mail?}>
               {gettext(
-                "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+                "You join %{name} by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up.",
+                name: Apiary.ProductName.name()
               )}
             </:subtitle>
             <:subtitle :if={!@mail?}>
               {gettext(
-                "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+                "You join %{name} by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up.",
+                name: Apiary.ProductName.name()
               )}
             </:subtitle>
           </SetUpComponents.heading>
