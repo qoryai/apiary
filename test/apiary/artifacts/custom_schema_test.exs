@@ -42,6 +42,122 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
     end
   end
 
+  describe "check_within/3" do
+    @plenty [reductions: 10_000_000, ms: 30_000]
+
+    test "takes a schema's reductions off what is left" do
+      left = CustomSchema.total(@plenty)
+
+      assert {:ok, after_one} = CustomSchema.check_within(@bids, left)
+      assert after_one.reductions < left.reductions
+      assert after_one.reductions > 0
+      assert after_one.deadline == left.deadline
+    end
+
+    test "is the total's refusal once nothing is left" do
+      for total <- [[reductions: 0, ms: 30_000], [reductions: 1_000_000, ms: 0]] do
+        assert {:error, :total} = CustomSchema.check_within(@bids, CustomSchema.total(total))
+      end
+    end
+
+    test "is the total's refusal for a run past what is left" do
+      left = CustomSchema.total(reductions: 1, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(@bids, left)
+    end
+
+    test "is the total's refusal for a refused schema past what is left" do
+      schema = %{"type" => 5}
+
+      assert {:error, :unbuildable} =
+               CustomSchema.check_within(schema, CustomSchema.total(@plenty))
+
+      left = CustomSchema.total(reductions: 1, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(schema, left)
+    end
+
+    # The single budget of `check/1` with `changes`: no schema tried reaches that budget.
+    defp single(changes) do
+      Keyword.merge([reductions: 10_000_000, heap_words: 4_194_304, ms: 10_000], changes)
+    end
+
+    # 54 KiB of 4 patterns, which takes at least 9 ms and 360,000 reductions to build, most
+    # of the time in the compile of the patterns. `Budget.run/2` reads a run every 2 ms.
+    @slow %{
+      "properties" =>
+        Map.new(1..4, fn property ->
+          alternatives = Enum.map_join(1..1500, "|", &"[a-z]{#{rem(&1, 9) + 1}}")
+          {"p#{property}", %{"pattern" => "(#{alternatives})#{property}"}}
+        end)
+    }
+
+    test "is the total's refusal when the run is cut on reductions" do
+      assert {:ok, _left} = CustomSchema.check_within(@slow, CustomSchema.total(@plenty))
+
+      left = CustomSchema.total(reductions: 1_000, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left)
+    end
+
+    test "is the total's refusal when the run is cut on time" do
+      left = CustomSchema.total(reductions: 10_000_000, ms: 3)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left)
+    end
+
+    test "is the budget's refusal for a run over the single budget's reductions" do
+      left = CustomSchema.total(@plenty)
+      assert {:error, :budget} = CustomSchema.check_within(@slow, left, single(reductions: 1_000))
+    end
+
+    test "is the budget's refusal for a run over the single budget's time" do
+      left = CustomSchema.total(@plenty)
+      assert {:error, :budget} = CustomSchema.check_within(@slow, left, single(ms: 3))
+    end
+
+    test "is the total's refusal for a total of reductions under the single budget" do
+      left = CustomSchema.total(reductions: 1_000, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left, single(reductions: 2_000))
+    end
+
+    test "is the total's refusal for a total of time under the single budget" do
+      left = CustomSchema.total(reductions: 10_000_000, ms: 3)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left, single(ms: 5))
+    end
+
+    test "stops a loop only after schemas that passed" do
+      assert {:ok, _left} = CustomSchema.check_within(@bids, CustomSchema.total(@plenty))
+
+      passed =
+        Stream.iterate({:ok, CustomSchema.total(reductions: 200_000, ms: 30_000)}, fn {:ok, left} ->
+          CustomSchema.check_within(@bids, left)
+        end)
+        |> Enum.take_while(&match?({:ok, _left}, &1))
+
+      assert length(passed) > 2
+    end
+
+    test "gives check/1's refusals, each bound kept" do
+      left = CustomSchema.total(@plenty)
+
+      assert {:error, :not_an_object} = CustomSchema.check_within([%{}], left)
+
+      assert {:error, :limits} =
+               CustomSchema.check_within(%{"enum" => Enum.to_list(1..1025)}, left)
+
+      many = Map.new(1..700, &{"p#{&1}", %{"description" => String.duplicate("d", 90)}})
+      assert {:error, :too_large} = CustomSchema.check_within(%{"properties" => many}, left)
+      assert {:error, :unbuildable} = CustomSchema.check_within(%{"type" => 5}, left)
+    end
+
+    test "keeps a schema's refusal for a schema over the pattern budget" do
+      properties = Map.new(1..210, &{"p#{&1}", %{"pattern" => "(?x)a#{&1}"}})
+
+      assert {:error, :budget} =
+               CustomSchema.check_within(
+                 %{"properties" => properties},
+                 CustomSchema.total(@plenty)
+               )
+    end
+  end
+
   describe "validate/2" do
     test "is :ok for a document the schema takes, its first failing place for one it refuses" do
       assert :ok = CustomSchema.validate(%{"bids" => [%{"keyword" => "gift card"}]}, @bids)

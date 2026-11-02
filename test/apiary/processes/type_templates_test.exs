@@ -383,6 +383,45 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       assert %{name: "proposal", base_view: :structured} in TypeTemplates.artifact_types()
     end
   end
+
+  describe "artifact_types/1" do
+    test "is the standard types for a template with no list" do
+      assert TypeTemplates.artifact_types(nil) == TypeTemplates.artifact_types()
+    end
+
+    test "adds a template's custom types, each with its base view, to the standard types" do
+      listed = [
+        %{"name" => "screenshot"},
+        %{
+          "name" => "reply-draft",
+          "base_view" => "document",
+          "size_limit" => 1,
+          "max_files" => 1
+        },
+        %{
+          "name" => "customer-facts",
+          "base_view" => "structured",
+          "size_limit" => 1,
+          "max_files" => 1,
+          "json_schema" => %{}
+        }
+      ]
+
+      assert TypeTemplates.artifact_types(listed) ==
+               TypeTemplates.artifact_types() ++
+                 [
+                   %{name: "reply-draft", base_view: :document},
+                   %{name: "customer-facts", base_view: :structured}
+                 ]
+    end
+
+    test "is the standard types for an empty list or a list of names alone" do
+      assert TypeTemplates.artifact_types([]) == TypeTemplates.artifact_types()
+
+      assert TypeTemplates.artifact_types([%{"name" => "mockup"}]) ==
+               TypeTemplates.artifact_types()
+    end
+  end
 end
 
 defmodule Apiary.Processes.TypeTemplatesFeatureOffTest do

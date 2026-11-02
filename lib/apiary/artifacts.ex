@@ -23,7 +23,9 @@ defmodule Apiary.Artifacts do
   # the Artifact types section of its settings: each checks `artifact_type.edit` with
   # `Apiary.Access` and writes its entry in the audit trail, about the workspace. A custom
   # type's name and base view are fixed once it is made. A type is deleted only while no
-  # artifact of the workspace has its name, else `:in_use`.
+  # artifact of the workspace has its name, else `:in_use`. `insert_template_type/3` makes
+  # a custom type for a new workspace (`Apiary.Artifacts.TemplateTypes`), with its entry in
+  # the audit trail, and neither checks `artifact_type.edit` nor checks the schema again.
   #
   # `switch_type/4` switches a standard type on or off in a workspace, under the same
   # action: `{:ok, type}`, with `shown` set. An always-on type is `{:error, :always_on}`.
@@ -247,6 +249,24 @@ defmodule Apiary.Artifacts do
         {:ok, type}
       end
     end)
+  end
+
+  # insert_template_type/3 makes a custom type of a template's checked definition in a new
+  # workspace, inside the caller's transaction: `{:ok, type}` or `{:error, changeset}`.
+  @doc false
+  @spec insert_template_type(Scope.t(), Workspace.t(), map) ::
+          {:ok, Type.t()} | {:error, Ecto.Changeset.t()}
+  def insert_template_type(%Scope{} = scope, %Workspace{} = workspace, definition) do
+    changeset =
+      Type.create_changeset(
+        %Type{organisation_id: workspace.organisation_id, workspace_id: workspace.id},
+        definition
+      )
+
+    with {:ok, type} <- PublicId.Insert.insert(changeset),
+         {:ok, _entry} <- audit_type(scope, workspace, :create, type) do
+      {:ok, type}
+    end
   end
 
   # update_type/3 changes a custom type's size limit, most files and JSON Schema.

@@ -391,14 +391,133 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.template("") == {:error, :invalid_template}
       assert Reader.template("a: &x 1\n") == {:error, :alias}
     end
+
+    test "returns nil for artifact_types when the key is absent" do
+      assert {:ok, %{artifact_types: nil}} = Reader.template(source(@template))
+    end
+
+    test "returns artifact_types as written" do
+      text = """
+      artifact_types:
+        - name: screenshot
+        - name: reply-draft
+          base_view: document
+          size_limit: 65536
+          max_files: 1
+        - name: customer-facts
+          base_view: structured
+          size_limit: 65536
+          max_files: 1
+          json_schema:
+            type: object
+            required: [customer]
+      """
+
+      assert {:ok, template} = Reader.template(source(@template) <> text)
+
+      assert template.artifact_types == [
+               %{"name" => "screenshot"},
+               %{
+                 "name" => "reply-draft",
+                 "base_view" => "document",
+                 "size_limit" => 65_536,
+                 "max_files" => 1
+               },
+               %{
+                 "name" => "customer-facts",
+                 "base_view" => "structured",
+                 "size_limit" => 65_536,
+                 "max_files" => 1,
+                 "json_schema" => %{"type" => "object", "required" => ["customer"]}
+               }
+             ]
+    end
+
+    test "takes an empty artifact_types list" do
+      assert {:ok, %{artifact_types: []}} = Reader.template(with_value("artifact_types", "[]"))
+    end
+
+    test "takes a name alone: the schema has no list of standard types" do
+      for name <- ["screenshot", "not-a-standard-type", String.duplicate("a", 64)] do
+        assert {:ok, %{artifact_types: [%{"name" => ^name}]}} =
+                 Reader.template(with_types("{name: #{name}}"))
+      end
+    end
+
+    test "takes a custom type of each base view, up to its most" do
+      for {view, most} <- [
+            {"document", 10_485_760},
+            {"image", 52_428_800},
+            {"video", 2_147_483_648},
+            {"file", 1_073_741_824}
+          ] do
+        entry = "{name: draft, base_view: #{view}, size_limit: #{most}, max_files: 20}"
+
+        assert {:ok, %{artifact_types: [%{"size_limit" => ^most}]}} =
+                 entry |> with_types() |> read()
+
+        entry = "{name: draft, base_view: #{view}, size_limit: #{most + 1}, max_files: 20}"
+        assert entry |> with_types() |> read() == {:error, :invalid_template}, view
+      end
+
+      entry =
+        "{name: facts, base_view: structured, size_limit: 1048576, max_files: 1, json_schema: {}}"
+
+      assert {:ok, %{artifact_types: [%{"json_schema" => %{}}]}} = entry |> with_types() |> read()
+
+      entry =
+        "{name: facts, base_view: structured, size_limit: 1048577, max_files: 1, json_schema: {}}"
+
+      assert entry |> with_types() |> read() == {:error, :invalid_template}
+    end
+
+    test "refuses an entry that is neither a name alone nor a full definition" do
+      for entry <- [
+            "screenshot",
+            "1",
+            "{}",
+            "{base_view: document, size_limit: 1, max_files: 1}",
+            "{name: Screenshot}",
+            "{name: a--b}",
+            "{name: -a}",
+            ~s({name: "a\\nb"}),
+            ~s({name: "a\\n"}),
+            "{name: #{String.duplicate("a", 65)}}",
+            "{name: 1}",
+            "{name: draft, base_view: document}",
+            "{name: draft, size_limit: 1}",
+            "{name: draft, base_view: document, size_limit: 1}",
+            "{name: draft, base_view: document, max_files: 1}",
+            "{name: draft, base_view: spreadsheet, size_limit: 1, max_files: 1}",
+            "{name: draft, base_view: document, size_limit: 0, max_files: 1}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 0}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 21}",
+            "{name: draft, base_view: document, size_limit: one, max_files: 1}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 1, json_schema: {}}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 1, label: Draft}",
+            "{name: facts, base_view: structured, size_limit: 1, max_files: 1}",
+            "{name: facts, base_view: structured, size_limit: 1, max_files: 2, json_schema: {}}",
+            "{name: facts, base_view: structured, size_limit: 1, max_files: 1, json_schema: []}"
+          ] do
+        assert entry |> with_types() |> read() == {:error, :invalid_template}, entry
+      end
+    end
+
+    test "refuses an artifact_types that is not a list" do
+      for value <- ["screenshot", "{name: screenshot}", "null", "1"],
+          do:
+            assert(
+              Reader.template(with_value("artifact_types", value)) == {:error, :invalid_template}
+            )
+    end
   end
 
   # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
   # beside it, by its SHA-256 there.
-  @qory_ref "83aad4a2838cd8bdf49071dc17ce58f254637419"
+  @qory_ref "82100a339393a94e282e0b9aa82492755a10f5e0"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "d13661e8f38b3575825bc5cacf694c1fc7c6f766f76243592499744256823c69"
+    "process.schema.json" => "b60e7757bfc4afdc40c31d9d41d86412488d4093583996af108c7900231f84ea"
   }
 
   describe "the file vendored from qory" do
@@ -435,6 +554,11 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # The fixture's process.yaml with the top-level `key` set to the YAML `value`.
   defp with_value(key, value), do: without(key) <> key <> ": " <> value <> "\n"
+
+  # The fixture's process.yaml with one entry, in YAML, under `artifact_types`.
+  defp with_types(entry), do: with_value("artifact_types", "[" <> entry <> "]")
+
+  defp read(text), do: Reader.template(text)
 
   describe "document/2" do
     test "reads a settings row's document, the contents of a harness section" do
