@@ -541,8 +541,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Qory
       reads, with whose answers, and which run of the take in is queued. No Undo.
     * Explore, running: what Qory does, and with whose answers from a second run (`:run`,
-      `%{id:, path:, started_at:, answers_by:}`), and when the run started; the run's id
-      links its page where `path` is given.
+      `%{attempt:, path:, started_at:, answers_by:}`), and when the run started; the attempt
+      number links the run's page where `path` is given.
     * Explore, questions (`:questions`): how many questions Qory wrote; with `can_act`,
       that answering them explores again, Answer the questions (a link to Explore's tab,
       `explore_path`, where it is given) and Decline (`"ask_decline"`); without, that it
@@ -1153,8 +1153,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp test_line(_assigns), do: nil
 
-  # What happened to a run that gave no result, as one sentence with its id; none for a
-  # run that ended before its handover, which has no id to name.
+  # What happened to a run that gave no result, as one sentence with its attempt; none
+  # for a run that ended before its handover, which has no page to link.
   defp no_result_line(_status, %{id: nil}), do: nil
 
   defp no_result_line(
@@ -1197,7 +1197,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         attempt: attempt_ref(run)
       )
 
-  # The take in's last run, which gave no result, as one sentence with its id: for a
+  # The take in's last run, which gave no result, as one sentence with its attempt: for a
   # missing model key, the fix first, as `no_result_line/2` puts it.
   defp used_up_line(%{end_cause: :run_refused, end_detail: "model_key_missing"} = run),
     do:
@@ -1663,7 +1663,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   It reads the work item's `:owner`, `:key`, `:url`, `:repository`,
   `:taken_in_by`, `:taken_in_at`, `:first_instruction` (`nil`, empty or blank for none),
-  `:runs` (`nil` for none, or `%{latest: %{id:, path:}, count:, running:}`), `:ended_by`
+  `:runs` (`nil` for none in the current take in, or `%{latest: %{attempt:, path:}, count:,
+  running:}`), `:ended_by`
   and `:ended_at`, and its ticket's filer and when it was filed (`ticket`,
   `%{filer: %{name:}, filed_at:}`).
   """
@@ -1900,9 +1901,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## Explore's tab
 
   @doc """
-  Explore's tab (`/work/:number/explore`): the run line, which run of the take in it is,
-  its id (linked to its page), its state and its time; then what the run gave, as the
-  work item's status says:
+  Explore's tab (`/work/:number/explore`): the run line, which run of the take in it is
+  (linked to its page), its state and its time; then what the run gave, as the work
+  item's status says:
 
     * queued or running: what Qory does next, with whose answers from a second run, and
       the answers that run reads, grouped by the run that asked them;

@@ -25,6 +25,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   alias Apiary.{Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Artifacts.Artifact
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Runs.Run
   alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.WorkflowFake
@@ -123,6 +124,43 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     {:ok, trial} = Processes.save(scope, scope.workspace, document, trial: true)
     {:ok, work_item} = Processes.assign(scope, Repo.get!(WorkItem, work_item.id), trial)
     work_item
+  end
+
+  # A second take in after a first that used its 3 runs: the page's Details line while
+  # attempt 1 of take in 2 is queued, then the line and its link after attempts 1 and 2
+  # of take in 2 ended.
+  defp details_of_a_second_take_in(conn, scope) do
+    answers = %{"1" => "a", "2" => "b"}
+    ticket = backlog_ticket_fixture(scope)
+    {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+    {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+    {:ok, _} = WorkItems.answer(scope, work_item, 2, answers)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+    assert %DispatchRun{take_in: 1, attempt: 3} = newest_run(work_item)
+    {:ok, _} = WorkItems.close(scope, work_item)
+    {:ok, _} = WorkItems.take_in_again(scope, ticket.public_id)
+
+    work_item = Repo.get!(WorkItem, work_item.id)
+    assert %DispatchRun{take_in: 2, attempt: 1, state: :waiting} = newest_run(work_item)
+    {:ok, view, _html} = live(conn, page(scope, work_item.number))
+    queued = line(view, "#work-item-details-runs")
+
+    work_item = end_run!(work_item, questions_result())
+    {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+    %DispatchRun{take_in: 2, attempt: 2} = latest = newest_run(work_item)
+    number = Repo.one(from r in Run, where: r.dispatch_run_id == ^latest.id, select: r.number)
+
+    {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+    %{
+      queued: queued,
+      ended: line(view, "#work-item-details-runs"),
+      link: has_element?(view, ~s(#work-item-details-runs a[href$="/runs/#{number}"]), "2")
+    }
   end
 
   # The text of the element `selector`, its whitespace collapsed: the whole line.
@@ -245,6 +283,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-head-stages-explore")
       refute has_element?(view, "#work-item-stage")
       refute has_element?(view, "#work-item-flow")
+    end
+
+    test "a second take in: Details counts only that take in's runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      assert %{queued: "None yet", ended: "Attempt 2 · 2 runs, ended", link: true} =
+               details_of_a_second_take_in(conn, scope)
     end
 
     test "a stage event does nothing", %{conn: conn, scope: scope} do
@@ -396,6 +442,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-runs-2")
       assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
       refute render(view) =~ "Attempt 4"
+    end
+
+    test "a second take in: Details counts only that take in's runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      assert %{
+               queued: "Attempt 1 of 3 is queued.",
+               ended: "Attempt 2 · 2 runs, ended",
+               link: true
+             } = details_of_a_second_take_in(conn, scope)
     end
 
     test "a run before the work item was placed: the stage card counts as the step card does",
