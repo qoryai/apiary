@@ -21,6 +21,16 @@ defmodule ApiaryWeb.Contract.RawBody do
   the schema allows: what an unauthenticated sender can make the
   server hold is small. A longer body is answered `413` here, before the signature or the
   code is looked at, as the contract's reference receiver does.
+
+  A run's push and verdict, `POST /v1/runs/<run_id>/artifacts` and
+  `POST /v1/runs/<run_id>/verdict`, contain files as base64, so they take up to
+  `max_bytes(:run_api)`, 32 MiB. To keep what an unauthenticated sender can make the
+  server hold small there too, such a body is answered `413` at once when its
+  `Content-Length` is over 32 MiB, and its first `max_bytes(:unauthenticated)`, 64 KiB,
+  are read before anything else: a longer body is read on only when
+  `X-Qory-Access-Key-Id` is the key id of an active access key of a gateway, else it is
+  answered `413` with the rest left unread. The signature is still checked after the
+  read, by the pipeline.
   """
 
   import Plug.Conn
@@ -53,6 +63,10 @@ defmodule ApiaryWeb.Contract.RawBody do
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release` and `/machine-log`. Read the same way where `served?/1` holds, as below.
   @pool_max_bytes 1024 * 1024
+  # The form of an access key id, as `ApiaryWeb.Contract.SignedRequest` checks it
+  # (`valid_key_id?/1`). The lookup runs only for an id of this form: an id with an invalid
+  # UTF-8 byte or a NUL fails in the database query.
+  @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   @pool_claim_path ["v1", "pools", "claim"]
   @dispatch_actions ["dispatched", "release", "machine-log"]
   # The integration contract's paths and the provisioner contract's belong to one feature.
@@ -67,6 +81,14 @@ defmodule ApiaryWeb.Contract.RawBody do
   # on or where the request has a signature.
   @secrets_path ["v1", "secrets"]
   @secrets_max_bytes 32 * 1024
+  # The run API's pushes and verdicts, `POST /v1/runs/<run_id>/artifacts` and
+  # `/verdict`, of the `workflow_model` feature: at most 32 MiB, base64 JSON
+  # (`ApiaryWeb.Contract.RunApi.Body.max_bytes(:push)`), read the same way where the
+  # feature is on or where the request has a signature. Past the first 64 KiB, only for
+  # the key id of an active gateway key.
+  @run_api_max_bytes 32 * 1024 * 1024
+  @unauthenticated_max_bytes 64 * 1024
+  @run_api_actions ["artifacts", "verdict"]
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -74,7 +96,9 @@ defmodule ApiaryWeb.Contract.RawBody do
   @doc """
   The largest body that is accepted, in bytes: of a delivery (`max_bytes/0`), of a
   registration (`max_bytes(:registration)`), of an attach (`max_bytes(:attach)`), of an
-  outcome (`max_bytes(:outcome)`), or of an enrolment (`max_bytes(:enrolment)`).
+  outcome (`max_bytes(:outcome)`), of an enrolment (`max_bytes(:enrolment)`), or of a
+  run's push or verdict (`max_bytes(:run_api)`), of which at most
+  `max_bytes(:unauthenticated)` are read before the key id is looked up.
   """
   def max_bytes, do: @max_bytes
   def max_bytes(:events), do: @max_bytes
@@ -85,6 +109,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   def max_bytes(:adapter), do: @adapter_max_bytes
   def max_bytes(:pool), do: @pool_max_bytes
   def max_bytes(:secrets), do: @secrets_max_bytes
+  def max_bytes(:run_api), do: @run_api_max_bytes
+  def max_bytes(:unauthenticated), do: @unauthenticated_max_bytes
 
   def init(opts), do: opts
 
@@ -98,6 +124,9 @@ defmodule ApiaryWeb.Contract.RawBody do
 
       :secrets ->
         if secrets_served?(conn), do: keep(conn, max_bytes(:secrets)), else: conn
+
+      :run_api ->
+        if run_api_served?(conn), do: keep_of_a_gateway(conn), else: conn
 
       endpoint ->
         keep(conn, max_bytes(endpoint))
@@ -132,6 +161,7 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   defp of_a_run(["v1", "runs", _run_id, "attach"]), do: :attach
   defp of_a_run(["v1", "runs", _run_id, "outcome"]), do: :outcome
+  defp of_a_run(["v1", "runs", _run_id, action]) when action in @run_api_actions, do: :run_api
 
   defp of_a_run(["v1", "dispatches", _dispatch_id, action]) when action in @dispatch_actions,
     do: :pool
@@ -147,6 +177,11 @@ defmodule ApiaryWeb.Contract.RawBody do
       get_req_header(conn, "x-qory-signature-ed25519") != []
   end
 
+  defp run_api_served?(conn) do
+    ApiaryWeb.Contract.RunApi.Boundary.on?() or
+      get_req_header(conn, "x-qory-signature-ed25519") != []
+  end
+
   defp decode(segment) do
     URI.decode(segment)
   rescue
@@ -155,21 +190,82 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   defp keep(conn, max) do
     case read(conn, [], 0, max) do
-      {:ok, body, conn} ->
-        %{conn | body_params: %{}}
-        |> fetch_query_params()
-        |> assign(:raw_body, body)
-
-      {:error, conn} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(413, ~s({"error":"payload_too_large"}))
-        |> halt()
+      {:ok, body, conn} -> kept_body(conn, body)
+      {:over, _acc, _size, conn} -> too_large(conn)
+      {:error, conn} -> too_large(conn)
     end
   end
 
+  # A run's push or verdict: refused by its `Content-Length` before a byte is read; then
+  # the first 64 KiB; then, for the key id of an active gateway key alone, the rest up
+  # to 32 MiB.
+  defp keep_of_a_gateway(conn) do
+    first = @unauthenticated_max_bytes
+    max = @run_api_max_bytes
+
+    if declared_length(conn) > max do
+      too_large(conn)
+    else
+      case read(conn, [], 0, first) do
+        {:ok, body, conn} ->
+          kept_body(conn, body)
+
+        {:over, acc, size, conn} ->
+          if gateway_key?(conn) do
+            case read(conn, acc, size, max) do
+              {:ok, body, conn} -> kept_body(conn, body)
+              {:over, _acc, _size, conn} -> too_large(conn)
+              {:error, conn} -> too_large(conn)
+            end
+          else
+            too_large(conn)
+          end
+
+        {:error, conn} ->
+          too_large(conn)
+      end
+    end
+  end
+
+  # The `Content-Length` the sender gave, 0 for none or one that is not a number.
+  defp declared_length(conn) do
+    with [value] <- get_req_header(conn, "content-length"),
+         {length, ""} <- Integer.parse(String.trim(value)) do
+      length
+    else
+      _other -> 0
+    end
+  end
+
+  # Whether the request's key id is an active access key of a gateway. An id that is not of
+  # the form of a key id is not one.
+  defp gateway_key?(conn) do
+    with [key_id] <- get_req_header(conn, "x-qory-access-key-id"),
+         true <- String.valid?(key_id) and Regex.match?(@key_id_format, key_id),
+         {:ok, %Apiary.AccessKeys.AccessKey{node: %Apiary.Nodes.Node{kind: :gateway}}} <-
+           Apiary.AccessKeys.fetch_for_verification(key_id) do
+      true
+    else
+      _other -> false
+    end
+  end
+
+  defp kept_body(conn, body) do
+    %{conn | body_params: %{}}
+    |> fetch_query_params()
+    |> assign(:raw_body, body)
+  end
+
+  defp too_large(conn) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(413, ~s({"error":"payload_too_large"}))
+    |> halt()
+  end
+
   # One byte over the limit is asked for, so a body of exactly the limit is
-  # told from a longer one without reading the rest.
+  # told from a longer one without reading the rest. Past the limit, `{:over, acc, size,
+  # conn}`, with what was read, and the rest of the body left unread.
   defp read(conn, acc, size, max) do
     case read_body(conn, length: max + 1 - size, read_length: min(64_000, max + 1)) do
       {:ok, chunk, conn} -> finish(conn, [acc, chunk], size + byte_size(chunk), max)
@@ -178,9 +274,9 @@ defmodule ApiaryWeb.Contract.RawBody do
     end
   end
 
-  defp finish(conn, _acc, size, max) when size > max, do: {:error, conn}
+  defp finish(conn, acc, size, max) when size > max, do: {:over, acc, size, conn}
   defp finish(conn, acc, _size, _max), do: {:ok, IO.iodata_to_binary(acc), conn}
 
-  defp more(conn, _acc, size, max) when size > max, do: {:error, conn}
+  defp more(conn, acc, size, max) when size > max, do: {:over, acc, size, conn}
   defp more(conn, acc, size, max), do: read(conn, acc, size, max)
 end

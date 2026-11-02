@@ -456,6 +456,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("type", "/:org/workspaces/new/:type", p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
+  # The run API's file request: a version and a filename that no run has.
+  defp value_of("version_id", "/v1/runs/" <> _, _p), do: "av_0000000000000000"
+  defp value_of("filename", "/v1/runs/" <> _, _p), do: "screenshot.png"
   defp value_of("version_id", _path, p), do: p.version_id
   defp value_of("type_id", "/:org/:workspace/settings/artifact-types/" <> _, p), do: p.type_id
   defp value_of("number", _path, p), do: p.work_item_number
