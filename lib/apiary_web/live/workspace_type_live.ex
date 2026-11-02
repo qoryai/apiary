@@ -122,7 +122,7 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
     do: text |> String.split(~r/\n\s*\n/) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
 
   @impl true
-  # `start` is set from the read of this page's own source (`handle_async/3`), and no
+  # `start` is set from the read of this page's source (`handle_async/3`), and no
   # parameter of the event is read.
   def handle_event("create", _params, %{assigns: %{create: true, start: %{} = start}} = socket) do
     %{place: place, which: which} = socket.assigns

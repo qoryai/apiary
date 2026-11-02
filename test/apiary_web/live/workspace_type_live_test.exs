@@ -607,7 +607,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       assert first_version(workspace).template["git"] == nil
     end
 
-    test "forged parameters change nothing: the page's own read is what is made", %{
+    test "forged parameters change nothing: the workspace comes from the page's read", %{
       conn: conn,
       user: user,
       organisation: organisation,
