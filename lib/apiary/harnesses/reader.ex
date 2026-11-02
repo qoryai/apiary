@@ -43,6 +43,7 @@ defmodule Apiary.Harnesses.Reader do
   unknown tags included.
 
   An empty file is a file with no value: `harness/1` and `exports/1` read it as `:none`.
+  The `modules` of `exports` have no refusal: `exports/1` returns `:invalid` for them.
 
   ## A factory's process.yaml
 
@@ -111,12 +112,13 @@ defmodule Apiary.Harnesses.Reader do
   @typedoc """
   The `exports` of a root file: `dir`, nil for the root, one folder, or a map of the
   `"stacks"` and `"modules"` folders; `stacks`, the names of the stacks it exports; and
-  `modules`, the names of the modules it exports.
+  `modules`, the names of the modules it exports, or `:invalid` for a value that is not a
+  list of text.
   """
   @type exports :: %{
           dir: nil | String.t() | %{String.t() => String.t()},
           stacks: [String.t()],
-          modules: [String.t()]
+          modules: [String.t()] | :invalid
         }
 
   @typedoc """
@@ -238,7 +240,10 @@ defmodule Apiary.Harnesses.Reader do
 
   @doc """
   exports/1 is the `exports` section of a root `qory.yaml` or `harness.yaml`: `{:ok,
-  exports}`, `:none` for a file without one, or `{:error, reason}`.
+  exports}`, `:none` for a file without one, or `{:error, reason}`. `modules` does not fail
+  the section, because a run reads none of it: `[]` for no value, and `:invalid` for a
+  value that is not a list of text, such as `[1]`. The value is not converted to text:
+  qory reads `0x10` as the name `"0x10"`, and this module as the integer 16.
   """
   @spec exports(binary) :: {:ok, exports} | :none | {:error, reason}
   def exports(bytes) when is_binary(bytes) do
@@ -256,15 +261,17 @@ defmodule Apiary.Harnesses.Reader do
   defp exports_of(exports) do
     dir = Map.get(exports, "dir")
     stacks = Map.get(exports, "stacks", [])
-    # `modules:` with no value lists no modules, as qory reads it.
-    modules = with nil <- Map.get(exports, "modules"), do: []
 
-    if dir?(dir) and names?(stacks) and names?(modules),
-      do: {:ok, %{dir: dir, stacks: stacks, modules: modules}},
+    if dir?(dir) and names?(stacks),
+      do: {:ok, %{dir: dir, stacks: stacks, modules: module_names(exports["modules"])}},
       else: {:error, :invalid_exports}
   end
 
   defp names?(names), do: is_list(names) and Enum.all?(names, &is_binary/1)
+
+  # `modules:` with no value lists no modules, as qory reads it.
+  defp module_names(nil), do: []
+  defp module_names(modules), do: if(names?(modules), do: modules, else: :invalid)
 
   defp dir?(nil), do: true
   defp dir?(dir) when is_binary(dir), do: dir != ""

@@ -179,16 +179,20 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.exports("") == :none
     end
 
+    test "reads modules that are not a list of text as :invalid, and the section still reads" do
+      for modules <- ["[1]", "[0x10]", "[core, 1]", "core", "false", "1", "{core: 1}"] do
+        assert Reader.exports("exports:\n  stacks: [web]\n  modules: #{modules}\n") ==
+                 {:ok, %{dir: nil, stacks: ["web"], modules: :invalid}},
+               modules
+      end
+    end
+
     test "refuses exports of the wrong shape" do
       assert Reader.exports("exports: [web]\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {stacks: web}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {stacks: [1]}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {dir: {stacks: a}}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {dir: ''}\n") == {:error, :invalid_exports}
-      assert Reader.exports("exports: {modules: core}\n") == {:error, :invalid_exports}
-      assert Reader.exports("exports: {modules: false}\n") == {:error, :invalid_exports}
-      assert Reader.exports("exports: {modules: {core: 1}}\n") == {:error, :invalid_exports}
-      assert Reader.exports("exports: {modules: [1]}\n") == {:error, :invalid_exports}
 
       assert Reader.exports("exports: {dir: {stacks: a, modules: b, templates: c}}\n") ==
                {:error, :invalid_exports}
