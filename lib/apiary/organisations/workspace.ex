@@ -39,6 +39,10 @@ defmodule Apiary.Organisations.Workspace do
     # definition (`Apiary.Lingo.Domain.definition/1`), such as `qory.software`. Set when the
     # workspace is created (`create_changeset/2`), never cast, and changed by nothing after.
     field :type, :string
+    # The names of the standard artifact types the workspace shows, nil for every standard
+    # type (`Apiary.Artifacts`). The list contains no always-on name
+    # (`Apiary.Artifacts.Type.always_on/0`). Never cast.
+    field :shown_standard_types, {:array, :string}
 
     belongs_to :organisation, Apiary.Organisations.Organisation
 

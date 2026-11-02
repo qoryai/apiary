@@ -929,6 +929,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              }
     end
 
+    test "a standard type the workspace hides is 422 unknown_type, with the step to switch it on",
+         ctx do
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item_workspace.id),
+          set: [shown_standard_types: ["explainer"]]
+        )
+
+      conn = write(ctx, "/artifacts", push_body("mockup", [{"a.png", "image/png", "x"}]))
+
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "unknown_type",
+               "type" => "mockup",
+               "message" =>
+                 "Switch on the artifact type mockup in the workspace's Artifact types, " <>
+                   "then run the round again."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "what the push returns is answered with the type, its limit and the member",
          ctx do
       cases = [
@@ -1003,7 +1026,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "unknown_type",
            "type" => "explainer",
            "message" =>
-             "Define the artifact type explainer in the workspace's Artifact types, " <>
+             "Switch on the artifact type explainer in the workspace's Artifact types, " <>
                "then run the round again."
          }},
         {:not_found, 404, %{"error" => "not_found"}},

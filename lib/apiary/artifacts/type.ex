@@ -5,7 +5,9 @@ defmodule Apiary.Artifacts.Type do
   # of a workspace's `artifact_types`. Both are this struct; `standard` is true for the
   # first, and a standard type has no row, so no id, public id, organisation or
   # workspace. `view` is the dedicated view of a standard structured type (`:proposal`,
-  # `:questions`, `:verdict` or `:change`), nil for every other type.
+  # `:questions`, `:verdict` or `:change`), nil for every other type. A workspace can hide
+  # a standard type unless it is always on (`always_on/0`); `shown` is whether the
+  # workspace shows the type, as `Apiary.Artifacts.all_types/1` sets it.
   #
   # `name` is lowercase letters and digits in groups joined by single hyphens, 1 to 64
   # bytes; a custom type's name is none of the standard names. `base_view` is one of
@@ -65,6 +67,10 @@ defmodule Apiary.Artifacts.Type do
     {"verdict", :structured, 64 * 1024, 1, :verdict}
   ]
 
+  # The standard types no workspace can hide: Core's stage runner writes and reads them by
+  # name (`Apiary.Stages`), so a stage's run needs them in every workspace.
+  @always_on ~w(proposal questions verdict)
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "artifact_types" do
@@ -77,6 +83,7 @@ defmodule Apiary.Artifacts.Type do
     field :standard, :boolean, virtual: true, default: false
     field :view, :any, virtual: true
     field :schema_path, {:array, :string}, virtual: true
+    field :shown, :boolean, virtual: true, default: true
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -115,6 +122,11 @@ defmodule Apiary.Artifacts.Type do
   @doc false
   @spec standard_names() :: [String.t()]
   def standard_names, do: for({name, _base_view, _size, _files, _view} <- @standard, do: name)
+
+  # always_on/0 is the names of the standard types no workspace can hide.
+  @doc false
+  @spec always_on() :: [String.t()]
+  def always_on, do: @always_on
 
   defp schema_path(name), do: ["schemas", "artifacts", name <> ".schema.json"]
 
