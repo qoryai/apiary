@@ -4,6 +4,7 @@ defmodule Apiary.Harnesses.QoryCopyTest do
   # that commit.
   use ExUnit.Case, async: true
 
+  alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Harnesses.{QoryCopy, Reader}
   alias Apiary.Lingo.Domain.Definition
   alias Apiary.Processes
@@ -93,6 +94,10 @@ defmodule Apiary.Harnesses.QoryCopyTest do
     test "a stack the copy does not have raises" do
       assert_raise FunctionClauseError, fn -> QoryCopy.workflows("missing") end
     end
+  end
+
+  test "the template passes the check of its artifact types" do
+    assert TemplateTypes.check(QoryCopy.template()) == :ok
   end
 
   describe "the template's texts" do

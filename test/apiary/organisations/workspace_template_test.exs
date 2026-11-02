@@ -13,6 +13,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
   alias Apiary.{Edition, Organisations, Processes, Stacks}
   alias Apiary.Accounts.Scope
+  alias Apiary.Artifacts.Type
+  alias Apiary.Audit.Entry
   alias Apiary.Harnesses.{Assignment, QoryCopy, Reader}
   alias Apiary.Lingo.Domain
   alias Apiary.Lingo.Domain.Definition
@@ -38,7 +40,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
   end
 
   # The fixture's template, as `Apiary.Stacks.Sources.templates/2` returns it.
-  defp template(changes \\ %{}) do
+  defp template(changes) do
     {:ok, template} = Reader.template(File.read!(@file_path))
     template |> Map.put(:module, "support-desk") |> Map.merge(changes)
   end
@@ -93,7 +95,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     %{
       workspaces: Repo.aggregate(from(w in Workspace, where: w.organisation_id == ^id), :count),
       versions: Repo.aggregate(from(v in Version, where: v.organisation_id == ^id), :count),
-      stacks: Repo.aggregate(from(s in Stack, where: s.organisation_id == ^id), :count)
+      stacks: Repo.aggregate(from(s in Stack, where: s.organisation_id == ^id), :count),
+      types: Repo.aggregate(from(t in Type, where: t.organisation_id == ^id), :count)
     }
   end
 
@@ -443,6 +446,98 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert held(scope) == before
     end
 
+    test "a template's custom type and shown standard types reach the workspace" do
+      scope = scope_fixture()
+      adapter = call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(scope, adapter.adapter, :listed)
+      live_grant_fixture(scope.organisation.id, adapter.adapter, connection, "G_acme")
+      harness_collection_fixture(connection, @harness, "acme/harness")
+
+      # A stage outputs the custom type, as a template read from a file has it.
+      file =
+        File.read!(@file_path)
+        |> String.replace(
+          "      name: Check\n",
+          "      name: Check\n      outputs:\n        - {type: reply-draft, required: true}\n"
+        )
+
+      file =
+        file <>
+          """
+          artifact_types:
+            - name: mockup
+            - name: proposal
+            - {name: reply-draft, base_view: document, size_limit: 65536, max_files: 1}
+          """
+
+      serve_calls([adapter],
+        covered: %{adapter.adapter.id => %{@harness => {"G_acme", "R_harness"}}},
+        versions: %{"R_harness" => @commit},
+        files: %{
+          {"R_harness", "qory.yaml"} =>
+            "exports:\n  stacks: [support]\n  modules: [support-desk]\n",
+          {"R_harness", "modules/support-desk/process.yaml"} => file
+        }
+      )
+
+      [source] = Sources.repositories(scope)
+      assert {:ok, %{commit: @commit, templates: [read]}} = Sources.templates(scope, source)
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_from_template(scope, %{
+                 source: source,
+                 commit: @commit,
+                 template: read
+               })
+
+      assert workspace.shown_standard_types == ["mockup"]
+      assert Repo.reload!(workspace).shown_standard_types == ["mockup"]
+
+      assert [%Type{name: "reply-draft", standard: false, base_view: :document}] =
+               Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
+
+      assert [%{"outputs" => [%{"type" => "reply-draft"}]}] =
+               Enum.filter(first_version(workspace).document["stages"], & &1["outputs"])
+    end
+
+    test "a template with no list of types writes no type" do
+      scope = scope_fixture()
+
+      assert {:ok, %Workspace{shown_standard_types: nil} = workspace} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source(:linked, "linked:cl_0"))
+               )
+
+      assert Repo.all(from t in Type, where: t.workspace_id == ^workspace.id) == []
+    end
+
+    test "a failed insert of a template's type rolls the workspace back" do
+      scope = scope_fixture()
+      before = held(scope)
+
+      entries = fn ->
+        Repo.aggregate(
+          from(e in Entry, where: e.organisation_id == ^scope.organisation.id),
+          :count
+        )
+      end
+
+      entries_before = entries.()
+      :ok = Organisations.subscribe_workspaces(scope)
+      type = %{"name" => "reply-draft", "base_view" => "document"}
+      type = Map.merge(type, %{"size_limit" => 65_536, "max_files" => 1})
+
+      assert Organisations.create_workspace_from_template(
+               scope,
+               start(source(:linked, "linked:cl_0"), %{artifact_types: [type, type]})
+             ) == {:error, {:invalid, "reply-draft", :repeated}}
+
+      assert held(scope) == before
+      assert entries.() == entries_before
+      refute_received {:workspace_created, _ids}
+    end
+
     test "a template of a type that is no domain's is refused, and nothing is made" do
       scope = scope_fixture()
       before = held(scope)
@@ -519,10 +614,14 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
   use Apiary.DataCase
 
   import Ecto.Query
+  import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Edition, Organisations}
-  alias Apiary.Harnesses.Reader
+  alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Artifacts.Type
+  alias Apiary.Audit.Entry
+  alias Apiary.Harnesses.{QoryCopy, Reader}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
@@ -545,6 +644,62 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
              Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
 
     assert [%Version{template: %{"source" => "qory"}}] = Processes.list_versions(workspace)
+  end
+
+  describe "a Qory template with artifact types" do
+    # The copied template at this pin has no `artifact_types`. This test module is not
+    # async, so no other test reads the template while the kept value is replaced.
+    setup do
+      key = {QoryCopy, :template}
+      kept = QoryCopy.template()
+      type = %{"name" => "reply-draft", "base_view" => "document"}
+      type = Map.merge(type, %{"size_limit" => 65_536, "max_files" => 1})
+
+      :persistent_term.put(key, %{kept | artifact_types: [%{"name" => "mockup"}, type]})
+      on_exit(fn -> :persistent_term.put(key, kept) end)
+      :ok
+    end
+
+    test "create_workspace_of_kind/3 gives the workspace the types" do
+      scope = scope_fixture()
+
+      assert {:ok, %Workspace{shown_standard_types: ["mockup"]} = workspace} =
+               Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
+
+      assert [%Type{name: "reply-draft"}] =
+               Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
+    end
+
+    test "the first workspace of a sign-up gets the types, and the entry of each" do
+      user = User.email_changeset(%User{}, %{email: unique_user_email()})
+
+      scope = fn %{user: user, organisation: organisation, workspace: workspace} ->
+        %Scope{user: user, organisation: organisation, workspace: workspace}
+      end
+
+      assert {:ok, %{created: %{workspace: workspace}}} =
+               Ecto.Multi.new()
+               |> Ecto.Multi.insert(:user, user)
+               |> Organisations.build_organisation(
+                 name: "Acme Types",
+                 how: :test,
+                 scope: scope
+               )
+               |> Repo.transaction()
+
+      assert workspace.shown_standard_types == ["mockup"]
+
+      assert [%Type{name: "reply-draft"}] =
+               Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
+
+      assert [%Entry{}] =
+               Repo.all(
+                 from e in Entry,
+                   where:
+                     e.organisation_id == ^workspace.organisation_id and
+                       e.action == "artifact_type.edit"
+               )
+    end
   end
 
   test "a source's template is not found, and nothing is made" do
