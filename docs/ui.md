@@ -1278,8 +1278,9 @@ mark and the theme menu.
   4 at a time, and each group shows "Reading harnesses…" until its repositories are read.
   A module that is not a template, modules past the first 20 and a repository that cannot
   be read have a line in their group. Where the person has used their 10 reads of a
-  minute, the page keeps the cards it has, shows the limit line, and reads the rest when
-  the minute ends. A shared harness that runs hide shows no address: it is "the shared
+  minute, the page keeps the cards it has, shows "The list continues in 12 seconds. Qory
+  Apiary reads at most 10 harnesses a minute for one person.", and reads the rest when the
+  minute ends. A shared harness that runs hide shows no address: it is "the shared
   harness". Where the organisation has as many workspaces as the edition allows, New
   workspace is headed "New workspace", with no question, and shows the edition's line in
   an information notice in place of the cards, and nothing is read: "Qory Apiary

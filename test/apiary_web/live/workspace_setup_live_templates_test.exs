@@ -391,7 +391,10 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
 
       # 10 reads of a minute: the 11th is stopped, and the first 10 stay.
       assert has_element?(lv, "#set-up-templates-limited")
-      assert words(lv, "#set-up-templates-limited") =~ ~r/^Wait \d+ seconds?, then reload/
+
+      assert words(lv, "#set-up-templates-limited") =~
+               ~r/^The list continues in \d+ seconds?\. Qory Apiary reads at most 10 harnesses a minute for one person\.$/
+
       shown = for c <- collections, has_element?(lv, card(c)), do: c
       assert length(shown) == 10
       assert has_element?(lv, "#set-up-group-connected-reading")

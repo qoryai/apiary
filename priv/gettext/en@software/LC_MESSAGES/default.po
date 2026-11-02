@@ -18844,6 +18844,13 @@ msgid_plural "The link's %{names} filters could not be read, so they are not app
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "The list continues in %{count} second. Qory Apiary reads at most 10 harnesses a minute for one person."
+msgid_plural "The list continues in %{count} seconds. Qory Apiary reads at most 10 harnesses a minute for one person."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"

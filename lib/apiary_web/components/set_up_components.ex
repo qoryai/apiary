@@ -948,7 +948,11 @@ defmodule ApiaryWeb.SetUpComponents do
       <div :if={!@limit} id={@id} class="grid gap-6">
         <.notice :if={@limited} kind={:info}>
           <span id="set-up-templates-limited">
-            <.rich text={read_line({:limited, @limited.seconds}, @limited.place, @organisation)} />
+            {ngettext(
+              "The list continues in %{count} second. Qory Apiary reads at most 10 harnesses a minute for one person.",
+              "The list continues in %{count} seconds. Qory Apiary reads at most 10 harnesses a minute for one person.",
+              @limited.seconds
+            )}
           </span>
         </.notice>
         <section id="set-up-group-qory" aria-labelledby="set-up-group-qory-title" class="grid gap-3">
