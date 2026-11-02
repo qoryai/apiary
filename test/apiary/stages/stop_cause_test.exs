@@ -220,6 +220,71 @@ defmodule Apiary.Stages.StopCauseTest do
     end
   end
 
+  describe "a read-only run qory closed" do
+    @describetag needs: :factory
+
+    @wall "A read-only run needs a wall, and this machine has none."
+    @inside "A read-only run cannot run its setup inside the agent's container."
+
+    # The run of a work item queued, whose registered run failed with `reason` on `node`.
+    defp read_run(scope, reason, node) do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
+
+      Repo.insert!(%Apiary.Runs.Run{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        node_run_id: run.run_id,
+        dispatch_run_id: run.id,
+        node_id: node && node.id,
+        state: "failed",
+        exit_state: "failed",
+        reason: reason
+      })
+
+      {%{run | state: :ended, end_cause: :run_ended, result_outcome: :none}, work_item}
+    end
+
+    defp words(scope, reason, node) do
+      {run, work_item} = read_run(scope, reason, node)
+      StopCause.text(run, work_item)
+    end
+
+    test "each reason has its fix, then its cause, on a pool of the workspace" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      for {reason, text} <- [
+            {"read_needs_wall",
+             "Set a wall in the machine's forager.yaml, then start the run again. " <> @wall},
+            {"read_needs_setup_outside",
+             "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. " <>
+               @inside},
+            {"read_needs_setup_removed",
+             "Start the run again. The setup container was not removed, so a process in it could still write the files."}
+          ] do
+        assert words(scope, reason, pool) == text
+      end
+    end
+
+    test "a target is a repository only in a software workspace" do
+      %{scope: scope} = sign_up_fixture()
+      docker = "read_needs_no_nested_docker"
+
+      assert words(scope, docker, nil) ==
+               "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [domain: "example"]
+        )
+
+      assert words(scope, docker, nil) ==
+               "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+    end
+  end
+
   describe "a run whose harness has no skill for its workflow" do
     @describetag needs: :factory
 

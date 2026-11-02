@@ -231,6 +231,16 @@ msgstr ""
 msgid "%{contact_support} with work item #%{number}. No machine has taken the test run yet."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. A read-only run cannot run its setup inside the agent's container."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. A read-only run needs a wall, and this machine has none."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}. Machines can't reach %{url}, the address in this command."
@@ -6377,6 +6387,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Choose a workflow"
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+msgstr "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -16904,6 +16919,11 @@ msgstr ""
 msgid "Set a variable"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set a wall in the machine's forager.yaml, then start the run again. A read-only run needs a wall, and this machine has none."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set aside: locked above the workspace"
@@ -17065,6 +17085,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Set up · %{done} of %{total}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/password.ex
@@ -17547,6 +17572,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Start an organisation. You set up its first workspace next."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start the run again. The setup container was not removed, so a process in it could still write the files."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -22935,6 +22965,11 @@ msgstr ""
 msgid "harness"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "image has nested Docker"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "in %{agent} %{id}:"
@@ -23536,6 +23571,11 @@ msgstr ""
 msgid "read"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "read-only run with no wall"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "reading it takes more than %{n} calls"
@@ -23597,6 +23637,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "setup container not removed"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "setup runs inside the agent's container"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

@@ -1204,6 +1204,56 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     # Contact support reads the support address.
     setup do: Ecto.Adapters.SQL.Sandbox.checkout(Apiary.Repo)
 
+    # The Explore tab of a run qory closed with `code`, on the instance's pool or another.
+    defp read_needs_body(code, installed) do
+      r =
+        run(%{
+          proposal: nil,
+          ended_at: ago(3600),
+          duration: "4 minutes",
+          outcome: :none,
+          read_needs: %{code: code, installed: installed}
+        })
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+      assert text(html, "#work-item-explore-none-h") == "The run ended without a result."
+      Enum.at(texts(html, "#work-item-explore-none p"), 1)
+    end
+
+    test "a read-only run qory closed: the fix, then the cause" do
+      wall = "A read-only run needs a wall, and this machine has none."
+      inside = "A read-only run cannot run its setup inside the agent's container."
+
+      docker =
+        "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+
+      removed =
+        "Start the run again. The setup container was not removed, so a process in it could still write the files."
+
+      assert read_needs_body("read_needs_wall", false) ==
+               "Set a wall in the machine's forager.yaml, then start the run again. " <> wall
+
+      assert read_needs_body("read_needs_setup_outside", false) ==
+               "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. " <>
+                 inside
+
+      assert read_needs_body("read_needs_wall", true) == "Contact support. " <> wall
+      assert read_needs_body("read_needs_setup_outside", true) == "Contact support. " <> inside
+
+      for installed <- [false, true] do
+        assert read_needs_body("read_needs_no_nested_docker", installed) == docker
+        assert read_needs_body("read_needs_setup_removed", installed) == removed
+      end
+    end
+
+    test "a read-only run's target is a repository only in a software workspace" do
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
+        assert read_needs_body("read_needs_no_nested_docker", false) ==
+                 "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+      end)
+    end
+
     test "what happened, and the run's page" do
       for {status, overrides, run_state, heading, body} <- [
             {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended}, "Failed",

@@ -186,8 +186,11 @@ defmodule ApiaryWeb.RunComponents do
   as "The harness is the Qory harness.", none for a hidden harness. They need the run's
   run of the queue with its harness walk and work item loaded, as
   `Apiary.Runs.Record.fetch_run/2` loads them; without them the first sentence says "the
-  name of the run's workflow". Any other code is the one the run's starter gave, shown as
-  given with spaces for underscores: `no_longer_needed` reads "no longer needed".
+  name of the run's workflow". qory's four codes for a read-only run it closed read
+  "read-only run with no wall", "setup runs inside the agent's container", "image has
+  nested Docker" and "setup container not removed". Any other code is the one the run's
+  starter gave, shown as given with spaces for underscores: `no_longer_needed` reads "no
+  longer needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one. A code of a check of the
@@ -391,6 +394,16 @@ defmodule ApiaryWeb.RunComponents do
 
   defp words_of("credential_check_invalid", _run),
     do: gettext("couldn't check whether the run may go on: unreadable answer")
+
+  # qory closes a run of a read-only workflow with one of these four, before a session joins
+  # it (`Apiary.Runs.ReadNeeds`). The work item has the fix.
+  defp words_of("read_needs_wall", _run), do: gettext("read-only run with no wall")
+
+  defp words_of("read_needs_setup_outside", _run),
+    do: gettext("setup runs inside the agent's container")
+
+  defp words_of("read_needs_no_nested_docker", _run), do: gettext("image has nested Docker")
+  defp words_of("read_needs_setup_removed", _run), do: gettext("setup container not removed")
 
   defp words_of("run_closed", _run), do: nil
   defp words_of(code, _run), do: String.replace(code, "_", " ")
