@@ -19,8 +19,8 @@ defmodule Apiary.Dispatches.MachineEnds do
   #      (`Apiary.Dispatches.current_key/1`): revoked, of a pool deleted, or of a place
   #      out of use since, `{:error, :unauthorized}`;
   #   2. the dispatch by its public id, and a check that the key may take
-  #      `dispatch.machine_end` on it (`Apiary.Access`): an unknown dispatch, one another pool claimed and any refusal
-  #      of the key are one answer, `{:error, :forbidden}`;
+  #      `dispatch.machine_end` on it (`Apiary.Access`): an unknown dispatch, one another
+  #      pool claimed and any refusal of the key are one answer, `{:error, :forbidden}`;
   #   3. the dispatch locked `FOR UPDATE`, so two reports for one dispatch take turns and
   #      are applied in the order they hold the lock;
   #   4. a dispatch whose state is `gone` keeps it: `:ok`, and nothing is written. Any
@@ -42,8 +42,8 @@ defmodule Apiary.Dispatches.MachineEnds do
   # `:ok` once the report is written, or kept for `gone`. Once a change commits, a message
   # goes out on the topic of the run registered at the dispatch's claim
   # (`Apiary.Runs.broadcast_machine_end/1`); a failure of that broadcast is logged by its
-  # kind alone and never changes the answer. An exception rolls the transaction back, is logged by
-  # its module alone, and is `{:error, :unavailable}`.
+  # kind alone and never changes the answer. An exception rolls the transaction back, is
+  # logged by its module alone, and is `{:error, :unavailable}`.
 
   import Ecto.Query, only: [from: 2]
 
