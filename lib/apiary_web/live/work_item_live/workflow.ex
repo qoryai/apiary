@@ -13,10 +13,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # its artifacts' (`Apiary.Artifacts.subscribe/2`), where `{:artifact_pushed, work_item_id,
   # version_id}` arrives.
   #
-  # **The runs.** `Apiary.Stages.runs/1`, each an attempt numbered from the work item's
-  # first run, not the run's number on the server. A run whose `questions` artifact has a
-  # version shows as questions: the versions carry the run of the queue, so `runs/2`
-  # reads the registered runs' links to it (`runs`).
+  # **The runs.** `Apiary.Stages.runs/1` of the current take in, each numbered by its
+  # attempt in the take in, not the run's number on the server. A run whose `questions`
+  # artifact has a version shows as questions: the versions carry the run of the queue, so
+  # `runs/2` reads the registered runs' links to it (`runs`).
   #
   # **The feature.** `on?/1` is whether the reader is shown `workflow_model`. A work item
   # the stage runner has not placed (`Apiary.Stages.status/2` is nil) draws as before the
@@ -172,24 +172,30 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp state(_state), do: :running
 
-  # The work item's runs, newest first, each numbered from its first run, with its
-  # workflow, its round, and what it gave: its verdict, its questions, or, with neither,
-  # its state.
+  # The runs of the work item's current take in, newest first, each numbered by its attempt
+  # in the take in, as the step card and Details count it, with its workflow, its round,
+  # and what it gave: its verdict, its questions, or, with neither, its state.
   defp runs(row, index) do
-    runs = Stages.runs(row)
+    all = Stages.runs(row)
+    take_in = current_take_in(row, all)
+    runs = Enum.filter(all, &(&1.take_in == take_in))
     asked = asked(runs, index)
-    count = length(runs)
 
-    for {run, i} <- Enum.with_index(runs) do
+    for run <- runs do
       %{
         id: run.id,
-        number: count - i,
+        number: run.attempt,
         workflow: run.workflow,
         round: run.round,
         shows: shows(run, asked)
       }
     end
   end
+
+  # The work item's take in, else the take in of its newest run.
+  defp current_take_in(%{take_in: take_in}, _runs) when is_integer(take_in), do: take_in
+  defp current_take_in(_row, [run | _runs]), do: run.take_in
+  defp current_take_in(_row, []), do: nil
 
   # The registered runs (`rn_…`) whose run of the queue has a `questions` version.
   defp asked(runs, index) do

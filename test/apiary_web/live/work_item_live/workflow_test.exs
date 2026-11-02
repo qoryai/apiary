@@ -357,6 +357,57 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute render(view) =~ "Attempt 4 of 4 is queued."
     end
 
+    test "a second take in: the stage card counts its attempts as the step card does", %{
+      conn: conn,
+      scope: scope
+    } do
+      answers = %{"1" => "a", "2" => "b"}
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      # Take in 1: two runs, then the work item is closed and taken in again.
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+      {:ok, _} = WorkItems.close(scope, work_item)
+      {:ok, _} = WorkItems.take_in_again(scope, ticket.public_id)
+
+      # Take in 2: run 1 asks, the answer queues attempt 2.
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+      assert %DispatchRun{take_in: 2, attempt: 2, of: 3} = newest_run(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
+      assert has_element?(view, "#work-item-runs-0", "queued")
+      assert has_element?(view, "#work-item-runs-1", "Attempt 1 · explore-a-ticket")
+      refute has_element?(view, "#work-item-runs-2")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      refute render(view) =~ "Attempt 4"
+    end
+
+    test "a run before the work item was placed: the stage card counts as the step card does",
+         %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
+
+      # As the migration placed the work item: its first run has no stage.
+      {1, _} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^newest_run(work_item).id),
+          set: [stage_id: nil]
+        )
+
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
+      refute has_element?(view, "#work-item-runs-1")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      refute render(view) =~ "Attempt 1 · explore-a-ticket"
+    end
+
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
       work_item = taken_in_fixture(scope)
 

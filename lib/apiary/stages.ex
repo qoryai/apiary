@@ -915,7 +915,8 @@ defmodule Apiary.Stages do
 
   # runs/1 is the work item's runs of stages, newest first: each with the public id of its
   # registered run (`rn_…`, nil before a claim registers it), its workflow, stage, round,
-  # `of` (the attempts its take in may reach), `status` (the state of the run of the
+  # `take_in` and `attempt` (its place in the take in, from 1), `of` (the attempts its
+  # take in may reach), `status` (the state of the run of the
   # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
   # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
   # started and ended, nil for not yet.
@@ -938,6 +939,8 @@ defmodule Apiary.Stages do
         workflow: dispatch_run.workflow,
         stage_id: dispatch_run.stage_id,
         round: dispatch_run.round,
+        take_in: dispatch_run.take_in,
+        attempt: dispatch_run.attempt,
         of: dispatch_run.of,
         status: dispatch_run.state,
         verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]),
