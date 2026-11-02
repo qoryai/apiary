@@ -88,14 +88,23 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
   end
 
   # Waits for the reads: each result starts the next read, so one wait is not enough. It
-  # ends once no group is reading, or the limit line shows.
+  # ends once no group is reading, or once the limit line shows and the reads under way
+  # have ended. The limit starts no read, but the reads started before it still finish,
+  # and each of them adds its card.
   defp settle(lv, rounds \\ 20) do
     render_async(lv, 2_000)
 
-    if rounds > 0 and has_element?(lv, ~s([id^="set-up-group-"][id$="-reading"])) and
-         not has_element?(lv, "#set-up-templates-limited"),
-       do: settle(lv, rounds - 1),
-       else: lv
+    cond do
+      has_element?(lv, "#set-up-templates-limited") ->
+        render_async(lv, 2_000)
+        lv
+
+      rounds > 0 and has_element?(lv, ~s([id^="set-up-group-"][id$="-reading"])) ->
+        settle(lv, rounds - 1)
+
+      true ->
+        lv
+    end
   end
 
   defp words(lv, selector) do
