@@ -6,7 +6,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Artifacts
-  alias Apiary.Artifacts.{TemplateTypes, Type}
+  alias Apiary.Artifacts.{CustomSchema, TemplateTypes, Type}
   alias Apiary.Audit.Entry
   alias Apiary.Harnesses.Reader
   alias Apiary.Organisations.Workspace
@@ -215,10 +215,21 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
           do: %{@structured | "name" => "t#{index}", "json_schema" => schema.(index)}
     end
 
-    test "stops a loop of schemas that each pass" do
-      assert :ok = TemplateTypes.check(template(structured(50)))
+    # The reductions of one build of `{}`, read after a first build has loaded the code.
+    defp one_build do
+      left = CustomSchema.total(reductions: 1_000_000, ms: 30_000)
+      {:ok, _left} = CustomSchema.check_within(%{}, left)
+      {:ok, after_one} = CustomSchema.check_within(%{}, left)
+      left.reductions - after_one.reductions
+    end
 
-      assert TemplateTypes.check(template(structured(50)), reductions: 20_000, ms: 30_000) ==
+    test "stops a loop of schemas that each pass" do
+      total = [reductions: one_build() * 10, ms: 30_000]
+
+      assert :ok = TemplateTypes.check(template(structured(1)), total)
+      assert :ok = TemplateTypes.check(template(structured(100)))
+
+      assert TemplateTypes.check(template(structured(100)), total) ==
                {:error, [:schemas_too_long]}
     end
 
@@ -239,7 +250,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                "the JSON Schemas in artifact_types take too long to check: use fewer or smaller schemas"
     end
 
-    test "a schema over its single budget stays not valid" do
+    test "a schema over the limit of its patterns stays not valid" do
       # 210 patterns, each counted at the most one pattern can take, pass 16 MiB.
       properties = Map.new(1..210, &{"p#{&1}", %{"pattern" => "(?x)a#{&1}"}})
       [entry] = structured(1, fn _index -> %{"properties" => properties} end)
@@ -253,6 +264,12 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       listed = structured(430, &%{"title" => "x#{&1}", "$ref" => meta})
 
       assert :ok = TemplateTypes.check(template(listed))
+    end
+
+    test "total/1 is the same reductions and the smaller time" do
+      assert [reductions: 300_000_000, ms: 30_000] = TemplateTypes.total(60_000)
+      assert [reductions: 300_000_000, ms: 5_000] = TemplateTypes.total(5_000)
+      assert [reductions: 300_000_000, ms: 0] = TemplateTypes.total(-1)
     end
 
     test "a template with no JSON Schema does no such work" do

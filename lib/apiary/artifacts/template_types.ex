@@ -21,7 +21,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      A file of 64 KiB fits about 800 definitions, each with a budget of up to 10 s, so
   #      the total bounds how long one template holds a caller. A schema over its single
   #      budget stays `{:invalid, type, :json_schema}`. A template with no JSON Schema
-  #      does no such work, and `check/2` is `check/1` with another total.
+  #      does no such work, and `check/2` is `check/1` with another total. `total/1` is
+  #      the total for a caller with less time than `@total`.
   #
   # A nil list is `:ok` with no check, so a template written before the key works
   # unchanged. `Apiary.Stacks.Sources` calls `check/1` on each template it reads, last,
@@ -66,7 +67,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # 26.95 million reductions in 242 ms, and 470 of the shortest such definitions do 29.4
   # million in 269 ms, about 100,000 reductions per ms. 300 million is 11 times the first
   # and 30 times a schema's budget of 10 million, so a definition that fits its budget
-  # fits the total. The reductions are the bound: the same file gets the same answer on
+  # fits the total. The reductions are the bound: the same file gets the same result on
   # any machine. They take about 3 s at that rate, so the 30 s is only a bound on a run
   # that counts few reductions.
   @total [reductions: 300_000_000, ms: 30_000]
@@ -107,6 +108,13 @@ defmodule Apiary.Artifacts.TemplateTypes do
       refusals -> {:error, refusals}
     end
   end
+
+  # total/1 is the total of a caller with `left` ms: the same reductions, and the smaller
+  # of `@total`'s time and `left`.
+  @doc false
+  @spec total(integer) :: [reductions: pos_integer, ms: non_neg_integer]
+  def total(left),
+    do: [reductions: @total[:reductions], ms: left |> min(@total[:ms]) |> max(0)]
 
   defp alone?(entry), do: map_size(entry) == 1
 

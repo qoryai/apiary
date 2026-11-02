@@ -837,6 +837,60 @@ defmodule Apiary.Stacks.SourcesTest do
                Sources.templates(ctx.scope, source)
     end
 
+    # A clock of the read's checks, on time for the first `on_time` reads and 60 s past the
+    # read's deadline from then on.
+    defp clock(on_time) do
+      reads = :counters.new(1, [])
+
+      fn ->
+        :counters.add(reads, 1, 1)
+        now = System.monotonic_time(:millisecond)
+        if :counters.get(reads, 1) > on_time, do: now + 60_000, else: now
+      end
+    end
+
+    defp module_reads do
+      for {"read", %{"path" => "modules/" <> path}} <- calls(), do: path
+    end
+
+    test "a source past its deadline stops before the next module, as a late read fails", ctx do
+      source =
+        template_source(ctx, root("[a, b]"), %{"a" => template_file(), "b" => template_file()})
+
+      # Two reads for the module a: before it, and for the check of its types.
+      assert {:error, {:call, %{cause: :late, seconds: 30}}} =
+               Sources.templates(ctx.scope, source, clock(2))
+
+      assert module_reads() == ["a/process.yaml"]
+    end
+
+    test "a source past its deadline reads no module", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => template_file()})
+
+      assert {:error, {:call, %{cause: :late}}} = Sources.templates(ctx.scope, source, clock(0))
+      assert module_reads() == []
+    end
+
+    test "the check of a module's types gets no time past the deadline", ctx do
+      file =
+        template_file() <>
+          """
+          artifact_types:
+            - name: customer-facts
+              base_view: structured
+              size_limit: 65536
+              max_files: 1
+              json_schema: {type: object}
+          """
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [not_readable]}} =
+               Sources.templates(ctx.scope, source, clock(1))
+
+      assert not_readable == %{module: "a", reason: {:types, [:schemas_too_long]}}
+    end
+
     test "a file Reader.template/1 does not pass is unreadable", ctx do
       for file <- ["name: Support desk\n", "a: [", "- a\n"] do
         source = template_source(ctx, root("[a]"), %{"a" => file})
@@ -1084,6 +1138,18 @@ defmodule Apiary.Stacks.SourcesTest do
                %{module: "b", reason: :unreadable},
                %{module: "c", reason: :unreadable}
              ]
+    end
+
+    test "a public source past its deadline fails as a late read fails", ctx do
+      serve_calls([ctx.adapter], covered: %{})
+      public!(@public, %{"qory.yaml" => root("[a]"), module_path("a") => template_file()})
+      {:ok, source} = Sources.address(@public)
+
+      assert {:error, {:fetch, :source_unreachable, rule}} =
+               Sources.templates(ctx.scope, source, clock(0))
+
+      assert %{"rule" => "fetch", "values" => %{"host" => "code.example.com", "seconds" => 30}} =
+               rule
     end
 
     test "a public host that stops at a module's file returns the error of read/2", ctx do

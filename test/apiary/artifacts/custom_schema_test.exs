@@ -65,6 +65,50 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
       assert {:error, :total} = CustomSchema.check_within(@bids, left)
     end
 
+    test "is the total's refusal for a refused schema past what is left" do
+      schema = %{"type" => 5}
+
+      assert {:error, :unbuildable} =
+               CustomSchema.check_within(schema, CustomSchema.total(@plenty))
+
+      left = CustomSchema.total(reductions: 1, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(schema, left)
+    end
+
+    # 54 KiB of 4 patterns, which takes at least 9 ms and 360,000 reductions to build, most
+    # of the time in the compile of the patterns. `Budget.run/2` reads a run every 2 ms.
+    @slow %{
+      "properties" =>
+        Map.new(1..4, fn property ->
+          alternatives = Enum.map_join(1..1500, "|", &"[a-z]{#{rem(&1, 9) + 1}}")
+          {"p#{property}", %{"pattern" => "(#{alternatives})#{property}"}}
+        end)
+    }
+
+    test "is the total's refusal when the run is cut on reductions" do
+      assert {:ok, _left} = CustomSchema.check_within(@slow, CustomSchema.total(@plenty))
+
+      left = CustomSchema.total(reductions: 1_000, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left)
+    end
+
+    test "is the total's refusal when the run is cut on time" do
+      left = CustomSchema.total(reductions: 10_000_000, ms: 3)
+      assert {:error, :total} = CustomSchema.check_within(@slow, left)
+    end
+
+    test "stops a loop only after schemas that passed" do
+      assert {:ok, _left} = CustomSchema.check_within(@bids, CustomSchema.total(@plenty))
+
+      passed =
+        Stream.iterate({:ok, CustomSchema.total(reductions: 200_000, ms: 30_000)}, fn {:ok, left} ->
+          CustomSchema.check_within(@bids, left)
+        end)
+        |> Enum.take_while(&match?({:ok, _left}, &1))
+
+      assert length(passed) > 2
+    end
+
     test "gives check/1's refusals, each bound kept" do
       left = CustomSchema.total(@plenty)
 

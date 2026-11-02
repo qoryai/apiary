@@ -20,8 +20,9 @@ defmodule Apiary.Artifacts.CustomSchema do
   # because compiled patterns are outside the heap a budget counts: a shared process
   # would weaken that bound. A run gets the smaller of the single budget and what is
   # left, and its reductions, read in its process at the end, come off the total.
-  # `{:error, :total}` is a total that ran out, also for a run cut short only because
-  # what was left was smaller than the single budget.
+  # `{:error, :total}` is a total that ran out: nothing left before a run, a run cut short
+  # only because what was left was smaller than the single budget, or a run that ended
+  # past what was left, whether its schema passed or not.
   #
   # `validate/2`, for a push: the document is checked against the bounds below before
   # JSV is given it, and JSV builds the schema and validates the document in the budget's
@@ -103,16 +104,20 @@ defmodule Apiary.Artifacts.CustomSchema do
 
   def check_within(_schema, %{}), do: {:error, :not_an_object}
 
-  # A result past what was left is the total's, whether or not a read of the reductions
-  # came in time to cut the run: the same schemas get the same answer.
-  defp counted(schema, %{reductions: reductions} = left, ms) do
+  # A run past what was left is the total's, whether or not a read of its reductions came
+  # in time to cut it: the same schemas get the same result. A run past the deadline is
+  # the total's too.
+  defp counted(schema, %{reductions: reductions, deadline: deadline} = left, ms) do
     budget = Keyword.merge(@budget, reductions: min(reductions, @single_reductions))
     budget = Keyword.put(budget, :ms, min(ms, @single_ms))
 
-    case Budget.run(fn -> {build(copy(schema)), reductions_here()} end, budget) do
-      {:ok, {{:error, refusal}, _used}} -> {:error, refusal}
-      {:ok, {:ok, used}} when used > reductions -> {:error, :total}
+    result = Budget.run(fn -> {build(copy(schema)), reductions_here()} end, budget)
+    late? = now() > deadline
+
+    case result do
+      {:ok, {_result, used}} when late? or used > reductions -> {:error, :total}
       {:ok, {:ok, used}} -> {:ok, %{left | reductions: reductions - used}}
+      {:ok, {{:error, refusal}, _used}} -> {:error, refusal}
       {:error, :reductions} when reductions < @single_reductions -> {:error, :total}
       {:error, :time} when ms < @single_ms -> {:error, :total}
       {:error, _reason} -> {:error, :budget}
