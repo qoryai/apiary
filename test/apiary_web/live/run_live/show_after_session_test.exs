@@ -1,0 +1,284 @@
+defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
+  @moduledoc """
+  The After the session section of a run's Timeline (`ApiaryWeb.PreparationComponents`): a
+  push step's row, live on an open page, and a failed push that reads as no failed
+  preparation.
+  """
+  use ApiaryWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+  import Apiary.RunEventsFixtures
+
+  alias Apiary.Repo
+  alias Apiary.Runs.{Projector, Step}
+
+  @moduletag needs: :factory
+
+  @push "push work to git.example.com/acme/web-shop"
+  @output "To https://git.example.com/acme/web-shop.git\n"
+
+  setup :register_and_log_in_user
+
+  defp project!(run, events) do
+    events_fixture(run, events)
+    {:ok, run} = Projector.project(run)
+    run
+  end
+
+  # A run whose only session has exited, alive, with a preparation that has settled.
+  defp session_over(scope, extra \\ []) do
+    project!(
+      run_fixture(scope),
+      [
+        {1, "run.started", started_data()},
+        {2, "session.started", session_started_data()},
+        {3, "runtime.started", %{"session_id" => "session-0001"}},
+        {4, "runtime.notification", %{"kind" => "k", "message" => "working"}},
+        {5, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
+      ] ++ extra
+    )
+  end
+
+  defp push_started(sequence, time \\ DateTime.utc_now()) do
+    {sequence, "run.step_started", %{"step" => 1, "name" => @push, "kind" => "push"}, time: time}
+  end
+
+  defp push_exited(sequence, state, exit_code),
+    do:
+      {sequence, "run.step_exited",
+       %{"step" => 1, "state" => state, "exit_code" => exit_code, "duration_ms" => 72_000}}
+
+  defp open(conn, scope, run) do
+    {:ok, lv, _html} =
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+    lv
+  end
+
+  defp arrive!(lv, run, events) do
+    project!(run, events)
+    send(lv.pid, :flush)
+    render(lv)
+  end
+
+  defp settled?(lv), do: :sys.get_state(lv.pid).socket.assigns.preparation_settled
+
+  # The reader is at the end of the page, so a new item joins the window. Else the window
+  # stops short of the run's end, and the section waits.
+  defp at_end(lv),
+    do: render_hook(element(lv, "#run-timeline"), "live_end", %{"at_end" => true})
+
+  test "a page open on a live run shows the section, a running row, then its end", ctx do
+    run = session_over(ctx.scope)
+    lv = open(ctx.conn, ctx.scope, run)
+
+    refute has_element?(lv, "#after-session")
+    assert settled?(lv)
+
+    arrive!(lv, run, [push_started(6)])
+
+    assert lv |> element("#after-session h2") |> render() =~ "After the session"
+    assert has_element?(lv, "#after-session-step-1[data-state='running']")
+    row = lv |> element("#after-session-step-1 summary") |> render()
+    assert row =~ "Running"
+    assert row =~ "q-prep-pulse"
+    assert row =~ "Push work to git.example.com/acme/web-shop"
+    assert has_element?(lv, "#after-session-step-1-clock[data-tick='duration']")
+
+    arrive!(lv, run, [
+      {7, "run.log", step_log_data(1, @output)},
+      push_exited(8, "succeeded", 0)
+    ])
+
+    assert has_element?(lv, "#after-session-step-1[data-state='succeeded']")
+    row = lv |> element("#after-session-step-1 summary") |> render()
+    assert row =~ "1 m 12 s"
+    refute row =~ "Running"
+    refute has_element?(lv, "#after-session-step-1-clock")
+    assert lv |> element("#after-session-step-1-output") |> render() =~ @output |> String.trim()
+    refute has_element?(lv, "#after-session-step-1[open]")
+  end
+
+  test "the section has no total, no cause line and no Clean up row", ctx do
+    run = session_over(ctx.scope, [push_started(6), push_exited(7, "failed", 1)])
+    lv = open(ctx.conn, ctx.scope, run)
+
+    assert has_element?(lv, "#after-session .q-prep-steps > li", "Push work")
+    refute has_element?(lv, "#after-session .q-prep-total")
+    refute has_element?(lv, "#after-session .q-prep-cause")
+    refute has_element?(lv, "#after-session [data-clean-up]")
+  end
+
+  test "the section comes after the timeline, and has no place on another tab", ctx do
+    run = session_over(ctx.scope, [push_started(6), push_exited(7, "succeeded", 0)])
+    lv = open(ctx.conn, ctx.scope, run)
+    html = render(lv)
+
+    assert [_before, after_timeline] = String.split(html, ~s(id="timeline"), parts: 2)
+    assert [between, _rest] = String.split(after_timeline, ~s(id="live-end"), parts: 2)
+    assert between =~ ~s(id="after-session")
+
+    {:ok, lv, _html} =
+      live(
+        ctx.conn,
+        ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/runs/#{run.number}/network"
+      )
+
+    refute has_element?(lv, "#after-session")
+  end
+
+  test "a failed push is open with its output, and nothing reads as a failed preparation",
+       ctx do
+    run = run_fixture(ctx.scope)
+
+    run =
+      project!(run, [
+        {1, "run.started", started_data()},
+        {2, "run.step_started",
+         %{"step" => 1, "name" => "fetch git.example.com/acme/web-shop", "kind" => "fetch"}},
+        {3, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+        {4, "session.started", session_started_data()},
+        {5, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+        {6, "run.step_started", %{"step" => 2, "name" => @push, "kind" => "push"}},
+        {7, "run.log", step_log_data(2, "rejected: the branch moved\n")},
+        {8, "run.step_exited",
+         %{"step" => 2, "state" => "failed", "exit_code" => 1, "duration_ms" => 100}},
+        {9, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+      ])
+
+    lv = open(ctx.conn, ctx.scope, run)
+
+    assert has_element?(lv, "#after-session-step-2[open]")
+
+    assert lv |> element("#after-session-step-2-output") |> render() =~
+             "rejected: the branch moved"
+
+    refute has_element?(lv, "#prepare-machine-step-2")
+    refute has_element?(lv, ".q-prep-cause")
+
+    html = render(lv)
+    refute html =~ "The run stopped before its session started"
+    refute html =~ "failed with exit code"
+    refute html =~ "reads the cause in the step"
+  end
+
+  test "a failed setup step before the session still is a failed preparation", ctx do
+    run =
+      ctx.scope
+      |> run_fixture()
+      |> project!([
+        {1, "run.started", started_data()},
+        {2, "run.step_started", %{"step" => 1, "name" => "set up", "kind" => "setup"}},
+        {3, "run.step_exited",
+         %{"step" => 1, "state" => "failed", "exit_code" => 2, "duration_ms" => 100}},
+        {4, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+      ])
+
+    lv = open(ctx.conn, ctx.scope, run)
+
+    refute has_element?(lv, "#after-session")
+    assert has_element?(lv, "#prepare-machine-cause")
+    assert lv |> element(".q-limits") |> render() =~ "stopped before its session started"
+  end
+
+  test "a run's exit cancels an open push step on the page", ctx do
+    run = session_over(ctx.scope, [push_started(6)])
+    lv = open(ctx.conn, ctx.scope, run)
+    at_end(lv)
+
+    assert has_element?(lv, "#after-session-step-1[data-state='running']")
+
+    arrive!(lv, run, [
+      {7, "run.exited", %{"state" => "cancelled", "reason" => "stopped", "exit_code" => -1}}
+    ])
+
+    assert has_element?(lv, "#after-session-step-1[data-state='cancelled']")
+    refute lv |> element("#after-session-step-1 summary") |> render() =~ "Running"
+    refute has_element?(lv, "#after-session time[data-tick]")
+  end
+
+  test "a reader without `run.read_log` sees the row and no output", ctx do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLog)
+
+    run =
+      session_over(ctx.scope, [
+        push_started(6),
+        {7, "run.log", step_log_data(1, @output)},
+        push_exited(8, "failed", 1)
+      ])
+
+    lv = open(ctx.conn, ctx.scope, run)
+
+    assert has_element?(lv, "#after-session-step-1[data-state='failed']")
+    refute has_element?(lv, "#after-session-step-1-output")
+    refute render(lv) =~ "web-shop.git"
+  end
+
+  test "another flush of a live session does not read the preparation again", ctx do
+    run = session_over(ctx.scope)
+    lv = open(ctx.conn, ctx.scope, run)
+    at_end(lv)
+    assert settled?(lv)
+
+    # A row no event announced: a read would show it.
+    Repo.insert!(%Step{
+      organisation_id: run.organisation_id,
+      workspace_id: run.workspace_id,
+      run_id: run.id,
+      step: 1,
+      name: @push,
+      kind: "push"
+    })
+
+    arrive!(lv, run, [{6, "runtime.notification", %{"kind" => "k", "message" => "still"}}])
+    refute has_element?(lv, "#after-session")
+
+    arrive!(lv, run, [push_exited(7, "succeeded", 0)])
+    assert has_element?(lv, "#after-session-step-1[data-state='succeeded']")
+  end
+
+  test "a later session's join shows under Prepare machine with no reload", ctx do
+    run = session_over(ctx.scope)
+    lv = open(ctx.conn, ctx.scope, run)
+
+    arrive!(lv, run, [
+      {6, "run.step_started", %{"step" => 1, "name" => "join session 2", "kind" => "join"}}
+    ])
+
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
+    refute has_element?(lv, "#after-session")
+  end
+
+  test "the window must reach the run's end for the section to show", ctx do
+    notes = for n <- 6..320, do: {n, "runtime.notification", %{"kind" => "k", "message" => "m"}}
+
+    run =
+      session_over(
+        ctx.scope,
+        notes ++ [push_started(321), push_exited(322, "succeeded", 0)]
+      )
+
+    lv = open(ctx.conn, ctx.scope, run)
+
+    assert has_element?(lv, "#timeline-later")
+    refute has_element?(lv, "#after-session")
+
+    render_click(element(lv, "#timeline-later"))
+
+    refute has_element?(lv, "#timeline-later")
+    assert has_element?(lv, "#after-session-step-1")
+  end
+
+  test "a reader who is not at the end sees the section once the new events show", ctx do
+    run = session_over(ctx.scope, [push_started(6)])
+    lv = open(ctx.conn, ctx.scope, run)
+    assert has_element?(lv, "#after-session")
+
+    arrive!(lv, run, [{7, "runtime.notification", %{"kind" => "k", "message" => "late"}}])
+    refute has_element?(lv, "#after-session")
+
+    render_click(element(lv, "#new-events"))
+    assert has_element?(lv, "#after-session")
+  end
+end

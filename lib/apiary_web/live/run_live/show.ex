@@ -42,7 +42,7 @@ defmodule ApiaryWeb.RunLive.Show do
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
   import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
-  import ApiaryWeb.PreparationComponents, only: [prepare_machine: 1]
+  import ApiaryWeb.PreparationComponents, only: [after_session: 1, prepare_machine: 1]
 
   alias Apiary.Access
   alias Apiary.Dispatches
@@ -65,6 +65,9 @@ defmodule ApiaryWeb.RunLive.Show do
   @quiet_tick_ms 5_000
   @announce_every_ms 10_000
   @max_versions 20
+  # What changes a settled preparation: a step's start or exit, as a step can run after
+  # the session, and the run's exit, which cancels a step left open.
+  @preparation_events ~w(dev.qory.run.step_started dev.qory.run.step_exited dev.qory.run.exited)
   @impl true
   def render(%{run: nil} = assigns) do
     ~H"""
@@ -637,6 +640,12 @@ defmodule ApiaryWeb.RunLive.Show do
         later={max(@later - @new_count, 0)}
         security={@security}
         legend={@index.items != []}
+      />
+
+      <.after_session
+        :if={@later == 0 and PreparationComponents.after_session?(@preparation)}
+        preparation={@preparation}
+        alive={alive?(@run)}
       />
 
       <.live_end
@@ -2997,7 +3006,7 @@ defmodule ApiaryWeb.RunLive.Show do
           end
       end
 
-    socket = socket |> put_index(index) |> assign_ending() |> refresh_preparation()
+    socket = socket |> put_index(index) |> assign_ending() |> refresh_preparation(rows)
     security = socket.assigns.security
 
     case rows do
@@ -3043,8 +3052,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The run's preparation (`Apiary.Runs.Preparation`), read again at each flush until it
   # is settled (`ApiaryWeb.PreparationComponents.settled?/2`) or the timeline has a
-  # session's item, so a live session's flushes read nothing more; and its machine log
-  # for an instance admin, read until it has arrived.
+  # session's item, so a live session's flushes read it only for an event of
+  # `@preparation_events`; and its machine log for an instance admin, read until it has
+  # arrived.
   defp assign_preparation(%{assigns: %{run: %Run{} = run, current_scope: scope}} = socket) do
     preparation = Preparation.read(scope, run)
 
@@ -3088,8 +3098,15 @@ defmodule ApiaryWeb.RunLive.Show do
   defp shown_limit(:vm_wall, %{session_started_at: nil}), do: nil
   defp shown_limit(limit, _preparation), do: limit
 
-  defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket), do: socket
-  defp refresh_preparation(socket), do: assign_preparation(socket)
+  # A `:stale` read returns no rows to look at, so the preparation is read.
+  defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket, rows)
+       when is_list(rows) do
+    if Enum.any?(rows, &(&1.type in @preparation_events)),
+      do: assign_preparation(socket),
+      else: socket
+  end
+
+  defp refresh_preparation(socket, _rows), do: assign_preparation(socket)
 
   # The starter's `dispatched` and the redemption of the run's code are broadcast on the
   # run's topic once they commit. As that broadcast runs after the commit and may fail,

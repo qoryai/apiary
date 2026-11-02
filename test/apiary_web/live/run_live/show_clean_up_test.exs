@@ -182,6 +182,25 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
   end
 
   describe "a run on a permanent machine" do
+    test "on an open page whose section had settled, the run's exit brings the row", ctx do
+      run =
+        ctx.scope
+        |> node_fixture()
+        |> node_run_fixture(unique_instance_id(), %{state: "running"})
+        |> project!(steps(false) ++ [{4, "session.started", session_started_data()}])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      assert :sys.get_state(lv.pid).socket.assigns.preparation_settled
+      refute has_element?(lv, "#prepare-machine-clean-up")
+
+      project!(run, [
+        {5, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 2_000}}
+      ])
+
+      send(lv.pid, :flush)
+      assert row(lv) =~ "Machine stays registered"
+    end
+
     test "once it ended, the machine stays registered; before, no row", ctx do
       node = node_fixture(ctx.scope)
 

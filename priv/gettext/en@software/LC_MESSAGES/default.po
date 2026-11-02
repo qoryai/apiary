@@ -4469,6 +4469,11 @@ msgstr ""
 msgid "Admin"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "After the session"
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "After you save, choose the model for %{workspace} in Workspace settings › Model."
