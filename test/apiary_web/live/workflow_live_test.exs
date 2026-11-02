@@ -1089,6 +1089,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert row_options(view, destination) == [
                {"Workspace's harness", "default"},
                {"core · Qory harness · latest", "workspace:core"},
+               {"software · Qory harness · latest", "workspace:software"},
                {"A stack of another repository…", "other"}
              ]
 
