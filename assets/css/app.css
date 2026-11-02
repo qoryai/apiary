@@ -4477,10 +4477,6 @@
     text-decoration-color: var(--q-border-strong);
     text-underline-offset: 2px;
   }
-  .q-rl-title.q-rl-id {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-  }
   .q-rl-inl {
     min-width: 0;
     overflow: hidden;
@@ -10295,7 +10291,6 @@
   .q-ar-id {
     flex: none;
     color: var(--q-faint);
-    font-family: var(--font-mono);
     font-size: 0.75rem;
   }
   .q-ar-where {
@@ -13295,11 +13290,6 @@
     padding-top: 10px;
     border-top: 1px solid var(--q-border-subtle);
     color: var(--q-muted);
-  }
-  .q-wi-run,
-  .q-wi-run-id {
-    font-family: var(--font-mono);
-    font-size: 0.78125rem;
   }
 
   /* ---- Details: a quiet list beside the page from 1440 px; folded below it ---- */

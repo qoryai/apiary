@@ -27,8 +27,8 @@ page and an Instance page, the one the person came from (Two levels, below).
   then the workspace, each a link to its home, and the page's segments, a target or a
   record, the last one the page with `aria-current="page"`. A page of a workspace or an
   organisation starts them with its section's name as the sidebar words it: a link to the
-  section's page on a page under it (`Acme / Main / Runs / Run rn_7k3m9q2x`, also where that
-  run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
+  section's page on a page under it (`Acme / Main / Runs / Run 14`, also where that
+  run is not found, and `Acme / Main / Runs` where the address is no run's number), the page
   itself on the section's page (`Acme / Main / Runs`, `Acme / Main / Overview`,
   `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
   target, a machine, a run) is the page itself on its first tab and a link
@@ -188,7 +188,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   is drawn lighter, the page's parent, while the disclosure under the bar (Two levels,
   above) names the level and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
-  (`‹ Runs / Run rn_7k3m9q2x`): the item of the one
+  (`‹ Runs / Run 14`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
   Where the two do not fit, the page's name is cut short first, with an ellipsis, and the
   parent keeps up to 8rem. A section's page shows its name alone. On a core
@@ -714,7 +714,8 @@ version in force is exported; another version's path sends on to it.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
-  card, of the run chosen (`?run=`, its `rn_` id; another value is dropped with a notice;
+  card, of the run chosen (`?run=`, its number; its `rn_` id is patched to the number, and
+  another value is dropped with a notice;
   the first row until the reader chooses one), with the
   last lines of its log as plain text for a reader who may read the log (`run.read_log`;
   without it, no line is read and the preview has no terminal). The `RunList` hook tells
@@ -1669,21 +1670,23 @@ under the header. The Timeline tab's content, Prepare machine included, stops at
 left aligned, so a row's time stays near it; the Details rail, the header and the tabs stay
 where they are, and Network access and Terminal keep the column's whole width. The terminal
 takes the whole window through Focus (The terminal, below). The top bar's breadcrumb ends with Runs, a link to the list,
-and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
+and `Run 14`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
-A run's address, `/:org/:workspace/runs/:run_id`, carries the id Qory Apiary gives the
-run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the run id on the machine,
-or any other value, is not found, and nothing redirects it. The header, Details and Copy
-run id give the whole `rn_` id; lists, titles and the breadcrumb give `rn_` and its first
-eight characters. Details' Record shows the run id on the machine on the next row, "Run id on the
-machine", and the search finds a run by either id. Details and the runs list's preview
-show the instance id Forager claimed for the run, when it claimed one, under "Machine
-id".
+A run's address, `/:org/:workspace/runs/:run_id`, carries the run's number, one count
+for the whole server (`Apiary.Runs.Run`, `number`). An address with the run's `rn_` id,
+the id the API gives, is sent on to the number's address when the run is in the
+workspace; a number or `rn_` id of no run of the workspace, the run id on the machine and
+any other value are not found, the same page for each. The header, the breadcrumb, the
+lists and the titles name a run "Run 14"; Details' Record shows "Run number" with Copy,
+the run id on the machine on the next row, "Run id on the machine", and the search finds
+a run by its `rn_` id or the run id on the machine. The run page, the lists and the
+titles show no `rn_` id. Details and the runs list's preview show the instance id
+Forager claimed for the run, when it claimed one, under "Machine id".
 
-- **The header** is the title (the one the run gave in its `about`, else "Run" and the
-  run's whole id, `Run rn_7k3m9q2xd4h8vbn1`) alone; then, when the run names a kind or subjects, one
-  line of what it is about: the kind, then at most three subjects, each its type and ref
+- **The header** is "Run" and the run's number, `Run 14`, alone; then the title the run
+  gave in its `about`, when it gave one, on the next line; then, when the run names a kind or
+  subjects, one line of what it is about: the kind, then at most three subjects, each its type and ref
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
   the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each
@@ -1693,7 +1696,7 @@ id".
   page), the runtime, the host, when it
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
-  (Copy run id, which copies the `rn_` id, Raw log, Download log), and no
+  (Copy run number, Raw log, Download log, a file named `run-14.log`), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the

@@ -2261,7 +2261,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <.link
         :if={@test_state in [:waiting, :running] and @test.run}
         id="set-up-test-run-link"
-        navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+        navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.number}"}
         class="q-link text-[13.5px]/5"
       >
         {gettext("See the run")}
@@ -2280,7 +2280,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <span id="set-up-test-passed">
           {OverviewComponents.passed_line(@test.run)}
           <.link
-            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.number}"}
             class="q-link"
           >
             {gettext("See the run")}
@@ -2295,7 +2295,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             run={@test.run}
             preparation={@test_preparation}
             choice={@test_choice}
-            path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.number}"}
             item={@test.work_item && @test.work_item.number}
             pool={@test_pool}
             machine={@test_machine}

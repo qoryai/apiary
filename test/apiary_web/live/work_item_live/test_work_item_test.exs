@@ -131,7 +131,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
 
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
-      run_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+      run_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
       assert has_element?(view, "#work-item-details-runs a[href='#{run_path}']")
       assert has_element?(view, "#work-item-step .q-wi-badge", "No result")
       assert has_element?(view, "#work-item-step-again")
@@ -183,7 +183,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       assert has_element?(
                view,
                "#work-item-explore-questions",
-               "Sending starts run 2 of 3, which reads the line and every answer of this take in."
+               "Sending starts attempt 2 of 3, which reads the line and every answer of this take in."
              )
 
       refute has_element?(view, "#work-item-explore-questions", "its comments")

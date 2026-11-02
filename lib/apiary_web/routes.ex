@@ -808,7 +808,8 @@ defmodule ApiaryWeb.Routes do
                    :revoke_code
 
               # One run: three tabs of one LiveView, so a tab is a patch. `:run_id` is the
-              # run's `public_id`, `rn_…`, neither the node's run id nor the row's id.
+              # run's number; an address with its `public_id`, `rn_…`, is sent on to the
+              # number's address.
               # `/details` lands old links to the Details tab: the Timeline with Details
               # open, the address rewritten to the Timeline's.
               live "/runs/:run_id", RunLive.Show, :timeline

@@ -2,9 +2,10 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `public_id` is the run's id in Qory Apiary, `rn_` and sixteen characters
-  (`Apiary.PublicId`): the console names and addresses a run by it,
-  `/:org/:workspace/runs/:public_id`. The application sets it when it creates the row; the
+  `number` is the run's number, unique on the server and set by the database when the row
+  is created: the console names and addresses a run by it, "Run 18342" at
+  `/:org/:workspace/runs/18342`. `public_id` is the run's id in the API, `rn_` and sixteen
+  characters (`Apiary.PublicId`). The application sets it when it creates the row; the
   column's default, `run_public_id()`, is the same shape.
 
   `node_run_id` is the node's run id, an external id: the run's id as its node gave it,
@@ -33,11 +34,18 @@ defmodule Apiary.Runs.Run do
 
   @states ~w(pending running completed failed cancelled lost)
 
+  # The most a `bigint` holds: the highest number a run can have.
+  @max_number 9_223_372_036_854_775_807
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
-  @derive {Phoenix.Param, key: :public_id}
+  @derive {Phoenix.Param, key: :number}
   schema "runs" do
     field :public_id, :string, read_after_writes: true
+    # The run's number on the server, from 1, never twice: the column's default takes the
+    # next of the sequence `runs_number_seq` when the run is inserted. The console
+    # addresses and names a run by it ("Run 18342", `/:org/:workspace/runs/18342`).
+    field :number, :integer, read_after_writes: true
     field :node_run_id, Ecto.UUID
 
     # The run's target as its labels named it (`Apiary.Lingo.Domain`): the system and the
@@ -370,6 +378,23 @@ defmodule Apiary.Runs.Run do
   @doc "new_public_id/0 is a fresh `public_id` for a run: `rn_` and 16 characters."
   @spec new_public_id() :: String.t()
   def new_public_id, do: Apiary.PublicId.generate("rn")
+
+  @doc """
+  parse_number/1 reads a run's number as an address carries it: `{:ok, number}` for digits
+  with no leading zero, from 1 up to #{@max_number}, the most a `bigint` holds; `:error`
+  for anything else, a sign, a space, `#` and `rn_…` among them.
+  """
+  @spec parse_number(term) :: {:ok, pos_integer} | :error
+  def parse_number(value) when is_binary(value) do
+    with true <- Regex.match?(~r/\A[1-9][0-9]{0,18}\z/, value),
+         number when number <= @max_number <- String.to_integer(value) do
+      {:ok, number}
+    else
+      _other -> :error
+    end
+  end
+
+  def parse_number(_value), do: :error
 
   @doc "public_id?/1 says whether `value` is a run's `public_id` in shape, `rn_…`."
   @spec public_id?(term) :: boolean
