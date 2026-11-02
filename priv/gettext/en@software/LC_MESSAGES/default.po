@@ -23240,7 +23240,6 @@ msgid "not declared yet"
 msgstr ""
 
 #: lib/apiary_web/controllers/artifact_file_controller.ex
-#: lib/apiary_web/controllers/process_export_controller.ex
 #: lib/apiary_web/controllers/run_diagnostics_controller.ex
 #: lib/apiary_web/controllers/run_log_controller.ex
 #, elixir-autogen, elixir-format

@@ -16,7 +16,7 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
 
   defp path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/stages/process.yaml"
 
-  # The status of a request the feature's gate answers, as a response or as an error.
+  # The status of a request, which the feature's gate sends as a response or as an error.
   defp status(conn, path) do
     get(conn, path).status
   rescue
@@ -43,13 +43,24 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
     assert build_conn() |> log_in_user(admin) |> get(path(scope)) |> Map.fetch!(:status) == 200
   end
 
-  test "a member without process.edit gets 404", %{scope: scope} do
+  test "a member without process.edit gets the 404 of a workspace that does not exist", %{
+    conn: conn,
+    scope: scope
+  } do
     %{user: member} = member_fixture(scope)
+    missing = get(conn, ~p"/#{scope.organisation}/no-such-workspace/settings/stages/process.yaml")
 
-    conn = build_conn() |> log_in_user(member) |> get(path(scope))
+    {status, headers, body} =
+      assert_error_sent(404, fn ->
+        build_conn() |> log_in_user(member) |> get(path(scope))
+      end)
 
-    assert conn.status == 404
-    assert conn.resp_body == "not found"
+    assert status == missing.status
+    assert body == missing.resp_body
+    assert body == "Not Found"
+
+    assert List.keyfind(headers, "content-type", 0) ==
+             {"content-type", missing |> get_resp_header("content-type") |> hd()}
   end
 
   test "a person of another organisation gets 404", %{scope: scope} do
