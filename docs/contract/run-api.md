@@ -177,6 +177,12 @@ Returns `200` with the file's bytes, and these headers:
   has one, or `application/octet-stream` for a type with `html`, `xml`, `svg`,
   `javascript` or `ecmascript` in it, and for a type that is not a plain `type/subtype`.
 
+The answer is signed as every answer is, except for the body digest in the answer
+string: it is the stored `sha256` of the file, which Qory Apiary computed from the
+file's bytes when it stored them and which the index returns. For a file whose stored
+bytes are intact, that is the SHA-256 of the body sent, so the answer verifies as any
+other. A stored file whose bytes no longer match its `sha256` fails the check.
+
 `<filename>` is compared byte for byte with the names of the version's files, and is
 never used as a path. A version of another work item, an unknown version id, a malformed
 version id and an unknown filename all return `404` `not_found`.

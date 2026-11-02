@@ -22,7 +22,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   alias Apiary.Runs.Run
   alias Apiary.Stages.{Check, GateDecision}
   alias Apiary.WorkItems.WorkItem
-  alias ApiaryWeb.Contract.RawBody
+  alias Apiary.SigningKey
+  alias ApiaryWeb.Contract.{RawBody, SignedAnswer}
   alias ApiaryWeb.Contract.RunApi.Body
   alias ApiaryWeb.RunApiStubs
 
@@ -253,6 +254,24 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   end
 
   describe "GET work-item" do
+    test "is signed over its body, as every answer but a file's", ctx do
+      conn = read(ctx, "/work-item")
+      [request_signature] = get_req_header(conn, "x-qory-signature-ed25519")
+      refute Map.has_key?(conn.private, :qory_body_sha256)
+
+      {_cache, expected} =
+        SignedAnswer.headers(
+          200,
+          request_signature,
+          conn.resp_body,
+          List.first(get_resp_header(conn, "x-qory-configuration")),
+          List.first(get_resp_header(conn, "x-qory-run-configuration")),
+          SigningKey.current()
+        )
+
+      assert get_resp_header(conn, "x-qory-signature-ed25519") == [expected]
+    end
+
     test "is the work item's snapshot: ticket, stage, outputs, verdict and answers", ctx do
       place!(ctx)
       conn = read(ctx, "/work-item")
@@ -568,6 +587,82 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert write(ctx, "/artifacts", body).status == 201
       assert List.last(RunApiStubs.pushed()).note == "a\nb\u200Cc\u200Dd"
+    end
+
+    test "a file of several MiB is sent from disk byte for byte, signed, with every header",
+         ctx do
+      file_type!(ctx, "big-file", 8 * 1024 * 1024, 1)
+      content = :crypto.strong_rand_bytes(5 * 1024 * 1024)
+      version = store!(ctx, "big-file", [file("big.bin", "application/octet-stream", content)])
+
+      conn = read(ctx, "/artifacts/#{version.public_id}/files/big.bin")
+      # `send_file`: the response is the file on disk, never a binary of it.
+      assert conn.state == :file
+      assert response(conn, 200) == content
+      assert signed_answer?(conn)
+      assert get_resp_header(conn, "content-type") == ["application/octet-stream"]
+      assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+      [policy] = get_resp_header(conn, "content-security-policy")
+      assert String.ends_with?(policy, "; sandbox")
+
+      assert get_resp_header(conn, "content-disposition") == [
+               ~s(attachment; filename="big.bin"; filename*=UTF-8''big.bin)
+             ]
+    end
+
+    test "the signature is byte for byte the one made over the whole body", ctx do
+      conn = read(ctx, "/artifacts/#{ctx.version}/files/one.png")
+      [request_signature] = get_req_header(conn, "x-qory-signature-ed25519")
+
+      {_cache, expected} =
+        SignedAnswer.headers(
+          200,
+          request_signature,
+          @png,
+          nil,
+          nil,
+          SigningKey.current()
+        )
+
+      assert get_resp_header(conn, "x-qory-signature-ed25519") == [expected]
+    end
+
+    test "a stored file whose bytes no longer match its digest fails the gateway's check",
+         ctx do
+      version = Apiary.Artifacts.get_version!(ctx.version)
+      [stored] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(stored)
+      changed = binary_part(@png, 0, byte_size(@png) - 1) <> "!"
+      File.chmod!(path, 0o600)
+      File.write!(path, changed)
+
+      conn = read(ctx, "/artifacts/#{ctx.version}/files/one.png")
+      assert response(conn, 200) == changed
+      refute signed_answer?(conn)
+    end
+
+    test "a store that returns a stream is sent in chunks, signed over the stored digest",
+         ctx do
+      previous = Application.fetch_env(:apiary, Apiary.Artifacts.Store)
+      Application.put_env(:apiary, Apiary.Artifacts.Store, adapter: __MODULE__.StreamStore)
+
+      on_exit(fn ->
+        case previous do
+          {:ok, value} -> Application.put_env(:apiary, Apiary.Artifacts.Store, value)
+          :error -> Application.delete_env(:apiary, Apiary.Artifacts.Store)
+        end
+      end)
+
+      file_type!(ctx, "chunked-file", 1024 * 1024, 1)
+      content = :crypto.strong_rand_bytes(300_000)
+      version = store!(ctx, "chunked-file", [file("c.bin", "application/octet-stream", content)])
+
+      conn = read(ctx, "/artifacts/#{version.public_id}/files/c.bin")
+      assert conn.state == :chunked
+      assert response(conn, 200) == content
+      assert signed_answer?(conn)
+      assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+      assert ["attachment; " <> _] = get_resp_header(conn, "content-disposition")
     end
 
     test "a filename that is not ASCII has one _ per character in its plain name", ctx do
@@ -1227,6 +1322,24 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         assert byte_size(rest) > 900_000
         refute conn.assigns[:raw_body]
       end
+    end
+  end
+
+  defmodule StreamStore do
+    @moduledoc "The volume store, but `open/1` returns a stream of 64 KiB chunks."
+    @behaviour Apiary.Artifacts.Store
+    alias Apiary.Artifacts.Store.Volume
+
+    @impl true
+    defdelegate stage(source, limit), to: Volume
+    @impl true
+    defdelegate commit(staged), to: Volume
+    @impl true
+    defdelegate discard(staged), to: Volume
+
+    @impl true
+    def open(key) do
+      with {:ok, path} <- Volume.open(key), do: {:ok, File.stream!(path, 65_536)}
     end
   end
 end

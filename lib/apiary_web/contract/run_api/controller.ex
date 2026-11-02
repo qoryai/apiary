@@ -27,7 +27,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `invalid_request`; then what `Apiary.Artifacts.push/5` returns, the files that do
   #      not match the type's format among it, `422` `invalid_artifact`.
   #
-  # A file is served as a download (`Content-Disposition: attachment`) with
+  # A file is sent from the store, with `send_file` or in chunks, and signed over the
+  # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
+  # download (`Content-Disposition: attachment`) with
   # `X-Content-Type-Options: nosniff` and the directive `sandbox` added to its
   # `Content-Security-Policy`, and HTML, SVG, XML and script types as
   # `application/octet-stream`, so no artifact is shown inline from Qory Apiary's origin.
@@ -84,13 +86,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     with {:ok, run} <- run(conn, run_id),
          {:ok, version} <- version(run.work_item, version_id),
          {:ok, file} <- file_of(version, filename),
-         {:ok, content} <- stored(file) do
+         {:ok, source} <- opened(file) do
       conn
       |> put_resp_header("content-disposition", disposition(filename))
       |> put_resp_header("x-content-type-options", "nosniff")
       |> put_resp_header("content-security-policy", sandboxed(conn))
       |> put_resp_content_type(served_type(field(file, :content_type)), nil)
-      |> send_resp(200, content)
+      |> put_private(:qory_body_sha256, field(file, :sha256))
+      |> send_stored(source)
     else
       {:error, :not_found} -> error(conn, 404, "not_found")
       {:error, :unreadable} -> error(conn, 503, "unavailable")
@@ -233,12 +236,28 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # A file the version lists whose content cannot be read is not the run's error.
-  defp stored(file) do
-    case read(file) do
-      {:ok, content} -> {:ok, content}
+  # The stored copy of a file, a path on disk or a stream of its bytes; one that cannot be
+  # opened is not the run's error.
+  defp opened(file) do
+    case Boundary.open_file(file) do
+      {:ok, path} when is_binary(path) -> {:ok, {:path, path}}
+      {:ok, stream} -> {:ok, {:stream, stream}}
       _error -> {:error, :unreadable}
     end
+  end
+
+  # The file sent from the store, never read into one binary: a path with `send_file`, a
+  # stream in chunks. The answer is signed over the stored SHA-256
+  # (`ApiaryWeb.Contract.SignedAnswer`, `conn.private[:qory_body_sha256]`).
+  defp send_stored(conn, {:path, path}), do: send_file(conn, 200, path)
+
+  defp send_stored(conn, {:stream, stream}) do
+    Enum.reduce_while(stream, send_chunked(conn, 200), fn data, conn ->
+      case chunk(conn, data) do
+        {:ok, conn} -> {:cont, conn}
+        {:error, :closed} -> {:halt, conn}
+      end
+    end)
   end
 
   defp read(file) do
