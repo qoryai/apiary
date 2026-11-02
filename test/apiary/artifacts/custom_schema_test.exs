@@ -42,6 +42,53 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
     end
   end
 
+  describe "check_within/2" do
+    @plenty [reductions: 10_000_000, ms: 30_000]
+
+    test "takes a schema's reductions off what is left" do
+      left = CustomSchema.total(@plenty)
+
+      assert {:ok, after_one} = CustomSchema.check_within(@bids, left)
+      assert after_one.reductions < left.reductions
+      assert after_one.reductions > 0
+      assert after_one.deadline == left.deadline
+    end
+
+    test "is the total's refusal once nothing is left" do
+      for total <- [[reductions: 0, ms: 30_000], [reductions: 1_000_000, ms: 0]] do
+        assert {:error, :total} = CustomSchema.check_within(@bids, CustomSchema.total(total))
+      end
+    end
+
+    test "is the total's refusal for a run past what is left" do
+      left = CustomSchema.total(reductions: 1, ms: 30_000)
+      assert {:error, :total} = CustomSchema.check_within(@bids, left)
+    end
+
+    test "gives check/1's refusals, each bound kept" do
+      left = CustomSchema.total(@plenty)
+
+      assert {:error, :not_an_object} = CustomSchema.check_within([%{}], left)
+
+      assert {:error, :limits} =
+               CustomSchema.check_within(%{"enum" => Enum.to_list(1..1025)}, left)
+
+      many = Map.new(1..700, &{"p#{&1}", %{"description" => String.duplicate("d", 90)}})
+      assert {:error, :too_large} = CustomSchema.check_within(%{"properties" => many}, left)
+      assert {:error, :unbuildable} = CustomSchema.check_within(%{"type" => 5}, left)
+    end
+
+    test "keeps a schema's refusal for a schema over the pattern budget" do
+      properties = Map.new(1..210, &{"p#{&1}", %{"pattern" => "(?x)a#{&1}"}})
+
+      assert {:error, :budget} =
+               CustomSchema.check_within(
+                 %{"properties" => properties},
+                 CustomSchema.total(@plenty)
+               )
+    end
+  end
+
   describe "validate/2" do
     test "is :ok for a document the schema takes, its first failing place for one it refuses" do
       assert :ok = CustomSchema.validate(%{"bids" => [%{"keyword" => "gift card"}]}, @bids)

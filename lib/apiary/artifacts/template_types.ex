@@ -15,7 +15,13 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      standard name is only `{:standard_name, type}`;
   #   5. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2` or
   #      `Apiary.Artifacts.CustomSchema.check/1`. `error` is the field that failed, with
-  #      the base view for a limit. The check stops at the first such definition.
+  #      the base view for a limit. The check stops at the first such definition;
+  #   6. `:schemas_too_long`: the definitions' JSON Schemas passed the total of one
+  #      template (`@total`), which `Apiary.Artifacts.CustomSchema.check_within/2` counts.
+  #      A file of 64 KiB fits about 800 definitions, each with a budget of up to 10 s, so
+  #      the total bounds how long one template holds a caller. A schema over its single
+  #      budget stays `{:invalid, type, :json_schema}`. A template with no JSON Schema
+  #      does no such work, and `check/2` is `check/1` with another total.
   #
   # A nil list is `:ok` with no check, so a template written before the key works
   # unchanged. `Apiary.Stacks.Sources` calls `check/1` on each template it reads, last,
@@ -31,7 +37,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # `apply/3` sets up a new workspace from a checked template, inside the caller's
   # transaction, and opens none. It does not check `artifact_type.edit`, as its caller
   # holds `workspace.create`. It does not run `CustomSchema.check/1` again, because that
-  # check can take seconds and the caller holds the organisation's lock: the caller runs
+  # check can take up to 30 s and the caller holds the organisation's lock: the caller runs
   # `check/1` before the transaction. A nil list writes nothing, so the workspace shows
   # every standard type. Any other list inserts each custom type with one audit entry and
   # writes `shown_standard_types`: the listed standard types less the always-on ones, in
@@ -55,6 +61,16 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # The fields of a definition, in the order the Artifact types form shows them.
   @fields [:name, :base_view, :size_limit, :max_files, :json_schema]
 
+  # The total over the JSON Schemas of one template. Measured on OTP 29: the worst file
+  # found, 64 KiB of 430 definitions that each refer to the JSON Schema metaschema, does
+  # 26.95 million reductions in 242 ms, and 470 of the shortest such definitions do 29.4
+  # million in 269 ms, about 100,000 reductions per ms. 300 million is 11 times the first
+  # and 30 times a schema's budget of 10 million, so a definition that fits its budget
+  # fits the total. The reductions are the bound: the same file gets the same answer on
+  # any machine. They take about 3 s at that rate, so the 30 s is only a bound on a run
+  # that counts few reductions.
+  @total [reductions: 300_000_000, ms: 30_000]
+
   @typedoc "What is wrong with a custom type's definition."
   @type error ::
           :name
@@ -69,19 +85,23 @@ defmodule Apiary.Artifacts.TemplateTypes do
           | {:standard_name, String.t()}
           | {:not_listed, String.t(), String.t()}
           | {:invalid, String.t(), error}
+          | :schemas_too_long
 
   # check/1: see the head of this module.
   @doc false
-  @spec check(Reader.template()) :: :ok | {:error, [refusal]}
-  def check(%{artifact_types: nil}), do: :ok
+  @spec check(Reader.template(), reductions: non_neg_integer, ms: non_neg_integer) ::
+          :ok | {:error, [refusal]}
+  def check(template, total \\ @total)
 
-  def check(%{artifact_types: listed, process: process}) when is_list(listed) do
+  def check(%{artifact_types: nil}, _total), do: :ok
+
+  def check(%{artifact_types: listed, process: process}, total) when is_list(listed) do
     {alone, custom} = Enum.split_with(listed, &alone?/1)
 
     case Enum.uniq(
            not_standard(alone) ++
              standard_names(custom) ++
-             not_listed(process, listed) ++ repeated(custom) ++ invalid(custom)
+             not_listed(process, listed) ++ repeated(custom) ++ invalid(custom, total)
          ) do
       [] -> :ok
       refusals -> {:error, refusals}
@@ -124,25 +144,39 @@ defmodule Apiary.Artifacts.TemplateTypes do
     for name <- Enum.uniq(names -- Enum.uniq(names)), do: {:invalid, name, :repeated}
   end
 
-  # The first failing definition. A later definition is not checked, as each check of a
-  # schema can use a budget of up to 10 s.
-  defp invalid(custom) do
+  # The first failing definition, or the total's refusal. A later definition is not
+  # checked, as each check of a schema can use a budget of up to 10 s.
+  defp invalid(custom, total) do
     custom
     |> Enum.reject(&(&1["name"] in Type.standard_names()))
-    |> Enum.find_value([], fn entry ->
-      with {:error, error} <- definition(entry), do: [{:invalid, entry["name"], error}]
+    |> Enum.reduce_while(CustomSchema.total(total), fn entry, left ->
+      case definition(entry, left) do
+        {:ok, left} -> {:cont, left}
+        {:error, refusal} -> {:halt, [refusal]}
+      end
     end)
+    |> case do
+      %{} = _left -> []
+      refusal -> refusal
+    end
   end
 
-  # nil for a definition that passes, as `Enum.find_value/3` takes it.
-  defp definition(entry) do
+  defp definition(%{"name" => name} = entry, left) do
     changeset = Type.create_changeset(%Type{}, entry)
     schema = entry["json_schema"]
 
     cond do
-      not changeset.valid? -> {:error, error(changeset)}
-      is_nil(schema) or CustomSchema.check(schema) == :ok -> nil
-      true -> {:error, :json_schema}
+      not changeset.valid? -> {:error, {:invalid, name, error(changeset)}}
+      is_nil(schema) -> {:ok, left}
+      true -> schema_within(schema, name, left)
+    end
+  end
+
+  defp schema_within(schema, name, left) do
+    case CustomSchema.check_within(schema, left) do
+      {:ok, left} -> {:ok, left}
+      {:error, :total} -> {:error, :schemas_too_long}
+      {:error, _refusal} -> {:error, {:invalid, name, :json_schema}}
     end
   end
 
@@ -164,6 +198,12 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # message/1: see the head of this module.
   @doc false
   @spec message(refusal) :: String.t()
+  def message(:schemas_too_long),
+    do:
+      gettext(
+        "the JSON Schemas in artifact_types take too long to check: use fewer or smaller schemas"
+      )
+
   def message({:not_standard, type}),
     do: gettext("%{type} is not a standard type, so it needs a definition", type: type)
 

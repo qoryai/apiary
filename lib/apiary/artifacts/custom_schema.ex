@@ -13,6 +13,16 @@ defmodule Apiary.Artifacts.CustomSchema do
   # build, the patterns it would compile are estimated (`Apiary.Kinds.PatternMemory`),
   # and a schema whose patterns would take more than 16 MiB is refused.
   #
+  # `check_within/2` is `check/1` under a total over several schemas, for a file that
+  # lists them (`Apiary.Artifacts.TemplateTypes`). `total/1` starts a total, of reductions
+  # and of time from one deadline, and each call takes what is left and returns what is
+  # left. Each schema keeps every bound of `check/1` and runs in a separate process,
+  # because compiled patterns are outside the heap a budget counts: a shared process
+  # would weaken that bound. A run gets the smaller of the single budget and what is
+  # left, and its reductions, read in its process at the end, come off the total.
+  # `{:error, :total}` is a total that ran out, also for a run cut short only because
+  # what was left was smaller than the single budget.
+  #
   # `validate/2`, for a push: the document is checked against the bounds below before
   # JSV is given it, and JSV builds the schema and validates the document in the budget's
   # process. A `jsv-cast` or `x-jsv-cast` keyword is dropped everywhere before the build,
@@ -38,8 +48,13 @@ defmodule Apiary.Artifacts.CustomSchema do
   # (32 MiB on a 64-bit machine), and 10 s, a bound only on a check that runs away while
   # it counts few reductions.
   @budget [reductions: 10_000_000, heap_words: 4_194_304, ms: 10_000]
+  @single_reductions @budget[:reductions]
+  @single_ms @budget[:ms]
   @pattern_bytes 16_777_216
   @casts ~w(jsv-cast x-jsv-cast)
+
+  @typedoc "What is left of a total: its reductions, and its deadline in monotonic ms."
+  @type left :: %{reductions: integer, deadline: integer}
 
   @typedoc "Why a schema or a document is refused."
   @type refusal ::
@@ -64,6 +79,52 @@ defmodule Apiary.Artifacts.CustomSchema do
   end
 
   def check(_schema), do: {:error, :not_an_object}
+
+  # total/1 starts a total of `reductions` and of `ms` from now.
+  @doc false
+  @spec total(reductions: non_neg_integer, ms: non_neg_integer) :: left
+  def total(reductions: reductions, ms: ms), do: %{reductions: reductions, deadline: now() + ms}
+
+  # check_within/2 is `check/1` under what is left of a total: `{:ok, left}`, with the
+  # schema's reductions taken off, `{:error, :total}`, or `check/1`'s `{:error, refusal}`.
+  @doc false
+  @spec check_within(term, left) :: {:ok, left} | {:error, refusal | :total}
+  def check_within(schema, %{reductions: reductions, deadline: deadline} = left)
+      when is_map(schema) do
+    ms = deadline - now()
+
+    cond do
+      not Bounds.within?(schema, @schema_limits) -> {:error, :limits}
+      byte_size(CanonicalJSON.encode!(schema)) > @schema_bytes -> {:error, :too_large}
+      reductions <= 0 or ms <= 0 -> {:error, :total}
+      true -> counted(schema, left, ms)
+    end
+  end
+
+  def check_within(_schema, %{}), do: {:error, :not_an_object}
+
+  # A result past what was left is the total's, whether or not a read of the reductions
+  # came in time to cut the run: the same schemas get the same answer.
+  defp counted(schema, %{reductions: reductions} = left, ms) do
+    budget = Keyword.merge(@budget, reductions: min(reductions, @single_reductions))
+    budget = Keyword.put(budget, :ms, min(ms, @single_ms))
+
+    case Budget.run(fn -> {build(copy(schema)), reductions_here()} end, budget) do
+      {:ok, {{:error, refusal}, _used}} -> {:error, refusal}
+      {:ok, {:ok, used}} when used > reductions -> {:error, :total}
+      {:ok, {:ok, used}} -> {:ok, %{left | reductions: reductions - used}}
+      {:error, :reductions} when reductions < @single_reductions -> {:error, :total}
+      {:error, :time} when ms < @single_ms -> {:error, :total}
+      {:error, _reason} -> {:error, :budget}
+    end
+  end
+
+  defp reductions_here do
+    {:reductions, reductions} = Process.info(self(), :reductions)
+    reductions
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   # validate/2 is `:ok` for `document`, decoded JSON, valid against `schema`, else
   # `{:error, refusal}`: `:limits` (the document is over the bounds),

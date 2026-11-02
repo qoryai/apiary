@@ -208,6 +208,61 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
     end
   end
 
+  describe "the total over a template's schemas" do
+    # `count` structured definitions, each with a schema of the form `schema.(index)`.
+    defp structured(count, schema \\ fn _index -> %{} end) do
+      for index <- 1..count,
+          do: %{@structured | "name" => "t#{index}", "json_schema" => schema.(index)}
+    end
+
+    test "stops a loop of schemas that each pass" do
+      assert :ok = TemplateTypes.check(template(structured(50)))
+
+      assert TemplateTypes.check(template(structured(50)), reductions: 20_000, ms: 30_000) ==
+               {:error, [:schemas_too_long]}
+    end
+
+    test "stops a loop that has no time left" do
+      assert TemplateTypes.check(template(structured(1)), reductions: 1_000_000, ms: 0) ==
+               {:error, [:schemas_too_long]}
+    end
+
+    test "comes after the other refusals" do
+      listed = [%{"name" => "reply-draft"} | structured(2)]
+
+      assert TemplateTypes.check(template(listed), reductions: 0, ms: 0) ==
+               {:error, [{:not_standard, "reply-draft"}, :schemas_too_long]}
+    end
+
+    test "has its text" do
+      assert TemplateTypes.message(:schemas_too_long) ==
+               "the JSON Schemas in artifact_types take too long to check: use fewer or smaller schemas"
+    end
+
+    test "a schema over its single budget stays not valid" do
+      # 210 patterns, each counted at the most one pattern can take, pass 16 MiB.
+      properties = Map.new(1..210, &{"p#{&1}", %{"pattern" => "(?x)a#{&1}"}})
+      [entry] = structured(1, fn _index -> %{"properties" => properties} end)
+
+      assert TemplateTypes.check(template([entry])) ==
+               {:error, [{:invalid, "t1", :json_schema}]}
+    end
+
+    test "takes a file of 430 definitions that each reach the metaschema" do
+      meta = "https://json-schema.org/draft/2020-12/schema"
+      listed = structured(430, &%{"title" => "x#{&1}", "$ref" => meta})
+
+      assert :ok = TemplateTypes.check(template(listed))
+    end
+
+    test "a template with no JSON Schema does no such work" do
+      listed = [%{"name" => "mockup"}, @document]
+
+      assert :ok = TemplateTypes.check(template(listed), reductions: 0, ms: 0)
+      assert :ok = TemplateTypes.check(template(nil), reductions: 0, ms: 0)
+    end
+  end
+
   describe "message/1" do
     test "is the plan's text of each refusal" do
       assert TemplateTypes.message({:not_standard, "reply-draft"}) ==

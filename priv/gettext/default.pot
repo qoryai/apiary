@@ -23570,6 +23570,11 @@ msgctxt "a table in a text"
 msgid "text"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the JSON Schemas in artifact_types take too long to check: use fewer or smaller schemas"
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "the Qory Gateway"
