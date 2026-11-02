@@ -2,9 +2,9 @@ defmodule Apiary.Dispatches.MachineEndsTest do
   # What a node pool's starter reports about the removal of a dispatch's machine
   # (`Apiary.Dispatches.MachineEnds`): every accepted report replaces the state and its
   # time, `gone` is final, a dispatch that ended takes a report, the refusals write
-  # nothing, the audit trail keeps three entries of a dispatch at most, and the run's page
-  # is told on the run's topic. What the route answers is
-  # `ApiaryWeb.Contract.MachineEndControllerTest`'s. Not async: one test alters the
+  # nothing, the audit trail keeps three entries of a dispatch at most, and a message goes
+  # out on the run's topic. The route's answers are tested in
+  # `ApiaryWeb.Contract.MachineEndControllerTest`. Not async: one test alters the
   # dispatches' table inside its transaction.
   use Apiary.DataCase, async: false
 

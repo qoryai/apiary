@@ -18,8 +18,8 @@ defmodule Apiary.Dispatches.MachineEnds do
   #   1. the key read again as a request's verification reads it
   #      (`Apiary.Dispatches.current_key/1`): revoked, of a pool deleted, or of a place
   #      out of use since, `{:error, :unauthorized}`;
-  #   2. the dispatch by its public id, and `dispatch.machine_end` asked of it
-  #      (`Apiary.Access`): an unknown dispatch, one another pool claimed and any refusal
+  #   2. the dispatch by its public id, and a check that the key may take
+  #      `dispatch.machine_end` on it (`Apiary.Access`): an unknown dispatch, one another pool claimed and any refusal
   #      of the key are one answer, `{:error, :forbidden}`;
   #   3. the dispatch locked `FOR UPDATE`, so two reports for one dispatch take turns and
   #      are applied in the order they hold the lock;
@@ -39,10 +39,10 @@ defmodule Apiary.Dispatches.MachineEnds do
   #
   # ## The answer
   #
-  # `:ok` once the report is written, or kept for `gone`. Once a change commits, the run
-  # registered at the dispatch's claim is told on its topic
-  # (`Apiary.Runs.broadcast_machine_end/1`); a failure of that is logged by its kind alone
-  # and never changes the answer. An exception rolls the transaction back, is logged by
+  # `:ok` once the report is written, or kept for `gone`. Once a change commits, a message
+  # goes out on the topic of the run registered at the dispatch's claim
+  # (`Apiary.Runs.broadcast_machine_end/1`); a failure of that broadcast is logged by its
+  # kind alone and never changes the answer. An exception rolls the transaction back, is logged by
   # its module alone, and is `{:error, :unavailable}`.
 
   import Ecto.Query, only: [from: 2]
@@ -85,7 +85,7 @@ defmodule Apiary.Dispatches.MachineEnds do
         end
       end)
       |> case do
-        {:ok, {:changed, dispatch}} -> told(dispatch)
+        {:ok, {:changed, dispatch}} -> broadcast_to_runs(dispatch)
         {:ok, :kept} -> :ok
         {:error, _reason} = refused -> refused
       end
@@ -166,10 +166,10 @@ defmodule Apiary.Dispatches.MachineEnds do
 
   defp scope(%AccessKey{} = key, %Dispatch{}), do: Scope.for_access_key(key)
 
-  # Once the report commits, the run registered at the dispatch's claim is told: the one
-  # whose start failed with this dispatch, or the one of its run of the queue. A failure
-  # is logged by its kind alone and never changes the answer.
-  defp told(%Dispatch{id: id, dispatch_run_id: dispatch_run_id}) do
+  # Once the report commits, a message goes out on the topic of the run registered at the
+  # dispatch's claim: the run whose start failed with this dispatch, or the run of its run
+  # of the queue. A failure is logged by its kind alone and never changes the answer.
+  defp broadcast_to_runs(%Dispatch{id: id, dispatch_run_id: dispatch_run_id}) do
     from(r in Run, where: r.dispatch_id == ^id or r.dispatch_run_id == ^dispatch_run_id)
     |> Repo.all()
     |> Enum.each(&Runs.broadcast_machine_end/1)
@@ -177,7 +177,7 @@ defmodule Apiary.Dispatches.MachineEnds do
     :ok
   rescue
     exception ->
-      Logger.error("a machine end could not be told: #{inspect(exception.__struct__)}")
+      Logger.error("a machine end could not be broadcast: #{inspect(exception.__struct__)}")
       :ok
   end
 end

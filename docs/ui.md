@@ -1771,15 +1771,15 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   empty without one) and Machine started (from the starter's `dispatched` to the
   redemption of the run's code) for a run a pool claimed; then the run's steps, each
   with qory's name, its first letter in upper case, or "Step" and its number when only its
-  exit is recorded; then Session started. Each row has its state, its start time and its
-  duration; while the run is alive, a running row has the word Running, a mark that pulses
+  exit is recorded; then Session started. Each row but Clean up has its state, its start time
+  and its duration; while the run is alive, a running row has the word Running, a mark that pulses
   (still under `prefers-reduced-motion`), and in place of its duration a clock that ticks in
   the browser (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for
   Machine started before the starter's `dispatched`, from the claim. A run's exit closes a
   step without an exit as Cancelled; on a lost run such a step keeps the word Running, with
-  no clock and no pulse. Each row opens on a click: a step to its output, the last 64 KiB as
-  plain text, for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
-  sentence with its date once retention deleted the log lines; Machine started to the
+  no clock and no pulse. Each row but Clean up opens on a click: a step to its output, the
+  last 64 KiB as plain text, for a reader who may read the run's log (`run.read_log`), or
+  the run's log-pruned sentence with its date once retention deleted the log lines; Machine started to the
   machine log for an instance admin, and "The instance admin can read the machine's log."
   for anyone else. With no machine log recorded, an instance admin reads "No machine log
   has arrived." until a day has passed since the claim (the least the machine logs'
@@ -1809,7 +1809,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   and then "No removal report"; an open page changes at the 15 minutes without a reload. A
   run on a permanent machine shows "Machine stays registered" once it has ended. A run that
   goes on with no report, or whose dispatch was released before a machine existed, has no
-  such row. A report reaches an open page on the run's topic, settled section or not.
+  such row. A report reaches an open page on the run's topic, settled section or not. The
+  Clean up row has a mark, its text and, for a report, the report's time: no duration, and
+  it opens on no click. On a page whose section had settled while the run was alive, the
+  row that the run's end brings ("Waiting for a report" or "Machine stays registered")
+  shows after a reload of the page. A run on a permanent machine with no step shows the
+  section with the Clean up row alone once it has ended.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

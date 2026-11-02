@@ -665,8 +665,9 @@ accepted report replaces the state on the dispatch, `machine_end_state`, and its
 `machine_end_at`, in the order the reports take the dispatch's row lock; `gone` is final,
 and a later report changes nothing and is still `204`. The trail keeps three entries of
 `dispatch.machine_end` for a dispatch at most, about the pool: its first report, its first
-`delete_failed` and its `gone`. Once a report changes the state, the run registered at the
-claim is told on its topic, and its page shows the state in the Clean up row
+`delete_failed` and its `gone`. After each accepted report that the dispatch does not keep
+as `gone`, Qory Apiary broadcasts a message on the topic of the run registered at the claim,
+and the run's page shows the state in the Clean up row
 ([ui.md](ui.md), The run page). The access action reaches every node pool's key, enrolled
 before or after, through the role `pool_key`.
 
