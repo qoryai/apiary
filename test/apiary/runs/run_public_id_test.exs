@@ -121,8 +121,8 @@ defmodule Apiary.Runs.RunPublicIdTest do
     end
   end
 
-  test "a run's id names it in a URL" do
-    run = %Run{public_id: "rn_0123456789abcdef"}
-    assert Phoenix.Param.to_param(run) == "rn_0123456789abcdef"
+  test "a run's number, not its id, names it in a URL" do
+    run = %Run{public_id: "rn_0123456789abcdef", number: 14}
+    assert Phoenix.Param.to_param(run) == "14"
   end
 end

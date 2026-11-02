@@ -39,6 +39,9 @@ defmodule ApiaryWeb.StagesLive.CanvasTest do
            } = hd(view["stages"])
 
     assert LazyHTML.attribute(element, "phx-update") == ["ignore"]
+    # app.css sizes the box: as tall as its column, or the rest of the window in a
+    # `.q-canvas-fill` box.
+    assert LazyHTML.attribute(element, "class") == ["q-canvas"]
 
     assert LazyHTML.text(element) =~
              "The canvas did not load. Reload the page to see the stages."

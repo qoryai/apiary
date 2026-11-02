@@ -32,7 +32,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
 
   defp page(conn, scope, run, tab \\ "") do
     {:ok, lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <> tab)
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <> tab)
 
     {lv, html}
   end
@@ -60,7 +60,11 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       {lv, _html} = page(conn, scope, run)
 
       # between the h1 and the meta line
-      assert has_element?(lv, ".q-run-head > h1#run-title + p#run-about + .q-run-sub")
+      assert has_element?(
+               lv,
+               ".q-run-head > h1#run-title + p#run-given-title + p#run-about + .q-run-sub"
+             )
+
       assert has_element?(lv, "#run-about > #run-about-kind", "Implementation")
 
       pr = ~s(#run-about a[href="https://git.example.com/acme/shop/pull/412"])
@@ -131,15 +135,15 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       title = "Fix the login\u202Eredirect"
       kind = "Implemen\u202Etation"
 
-      {lv, _html} =
-        page(conn, scope, started(scope, %{"title" => title, "kind" => kind}), "/terminal")
+      run = started(scope, %{"title" => title, "kind" => kind})
+      {lv, _html} = page(conn, scope, run, "/terminal")
 
       # The title and the kind without the override (`Apiary.ExternalText.line/1`).
-      assert has_element?(lv, "h1#run-title > bdi", "Fix the loginredirect")
+      assert has_element?(lv, "#run-given-title > bdi", "Fix the loginredirect")
       assert has_element?(lv, "#run-about-kind > bdi", "Implementation")
       assert has_element?(lv, "#run-about-facts > dd > bdi", "Implementation")
-      # The tab's title is plain text.
-      assert page_title(lv) =~ "Fix the loginredirect"
+      # The tab's title is the run's number.
+      assert page_title(lv) =~ "Run #{run.number}"
     end
 
     test "shows three subjects, then how many more, as text", %{conn: conn, scope: scope} do

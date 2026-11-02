@@ -15,13 +15,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An organisation with no workspace shows the kind cards on its overview,
   `/<organisation>`, under “What will your first workspace do?”, and
   `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
-  **Choose** on a card creates the workspace at once, named after its kind, such as
-  “Software factory” at `/acme/software-factory`, then “Software factory 2”, and opens its
-  step **Name**. A workspace's address follows its name: a rename, on **Name** or in
+  Each card is a link to the kind's page, such as `/acme/workspaces/new/qory.software`,
+  which shows the kind's stages, its summary and how it works. **Create workspace** on
+  that page creates the workspace, named after its kind, such as “Software factory” at
+  `/acme/software-factory`, then “Software factory 2”, and opens its step **Name**. A
+  workspace's address follows its name: a rename, on **Name** or in
   Workspace settings, changes it, and links to the old address stop working, with no
   redirect. A name whose address another workspace has, or Qory Apiary keeps, is
   refused, never numbered: “Choose another name. Another workspace already has the
   address /acme/payments.”
+- An instance admin can change the name, summary and “How it works” of each workspace
+  type in Instance settings › Workspace types › **Details**. Each save makes a new version
+  and an audit entry. A blank field shows the text that Qory Apiary ships.
+<!-- feature: workflow_model -->
+- The stages canvas lays the stages out from top to bottom on a dotted background, and
+  fills the window beside its side panel. **Focus** (`f`) and **Full screen** enlarge it.
+  On a workspace type's page the canvas is view-only. Workspace settings › Stages and
+  Instance settings › Workspace types show the canvas on a **Stages** tab and the other
+  settings on a **Details** tab.
+<!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
   have no workspace at this address in Acme. Its address changes when the workspace is
@@ -506,6 +518,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gives anyone else 404 there. The public documentation leaves them out of its pages,
   sidebar and search, and a link to them is its words. `mix docs` builds both trees. The
   guides stay in the repository's `guides` directory.
+- Every run has a number, one count for the whole server, and the console names and
+  addresses a run by it: “Run 18342” at `/acme/main/runs/18342`, in the run page's header
+  and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the
+  search results. A run's title, when it sent one, is the line under the header. An
+  address with the run's `rn_` id, such as a link built from the API, sends on to the
+  number's address in the same workspace. Details shows **Run number** with Copy, the
+  run's menu copies the number, and a downloaded log is named `run-18342.log`. A run's
+  place in a take in reads “Attempt 2 of 3”. The API keeps the `rn_` id, and the
+  diagnostics endpoint, `GET /v1/runs/<run>/diagnostics`, takes the number or the `rn_`
+  id.
 - The Runs list shows, for each run, the workflow it ran (such as `explore-a-ticket`,
   with the stage and round that placed it), its work item as a link, and how it started,
   such as "Taken in by dana". The Host column is gone, and the Target column and the
@@ -668,6 +690,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A page of a workspace that is open when its test run passes, such as the run's page,
+  drops the sidebar's group Set up within a second. Before, the group stayed, with the
+  Test run step not done, until the page was opened again.
 - The built-in harness uses qory's hello example at a commit that allows extending it.
   With the earlier commit, composing the built-in harness failed, so every test run
   failed.
@@ -696,6 +721,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
+  value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
+  in the order they started, then the sequence goes on from the highest number. The
+  migration locks `runs` against reads and writes while it runs.
+- `type_template_versions`: three nullable columns, `name`, `summary` and `description`,
+  with a check on their lengths (1 to 60, 200 and 1,200 characters) that scans the table
+  under a lock that blocks writes. It changes no existing row.
 - `stacks`: two nullable columns, `version_kind` and `version_name`, with a check on their
   combinations. Each saved Qory harness choice at the commit `fe3b3ab` becomes **Always
   the latest version**. Other rows keep their pin.

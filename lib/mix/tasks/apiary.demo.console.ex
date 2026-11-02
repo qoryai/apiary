@@ -843,7 +843,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     Shell.info("""
 
-    A run alive now: #{Apiary.Setup.public_url()}/acme/main/runs/#{run.public_id}
+    A run alive now: #{Apiary.Setup.public_url()}/acme/main/runs/#{run.number}
     Sign in as #{@owner}: see `mix help apiary.demo.console`.\
     """)
   end

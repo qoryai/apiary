@@ -806,10 +806,13 @@ defmodule Apiary.Artifacts do
   end
 
   # The run a run of the queue registered when it was claimed (`Apiary.Runs.Run`), for its
-  # public id (`rn_…`) and its page: its id and public id, and `dispatch_run_id`, which
-  # the preload needs to match each run to its run of the queue.
+  # number and its page: its id, public id and number, and `dispatch_run_id`, which the
+  # preload needs to match each run to its run of the queue.
   defp runs_query,
-    do: from(r in Apiary.Runs.Run, select: struct(r, [:id, :public_id, :dispatch_run_id]))
+    do:
+      from(r in Apiary.Runs.Run,
+        select: struct(r, [:id, :public_id, :number, :dispatch_run_id])
+      )
 
   @doc false
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}

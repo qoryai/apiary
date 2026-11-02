@@ -769,7 +769,7 @@ defmodule ApiaryWeb.NodeLive.Show do
             <.relative_time format="clock" at={instance.since} />
           </:col>
           <:col :let={instance} label={gettext("Run")} from="sm">
-            <.run_link scope={@scope} public_id={instance.run_public_id} may_runs={@may_runs} />
+            <.run_link scope={@scope} number={instance.run_number} may_runs={@may_runs} />
           </:col>
           <:col :let={instance} label={gettext("Forager")} kind="faint" from="md">
             <.external_text text={instance.forager_version} />{if !instance.forager_version,
@@ -1060,7 +1060,7 @@ defmodule ApiaryWeb.NodeLive.Show do
             <i aria-hidden="true"></i><span>{gettext("Running since")}</span>
           </span>
           <.relative_time format="clock" at={@running.since} />
-          <.run_link scope={@scope} public_id={@running.run_public_id} may_runs={@may_runs} />
+          <.run_link scope={@scope} number={@running.run_number} may_runs={@may_runs} />
           <span :if={@running.forager_version} class="text-muted">
             {gettext("Forager %{version}", version: shown_id(@running.forager_version))}
           </span>
@@ -1139,7 +1139,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp clear_place(_clearing, _node, _activity), do: :part
 
   attr :scope, :map, required: true
-  attr :public_id, :string, required: true
+  attr :number, :integer, required: true
   attr :may_runs, :boolean, required: true
 
   # An instance's current run: a link to its page for a reader of the record.
@@ -1147,19 +1147,19 @@ defmodule ApiaryWeb.NodeLive.Show do
     ~H"""
     <.link
       :if={@may_runs}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@public_id}"}
-      class="q-mono text-accent hover:underline"
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@number}"}
+      class="text-accent hover:underline"
     >
-      {gettext("run %{id}", id: short_id(@public_id))}
+      {gettext("run %{run}", run: @number)}
     </.link>
-    <span :if={!@may_runs} class="q-mono">{short_id(@public_id)}</span>
+    <span :if={!@may_runs}>{gettext("run %{run}", run: @number)}</span>
     """
   end
 
   # A running instance's row's DOM id: by the id of its row in `node_instances`, or, with
-  # no row, by its newest open run's public id. Never by the node's instance id.
+  # no row, by its newest open run's number. Never by the node's instance id.
   defp instance_dom_id(%{row_id: row_id}) when is_binary(row_id), do: "node-instance-" <> row_id
-  defp instance_dom_id(%{run_public_id: run_id}), do: "node-instance-" <> run_id
+  defp instance_dom_id(%{run_number: number}), do: "node-instance-run-#{number}"
 
   # The DOM id of the row the confirmation takes the place of: the row of the running
   # instance the clearing names.

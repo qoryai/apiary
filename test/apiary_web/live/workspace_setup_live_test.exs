@@ -77,7 +77,14 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     |> Repo.update!()
   end
 
-  defp choose(lv), do: lv |> element("#set-up-card-software-choose") |> render_click()
+  # The Software factory card, a link to the type's page, then Create workspace there.
+  defp choose(conn, lv) do
+    assert {:error, {:live_redirect, %{to: to}}} =
+             lv |> element("#set-up-card-software-link") |> render_click()
+
+    {:ok, page, _html} = live(conn, to)
+    page |> element("#workspace-type-create") |> render_click()
+  end
 
   # An edition whose `:organisation_heading` slot is a New workspace button, as an
   # edition's may be (`ApiaryWeb.Extension`).
@@ -108,22 +115,43 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert has_element?(lv, "#people")
       assert has_element?(lv, "#about")
 
-      # Example has no card's words, so it has no card.
-      # The card's title is one level below the section's h2.
+      # Example has no card. The card's title is one level below the section's h2; the
+      # whole card is a link to the type's page, named after the type.
       assert has_element?(lv, "#set-up-card-software h3", "Software factory")
       refute has_element?(lv, "#set-up-card-example")
 
       assert has_element?(
                lv,
-               "#set-up-card-software p",
-               "Agents change code in your repositories."
+               ~s(#set-up-card-software-link[href="/#{organisation.slug}/workspaces/new/qory.software"][aria-label="Software factory"][aria-describedby="set-up-card-software-summary"])
              )
 
       assert has_element?(
                lv,
-               "#set-up-card-software p",
-               "You connect: where work comes from, where changes go, a model."
+               "#set-up-card-software-summary",
+               "Agents change code in your repositories. Each ticket needs a repository."
              )
+
+      refute has_element?(lv, "#set-up-card-software", "You connect")
+      refute has_element?(lv, "#set-up-card-software button")
+    end
+
+    test "a card shows the name and summary an instance admin saved", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_without_workspace()
+      newest = Apiary.Processes.TypeTemplates.newest("qory.software")
+
+      # A version 2 with texts, as an instance admin's save makes it.
+      Repo.insert!(%Apiary.Processes.TypeTemplate{
+        type: "qory.software",
+        number: newest.number + 1,
+        based_on: newest.number,
+        document: newest.document,
+        name: "Web shop factory",
+        summary: "For the Web shop."
+      })
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}")
+      assert has_element?(lv, "#set-up-card-software h3", "Web shop factory")
+      assert has_element?(lv, "#set-up-card-software-summary", "For the Web shop.")
     end
 
     test "show the header's actions only once the organisation has a workspace", %{
@@ -156,7 +184,11 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       assert has_element?(lv, "h1#set-up-cards-title", "What will this workspace do?")
       assert has_element?(lv, "#set-up-card-software h2", "Software factory")
-      assert has_element?(lv, "#set-up-card-software-choose", "Choose")
+
+      assert has_element?(
+               lv,
+               ~s(#set-up-card-software-link[href="/#{organisation.slug}/workspaces/new/qory.software"])
+             )
 
       assert has_element?(
                lv,
@@ -165,12 +197,13 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     end
 
     @tag :feature_sets
-    test "Choose creates Software factory and opens its Name step", %{conn: conn} do
+    test "Create workspace on the type's page creates Software factory and opens its Name step",
+         %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
       conn = log_in_user(conn, user)
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
 
-      {:ok, lv, html} = lv |> choose() |> follow_redirect(conn)
+      {:ok, lv, html} = conn |> choose(lv) |> follow_redirect(conn)
 
       assert [%Workspace{name: "Software factory", slug: "software-factory", domain: "software"}] =
                Organisations.list_workspaces(
@@ -198,19 +231,20 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
         else: assert(set_up_group(lv) == [])
     end
 
-    test "a second Choose, the first marked for deletion, creates Software factory 2", %{
-      conn: conn
-    } do
+    test "a second Create workspace, the first marked for deletion, creates Software factory 2",
+         %{
+           conn: conn
+         } do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
       conn = log_in_user(conn, user)
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
-      {:ok, _lv, _html} = lv |> choose() |> follow_redirect(conn)
+      {:ok, _lv, _html} = conn |> choose(lv) |> follow_redirect(conn)
 
       mark(Repo.get_by!(Workspace, organisation_id: organisation.id))
 
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}")
 
-      assert {:error, {:live_redirect, %{to: to}}} = choose(lv)
+      assert {:error, {:live_redirect, %{to: to}}} = choose(conn, lv)
       assert to == ~p"/#{organisation}/software-factory-2/set-up/name"
 
       assert [%Workspace{name: "Software factory 2"}] =
@@ -244,15 +278,19 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, "#people-invitations")
     end
 
-    test "Choose after someone else created the first workspace opens the overview again",
+    test "Create workspace after someone else created the first workspace opens the overview again",
          %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
-      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}")
+
+      {:ok, page, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new/qory.software")
 
       # Written straight into the table: the page hears nothing of it.
       workspace_fixture(organisation, "Billing")
 
-      assert {:error, {:live_redirect, %{to: to}}} = choose(lv)
+      assert {:error, {:live_redirect, %{to: to}}} =
+               page |> element("#workspace-type-create") |> render_click()
+
       assert to == ~p"/#{organisation}"
 
       assert [%Workspace{name: "Billing"}] =
@@ -273,8 +311,11 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
         refute has_element?(lv, "#set-up-cards")
 
-        # A Choose sent all the same creates nothing.
-        render_click(lv, "choose_kind", %{"type" => "software"})
+        # The type's page is New workspace's not-found page for them.
+        assert_raise ApiaryWeb.NotFound, fn ->
+          conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new/qory.software")
+        end
+
         refute Organisations.has_workspace?(organisation)
       end
     end
@@ -433,17 +474,20 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, ".bg-error-soft #set-up-limit")
       refute has_element?(lv, "#set-up-cards")
 
-      # A Choose sent all the same is refused, and says so as information.
-      render_click(lv, "choose_kind", %{"type" => "software"})
-      assert has_element?(lv, "#flash-info", line)
-      refute has_element?(lv, "#flash-error")
+      # The type's page shows nothing of the limit; its Create workspace creates no
+      # workspace and shows the edition's line as information.
+      {:ok, page, _html} = live(conn, ~p"/#{organisation}/workspaces/new/qory.software")
+      refute has_element?(page, "#workspace-type", "allows one workspace")
+      page |> element("#workspace-type-create") |> render_click()
+      assert has_element?(page, "#flash-info", line)
+      refute has_element?(page, "#flash-error")
 
       assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
                1
     end
 
     @tag :feature_sets
-    test "shows an owner the cards; Choose creates Software factory, then Software factory 2",
+    test "shows an owner the cards; Create workspace makes Software factory, then Software factory 2",
          %{conn: conn} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
       %{user: user, organisation: organisation} = sign_up_fixture()
@@ -468,7 +512,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
         refute has_element?(lv, "#sidebar [aria-current=page]")
         refute has_element?(lv, "#set-up")
 
-        assert {:error, {:live_redirect, %{to: to}}} = choose(lv)
+        assert {:error, {:live_redirect, %{to: to}}} = choose(conn, lv)
         assert to == ~p"/#{organisation}/#{slug}/set-up/name"
         assert %Workspace{name: ^name} = Repo.get_by!(Workspace, slug: slug)
       end
@@ -3468,9 +3512,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Test run passed: the agent answered on a machine. See the run"
 
       assert href(lv, "#set-up-test-passed a") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       assert words(lv, "#set-up-go") == "Go to #{scope.workspace.name}"
+    end
+
+    test "a pass finishes the set-up in the sidebar of a workspace page that is open", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+
+      # A page of the workspace that does not follow the runs itself.
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
+      assert has_element?(lv, "#nav-set-up-test")
+
+      run = test_run!(item, [state: :ended, end_cause: :run_ended], %{state: "completed"})
+      Apiary.Runs.broadcast_changed(run)
+
+      refute has_element?(lv, "#nav-group-set-up")
     end
 
     test "a failure shows its line, the fix first, and the field again", %{
@@ -3577,7 +3638,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert has_element?(lv, "#set-up-test-failed[data-cause=silent]")
 
         assert words(lv, "#set-up-test-failed") ==
-                 String.replace(line, "RUN_ID", run.public_id),
+                 String.replace(line, "RUN_ID", Integer.to_string(run.number)),
                node.name
       end
     end
@@ -3633,7 +3694,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-test-run-link") == "See the run"
 
       assert href(lv, "#set-up-test-run-link") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
     end
 
     test "passed on a pool of the workspace, or on the instance's pool, says which", %{
@@ -3657,7 +3718,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "Test run passed: the agent answered on a machine of build-pool. See the run"
 
       assert href(lv, "#set-up-test-passed a") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       Repo.update_all(from(r in Run, where: r.id == ^run.id),
         set: [node_id: instance_pool_fixture().id]
@@ -3712,7 +3773,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         {:ok, lv, _html} = live(conn, test_path(scope))
 
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
-        assert words(lv, "#set-up-test-failed") == String.replace(line, "RUN_ID", run.public_id)
+
+        assert words(lv, "#set-up-test-failed") ==
+                 String.replace(line, "RUN_ID", Integer.to_string(run.number))
+
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
@@ -3857,7 +3921,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert words(lv, "#set-up-test-failed") == line <> " See the run"
 
         assert href(lv, "#set-up-test-failed a") ==
-                 ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+                 ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
         assert has_element?(lv, "#set-up-test-run", "Run the test")
       end
@@ -3898,7 +3962,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-test-preparation") == "Open the run's Prepare machine section"
 
       assert href(lv, "#set-up-test-preparation") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <>
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <>
                  "#prepare-machine"
 
       assert has_element?(lv, "#set-up-test-run", "Run the test")
@@ -3943,7 +4007,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "of build-pool on its host. Open the run's Prepare machine section"
 
       assert href(lv, "#set-up-test-preparation") ==
-               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <>
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <>
                  "#prepare-machine"
     end
 
@@ -4593,13 +4657,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     # Main's model is done, and the new workspace's steps are not.
     assert WorkspaceSetup.model_key?(scope.workspace)
 
-    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
+    {:ok, page, _html} = live(conn, ~p"/#{organisation}/workspaces/new/qory.software")
 
     {:ok, lv, _html} =
-      lv
-      |> element("#set-up-card-software-choose")
-      |> render_click()
-      |> follow_redirect(conn)
+      page |> element("#workspace-type-create") |> render_click() |> follow_redirect(conn)
 
     assert has_element?(lv, "h1", "Name this workspace")
 

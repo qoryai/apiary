@@ -427,7 +427,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       assert has_element?(
                lv,
-               "#nodes tr#node-#{pool.public_id}-instance-#{run.public_id}",
+               "#nodes tr#node-#{pool.public_id}-instance-run-#{run.number}",
                "i-beta-42"
              )
 

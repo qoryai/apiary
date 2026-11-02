@@ -795,14 +795,14 @@ defmodule ApiaryWeb.TargetLive.Show do
               {Format.date(@target.first_seen_at)}
               <span :if={@facts && @facts.first} class="text-faint">
                 ·
-                <.rich text={rich_gettext("run %{id}", id: {:part, :id})}>
-                  <:part name={:id}>
+                <.rich text={rich_gettext("run %{run}", run: {:part, :run})}>
+                  <:part name={:run}>
                     <.link
                       navigate={
-                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.public_id}"
+                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.number}"
                       }
-                      class="font-mono text-xs hover:underline"
-                    >{short_id(@facts.first.public_id)}</.link>
+                      class="text-xs hover:underline"
+                    >{@facts.first.number}</.link>
                   </:part>
                 </.rich>
               </span>
