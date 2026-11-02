@@ -85,10 +85,10 @@ defmodule Apiary.SupportAddress do
   def words(true), do: gettext("contact support")
 
   @doc """
-  plain/1 is `words/1` in plain text, for a sentence that can hold no link: a flash, a data
+  plain/1 is `words/1` in plain text, for a sentence that has no link: a flash, a data
   attribute, a changeset error. Where an address is set, the address follows the words.
-  `mid_sentence:` is as in `words/1`; `address:` gives the address in place of `get/0`, nil
-  for the plain words.
+  `mid_sentence:` is as in `words/1`; `address:` is the address to use in place of `get/0`,
+  nil for the plain words.
 
       iex> Apiary.SupportAddress.plain(address: "support@example.com")
       "Contact support at support@example.com"

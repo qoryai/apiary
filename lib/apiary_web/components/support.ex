@@ -31,13 +31,13 @@ defmodule ApiaryWeb.Support do
     "Contact support at support@example.com.", or "Contact support." where no address is
     set.
 
-  - `plain/1`, the words in plain text for a sentence that can hold no link, such as a
+  - `plain/1`, the words in plain text for a sentence that has no link, such as a
     flash: "Contact support at support@example.com", or "Contact support" where no address
     is set (`Apiary.SupportAddress.plain/1`).
 
   The words are "Contact support" at the start of a sentence and "contact support" inside
   one (`mid_sentence`). Each form reads the address when it is called
-  (`Apiary.SupportAddress.get/0`), from the node's copy, unless `address` gives one; give
+  (`Apiary.SupportAddress.get/0`), from the node's copy, unless `address` is set; set
   `address: nil` for the plain words.
   """
   use Phoenix.Component
@@ -132,7 +132,7 @@ defmodule ApiaryWeb.Support do
   end
 
   @doc """
-  plain/1 is the words of `rich/1` in plain text, for a sentence that can hold no link: a
+  plain/1 is the words of `rich/1` in plain text, for a sentence that has no link: a
   flash, a data attribute, a changeset error. Where an address is set, the address follows
   the words. Takes `address:` and `mid_sentence:` as `rich/1` does.
 

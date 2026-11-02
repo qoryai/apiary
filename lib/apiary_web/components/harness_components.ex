@@ -861,7 +861,7 @@ defmodule ApiaryWeb.HarnessComponents do
   # `:rate_limited` or `:fetch_failed`; the fix, then the cause. `names`: `source`, the source as shown;
   # `organisation` and `workspace`, the names the read was for; and the `fetch` rule's
   # `host`, `port` and `seconds`. The run's page shows them too.
-  @spec public_read_words(atom, map) :: String.t()
+  @spec public_read_words(atom, map) :: String.t() | list
   def public_read_words(:not_covered, names),
     do: not_covered_words(%{label: names.source}, names.organisation)
 
@@ -875,8 +875,9 @@ defmodule ApiaryWeb.HarnessComponents do
 
   def public_read_words(:source_unreachable, names),
     do:
-      gettext(
-        "Contact support: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s.",
+      rich_gettext(
+        "%{contact_support}: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s.",
+        contact_support: ApiaryWeb.Support.rich(),
         source: names.source,
         host: names.host,
         port: names.port,
@@ -892,9 +893,10 @@ defmodule ApiaryWeb.HarnessComponents do
 
   def public_read_words(:host_not_allowed, names),
     do:
-      pgettext(
+      rich_pgettext(
         "plain",
-        "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only.",
+        "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, %{contact_support}. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only.",
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
         org: names.organisation,
         host: names.host
       )

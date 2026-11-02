@@ -972,7 +972,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert steps == guide["connect"]["steps"]
     end
 
-    test "the core has no sentence of its own for the edition's who connects line" do
+    test "the core returns nil for the edition's who connects line" do
       %{organisation: organisation} = sign_up_fixture()
 
       assert Apiary.Edition.Core.connects_line(organisation, :sources) == nil

@@ -6,7 +6,6 @@ defmodule ApiaryWeb.NoInstanceWordsTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
-  import Apiary.AccountsFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 

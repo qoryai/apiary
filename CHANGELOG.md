@@ -484,15 +484,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
-- The pages people in an organisation read no longer say “instance”, “instance admin” or
-  “this server”. Where only support can fix a case, the
-  page says “Contact support”, which links to the support address where one is set, and
-  what Qory Apiary offers is named “Qory Apiary”. **Add an integration**, the work source
-  and destination lists, and a target's Environment card keep their old lines for an
-  instance admin. An integration that cannot be installed yet shows only to an instance
-  admin, unless the organisation already has a connection to it. In a flash or a form
-  error, which hold no link, the support address follows “Contact support”. The 503 error
-  of the registry token endpoint says “contact support” in place of the instance's log.
+- The pages people in an organisation read no longer contain “instance”, “instance admin”
+  or “this server”. Where only support can fix a case, the page shows “Contact support”,
+  which links to the support address where one is set, and what Qory Apiary offers is
+  named “Qory Apiary”. **Add an integration**, the work source and destination lists, and
+  a target's Environment card keep their old lines for an instance admin. An integration
+  that cannot be installed yet shows only to an instance admin, unless the organisation
+  already has a connection to it. A flash or a form error has no link, so the support
+  address follows “Contact support” there. The 503 error of the registry token endpoint
+  contains “contact support” in place of the instance's log.
 - `Apiary.Edition` has no callback `first_workspace_line/1`, and the callback
   `machines_who_may/2` takes the scope and the workspace, with no `:instance` pool:
   organisation people no longer see a Qory Pool that is not ready on the Machines step.

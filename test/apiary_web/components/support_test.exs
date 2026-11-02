@@ -170,6 +170,14 @@ defmodule ApiaryWeb.SupportTest do
 
     @source %{label: "acme/harness", kind: :assigned}
     @call %{adapter: "GitHub", code: nil, seconds: 10}
+    @names %{
+      source: "https://git.example.com/acme/harness.git",
+      organisation: "Acme",
+      workspace: "Web",
+      host: "git.example.com",
+      port: 443,
+      seconds: 10
+    }
 
     # Every text of `ApiaryWeb.HarnessComponents` that sends the reader to support.
     defp support_texts do
@@ -194,6 +202,8 @@ defmodule ApiaryWeb.SupportTest do
             "main",
             "Acme"
           ),
+          ApiaryWeb.HarnessComponents.public_read_words(:source_unreachable, @names),
+          ApiaryWeb.HarnessComponents.public_read_words(:host_not_allowed, @names),
           ApiaryWeb.StagesLive.Words.read_failed(
             ApiaryWeb.HarnessComponents.read_words(:exited, @source, "Acme"),
             nil
@@ -213,7 +223,7 @@ defmodule ApiaryWeb.SupportTest do
       Application.put_env(:apiary, :support_address, "support@example.com")
       linked = support_texts()
 
-      assert length(linked) == 12
+      assert length(linked) == 14
 
       for {text, words} <- Enum.zip(linked, plain) do
         shown = shown_text(text)

@@ -570,6 +570,35 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute log =~ "# Notes"
     end
 
+    test "gives the support address in each line that sends the reader to support", ctx do
+      Application.put_env(:apiary, :support_address, "support@example.com")
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert ApiaryWeb.ArtifactLive.New.general_line(ctx.work_item, "explainer", :busy) ==
+                 "Add the version again. If it fails again, contact support at support@example.com."
+      end)
+
+      blocked = Path.join(ctx.tmp_dir, "a-file")
+      File.write!(blocked, "")
+      Application.put_env(:apiary, :artifacts_dir, Path.join(blocked, "store"))
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert add_notes(view) =~
+                 "Store the files again. If it fails again, contact support at support@example.com."
+      end)
+
+      Application.put_env(:apiary, :artifacts_dir, Path.join(ctx.tmp_dir, "store"))
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
+      previous = Application.get_env(:apiary, :features)
+      Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:workflow_model])
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+      assert add_notes(view) =~
+               "Artifacts are not available here. Contact support at support@example.com if you need them."
+    end
+
     test "stores the version in the stage the work item moved to before Add version", ctx do
       in_stage(ctx.work_item, "st_aaaaaaaaaa")
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))

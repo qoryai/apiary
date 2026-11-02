@@ -291,6 +291,11 @@ msgstr ""
 msgid "%{contact_support}: Qory Apiary could not read the targets of the %{adapter} adapter."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}: some machines of this pool were not recorded."
@@ -4267,7 +4272,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Add the version again. If it fails again, contact support."
+msgid "Add the version again. If it fails again, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -5083,7 +5088,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Artifacts are not available here. Contact support if you need them."
+msgid "Artifacts are not available here. %{contact_support} if you need them."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -6702,11 +6707,6 @@ msgstr ""
 #: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support."
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Contact support: Qory Apiary did not receive %{source} from %{host} on port %{port} within %{n} s."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -9573,7 +9573,7 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."
+msgid "If an integration serves %{host}, owners and admins of %{org} link the repository through its connection in Organisation settings › Integrations; otherwise, %{contact_support}. %{host} resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -17370,7 +17370,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Store the files again. If it fails again, contact support."
+msgid "Store the files again. If it fails again, %{contact_support}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
