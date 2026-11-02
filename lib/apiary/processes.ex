@@ -38,6 +38,8 @@ defmodule Apiary.Processes do
   lists a type the workspace does not have and an input that no earlier stage outputs.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query, warn: false
 
   alias Apiary.{Access, Audit, Repo}
@@ -46,7 +48,7 @@ defmodule Apiary.Processes do
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
-  alias Apiary.Processes.{TypeTemplates, Version}
+  alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
   alias Apiary.Stacks.Stack
   alias Apiary.WorkItems.WorkItem
 
@@ -212,6 +214,60 @@ defmodule Apiary.Processes do
     key = Domain.definition(domain).key
     %{"type" => key, "version" => TypeTemplates.newest(key).number}
   end
+
+  @doc """
+  type_texts/1 is what a page shows of the workspace type of `version`, a version of the
+  type's default process: its name, its summary and its description, the "How it works"
+  text. Each is the version's text where it has one (`Apiary.Processes.TypeTemplate`),
+  else the text the release ships in code (`type_text_defaults/1`).
+  """
+  @spec type_texts(TypeTemplate.t()) :: %{TypeTemplate.text() => String.t() | nil}
+  def type_texts(%TypeTemplate{} = version) do
+    for {text, default} <- type_text_defaults(version.type),
+        into: %{},
+        do: {text, Map.fetch!(version, text) || default}
+  end
+
+  @doc """
+  type_text_defaults/1 is the texts the release ships in code for the workspace type with
+  the key `type`, translated in the locale of the caller's process. The name is the
+  domain's `c:Apiary.Lingo.Domain.type_name/0`. This module has the software type's
+  summary and description; another domain's summary is its
+  `c:Apiary.Lingo.Domain.type_line/0`, with no description. For a key no type has, the
+  name is the key, with no summary or description.
+  """
+  @spec type_text_defaults(String.t()) :: %{TypeTemplate.text() => String.t() | nil}
+  def type_text_defaults(type) when is_binary(type) do
+    case Enum.find(Domain.choices(), &(Domain.definition(&1).key == type)) do
+      nil ->
+        %{name: type, summary: nil, description: nil}
+
+      domain ->
+        Map.merge(
+          %{name: domain.type_name(), summary: domain.type_line(), description: nil},
+          shipped_texts(domain.name())
+        )
+    end
+  end
+
+  # A person reads these where they pick a type, in any locale, so they are in the
+  # `workspace type` context and keep the type's words.
+  defp shipped_texts("software") do
+    %{
+      summary:
+        pgettext(
+          "workspace type",
+          "Agents change code in your repositories. Each ticket needs a repository."
+        ),
+      description:
+        pgettext(
+          "workspace type",
+          "Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.\n\nYou connect: where work comes from, where changes go, and a model."
+        )
+    }
+  end
+
+  defp shipped_texts(_name), do: %{}
 
   @doc """
   qory_workflows/0 is the workflows the Qory harness declares, which every workspace

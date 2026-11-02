@@ -639,10 +639,11 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # New workspace: the kind cards for a further workspace, for an owner.
-              # Choose creates it; its steps are pages of the workspace
-              # (`/:org/:workspace/set-up/<step>`).
+              # New workspace: the kind cards for a further workspace, for an owner, each
+              # a link to its type's page, whose Create workspace creates it; its steps
+              # are pages of the workspace (`/:org/:workspace/set-up/<step>`).
               live "/workspaces/new", WorkspaceSetupLive, :new
+              live "/workspaces/new/:type", WorkspaceTypeLive, :show
               # The organisation's audit trail, a page of its sidebar beside the overview,
               # for the readers `audit.read` allows. It was a section of the settings,
               # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
