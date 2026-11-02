@@ -283,9 +283,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       # The take in placed the work item in Explore and started its first round.
       assert body["run"] == %{
                "id" => ctx.run.node_run_id,
+               "number" => ctx.run.number,
                "workflow" => "explore-a-ticket",
                "round" => 1
              }
+
+      assert is_integer(ctx.run.number)
+
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      assert Enum.map(ordered["run"].values, &elem(&1, 0)) == ~w(id number workflow round)
 
       assert body["ticket"]["title"] == ctx.work_item.title
       assert is_list(body["comments"])

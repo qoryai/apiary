@@ -70,7 +70,7 @@ Returns `200` with the work item snapshot:
 {
   "version": 1,
   "work_item": {"id": "wi_...", "number": 12, "url": "https://..."},
-  "run": {"id": "<run_id>", "workflow": "capture-demo", "round": 2},
+  "run": {"id": "<run_id>", "number": 57, "workflow": "capture-demo", "round": 2},
   "stage": {"id": "st_...", "name": "Build", "round": 2, "rounds": 3, "state": "running"},
   "inputs": [
     {"type": "acceptance-criteria", "required": true, "version": {"id": "av_...", "number": 2}}
@@ -116,6 +116,8 @@ Returns `200` with the work item snapshot:
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
+- `run.number` is the run's number on the server, from 1, the number in the address of
+  the run's page. No two runs on a server have the same number.
 - `run.workflow` and `run.round` are null for a run that has neither.
 
 Errors: `410` `ticket_gone` when the ticket of a work item is no longer kept; `409`

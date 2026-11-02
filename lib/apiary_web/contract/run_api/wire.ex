@@ -58,6 +58,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
            {"run",
             object([
               {"id", run.node_run_id},
+              {"number", run.number},
               {"workflow", Boundary.workflow(dispatch_run)},
               {"round", Boundary.round(dispatch_run)}
             ])},
