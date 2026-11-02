@@ -208,8 +208,8 @@ defmodule Apiary.Stacks.Sources do
 
   @typedoc """
   The templates of a source: `commit`, the commit the read resolved; `templates` and
-  `not_readable`, in the order of `exports`; and `more`, how many distinct modules the
-  source lists past the ones read.
+  `not_readable`, in the order of `exports`; and `more`, how many distinct modules a
+  source with no narrowing lists past the ones read, 0 for a narrowed source.
   """
   @type templates :: %{
           commit: String.t(),
