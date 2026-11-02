@@ -523,11 +523,11 @@ defmodule ApiaryWeb.UserAuth do
 
   # The sidebar's count of alive runs, and its group Set up while the set-up is not
   # finished, follow the workspace on every page, so a test run that passes finishes the
-  # set-up on a page that is open. They listen on a topic of their own
-  # (`Apiary.Runs.touched_topic/1`), so no page has to handle a message it did not ask
-  # for. They are read at once on the first change and then at most once a second while
-  # changes keep coming. A projection tells the topic after the queue's run ended with
-  # it (`Apiary.Runs.Projector`), so the read sees the end.
+  # set-up on a page that is open. They listen on `Apiary.Runs.touched_topic/1`, which
+  # no page subscribes to, so no page has to handle a message it did not ask for. They
+  # are read at once on the first change and then at most once a second while changes
+  # keep coming. A projection broadcasts on the topic after the queue's run ended with it
+  # (`Apiary.Runs.Projector`), so the read finds the ended run of the queue.
   @alive_window 1_000
 
   defp follow_alive_runs(socket) do
