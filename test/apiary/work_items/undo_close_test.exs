@@ -136,12 +136,25 @@ defmodule Apiary.WorkItems.UndoCloseTest do
 
     test "of a take in again of a closed work item: closed again, as it was", ctx do
       {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
-      {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
+      %{user: member} = member_fixture(ctx.scope)
+
+      {:ok, again} =
+        WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{owner_id: member.id})
+
+      assert again.owner_id == member.id
 
       assert {:ok, back} = WorkItems.undo(ctx.scope, again)
       assert back.state == :closed
+      assert back.take_in == 2
       assert back.closed_at == closed.closed_at
       assert back.closed_by_id == ctx.scope.user.id
+      assert back.owner_id == ctx.scope.user.id
+      assert back.taken_in_at == ctx.work_item.taken_in_at
+      assert back.taken_in_by_id == ctx.work_item.taken_in_by_id
+
+      assert {back.target_system, back.target_path} ==
+               {ctx.work_item.target_system, ctx.work_item.target_path}
+
       assert statuses(ctx.ticket) == ["taken_in"]
     end
 
