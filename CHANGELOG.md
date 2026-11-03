@@ -810,8 +810,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Decline work item #12?” are removed from the step card, the questions and the
   run-limit card, and the **Declined** tab from Work items and the Backlog. The tabs of
   Work items are **Open**, **Waiting on you** and **Closed**. The run-limit card shows
-  “Close the work item if it is not wanted.” and **Close work item…** for whoever may
-  close the work item. The upgrade closes every declined work item (Migrations). Activity
+  “To explore again, close the work item and use Take in again in the Backlog: the run
+  count starts again, without this take in's answers.”, or “Close the work item if it is
+  not wanted.” where the Backlog is off, and **Close work item…** for whoever may close
+  the work item. The upgrade closes every declined work item (Migrations). Activity
   still describes an earlier decline as “Declined a work item”, and its filter no longer
   offers “Work item declined”.
 - At Confirm, the step card shows “Confirm Qory's proposal, or write what to change.” and
@@ -852,12 +854,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it, with “From version 2. This stage is not in the current version.” The boxes list no
   work item. **Open** groups its rows under a heading for each stage, with the stage's
   count; a stage with no row on the page has no group, and a group has nothing to fold.
-  A row under its group shows the stage's state alone. **Open** shows “Work items at a
-  stage of the process. A finished one moves to Closed.”, and **Closed** shows “Finished
-  work items, and work items that stopped: a member closed one or undid its take in, its
-  ticket closed, or its integration was removed. Where the ticket of a stopped one is
-  still in the Backlog, Take in again brings it back.” An address with `stage`, such as
-  `?stage=explore`, shows that stage alone, in one group.
+  A row under its group leaves out the stage's name: “Explore · Waits for a person”
+  becomes “Waits for a person”. **Open** shows “Work items at a stage of the process. A
+  finished one moves to Closed.”, and **Closed** shows “Finished work items, and work
+  items that stopped: a member closed one or undid its take in, its ticket closed, or its
+  integration was removed. Where the ticket of a stopped one is still in the Backlog,
+  Take in again brings it back.”
 - A work item closes when its last stage finishes, with no person, and shows “Every stage
   done” in **Closed** and in its Thread. In **Closed**, a work item with every stage done
   has an amber ring, and one that ended any other way a grey ring. Its ticket stays in
@@ -865,7 +867,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   until the ticket reopens at its source. A reopened ticket shows in **Open** with
   **Take in again**, which moves the same work item back to Explore at attempt 1 of 3;
   the work item's page offers **Take in again** too. A work item whose last stage
-  finished before the upgrade stays in **Open** until a person closes it.
+  finished before the upgrade stays in **Open** until a person closes it or its ticket
+  closes.
 - An escalation card has no **Decline**. Its other buttons stay.
 - The artifact type `proposal` is a document, one Markdown file `proposal.md` of up to
   256 KiB, in place of structured JSON. A `questions` artifact takes up to 256 KiB, up
@@ -891,7 +894,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 <!-- feature: factory -->
 - **Take in again** on a Backlog row brings the work item back and opens its page, or
-  shows at the top of the page why it cannot. Before, the button did nothing.
+  shows why it cannot. Before, the button did nothing.
 <!-- /feature -->
 
 ### Security
