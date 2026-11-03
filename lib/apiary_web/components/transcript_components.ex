@@ -26,6 +26,10 @@ defmodule ApiaryWeb.TranscriptComponents do
 
   A subagent's lines are indented. A line read from the session's output has a link to
   that line in Raw (`data-raw-line`, followed by the `Terminal` hook).
+
+  A line drawn with `controls` false has no button: no fold of a result, no "Show all"
+  of a text, and thinking is its line alone, closed. The runs list's preview draws its
+  lines so (`ApiaryWeb.RunComponents.run_preview/1`), with `raw` false.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
@@ -166,6 +170,10 @@ defmodule ApiaryWeb.TranscriptComponents do
   attr :open, :boolean, default: false
   attr :result_text, :boolean, default: false
 
+  attr :controls, :boolean,
+    default: true,
+    doc: "false for a line with no button: no fold, no Show all, thinking closed"
+
   @doc "One line of the Transcript, with what is under it."
   def line(assigns) do
     ~H"""
@@ -175,7 +183,13 @@ defmodule ApiaryWeb.TranscriptComponents do
       data-seq={@item.sequence}
       data-part={@item[:part]}
     >
-      <.body item={@item} raw={@raw} open={@open} result_text={@result_text} />
+      <.body
+        item={@item}
+        raw={@raw}
+        open={@open}
+        result_text={@result_text}
+        controls={@controls}
+      />
     </li>
     """
   end
@@ -184,6 +198,7 @@ defmodule ApiaryWeb.TranscriptComponents do
   attr :raw, :boolean, required: true
   attr :open, :boolean, default: false
   attr :result_text, :boolean, default: false
+  attr :controls, :boolean, default: true
 
   defp body(%{item: %{kind: :prompt}} = assigns) do
     ~H"""
@@ -208,6 +223,7 @@ defmodule ApiaryWeb.TranscriptComponents do
       tone={@out.tone}
       raw={@raw}
       item={@item}
+      controls={@controls}
     />
     """
   end
@@ -244,6 +260,7 @@ defmodule ApiaryWeb.TranscriptComponents do
       tone={@out.tone}
       raw={@raw}
       item={@item}
+      controls={@controls}
     />
     """
   end
@@ -255,13 +272,24 @@ defmodule ApiaryWeb.TranscriptComponents do
       <div class="q-tr-text">
         <.markdown text={@item.text} />
         <RunPageComponents.show_all
-          :if={@item.text_cut}
+          :if={@item.text_cut and @controls}
           seq={@item.sequence}
           bytes={@item.text_bytes}
         />
         <p :if={@item[:truncated]} class="q-tr-cut">{cut_words()}</p>
       </div>
       <.raw_link raw={@raw} item={@item} line={@item.line} />
+    </div>
+    """
+  end
+
+  defp body(%{item: %{kind: :thinking}, controls: false} = assigns) do
+    ~H"""
+    <div class="q-tr-think">
+      <div class="q-tr-row">
+        <span class="q-tr-mark" aria-hidden="true">✻</span>
+        <span class="q-tr-head">{gettext("Thinking")}</span>
+      </div>
     </div>
     """
   end
@@ -335,9 +363,11 @@ defmodule ApiaryWeb.TranscriptComponents do
   attr :tone, :atom, default: nil
   attr :raw, :boolean, required: true
   attr :item, :map, required: true
+  attr :controls, :boolean, default: true
 
   # The output's first lines, and a button for the rest: `%{number} more lines` opens it,
-  # `Show less` folds it again. The server reads an opened result whole.
+  # `Show less` folds it again. The server reads an opened result whole. With `controls`
+  # false, the first lines alone.
   defp output(assigns) do
     lines = assigns.out.text |> RunPageComponents.sent_lines() |> split_lines()
     folded = Map.get(assigns.out, :folded, @folded)
@@ -355,7 +385,7 @@ defmodule ApiaryWeb.TranscriptComponents do
       <div class="q-tr-lns">
         <span :for={line <- @shown} class="q-tr-ln">{line}</span>
         <button
-          :if={@more > 0 and not @open}
+          :if={@controls and @more > 0 and not @open}
           type="button"
           class="q-tr-fold"
           phx-click="transcript_open"
@@ -366,7 +396,7 @@ defmodule ApiaryWeb.TranscriptComponents do
           )}
         </button>
         <button
-          :if={@open}
+          :if={@controls and @open}
           type="button"
           class="q-tr-fold"
           phx-click="transcript_close"

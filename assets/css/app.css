@@ -7473,6 +7473,10 @@
     cursor: pointer;
     color: var(--q-term-dim);
   }
+  /* Thinking drawn with no fold (`controls` false: the runs list's preview). */
+  .q-tr-think > .q-tr-row {
+    color: var(--q-term-dim);
+  }
   .q-tr-think summary::-webkit-details-marker {
     display: none;
   }

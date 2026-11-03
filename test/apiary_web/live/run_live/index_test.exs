@@ -38,6 +38,17 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
   defp text(view, selector), do: view |> element(selector) |> render() |> plain()
 
+  # A run of `events`, projected.
+  defp transcript_run(scope, events) do
+    run = run_fixture(scope)
+    events_fixture(run, events)
+    {:ok, run} = Projector.project(run)
+    run
+  end
+
+  defp count_items(html),
+    do: html |> LazyHTML.from_fragment() |> LazyHTML.query("li") |> Enum.count()
+
   # A token as the query writes it: the qualifier, a colon and the value, one word.
   defp token(view, key), do: view |> text("#runs-token-#{key}") |> String.replace(": ", ":")
 
@@ -2430,6 +2441,160 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert render(view) =~ "evillpmaxe.&lt;script&gt;</bdi>:443"
       refute render(view) =~ "\u202E"
       refute render(view) =~ "elpmaxe.<script>"
+    end
+
+    test "a run with runtime events shows the Transcript's last lines as the run page draws them, with no button and no raw JSON",
+         %{conn: conn, scope: scope} do
+      run = transcript_run(scope, runtime_record())
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview .q-pv-bar", "Terminal, last lines")
+
+      assert has_element?(
+               view,
+               "#runs-preview-log .q-tr #runs-preview-e-7.q-tr-prompt",
+               "/harness:hello"
+             )
+
+      assert has_element?(view, "#runs-preview-e-10.q-tr-tool", "Skill")
+      assert has_element?(view, "#runs-preview-e-10 .q-tr-ln", "Launching skill: harness:greet")
+      assert has_element?(view, "#runs-preview-e-15 .q-tr-warn", "Denied: Quoted text")
+      assert has_element?(view, "#runs-preview-e-17 .q-tr-think", "Thinking")
+      assert has_element?(view, "#runs-preview-e-18 .q-tr-md h3, #runs-preview-e-18 .q-tr-md h2")
+
+      assert has_element?(
+               view,
+               "#runs-preview-e-20.q-tr-result",
+               "success · 6 turns · 14 s · $0.09"
+             )
+
+      # Texts are there, so a turn's end is not a line, as on the run page.
+      refute has_element?(view, "#runs-preview-e-19")
+
+      # Thinking is its line alone, closed; no line has a button or a link to Raw.
+      refute has_element?(view, "#runs-preview-e-17 details")
+      refute has_element?(view, "#runs-preview-e-17 summary")
+      refute has_element?(view, "#runs-preview-log button")
+      refute has_element?(view, "#runs-preview-log [data-raw-line]")
+
+      # The log's raw lines are neither read nor shown.
+      refute view |> element("#runs-preview") |> render() =~ "&quot;type&quot;"
+      refute has_element?(view, "#runs-preview pre")
+      assert preview_lines(view) == []
+
+      assert has_element?(
+               view,
+               "#runs-preview a[href='#{workspace_path(scope)}/runs/#{run.number}/terminal']",
+               "Full log"
+             )
+    end
+
+    test "the preview shows the Transcript's last 30 lines, a result's first 3 lines and no fold, and follows the run",
+         %{conn: conn, scope: scope} do
+      prompts =
+        for n <- 1..34,
+            do:
+              {2 + n, "runtime.prompt_submitted", %{"session_id" => "s", "prompt" => "step #{n}"}}
+
+      result = Enum.map_join(1..5, "\n", &"line #{&1}")
+
+      run =
+        transcript_run(
+          scope,
+          [{1, "run.started", started_data()}, {2, "session.started", session_started_data()}] ++
+            prompts ++
+            [
+              {40, "runtime.tool_started",
+               %{"session_id" => "s", "tool" => "Bash", "tool_use_id" => "a", "input" => %{}}},
+              {41, "runtime.tool_result",
+               %{"session_id" => "s", "tool_use_id" => "a", "content" => result}},
+              {42, "run.log",
+               %{"stream" => "stdout", "bytes" => Base.encode64(~s({"type":"x"}\n))}}
+            ]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      # 29 prompts and the tool call: steps 6 to 34.
+      assert view |> element("#runs-preview-log") |> render() |> count_items() == 30
+      refute has_element?(view, "#runs-preview-e-7")
+      assert has_element?(view, "#runs-preview-e-8.q-tr-prompt", "step 6")
+      assert has_element?(view, "#runs-preview-e-36.q-tr-prompt", "step 34")
+
+      assert has_element?(view, "#runs-preview-e-40 .q-tr-ln", "line 3")
+      refute has_element?(view, "#runs-preview-e-40 .q-tr-ln", "line 4")
+      refute has_element?(view, "#runs-preview-e-40 .q-tr-fold")
+      refute has_element?(view, "#runs-preview-log button")
+      refute has_element?(view, "#runs-preview-log", "2 more lines")
+      refute has_element?(view, "#runs-preview-log", "earlier event")
+
+      # A line the run adds shows as the run changes, the oldest leaves.
+      event_fixture(run, 43, "runtime.prompt_submitted", %{
+        "session_id" => "s",
+        "prompt" => "step 35"
+      })
+
+      {:ok, _} = Projector.project(run)
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview-e-43.q-tr-prompt", "step 35")
+      refute has_element?(view, "#runs-preview-e-8")
+    end
+
+    test "a pseudo-terminal's run, which the run page opens in Raw, shows the log's last lines as plain text",
+         %{conn: conn, scope: scope} do
+      run =
+        transcript_run(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.prompt_submitted", %{"session_id" => "s", "prompt" => "/harness:hello"}},
+          {4, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("on the screen\n")}}
+        ])
+
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert text(view, "#runs-preview-log") == "on the screen"
+      refute has_element?(view, "#runs-preview .q-tr")
+    end
+
+    test "a pruned log leaves the Transcript's last lines, as the run page shows them",
+         %{conn: conn, scope: scope} do
+      run = transcript_run(scope, runtime_record())
+      Repo.delete_all(from l in Apiary.Runs.LogChunk, where: l.run_id == ^run.id)
+
+      {1, _} =
+        Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [log_pruned_at: DateTime.utc_now()]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview-e-7.q-tr-prompt", "/harness:hello")
+      refute has_element?(view, "#runs-preview-log", "The log was pruned.")
+    end
+
+    test "a reader who may not read the log is shown no Transcript, and none is read",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLog)
+      run = transcript_run(scope, runtime_record())
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview h2", "Run #{run.number}")
+      refute has_element?(view, "#runs-preview .q-pv-term")
+      refute has_element?(view, "#runs-preview .q-tr")
+      refute render(view) =~ "harness:hello"
+      %{socket: socket} = :sys.get_state(view.pid)
+      assert socket.assigns.preview.transcript == []
     end
 
     test "a reader who may not read the log (run.read_log) is shown none of it, nor Full log, and none is read",
