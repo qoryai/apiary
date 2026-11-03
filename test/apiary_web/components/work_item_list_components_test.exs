@@ -78,7 +78,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert texts(html, ".q-wl-st-n") == ["34", "15", "8"]
 
       assert texts(html, ".q-wl-st-what") == [
-               "Qory reads the ticket and the code",
+               "Qory reads the ticket",
                "A member confirms what Qory proposes",
                "The plan and its acceptance criteria"
              ]
@@ -488,7 +488,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     assert text(html, "h2") == "No work items yet"
 
     assert text(html, ".q-wl-empty") =~
-             "A work item starts when someone takes in one of the Backlog's tickets. Qory then explores it and proposes how to build it."
+             "A work item starts when someone takes in one of the Backlog's tickets. Qory then explores it and proposes what to do."
 
     assert text(html, "#work-items-open-backlog") == "Open the Backlog"
     assert attr(html, "#work-items-open-backlog", "href") == ["/8wonders/main/backlog"]
@@ -523,10 +523,10 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert head =~ "The bugs Main took in from the Backlog, by stage."
 
       assert texts(strip(item_noun: @bug), ".q-wl-st-what") |> hd() ==
-               "Qory reads the bug and the code"
+               "Qory reads the bug"
 
       assert text(band(stage: :explore, count: 2, shown: 2, item_noun: @bug), ".q-wl-what") ==
-               "Qory reads the bug and the code"
+               "Qory reads the bug"
 
       search = render_component(&L.work_item_search/1, item_noun: @bug)
       assert attr(search, "input", "placeholder") == ["Search by title, number or bug"]
@@ -541,7 +541,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
         )
 
       assert text(empty, ".q-wl-empty") =~
-               "A work item starts when someone takes in one of the Backlog's bugs. Qory then explores it and proposes how to build it."
+               "A work item starts when someone takes in one of the Backlog's bugs. Qory then explores it and proposes what to do."
     end
   end
 end

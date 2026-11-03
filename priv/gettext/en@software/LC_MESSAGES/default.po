@@ -3835,7 +3835,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do."
-msgstr "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes how to build it."
+msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
@@ -5370,17 +5370,17 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions."
-msgstr "Attempt %{attempt} of %{of} reads the %{item}, the code and these answers from the start, then returns a proposal for how to build it, or more questions."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions."
-msgstr "Attempt %{attempt} of %{of} reads the %{item} and the code, then returns a proposal for how to build it, or questions."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start."
-msgstr "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item}, the code and these answers, from the start."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -15009,27 +15009,27 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item}"
-msgstr "Qory reads the %{item} and the code"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and the answers of %{name}, and writes a proposal."
-msgstr "Qory reads the %{item}, the code and the answers of %{name}, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and the answers of this take in, and writes a proposal."
-msgstr "Qory reads the %{item}, the code and the answers of this take in, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and writes a proposal."
-msgstr "Qory reads the %{item} and the code, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and your answers, and writes a proposal."
-msgstr "Qory reads the %{item}, the code and your answers, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -15061,7 +15061,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know."
-msgstr "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and the code, and proposes how to build it, or asks what it needs to know."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -15080,17 +15080,17 @@ msgstr[1] ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory wrote a proposal, after %{duration}."
-msgstr "Qory wrote a proposal for how to build it, after %{duration}."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory wrote a proposal, after %{duration}. %{name} confirms next"
-msgstr "Qory wrote a proposal for how to build it, after %{duration}. %{name} confirms next"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory wrote a proposal, after %{duration}. You confirm next"
-msgstr "Qory wrote a proposal for how to build it, after %{duration}. You confirm next"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -21267,23 +21267,23 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "When the run starts, Qory explores the %{item} and writes a proposal for the work."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item}, the code and the answers of %{name}, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "When the run starts, Qory reads the %{item} and the answers of this take in, and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item}, the code and the answers of this take in, and writes a proposal for how to build it."
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "When the run starts, Qory reads the %{item} and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item} and the code, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "When the run starts, Qory reads the %{item} and your answers, and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item}, the code and your answers, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format

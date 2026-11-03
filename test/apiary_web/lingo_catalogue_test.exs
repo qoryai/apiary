@@ -6,9 +6,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   one that passes and copies of it that do not.
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
-  # Explore texts, which read the code and propose how to build it, the policy file's
-  # place, outside the checkout, and the harness choice's repository and its branch, tag or
-  # commit, the version's name among them.
+  # policy file's place, outside the checkout, and the harness choice's repository and its
+  # branch, tag or commit, the version's name among them.
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
@@ -16,28 +15,11 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
-    "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
     "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
-    "Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
-    "Qory reads the %{item} and the answers of this take in, and writes a proposal.",
-    "Qory reads the %{item} and your answers, and writes a proposal.",
-    "Qory reads the %{item} and writes a proposal.",
-    "Qory wrote a proposal, after %{duration}.",
-    "Qory wrote a proposal, after %{duration}. %{name} confirms next",
-    "Qory wrote a proposal, after %{duration}. You confirm next",
-    "Qory reads the %{item}",
-    "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
-    "When the run starts, Qory reads the %{item} and the answers of this take in, and writes a proposal.",
-    "When the run starts, Qory reads the %{item} and your answers, and writes a proposal.",
-    "When the run starts, Qory reads the %{item} and writes a proposal.",
-    "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
-    "Attempt %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions.",
-    "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions.",
-    "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
     "tag or version"
   ]
 

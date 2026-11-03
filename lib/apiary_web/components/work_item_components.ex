@@ -797,7 +797,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             :none ->
               gettext(
-                "When the run starts, Qory reads the %{item} and writes a proposal.",
+                "When the run starts, Qory explores the %{item} and writes a proposal for the work.",
                 item: assigns.item
               )
 
@@ -839,7 +839,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         undo_line: undo_line(assigns),
         line:
           test_line(assigns) ||
-            gettext("When the run starts, Qory reads the %{item} and writes a proposal.",
+            gettext(
+              "When the run starts, Qory explores the %{item} and writes a proposal for the work.",
               item: assigns.item
             )
       )
