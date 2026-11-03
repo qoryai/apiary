@@ -2168,6 +2168,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
 
     defp twenty_projections(conn, scope, items, path) do
+      # The sidebar reads its Set up group again with each count of alive runs, once a
+      # second while projections come, untagged. With the set-up finished it shows no such
+      # group, so the count does not depend on how long the twenty projections take.
+      Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
       {run, last, now} = live_run(scope, items)
       {:ok, lv, _html} = live(conn, "#{workspace_path(scope)}/runs/#{run.number}" <> path)
 
