@@ -14,7 +14,8 @@ defmodule Apiary.Processes.Version do
   - `based_on_id`: the version the save started from, nil for version 1.
   - `template`: what the workspace copied as version 1, on that version alone, nil on the
     others: `%{"type" => type, "version" => version}` for the type's default, or the keys
-    `source`, `git`, `commit`, `module`, `stack`, `type` and `version` for a template.
+    `source`, `git`, `commit`, `module`, `stack`, `type` and `version` for a template,
+    where `type` is the template file's `type`, the same value as `workspaces.type`.
   - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
   """
   use Ecto.Schema

@@ -384,6 +384,23 @@ defmodule Apiary.Processes.TypeTemplatesTest do
     end
   end
 
+  describe "offered_types/1" do
+    test "the template's type offers the standard types and the template's custom types" do
+      template = QoryCopy.template()
+
+      assert %{name: "branch", base_view: :structured} in TypeTemplates.offered_types(
+               template.type
+             )
+
+      assert TypeTemplates.offered_types(template.type) ==
+               TypeTemplates.artifact_types(template.artifact_types)
+    end
+
+    test "another type offers the standard types alone" do
+      assert TypeTemplates.offered_types("qory.example") == TypeTemplates.artifact_types()
+    end
+  end
+
   describe "artifact_types/1" do
     test "is the standard types for a template with no list" do
       assert TypeTemplates.artifact_types(nil) == TypeTemplates.artifact_types()

@@ -1744,10 +1744,11 @@ defmodule Apiary.Organisations do
   commit of that read. `which` is as for `create_workspace_of_kind/3`.
 
   The workspace is named after the template, as `create_workspace_of_kind/3` names one,
-  of the default domain. In one transaction, version 1 of its process is the template's
-  process, with no default version first (Apiary.Processes.copy_template/4), its harness
-  is saved as a row at the workspace (Apiary.Stacks.Sources.save_start/3), and it gets
-  the template's artifact types (Apiary.Artifacts.TemplateTypes.apply/3). This makes no
+  of the domain whose type is the template's `type` (`Apiary.Lingo.Domain.for_type/1`). In
+  one transaction, version 1 of its process is the template's process, with no default
+  version first (Apiary.Processes.copy_template/4), its harness is saved as a row at the
+  workspace (Apiary.Stacks.Sources.save_start/3), and it gets the template's artifact
+  types (Apiary.Artifacts.TemplateTypes.apply/3). This makes no
   read and no check of the types: the template is taken as `start` has it, and
   Apiary.Stacks.Sources.templates/2 checked its types.
 
@@ -1781,7 +1782,7 @@ defmodule Apiary.Organisations do
       when which in [:first, :any] do
     with :ok <- Access.authorize(scope, :"workspace.create", organisation),
          :ok <- Sources.check_start(scope, start) do
-      domain = Domain.default()
+      domain = Domain.for_type(start.template.type)
       name = String.trim(start.template.name)
 
       insert_workspace(

@@ -170,8 +170,40 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                 ]}
     end
 
-    test "takes a standard name listed twice" do
-      assert :ok = TemplateTypes.check(template(names(["mockup", "mockup"])))
+    test "refuses a standard name listed more than once, once per name" do
+      assert TemplateTypes.check(template(names(["mockup", "mockup", "mockup", "screenshot"]))) ==
+               {:error, [{:repeated, "mockup"}]}
+
+      assert TemplateTypes.check(template(names(["mockup", "explainer", "mockup", "explainer"]))) ==
+               {:error, [{:repeated, "mockup"}, {:repeated, "explainer"}]}
+    end
+
+    test "a name of no standard type listed twice is only the refusal of that type" do
+      assert TemplateTypes.check(template(names(["reply-draft", "reply-draft"]))) ==
+               {:error, [{:not_standard, "reply-draft"}]}
+    end
+
+    test "a standard name listed twice comes after a stage's type and before a custom type" do
+      listed = [
+        @document,
+        %{"name" => "mockup"},
+        %{"name" => "mockup"},
+        @document
+      ]
+
+      assert TemplateTypes.check(template(listed, [stage("Answer", ["explainer"], [])])) ==
+               {:error,
+                [
+                  {:not_listed, "Answer", "explainer"},
+                  {:repeated, "mockup"},
+                  {:invalid, @document["name"], :repeated}
+                ]}
+    end
+
+    test "a standard name beside a custom type of that name is only that refusal" do
+      listed = [%{"name" => "mockup"}, %{@document | "name" => "mockup"}]
+
+      assert TemplateTypes.check(template(listed)) == {:error, [{:standard_name, "mockup"}]}
     end
 
     test "a repeated custom type with a standard name is only that refusal" do
@@ -293,6 +325,12 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
 
       assert TemplateTypes.message({:standard_name, "mockup"}) ==
                "the custom type mockup has a standard type's name"
+
+      assert TemplateTypes.message({:repeated, "mockup"}) ==
+               "list mockup once in artifact_types"
+
+      assert TemplateTypes.message({:schema, "reply-draft"}) ==
+               "the entry reply-draft in artifact_types does not match process.schema.json"
 
       assert TemplateTypes.message({:not_listed, "Answer", "mockup"}) ==
                "the stage Answer uses mockup, which artifact_types does not list"

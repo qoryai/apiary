@@ -23179,6 +23179,11 @@ msgctxt "the line a test work item was made from"
 msgid "lines"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "list %{type} once in artifact_types"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "longest first"
@@ -23764,6 +23769,11 @@ msgstr ""
 #: lib/apiary/artifacts/template_types.ex
 #, elixir-autogen, elixir-format
 msgid "the custom type %{type} is not valid: %{error}"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the entry %{type} in artifact_types does not match process.schema.json"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

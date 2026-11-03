@@ -399,6 +399,25 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
              ]
     end
 
+    test "a type listed twice and an entry the schema refuses each have a line with the name",
+         ctx do
+      twice = "artifact_types:\n  - name: mockup\n  - name: mockup\n"
+      refused = "artifact_types:\n  - {name: reply-draft, base_view: document}\n"
+
+      serve(
+        ctx,
+        harness_files(%{
+          "a" => support_desk_file() <> twice,
+          "b" => support_desk_file() <> refused
+        })
+      )
+
+      assert texts(open(ctx), "#set-up-group-connected p") == [
+               "a in acme/harness is not a template: list mockup once in artifact_types.",
+               "b in acme/harness is not a template: the entry reply-draft in artifact_types does not match process.schema.json."
+             ]
+    end
+
     test "modules that are not a list of names", ctx do
       serve(ctx, harness_files(%{}, root: "a"))
       lv = open(ctx)
