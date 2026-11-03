@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.WorkItemListComponents do
   # The parts of the Work items list (`/:org/:workspace/work`): its head, the stages strip,
   # the views, the search, the Filter menu and its tokens, a view's note, a stage's band,
-  # a work item's row, the pager of Closed, and the empty list.
+  # a stage's group, a work item's row, the pager of Closed, and the empty list.
   #
   # Every component takes plain assigns, as `ApiaryWeb.WorkItemComponents` describes: a
   # work item is a map with `:number`, `:title`, `:key` (the ticket's key at the source,
@@ -373,10 +373,14 @@ defmodule ApiaryWeb.WorkItemListComponents do
   defp filter_name(:updated, _collection_label), do: gettext("Updated")
 
   @doc """
-  The line under the bar of a view whose list is not plain: Waiting on you. Nothing for
-  the other views.
+  The line under the bar of a view: Waiting on you, and with `stages` Open and Closed.
+  Nothing for those without.
   """
   attr :view, :atom, required: true, values: [:open, :you, :closed]
+
+  attr :stages, :boolean,
+    default: false,
+    doc: "whether the list shows the stages of the workspace's process"
 
   attr :item_noun, :map,
     default: nil,
@@ -387,6 +391,25 @@ defmodule ApiaryWeb.WorkItemListComponents do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
       {gettext("Work items that wait for you to confirm what Qory proposes. Oldest first.")}
+    </p>
+    """
+  end
+
+  def view_note(%{view: :open, stages: true} = assigns) do
+    ~H"""
+    <p id="work-items-note" class="q-views-note q-wl-note">
+      {gettext("Work items at a stage of the process. A finished one moves to Closed.")}
+    </p>
+    """
+  end
+
+  def view_note(%{view: :closed, stages: true} = assigns) do
+    ~H"""
+    <p id="work-items-note" class="q-views-note q-wl-note">
+      {gettext(
+        "Finished work items, and work items that stopped: a member closed one or undid its take in, its %{item} closed, or its integration was removed. Where the %{item} of a stopped one is still in the Backlog, Take in again brings it back.",
+        item: SourceComponents.item(@item_noun)
+      )}
     </p>
     """
   end
@@ -465,6 +488,27 @@ defmodule ApiaryWeb.WorkItemListComponents do
         {gettext("Show all %{count} in %{stage}", count: Format.number(@count), stage: @name)}
         <.icon name="hero-arrow-right-micro" class="size-3.5" />
       </.link>
+    </section>
+    """
+  end
+
+  @doc """
+  A stage's group and its rows (`inner_block`, `work_item_row/1`s): the stage's name and
+  its count over the rows, as the Work items list shows them under the workflow model.
+  """
+  attr :id, :string, required: true, doc: "the group's DOM id"
+  attr :name, :string, required: true, doc: "the stage's name"
+  attr :count, :integer, required: true, doc: "the work items in the stage"
+  slot :inner_block, required: true
+
+  def stage_group(assigns) do
+    ~H"""
+    <section id={@id} class="q-wl-grp" aria-labelledby={"#{@id}-h"}>
+      <div class="q-band q-wl-band">
+        <h2 id={"#{@id}-h"}>{@name}</h2>
+        <span class="q-band-n">{Format.number(@count)}</span>
+      </div>
+      <ul class="q-rows">{render_slot(@inner_block)}</ul>
     </section>
     """
   end
