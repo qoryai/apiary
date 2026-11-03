@@ -803,20 +803,20 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             :you ->
               gettext(
-                "When the run starts, Qory reads the %{item} and your answers, and writes a proposal.",
+                "When the run starts, Qory explores the %{item} and your answers, and writes a proposal for the work.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
+                "When the run starts, Qory explores the %{item} and the answers of %{name}, and writes a proposal for the work.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "When the run starts, Qory reads the %{item} and the answers of this take in, and writes a proposal.",
+                "When the run starts, Qory explores the %{item} and the answers of this take in, and writes a proposal for the work.",
                 item: assigns.item
               )
           end,

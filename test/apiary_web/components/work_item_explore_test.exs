@@ -344,13 +344,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "queued with answers: whose answers it reads, which run, and no Undo" do
       for {people, line} <- [
             {[@dana],
-             "When the run starts, Qory reads the ticket and your answers, and writes a proposal."},
+             "When the run starts, Qory explores the ticket and your answers, and writes a proposal for the work."},
             {[@priya],
-             "When the run starts, Qory reads the ticket and the answers of Priya, and writes a proposal."},
+             "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
             {[@dana, @priya],
-             "When the run starts, Qory reads the ticket and the answers of this take in, and writes a proposal."},
+             "When the run starts, Qory explores the ticket and the answers of this take in, and writes a proposal for the work."},
             {[@priya, %{@priya | name: "Priya"}],
-             "When the run starts, Qory reads the ticket and the answers of Priya, and writes a proposal."},
+             "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
             {[],
              "When the run starts, Qory explores the ticket and writes a proposal for the work."}
           ] do
@@ -678,11 +678,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
               {[],
                "When the run starts, Qory explores the ticket and writes a proposal for the work."},
               {[@dana],
-               "When the run starts, Qory reads the ticket and your answers, and writes a proposal."},
+               "When the run starts, Qory explores the ticket and your answers, and writes a proposal for the work."},
               {[@priya],
-               "When the run starts, Qory reads the ticket and the answers of Priya, and writes a proposal."},
+               "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
               {[@dana, @priya],
-               "When the run starts, Qory reads the ticket and the answers of this take in, and writes a proposal."}
+               "When the run starts, Qory explores the ticket and the answers of this take in, and writes a proposal for the work."}
             ] do
           w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
           assert text(card(w), ".q-wi-bee-line") == line

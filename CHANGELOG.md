@@ -528,6 +528,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type until a person switches one off.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
+- `GET work-item` returns the run's number in `run.number`.
 <!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
   timeline, as they happen. A failed push opens its row with the step's output, and it
@@ -777,6 +778,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The built-in harness uses qory's hello example at a commit that allows extending it.
   With the earlier commit, composing the built-in harness failed, so every test run
   failed.
+<!-- feature: factory -->
+- A read-only run that qory closes shows a line on its run page, such as “read-only run
+  with no wall”, in place of its code. Its work item shows the fix, then the cause. On an
+  installed pool, “Contact support.” replaces a fix in the machine's forager.yaml.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- A workspace made from a template runs Explore with no workflow saved on the Workflow
+  page. The Stages page checks each workflow against the stack the workspace's runs use.
+<!-- /feature -->
 
 ### Security
 
