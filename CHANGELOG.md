@@ -585,7 +585,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   harness. The first workspace of an organisation starts from that template. A workspace
   with no template uses the `core` stack. Stages and Workflow show the stack: “Harness:
   Qory harness, stack software”.
-- The Qory harness is pinned at harness commit 5c88f508, which exports the stacks `core`
+- The Qory harness is pinned at harness commit bde1cf61, which exports the stacks `core`
   and `software`. On the Qory harness, the Stack select of each repository lists
   `software`.
 - A workspace made from the software template gets the artifact type `branch`, and every
