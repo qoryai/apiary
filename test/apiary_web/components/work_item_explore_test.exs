@@ -1212,7 +1212,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
 
       assert text(html, "#{a1}-error") ==
-               "Choose an option or give your own. If nobody knows, say so: Qory reads that too."
+               "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
 
       assert text(html, "#work-item-explore-questions-answer-qq_02-error") ==
                "Write at most 2,000 characters."

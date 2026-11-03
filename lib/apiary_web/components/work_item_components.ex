@@ -2495,7 +2495,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp answer_error(:blank),
     do:
-      gettext("Choose an option or give your own. If nobody knows, say so: Qory reads that too.")
+      gettext(
+        "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
+      )
 
   defp answer_error({:too_long, limit}),
     do: gettext("Write at most %{number} characters.", number: Format.number(limit))

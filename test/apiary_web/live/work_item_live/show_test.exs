@@ -252,7 +252,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         })
 
       assert html =~
-               "Choose an option or give your own. If nobody knows, say so: Qory reads that too."
+               "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
 
       assert has_element?(view, "#work-item-explore-questions-answer-2[aria-invalid]")
       assert state(work_item) == :exploring
@@ -272,7 +272,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
           })
 
         assert html =~
-                 "Choose an option or give your own. If nobody knows, say so: Qory reads that too."
+                 "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
 
         assert has_element?(view, "#work-item-explore-questions-answer-1[aria-invalid]")
         assert has_element?(view, "#work-item-explore-questions-answer-2", "The spring sale.")
