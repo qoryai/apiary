@@ -344,16 +344,9 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     open = if one_workspace?, do: 31 + 8, else: 28
     closed = if one_workspace?, do: 8 + 4, else: 8
 
-    assert counts == %{
-             open: open - 7,
-             taken: 7,
-             closed: closed,
-             total: open + closed
-           }
+    assert counts == %{open: open - 7, taken: 7, total: open + closed}
 
-    for view <- [:taken, :closed] do
-      assert %{rows: [_ | _]} = Apiary.Sources.Backlog.list_tickets(lea, view: view)
-    end
+    assert %{rows: [_ | _]} = Apiary.Sources.Backlog.list_tickets(lea, view: :taken)
 
     assert %{rows: rows} = Apiary.WorkItems.list_work_items(lea, view: :open)
     assert length(rows) == 7
@@ -365,14 +358,11 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
         do: lea,
         else: scope_of("dana@example.com", Repo.get_by!(Workspace, slug: "support"))
 
-    for {queue, open, closed} <- [{"acme/customer-support", 5, 2}, {"acme/billing-support", 3, 2}] do
-      for {view, n} <- [open: open, closed: closed] do
-        assert %{rows: rows} =
-                 Apiary.Sources.Backlog.list_tickets(desk, view: view, search: queue)
+    for {queue, open} <- [{"acme/customer-support", 5}, {"acme/billing-support", 3}] do
+      assert %{rows: rows} = Apiary.Sources.Backlog.list_tickets(desk, view: :open, search: queue)
 
-        assert length(rows) == n
-        assert Enum.all?(rows, &(&1.repository == queue))
-      end
+      assert length(rows) == open
+      assert Enum.all?(rows, &(&1.repository == queue))
     end
 
     if one_workspace? do

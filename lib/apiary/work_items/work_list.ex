@@ -442,14 +442,19 @@ defmodule Apiary.WorkItems.WorkList do
             where: e.work_item_id == parent_as(:work_item).id and e.kind in [:undone, :closed],
             order_by: [desc: e.at, desc: e.id],
             limit: 1,
-            select: %{
-              kind: e.kind,
-              at: e.at,
-              actor_id: e.actor_id,
-              reason: fragment("?->>'reason'", e.data)
-            }
+            select: %{kind: e.kind, at: e.at, actor_id: e.actor_id}
         ),
       as: :ended,
+      on: true,
+      left_lateral_join:
+        c in subquery(
+          from e in WorkItemEvent,
+            where: e.work_item_id == parent_as(:work_item).id and e.kind == :closed,
+            order_by: [desc: e.at, desc: e.id],
+            limit: 1,
+            select: %{reason: fragment("?->>'reason'", e.data)}
+        ),
+      as: :closed,
       on: true,
       where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id
     )
@@ -698,7 +703,15 @@ defmodule Apiary.WorkItems.WorkList do
     ])
     |> limit(^limit)
     |> select(
-      [work_item: w, ticket: t, ended: e, explore_status: s, adapter: n, latest_run: r],
+      [
+        work_item: w,
+        ticket: t,
+        ended: e,
+        closed: c,
+        explore_status: s,
+        adapter: n,
+        latest_run: r
+      ],
       %{
         id: w.public_id,
         number: w.number,
@@ -735,11 +748,10 @@ defmodule Apiary.WorkItems.WorkList do
           ),
         ended_reason:
           fragment(
-            "CASE WHEN ? = 'closed' AND ? IS NULL AND ? = 'closed' THEN ? END",
+            "CASE WHEN ? = 'closed' AND ? IS NULL THEN ? END",
             w.state,
             w.closed_by_id,
-            e.kind,
-            e.reason
+            c.reason
           )
       }
     )

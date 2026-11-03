@@ -21,13 +21,15 @@ defmodule Apiary.Sources.Item do
   # `last_listed_at` is the `started_at` of the newest listing of its collection that named
   # it, from `20261017150000_keep_when_an_item_was_last_listed`, or nil while none has.
   # `closed_by_listing_at` is for an item a complete listing left out and closed: that
-  # listing's `started_at`; only a closed item has it. `disconnected_at` is for an item
-  # that left every Backlog where it is, as an item of another live collection of the
-  # adapter holds its ref (`Apiary.Sources`): one whose ref such an item took, or one
-  # written already ended, as a write that does not take the ref is. The column marks
-  # it, so that its row can stay. An item stays with its collection when the collection
-  # ends, and goes with its organisation; the Backlog leaves out the tickets of an ended
-  # collection by the collection's `ended_at`.
+  # listing's `started_at`; only a closed item has it. `last_closed_at` is Qory Apiary's
+  # time of the latest write that moved it from open to closed, or that inserted it
+  # closed; a write that reopens it leaves it (`Apiary.WorkItems.Finished`).
+  # `disconnected_at` is for an item that left every Backlog where it is, as an item of
+  # another live collection of the adapter holds its ref (`Apiary.Sources`): one whose ref
+  # such an item took, or one written already ended, as a write that does not take the
+  # ref is. The column marks it, so that its row can stay. An item stays with its
+  # collection when the collection ends, and goes with its organisation; the Backlog
+  # leaves out the tickets of an ended collection by the collection's `ended_at`.
   #
   # `organisation_id` and `adapter_id` are its collection's, held to it by the composite
   # key. `public_id` is its name outside the database: `tk_`, then sixteen lowercase
@@ -130,6 +132,7 @@ defmodule Apiary.Sources.Item do
     field :source_updated_at, :utc_datetime
     field :last_listed_at, :utc_datetime
     field :closed_by_listing_at, :utc_datetime_usec
+    field :last_closed_at, :utc_datetime_usec
     field :disconnected_at, :utc_datetime_usec
 
     belongs_to :organisation, Organisation
@@ -165,7 +168,7 @@ defmodule Apiary.Sources.Item do
   # contract's item, each within the bounds above, counted in code points as the database
   # counts them. A value the database refuses all the same is an error on its field. The
   # organisation, the adapter and the collection are the caller's to put, as are
-  # `last_listed_at`, `closed_by_listing_at` and `disconnected_at`.
+  # `last_listed_at`, `closed_by_listing_at`, `last_closed_at` and `disconnected_at`.
   @doc false
   @spec changeset(t, map) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = item, attrs) do

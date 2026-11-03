@@ -14,7 +14,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     recorded (`:explore`, `:confirm` or `:shape`), `:explore` for an undo, and for an
   #     end that recorded none, the stage its current take in was at;
   #   * `ended_reason`: for a work item the instance closed, the reason its `:closed` event
-  #     gives (`"adapter_removed"`); nil otherwise;
+  #     gives (`"adapter_removed"`, `"last_stage_done"` or `"ticket_closed"`); nil
+  #     otherwise;
   #   * `ended_by_id` and `ended_at`: for an ended work item, who ended it, nil where the
   #     instance closed it, and when, by its latest event of the kind of its state; nil for
   #     a live one;

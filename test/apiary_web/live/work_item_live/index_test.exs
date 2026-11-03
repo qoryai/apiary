@@ -347,6 +347,31 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
                "Closed when its integration was removed"
     end
 
+    test "without the workflow model, every Closed row has the dash",
+         %{conn: conn, scope: scope} do
+      before_the_workflow_model!()
+
+      by_person = item!(scope)
+      {:ok, _closed} = WorkItems.close(scope, by_person)
+      undone = item!(scope)
+      {:ok, _undone} = WorkItems.undo(scope, undone)
+      by_ticket = item!(scope)
+
+      {:ok, _queues} =
+        Repo.transact(fn ->
+          locked = Repo.one!(from w in WorkItem, where: w.id == ^by_ticket.id, lock: "FOR UPDATE")
+          WorkItems.close_locked([locked], {:instance, "ticket_closed"}, DateTime.utc_now())
+        end)
+
+      {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
+
+      for work_item <- [by_person, undone, by_ticket] do
+        assert has_element?(view, row(work_item) <> " .q-wi-mk.q-wi-mk-closed")
+      end
+
+      assert words(view, row(by_ticket) <> " .q-wl-nx") == "Closed when its ticket closed"
+    end
+
     test "a forged view is Open", %{conn: conn, scope: scope} do
       work_item = item!(scope)
       {:ok, view, _html} = live(conn, page(scope, "?view=nonsense"))

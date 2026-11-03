@@ -109,7 +109,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, "a.q-bl-t") == "Discount codes are case-sensitive at checkout"
       assert attr(html, "a.q-bl-t", "href") == ["/acme/shop/backlog?ticket=tk_01"]
       assert attr(html, "a.q-bl-t", "data-phx-link") == ["patch"]
-      assert count(html, ".q-bl-w") == 0
 
       assert text(html, ".q-bl-rp") == "acme/shop"
       assert attr(html, ".q-bl-rp", "title") == ["acme/shop"]
@@ -150,7 +149,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, "a.q-bl-wi", "title") == ["Taken in: work item #341"]
       assert attr(html, "a.q-bl-wi", "class") == ["q-bl-wi"]
       assert count(html, ".q-bl-act button") == 0
-      assert count(html, ".q-bl-w") == 0
     end
 
     test "taken in, without a page to link: the number, with its title" do
@@ -160,12 +158,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert count(html, "a.q-bl-wi") == 0
       assert text(html, "span.q-bl-wi") == "#341"
       assert attr(html, "span.q-bl-wi", "title") == ["Taken in: work item #341"]
-    end
-
-    test "a closed ticket's state word ends the line that can be cut, and its title" do
-      sub = "acme/shop#1231 · by Lea · 3 min"
-      html = row(ticket(%{state: :closed, state_reason: "Not planned"}))
-      assert attr(html, ".q-bl-sub", "title") == [sub <> " · Not planned"]
     end
 
     for state <- [:undone, :closed] do
@@ -179,30 +171,14 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         assert [class] = LazyHTML.attribute(again, "class")
         refute "q-bl-again" in String.split(class)
         assert count(html, ".q-bl-wi") == 0
-        assert count(html, ".q-bl-w") == 0
       end
     end
 
-    test "closed at the source: the integration's word, and no action" do
-      html = row(ticket(%{state: :closed, state_reason: "Not planned"}))
+    test "finished: the work item's number links its page, and no action" do
+      work_item = %{number: 69, state: :closed, path: "/acme/shop/work/69", finished: true}
+      html = row(ticket(%{work_item: work_item}))
 
-      assert text(html, ".q-bl-w") == "Not planned"
-      assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min · Not planned"
-      assert count(html, ".q-bl-act button") == 0
-      assert count(html, ".q-bl-wi") == 0
-    end
-
-    test "closed at the source with a work item: its link, and no action" do
-      work_item = %{number: 69, state: :closed, path: "/acme/shop/work/69"}
-      html = row(ticket(%{state: :closed, work_item: work_item}))
-
-      assert count(html, ".q-bl-w") == 0
       assert attr(html, "a.q-bl-wi", "title") == ["Taken in: work item #69"]
-      assert count(html, ".q-bl-act button") == 0
-
-      undone = %{work_item | state: :undone}
-      html = row(ticket(%{state: :closed, work_item: undone}))
-      assert count(html, ".q-bl-wi") == 0
       assert count(html, ".q-bl-act button") == 0
     end
 
@@ -305,10 +281,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert html =~ "&lt;b onmouseover=&quot;alert(1)&quot;&gt;x&lt;/b&gt;"
       assert text(html, "a.q-bl-t") == markup
       assert attr(html, ".q-bl-rp", "title") == [markup]
-
-      html = row(ticket(%{state: :closed, state_reason: markup}))
-      assert count(html, "b") == 0
-      assert text(html, ".q-bl-w") == markup
     end
   end
 
@@ -341,15 +313,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, ".q-bl-by", "title") == ["Filed by " <> shown("deps-bot")]
       assert texts(html, ".q-bl-filer bdi") == [shown("deps-bot")]
       assert text(html, ".q-bl-bot-av") == "d"
-    end
-
-    test "a closed row: the state word cleaned; one with nothing left to show is none" do
-      html = row(ticket(%{state: :closed, state_reason: sent("Not planned")}))
-      assert text(html, ".q-bl-w") == shown("Not planned")
-
-      html = row(ticket(%{state: :closed, state_reason: "\u202E\u200B"}))
-      assert count(html, ".q-bl-w") == 0
-      assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min"
     end
 
     test "the ticket, over the list and as a page: isolated in <bdi>, cleaned in its titles" do

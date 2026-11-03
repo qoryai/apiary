@@ -145,7 +145,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
-            backlog_off={@backlog_off}
+            backlog_off={@backlog_off or is_nil(@again_path)}
             again_path={@again_path}
             item_noun={@source.item_noun}
             now={@now}
@@ -815,8 +815,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         source: words(row, source),
         backlog_off: backlog_off,
         again_path:
-          names[:ticket_id] &&
-            ~p"/#{scope.organisation}/#{scope.workspace}/backlog?#{[ticket: names[:ticket_id]]}",
+          if (explore.status in [:closed, :undone] and names[:ticket_id]) &&
+               WorkItems.take_in_again?(row) do
+            ~p"/#{scope.organisation}/#{scope.workspace}/backlog?#{[ticket: names[:ticket_id]]}"
+          end,
         previous: explore.previous,
         item: page.work_item,
         work_item: row,

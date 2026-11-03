@@ -6,7 +6,7 @@ defmodule Apiary.StagesFixtures do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Processes, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Runs.Run
@@ -26,6 +26,47 @@ defmodule Apiary.StagesFixtures do
   @doc "A work item at Shape's gate: Explore's proposal confirmed."
   def shape_gate_fixture(%Scope{} = scope) do
     work_item = explore_gate_fixture(scope)
+    {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+    Repo.get!(WorkItem, work_item.id)
+  end
+
+  @doc """
+  The process of the scope's workspace saved with one stage, Explore, at a person's gate:
+  a confirmation there finishes the work item's last stage.
+  """
+  def one_stage_process_fixture(%Scope{} = scope) do
+    {:ok, version} =
+      Processes.save(scope, scope.workspace, %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          %{
+            "id" => "st_r79kph11eg",
+            "name" => "Explore",
+            "inputs" => [],
+            "sequence" => [
+              %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+            ],
+            "outputs" => [%{"type" => "proposal", "required" => true}],
+            "gate" => %{"kind" => "person", "approvers" => "members"}
+          }
+        ]
+      })
+
+    version
+  end
+
+  @doc """
+  The ticket `ticket` of the scope's Backlog taken in and taken through its one stage
+  (`one_stage_process_fixture/1`): the work item as it is once it finished.
+  """
+  def finished_fixture(%Scope{} = scope, ticket) do
+    one_stage_process_fixture(scope)
+    {:ok, taken} = WorkItems.take_in(scope, ticket.public_id)
+
+    work_item =
+      end_run!(Repo.get!(WorkItem, taken.id), Apiary.WorkItemsFixtures.understood_result())
+
     {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
     Repo.get!(WorkItem, work_item.id)
   end

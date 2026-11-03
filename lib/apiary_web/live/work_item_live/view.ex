@@ -172,6 +172,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # The reason the instance gave for a close, as the components name it: one they have
   # words for, or none.
   defp reason("adapter_removed"), do: :adapter_removed
+  defp reason("last_stage_done"), do: :last_stage_done
+  defp reason("ticket_closed"), do: :ticket_closed
   defp reason(_other), do: nil
 
   # Details' runs: those of the current take in handed over, the latest of them, and how

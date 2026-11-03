@@ -589,6 +589,8 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp status(%{state: state}), do: state
 
   defp reason("adapter_removed"), do: :adapter_removed
+  defp reason("last_stage_done"), do: :last_stage_done
+  defp reason("ticket_closed"), do: :ticket_closed
   defp reason(_reason), do: nil
 
   # What waits at Confirm, on the strip and Confirm's band: for the reader where any waits

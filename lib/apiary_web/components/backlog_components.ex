@@ -13,8 +13,7 @@ defmodule ApiaryWeb.BacklogComponents do
   # It is shown as an external system's text is: the ticket's key, title, repository,
   # filer, labels and comments' authors in markup isolated in `<bdi>`
   # (`ApiaryWeb.ExternalText.external_text/1`), and `Apiary.ExternalText.line/1` in an
-  # attribute or a sentence, and for a closed row's state word. What the page is given
-  # stays as it was sent.
+  # attribute or a sentence. What the page is given stays as it was sent.
   # A ticket's text and its comments' are the page's to render, into the `rendered_body`
   # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
@@ -46,16 +45,13 @@ defmodule ApiaryWeb.BacklogComponents do
       `kind`;
     * `:comment_count` - a whole number;
     * `:updated_at` - a `DateTime`, when it last changed at the source;
-    * `:state` - `:open` or `:closed`, its state at the source;
-    * `:state_reason` - the integration's word for a closed ticket ("Not planned",
-      "Duplicate"), or `nil`; shown on a closed row only;
     * `:work_item` - `nil`, or the ticket's work item, a map with `:number`, `:state` (an
-      atom: `:undone`, `:closed`, or a state in which it is live, such as `:exploring`)
-      and `:path` (its page, or `nil`).
+      atom: `:undone`, `:closed`, or a state in which it is live, such as `:exploring`),
+      `:path` (its page, or `nil`) and `:finished`, true for a finished one whose ticket
+      has not reopened (`Apiary.WorkItems.Finished`).
 
-  The action follows the ticket: an open ticket with no work item has Take in; a live
-  work item is its number, a link; an undone or closed one offers Take in again. A closed
-  ticket has no action, and shows its state word and the link to its work item, if any.
+  The action follows the ticket: an open ticket with no work item has Take in; a live or
+  finished work item is its number, a link; an undone or closed one offers Take in again.
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
   `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
@@ -90,7 +86,6 @@ defmodule ApiaryWeb.BacklogComponents do
       |> assign(:now, now)
       |> assign(view)
       |> assign(:sub, sub)
-      |> assign(:sub_title, if(view.word, do: sub <> " · " <> view.word, else: sub))
       |> assign(
         shown_key: Apiary.ExternalText.line(ticket.key),
         shown_repository: Apiary.ExternalText.line(ticket.repository)
@@ -106,10 +101,7 @@ defmodule ApiaryWeb.BacklogComponents do
           class="q-bl-t"
           aria-current={@selected && "true"}
         ><.external_text text={@ticket.title} /></.link>
-        <span :if={@word} class="q-bl-w">{@word}</span>
-        <span class="q-bl-sub" title={@sub_title}>
-          {@sub}<span :if={@word}> · {@word}</span>
-        </span>
+        <span class="q-bl-sub" title={@sub}>{@sub}</span>
       </span>
       <span
         class="q-bl-rp q-mono"
@@ -156,22 +148,15 @@ defmodule ApiaryWeb.BacklogComponents do
     """
   end
 
-  # What a row shows beside its title (`word`), whether it links its work item (`link`)
-  # and which action (`:take_in`, `:again` or none). A ticket closed at the source has no
-  # action, whatever its work item.
-  defp row_view(%{state: :closed} = ticket) do
-    link = ticket.work_item != nil and ticket.work_item.state != :undone
-
-    # The state word with nothing left to show is none.
-    %{word: shown(ticket.state_reason), link: link, action: nil}
-  end
-
-  defp row_view(%{work_item: nil}), do: %{word: nil, link: false, action: :take_in}
+  # Whether a row links its work item (`link`) and which action (`:take_in`, `:again` or
+  # none).
+  defp row_view(%{work_item: nil}), do: %{link: false, action: :take_in}
+  defp row_view(%{work_item: %{finished: true}}), do: %{link: true, action: nil}
 
   defp row_view(%{work_item: %{state: state}}) when state in [:undone, :closed],
-    do: %{word: nil, link: false, action: :again}
+    do: %{link: false, action: :again}
 
-  defp row_view(%{work_item: _live}), do: %{word: nil, link: true, action: nil}
+  defp row_view(%{work_item: _live}), do: %{link: true, action: nil}
 
   attr :work_item, :map, required: true
 
@@ -208,10 +193,6 @@ defmodule ApiaryWeb.BacklogComponents do
   # The full form as the Backlog shows it, a text the integration sent
   # (`Apiary.ExternalText.line/1`).
   defp shown_full_form(ticket), do: ticket |> full_form() |> Apiary.ExternalText.line()
-
-  # A text the integration sent, as a page shows it; nil where there is none, or where
-  # nothing is left to show.
-  defp shown(text), do: Apiary.ExternalText.present(text)
 
   @doc """
   Who filed a ticket: their mark and their name. A person (`kind` `:person`) has the

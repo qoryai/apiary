@@ -29,10 +29,13 @@ defmodule Apiary.Sources.Backlog do
   # no number, page or name of that workspace.
   #
   # **Views** (`list_tickets/2`): `:open`, the tickets open at their source with no work
-  # item, or one undone or closed; `:taken`, the open ones whose work item is live;
-  # `:closed`, every ticket closed at its source; `:all`, every one. An open ticket is in
-  # one of Open and Taken in. The counts of each view, and the total, come from one
-  # grouped query, under the same search and filters as the page, without its view.
+  # item, or one undone or closed; `:taken`, the open ones whose work item is live or
+  # finished (`Apiary.WorkItems.Finished`); `:all`, both. A ticket closed at its source
+  # leaves the lists: it is in no view, and its filter values go with it. It stays
+  # reachable by its id (`get_ticket/2`). The counts of each view, and the total, come
+  # from one grouped query, under the same search and filters as the page, without its
+  # view. The total counts the closed tickets too: it is 0 only for a Backlog with no
+  # ticket at all.
   #
   # **The facts** (`backlog_facts/1`) are what an empty Backlog says why it is empty
   # from: the integrations that bring items the organisation is connected through, each
@@ -49,6 +52,7 @@ defmodule Apiary.Sources.Backlog do
   @moduledoc false
 
   import Ecto.Query, warn: false
+  import Apiary.WorkItems.Finished, only: [finished: 2]
 
   alias Apiary.{Access, Adapters, Organisations, Repo}
   alias Apiary.Accounts.{Scope, User}
@@ -70,7 +74,7 @@ defmodule Apiary.Sources.Backlog do
   @max_offered 100
   @max_name 100
 
-  @views [:open, :taken, :closed, :all]
+  @views [:open, :taken, :all]
   @sorts [:updated, :created, :comments]
   @orders [:desc, :asc]
   @params [
@@ -79,7 +83,6 @@ defmodule Apiary.Sources.Backlog do
     :collection,
     :filed_by,
     :label,
-    :state,
     :updated,
     :sort,
     :order,
@@ -93,7 +96,7 @@ defmodule Apiary.Sources.Backlog do
   @cursor_seconds -62_135_596_800..253_402_300_799
 
   @typedoc "A view of the Backlog."
-  @type view :: :open | :taken | :closed | :all
+  @type view :: :open | :taken | :all
 
   @typedoc "Who filed a ticket, or wrote a comment, as the components draw them."
   @type filer :: %{name: String.t(), kind: :person | :bot}
@@ -106,13 +109,16 @@ defmodule Apiary.Sources.Backlog do
   @type integration :: %{name: String.t(), id: String.t()}
 
   @typedoc """
-  A ticket's work item, as a row shows it: its number in the workspace, its state and its
-  page in the workspace. One of another workspace has its state alone.
+  A ticket's work item, as a row shows it: its number in the workspace, its state, its
+  page in the workspace, and whether it is finished and its ticket has not reopened
+  (`Apiary.WorkItems.Finished`). One of another workspace has its state and `finished`
+  alone.
   """
   @type work_item :: %{
           number: pos_integer | nil,
           state: Apiary.WorkItems.State.state(),
-          path: String.t() | nil
+          path: String.t() | nil,
+          finished: boolean
         }
 
   @typedoc "A ticket as the Backlog's list draws it."
@@ -173,7 +179,6 @@ defmodule Apiary.Sources.Backlog do
   @type counts :: %{
           open: non_neg_integer,
           taken: non_neg_integer,
-          closed: non_neg_integer,
           total: non_neg_integer
         }
 
@@ -267,7 +272,7 @@ defmodule Apiary.Sources.Backlog do
           ask: %{install: [String.t()], assign: [String.t()], switch: [String.t()]}
         }
 
-  @no_counts %{open: 0, taken: 0, closed: 0, total: 0}
+  @no_counts %{open: 0, taken: 0, total: 0}
   @no_rows %{rows: [], next: nil, prev: nil, first: 0}
   @no_page Map.put(@no_rows, :counts, @no_counts)
 
@@ -288,7 +293,6 @@ defmodule Apiary.Sources.Backlog do
   #   * `filed_by:` a filer's name, as stored, or a list of them;
   #   * `label:` a label, as stored, or a list of them: the tickets that carry any of
   #     them, each matched exactly;
-  #   * `state:` `:open` or `:closed` (or its string), the ticket's state at its source;
   #   * `updated:` a window the runs list offers, by its value (`1h`, `24h`, `7d`, `14d`
   #     or `30d`, `Apiary.Runs.Filters.windows/0`): the tickets whose latest change at
   #     their source is at or after that long before `now`, the read's moment to the
@@ -302,7 +306,7 @@ defmodule Apiary.Sources.Backlog do
   #
   # A filter takes at most 100 values; one with more, or with a value that is not one
   # (a repository that is no id, a name or a label that is not 1 to 100 characters of
-  # valid UTF-8 with no NUL, a state or a window it does not offer), matches nothing, and
+  # valid UTF-8 with no NUL, a window it does not offer), matches nothing, and
   # so does a cursor not in the shape this function gives, a cursor of another sort or
   # order, and `after:` and `before:` together. An empty filter, or an empty cursor, is
   # none. A view, a sort or an order it does not know is its default. The rows are at
@@ -330,10 +334,10 @@ defmodule Apiary.Sources.Backlog do
           |> collections(params.collection)
           |> filers(params.filed_by)
           |> labels(params.label)
-          |> state(params.state)
           |> updated(params.updated, now)
 
         filtered
+        |> where([item: i], i.state == :open)
         |> view(params.view)
         |> page(params, scope)
         |> Map.put(:counts, counts(filtered))
@@ -504,13 +508,18 @@ defmodule Apiary.Sources.Backlog do
       where(
         query,
         [item: i, work_item: w],
-        i.state == :open and (is_nil(w.id) or w.state in [:undone, :closed])
+        i.state == :open and (is_nil(w.id) or w.state in [:undone, :closed]) and
+          not finished(w, i)
       )
 
   defp view(query, :taken),
-    do: where(query, [item: i, work_item: w], i.state == :open and w.state == :exploring)
+    do:
+      where(
+        query,
+        [item: i, work_item: w],
+        i.state == :open and (w.state == :exploring or finished(w, i))
+      )
 
-  defp view(query, :closed), do: where(query, [item: i], i.state == :closed)
   defp view(query, :all), do: query
 
   defp search(query, nil), do: query
@@ -600,13 +609,6 @@ defmodule Apiary.Sources.Backlog do
         String.length(name) in 1..@max_name
 
   defp name?(_name), do: false
-
-  defp state(query, nil), do: query
-
-  defp state(query, state) when state in [:open, :closed],
-    do: where(query, [item: i], i.state == ^state)
-
-  defp state(query, _state), do: where(query, false)
 
   # A window back from `now`, the second it was read in, by its value: the tickets whose
   # latest change at their source is at or after its start.
@@ -760,23 +762,31 @@ defmodule Apiary.Sources.Backlog do
   # How many tickets of the query each view holds, and in all, by one grouped query.
   defp counts(query) do
     query
-    |> group_by([item: i, work_item: w], [i.state, w.state])
-    |> select([item: i, work_item: w], {i.state, w.state, count(i.id)})
+    |> group_by([item: i, work_item: w], [i.state, w.state, finished(w, i)])
+    |> select(
+      [item: i, work_item: w],
+      {i.state, w.state, finished(w, i), count(i.id)}
+    )
     |> Repo.all()
-    |> Enum.reduce(@no_counts, fn {state, work_item_state, n}, counts ->
+    |> Enum.reduce(@no_counts, fn {state, work_item_state, finished, n}, counts ->
       counts
       |> Map.update!(:total, &(&1 + n))
-      |> held(state, work_item_state, n)
+      |> held(state, work_item_state, finished, n)
     end)
   end
 
   # The view a ticket's state and its work item's put it in: an open one in one of Open
-  # and Taken in, a closed one in Closed.
-  defp held(counts, :open, work_item_state, n) when work_item_state in [nil, :undone, :closed],
-    do: Map.update!(counts, :open, &(&1 + n))
+  # and Taken in, a closed one in neither.
+  defp held(counts, :closed, _work_item_state, _finished, _n), do: counts
 
-  defp held(counts, :open, :exploring, n), do: Map.update!(counts, :taken, &(&1 + n))
-  defp held(counts, :closed, _work_item_state, n), do: Map.update!(counts, :closed, &(&1 + n))
+  defp held(counts, :open, _work_item_state, true, n),
+    do: Map.update!(counts, :taken, &(&1 + n))
+
+  defp held(counts, :open, work_item_state, false, n)
+       when work_item_state in [nil, :undone, :closed],
+       do: Map.update!(counts, :open, &(&1 + n))
+
+  defp held(counts, :open, :exploring, false, n), do: Map.update!(counts, :taken, &(&1 + n))
 
   defp select_row(query, %Scope{organisation: organisation, workspace: workspace}) do
     path = "/" <> organisation.slug <> "/" <> workspace.slug <> "/work/"
@@ -803,6 +813,7 @@ defmodule Apiary.Sources.Backlog do
       work_item_here: w.workspace_id == ^workspace.id,
       work_item_number: w.number,
       work_item_state: w.state,
+      work_item_finished: finished(w, i),
       path: ^path
     })
   end
@@ -833,12 +844,19 @@ defmodule Apiary.Sources.Backlog do
     %{
       number: selected.work_item_number,
       state: selected.work_item_state,
-      path: selected.path <> Integer.to_string(selected.work_item_number)
+      path: selected.path <> Integer.to_string(selected.work_item_number),
+      finished: selected.work_item_finished
     }
   end
 
-  defp work_item(selected),
-    do: %{number: nil, state: selected.work_item_state, path: nil}
+  defp work_item(selected) do
+    %{
+      number: nil,
+      state: selected.work_item_state,
+      path: nil,
+      finished: selected.work_item_finished
+    }
+  end
 
   # The components' word for who wrote it: a person, or a bot for anything else.
   defp kind(:person), do: :person
@@ -857,7 +875,6 @@ defmodule Apiary.Sources.Backlog do
       collection: list(values.collection),
       filed_by: list(values.filed_by),
       label: list(values.label),
-      state: state_value(values.state),
       updated: window(values.updated),
       sort: sort,
       order: if(sort == :comments, do: :desc, else: choice(values.order, @orders, :desc)),
@@ -877,13 +894,6 @@ defmodule Apiary.Sources.Backlog do
   defp list(values) when is_list(values), do: values
   defp list(value), do: [value]
 
-  defp state_value(nil), do: nil
-  defp state_value(""), do: nil
-  defp state_value(state) when state in [:open, :closed], do: state
-  defp state_value("open"), do: :open
-  defp state_value("closed"), do: :closed
-  defp state_value(_state), do: :invalid
-
   # A window's value, when it is one the runs list offers; `:invalid` for any other.
   defp window(nil), do: nil
   defp window(""), do: nil
@@ -901,14 +911,16 @@ defmodule Apiary.Sources.Backlog do
   # words that hold it, any case, as `list_tickets/2`'s search reads text; nil or "" for
   # all.
   #
-  #   * `:filed_by`: every filer of the Backlog's tickets, by the name stored: `key` and
-  #     `label` are the name, `count` their tickets in every view, `avatar` `:person` when
-  #     a person filed one of them, else `:bot`.
-  #   * `:label`: every label the Backlog's tickets carry, as stored: `key` and `label`
-  #     are the label, `count` the tickets that carry it in every view, `avatar` nil.
+  #   * `:filed_by`: every filer of the Backlog's open tickets, by the name stored: `key`
+  #     and `label` are the name, `count` their tickets in every view, `avatar` `:person`
+  #     when a person filed one of them, else `:bot`.
+  #   * `:label`: every label the Backlog's open tickets carry, as stored: `key` and
+  #     `label` are the label, `count` the tickets that carry it in every view, `avatar`
+  #     nil.
   #   * `:collection`: every live collection linked to the workspace (its Backlog on, with
-  #     items, as its adapter has), whose connection is connected: `key` is the collection's id, the one Qory Apiary gives it, `label` its
-  #     title, `count` its tickets in every view, `avatar` nil.
+  #     items, as its adapter has), whose connection is connected: `key` is the
+  #     collection's id, the one Qory Apiary gives it, `label` its title, `count` its open
+  #     tickets in every view, `avatar` nil.
   @spec filter_values(Scope.t(), :filed_by | :label | :collection, String.t() | nil) ::
           [value]
   def filter_values(%Scope{} = scope, kind, query)
@@ -924,6 +936,7 @@ defmodule Apiary.Sources.Backlog do
   defp values(:filed_by, organisation_id, workspace_id, pattern) do
     organisation_id
     |> backlog(workspace_id)
+    |> where([item: i], i.state == :open)
     |> then(fn q ->
       if pattern, do: where(q, [item: i], ilike(i.filed_by_name, ^pattern)), else: q
     end)
@@ -948,6 +961,7 @@ defmodule Apiary.Sources.Backlog do
   defp values(:label, organisation_id, workspace_id, pattern) do
     organisation_id
     |> backlog(workspace_id)
+    |> where([item: i], i.state == :open)
     |> join(:inner_lateral, [item: i], l in fragment("SELECT unnest(?) AS name", i.labels),
       as: :label,
       on: true
@@ -972,7 +986,7 @@ defmodule Apiary.Sources.Backlog do
       left_join: i in Item,
       on:
         i.collection_id == c.id and i.organisation_id == c.organisation_id and
-          is_nil(i.disconnected_at),
+          i.state == :open and is_nil(i.disconnected_at),
       where:
         c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
           c.backlog and c.items and n.items and is_nil(c.ended_at) and k.state == :connected and
