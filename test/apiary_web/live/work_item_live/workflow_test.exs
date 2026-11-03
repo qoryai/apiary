@@ -963,6 +963,46 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
     end
 
+    test "a comment from a member Explore's gate does not list: the line under the field", %{
+      conn: conn,
+      scope: scope
+    } do
+      default = Processes.default_document("software")
+      listed = member_fixture(scope, :member)
+
+      stages =
+        for stage <- default["stages"] do
+          if stage["id"] == @explore,
+            do: %{
+              stage
+              | "gate" => %{"kind" => "person", "approvers" => %{"members" => [listed.user.id]}}
+            },
+            else: stage
+        end
+
+      save!(scope, %{default | "stages" => stages})
+      work_item = explore_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      view
+      |> element("#work-item-explore-reply")
+      |> render_submit(%{"change" => "Offer a refund first."})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-reply-error",
+               "Ask one of this stage's approvers to comment. Only they can comment on its proposal."
+             )
+
+      assert has_element?(view, "#work-item-explore-reply-text", "Offer a refund first.")
+      assert has_element?(view, "#work-item-explore-reply-text[aria-describedby]")
+
+      assert Repo.aggregate(
+               from(a in Apiary.WorkItems.Answer, where: a.work_item_id == ^work_item.id),
+               :count
+             ) == 0
+    end
+
     test "at Explore with a proposal waiting and no artifact: Confirm and no needs line", %{
       conn: conn,
       scope: scope
@@ -1953,6 +1993,28 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-notes-0", "Split the plan in two")
       assert has_element?(view, "#work-item-notes-1", "Failed check · Shape")
       assert has_element?(view, "#work-item-notes-1", "The plan has no test step.")
+    end
+
+    test "a comment on the proposal is a Comment, for the next run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, 1, "Also check the total after a basket change.")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-notes-0", "Comment · Explore")
+
+      assert has_element?(
+               view,
+               "#work-item-notes-0",
+               "Also check the total after a basket change."
+             )
+
+      refute has_element?(view, "#work-item-notes-0", "Answer")
     end
 
     test "a move with no note has no note line", %{conn: conn, scope: scope} do

@@ -2440,7 +2440,7 @@ defmodule ApiaryWeb.RunComponents do
 
   def started_by_words({:comment, attempt, of, id}, people),
     do:
-      gettext("Run %{attempt} of %{of}, after a comment from %{name}",
+      gettext("Attempt %{attempt} of %{of}, after a comment from %{name}",
         attempt: attempt,
         of: of,
         name: person(people, id)

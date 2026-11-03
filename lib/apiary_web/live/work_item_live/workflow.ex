@@ -263,6 +263,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp note(note, stages) do
     %{
       kind: note.kind,
+      comment: Map.get(note, :comment) == true,
       stage: Enum.find_value(stages, &(&1.id == note.stage_id && &1.name)),
       text: note.note
     }

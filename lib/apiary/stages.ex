@@ -975,7 +975,8 @@ defmodule Apiary.Stages do
   # notes/1 is what the work item's next run reads as work item data, oldest first: what
   # people wrote (requests for changes, escalations resolved with a note, moves and the
   # answers to a run's questions) and the gaps of failed checks that started a round
-  # (`:check`, with no person).
+  # (`:check`, with no person). An answer that is a comment on Explore's proposal has
+  # `comment` true; its kind stays `:answer`, as the run API sends it.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id}) do
@@ -1032,6 +1033,7 @@ defmodule Apiary.Stages do
           order_by: [a.take_in, a.attempt, a.position],
           select: %{
             kind: :answer,
+            comment: is_nil(a.question),
             stage_id: r.stage_id,
             user_id: a.answered_by_id,
             note: a.answer,

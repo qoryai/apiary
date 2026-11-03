@@ -268,6 +268,24 @@ defmodule Apiary.WorkItems.ProposalCommentCase do
         end
       end
 
+      describe "a done comment" do
+        test "keeps the version that read it after a later update", %{scope: scope} do
+          work_item = proposed!(scope)
+          {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+          work_item = end_run!(work_item, understood_result())
+          {:ok, _} = WorkItems.answer(scope, work_item, 2, "Name the refund rule.")
+          work_item = end_run!(work_item, understood_result())
+
+          assert [
+                   %Answer{answer: @comment, proposal_version: 1, done_version: 2},
+                   %Answer{answer: "Name the refund rule.", proposal_version: 2, done_version: 3}
+                 ] = comments(work_item)
+
+          assert [%{done_version: 2}, %{done_version: 3}] =
+                   WorkItems.explore(scope, work_item).comments
+        end
+      end
+
       describe "a comment stays open" do
         test "when the next run asks questions, and the run after them reads it", %{
           scope: scope

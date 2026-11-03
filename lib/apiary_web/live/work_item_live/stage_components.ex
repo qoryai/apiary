@@ -660,7 +660,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <ol class="flex flex-col gap-2">
         <li :for={{note, i} <- Enum.with_index(@notes)} id={"#{@id}-#{i}"}>
           <p class="text-xs opacity-70">
-            {note_words(note.kind)}{if note.stage, do: " · #{note.stage}"}
+            {note_words(note)}{if note.stage, do: " · #{note.stage}"}
           </p>
           <p :if={note.text not in [nil, ""]} class="whitespace-pre-line">{note.text}</p>
         </li>
@@ -669,12 +669,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
-  defp note_words(:request_changes), do: gettext("Changes requested")
-  defp note_words(:move), do: gettext("Moved")
-  defp note_words(:escalation), do: gettext("Escalation resolved")
-  defp note_words(:answer), do: gettext("Answer")
-  defp note_words(:check), do: gettext("Failed check")
-  defp note_words(_kind), do: gettext("Note")
+  # A comment on Explore's proposal is an answer to the run API, and a comment here.
+  defp note_words(%{comment: true}), do: gettext("Comment")
+  defp note_words(%{kind: :request_changes}), do: gettext("Changes requested")
+  defp note_words(%{kind: :move}), do: gettext("Moved")
+  defp note_words(%{kind: :escalation}), do: gettext("Escalation resolved")
+  defp note_words(%{kind: :answer}), do: gettext("Answer")
+  defp note_words(%{kind: :check}), do: gettext("Failed check")
+  defp note_words(_note), do: gettext("Note")
 
   ## Approval marks
 

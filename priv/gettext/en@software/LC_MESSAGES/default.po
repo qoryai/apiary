@@ -5359,6 +5359,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} of %{of}, after a comment from %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of}, after answers from %{name}"
 msgstr ""
 
@@ -6578,6 +6583,7 @@ msgid "Command made"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Comment"
 msgstr ""
@@ -15891,11 +15897,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of}, after a comment from %{name}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
