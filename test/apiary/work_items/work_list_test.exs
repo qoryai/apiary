@@ -1,7 +1,8 @@
 defmodule Apiary.WorkItems.WorkListTest do
   # The Work items list (`Apiary.WorkItems.list_work_items/3`): its views and their
   # counts, its rows as the page draws them, its search, its filters, its sort and its
-  # pages, and an empty page to anyone who may not read the workspace's work items.
+  # pages, the counts by stage of the workflow model, and an empty page to anyone who may
+  # not read the workspace's work items.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -104,6 +105,7 @@ defmodule Apiary.WorkItems.WorkListTest do
                status: :queued,
                attempt: nil,
                of: nil,
+               stage_id: ctx.open.stage_id,
                owner_id: ctx.scope.user.id,
                taken_in_at: ctx.open.taken_in_at,
                inserted_at: ctx.open.inserted_at,
@@ -642,6 +644,40 @@ defmodule Apiary.WorkItems.WorkListTest do
                counts: %{open: 0, you: 0, closed: 0},
                stages: @no_stages
              }
+    end
+  end
+
+  describe "the stage counts" do
+    @build "st_6ns22c4pav"
+
+    test "count the live work items by stage and version, under the search", %{scope: scope} do
+      unplaced = item!(scope, title: "Fix the basket total")
+      placed = item!(scope, title: "Add gift cards to checkout")
+      version = Apiary.Processes.current(scope.workspace)
+      set!(placed, stage_id: @build, process_version_id: version.id)
+      closed = item!(scope, title: "Add gift wrap to checkout")
+      set!(closed, state: :closed, closed_at: DateTime.utc_now(), stage_id: @build)
+
+      counts = WorkItems.list_stage_counts(scope)
+
+      assert %{stage_id: @build, process_version_id: version.id, count: 1} in counts
+
+      assert %{stage_id: nil, process_version_id: unplaced.process_version_id, count: 1} in counts
+
+      assert length(counts) == 2
+
+      assert [%{stage_id: @build, count: 1}] =
+               WorkItems.list_stage_counts(scope, search: "gift")
+
+      assert WorkItems.list_stage_counts(scope, search: "nothing like it") == []
+    end
+
+    test "are empty to anyone who may not read the work items", %{scope: scope} do
+      item!(scope)
+      %{scope: stranger} = sign_up_fixture()
+      foreign = %{stranger | organisation: scope.organisation, workspace: scope.workspace}
+
+      assert WorkItems.list_stage_counts(foreign) == []
     end
   end
 

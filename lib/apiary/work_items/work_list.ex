@@ -2,8 +2,9 @@ defmodule Apiary.WorkItems.WorkList do
   # WorkList reads the Work items list of a workspace for people
   # (`ApiaryWeb.WorkItemListComponents`): a page of its work items, by view, stage, search
   # and filters, with the count of each view and of each stage; the Open view's stage
-  # bands; the values the Filter menu offers; and how many work items wait for the
-  # reader, the sidebar's count.
+  # bands; how many live work items are at each stage of the workflow model; the values
+  # the Filter menu offers; and how many work items wait for the reader, the sidebar's
+  # count.
   #
   # **Who reads it.** Every read asks `work_item.read` of the scope's workspace first
   # (`Apiary.Access.can?/3`, from the scope as it was loaded), and answers an empty page,
@@ -28,8 +29,9 @@ defmodule Apiary.WorkItems.WorkList do
   # came through (`integration`, `Apiary.Adapters.title/1`; nil for a test work item,
   # which came through none, and `test` true), its state and take in, where Explore stands
   # for it (`status`; for an ended one, that of its last take in), the attempt and the run
-  # limit of its take in's latest run (`attempt`, `of`, nil before its first run), its
-  # owner's account id, when it was taken in (`taken_in_at`, at its latest take in),
+  # limit of its take in's latest run (`attempt`, `of`, nil before its first run), the
+  # stage of the workflow model it is at (`stage_id`, nil where the process has not placed
+  # it), its owner's account id, when it was taken in (`taken_in_at`, at its latest take in),
   # created (`inserted_at`) and last changed, and for an ended one when and by whom it
   # ended (`ended_at`, `ended_by_id`, nil where no person did), with the reason the
   # instance gave where it closed the work item (`ended_reason`, nil otherwise). The
@@ -124,6 +126,7 @@ defmodule Apiary.WorkItems.WorkList do
           status: Explore.status(),
           attempt: pos_integer | nil,
           of: pos_integer | nil,
+          stage_id: String.t() | nil,
           owner_id: Ecto.UUID.t(),
           taken_in_at: DateTime.t(),
           inserted_at: DateTime.t(),
@@ -174,6 +177,16 @@ defmodule Apiary.WorkItems.WorkList do
 
   @typedoc "The Open view by stage: each stage's first rows, with the counts."
   @type bands :: %{bands: %{stage => [row]}, counts: counts, stages: stages}
+
+  @typedoc """
+  How many live work items are at a stage of the workflow model on a process version:
+  `stage_id` is nil for those the process has not placed.
+  """
+  @type stage_count :: %{
+          stage_id: String.t() | nil,
+          process_version_id: Ecto.UUID.t() | nil,
+          count: pos_integer
+        }
 
   @typedoc "A value the Filter menu offers: its key, and how many work items have it."
   @type value :: %{key: String.t(), count: non_neg_integer}
@@ -283,6 +296,37 @@ defmodule Apiary.WorkItems.WorkList do
   end
 
   def bands(%Scope{}, _params, _now), do: @no_bands
+
+  # stage_counts/3 is how many live work items of the scope's workspace are at each stage
+  # of the workflow model, on each process version, to a person who may read its work
+  # items, under the search and the filters of `params` as `list/3` reads them (its view,
+  # stage and cursors aside). Nothing to anyone else.
+  @doc false
+  @spec stage_counts(Scope.t(), map | keyword, DateTime.t()) :: [stage_count]
+  def stage_counts(scope, params, now \\ DateTime.utc_now())
+
+  def stage_counts(%Scope{} = scope, params, %DateTime{} = now)
+      when is_map(params) or is_list(params) do
+    case workspace(scope) do
+      {:ok, organisation_id, workspace_id} ->
+        organisation_id
+        |> filtered(workspace_id, normalise(params), now)
+        |> view(:open, scope.user.id)
+        |> exclude(:select)
+        |> group_by([work_item: w], [w.stage_id, w.process_version_id])
+        |> select([work_item: w], %{
+          stage_id: w.stage_id,
+          process_version_id: w.process_version_id,
+          count: count(w.id)
+        })
+        |> Repo.all()
+
+      :error ->
+        []
+    end
+  end
+
+  def stage_counts(%Scope{}, _params, _now), do: []
 
   # waiting_on/1 is how many live work items of the scope's workspace wait for the scope's
   # person, the view `:you` with no search and no filter: those the person owns whose
@@ -668,6 +712,7 @@ defmodule Apiary.WorkItems.WorkList do
         status: s.status,
         attempt: r.attempt,
         of: r.of,
+        stage_id: w.stage_id,
         owner_id: w.owner_id,
         taken_in_at: w.taken_in_at,
         inserted_at: w.inserted_at,
