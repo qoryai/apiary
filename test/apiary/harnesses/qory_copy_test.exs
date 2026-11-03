@@ -16,7 +16,7 @@ defmodule Apiary.Harnesses.QoryCopyTest do
 
   # The files copied from qoryai/harness at the commit in `.harness-ref`, by their SHA-256
   # there.
-  @harness_ref "c0e7e33c30436bd03aba5cbc9b650e9383ec46fe"
+  @harness_ref "5c88f508fb117760489c65c5fe2990cbc167ec3b"
   @copied_sha256 %{
     "qory.yaml" => "0d43ac5ebe9ebdbb2087f42b14a56a8dea3db95516b7d514d1093cfea8a62f6e",
     "modules/software-factory/process.yaml" =>
