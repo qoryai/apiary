@@ -6555,7 +6555,7 @@ msgid "Closed when its integration was removed"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Closed when its ticket closed"
 msgstr ""
 
@@ -8421,7 +8421,7 @@ msgid "Every session leaves a full record: what it ran, what it printed and wher
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Every stage done"
 msgstr ""
 

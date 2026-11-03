@@ -100,11 +100,20 @@ defmodule Apiary.Kinds.BoundsCallersTest do
   end
 
   test "an explore result is walked within the schema's bounds, and JSV never reads one over them" do
-    valid = ~s({"version":1,"verdict":"not_understood","questions":["q"]})
-    questions = Enum.join(List.duplicate(~s("q"), 51), ",")
-    over = ~s({"version":1,"verdict":"not_understood","questions":[#{questions}]})
-    bounds = [list: 50, members: 8]
+    question = %{
+      "question" => "Which region?",
+      "options" => [%{"title" => "Europe", "explanation" => "Serve from Europe."}]
+    }
 
+    result = %{"version" => 1, "verdict" => "not_understood", "questions" => [question]}
+    valid = Jason.encode!(result)
+    over = Jason.encode!(%{result | "questions" => List.duplicate(question, 21)})
+
+    # The longest list the schema takes is `questions`, at most 20 (`options` takes 10),
+    # and the object with the most members is the result, with 4.
+    bounds = [list: 20, members: 4]
+
+    assert {:ok, _result} = Result.parse(valid)
     assert calls(fn -> Result.parse(valid) end) == [{:within?, bounds}, :jsv]
     assert calls(fn -> Result.parse(over) end) == [{:within?, bounds}]
   end
