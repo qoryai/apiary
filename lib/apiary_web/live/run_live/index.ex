@@ -64,6 +64,7 @@ defmodule ApiaryWeb.RunLive.Index do
   alias Apiary.Runs.Filters
   alias Apiary.Runs.{Record, Run}
   alias ApiaryWeb.Narrowing
+  alias ApiaryWeb.TranscriptComponents
 
   @quiet_tick 5_000
   @summary_window 1_000
@@ -1326,9 +1327,12 @@ defmodule ApiaryWeb.RunLive.Index do
   end
 
   # The log's last lines are `run.read_log`'s, as the run page's Terminal tab is: for a
-  # reader who may not, none is read, and the preview has no terminal.
+  # reader who may not, none is read, and the preview has no terminal. They are drawn as
+  # that tab opens: the Transcript's last lines where it opens in the Transcript, else the
+  # log's last lines as plain text.
   defp preview_of(scope, run) do
     log? = Access.can?(scope, :"run.read_log", run)
+    {transcript, results} = if log?, do: transcript_tail(scope, run), else: {[], true}
 
     denials =
       if run.denied_count > 0,
@@ -1339,10 +1343,35 @@ defmodule ApiaryWeb.RunLive.Index do
       run: run,
       quiet: not is_nil(quiet_for(run)),
       log?: log?,
-      lines: if(log?, do: Record.log_tail(scope, run, @preview_lines), else: []),
+      transcript: transcript,
+      results: results,
+      lines:
+        if(log? and transcript == [],
+          do: Record.log_tail(scope, run, @preview_lines),
+          else: []
+        ),
       denials: Enum.take(denials.rows, @preview_denials),
       more_denials: max(denials.total - @preview_denials, 0)
     }
+  end
+
+  # The Transcript's last lines, read whole, and whether its results leave their text out
+  # (`ApiaryWeb.TranscriptComponents.transcript/1`, `results`). None where the run page's
+  # Terminal tab opens in Raw: a run with no Transcript, and a pseudo-terminal's run with a
+  # log (`ApiaryWeb.RunPageComponents.terminal/1`).
+  defp transcript_tail(scope, run) do
+    index = Record.timeline(scope, run)
+    light = index.items |> TranscriptComponents.lines(index.texts) |> Enum.take(-@preview_lines)
+    results = index.texts > 0 or Enum.any?(index.items, &(&1.kind == :turn_finished))
+
+    if light == [] or raw_first?(scope, run),
+      do: {[], results},
+      else: {Record.items(scope, run, light), results}
+  end
+
+  defp raw_first?(scope, run) do
+    log = Record.log_summary(scope, run)
+    log.chunks > 0 and log.streams == ["terminal"]
   end
 
   defp assign_preview_quiet(%{assigns: %{preview: %{run: run} = preview}} = socket) do

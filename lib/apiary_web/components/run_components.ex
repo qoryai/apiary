@@ -46,6 +46,7 @@ defmodule ApiaryWeb.RunComponents do
   alias ApiaryWeb.Format
   # Called by its full name below: `PolicyComponents` imports this module.
   alias ApiaryWeb.PolicyComponents
+  alias ApiaryWeb.TranscriptComponents
 
   alias Apiary.Runs
   alias Apiary.Dispatches.Dispatch
@@ -2581,13 +2582,22 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   The preview of a run beside the runs list, from 1920 px: one pane with a rule at its
   left and no card, the run's state and its title, a line of what it ran on, when it
-  started and for how long, its denials, and the last lines of its log as plain text in the
-  terminal's dark box, the one box in it, for a reader who may read the log
-  (`run.read_log`, `log?`); Open run leads to its page. `preview` is nil while it loads.
+  started and for how long, its denials, and the end of its log in the terminal's dark box,
+  the one box in it, for a reader who may read the log (`run.read_log`, `log?`); Open run
+  leads to its page. `preview` is nil while it loads.
+
+  The end of the log is drawn as the run page's Terminal tab opens: the last lines of the
+  Transcript (`transcript`, `ApiaryWeb.TranscriptComponents.line/1`) where that tab opens
+  in the Transcript, with no button and no link to Raw, and wrapped; else the last lines
+  of the log as plain text (`lines`).
   """
   attr :id, :string, required: true
   attr :scope, :map, required: true
-  attr :preview, :map, default: nil, doc: "%{run:, log?:, lines:, denials:, quiet:}"
+
+  attr :preview, :map,
+    default: nil,
+    doc: "%{run:, log?:, transcript:, results:, lines:, denials:, quiet:}"
+
   attr :shared, :any, default: nil
 
   def run_preview(assigns) do
@@ -2690,15 +2700,38 @@ defmodule ApiaryWeb.RunComponents do
             </span>
             <.link navigate={"#{run_page(@scope, @preview.run)}/terminal"}>{gettext("Full log")}</.link>
           </div>
+          <div
+            :if={@preview.transcript != []}
+            id={"#{@id}-log"}
+            class="q-term-tr"
+            role="log"
+            aria-live="off"
+            aria-label={gettext("The last lines of the log")}
+          >
+            <ol class="q-tr">
+              <TranscriptComponents.line
+                :for={item <- @preview.transcript}
+                id={"#{@id}-#{item.id}"}
+                item={item}
+                raw={false}
+                result_text={not @preview.results}
+                controls={false}
+              />
+            </ol>
+          </div>
           <pre
-            :if={@preview.lines != []}
+            :if={@preview.transcript == [] and @preview.lines != []}
             id={"#{@id}-log"}
             class="q-pv-log"
             role="log"
             aria-live="off"
             aria-label={gettext("The last lines of the log")}
           >{Enum.map_join(@preview.lines, "\n", &Apiary.ExternalText.lines/1)}</pre>
-          <p :if={@preview.lines == []} id={"#{@id}-log"} class="q-pv-nolog">
+          <p
+            :if={@preview.transcript == [] and @preview.lines == []}
+            id={"#{@id}-log"}
+            class="q-pv-nolog"
+          >
             {if @preview.run.log_pruned_at,
               do: gettext("The log was pruned."),
               else: gettext("No log recorded.")}

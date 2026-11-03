@@ -3072,7 +3072,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
   describe "the harness choices" do
     @qory_git "https://github.com/qoryai/harness"
-    @qory_ref "5c88f508fb117760489c65c5fe2990cbc167ec3b"
+    @qory_ref "bde1cf61186ec5cb405294dcc233021ea0c092bf"
     @pin String.duplicate("c3", 20)
 
     # A harness repository whose root is its stack, with a local module.
