@@ -414,8 +414,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: whose turn it is, no Confirm" do
       html = card(work_item(%{owner: @priya}), can_act: false)
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Next, Priya confirms Qory's proposal or declines the work item."
+      assert text(html, ".q-wi-bee-line") == "Priya confirms next"
 
       assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
       refute html =~ "Confirm Qory&#39;s proposal"
@@ -433,8 +432,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: the reader as you, another owner by name, escaped" do
       mine = card(work_item(), can_act: false)
 
-      assert text(mine, ".q-wi-bee-line") ==
-               "Next, you confirm Qory's proposal or decline the work item."
+      assert text(mine, ".q-wi-bee-line") == "You confirm next"
 
       html =
         card(
@@ -444,7 +442,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           can_act: false
         )
 
-      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms Qory&#39;s proposal"
+      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms next"
       assert count(html, ".q-wi-bee-line b") == 0
     end
 

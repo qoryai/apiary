@@ -1291,7 +1291,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-check-result",
-               "Reload the page. The work item is closed or declined, so it has no stage to check."
+               "Reload the page. The work item is closed, so it has no stage to check."
              )
     end
 

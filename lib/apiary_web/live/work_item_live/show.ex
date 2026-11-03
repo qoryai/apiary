@@ -691,10 +691,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # Why Check again did not start the stage, each with its fix first: the work item is not
   # live or not in a stage, or the harness was not read (`Apiary.Stacks.Sources.read/2`).
   defp check_words(_socket, :not_live),
-    do:
-      gettext(
-        "Reload the page. The work item is closed or declined, so it has no stage to check."
-      )
+    do: gettext("Reload the page. The work item is closed, so it has no stage to check.")
 
   defp check_words(_socket, :not_placed),
     do: gettext("Reload the page. The work item is not in a stage, so there is nothing to check.")

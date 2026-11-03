@@ -12134,20 +12134,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Next, %{name} confirms Qory's proposal or declines the work item."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Next, a member answers Qory's question."
 msgid_plural "Next, a member answers Qory's questions."
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Next, you confirm Qory's proposal or decline the work item."
-msgstr ""
 
 #: lib/apiary_web/live/node_live/gateways.ex
 #, elixir-autogen, elixir-format
@@ -15259,7 +15249,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page. The work item is closed or declined, so it has no stage to check."
+msgid "Reload the page. The work item is closed, so it has no stage to check."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
