@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "verdict": "not_understood",
+  "questions": [
+    {
+      "question": "Which refund applies to **this order**?\n\n- Order 4417\n- Nine days late",
+      "options": [
+        {
+          "title": "Full refund",
+          "explanation": "The policy covers a delivery this late.",
+          "note": "Ask the customer first."
+        }
+      ]
+    },
+    {
+      "question": "When did the parcel arrive? The carrier's record shows no date.",
+      "options": []
+    }
+  ]
+}

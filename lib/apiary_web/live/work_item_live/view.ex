@@ -60,7 +60,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   @doc false
   # page/5 is everything the page draws of the work item `row`: the work item map, the
-  # take in's earlier runs, the earlier take ins, the changes of its confirmation, and the
+  # take in's earlier runs, the earlier take ins, and the
   # Thread (`thread` of `Apiary.WorkItems.thread/3`, or none), with the
   # names its ticket has (`Apiary.WorkItems.ticket_names/2`); and the people it names, for
   # `person/2`.
@@ -74,10 +74,6 @@ defmodule ApiaryWeb.WorkItemLive.View do
       work_item: work_item(row, explore, names, latest, ctx),
       earlier_runs: runs,
       earlier_take_ins: Enum.map(explore.earlier_take_ins, &take_in(&1, ctx)),
-      changes:
-        Map.new(explore.changes, fn {field, %{value: value, by_id: by_id}} ->
-          {field, %{value: value, by: person(ctx.people, by_id)}}
-        end),
       thread: thread(thread, row, names, ctx),
       people: ctx.people
     }
@@ -94,7 +90,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
         explore.answers_by_ids ++
         Enum.map(all_runs, & &1.answered_by_id) ++
         Enum.flat_map(take_ins, &[&1.taken_in_by_id, &1.ended_by_id]) ++
-        Enum.map(Map.values(explore.changes), & &1.by_id) ++
+        Enum.map(explore.comments, & &1.by_id) ++
         Enum.flat_map(thread, &[&1[:actor_id], &1[:owner_id]]) ++
         ApiaryWeb.WorkItemLive.Comments.people_ids(thread) ++
         [scope.user && scope.user.id]

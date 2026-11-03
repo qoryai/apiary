@@ -269,7 +269,7 @@ defmodule Apiary.Runs.ListFacts do
       queued_by_take_in?(row, stages) ->
         taken_in(row, find(events, :taken_in, row.take_in))
 
-      answered = find(events, :answered, row.take_in, row.attempt - 1) ->
+      answered = answers_event(events, row) ->
         answers(row, answered)
 
       again = find(events, :explore_again, row.take_in, row.attempt) ->
@@ -296,6 +296,15 @@ defmodule Apiary.Runs.ListFacts do
 
   defp taken_in(%{take_in: 1}, event), do: person(:taken_in, event)
   defp taken_in(_row, event), do: person(:taken_in_again, event)
+
+  # The answers to the questions of the run before `row`. A comment on that run's
+  # proposal is no answer: the run it queued has no fact of its start here.
+  defp answers_event(events, row) do
+    case find(events, :answered, row.take_in, row.attempt - 1) do
+      %{data: %{"comment" => true}} -> nil
+      answered -> answered
+    end
+  end
 
   defp answers(row, %{actor_kind: :person, actor_id: id}) when is_binary(id),
     do: {:answers, row.attempt, row.of, id}

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "verdict": "not_understood",
+  "questions": [
+    {
+      "question": "Which refund applies to **this order**?\n\n- Order 4417\n- Nine days late",
+      "options": [
+        {
+          "title": "Option 1",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 2",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 3",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 4",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 5",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 6",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 7",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 8",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 9",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 10",
+          "explanation": "One way to settle the order."
+        },
+        {
+          "title": "Option 11",
+          "explanation": "One way to settle the order."
+        }
+      ]
+    },
+    {
+      "question": "When did the parcel arrive? The carrier's record shows no date.",
+      "options": []
+    }
+  ]
+}

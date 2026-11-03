@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 4,
+    "of": 4
+  },
+  "ticket": {
+    "external_ref": "TRK-77",
+    "url": "https://tracker.example.com/items/TRK-77",
+    "title": "A refund for a late order",
+    "body": "Order 4417 arrived nine days late. The customer asks for a refund.",
+    "filed_by": {
+      "name": "Alex Example",
+      "kind": "person"
+    },
+    "filed_at": "2026-10-17T09:12:00Z",
+    "collection": "Customer care"
+  },
+  "instruction": {
+    "text": "",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [
+    {
+      "by": {
+        "name": "Alex Example",
+        "kind": "person"
+      },
+      "at": "2026-10-17T11:40:00Z",
+      "body": "The customer called again this morning."
+    }
+  ],
+  "comments_omitted": 12,
+  "answers": [
+    {
+      "question": "Which refund applies to **this order**?",
+      "answer": "Full refund",
+      "custom": false,
+      "by": {
+        "name": "Sam Example"
+      },
+      "at": "2026-10-17T10:05:00Z"
+    },
+    {
+      "question": "When did the parcel arrive? The carrier's record shows no date.",
+      "answer": "It arrived on 2026-10-14, as the customer wrote.",
+      "custom": true,
+      "by": {
+        "name": "Sam Example"
+      },
+      "at": "2026-10-17T10:06:00Z"
+    }
+  ],
+  "proposal": "## What this is\n\nOrder 4417 arrived nine days late, and the customer asks for a refund.\n\n## How to do it\n\nRefund the full amount and tell the customer.\n\n## Why this is the best\n\nThe late delivery policy covers a delivery this late.\n",
+  "changes": [
+    {
+      "text": "Say how many days the refund takes.",
+      "by": {
+        "name": "Sam Example"
+      },
+      "at": "2026-10-17T13:20:00Z"
+    }
+  ],
+  "target": {
+    "system": "tracker.example.com",
+    "path": "customer-care"
+  },
+  "domain": "customer-care"
+}

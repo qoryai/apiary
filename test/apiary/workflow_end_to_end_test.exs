@@ -173,11 +173,11 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert snapshot["verdict"] == nil
     assert snapshot["notes"] == []
 
-    proposal = Stages.proposal_document(explore_result())
+    proposal = explore_result()["message"]
 
     pushed =
       json_response(
-        write!(ctx, run, "/artifacts", push_body("proposal", "proposal.json", proposal)),
+        write!(ctx, run, "/artifacts", push_body("proposal", "proposal.md", proposal)),
         201
       )
 
@@ -663,24 +663,19 @@ defmodule Apiary.WorkflowEndToEndTest do
     %{
       "version" => 1,
       "verdict" => "understood",
-      "complexity" => %{"level" => "standard", "reason" => "The payment step and the order."},
-      "understanding" => "Acme customers pay part of a Web shop order with a gift card.",
-      "scope" => %{"in" => ["A gift card field on the payment step"], "out" => ["Refunds"]},
-      "approach" => %{
-        "summary" => "Take the gift card as a second payment of the order.",
-        "alternatives" => [
-          %{
-            "summary" => "Turn the gift card into a discount.",
-            "reason" => "A discount changes the order's taxes."
-          }
-        ]
-      },
-      "knowledge" => [
-        %{
-          "text" => "The payment step takes one payment today.",
-          "sources" => ["https://docs.example.com/payments"]
-        }
-      ]
+      "message" => """
+      ## What this is
+
+      Acme customers pay part of a Web shop order with a gift card.
+
+      ## How Qory would do it
+
+      Take the gift card as a second payment of the order.
+
+      ## Alternatives
+
+      - Turn the gift card into a discount. Why not: a discount changes the order's taxes.
+      """
     }
   end
 

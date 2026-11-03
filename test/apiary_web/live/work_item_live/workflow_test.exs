@@ -234,15 +234,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     json("change.json", %{"url" => "https://forge.example.com/example/shop/pull/4"})
   end
 
-  defp sample("proposal") do
-    json("proposal.json", %{
-      "complexity" => %{"level" => "standard", "reason" => "Two pages change."},
-      "understanding" => "Add gift cards to the checkout.",
-      "scope" => %{"in" => ["Checkout page"], "out" => ["Refunds"]},
-      "approach" => %{"summary" => "A field on the payment step.", "alternatives" => []}
-    })
-  end
-
   defp sample(type) do
     %{filename: "#{type}.md", content_type: "text/markdown", binary: "# #{type}"}
   end

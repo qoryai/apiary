@@ -106,6 +106,7 @@ defmodule Apiary.RetentionResultsTest do
       position: 1,
       question: "Which basket?",
       answer: "The small one.",
+      custom: true,
       answered_at: DateTime.utc_now()
     })
 
@@ -150,6 +151,7 @@ defmodule Apiary.RetentionResultsTest do
       position: 1,
       question: "Which basket?",
       answer: "The small one.",
+      custom: true,
       answered_at: DateTime.utc_now()
     })
 

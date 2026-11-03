@@ -243,38 +243,9 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       view |> element("#work-item-step-confirm") |> render_click()
       assert has_element?(view, "#work-item-step .q-wi-badge", "Ready")
-      assert %{changes: changes} = Apiary.WorkItems.Explore.confirmation(work_item.id, 1)
-      assert changes == %{}
-    end
 
-    test "with changes, from the edit page, back on Explore's tab", %{conn: conn, scope: scope} do
-      {work_item, _run} = proposed(scope)
-      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore/edit"))
-
-      assert has_element?(view, "#work-item-edit-form")
-      refute has_element?(view, "#work-item-step")
-
-      view
-      |> form("#work-item-edit-form", %{"approach" => "Read the price from the catalogue."})
-      |> render_submit()
-
-      assert_patch(view, page(scope, work_item.number, "/explore"))
-
-      assert %{changes: %{"approach" => "Read the price from the catalogue."}} =
+      assert %{result: %{"verdict" => "understood"}} =
                Apiary.WorkItems.Explore.confirmation(work_item.id, 1)
-    end
-
-    test "a field left empty is marked under it, and nothing is confirmed", %{
-      conn: conn,
-      scope: scope
-    } do
-      {work_item, _run} = proposed(scope)
-      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore/edit"))
-
-      view |> form("#work-item-edit-form", %{"approach" => " "}) |> render_submit()
-
-      assert has_element?(view, "#work-item-edit-approach[aria-invalid]")
-      refute Apiary.WorkItems.Explore.confirmation(work_item.id, 1)
     end
 
     test "the edit page is Explore's tab where nothing waits to be confirmed", %{

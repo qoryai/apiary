@@ -1,9 +1,32 @@
 {
   "version": 1,
   "verdict": "not_understood",
-  "understanding": "The ticket says the parser fails on some dates, but names no date that fails.",
   "questions": [
-    "Which dates does the parser refuse? An example of one would help.",
-    "Should a two-digit year be read as a year from 2000?"
+    {
+      "question": "Which refund applies to **this order**?\n\n- Order 4417\n- Nine days late",
+      "options": [
+        {
+          "title": "Full refund",
+          "explanation": "The policy covers a delivery this late."
+        },
+        {
+          "title": "Store credit",
+          "explanation": "The customer keeps the order, so no return is needed."
+        }
+      ]
+    },
+    {
+      "question": "Who pays the return shipping?",
+      "options": [
+        {
+          "title": "The shop",
+          "explanation": "The late delivery is the shop's fault."
+        },
+        {
+          "title": "The customer",
+          "explanation": "The terms of sale say the customer pays."
+        }
+      ]
+    }
   ]
 }

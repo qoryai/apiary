@@ -2,8 +2,8 @@ defmodule Apiary.WorkItems.Explore do
   # Explore says where Explore stands for a work item, from the runs of its take ins
   # (`Apiary.Dispatches.DispatchRun`, with the run registered for each, `Apiary.Runs.Run`),
   # each run's result (`Apiary.Explore.Result`), and what members gave it: the answers
-  # (`Apiary.WorkItems.Answer`) and the confirmation (`Apiary.WorkItems.Confirmation`). It
-  # writes nothing. `Apiary.WorkItems.Moves` asks it under the work item's lock, and
+  # and the comments on a proposal (`Apiary.WorkItems.Answer`) and the confirmation
+  # (`Apiary.WorkItems.Confirmation`). It writes nothing. `Apiary.WorkItems.Moves` asks it under the work item's lock, and
   # `Apiary.WorkItems` reads the pages' maps from it.
   #
   # ## A run
@@ -65,6 +65,7 @@ defmodule Apiary.WorkItems.Explore do
 
   import Ecto.Query, warn: false
 
+  alias Apiary.Artifacts.{Artifact, Version}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.Result
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
@@ -448,16 +449,66 @@ defmodule Apiary.WorkItems.Explore do
   def confirmation(id, take_in),
     do: Repo.one(from c in Confirmation, where: c.work_item_id == ^id and c.take_in == ^take_in)
 
-  # answers/1 is every answer given for the work item `id`, by take in, attempt and
-  # position.
+  # answers/1 is every answer given for the work item `id` to a run's questions, by take
+  # in, attempt and position: comments on a proposal are not among them (`comments/1`).
   @doc false
   @spec answers(Ecto.UUID.t()) :: [Answer.t()]
   def answers(id) do
     Repo.all(
       from a in Answer,
-        where: a.work_item_id == ^id,
+        where: a.work_item_id == ^id and not is_nil(a.question),
         order_by: [asc: a.take_in, asc: a.attempt, asc: a.position]
     )
+  end
+
+  # comments/1 is every comment on a proposal of the work item `id`, the answers with no
+  # question, by take in and attempt.
+  @doc false
+  @spec comments(Ecto.UUID.t()) :: [Answer.t()]
+  def comments(id) do
+    Repo.all(
+      from a in Answer,
+        where: a.work_item_id == ^id and is_nil(a.question),
+        order_by: [asc: a.take_in, asc: a.attempt, asc: a.answered_at]
+    )
+  end
+
+  # proposal_version/3 is the version of the proposal the run `attempt` of take in
+  # `take_in` of the work item `id` wrote: with the workflow model on, the number of the
+  # `proposal` version that run stored (`Apiary.Stages`); else, and for a run that stored
+  # none, how many runs of the take in up to it gave a proposal.
+  @doc false
+  @spec proposal_version(Ecto.UUID.t(), pos_integer, pos_integer) :: pos_integer
+  def proposal_version(id, take_in, attempt) do
+    stored =
+      Apiary.Stages.on?() &&
+        Repo.one(
+          from v in Version,
+            join: a in Artifact,
+            on: a.id == v.artifact_id,
+            join: d in DispatchRun,
+            on: d.id == v.run_id,
+            where: a.work_item_id == ^id and a.type == "proposal",
+            where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt == ^attempt,
+            order_by: [desc: v.number],
+            limit: 1,
+            select: v.number
+        )
+
+    stored || proposals(id, take_in, attempt)
+  end
+
+  defp proposals(id, take_in, attempt) do
+    count =
+      Repo.aggregate(
+        from(d in DispatchRun,
+          where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt,
+          where: d.result_outcome == :proposal
+        ),
+        :count
+      )
+
+    max(count, 1)
   end
 
   # events/1 is the events of the work item `id`, in the order they happened.

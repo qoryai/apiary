@@ -1,9 +1,10 @@
 defmodule Apiary.WorkItems.MemberActionsTest do
-  # What a member gives Explore (`Apiary.WorkItems.answer/4`, `confirm/4` and
+  # What a member gives Explore (`Apiary.WorkItems.answer/4`, `confirm/3` and
   # `explore_again/3`): each where Explore waits for it, with its records, its event, its
   # next run where it queues one, its entry in the trail, and each refusal; the answers a
   # take in's next run reads (`take_in_answers/2`, through `Apiary.Dispatches.Inputs`);
-  # and the stage a close records.
+  # and the stage a close records. A comment on a proposal, on both states of the
+  # workflow model: `Apiary.WorkItems.ProposalCommentTest`.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -101,19 +102,6 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       target: %{system: work_item.target_system, path: work_item.target_path}
     }
 
-  defp edit_form(attrs) do
-    Map.merge(
-      %{
-        "complexity" => %{"level" => "standard", "reason" => "Two screens read the price."},
-        "understanding" => "The basket keeps the price from before the sale.",
-        "scope_in" => "Read the sale price in the basket",
-        "scope_out" => "The invoice",
-        "approach" => "Read the price from the catalogue each time."
-      },
-      attrs
-    )
-  end
-
   describe "answer" do
     test "keeps each answer with its question, and queues the take in's next run", ctx do
       asked!(ctx.work_item)
@@ -152,9 +140,64 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert answered_by == ctx.scope.user.id
 
       assert questions == [
-               %{public_id: "1", text: "Which basket?", answer: "The one on the checkout page."},
-               %{public_id: "2", text: "Which sale?", answer: "The spring sale."}
+               %{
+                 public_id: "1",
+                 text: "Which basket?",
+                 options: [],
+                 answer: "The one on the checkout page.",
+                 custom: true
+               },
+               %{
+                 public_id: "2",
+                 text: "Which sale?",
+                 options: [],
+                 answer: "The spring sale.",
+                 custom: true
+               }
              ]
+    end
+
+    test "an option's title is kept as the run wrote it, not the member's text", ctx do
+      asked!(ctx.work_item, [
+        %{
+          "question" => "Which basket?",
+          "options" => [
+            %{"title" => "The small one", "explanation" => "The checkout page shows it."},
+            %{"title" => "The large one", "explanation" => "The shop page shows it."}
+          ]
+        },
+        "Which sale?"
+      ])
+
+      answers = %{"1" => %{"option" => "The large one"}, "2" => %{"custom" => "The spring one."}}
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
+
+      assert [
+               %Answer{position: 1, answer: "The large one", custom: false},
+               %Answer{position: 2, answer: "The spring one.", custom: true}
+             ] = Repo.all(from a in Answer, order_by: a.position)
+
+      assert [first, second] = WorkItems.take_in_answers(ctx.work_item, 1)
+      assert Jason.decode!(Jason.encode!(first))["custom"] == false
+      assert Jason.decode!(Jason.encode!(second))["custom"] == true
+
+      assert [%{questions: [%{options: [_, _], custom: false}, %{options: [], custom: true}]}] =
+               WorkItems.explore(ctx.scope, ctx.work_item).earlier_runs
+    end
+
+    test "an option title the question does not have is refused, nothing written", ctx do
+      asked!(ctx.work_item, [
+        %{
+          "question" => "Which basket?",
+          "options" => [%{"title" => "The small one", "explanation" => "The checkout."}]
+        }
+      ])
+
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => %{"option" => "Another"}}) ==
+               {:error, {:invalid, :form}}
+
+      assert Repo.aggregate(Answer, :count) == 0
+      assert runs(ctx.work_item) == [{1, 1, :ended}]
     end
 
     test "the next run's input carries the answers, oldest first, as the contract has them",
@@ -193,11 +236,19 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert Jason.decode!(Jason.encode!(first_answer)) == %{
                "question" => "Which basket?",
                "answer" => "The small one.",
+               "custom" => true,
                "by" => %{"name" => name},
                "at" => Jason.decode!(Jason.encode!(first_answer))["at"]
              }
 
-      assert Enum.map(first_answer.values, &elem(&1, 0)) == ["question", "answer", "by", "at"]
+      assert Enum.map(first_answer.values, &elem(&1, 0)) == [
+               "question",
+               "answer",
+               "custom",
+               "by",
+               "at"
+             ]
+
       assert Jason.decode!(Jason.encode!(second_answer))["question"] == "Which shop?"
 
       assert Jason.decode!(Jason.encode!(first_answer))["at"] =~
@@ -286,9 +337,14 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
     test "where the latest run asked nothing, or another run is latest, refused", ctx do
       answers = %{"1" => "Yes"}
-      proposed!(ctx.work_item)
+      explore_run_fixture(ctx.work_item, end_cause: :lost)
       assert WorkItems.answer(ctx.scope, ctx.work_item, 1, answers) == {:error, :not_waiting}
       assert WorkItems.answer(ctx.scope, ctx.work_item, 2, answers) == {:error, :stale}
+
+      # Where a proposal waits, a member gives a comment, a text: answers are no form.
+      proposed = work_item_fixture(ctx.scope, external_ref: "acme/shop#12")
+      proposed!(proposed)
+      assert WorkItems.answer(ctx.scope, proposed, 1, answers) == {:error, {:invalid, :form}}
 
       running = work_item_fixture(ctx.scope, external_ref: "acme/shop#13")
       explore_run_fixture(running, state: :handed_over)
@@ -339,76 +395,30 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   end
 
   describe "confirm" do
-    test "as it stands: the result kept, no changes, ready for Shape", ctx do
+    test "the result kept, ready for Shape", ctx do
       proposed!(ctx.work_item)
 
       assert {:ok, %WorkItem{state: :exploring}} = WorkItems.confirm(ctx.scope, ctx.work_item, 1)
 
-      assert [
-               %Confirmation{take_in: 1, attempt: 1, changes: changes, result: result} =
-                 confirmation
-             ] =
+      assert [%Confirmation{take_in: 1, attempt: 1, result: result} = confirmation] =
                Repo.all(Confirmation)
 
-      assert changes == %{}
       assert result == understood_result()
       assert confirmation.confirmed_by_id == ctx.scope.user.id
 
-      assert [{:taken_in, _}, {:confirmed, %{"take_in" => 1, "attempt" => 1, "changed" => []}}] =
+      assert [{:taken_in, _}, {:confirmed, %{"take_in" => 1, "attempt" => 1}}] =
                kinds(ctx.work_item)
 
       assert entry("work_item.confirm", ctx.work_item).details ==
-               %{"take_in" => 1, "attempt" => 1, "changed" => []}
+               %{"take_in" => 1, "attempt" => 1}
 
       explore = WorkItems.explore(ctx.scope, ctx.work_item)
       assert explore.status == :shape
       assert explore.confirmed_by_id == ctx.scope.user.id
-      assert explore.changes == %{}
+      assert explore.comments == []
 
       assert WorkItems.confirm(ctx.scope, ctx.work_item, 1) == {:error, :not_waiting}
       assert Repo.aggregate(Confirmation, :count) == 1
-    end
-
-    test "with the edit page's changes: only those that differ kept, by who confirmed", ctx do
-      proposed!(ctx.work_item)
-
-      form =
-        edit_form(%{
-          "complexity" => %{"level" => "complex", "reason" => "Two screens read the price."},
-          "scope_out" => "The invoice\r\nThe receipt"
-        })
-
-      assert {:ok, _} = WorkItems.confirm(ctx.scope, ctx.work_item, 1, form)
-
-      assert [%Confirmation{changes: changes}] = Repo.all(Confirmation)
-
-      assert changes == %{
-               "complexity" => %{"level" => "complex", "reason" => "Two screens read the price."},
-               "scope_out" => ["The invoice", "The receipt"]
-             }
-
-      assert entry("work_item.confirm", ctx.work_item).details["changed"] ==
-               ["complexity", "scope_out"]
-
-      user_id = ctx.scope.user.id
-
-      assert %{
-               complexity: %{value: %{level: :complex}, by_id: ^user_id},
-               scope_out: %{value: ["The invoice", "The receipt"], by_id: ^user_id}
-             } = WorkItems.explore(ctx.scope, ctx.work_item).changes
-    end
-
-    test "changes that do not hold, refused with their errors, nothing written", ctx do
-      proposed!(ctx.work_item)
-
-      assert WorkItems.confirm(ctx.scope, ctx.work_item, 1, edit_form(%{"approach" => ""})) ==
-               {:error, {:invalid, %{approach: :blank}}}
-
-      assert WorkItems.confirm(ctx.scope, ctx.work_item, 1, %{"approach" => "x"}) ==
-               {:error, {:invalid, :form}}
-
-      assert Repo.aggregate(Confirmation, :count) == 0
-      assert entry("work_item.confirm", ctx.work_item) == nil
     end
 
     test "where no proposal waits, or another run is latest, refused", ctx do
@@ -425,9 +435,9 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       proposed!(ctx.work_item)
       before = written(ctx.work_item)
 
-      for id <- @malformed, params <- [nil, edit_form(%{"scope_out" => "The receipt"})] do
+      for id <- @malformed do
         malformed = %{ctx.work_item | id: id}
-        assert WorkItems.confirm(ctx.scope, malformed, 1, params) == {:error, :not_found}
+        assert WorkItems.confirm(ctx.scope, malformed, 1) == {:error, :not_found}
       end
 
       assert written(ctx.work_item) == before

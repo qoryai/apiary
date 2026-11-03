@@ -6,7 +6,7 @@
     "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
   },
   "run": {
-    "attempt": 4,
+    "attempt": 0,
     "of": 3
   },
   "ticket": {
@@ -48,6 +48,7 @@
   ],
   "comments_omitted": 0,
   "answers": [],
+  "changes": [],
   "target": {
     "system": "code.example.com",
     "path": "example/service"

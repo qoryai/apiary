@@ -56,14 +56,7 @@ defmodule Apiary.ArtifactsTest do
 
   defp json(filename, value), do: file(filename, Jason.encode!(value), "application/json")
 
-  defp proposal do
-    %{
-      "complexity" => %{"level" => "standard", "reason" => "Two pages change."},
-      "understanding" => "Add gift cards to the checkout of the Web shop.",
-      "scope" => %{"in" => ["Checkout page"], "out" => ["Refunds"]},
-      "approach" => %{"summary" => "A field on the payment step.", "alternatives" => []}
-    }
-  end
+  defp proposal, do: doc("proposal.md", "## What this is\n\nGift cards at the checkout.")
 
   defp stored_paths(root) do
     case File.ls(root) do
@@ -96,14 +89,16 @@ defmodule Apiary.ArtifactsTest do
     test "have the base views and dedicated views of the workflow model", %{scope: scope} do
       types = Map.new(Artifacts.types(scope.workspace), &{&1.name, &1})
 
-      for name <- ~w(acceptance-criteria explainer decision-record),
+      for name <- ~w(acceptance-criteria explainer decision-record proposal),
           do: assert(types[name].base_view == :document)
+
+      assert types["proposal"].max_files == 1
 
       assert types["mockup"].base_view == :image
       assert types["screenshot"].base_view == :image
       assert types["demo-video"].base_view == :video
 
-      for name <- ~w(change proposal questions verdict) do
+      for name <- ~w(change questions verdict) do
         assert types[name].base_view == :structured
         assert types[name].view == String.to_existing_atom(name)
         assert types[name].max_files == 1
@@ -924,7 +919,11 @@ defmodule Apiary.ArtifactsTest do
                  {:run, run},
                  work_item,
                  "questions",
-                 [json("q.json", %{"questions" => ["Which basket?"]})]
+                 [
+                   json("q.json", %{
+                     "questions" => [%{"question" => "Which basket?", "options" => []}]
+                   })
+                 ]
                )
     end
 
@@ -1105,7 +1104,7 @@ defmodule Apiary.ArtifactsTest do
       assert push.("demo-video", [file("demo.mp4", @mp4), file("en.vtt", "WEBVTT\n")]) ==
                ["video/mp4", "text/vtt; charset=utf-8"]
 
-      assert push.("proposal", [json("proposal.json", proposal())]) == ["application/json"]
+      assert push.("proposal", [proposal()]) == ["text/markdown; charset=utf-8"]
     end
 
     test "takes the standard structured types' documents their schemas allow",
@@ -1137,20 +1136,31 @@ defmodule Apiary.ArtifactsTest do
 
       assert extra =~ "'extra'"
 
-      assert {:ok, _version} = push.("proposal", proposal())
-
-      assert {:error,
-              {:invalid, {:schema, 0, %{path: "#", error: "property 'scope' is required"}}}} =
-               push.("proposal", Map.delete(proposal(), "scope"))
-
       assert {:ok, _version} =
                push.("questions", %{
-                 "questions" => ["Which basket?"],
-                 "understanding" => "A checkout change."
+                 "questions" => [
+                   %{
+                     "question" => "Which basket?",
+                     "options" => [%{"title" => "The small one", "explanation" => "At checkout."}]
+                   },
+                   %{"question" => "Which sale?", "options" => []}
+                 ]
                })
 
       assert {:error, {:invalid, {:schema, 0, %{path: "#/questions"}}}} =
                push.("questions", %{"questions" => []})
+
+      # A question is a question with its options: a text alone, or the members a
+      # questions document had before options, are refused.
+      for document <- [
+            %{"questions" => ["Which basket?"]},
+            %{
+              "questions" => [%{"question" => "Which basket?", "options" => []}],
+              "understanding" => "A checkout change."
+            }
+          ] do
+        assert {:error, {:invalid, {:schema, 0, _error}}} = push.("questions", document)
+      end
 
       assert {:ok, _version} =
                push.("verdict", %{
@@ -1231,7 +1241,7 @@ defmodule Apiary.ArtifactsTest do
                  {:person, member.scope},
                  context.work_item,
                  "proposal",
-                 [json("p.json", proposal())],
+                 [proposal()],
                  note: "Scope edited"
                )
 

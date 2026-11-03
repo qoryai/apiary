@@ -41,14 +41,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     * The work items, by their ticket:
       * Save a basket for later: Explore running, its first run waiting for a machine,
         on the trial version;
-      * Checkout total ignores the voucher after a reload: Explore at its gate, with a
-        proposal;
+      * Checkout total ignores the voucher after a reload: Explore at its gate, with
+        version 2 of its proposal, which read the comment Dana wrote on version 1, so
+        that comment is done;
       * Search returns no results for words with umlauts: Explore approved by Dana,
         Shape at its gate;
       * Basket badge shows 0 after signing in: Explore and Shape approved by Dana, Build
         waiting for its acceptance-criteria input;
-      * Product images load twice on the listing page: three rounds of questions; Dana
-        answers the first two, and the third escalates at the round limit;
+      * Product images load twice on the listing page: three rounds of questions, each
+        with options; Dana answers the first two, selecting an option for one question
+        and writing her own for the other, and the third escalates at the round limit;
       * TypeError in the address form after autofill: a result that fails the explore
         schema, escalated as a run that stopped;
       * Show delivery dates on the product page: Shape at its gate, with an
@@ -116,6 +118,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @grant_ref "G_acme"
   @pool "preview-pool"
   @forager "0.10.0"
+  # Dana's comment on the first version of a proposal.
+  @comment "Also check the total when a customer changes the basket after the reload."
 
   # The work items, in the order they are taken in: what happens to each, who takes its
   # ticket in, and its ticket: number, title and the line its body opens with.
@@ -753,13 +757,20 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # Its first run waits for a machine.
   defp drive!(:explore_running, _ctx, work_item), do: work_item
 
+  # Version 1 of the proposal, Dana's comment on it, and version 2, which read it.
   defp drive!(:explore_gate, ctx, work_item) do
-    record_result!(ctx, work_item, {:result, proposal(work_item.title)})
+    work_item = proposed!(ctx, work_item)
+
+    %{status: :confirm, step: %{attempt: attempt}} =
+      Explore.current(work_item, DateTime.utc_now())
+
+    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a comment")
+    record_result!(ctx, work_item, {:result, proposal(work_item.title, :updated)})
     current(ctx.dana, work_item)
   end
 
   defp drive!(:shape_gate, ctx, work_item) do
-    work_item = drive!(:explore_gate, ctx, work_item)
+    work_item = proposed!(ctx, work_item)
     confirm!(ctx.dana, work_item)
   end
 
@@ -857,6 +868,11 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     do: Shell.raise!("#{work_item.title} did not escalate at the round limit")
 
   defp escalated?(%WorkItem{stage_state: state}), do: state == :escalated
+
+  defp proposed!(ctx, work_item) do
+    record_result!(ctx, work_item, {:result, proposal(work_item.title, :first)})
+    current(ctx.dana, work_item)
+  end
 
   # Explore's gate is approved by confirming the run's proposal, as the work item page
   # does it.
@@ -1064,32 +1080,49 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       "about" => %{"kind" => "Explore", "title" => work_item.title}
     }
 
-  # An explore v1 result whose verdict is `understood`.
-  defp proposal(title) do
+  # An explore v1 result whose verdict is `understood`: its first version, or the version
+  # that read Dana's comment (`@comment`).
+  defp proposal(title, version) do
+    {in_scope, why} =
+      case version do
+        :first ->
+          {"reproduce it on the staging build, change the page and add a test",
+           "It changes the cause, so the change stays after every reload."}
+
+        :updated ->
+          {"reproduce it on the staging build, change the page, add a test for a reload " <>
+             "and one for a basket change",
+           "It changes the cause, so the change stays after every reload and basket change."}
+      end
+
     %{
       "version" => 1,
       "verdict" => "understood",
-      "complexity" => %{"level" => "standard", "reason" => "One page and its tests change."},
-      "understanding" => "The ticket is about this change: #{title}.",
-      "scope" => %{
-        "in" => ["Reproduce it on the staging build", "Change the page and add a test"],
-        "out" => ["Other pages of the web shop"]
-      },
-      "approach" => %{
-        "summary" => "Find the cause in the web shop's code, change it and add a test for it.",
-        "alternatives" => [
-          %{
-            "summary" => "Hide the symptom on the page.",
-            "reason" => "The cause would stay."
-          }
-        ]
-      },
-      "knowledge" => [
-        %{
-          "text" => "The web shop's tests run on every change.",
-          "sources" => ["https://docs.example.com/web-shop"]
-        }
-      ]
+      "message" => """
+      ## What this is
+
+      The ticket is about this change: #{title}.
+
+      ## In and out
+
+      - In: #{in_scope}
+      - Out: other pages of the web shop
+
+      ## How Qory would do it
+
+      Find the cause in the web shop's code, change it and add a test for it.
+
+      ## Why this is the best
+
+      - #{why}
+      - One page and its tests change.
+
+      ## Alternatives
+
+      - Hide the symptom on the page. Why not: the cause would stay.
+
+      Source: [docs.example.com/web-shop](https://docs.example.com/web-shop)
+      """
     }
   end
 
@@ -1099,16 +1132,48 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       "version" => 1,
       "verdict" => "not_understood",
       "questions" => [
-        "Round #{round}: which listing page loads the images twice?",
-        "Round #{round}: on which devices does it happen?"
+        %{
+          "question" => """
+          Round #{round}. The category listing requests each product image twice:
+
+          - once in the page the server sends
+          - once in the lazy loader
+
+          Which load should stay?
+          """,
+          "options" => [
+            %{
+              "title" => "Keep the lazy loader",
+              "explanation" => "The first page opens faster. Cost: images appear a moment later."
+            },
+            %{
+              "title" => "Keep the server's images",
+              "explanation" => "Every image shows at once. Cost: a slower first page on phones."
+            }
+          ]
+        },
+        %{
+          "question" => "Round #{round}. Where should Qory test the change first?",
+          "options" => [
+            %{
+              "title" => "Phones",
+              "explanation" => "Most visitors use phones. Cost: desktops get a later check."
+            },
+            %{
+              "title" => "Phones and desktops",
+              "explanation" => "Covers every visitor. Cost: one more test run."
+            }
+          ]
+        }
       ]
     }
   end
 
-  defp answers(round) do
+  # Dana selects an option for the first question and writes her own for the second.
+  defp answers(_round) do
     %{
-      "1" => "The category listing, round #{round}.",
-      "2" => "Phones and desktops alike."
+      "1" => %{"option" => "Keep the lazy loader"},
+      "2" => %{"custom" => "Test on the two oldest phones the shop supports."}
     }
   end
 

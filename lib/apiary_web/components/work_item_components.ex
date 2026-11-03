@@ -2429,20 +2429,20 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.proposal_section
           id={"#{@id}-complexity"}
           label={gettext("Complexity")}
-          value={@proposal.complexity}
+          value={@proposal[:complexity] || %{}}
           change={@changes[:complexity]}
         >
           <:draw :let={complexity}>
             <div class="q-xp-cx">
               <.badge :if={level_word(complexity[:level])}>{level_word(complexity[:level])}</.badge>
-              <div class="q-xp-val" phx-no-format>{complexity.reason}</div>
+              <div class="q-xp-val" phx-no-format>{complexity[:reason]}</div>
             </div>
           </:draw>
         </.proposal_section>
         <.proposal_section
           id={"#{@id}-understanding"}
           label={gettext("Understanding")}
-          value={@proposal.understanding}
+          value={@proposal[:understanding]}
           change={@changes[:understanding]}
         >
           <:draw :let={text}>
@@ -2452,7 +2452,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.proposal_section
           id={"#{@id}-scope-in"}
           label={gettext("In scope")}
-          value={@proposal.scope_in}
+          value={@proposal[:scope_in] || []}
           change={@changes[:scope_in]}
         >
           <:draw :let={items}><.text_list items={items} /></:draw>
@@ -2460,7 +2460,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.proposal_section
           id={"#{@id}-scope-out"}
           label={gettext("Out of scope")}
-          value={@proposal.scope_out}
+          value={@proposal[:scope_out] || []}
           change={@changes[:scope_out]}
         >
           <:draw :let={items}><.text_list items={items} /></:draw>
@@ -2468,7 +2468,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.proposal_section
           id={"#{@id}-approach"}
           label={gettext("Approach")}
-          value={@proposal.approach}
+          value={@proposal[:approach]}
           change={@changes[:approach]}
         >
           <:draw :let={text}>
@@ -3508,13 +3508,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   # The fields as the edit page shows the run's words: a scope entry one line, its line
   # breaks as spaces.
   defp edit_values(proposal) do
+    complexity = proposal[:complexity] || %{}
+
     %{
-      level: to_string(proposal.complexity.level),
-      reason: proposal.complexity.reason,
-      understanding: proposal.understanding,
-      scope_in: lines(proposal.scope_in),
-      scope_out: lines(proposal.scope_out),
-      approach: proposal.approach
+      level: to_string(complexity[:level]),
+      reason: complexity[:reason],
+      understanding: proposal[:understanding],
+      scope_in: lines(proposal[:scope_in]),
+      scope_out: lines(proposal[:scope_out]),
+      approach: proposal[:approach]
     }
   end
 

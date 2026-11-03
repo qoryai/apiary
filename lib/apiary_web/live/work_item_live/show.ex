@@ -245,7 +245,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               work_item={@item}
               earlier_runs={@earlier_runs}
               earlier_take_ins={@earlier_take_ins}
-              changes={@changes}
               can_act={@can.act}
               backlog_off={@backlog_off}
               answers={@answers}
@@ -455,30 +454,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp act("change_proposal", params, socket),
     do: {:noreply, assign(socket, :edit_values, edit_values(params))}
 
-  defp act("confirm_changes", params, socket) do
-    changes = changes(params)
-
-    with_attempt(socket, fn attempt ->
-      case WorkItems.confirm(scope(socket), socket.assigns.row, attempt, changes) do
-        {:ok, _work_item} ->
-          {:noreply,
-           socket
-           |> assign(edit_values: %{}, edit_errors: %{})
-           |> push_patch(to: tab_path(scope(socket), socket.assigns.number, :explore))}
-
-        {:error, {:invalid, errors}} ->
-          errors = if errors == :form, do: edit_form_errors(changes), else: errors
-
-          {:noreply,
-           socket
-           |> assign(edit_values: edit_values(params), edit_errors: errors)
-           |> update(:edit_submits, &(&1 + 1))}
-
-        {:error, _refused} ->
-          {:noreply, socket |> assign(:edit_errors, %{}) |> refresh(&editable/1)}
-      end
-    end)
-  end
+  # A confirmation keeps no changes since a person changes a proposal with a comment: the
+  # edit page's send changes nothing, until the page goes.
+  defp act("confirm_changes", _params, socket),
+    do: {:noreply, socket |> assign(:edit_errors, %{}) |> refresh(&editable/1)}
 
   # The workflow model's actions. Each form sends the stage the reader saw (`seen`); the
   # page reads the work item again and acts only while it is still in that stage, asked
@@ -753,25 +732,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     |> Map.new()
   end
 
-  # What `Apiary.WorkItems.confirm/4` is given: the edit page's fields alone.
-  defp changes(params) do
-    complexity = if is_map(params["complexity"]), do: params["complexity"], else: %{}
-
-    params
-    |> Map.take(@edit_keys)
-    |> Map.put("complexity", Map.take(complexity, ["level", "reason"]))
-  end
-
-  # A form missing a field, or with a field that is not text: each such field is to be
-  # written.
-  defp edit_form_errors(changes) do
-    fields =
-      [{:reason, changes["complexity"]["reason"]}] ++
-        for key <- @edit_keys, do: {String.to_existing_atom(key), changes[key]}
-
-    for {field, value} <- fields, not is_binary(value), into: %{}, do: {field, :blank}
-  end
-
   ## Live
 
   @impl true
@@ -862,7 +822,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         work_item: row,
         earlier_runs: page.earlier_runs,
         earlier_take_ins: page.earlier_take_ins,
-        changes: page.changes,
         thread: page.thread,
         people: page.people,
         comment_count: WorkItems.count_comments(scope, row),
