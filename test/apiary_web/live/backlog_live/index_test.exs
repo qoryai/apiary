@@ -877,8 +877,9 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
   # From 768 px the page's CSS keys the window-height layout on a `.q-bl` two levels under
   # `.q-page` (`.q-page:has(> * > .q-bl)`), scrolls the list's box (`.q-bl-main > .q-blk`)
-  # and, from 1280 px, the ticket's panel (`.q-bl > .q-bl-prev`). What it looks like is in
-  # the walk's pictures.
+  # and, from 1280 px, the ticket's panel (`.q-bl > .q-bl-prev`). In the panel, from 768
+  # px, the top part (`.q-bl-prev-head`: the bar and Take in) stays and only the rest
+  # (`.q-bl-prev-body`) scrolls. What it looks like is in the walk's pictures.
   describe "the layout" do
     test "the list's box and the ticket's panel sit where the CSS reads them", ctx do
       item = ticket(ctx.shop)
@@ -892,6 +893,17 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert at.(".q-bl > .q-bl-main > section#backlog-list.q-blk") == 1
       assert at.(".q-bl > #backlog-ticket.q-bl-prev") == 1
       assert at.(".q-bl-main > .q-blk") == 1
+
+      assert at.("#backlog-ticket > *") == 2
+      assert at.("#backlog-ticket > .q-bl-prev-head:first-child > .q-bl-tb:first-child") == 1
+      assert at.(".q-bl-prev-head > .q-bl-tb + #backlog-ticket-take-in.q-bl-ti-act") == 1
+      assert at.("#backlog-ticket > .q-bl-prev-head + .q-bl-prev-body") == 1
+
+      for part <- ~w(#backlog-ticket-title .q-bl-meta #backlog-ticket-facts #backlog-ticket-text) do
+        assert at.("#backlog-ticket > .q-bl-prev-body > " <> part) == 1
+      end
+
+      assert at.(".q-bl-prev-body #backlog-ticket-take-in") == 0
     end
 
     test "Work items and Runs have no .q-bl, so the layout leaves them as they are", ctx do

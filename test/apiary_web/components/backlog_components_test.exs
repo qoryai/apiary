@@ -555,8 +555,9 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, "#tk-facts .q-bl-lb") == "bug, checkout"
       refute text(html, "#tk-facts") =~ "Filed by"
 
-      assert text(html, "div#tk > #block") == "the block"
-      assert text(html, "#tk-text > #text") == "the text"
+      # Take in sits in the top part, after the bar; the rest scrolls under it.
+      assert text(html, "div#tk > .q-bl-prev-head > .q-bl-tb + #block") == "the block"
+      assert text(html, "div#tk > .q-bl-prev-body > #tk-text > #text") == "the text"
 
       assert text(html, "#tk-comments h3") == "3 comments"
       assert attr(html, "#tk-comments", "aria-labelledby") == ["tk-comments-h"]

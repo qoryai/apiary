@@ -12045,7 +12045,6 @@
       position: static;
       height: auto;
       margin-bottom: -1.5rem;
-      scroll-padding-top: 40px;
     }
   }
   /* From 768 to 1279 px: a dialog over the list, at most 760 px wide, on a scrim. */
@@ -12092,7 +12091,7 @@
       border-radius: 12px 12px 0 0;
       animation-name: q-bl-sheet;
     }
-    .q-bl-prev > :last-child {
+    .q-bl-prev-body > :last-child {
       margin-bottom: 32px;
     }
     .q-bl-prev .q-bl-tb {
@@ -12107,6 +12106,73 @@
       padding: 10px 16px 12px;
       border-top: 1px solid var(--q-border-subtle);
       background-color: var(--color-base-200);
+    }
+  }
+  /* The ticket's top part (`.q-bl-prev-head`): the bar, then Take in and its hint, or why
+     the reader may not take it in. From 768 px it stays in place over a line, and only the
+     rest (`.q-bl-prev-body`) scrolls. On the sheet below 768 px both parts are one scroll,
+     and Take in moves back under the facts, where it sticks to the sheet's foot. */
+  @media (min-width: 768px) {
+    .q-bl > .q-bl-prev {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+    }
+    .q-bl-prev-head {
+      flex: none;
+      border-bottom: 1px solid var(--q-border-subtle);
+    }
+    .q-bl-prev-head > .q-bl-ti-act {
+      margin: 0;
+      padding: 4px 0 12px;
+    }
+    .q-bl-prev-body {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .q-bl-prev-body > .q-bl-h {
+      margin-top: 16px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-bl-prev-head {
+      padding: 0 4px 0 24px;
+    }
+    .q-bl-prev-body {
+      padding: 0 4px 40px 24px;
+    }
+  }
+  @media (min-width: 768px) and (max-width: 1279.98px) {
+    .q-bl-prev-head {
+      padding: 0 24px;
+    }
+    .q-bl-prev-head > .q-bl-tb {
+      border-bottom: 0;
+    }
+    .q-bl-prev-head > .q-bl-ti-act {
+      padding-top: 12px;
+    }
+    .q-bl-prev-body {
+      padding: 0 24px 32px;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .q-bl-prev {
+      display: flex;
+      flex-direction: column;
+    }
+    .q-bl-prev-head,
+    .q-bl-prev-body {
+      display: contents;
+    }
+    .q-bl-prev-head > .q-bl-ti-act {
+      order: 1;
+    }
+    .q-bl-prev-body > :is(.q-bl-text, .q-bl-thread) {
+      order: 2;
     }
   }
   @keyframes q-bl-fade {

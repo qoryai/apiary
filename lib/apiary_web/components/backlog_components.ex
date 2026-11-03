@@ -298,6 +298,10 @@ defmodule ApiaryWeb.BacklogComponents do
       for its items in place of "ticket" (`item_noun`, `SourceComponents.item/1`):
       "Bug", "Open the full bug"; Close and a press on the scrim patch to
       `close_patch`. Whether the dialog is modal, and its focus, are the page's, by width.
+      Its top part (`.q-bl-prev-head`) has the bar, then Take in; the rest
+      (`.q-bl-prev-body`) has the title, the meta line, the facts, the text and the
+      comments. From 768 px only the rest scrolls; on the sheet below 768 px the CSS
+      puts Take in back under the facts.
     * `:full` - the full ticket, a page: Backlog back (`back_path`), the head, the text
       and the comments, and beside them the facts, Filed by among them, the link out and
       Take in.
@@ -395,53 +399,57 @@ defmodule ApiaryWeb.BacklogComponents do
     >
     </div>
     <div id={@id} class="q-bl-prev" role="dialog" aria-label={SourceComponents.item_label(@item_noun)}>
-      <div class="q-bl-tb">
-        <.integration_tile name={@integration} class="q-bl-src" />
-        <span class="q-bl-key" title={@full_form}><.external_text text={@full_form} /></span>
-        <span class="q-bl-grow"></span>
-        <.button
-          :if={@full_path}
-          id={"#{@id}-full"}
-          variant="ghost"
-          class="btn-square"
-          navigate={@full_path}
-          aria-label={gettext("Open the full %{item}", item: @item)}
-          title={gettext("Open the full %{item}", item: @item)}
-        >
-          <.icon name="hero-arrows-pointing-out-micro" class="size-3.5" />
-        </.button>
-        <.external_link
-          :if={@out}
-          id={"#{@id}-out"}
-          href={@ticket.url}
-          class="btn btn-ghost btn-sm btn-square q-bl-out-icon"
-          title={@open_on}
-        >
-          <span class="sr-only">{@open_on}</span>
-        </.external_link>
-        <.button
-          :if={@close_patch}
-          id={"#{@id}-close"}
-          variant="ghost"
-          class="btn-square"
-          patch={@close_patch}
-          aria-label={gettext("Close the %{item}", item: @item)}
-          title={gettext("Close")}
-        >
-          <.icon name="hero-x-mark-micro" class="size-3.5" />
-        </.button>
+      <div class="q-bl-prev-head">
+        <div class="q-bl-tb">
+          <.integration_tile name={@integration} class="q-bl-src" />
+          <span class="q-bl-key" title={@full_form}><.external_text text={@full_form} /></span>
+          <span class="q-bl-grow"></span>
+          <.button
+            :if={@full_path}
+            id={"#{@id}-full"}
+            variant="ghost"
+            class="btn-square"
+            navigate={@full_path}
+            aria-label={gettext("Open the full %{item}", item: @item)}
+            title={gettext("Open the full %{item}", item: @item)}
+          >
+            <.icon name="hero-arrows-pointing-out-micro" class="size-3.5" />
+          </.button>
+          <.external_link
+            :if={@out}
+            id={"#{@id}-out"}
+            href={@ticket.url}
+            class="btn btn-ghost btn-sm btn-square q-bl-out-icon"
+            title={@open_on}
+          >
+            <span class="sr-only">{@open_on}</span>
+          </.external_link>
+          <.button
+            :if={@close_patch}
+            id={"#{@id}-close"}
+            variant="ghost"
+            class="btn-square"
+            patch={@close_patch}
+            aria-label={gettext("Close the %{item}", item: @item)}
+            title={gettext("Close")}
+          >
+            <.icon name="hero-x-mark-micro" class="size-3.5" />
+          </.button>
+        </div>
+        {render_slot(@take_in)}
       </div>
-      <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
-      <p class="q-bl-meta">{@meta}</p>
-      <.facts
-        id={@id}
-        ticket={@ticket}
-        collection_noun={@collection_noun}
-        filed_by={false}
-      />
-      {render_slot(@take_in)}
-      <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
-      <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+      <div class="q-bl-prev-body">
+        <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
+        <p class="q-bl-meta">{@meta}</p>
+        <.facts
+          id={@id}
+          ticket={@ticket}
+          collection_noun={@collection_noun}
+          filed_by={false}
+        />
+        <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
+        <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+      </div>
     </div>
     """
   end

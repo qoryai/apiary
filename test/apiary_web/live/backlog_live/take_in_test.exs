@@ -137,7 +137,11 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       assert words(view, "#backlog-ticket-take-in") ==
                ApiaryWeb.BacklogComponents.take_in_who_may(ctx.scope)
 
-      assert has_element?(view, "#backlog-ticket-take-in-refused")
+      assert has_element?(
+               view,
+               ".q-bl-prev-head > #backlog-ticket-take-in > #backlog-ticket-take-in-refused"
+             )
+
       refute has_element?(view, "#backlog-ticket-take-in-button")
       refute has_element?(view, "#backlog-ticket-take-in-hint")
     end
