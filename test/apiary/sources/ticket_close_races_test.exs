@@ -8,7 +8,9 @@ defmodule Apiary.Sources.TicketCloseRacesTest do
   # The rules under test: a post holds the ticket's connection and its item before the
   # work item, and a take in again holds that connection before the work item, so each
   # race ends with both sides answered and no deadlock; one close of a work item wins; a
-  # take in again that waits on the post reads the ticket as closed.
+  # take in again that waits on the post reads the ticket as closed; and the post holds
+  # the connection `FOR NO KEY UPDATE`, so a claim that holds the work item's run and
+  # then checks a foreign key to the connection does not wait on the post.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -19,6 +21,7 @@ defmodule Apiary.Sources.TicketCloseRacesTest do
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Adapters.Connection
   alias Apiary.Audit.Entry
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
   alias Apiary.Sources.Item
@@ -132,6 +135,51 @@ defmodule Apiary.Sources.TicketCloseRacesTest do
 
     assert await(second) == {:error, :ticket_closed}
     assert %WorkItem{state: :closed, take_in: 1} = reloaded(ctx)
+  end
+
+  test "a claim that holds the run checks the connection's key while the post waits on the run",
+       ctx do
+    run_id =
+      Repo.one!(
+        from r in DispatchRun,
+          where: r.work_item_id == ^ctx.work_item.id and r.state == :waiting,
+          select: r.id
+      )
+
+    # The claim's two steps (`Apiary.Dispatches.waiting_query/1`, then the insert of the
+    # run's credential entry, `Apiary.Runs.RunCredentials.insert!/2`): the run held, then
+    # the foreign key check on the connection.
+    {claim, claim_pid} =
+      hold(fn ->
+        Repo.one(
+          from r in DispatchRun,
+            where: r.id == ^run_id,
+            lock: "FOR UPDATE SKIP LOCKED",
+            select: r.id
+        )
+      end)
+
+    assert claim.result == run_id
+
+    post = start(closing(ctx))
+    await_blocked(post.backend, claim_pid)
+
+    checked =
+      continue(claim, fn ->
+        Repo.query(
+          "SELECT 1 FROM adapter_connections WHERE id = $1 AND organisation_id = $2 FOR KEY SHARE",
+          [
+            Ecto.UUID.dump!(ctx.connection.id),
+            Ecto.UUID.dump!(ctx.connection.organisation_id)
+          ]
+        )
+      end)
+
+    assert {:ok, %{num_rows: 1}} = checked
+    commit(claim)
+
+    assert await(post) == {:ok, :accepted}
+    assert %WorkItem{state: :closed, closed_by_id: nil} = reloaded(ctx)
   end
 
   test "a post waits on a take in again, then closes the work item it brought back", ctx do

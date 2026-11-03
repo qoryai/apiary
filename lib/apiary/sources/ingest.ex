@@ -73,9 +73,12 @@ defmodule Apiary.Sources.Ingest do
   # marked and was updated before `complete.since` is marked deleted, and keeps
   # `complete.since`.
   #
-  # **Locks.** For items, in this order: the collection's connection, `FOR UPDATE`, so
-  # that one connection's posts and listings of collections are taken one at a time and
-  # never beside its end; the collection, `FOR SHARE`, so that it does not end meanwhile,
+  # **Locks.** For items, in this order: the collection's connection, `FOR NO KEY
+  # UPDATE`, so that one connection's posts and listings of collections are taken one at a
+  # time and never beside its end, while a foreign key check on the connection
+  # (`FOR KEY SHARE`) does not wait: a claim holds a run of the queue, then inserts the
+  # run's credential entry, which names the connection, and a post that closes a ticket
+  # waits on that run; the collection, `FOR SHARE`, so that it does not end meanwhile,
   # and the answer is decided again on it as it is held; a transaction lock on each ref
   # the body names, in the adapter (`pg_advisory_xact_lock`), by key, so that two
   # connections never hold one ref at once; then the items of the adapter's live
@@ -180,12 +183,12 @@ defmodule Apiary.Sources.Ingest do
   # A ref the contract allows, else nil, which names nothing.
   defp bounded(ref), do: if(Apiary.Adapters.Wire.text?(ref, 1, @max_ref), do: ref)
 
-  # Holds the connection of `found` `FOR UPDATE`, then `found` `FOR SHARE`, and decides
+  # Holds the connection of `found` `FOR NO KEY UPDATE`, then `found` `FOR SHARE`, and decides
   # the answer again on it as it is held: `{:ok, collection}`, live and linked to a
   # workspace, or the refusal.
   defp hold(key_scope, %Collection{id: id, connection_id: connection_id}) do
     _connection =
-      Repo.one(from c in Connection, where: c.id == ^connection_id, lock: "FOR UPDATE")
+      Repo.one(from c in Connection, where: c.id == ^connection_id, lock: "FOR NO KEY UPDATE")
 
     held = Repo.one(from c in Collection, where: c.id == ^id, lock: "FOR SHARE")
 
