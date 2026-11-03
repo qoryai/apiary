@@ -57,6 +57,7 @@ defmodule Apiary.Repo.Migrations.KeepCommentsOnAProposal do
              "and questions of up to 20000 characters, so this migration rolls back only " <>
              "while no comment and no question longer than 2000 characters is kept. Some are."
 
+  # The refusal is a SQL string inside the DO block, so each apostrophe in it is doubled.
   def down do
     execute("LOCK TABLE work_item_answers IN SHARE MODE")
 
@@ -67,7 +68,7 @@ defmodule Apiary.Repo.Migrations.KeepCommentsOnAProposal do
         SELECT 1 FROM work_item_answers
         WHERE question IS NULL OR char_length(question) > 2000
       ) THEN
-        RAISE EXCEPTION '#{@refusal}';
+        RAISE EXCEPTION '#{String.replace(@refusal, "'", "''")}';
       END IF;
     END
     $$
