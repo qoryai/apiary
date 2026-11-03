@@ -2206,8 +2206,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-items-rows #work-item-#{closed.public_id}")
       refute has_element?(view, "#work-items-groups")
 
+      waiting =
+        scope
+        |> explore_gate_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :waiting_inputs)
+
       {:ok, view, _html} = live(conn, list(scope) <> "?view=you")
       refute has_element?(view, "#work-items-groups")
+
+      # With no group above it, a row keeps its stage's name.
+      assert texts(view, "#work-items-rows #work-item-#{waiting.public_id} .q-wl-nx") ==
+               ["Build · Waits for inputs"]
     end
 
     test "an address with a stage shows that stage alone, under the boxes, with no control", %{
