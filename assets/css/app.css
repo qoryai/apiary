@@ -12006,6 +12006,48 @@
       border-left: 1px solid var(--q-border-subtle);
     }
   }
+  /* From 768 px the page is the window's height and the window does not scroll: the
+     header, the bar and the filters stay, and the list's box scrolls under them. From
+     1280 px the open ticket beside the list scrolls in its column, down to the window's
+     foot. Below 768 px the window scrolls the page, under the ticket's sheet. */
+  @media (min-width: 768px) {
+    .q-page:has(> * > .q-bl) {
+      display: flex;
+      height: calc(100dvh - var(--q-bar));
+      flex-direction: column;
+      padding-bottom: 1.5rem;
+    }
+    .q-page:has(> * > .q-bl) > *,
+    .q-page > * > .q-bl {
+      display: flex;
+      min-height: 0;
+      flex: 1 1 0;
+      flex-direction: column;
+    }
+    .q-bl > .q-bl-main {
+      min-height: 0;
+      flex: 1 1 0;
+    }
+    .q-bl-main > .q-blk {
+      min-height: 0;
+      flex: 0 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-page > * > .q-bl:has(> .q-bl-prev) {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .q-bl > .q-bl-prev {
+      position: static;
+      height: auto;
+      margin-bottom: -1.5rem;
+      scroll-padding-top: 40px;
+    }
+  }
   /* From 768 to 1279 px: a dialog over the list, at most 760 px wide, on a scrim. */
   @media (max-width: 1279.98px) {
     .q-bl-prev-scrim {

@@ -4,8 +4,8 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
   # collections, Filed by, Label and Updated, their tokens, Clear and the match count;
   # Sort; the pager both ways; a forged cursor, filter, view, order or search, which
   # matches nothing or is the default and breaks nothing; the words of the source for its
-  # items; and the list read again on a message of its workspace's Backlog, and not on
-  # another's.
+  # items; the list read again on a message of its workspace's Backlog, and not on
+  # another's; and the parts the window-height layout of the page's CSS reads.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -872,6 +872,39 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       [title] = token |> LazyHTML.query(".q-tok-v") |> LazyHTML.attribute("title")
       assert title == Enum.join(values, ", ")
       assert words(view, "#backlog-token-label") == "Label " <> Enum.join(values, ", ")
+    end
+  end
+
+  # From 768 px the page's CSS keys the window-height layout on a `.q-bl` two levels under
+  # `.q-page` (`.q-page:has(> * > .q-bl)`), scrolls the list's box (`.q-bl-main > .q-blk`)
+  # and, from 1280 px, the ticket's panel (`.q-bl > .q-bl-prev`). What it looks like is in
+  # the walk's pictures.
+  describe "the layout" do
+    test "the list's box and the ticket's panel sit where the CSS reads them", ctx do
+      item = ticket(ctx.shop)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?ticket=#{item.public_id}"))
+      doc = view |> render() |> LazyHTML.from_document()
+      at = &Enum.count(LazyHTML.query(doc, &1))
+
+      assert at.(".q-page > * > #backlog.q-bl") == 1
+      assert at.(".q-bl > .q-bl-main > #backlog-bar") == 1
+      assert at.(".q-bl > .q-bl-main > #backlog-status") == 1
+      assert at.(".q-bl > .q-bl-main > section#backlog-list.q-blk") == 1
+      assert at.(".q-bl > #backlog-ticket.q-bl-prev") == 1
+      assert at.(".q-bl-main > .q-blk") == 1
+    end
+
+    test "Work items and Runs have no .q-bl, so the layout leaves them as they are", ctx do
+      for rest <- ["/work", "/runs"] do
+        {:ok, view, _html} =
+          live(ctx.conn, ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}" <> rest)
+
+        assert view
+               |> render()
+               |> LazyHTML.from_document()
+               |> LazyHTML.query(".q-bl")
+               |> Enum.empty?()
+      end
     end
   end
 end
