@@ -6,10 +6,8 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
-  import Apiary.OrganisationsFixtures
   import Apiary.SourcesFixtures
   import Apiary.StagesFixtures
-  import Apiary.WorkItemsFixtures
 
   alias Apiary.{Repo, Sources, WorkItems}
   alias Apiary.Dispatches.DispatchRun
@@ -278,6 +276,21 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
     end
   end
 
+  describe "a press by a person who may not take tickets in" do
+    test "is refused, and changes nothing", ctx do
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
+      {:ok, _closed} = WorkItems.close(ctx.scope, work_item)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.TakesNothingIn)
+
+      {:ok, view, _html} = live(ctx.conn, backlog(ctx.scope, "open"))
+      render_click(view, "take_in_again", %{"id" => ctx.ticket.public_id})
+
+      assert has_element?(view, "#flash-error")
+      assert %WorkItem{state: :closed, take_in: 1} = Repo.get!(WorkItem, work_item.id)
+      assert newest_run(work_item).take_in == 1
+    end
+  end
+
   describe "the work item page" do
     defp page(scope, work_item), do: work_path(scope, work_item.number)
 
@@ -310,6 +323,20 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
 
       assert words(view, "#work-item-ended-line") == "Every stage done"
       assert has_element?(view, "#work-item-ended-again")
+    end
+
+    test "after an undo of its take in again, the end line and the stages agree", ctx do
+      work_item = finished_fixture(ctx.scope, ctx.ticket)
+      close_ticket(ctx, 60)
+      reopen_ticket(ctx, 120)
+      {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
+      {:ok, _undone} = WorkItems.undo(ctx.scope, again)
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, work_item))
+
+      assert words(view, "#work-item-ended-line") == "Every stage done"
+      assert has_element?(view, "#work-item-head-stages")
+      refute has_element?(view, "#work-item-head-stages .q-wi-stage-now")
     end
 
     test "one a person closed keeps Take in again", ctx do

@@ -253,6 +253,87 @@ defmodule Apiary.WorkItems.FinishedTest do
     end
   end
 
+  describe "an undo of a take in again, without a place to put back" do
+    setup ctx do
+      work_item = finished_fixture(ctx.scope, ctx.ticket)
+      close_ticket(ctx, 60)
+      reopen_ticket(ctx, 120)
+      {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
+      %{work_item: work_item, again: reload(again)}
+    end
+
+    test "an event written before the place was kept leaves the place as it is", ctx do
+      place = [
+        :process_version_id,
+        :stage_id,
+        :stage_state,
+        :stage_round,
+        :stage_entry,
+        :loop_entry
+      ]
+
+      {1, _rows} =
+        Repo.update_all(
+          from(e in WorkItemEvent,
+            where: e.work_item_id == ^ctx.again.id and e.kind == :taken_in,
+            where: fragment("?->>'take_in' = '2'", e.data),
+            update: [
+              set: [
+                data:
+                  fragment(
+                    "jsonb_set(?, '{before}', (? -> 'before') - ARRAY['workspace_id', 'process_version_id', 'stage_id', 'stage_state', 'stage_round', 'stage_entry', 'loop_entry'])",
+                    e.data,
+                    e.data
+                  )
+              ]
+            ]
+          ),
+          []
+        )
+
+      {:ok, undone} = WorkItems.undo(ctx.scope, ctx.again)
+
+      assert %WorkItem{state: :closed} = undone
+      assert Map.take(undone, place) == Map.take(ctx.again, place)
+    end
+
+    test "a work item its take in again moved to another workspace keeps the place it has there",
+         ctx do
+      place = [
+        :process_version_id,
+        :stage_id,
+        :stage_state,
+        :stage_round,
+        :stage_entry,
+        :loop_entry
+      ]
+
+      {1, _rows} =
+        Repo.update_all(
+          from(e in WorkItemEvent,
+            where: e.work_item_id == ^ctx.again.id and e.kind == :taken_in,
+            where: fragment("?->>'take_in' = '2'", e.data),
+            update: [
+              set: [
+                data:
+                  fragment(
+                    "jsonb_set(?, '{before,workspace_id}', to_jsonb(?::text))",
+                    e.data,
+                    ^Ecto.UUID.generate()
+                  )
+              ]
+            ]
+          ),
+          []
+        )
+
+      {:ok, undone} = WorkItems.undo(ctx.scope, ctx.again)
+
+      assert %WorkItem{state: :closed} = undone
+      assert Map.take(undone, place) == Map.take(ctx.again, place)
+    end
+  end
+
   describe "an undo of a take in again" do
     setup ctx do
       work_item = finished_fixture(ctx.scope, ctx.ticket)
@@ -269,6 +350,20 @@ defmodule Apiary.WorkItems.FinishedTest do
 
       assert %{state: :closed, ended_by_id: nil, ended_reason: "last_stage_done"} =
                list_row(ctx, ctx.undone)
+    end
+
+    test "puts back its place in the process: every stage done", ctx do
+      place = [
+        :process_version_id,
+        :stage_id,
+        :stage_state,
+        :stage_round,
+        :stage_entry,
+        :loop_entry
+      ]
+
+      assert %WorkItem{stage_state: :done} = ctx.undone
+      assert Map.take(ctx.undone, place) == Map.take(ctx.work_item, place)
     end
 
     test "leaves the ticket in Open with Take in again, as it stays reopened", ctx do

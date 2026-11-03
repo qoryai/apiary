@@ -120,11 +120,13 @@ defmodule Apiary.WorkItems.Moves do
   # (`Apiary.Dispatches.cancel_for_undo/1`, `{:error, :claimed}` otherwise), and ends its
   # waiting runs. A first take in becomes `:undone`, and the adapter is told `undone`. A
   # take in again goes back to how it had ended, from its event's `before`: closed with
-  # when and by whom, and its owner, its target and who had taken it in, and
+  # when and by whom, and its owner, its target, who had taken it in and its place in
+  # its process (version, stage, state, round and entries), and
   # nothing is sent, as the label stayed; one that had ended undone becomes `:undone`
   # again, and the adapter is told `undone`, as its take in again put the label back on.
   # A work item moved by its take in again stays in the workspace it moved to, with its
-  # new number. The first instruction stays the one of the take in undone: it is given to
+  # new number, and keeps the place it has there. An event written before the place was
+  # kept leaves the place as it is. The first instruction stays the one of the take in undone: it is given to
   # no run until a take in again gives a new one.
   #
   # ## Close
@@ -584,7 +586,8 @@ defmodule Apiary.WorkItems.Moves do
         loop_entry: nil
       )
 
-  # How `work_item` had ended, for the undo of the take in again that leaves it.
+  # How `work_item` had ended, for the undo of the take in again that leaves it: its
+  # place in its workspace's process among the rest.
   defp before(%WorkItem{} = work_item) do
     {at, by_id} =
       case work_item.state do
@@ -600,7 +603,14 @@ defmodule Apiary.WorkItems.Moves do
       "taken_in_at" => DateTime.to_iso8601(work_item.taken_in_at),
       "owner_id" => work_item.owner_id,
       "target_system" => work_item.target_system,
-      "target_path" => work_item.target_path
+      "target_path" => work_item.target_path,
+      "workspace_id" => work_item.workspace_id,
+      "process_version_id" => work_item.process_version_id,
+      "stage_id" => work_item.stage_id,
+      "stage_state" => work_item.stage_state && Atom.to_string(work_item.stage_state),
+      "stage_round" => work_item.stage_round,
+      "stage_entry" => work_item.stage_entry,
+      "loop_entry" => work_item.loop_entry
     }
   end
 
@@ -631,10 +641,10 @@ defmodule Apiary.WorkItems.Moves do
       case before do
         %{state: :closed} ->
           [state: state, closed_at: before.at, closed_by_id: before.by_id] ++
-            taken_in_fields(before)
+            taken_in_fields(before) ++ stage_fields(before, held)
 
         %{state: :undone} ->
-          [state: state] ++ taken_in_fields(before)
+          [state: state] ++ taken_in_fields(before) ++ stage_fields(before, held)
 
         nil ->
           [state: state]
@@ -680,13 +690,39 @@ defmodule Apiary.WorkItems.Moves do
           taken_in_at: time(before["taken_in_at"]),
           owner_id: before["owner_id"],
           target_system: before["target_system"],
-          target_path: before["target_path"]
+          target_path: before["target_path"],
+          stage: stage_before(before)
         }
 
       _first ->
         nil
     end
   end
+
+  # The work item's place in its process as its take in again found it, and the
+  # workspace it was in; nil for an event written before the place was kept.
+  defp stage_before(%{"stage_id" => _id, "workspace_id" => workspace_id} = before) do
+    %{
+      workspace_id: workspace_id,
+      process_version_id: before["process_version_id"],
+      stage_id: before["stage_id"],
+      stage_state: before["stage_state"] && String.to_existing_atom(before["stage_state"]),
+      stage_round: before["stage_round"],
+      stage_entry: before["stage_entry"],
+      loop_entry: before["loop_entry"]
+    }
+  end
+
+  defp stage_before(_before), do: nil
+
+  # The place an undo puts back: none for an event without it, and none for a work item
+  # its take in again moved to another workspace, whose process the place is not of.
+  defp stage_fields(%{stage: %{workspace_id: workspace_id} = stage}, %WorkItem{
+         workspace_id: workspace_id
+       }),
+       do: stage |> Map.delete(:workspace_id) |> Map.to_list()
+
+  defp stage_fields(_before, _held), do: []
 
   defp time(nil), do: nil
 
