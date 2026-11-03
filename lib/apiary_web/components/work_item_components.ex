@@ -969,12 +969,10 @@ defmodule ApiaryWeb.WorkItemComponents do
               gettext("Confirm Qory's proposal, or write what to change.")
 
             you?(owner) ->
-              gettext("Next, you confirm Qory's proposal or decline the work item.")
+              gettext("You confirm next")
 
             owner ->
-              gettext("Next, %{name} confirms Qory's proposal or declines the work item.",
-                name: owner.name
-              )
+              gettext("%{name} confirms next", name: owner.name)
 
             true ->
               nil

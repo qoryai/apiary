@@ -34,16 +34,20 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # never shows what a message says.
   #
   # **The board.** Where the reader is shown the feature `workflow_model`
-  # (`ApiaryWeb.WorkItemLive.Workflow`), the Open view under no stage, no search and no
-  # filter shows the board in place of the stages strip: a column for each stage of the
-  # workspace's current process version, then one for each stage that version removed
-  # while live work items remain in it, marked with its version
-  # (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`). Under the board, in place
-  # of the bands, the Open view is a page of rows with the pager, as every other view is.
-  # The board is read again on `{:work_items_changed, ids}`. Under the feature, on every
-  # view, a row shows the stage its work item is at and the stage's state, as the work
-  # item page's head does (`ApiaryWeb.WorkItemLive.Workflow.row_statuses/2`). Without the
-  # feature the page is as before it.
+  # (`ApiaryWeb.WorkItemLive.Workflow`), every view shows the board in place of the stages
+  # strip: a box for each stage of the workspace's current process version, then one for
+  # each stage that version removed while live work items remain in it, marked with its
+  # version (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`), each with its name
+  # and how many live work items are in it under the search and the filters. Under the
+  # board, in place of the bands and Fold, the Open view is a page of rows grouped by the
+  # board's stages (`ApiaryWeb.WorkItemLive.Workflow.groups/2`), with no group for a stage
+  # with no row on the page, a row showing its stage's state alone. Every other view is a
+  # page of rows with the pager, a row showing the stage its work item is at and the
+  # stage's state, as the work item page's head does
+  # (`ApiaryWeb.WorkItemLive.Workflow.row_statuses/3`). An address with `stage` keeps that
+  # stage alone, under one group. Open and Closed each have a line under the bar. The
+  # board is read again on `{:work_items_changed, ids}`. Without the feature the page is
+  # as before it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -52,6 +56,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
+  import ApiaryWeb.WorkItemComponents, only: [stage_name: 1]
   import ApiaryWeb.WorkItemListComponents
 
   alias Apiary.{Access, Adapters, ExternalText, WorkItems}
@@ -93,7 +98,6 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           <StageComponents.board_columns
             :if={@board}
             columns={@board}
-            path={&work_item_path(@current_scope, %{number: &1})}
           />
           <.stages_strip
             :if={!@board}
@@ -182,7 +186,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
             match={total(@list, @params)}
           />
 
-          <.view_note view={@params.view} item_noun={@item_noun} />
+          <.view_note view={@params.view} stages={!!@board} item_noun={@item_noun} />
 
           <%= cond do %>
             <% @bands -> %>
@@ -210,8 +214,40 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                 />
               </.stage_band>
             <% true -> %>
+              <div :if={@groups} id="work-items-groups">
+                <.stage_group
+                  :for={group <- @groups}
+                  id={"work-items-group-#{group.index}"}
+                  name={group.name || gettext("Removed stage")}
+                  count={group.count}
+                >
+                  <.rows
+                    rows={group.rows}
+                    people={@people}
+                    scope={@current_scope}
+                    can_act={@can_act}
+                    now={@now}
+                    statuses={@stage_statuses}
+                  />
+                </.stage_group>
+              </div>
+              <.stage_group
+                :if={@board != nil and stage_alone?(@params) and @list.rows != []}
+                id={"work-items-#{@params.stage}"}
+                name={stage_name(@params.stage)}
+                count={Map.fetch!(@list.stages, @params.stage)}
+              >
+                <.rows
+                  rows={@list.rows}
+                  people={@people}
+                  scope={@current_scope}
+                  can_act={@can_act}
+                  now={@now}
+                  statuses={@stage_statuses}
+                />
+              </.stage_group>
               <.stage_band
-                :if={stage_alone?(@params) and @list.rows != []}
+                :if={is_nil(@board) and stage_alone?(@params) and @list.rows != []}
                 id={"work-items-#{@params.stage}"}
                 stage={@params.stage}
                 count={Map.fetch!(@list.stages, @params.stage)}
@@ -232,7 +268,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                 />
               </.stage_band>
               <ul
-                :if={!stage_alone?(@params) and @list.rows != []}
+                :if={is_nil(@groups) and !stage_alone?(@params) and @list.rows != []}
                 id="work-items-rows"
                 class="q-rows"
               >
@@ -265,7 +301,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   attr :scope, :any, required: true
   attr :can_act, :boolean, required: true
   attr :now, :any, required: true
-  attr :statuses, :map, default: %{}, doc: "`ApiaryWeb.WorkItemLive.Workflow.row_statuses/2`"
+  attr :statuses, :map, default: %{}, doc: "`ApiaryWeb.WorkItemLive.Workflow.row_statuses/3`"
 
   defp rows(assigns) do
     ~H"""
@@ -300,6 +336,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
        list: nil,
        bands: nil,
        board: nil,
+       groups: nil,
        stage_statuses: %{},
        people: %{},
        waiting: nil,
@@ -391,10 +428,8 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     params = socket.assigns.params
     now = DateTime.utc_now()
 
-    board =
-      if params.view == :open and is_nil(params.stage) and is_nil(params.search) and
-           not Enum.any?(@filters, &on?(params, &1)) and Workflow.on?(scope),
-         do: Workflow.board(scope, params.sort)
+    flow = Workflow.on?(scope)
+    board = if flow, do: Workflow.board(scope, query(params), now)
 
     # Under the board, the Open view is a page of rows, as every other view is.
     {list, bands} =
@@ -408,12 +443,17 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
     people = people(rows, one_owner(params), socket.assigns.options.owner)
 
+    # Under the board the Open view groups its rows by stage.
+    groups =
+      if board && params.view == :open && is_nil(params.stage), do: Workflow.groups(board, rows)
+
     # Under the workflow model a row shows the stage its work item is at, as its page's
-    # head does.
-    stage_statuses = if Workflow.on?(scope), do: Workflow.row_statuses(scope, rows), else: %{}
+    # head does, or only the stage's state under its group.
+    stage_statuses = if flow, do: Workflow.row_statuses(scope, rows, !!groups), else: %{}
 
     assign(socket,
       board: board,
+      groups: groups,
       stage_statuses: stage_statuses,
       list: list,
       bands: bands,

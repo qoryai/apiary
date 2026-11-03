@@ -34,12 +34,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages}
+  alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.Run
   alias Apiary.Stages.Runner
   alias Apiary.WorkItems.WorkItem
-  alias ApiaryWeb.WorkItemLive.Board
+  alias ApiaryWeb.WorkItemLive.StageComponents
 
   @states Apiary.Processes.Version.stage_states()
   @checks [:passed, :missing, :not_checked]
@@ -363,17 +363,21 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   ]
 
   @doc false
-  # row_statuses/2 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`), the
+  # row_statuses/3 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`), the
   # status each live work item the stage runner placed shows in place of Explore's words,
   # by the row's id: the stage and its state, with its mark, as the work item page's head
-  # shows them (`ApiaryWeb.WorkItemLive.StageComponents.head_status/1`). A row is left
-  # out, and keeps Explore's words, where it is not placed, or is at Explore while a run,
-  # its questions or its gate are what the stage is at. A row that ended keeps its words,
-  # and has a mark alone: `:done` where every stage is done, else `:stopped`.
-  @spec row_statuses(Scope.t(), [map]) :: %{String.t() => map}
-  def row_statuses(_scope, []), do: %{}
+  # shows them (`ApiaryWeb.WorkItemLive.StageComponents.head_status/1`), or, for rows under
+  # their stage's group (`grouped`), the state alone
+  # (`ApiaryWeb.WorkItemLive.StageComponents.group_status/1`). A row is left out, and keeps
+  # Explore's words, where it is not placed, or is at Explore while a run, its questions
+  # or its gate are what the stage is at. A row that ended keeps its words, and has a mark
+  # alone: `:done` where every stage is done, else `:stopped`.
+  @spec row_statuses(Scope.t(), [map], boolean) :: %{String.t() => map}
+  def row_statuses(scope, rows, grouped \\ false)
 
-  def row_statuses(%Scope{workspace: %{id: workspace_id} = workspace} = scope, rows) do
+  def row_statuses(_scope, [], _grouped), do: %{}
+
+  def row_statuses(%Scope{workspace: %{id: workspace_id} = workspace} = scope, rows, grouped) do
     ids = for %{id: id, state: :exploring} <- rows, do: id
 
     placed =
@@ -393,8 +397,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     current = if placed == %{}, do: nil, else: Processes.current(workspace)
     gate? = Access.can?(scope, :"gate.approve", workspace)
 
+    status =
+      if grouped, do: &StageComponents.group_status/1, else: &StageComponents.head_status/1
+
     for %{id: id} = row <- rows, place = placed[id], into: %{} do
-      {id, row_status(scope, row, place, Map.get(versions, place.version, current), gate?)}
+      version = Map.get(versions, place.version, current)
+      {id, row_status(scope, row, place, version, gate?, status)}
     end
     |> Enum.reject(fn {_id, status} -> is_nil(status) end)
     |> Map.new()
@@ -407,7 +415,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
-  defp row_status(scope, row, place, version, gate?) do
+  defp row_status(scope, row, place, version, gate?, status) do
     stages = stages_of(version)
     raw = Enum.find(stages, &(get(&1, :id) == place.stage))
     state = state(place.state)
@@ -423,7 +431,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       true ->
         stage = stage_map(raw)
 
-        ApiaryWeb.WorkItemLive.StageComponents.head_status(%{
+        status.(%{
           stage: stage,
           state: state,
           queued: state == :running and row.status == :queued,
@@ -513,32 +521,32 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   ## The board
 
   @doc false
-  # board/1 is the board's columns for the scope's workspace: one for each stage of its
-  # current process version, in order, then one for each stage that version removed
-  # while a live work item is still in it, marked with the version that has it. A work
-  # item on another version sits in the stage with the same id. Each column lists its
-  # work items in the list's `sort`.
+  # board/3 is the board's columns for the scope's workspace, each with how many live work
+  # items are in it under the search and the filters of `params`
+  # (`Apiary.WorkItems.list_stage_counts/3`): one for each stage of its current process
+  # version, in order, then one for each stage that version removed while a live work item
+  # is still in it, marked with the version that has it. A work item on another version
+  # counts in the stage with the same id, and one the process has not placed yet in the
+  # first stage, where every work item starts.
   # nil where the current version has no stage (`Apiary.Processes.current/1` makes
   # version 1 for a workspace with none): the list then shows as before the feature.
-  @spec board(Scope.t(), :updated | :created) :: [map] | nil
-  def board(scope, sort \\ :updated) do
+  @spec board(Scope.t(), map, DateTime.t()) :: [map] | nil
+  def board(scope, params, now) do
     current = Processes.current(scope.workspace)
-    if stages_of(current) == [], do: nil, else: board(scope, sort, current)
+
+    if stages_of(current) == [],
+      do: nil,
+      else: columns(scope, WorkItems.list_stage_counts(scope, params, now), current)
   end
 
-  defp board(scope, sort, current) do
+  defp columns(scope, counts, current) do
     versions = Processes.list_versions(scope.workspace)
-    stages = Enum.map(get(get(current, :document) || %{}, :stages) || [], &stage_map/1)
-    first = List.first(stages)
-
-    # A work item the process has not placed yet sits in the first stage, where every
-    # work item starts.
-    rows =
-      for row <- Board.rows(scope, sort),
-          do: if(is_nil(row.stage_id) and first, do: %{row | stage_id: first.id}, else: row)
+    stages = Enum.map(stages_of(current), &stage_map/1)
+    first = hd(stages)
+    counts = for row <- counts, do: %{row | stage_id: row.stage_id || first.id}
 
     ids = MapSet.new(stages, & &1.id)
-    by_stage = Enum.group_by(rows, & &1.stage_id)
+    by_stage = Enum.group_by(counts, & &1.stage_id)
 
     columns =
       for stage <- stages do
@@ -547,25 +555,41 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
           name: stage.name,
           removed: false,
           version: nil,
-          items: Map.get(by_stage, stage.id, [])
+          count: total(Map.get(by_stage, stage.id, []))
         }
       end
 
     removed =
-      rows
+      counts
       |> Enum.reject(&MapSet.member?(ids, &1.stage_id))
       |> Enum.group_by(& &1.stage_id)
-      |> Enum.map(fn {id, items} -> removed_column(id, items, versions) end)
+      |> Enum.map(fn {id, stage_counts} -> removed_column(id, stage_counts, versions) end)
       |> Enum.sort_by(&{-(&1.version || 0), &1.name || ""})
 
     columns ++ removed
   end
 
+  defp total(stage_counts), do: stage_counts |> Enum.map(& &1.count) |> Enum.sum()
+
+  @doc false
+  # groups/2 is the Open view's rows by the board's columns, in the board's order: a group
+  # for each column with a row, with the column's place on the board (`index`), name and
+  # count, and its rows in their order. A row the process has not placed yet is in the
+  # first column.
+  @spec groups([map], [map]) :: [map]
+  def groups([first | _columns] = board, rows) do
+    by_stage = Enum.group_by(rows, &(&1.stage_id || first.id))
+
+    for {column, index} <- Enum.with_index(board), rows = by_stage[column.id] do
+      %{index: index, name: column.name, count: column.count, rows: rows}
+    end
+  end
+
   # A stage the current version removed: its name and number in the newest version of its
   # work items that has it, else in the newest version of the workspace that has it; nil
   # for both where no version has it.
-  defp removed_column(id, items, versions) do
-    on = MapSet.new(items, & &1.process_version_id)
+  defp removed_column(id, stage_counts, versions) do
+    on = MapSet.new(stage_counts, & &1.process_version_id)
     has? = fn version -> Enum.any?(stages_of(version), &(get(&1, :id) == id)) end
     newest = Enum.sort_by(versions, &(-(get(&1, :number) || 0)))
 
@@ -580,7 +604,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       name: get(stage, :name),
       removed: true,
       version: version && get(version, :number),
-      items: items
+      count: total(stage_counts)
     }
   end
 

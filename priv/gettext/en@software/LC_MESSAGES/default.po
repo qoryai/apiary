@@ -8944,6 +8944,11 @@ msgstr ""
 msgid "Finish setting up %{workspace}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_list_components.ex
+#, elixir-autogen, elixir-format
+msgid "Finished work items, and work items that stopped: a member closed one or undid its take in, its %{item} closed, or its integration was removed. Where the %{item} of a stopped one is still in the Backlog, Take in again brings it back."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "First and last seen"
@@ -12138,20 +12143,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Next, %{name} confirms Qory's proposal or declines the work item."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Next, a member answers Qory's question."
 msgid_plural "Next, a member answers Qory's questions."
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Next, you confirm Qory's proposal or decline the work item."
-msgstr ""
 
 #: lib/apiary_web/live/node_live/gateways.ex
 #, elixir-autogen, elixir-format
@@ -15263,7 +15258,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Reload the page. The work item is closed or declined, so it has no stage to check."
+msgid "Reload the page. The work item is closed, so it has no stage to check."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -15551,6 +15546,7 @@ msgstr ""
 msgid "Removed an integration"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/index.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Removed stage"
@@ -18017,7 +18013,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
-#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Test"
 msgstr ""
@@ -21483,6 +21478,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Work items"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_list_components.ex
+#, elixir-autogen, elixir-format
+msgid "Work items at a stage of the process. A finished one moves to Closed."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex

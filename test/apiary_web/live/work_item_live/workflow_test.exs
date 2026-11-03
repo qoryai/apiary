@@ -9,8 +9,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # approval marks; the artifact list; Explore's gate with today's Confirm and no second
   # Approve; each action, for the owner, an admin and a member, hidden from a person the
   # stage does not list and refused on the server; the page read again on the stage and
-  # artifact topics; and the board's columns, a removed stage's and the migrated work
-  # items' included.
+  # artifact topics; and the list's boxes on every view and its groups, a removed stage's
+  # and the migrated work items' included, with each view's line.
   #
   # The fake changes the whole node (`ApiaryWeb.WorkflowFake.install/0`), so the module
   # is not async.
@@ -27,7 +27,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.Run
   alias Apiary.Stages.{Escalation, GateDecision}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{WorkItem, WorkList}
   alias ApiaryWeb.WorkflowFake
 
   @moduletag needs: [:factory, :workflow_model]
@@ -267,6 +267,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   defp page(scope, number), do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}"
   defp list(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/work"
 
+  # The texts of the elements `selector` names, each with its spaces made one.
+  defp texts(view, selector) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query(selector)
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+  end
+
   defp as(conn, _scope, :owner), do: conn
 
   defp as(_conn, scope, level),
@@ -312,6 +321,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-items-stages")
       refute has_element?(view, "#work-items-board")
+    end
+
+    test "the list has its bands with Fold, and the line of Waiting on you alone", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = shape_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, list(scope))
+
+      assert has_element?(view, ".q-wl-fold")
+      assert has_element?(view, "#work-item-#{work_item.public_id}")
+      refute has_element?(view, "#work-items-groups")
+      refute has_element?(view, "#work-items-note")
+
+      {:ok, view, _html} = live(conn, list(scope) <> "?view=closed")
+      assert has_element?(view, "#work-items-stages")
+      refute has_element?(view, "#work-items-note")
     end
   end
 
@@ -1291,7 +1317,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-check-result",
-               "Reload the page. The work item is closed or declined, so it has no stage to check."
+               "Reload the page. The work item is closed, so it has no stage to check."
              )
     end
 
@@ -1994,7 +2020,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       assert has_element?(show, "#work-item-stage-state", "At the gate")
-      assert has_element?(index, "#work-items-board-item-#{work_item.public_id}")
+      assert has_element?(index, "#work-item-#{work_item.public_id}")
     end
 
     test "the page is read again after an approval in another session", %{
@@ -2019,10 +2045,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       shape = backfilled!(scope, @shape, :at_gate)
 
       {:ok, view, _html} = live(conn, list(scope))
-      assert has_element?(view, "#work-items-board-0-h", "Explore")
-      assert has_element?(view, "#work-items-board-0 #work-items-board-item-#{explore.public_id}")
-      assert has_element?(view, "#work-items-board-1-h", "Shape")
-      assert has_element?(view, "#work-items-board-1 #work-items-board-item-#{shape.public_id}")
+      assert has_element?(view, "#work-items-group-0-h", "Explore")
+      assert has_element?(view, "#work-items-group-0 #work-item-#{explore.public_id}")
+      assert has_element?(view, "#work-items-group-1-h", "Shape")
+      assert has_element?(view, "#work-items-group-1 #work-item-#{shape.public_id}")
 
       {:ok, view, _html} = live(conn, page(scope, explore.number))
       assert has_element?(view, ~s|#work-item-head-stages-#{@explore}[aria-current="step"]|)
@@ -2037,7 +2063,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "the board" do
-    test "a column per stage of the current version, and a removed stage's", %{
+    test "a box per stage of the current version, and a removed stage's", %{
       conn: conn,
       scope: scope
     } do
@@ -2061,22 +2087,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, list(scope))
 
       refute has_element?(view, "#work-items-stages")
-      assert has_element?(view, "#work-items-board-0-h", "Explore")
 
-      assert has_element?(
-               view,
-               "#work-items-board-0 #work-items-board-item-#{unplaced.public_id}"
-             )
+      assert texts(view, "#work-items-board .q-wl-st-name") ==
+               ["Explore", "Shape", "Build", "Verify", "Release", "Review"]
 
-      assert has_element?(view, "#work-items-board-4-h", "Release")
-
-      assert has_element?(
-               view,
-               "#work-items-board-2 #work-items-board-item-#{gift.public_id}",
-               "##{gift.number}"
-             )
-
-      assert has_element?(view, "#work-items-board-5-h", "Review")
+      assert texts(view, "#work-items-board .q-wl-st-n") == ["1", "0", "1", "0", "0", "1"]
 
       assert has_element?(
                view,
@@ -2084,29 +2099,63 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "From version 2. This stage is not in the current version."
              )
 
+      # A box has no link.
+      refute has_element?(view, "#work-items-board a")
+
+      assert texts(view, ".q-wl-grp h2") == ["Explore", "Build", "Review"]
+      assert has_element?(view, "#work-items-group-0 #work-item-#{unplaced.public_id}")
+      assert has_element?(view, "#work-items-group-2 #work-item-#{gift.public_id}")
+
       assert has_element?(
                view,
-               ~s|#work-items-board-5 #work-items-board-item-#{basket.public_id} a[href="#{page(scope, basket.number)}"]|
+               ~s|#work-items-group-5 #work-item-#{basket.public_id} a[href="#{page(scope, basket.number)}"]|
              )
-
-      {:ok, view, _html} = live(conn, list(scope) <> "?q=gift")
-      refute has_element?(view, "#work-items-board")
     end
 
-    test "the Open view lists its work items under the board", %{conn: conn, scope: scope} do
+    test "every view shows the same boxes, and its line", %{conn: conn, scope: scope} do
+      backfilled!(scope, @explore, :running)
+      backfilled!(scope, @shape, :at_gate)
+
+      for {query, note} <- [
+            {"", "Work items at a stage of the process. A finished one moves to Closed."},
+            {"?view=you",
+             "Work items that wait for you to confirm what Qory proposes. Oldest first."},
+            {"?view=closed",
+             "Finished work items, and work items that stopped: a member closed one or undid its take in, its ticket closed, or its integration was removed. Where the ticket of a stopped one is still in the Backlog, Take in again brings it back."}
+          ] do
+        {:ok, view, _html} = live(conn, list(scope) <> query)
+
+        assert texts(view, "#work-items-board .q-wl-st-name") ==
+                 ["Explore", "Shape", "Build", "Verify", "Release"]
+
+        assert texts(view, "#work-items-board .q-wl-st-n") == ["1", "1", "0", "0", "0"]
+        assert texts(view, "#work-items-note") == [note]
+        refute has_element?(view, "#work-items-stages")
+      end
+    end
+
+    test "the Open view groups its rows by stage, with no group at 0 and no control", %{
+      conn: conn,
+      scope: scope
+    } do
       explored = backfilled!(scope, @explore, :running)
       shaped = backfilled!(scope, @shape, :at_gate)
       {:ok, view, _html} = live(conn, list(scope))
 
-      assert has_element?(view, "#work-items-board")
-      assert has_element?(view, "#work-items-views", "Open")
+      assert texts(view, ".q-wl-grp h2") == ["Explore", "Shape"]
+      assert texts(view, ".q-wl-grp .q-band-n") == ["1", "1"]
+      assert has_element?(view, "#work-items-group-0 #work-item-#{explored.public_id}")
+      assert has_element?(view, "#work-items-group-1 #work-item-#{shaped.public_id}")
 
-      for work_item <- [explored, shaped] do
-        assert has_element?(view, "#work-items-rows #work-item-#{work_item.public_id}")
-      end
+      refute has_element?(view, "#work-items-rows")
+      refute has_element?(view, ".q-wl-grp button")
+      refute has_element?(view, ".q-wl-fold")
     end
 
-    test "each row shows the stage its work item is at", %{conn: conn, scope: scope} do
+    test "a row under its group shows the state; the group shows the stage", %{
+      conn: conn,
+      scope: scope
+    } do
       queued = taken_in_fixture(scope)
       shaped = shape_gate_fixture(scope)
       stopped = scope |> taken_in_fixture() |> end_run!(nil)
@@ -2116,38 +2165,103 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         |> shape_gate_fixture()
         |> place!(Processes.current(scope.workspace), @build, :waiting_inputs)
 
-      row = &"#work-items-rows #work-item-#{&1.public_id}"
+      row = &"#work-items-groups #work-item-#{&1.public_id} .q-wl-nx"
       {:ok, view, _html} = live(conn, list(scope))
 
       assert has_element?(view, row.(queued), "Explore is queued")
-      assert has_element?(view, row.(shaped), "Shape · At the gate")
-      assert has_element?(view, row.(stopped), "Explore · Waits for a person")
-      assert has_element?(view, row.(built), "Build · Waits for inputs")
-      refute has_element?(view, row.(built), "Ready for Shape")
-      refute has_element?(view, row.(shaped), "Ready for Shape")
+      assert texts(view, row.(shaped)) == ["At the gate"]
+      assert texts(view, row.(stopped)) == ["Waits for a person"]
+      assert texts(view, row.(built)) == ["Waits for inputs"]
     end
 
-    test "a work item's number, its title without invisible characters, and the mark Test", %{
+    test "search and filters keep the groups, the boxes count what they keep", %{
       conn: conn,
       scope: scope
     } do
-      {:ok, line} = Apiary.WorkItems.take_in_test(scope, "Hello! Where are you running?")
+      gift =
+        scope
+        |> work_item_fixture(%{title: "Add gift cards to checkout"})
+        |> place!(Processes.current(scope.workspace), @build, :running)
+
+      work_item_fixture(scope, %{title: "Fix the basket total"})
+
+      {:ok, view, _html} = live(conn, list(scope) <> "?q=gift")
+
+      assert texts(view, "#work-items-board .q-wl-st-n") == ["0", "0", "1", "0", "0"]
+      assert texts(view, ".q-wl-grp h2") == ["Build"]
+      assert texts(view, ".q-wl-grp .q-band-n") == ["1"]
+      assert has_element?(view, "#work-items-group-2 #work-item-#{gift.public_id}")
+      refute has_element?(view, ".q-wl-fold")
+
+      {:ok, view, _html} = live(conn, list(scope) <> "?q=nothing+like+it")
+      assert texts(view, "#work-items-board .q-wl-st-n") == ["0", "0", "0", "0", "0"]
+      refute has_element?(view, ".q-wl-grp")
+    end
+
+    test "Waiting on you and Closed stay plain rows", %{conn: conn, scope: scope} do
+      closed = work_item_fixture(scope, %{title: "Fix the basket total"})
+      {:ok, _closed} = WorkItems.close(scope, closed)
+
+      {:ok, view, _html} = live(conn, list(scope) <> "?view=closed")
+      assert has_element?(view, "#work-items-rows #work-item-#{closed.public_id}")
+      refute has_element?(view, "#work-items-groups")
+
+      waiting =
+        scope
+        |> explore_gate_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :waiting_inputs)
+
+      {:ok, view, _html} = live(conn, list(scope) <> "?view=you")
+      refute has_element?(view, "#work-items-groups")
+
+      # With no group above it, a row keeps its stage's name.
+      assert texts(view, "#work-items-rows #work-item-#{waiting.public_id} .q-wl-nx") ==
+               ["Build · Waits for inputs"]
+    end
+
+    test "an address with a stage shows that stage alone, under the boxes, with no control", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = taken_in_fixture(scope)
+      {:ok, view, _html} = live(conn, list(scope) <> "?stage=explore")
+
+      assert has_element?(view, "#work-items-board")
+      refute has_element?(view, "#work-items-stages")
+      assert texts(view, ".q-wl-grp h2") == ["Explore"]
+      assert has_element?(view, "#work-items-explore #work-item-#{work_item.public_id}")
+      refute has_element?(view, ".q-wl-fold")
+    end
+
+    test "past a page, a group counts its whole stage and the pager stays", %{
+      conn: conn,
+      scope: scope
+    } do
+      for _n <- 1..(WorkList.page_size() + 1), do: work_item_fixture(scope)
+      {:ok, view, _html} = live(conn, list(scope))
+
+      assert texts(view, ".q-wl-grp .q-band-n") == ["#{WorkList.page_size() + 1}"]
+      assert has_element?(view, "#work-items-pager")
+    end
+
+    test "a row shows a title without invisible characters, and the mark Test", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, line} = WorkItems.take_in_test(scope, "Hello! Where are you running?")
       basket = work_item_fixture(scope, %{title: "Basket \u202Eflow"})
-      blank = work_item_fixture(scope, %{title: "\u00A0"})
 
       {:ok, view, html} = live(conn, list(scope))
-      item = &"#work-items-board-item-#{&1.public_id}"
+      item = &"#work-items-group-0 #work-item-#{&1.public_id}"
 
       refute html =~ "\u202E"
       assert has_element?(view, item.(basket), "Basket flow")
       refute has_element?(view, item.(basket) <> " .badge")
-      assert view |> element(item.(blank) <> " a") |> render() =~ ~r/>\s*##{blank.number}\s*<\/a>/
-      assert has_element?(view, item.(line) <> " a", "Hello! Where are you running?")
       assert has_element?(view, item.(line) <> " .badge", "Test")
       assert has_element?(view, ~s|#{item.(line)} a[href="#{page(scope, line.number)}"]|)
     end
 
-    test "each column in the list's sort", %{conn: conn, scope: scope} do
+    test "each group in the list's sort", %{conn: conn, scope: scope} do
       older = work_item_fixture(scope, %{title: "Fix the basket total"})
       newer = work_item_fixture(scope, %{title: "Show the delivery date"})
       now = DateTime.utc_now()
@@ -2162,11 +2276,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         view
         |> render()
         |> LazyHTML.from_document()
-        |> LazyHTML.query("#work-items-board-0 li")
+        |> LazyHTML.query("#work-items-group-0 li")
         |> LazyHTML.attribute("id")
       end
 
-      ids = &Enum.map(&1, fn work_item -> "work-items-board-item-#{work_item.public_id}" end)
+      ids = &Enum.map(&1, fn work_item -> "work-item-#{work_item.public_id}" end)
 
       {:ok, view, _html} = live(conn, list(scope))
       assert order.(view) == ids.([older, newer])
@@ -2175,30 +2289,26 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert order.(view) == ids.([newer, older])
     end
 
-    test "a message of the workspace's work items reads the board again", %{
+    test "a message of the workspace's work items reads the board and the groups again", %{
       conn: conn,
       scope: scope
     } do
       work_item = backfilled!(scope, @explore, :running)
       {:ok, view, _html} = live(conn, list(scope))
 
-      assert has_element?(
-               view,
-               "#work-items-board-0 #work-items-board-item-#{work_item.public_id}"
-             )
+      assert texts(view, "#work-items-board .q-wl-st-n") == ["1", "0", "0", "0", "0"]
+      assert has_element?(view, "#work-items-group-0 #work-item-#{work_item.public_id}")
 
       place!(work_item, Processes.current(scope.workspace), @shape, :at_gate)
 
       Phoenix.PubSub.broadcast(
         Apiary.PubSub,
-        Apiary.WorkItems.topic(scope.workspace.id),
+        WorkItems.topic(scope.workspace.id),
         {:work_items_changed, [work_item.public_id]}
       )
 
-      assert has_element?(
-               view,
-               "#work-items-board-1 #work-items-board-item-#{work_item.public_id}"
-             )
+      assert has_element?(view, "#work-items-group-1 #work-item-#{work_item.public_id}")
+      assert texts(view, "#work-items-board .q-wl-st-n") == ["0", "1", "0", "0", "0"]
     end
   end
 end

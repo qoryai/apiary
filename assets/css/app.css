@@ -12587,8 +12587,8 @@
 }
 
 /* ==== Work items: the list (`WorkItemListComponents`) and a work item (`WorkItemComponents`)
-   The list: the stages strip (`.q-wl-flow`), the bar, then a `.q-blk` of stage bands
-   (`.q-wl-grp`), each a `.q-band` over its rows (`.q-wl-row`, one line, the title the only
+   The list: the stages strip or the board's boxes (`.q-wl-flow`), the bar, then a `.q-blk`
+   of stage bands, or of stage groups (`.q-wl-grp`), each a `.q-band` over its rows (`.q-wl-row`, one line, the title the only
    strong text; the number and the status go under the title where the list is narrow). A
    work item: `.q-wi`, the header, the rail (the step card and Details) and the tabs' body,
    at most 1360 px from the page's left edge; from 1440 px the rail is a sticky column, and
@@ -12739,6 +12739,14 @@
     color: var(--q-muted);
     font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* The boxes of a process's stages: one row while they fit, however many stages it has. */
+  .q-wl-flow-stages {
+    grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  }
+  .q-wl-flow-stages .q-wl-st:hover {
+    background-color: transparent;
   }
 
   /* ---- A stage's band: sticky under the top bar, with Fold ---- */

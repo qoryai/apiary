@@ -179,6 +179,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     }
   end
 
+  @doc """
+  A row's status under its stage's group: `head_status/1` without the stage, which the
+  group shows.
+  """
+  def group_status(page), do: %{words: state_words(shown_state(page)), mark: head_mark(page)}
+
   defp head_mark(%{state: :running, queued: true}), do: :todo
   defp head_mark(%{state: :running}), do: :run
   defp head_mark(%{state: :done}), do: :ready
@@ -719,28 +725,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   ## The board
 
   @doc """
-  The board under the workflow model: a column for each stage of the workspace's
-  current process version, then one for each stage that version removed while work
-  items remain in it, marked with the version that has it. Each column lists its work
-  items, each a link to its page.
+  The board under the workflow model: a box for each stage of the workspace's current
+  process version, then one for each stage that version removed while work items remain
+  in it, marked with the version that has it. Each box has its name and its count.
   """
   attr :id, :string, default: "work-items-board"
-  attr :columns, :list, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.board/1`"
-  attr :path, :any, required: true, doc: "a function of a work item's number: its page"
+  attr :columns, :list, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.board/3`"
 
   def board_columns(assigns) do
     ~H"""
-    <nav id={@id} class="q-wl-flow" aria-label={gettext("Stages")}>
-      <section
+    <div id={@id} class="q-wl-flow q-wl-flow-stages" role="group" aria-label={gettext("Stages")}>
+      <div
         :for={{column, i} <- Enum.with_index(@columns)}
         id={"#{@id}-#{i}"}
         class="q-wl-st content-start"
-        aria-labelledby={"#{@id}-#{i}-h"}
       >
-        <h2 id={"#{@id}-#{i}-h"} class="q-wl-st-name">
+        <span id={"#{@id}-#{i}-h"} class="q-wl-st-name">
           {column.name || gettext("Removed stage")}
-        </h2>
-        <span class="q-wl-st-n">{Format.number(length(column.items))}</span>
+        </span>
+        <span class="q-wl-st-n">{Format.number(column.count)}</span>
         <span :if={column.removed} id={"#{@id}-#{i}-removed"} class="q-wl-st-what">
           <%= if column.version do %>
             {gettext("From version %{number}. This stage is not in the current version.",
@@ -750,20 +753,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("This stage is not in the current version.")}
           <% end %>
         </span>
-        <ul :if={column.items != []} class="flex flex-col gap-1">
-          <li :for={item <- column.items} id={"#{@id}-item-#{item.id}"}>
-            <.link navigate={@path.(item.number)} class="q-link">
-              #{item.number}
-              <.external_text
-                :if={Apiary.ExternalText.present(item.title)}
-                text={Apiary.ExternalText.present(item.title)}
-              />
-            </.link>
-            <.badge :if={item[:test]} class="q-wl-test">{gettext("Test")}</.badge>
-          </li>
-        </ul>
-      </section>
-    </nav>
+      </div>
+    </div>
     """
   end
 
