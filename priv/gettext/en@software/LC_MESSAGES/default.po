@@ -6322,7 +6322,7 @@ msgstr "Choose an image without nested Docker in the workspace's policy or the r
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Choose an option or give your own. If nobody knows, say so: Qory reads that too."
+msgid "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex

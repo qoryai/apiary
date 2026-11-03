@@ -480,6 +480,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The documentation at `/docs` describes the `factory` feature: its steps in the guides,
   the variables of the instance's node pool and gateway, and its modules in the module
   reference. An instance without `factory` serves none of that text.
+- On a work item's **Explore** tab, Qory's proposal is one Markdown text, the newest
+  version, under the caption “Version 2. Attempt 2 wrote this.” The page draws the text
+  with raw HTML dropped, no image loaded, links only to http, https and mailto addresses,
+  and headings two levels down. Under it, **Comments** lists the comments of this take
+  in, each with “You, on version 1” or “Dana, on version 1”. Under the list, a reader who
+  may act has the field “What should change?” and one button: **Confirm** while the field
+  is empty, **Send change** once it has text. Enter writes a line break; only the button
+  sends. While a run reads the open comments, the field and the button are hidden, and
+  each open comment shows “Qory is updating the proposal”. An earlier run of the take in
+  shows “Wrote a proposal” in its fold, without the text.
+- **Send change** keeps the comment, up to 2,000 characters, and queues the next run of
+  Explore, which reads the newest proposal and each comment that no saved update has read.
+  When that run saves an updated proposal, each comment it read is marked done: muted,
+  with a tick and “Done in version 2”. A run that asks questions, fails or ends without a
+  result marks nothing, and the next run reads the comment again. Each comment starts one
+  run. On the last run of a take in, a comment adds a run: after attempt 3 of 3, the
+  comment starts attempt 4 of 4. Owners, admins and members comment; with the
+  `workflow_model` feature, only the stage's approvers, where the stage lists them. A
+  comment that breaks a rule shows the fix under the field: “Write what to change.”,
+  “Shorten the comment to 2,000 characters or fewer.”, “Remove the invisible or control
+  characters from the comment.” or “Ask one of this stage's approvers to comment. Only
+  they can comment on its proposal.”
+- Qory's questions on the **Explore** tab are Markdown, drawn as the proposal is. Each
+  question shows the options the run wrote as cards to choose from, each with a title and
+  an explanation, and the field “Give your own option”. Choosing a card clears the field,
+  and typing in the field clears the card. A question with no option shows the field
+  alone. One **Send answers** sends every answer. A question left without an answer shows
+  “Choose an option or write an answer. If nobody knows, say so: Qory reads that too.”
+- A comment on Qory's proposal shows in the work item's Thread as “Dana commented on
+  Qory's proposal”, or “You commented on Qory's proposal”, with the comment; in Activity
+  as “Commented on Qory's proposal for a work item”; and in the Runs list, on the run it
+  started, as “Attempt 2 of 3, after a comment from Dana”.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -528,6 +560,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type until a person switches one off.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
+- In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·
+  Explore”. The run API sends it as a note of kind `answer`.
 - `GET work-item` returns the run's number in `run.number`.
 <!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
@@ -551,7 +585,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   harness. The first workspace of an organisation starts from that template. A workspace
   with no template uses the `core` stack. Stages and Workflow show the stack: “Harness:
   Qory harness, stack software”.
-- The Qory harness is pinned at harness commit c0e7e33c, which exports the stacks `core`
+- The Qory harness is pinned at harness commit 5c88f508, which exports the stacks `core`
   and `software`. On the Qory harness, the Stack select of each repository lists
   `software`.
 - A workspace made from the software template gets the artifact type `branch`, and every
@@ -770,6 +804,76 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   default policy, in observe mode with the hosts the integrations require, and its run
   page shows why on **Not a version made in this workspace**.
 <!-- /feature -->
+<!-- feature: factory -->
+- A work item has no Declined state. A person who does not want a work item closes it,
+  and **Take in again** in the Backlog brings it back. **Decline** and its question
+  “Decline work item #12?” are removed from the step card, the questions and the
+  run-limit card, and the **Declined** tab from Work items and the Backlog. The tabs of
+  Work items are **Open**, **Waiting on you** and **Closed**. The run-limit card shows
+  “To explore again, close the work item and use Take in again in the Backlog: the run
+  count starts again, without this take in's answers.”, or “Close the work item if it is
+  not wanted.” where the Backlog is off, and **Close work item…** for whoever may close
+  the work item. The upgrade closes every declined work item (Migrations). Activity
+  still describes an earlier decline as “Declined a work item”, and its filter no longer
+  offers “Work item declined”.
+- At Confirm, the step card shows “Confirm Qory's proposal, or write what to change.” and
+  **Read Qory's proposal**, which opens the **Explore** tab, where **Confirm** is. A
+  reader who may not act reads “You confirm next” or “Dana confirms next”. A person
+  changes a proposal with a comment: **Change**, the edit page with **Confirm changes**,
+  **Show Qory's words**, the caption “Qory shows it as plain text” and the proposal's
+  sections (Complexity, Understanding, In scope, Out of scope, Approach, Not chosen,
+  Facts and sources) are removed. The edit page's address,
+  `/<organisation>/<workspace>/work/<number>/explore/edit`, returns 404. A proposal
+  stored before the upgrade has no Markdown text: its frame shows the caption and no
+  text.
+- When a ticket closes at its source, Qory Apiary closes its live work item in the same
+  transaction, and the work item shows “Closed when its ticket closed”. A run not yet
+  handed to a machine ends; a run already handed over goes on to its end, and its result
+  moves no stage. A ticket that moved to another collection of the same adapter, and is
+  open there, closes no work item. Qory Apiary writes no audit entry for this close.
+- The Backlog has two tabs, **Open** and **Taken in**. A ticket closed at its source
+  leaves the Backlog: it is in neither tab, and its filter values go with it. Its ticket
+  page still opens at its address.
+- Explore's contract follows integrations commit `e6ebf76c`. An `understood` result is one
+  Markdown `message`, the proposal; `complexity`, `understanding`, `scope`, `approach`
+  and `knowledge` are removed. A `not_understood` result has 1 to 20 `questions`, each a
+  Markdown `question` of up to 20,000 characters with 0 to 10 `options`, each a `title`
+  of 1 to 200 characters and an `explanation` of 1 to 2,000. The run's inputs gain
+  `proposal`, the newest proposal of the take in, and `changes`, the comments that no
+  saved update has read, and each entry of `answers` gains `custom`: true for the
+  person's text, false for an option's title. `attempt` has no maximum, and `of` is not
+  fixed at 3. A run whose result has the earlier shape ends with “The run's result does
+  not match the explore result schema.”
+- The access action `work_item.decline` is removed. **Close work item…** on the run-limit
+  card needs `work_item.close`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- On **Work items**, every tab shows a box for each stage of the workspace's process,
+  with the stage's name and how many live work items are in it under the search and the
+  filters. A stage that the current version removed keeps its box while work items are in
+  it, with “From version 2. This stage is not in the current version.” The boxes list no
+  work item. **Open** groups its rows under a heading for each stage, with the stage's
+  count; a stage with no row on the page has no group, and a group has nothing to fold.
+  A row under its group leaves out the stage's name: “Explore · Waits for a person”
+  becomes “Waits for a person”. **Open** shows “Work items at a stage of the process. A
+  finished one moves to Closed.”, and **Closed** shows “Finished work items, and work
+  items that stopped: a member closed one or undid its take in, its ticket closed, or its
+  integration was removed. Where the ticket of a stopped one is still in the Backlog,
+  Take in again brings it back.”
+- A work item closes when its last stage finishes, with no person, and shows “Every stage
+  done” in **Closed** and in its Thread. In **Closed**, a work item with every stage done
+  has an amber ring, and one that ended any other way a grey ring. Its ticket stays in
+  the Backlog's **Taken in**, with a link to the work item and no **Take in again**,
+  until the ticket reopens at its source. A reopened ticket shows in **Open** with
+  **Take in again**, which moves the same work item back to Explore at attempt 1 of 3;
+  the work item's page offers **Take in again** too. A work item whose last stage
+  finished before the upgrade stays in **Open** until a person closes it or its ticket
+  closes.
+- An escalation card has no **Decline**. Its other buttons stay.
+- The artifact type `proposal` is a document, one Markdown file `proposal.md` of up to
+  256 KiB, in place of structured JSON. A `questions` artifact takes up to 256 KiB, up
+  from 64 KiB, and each question in it is an Explore question, with its options.
+<!-- /feature -->
 
 ### Fixed
 
@@ -787,6 +891,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - A workspace made from a template runs Explore with no workflow saved on the Workflow
   page. The Stages page checks each workflow against the stack the workspace's runs use.
+<!-- /feature -->
+<!-- feature: factory -->
+- **Take in again** on a Backlog row brings the work item back and opens its page, or
+  shows why it cannot. Before, the button did nothing.
 <!-- /feature -->
 
 ### Security
@@ -902,6 +1010,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   It changes no row.
 - `workspaces`: a nullable `qory_stack` column, `text`. An empty value means the stack
   `core`.
+- `work_items`, `work_item_events` and `escalations`: the migration locks the three
+  tables against reads and writes while it runs. It closes every declined work item,
+  with the time and the person of the decline as `closed_at` and `closed_by_id`, then
+  drops `declined_at`, `declined_by_id` and that column's index. A `declined` event
+  becomes `closed`. A `taken_in` event whose earlier state is `declined` gets `closed`, so
+  an undo of that take in again goes back to closed. An escalation resolved with
+  `decline` becomes `close`. The audit log keeps its entries. A rollback brings back the
+  columns and the checks with no declined row: each work item the migration closed stays
+  closed.
+- `source_items`: a nullable column, `last_closed_at`, with no default, which rewrites no
+  row. It is empty on every existing row, a closed ticket's included; a later write that
+  moves a ticket from open to closed sets it. The migration closes no work item: a live
+  work item whose ticket closed before the upgrade stays open until a person closes it or
+  the adapter sends that ticket again as closed.
+- `work_item_answers`: `question` becomes nullable, with a check of 1 to 20,000
+  characters in place of 1 to 2,000, and four nullable columns, `custom`,
+  `proposal_version`, `done_version` and `done_at`, with a check on their combinations.
+  The migration sets `custom` to true on every existing row, which rewrites the table, and
+  the checks scan it under a lock that blocks writes. `work_item_confirmations`: the
+  column `changes` is dropped, with the edits people made to a proposal before they
+  confirmed it. A rollback stops with an error and changes nothing while
+  `work_item_answers` contains a comment or a question longer than 2,000 characters:
+  “Qory Apiary keeps people's comments on a proposal, which have no question, and
+  questions of up to 20000 characters, so this migration rolls back only while no comment
+  and no question longer than 2000 characters is kept. Some are.” Otherwise it brings
+  back `changes`, empty.
 
 ## [0.1.0] - 2026-10-13
 
