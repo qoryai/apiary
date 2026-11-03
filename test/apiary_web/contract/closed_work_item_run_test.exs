@@ -37,7 +37,7 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
     pool = key(scope, pool_fixture(scope))
 
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, claimed} = Dispatches.claim(pool.key, Dispatches.now())
+    {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(pool.key, Dispatches.now())
     dispatch = claimed.dispatch
     run_id = queued.run_id
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)

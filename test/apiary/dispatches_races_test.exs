@@ -319,7 +319,9 @@ defmodule Apiary.DispatchesRacesTest do
   # The claims of `keys`, all let go at once.
   defp claims(keys) do
     keys
-    |> Enum.map(fn key -> fn -> Dispatches.claim(key, Dispatches.now()) end end)
+    |> Enum.map(fn key ->
+      fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
+    end)
     |> together()
   end
 
@@ -483,7 +485,9 @@ defmodule Apiary.DispatchesRacesTest do
       collection = collection!(ctx)
 
       {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-0") end)
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+
+      {:ok, %{dispatch: dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
 
       {first, holder} =
         hold(fn ->
@@ -592,8 +596,14 @@ defmodule Apiary.DispatchesRacesTest do
                 part: part(Enum.shuffle(collections), dropped),
                 rebuild: rebuild(Enum.shuffle(collections), [pool]),
                 sweep: rescued(fn -> Dispatches.sweep(Dispatches.now()) end),
-                lapsing_claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 0), back) end),
-                claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 1), Dispatches.now()) end)
+                lapsing_claim:
+                  rescued(fn ->
+                    Apiary.DispatchedRunsFixtures.walked_claim(Enum.at(keys, 0), back)
+                  end),
+                claim:
+                  rescued(fn ->
+                    Apiary.DispatchedRunsFixtures.walked_claim(Enum.at(keys, 1), Dispatches.now())
+                  end)
               ]
               |> Enum.take(sides(6))
               |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
@@ -619,7 +629,9 @@ defmodule Apiary.DispatchesRacesTest do
     defp claim_answer(key) do
       rescued(fn ->
         {answer, log} =
-          ExUnit.CaptureLog.with_log(fn -> Dispatches.claim(key, Dispatches.now()) end)
+          ExUnit.CaptureLog.with_log(fn ->
+            Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+          end)
 
         case {answer, Regex.run(~r/a claim could not be made[^\n]*/, log)} do
           {_answer, [line]} -> {:failed, line}
@@ -845,7 +857,7 @@ defmodule Apiary.DispatchesRacesTest do
       run = held!(ctx, path)
 
       assert {:ok, %{run: %DispatchRun{step: "prebuild"} = build}} =
-               Dispatches.claim(key, Dispatches.now())
+               Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
 
       assert build.source_collection_id == collection.id
       %{collection: collection, run: run, build: build}
@@ -917,13 +929,19 @@ defmodule Apiary.DispatchesRacesTest do
         round = build_claimed!(ctx, key, "acme/built-#{n}")
 
         [recorded, claimed] =
-          together([record_build(round), fn -> Dispatches.claim(key, Dispatches.now()) end])
+          together([
+            record_build(round),
+            fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
+          ])
 
         assert recorded == {:ok, :recorded}
 
         case assert_claim(claimed, round) do
-          :held_run -> :ok
-          :none -> assert_claim(Dispatches.claim(key, Dispatches.now()), round)
+          :held_run ->
+            :ok
+
+          :none ->
+            assert_claim(Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()), round)
         end
 
         assert %DispatchRun{state: :claimed} = Repo.get!(DispatchRun, round.run.id)
@@ -941,7 +959,7 @@ defmodule Apiary.DispatchesRacesTest do
         [changed, claimed] =
           together([
             part([round.collection], "env-#{n}"),
-            fn -> Dispatches.claim(key, Dispatches.now()) end
+            fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
           ])
 
         assert changed == {:ok, :changed}
@@ -953,7 +971,10 @@ defmodule Apiary.DispatchesRacesTest do
 
         # The next claim queues the new ref's build, if the first did not, and the run
         # stays held.
-        assert_claim(Dispatches.claim(key, Dispatches.now()), round, [:prebuild])
+        assert_claim(Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()), round, [
+          :prebuild
+        ])
+
         assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, round.run.id)
         end_round!(round)
       end
@@ -971,7 +992,7 @@ defmodule Apiary.DispatchesRacesTest do
         [released, claimed] =
           together([
             fn -> Dispatches.release(key, dispatch.public_id, %{reason: "No machine."}) end,
-            fn -> Dispatches.claim(key, Dispatches.now()) end
+            fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
           ])
 
         assert released == :ok
@@ -1003,7 +1024,7 @@ defmodule Apiary.DispatchesRacesTest do
         [closed, claimed] =
           together([
             fn -> Apiary.WorkItems.close(ctx.scope, work_item) end,
-            fn -> Dispatches.claim(key, Dispatches.now()) end
+            fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
           ])
 
         assert {:ok, %WorkItem{state: :closed}} = closed

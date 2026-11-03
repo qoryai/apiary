@@ -148,7 +148,8 @@ defmodule Apiary.WorkItems.TestWorkItemRacesTest do
       %{key: key, last: last, waiting: waiting}
     end
 
-    defp claim(ctx), do: fn -> Dispatches.claim(ctx.key, Dispatches.now()) end
+    defp claim(ctx),
+      do: fn -> Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) end
 
     defp dispatches(run),
       do: Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^run.id)

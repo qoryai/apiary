@@ -42,7 +42,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     walk_resolved!(queued, walk)
 
     {:ok, %{registered: run, documents: documents}} =
-      Dispatches.claim(place.key, Dispatches.now(), @body)
+      Apiary.DispatchedRunsFixtures.walked_claim(place.key, Dispatches.now(), @body)
 
     Map.put(documents, :run, run)
   end
@@ -84,13 +84,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _version} = Apiary.Processes.save(scope, scope.workspace, document)
     end
 
-    test "sends the lower of the entry's and the resolved time limit; explore-a-ticket's by the saved workflow",
+    test "sends the lower of the entry's and the resolved time limit; explore-a-ticket's by its name, with no row",
          ctx do
-      workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
-      # Transition: explore-a-ticket resolves its limit as today's Explore run does.
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 30)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
 
       entry_limits!(ctx, %{"time_limit" => "45m"})
       assert %{"time_limit_minutes" => 45} = settings(claim!(ctx, place))
@@ -99,8 +96,20 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
     end
 
-    test "sends no limit when none resolved, as the entry only lowers one", ctx do
+    test "a row of another workflow gives explore-a-ticket no limit", ctx do
       workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 30)
+
+      assert %{"time_limit_minutes" => 30} = settings(claim!(ctx, place))
+
+      {:ok, _} = TimeLimits.delete_limit(ctx.scope, :workspace, "explore-a-ticket")
+      refute Map.has_key?(settings(claim!(ctx, place)), "time_limit_minutes")
+    end
+
+    test "sends no limit when none resolved, as the entry only lowers one", ctx do
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
 
       entry_limits!(ctx, %{"time_limit" => "1h30m"})
@@ -108,9 +117,9 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     end
 
     test "lowers to at least 15 minutes", ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
 
       entry_limits!(ctx, %{"time_limit" => "5m"})
       assert %{"time_limit_minutes" => 15} = settings(claim!(ctx, place))
@@ -128,7 +137,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
     test "reads the target when the entry's access is read, whatever the walk resolved",
          ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
       section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
       walk = [origin: :setting, document: section, access_level: :write]
@@ -142,16 +151,16 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   describe "with one stack row with a workflow" do
     test "sends the workspace's limit after the runtime, and the run keeps it", ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
 
       section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
       claimed = claim!(ctx, place, origin: :setting, document: section, target_version: @version)
 
       assert claimed.harness == %{
                target_version: @version,
-               workflow: "hello",
+               workflow: "explore-a-ticket",
                harness_hidden: false,
                access: :read,
                harness: section
@@ -165,17 +174,17 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     end
 
     test "sends the target's limit over the workspace's", ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
       target = target!(ctx.scope)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, target, "hello", 1440)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, target, "explore-a-ticket", 1440)
 
       assert %{"time_limit_minutes" => 1440} = settings(claim!(ctx, place))
     end
 
     test "leaves the member out with no limit, or a limit of another workflow", ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
       assert settings(claim!(ctx, place)) == %{"runtime" => @runtime}
 
@@ -184,7 +193,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     end
 
     test "sends the limit after the model choice's members", ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
 
       {:ok, provider} =
         Connections.create_provider(ctx.scope, %{
@@ -199,7 +208,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
           tiers: %{"fast" => "claude-haiku-5-5"}
         })
 
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 45)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 45)
 
       claimed = claim!(ctx, handover_place_fixture(ctx.scope, allow_secrets: true))
 
@@ -227,21 +236,38 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
     test "apply to the runs of the workspace's workflow, the target's over the workspace's",
          ctx do
-      workflow!(ctx, "hello")
+      workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope, allow_secrets: true)
       target = target!(ctx.scope)
 
       ctx.choose.({:workspace, "review"}, "claude-haiku-5-5")
       assert %{"model" => "claude-opus-5-5"} = settings(claim!(ctx, place))
 
-      ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
+      ctx.choose.({:workspace, "explore-a-ticket"}, "claude-sonnet-5-5")
       assert %{"model" => "claude-sonnet-5-5"} = settings(claim!(ctx, place))
 
-      ctx.choose.({target, "hello"}, "claude-haiku-5-5")
+      ctx.choose.({target, "explore-a-ticket"}, "claude-haiku-5-5")
       assert %{"model" => "claude-haiku-5-5"} = settings(claim!(ctx, place))
     end
 
-    test "do not apply without a stack row with a workflow", ctx do
+    test "do not apply to a run of another workflow", ctx do
+      place = handover_place_fixture(ctx.scope, allow_secrets: true)
+      ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
+
+      assert %{"model" => "claude-opus-5-5"} = settings(claim!(ctx, place))
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "apply to a stage's run of that workflow, with no stack row", ctx do
+      place = handover_place_fixture(ctx.scope, allow_secrets: true)
+      ctx.choose.({:workspace, "explore-a-ticket"}, "claude-sonnet-5-5")
+
+      assert %{"model" => "claude-sonnet-5-5"} = settings(claim!(ctx, place))
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "of a saved row's workflow do not apply to a stage's run of another", ctx do
+      workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope, allow_secrets: true)
       ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
 
@@ -249,6 +275,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     end
   end
 
+  @tag with_features: Apiary.Features.all() -- [:workflow_model]
   test "without a stack row with a workflow, the member is absent whatever the limits", ctx do
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
@@ -258,6 +285,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     assert claimed.harness == nil
   end
 
+  @tag with_features: Apiary.Features.all() -- [:workflow_model]
   test "with two stack rows with a workflow, the member is absent whatever the limits", ctx do
     workflow!(ctx, "hello")
     {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx.scope), "hello"}, @harness)

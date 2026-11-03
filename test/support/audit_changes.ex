@@ -820,7 +820,10 @@ defmodule Apiary.AuditChanges do
   def make(:"dispatch.release", %{scope: scope}) do
     %{key: key} = handover_place_fixture(scope)
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(key, Apiary.Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Apiary.Dispatches.now())
+
     before = entries()
 
     :ok =
@@ -844,7 +847,10 @@ defmodule Apiary.AuditChanges do
   def make(:"dispatch.machine_end", %{scope: scope}) do
     %{key: key} = handover_place_fixture(scope)
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(key, Apiary.Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Apiary.Dispatches.now())
+
     before = entries()
 
     :ok = Apiary.Dispatches.report_machine_end(key, dispatch.public_id, %{state: :gone})
@@ -1309,7 +1315,10 @@ defmodule Apiary.AuditChanges do
     %{key: claimer} = handover_place_fixture(scope)
     %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(claimer, Apiary.Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(claimer, Apiary.Dispatches.now())
+
     before = entries()
 
     {before,
@@ -1323,7 +1332,10 @@ defmodule Apiary.AuditChanges do
     %{key: claimer} = handover_place_fixture(scope)
     %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(claimer, Apiary.Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(claimer, Apiary.Dispatches.now())
+
     before = entries()
 
     {before, Apiary.Dispatches.report_machine_end(other, dispatch.public_id, %{state: :gone})}

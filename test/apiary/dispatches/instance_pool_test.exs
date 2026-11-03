@@ -41,7 +41,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     run
   end
 
-  defp claim(key), do: Dispatches.claim(key, Dispatches.now())
+  defp claim(key), do: Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
 
   defp place(row), do: {row.organisation_id, row.workspace_id}
   defp place_of(scope), do: {scope.organisation.id, scope.workspace.id}

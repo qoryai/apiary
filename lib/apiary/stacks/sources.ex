@@ -1510,16 +1510,16 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice names none. The Qory harness is not read: its names are
-  # `Apiary.Processes.qory_workflows/0`, as its `core` stack lists no `workflows`. The
+  # where the choice names none. The Qory harness is not read: its names are the copy's
+  # (`Apiary.Processes.qory_workflows/1`). The
   # Stages page, the Workflow page and Check again on a work item read the snapshot
   # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
   # `{:error, reason}`.
   @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
   def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
     case chosen(workspace) do
-      %{choice: :qory} ->
-        {:ok, Apiary.Processes.qory_workflows()}
+      %{choice: :qory} = qory ->
+        {:ok, Apiary.Processes.qory_workflows(qory)}
 
       _repository ->
         with {:ok, source, stack} <- chosen_source(workspace),

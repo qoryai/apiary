@@ -274,14 +274,11 @@ defmodule Apiary.Stages do
   # model choice are read by. nil for a run the stage runner did not queue, or with the
   # workflow model off, which keep the workflow the Workflow page saved
   # (`Apiary.Stacks.workflow/2`).
-  #
-  # Transition, as D1: nil for `explore_workflow/0` too. Explore v1 runs exactly as today's
-  # Explore run, by the Workflow page's saved workflow, until the harness change.
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
   def run_workflow(%DispatchRun{stage_id: stage_id, workflow: workflow})
       when is_binary(stage_id) and is_binary(workflow),
-      do: if(workflow != explore_workflow() and on?(), do: workflow)
+      do: if(on?(), do: workflow)
 
   def run_workflow(%DispatchRun{}), do: nil
 
@@ -1131,7 +1128,8 @@ defmodule Apiary.Stages do
   end
 
   defp facts(work_item, version, stage) do
-    workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
+    # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
     artifacts = Artifacts.list(work_item)
 
     declarations =
@@ -1803,7 +1801,7 @@ defmodule Apiary.Stages do
   end
 
   # not_in_qory/2 is why a stage waits for a workflow on the Qory harness, which is never
-  # read: its workflows are fixed (`Apiary.Processes.qory_workflows/0`).
+  # read: its workflows are fixed (`Apiary.Processes.qory_workflows/1`).
   @doc false
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
@@ -1845,7 +1843,7 @@ defmodule Apiary.Stages do
   defp text(_other), do: nil
 
   defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
-    workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
 
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})

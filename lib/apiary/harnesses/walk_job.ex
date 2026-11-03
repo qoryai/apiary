@@ -58,8 +58,7 @@ defmodule Apiary.Harnesses.WalkJob do
     workspace = Repo.get!(Workspace, run.workspace_id)
 
     # Hand-over: with the workflow model, a run of a stage walks the harness for the
-    # workflow its stage entry names (`Apiary.Stages.run_workflow/1`); explore-a-ticket,
-    # for now, walks the Workflow page's saved workflow, as today's Explore run.
+    # workflow its stage entry names (`Apiary.Stages.run_workflow/1`).
     case Apiary.Stages.run_workflow(run) || Stacks.workflow_for(workspace, target) do
       nil ->
         Repo.insert(%RunHarness{dispatch_run_id: run.id, state: :resolved, origin: :none})

@@ -37,6 +37,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
     work_item = work_item_fixture(scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
 
     claim =
       signed_post(

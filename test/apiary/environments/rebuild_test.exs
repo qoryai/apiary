@@ -120,7 +120,7 @@ defmodule Apiary.Environments.RebuildTest do
     _queued = Apiary.DispatchedRunsFixtures.queue_builds!(shop)
 
     %{access_key: key} = enrolled_key_fixture(scope, mac)
-    {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now())
+    {:ok, %{run: claimed}} = Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
     assert claimed.pool_id == mac.id
     [linux_waiting] = waiting_ids(shop)
 

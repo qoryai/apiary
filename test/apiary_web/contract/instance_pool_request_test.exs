@@ -81,6 +81,7 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
   defp queue!(scope) do
     work_item = work_item_fixture(scope)
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
     run
   end
 
@@ -93,7 +94,10 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
 
   defp claimed!(ctx, scope) do
     queue!(scope)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
     dispatch
   end
 
@@ -148,6 +152,9 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
         Task.async(fn ->
           Process.sleep(200)
           {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+          # A walk that resolves wakes a claim that waits, as `Apiary.Harnesses.WalkJob` does.
+          :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+          :ok = Dispatches.broadcast([run.workspace_id])
           run
         end)
 
@@ -244,7 +251,9 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
       %{access_key: their_key} = enrolled_key_fixture(c, theirs)
       Apiary.DispatchedRunsFixtures.gateway_for!(c, theirs)
       queue!(c)
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(their_key, Dispatches.now())
+
+      {:ok, %{dispatch: dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(their_key, Dispatches.now())
 
       for {action, body} <- [
             {"dispatched", %{}},

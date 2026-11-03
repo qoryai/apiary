@@ -66,6 +66,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         harness: harness_name(Sources.chosen(workspace)),
         cross: cross(Sources.chosen(workspace)),
+        qory_workflows: qory_workflows(Sources.chosen(workspace)),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
         snapshot: Processes.declared_snapshot(workspace),
@@ -677,7 +678,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               </.link>
             </p>
             <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
-              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot, @cross)}</p>
+              <p id="stages-workflows-list">{Words.workflows_line(@snapshot, @qory_workflows)}</p>
               <p :if={@declared_error} id="stages-workflows-error" class="text-error">
                 <.rich text={Words.read_failed(@declared_error, @snapshot)} />
               </p>
@@ -897,6 +898,10 @@ defmodule ApiaryWeb.StagesLive.Index do
   # workspace cannot add to, or a harness repository (`Words.undeclared/3`).
   defp cross(%{choice: :qory}), do: :qory_workspace
   defp cross(_chosen), do: :workspace
+
+  # The workflows of the workspace's Qory harness, none for a harness repository.
+  defp qory_workflows(%{choice: :qory} = chosen), do: Processes.qory_workflows(chosen)
+  defp qory_workflows(_chosen), do: []
 
   defp problem_words({:missing_workflow, id, name}, doc, cross),
     do: Words.undeclared(stage_name(doc, id), name, cross)

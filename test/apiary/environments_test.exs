@@ -326,7 +326,7 @@ defmodule Apiary.EnvironmentsTest do
     # A claim of `pool`: what it took, or `:none`.
     defp claim(ctx, pool) do
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-      {:ok, claimed} = Dispatches.claim(key, Dispatches.now())
+      {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
       claimed
     end
 

@@ -50,7 +50,8 @@ defmodule Apiary.Dispatches.HandoverTest do
     {collection, run}
   end
 
-  defp claim(ctx), do: Dispatches.claim(ctx.key, Dispatches.now(), @body)
+  defp claim(ctx),
+    do: Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
 
   # A claim that took a run: what it took.
   defp claimed!(ctx) do

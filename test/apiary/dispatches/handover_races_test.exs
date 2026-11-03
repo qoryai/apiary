@@ -108,7 +108,9 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   end
 
   defp claim!(ctx) do
-    {:ok, %{dispatch: dispatch} = claimed} = Dispatches.claim(ctx.key, Dispatches.now(), @body)
+    {:ok, %{dispatch: dispatch} = claimed} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+
     %{dispatch: dispatch, run_code: claimed.run_code, registered: claimed.registered}
   end
 

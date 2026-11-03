@@ -7,10 +7,11 @@ defmodule Apiary.Stacks do
   #
   # ## A run's workflow
   #
-  # An explore run's workflow is the workflow of the one row with a workflow at the run's
-  # places, its workspace and its target (`workflow_for/2`). With no such row, or two or
-  # more, the run has no workflow and no harness, whatever the levels have. The walk
-  # reads no document of a row with a workflow.
+  # An explore run the stage runner did not queue has the workflow of the one row with a
+  # workflow at the run's places, its workspace and its target (`workflow_for/2`). With no
+  # such row, or two or more, the run has no workflow and no harness, whatever the levels
+  # have. A stage's run has its stage entry's workflow (`Apiary.Stages.run_workflow/1`),
+  # with or without a row. The walk reads no document of a row with a workflow.
   #
   # ## The harness choices
   #
@@ -118,10 +119,10 @@ defmodule Apiary.Stacks do
   # the work item's `%{system, path}`, nil for none. Read without a lock, when the walk
   # runs.
   #
-  # For an explore run, `workflow` is the name its walk reads by: the `access` of the row
-  # `workflow/2` reads, nil where that row records none. `:read` where that row's
-  # workflow is no longer `workflow`, or where no such row is left, so a row of another
-  # workflow, or none, never gives this run's level.
+  # For a run the stage runner did not queue, `workflow` is the name its walk reads by:
+  # the `access` of the row `workflow/2` reads, nil where that row records none. `:read`
+  # where that row's workflow is no longer `workflow`, or where no such row is left, so a
+  # row of another workflow, or none, never gives this run's level.
   #
   # For a stage's run, `{:stage, workflow}`, with the workflow of its stage entry, which
   # needs no row: the lower level of the rows with that workflow at the run's places, nil
