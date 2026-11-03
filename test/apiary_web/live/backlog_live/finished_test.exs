@@ -5,6 +5,7 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
   # its page.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.SourcesFixtures
   import Apiary.StagesFixtures
@@ -12,7 +13,7 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
   alias Apiary.{Repo, Sources, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Sources.Item
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   @moduletag needs: [:factory, :workflow_model]
 
@@ -337,6 +338,47 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
       assert words(view, "#work-item-ended-line") == "Every stage done"
       assert has_element?(view, "#work-item-head-stages")
       refute has_element?(view, "#work-item-head-stages .q-wi-stage-now")
+    end
+
+    test "after an undo of a take in again that moved it, it is at no stage", ctx do
+      work_item = finished_fixture(ctx.scope, ctx.ticket)
+      close_ticket(ctx, 60)
+      reopen_ticket(ctx, 120)
+      {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
+
+      # As if the take in again had moved it: its event has another workspace.
+      {1, _rows} =
+        Repo.update_all(
+          from(e in WorkItemEvent,
+            where: e.work_item_id == ^again.id and e.kind == :taken_in,
+            where: fragment("?->>'take_in' = '2'", e.data),
+            update: [
+              set: [
+                data:
+                  fragment(
+                    "jsonb_set(?, '{before,workspace_id}', to_jsonb(?::text))",
+                    e.data,
+                    ^Ecto.UUID.generate()
+                  )
+              ]
+            ]
+          ),
+          []
+        )
+
+      {:ok, _undone} = WorkItems.undo(ctx.scope, Repo.get!(WorkItem, again.id))
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, work_item))
+
+      assert words(view, "#work-item-ended-line") == "Every stage done"
+      refute has_element?(view, ".q-wi-stage-now")
+      assert has_element?(view, "#work-item-ended-again")
+
+      {:ok, list, _html} = live(ctx.conn, work_list(ctx.scope, "closed"))
+      assert words(list, work_row(work_item)) =~ "Every stage done"
+      assert mark(list, work_item) == ["q-wi-mk q-wi-mk-done"]
+
+      assert {:open, backlog} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
+      assert has_element?(backlog, again_button(ctx.ticket))
     end
 
     test "one a person closed keeps Take in again", ctx do

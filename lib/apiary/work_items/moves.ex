@@ -125,8 +125,8 @@ defmodule Apiary.WorkItems.Moves do
   # nothing is sent, as the label stayed; one that had ended undone becomes `:undone`
   # again, and the adapter is told `undone`, as its take in again put the label back on.
   # A work item moved by its take in again stays in the workspace it moved to, with its
-  # new number, and keeps the place it has there. An event written before the place was
-  # kept leaves the place as it is. The first instruction stays the one of the take in undone: it is given to
+  # new number, and gets no place in a process: the place it had is of the old one. An
+  # event written before the place was kept leaves the place as it is. The first instruction stays the one of the take in undone: it is given to
   # no run until a take in again gives a new one.
   #
   # ## Close
@@ -715,12 +715,15 @@ defmodule Apiary.WorkItems.Moves do
 
   defp stage_before(_before), do: nil
 
-  # The place an undo puts back: none for an event without it, and none for a work item
-  # its take in again moved to another workspace, whose process the place is not of.
+  # The place an undo puts back. An event without it changes nothing. A work item its take
+  # in again moved to another workspace gets no place, as the place is of the old process.
   defp stage_fields(%{stage: %{workspace_id: workspace_id} = stage}, %WorkItem{
          workspace_id: workspace_id
        }),
        do: stage |> Map.delete(:workspace_id) |> Map.to_list()
+
+  defp stage_fields(%{stage: %{} = stage}, _held),
+    do: for({field, _value} <- Map.delete(stage, :workspace_id), do: {field, nil})
 
   defp stage_fields(_before, _held), do: []
 

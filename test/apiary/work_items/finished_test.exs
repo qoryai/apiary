@@ -297,8 +297,7 @@ defmodule Apiary.WorkItems.FinishedTest do
       assert Map.take(undone, place) == Map.take(ctx.again, place)
     end
 
-    test "a work item its take in again moved to another workspace keeps the place it has there",
-         ctx do
+    test "a work item its take in again moved to another workspace gets no place", ctx do
       place = [
         :process_version_id,
         :stage_id,
@@ -330,7 +329,8 @@ defmodule Apiary.WorkItems.FinishedTest do
       {:ok, undone} = WorkItems.undo(ctx.scope, ctx.again)
 
       assert %WorkItem{state: :closed} = undone
-      assert Map.take(undone, place) == Map.take(ctx.again, place)
+      assert Map.take(undone, place) == Map.new(place, &{&1, nil})
+      assert Map.take(reload(undone), place) == Map.new(place, &{&1, nil})
     end
   end
 
