@@ -1,7 +1,7 @@
-defmodule Apiary.WorkItems.UndoDeclineCloseTest do
-  # What a person does to a live work item (`Apiary.WorkItems.undo/2`, `decline/2` and
-  # `close/2`): an undo while no claim holds its run, back to how a take in again found
-  # it; a decline while none of its runs is live; a close whatever its runs; each with its
+defmodule Apiary.WorkItems.UndoCloseTest do
+  # What a person does to a live work item (`Apiary.WorkItems.undo/2` and `close/2`): an
+  # undo while no claim holds its run, back to how a take in again found it; a close
+  # whatever its runs; each with its
   # event, its feed entry where the label changes, its entry in the trail, and each
   # refusal.
   use Apiary.DataCase, async: true
@@ -14,7 +14,7 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo, WorkItems}
-  alias Apiary.Adapters.Feed
+  alias Apiary.Adapters.{Collection, Feed}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
@@ -134,20 +134,28 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       assert statuses(ctx.ticket) == ["taken_in"]
     end
 
-    test "of a take in again of a declined work item: declined again, as it was", ctx do
-      end_runs!(ctx.work_item)
-      {:ok, declined} = WorkItems.decline(ctx.scope, ctx.work_item)
+    test "of a take in again of a closed work item: closed again, as it was", ctx do
+      {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
       %{user: member} = member_fixture(ctx.scope)
+      member_scope = workspace_scope(member, ctx.scope.workspace)
+
+      Repo.get!(Collection, ctx.ticket.collection_id)
+      |> Ecto.Changeset.change(target_system: "moved.example.com", target_path: "acme/moved")
+      |> Repo.update!()
 
       {:ok, again} =
-        WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{owner_id: member.id})
+        WorkItems.take_in_again(member_scope, ctx.ticket.public_id, %{owner_id: member.id})
+
+      assert again.owner_id == member.id
+      assert again.taken_in_by_id == member.id
+      assert again.taken_in_at != ctx.work_item.taken_in_at
+      assert {again.target_system, again.target_path} == {"moved.example.com", "acme/moved"}
 
       assert {:ok, back} = WorkItems.undo(ctx.scope, again)
-
-      assert back.state == :declined
+      assert back.state == :closed
       assert back.take_in == 2
-      assert back.declined_at == declined.declined_at
-      assert back.declined_by_id == ctx.scope.user.id
+      assert back.closed_at == closed.closed_at
+      assert back.closed_by_id == ctx.scope.user.id
       assert back.owner_id == ctx.scope.user.id
       assert back.taken_in_at == ctx.work_item.taken_in_at
       assert back.taken_in_by_id == ctx.work_item.taken_in_by_id
@@ -155,17 +163,6 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       assert {back.target_system, back.target_path} ==
                {ctx.work_item.target_system, ctx.work_item.target_path}
 
-      assert statuses(ctx.ticket) == ["taken_in"]
-    end
-
-    test "of a take in again of a closed work item: closed again, as it was", ctx do
-      {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
-      {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
-
-      assert {:ok, back} = WorkItems.undo(ctx.scope, again)
-      assert back.state == :closed
-      assert back.closed_at == closed.closed_at
-      assert back.closed_by_id == ctx.scope.user.id
       assert statuses(ctx.ticket) == ["taken_in"]
     end
 
@@ -195,57 +192,6 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
 
       for id <- @malformed do
         assert WorkItems.undo(ctx.scope, %{ctx.work_item | id: id}) ==
-                 {:error, :not_found}
-      end
-
-      assert written(ctx.work_item, ctx.ticket) == before
-    end
-  end
-
-  describe "decline" do
-    test "of a work item none of whose runs is live: declined, by the person, now", ctx do
-      end_runs!(ctx.work_item)
-
-      assert {:ok, %WorkItem{state: :declined} = declined} =
-               WorkItems.decline(ctx.scope, ctx.work_item)
-
-      assert declined.declined_by_id == ctx.scope.user.id
-      assert %DateTime{} = declined.declined_at
-      assert kinds(declined) == [:taken_in, :declined]
-      assert statuses(ctx.ticket) == ["taken_in"]
-
-      entry = entry("work_item.decline", declined)
-      assert entry.before == %{"state" => "exploring"}
-      assert entry.after == %{"state" => "declined"}
-    end
-
-    test "while a run of its take in waits, or is claimed, refused", ctx do
-      assert WorkItems.decline(ctx.scope, ctx.work_item) == {:error, :running}
-
-      _gateway = workspace_gateway!(ctx.scope)
-      pool = pool_fixture(ctx.scope)
-      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-
-      {:ok, %{dispatch: _dispatch}} =
-        Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
-
-      assert WorkItems.decline(ctx.scope, ctx.work_item) == {:error, :running}
-      assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
-    end
-
-    test "of a work item that is not live, or not in the workspace, refused", ctx do
-      {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
-      assert WorkItems.decline(ctx.scope, closed) == {:error, :not_live}
-
-      live = work_item_fixture(ctx.scope)
-      assert WorkItems.decline(other_workspace_scope(ctx.scope), live) == {:error, :not_found}
-    end
-
-    test "of a work item whose id is no UUID, not found, nothing written", ctx do
-      before = written(ctx.work_item, ctx.ticket)
-
-      for id <- @malformed do
-        assert WorkItems.decline(ctx.scope, %{ctx.work_item | id: id}) ==
                  {:error, :not_found}
       end
 

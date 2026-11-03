@@ -2,7 +2,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # The three migrations that make an adapter a kind of node of the instance, connect an
   # organisation to one, and validate their checks, run down and up again inside the test's
   # transaction, which rolls it all back, with the later ones that rest on the connections
-  # or on the place of a node (`@grant_rule`, `@grant_account`, `@run_credentials`, `@linked_passes`,
+  # or on the place of a node (`@declined`, `@grant_rule`, `@grant_account`, `@run_credentials`, `@linked_passes`,
   # `@linked_pass`, `@grants`, `@instance`, `@hold`, `@prebuilds`, `@environments`, `@environment_ref`,
   # `@left_out`, `@listed`, `@listing`, `@again`, `@items`, `@collections`, then
   # `@ticket`), down first and up last. `@hold` stays down, as the migrations between it and `@prebuilds` that it
@@ -12,7 +12,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # three stay down, as the test checks nothing of theirs, and the rollback restores them.
   # So does `@run_credentials`, whose table has a foreign key to `adapter_connections`,
   # and `@grant_account` and `@grant_rule`, whose foreign keys from `source_collections`
-  # and `grant_rules` rest on `adapter_grants`, which `@grants` drops.
+  # and `grant_rules` rest on `adapter_grants`, which `@grants` drops, and `@declined`, whose
+  # check `@again` drops.
   # The migrations change `nodes`, `access_keys` and `access_key_enrolment_codes` under
   # every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -72,6 +73,9 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
 
   @grant_rule {20_261_029_141_700, Apiary.Repo.Migrations.KeepAGrantSRule, "keep_a_grant_s_rule"}
 
+  @declined {20_261_103_090_000, Apiary.Repo.Migrations.CloseEveryDeclinedWorkItem,
+             "close_every_declined_work_item"}
+
   @tables ~w(nodes access_keys access_key_enrolment_codes node_instances)
   @checks ~w(access_keys_place_check access_key_enrolment_codes_place_check
              access_keys_node_fkey access_keys_enrolment_code_fkey
@@ -99,7 +103,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
           @linked_passes,
           @run_credentials,
           @grant_account,
-          @grant_rule
+          @grant_rule,
+          @declined
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -119,6 +124,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
   defp down_all! do
+    down!(@declined)
     down!(@grant_rule)
     down!(@grant_account)
     down!(@run_credentials)
@@ -228,6 +234,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   test "rolled back, the adapter's kind refuses to go while an adapter row is there" do
     adapter_fixture()
 
+    down!(@declined)
     down!(@grant_rule)
     down!(@grant_account)
     down!(@run_credentials)

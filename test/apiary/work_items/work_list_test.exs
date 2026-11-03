@@ -29,7 +29,7 @@ defmodule Apiary.WorkItems.WorkListTest do
   }
   @empty %{
     rows: [],
-    counts: %{open: 0, you: 0, declined: 0, closed: 0},
+    counts: %{open: 0, you: 0, closed: 0},
     stages: @no_stages,
     first: 1,
     next: nil,
@@ -56,24 +56,17 @@ defmodule Apiary.WorkItems.WorkListTest do
     setup %{scope: scope} do
       now = DateTime.utc_now()
       open = item!(scope)
-
-      declined =
-        item!(scope) |> set!(state: :declined, declined_at: now, declined_by_id: scope.user.id)
-
       closed = item!(scope) |> set!(state: :closed, closed_at: now, closed_by_id: nil)
       undone = item!(scope)
       {:ok, _undone} = WorkItems.undo(scope, undone)
-      %{open: open, declined: declined, closed: closed, undone: Repo.get!(WorkItem, undone.id)}
+      %{open: open, closed: closed, undone: Repo.get!(WorkItem, undone.id)}
     end
 
-    test "hold the live, the declined, and the closed and undone work items, with every count",
-         ctx do
-      counts = %{open: 1, you: 0, declined: 1, closed: 2}
+    test "hold the live, and the closed and undone work items, with every count", ctx do
+      counts = %{open: 1, you: 0, closed: 2}
 
       assert %{rows: [%{id: open}], counts: ^counts} = list(ctx.scope)
       assert open == ctx.open.public_id
-      assert ids(list(ctx.scope, view: :declined)) == [ctx.declined.public_id]
-      assert ids(list(ctx.scope, %{"view" => "declined"})) == [ctx.declined.public_id]
 
       assert Enum.sort(ids(list(ctx.scope, view: :closed))) ==
                Enum.sort([ctx.closed.public_id, ctx.undone.public_id])
@@ -83,16 +76,7 @@ defmodule Apiary.WorkItems.WorkListTest do
     end
 
     test "draw each row with when and by whom it ended", ctx do
-      rows =
-        Map.new(
-          list(ctx.scope, view: :closed).rows ++ list(ctx.scope, view: :declined).rows,
-          &{&1.id, &1}
-        )
-
-      declined = rows[ctx.declined.public_id]
-      assert declined.state == :declined
-      assert declined.ended_at == ctx.declined.declined_at
-      assert declined.ended_by_id == ctx.scope.user.id
+      rows = Map.new(list(ctx.scope, view: :closed).rows, &{&1.id, &1})
 
       closed = rows[ctx.closed.public_id]
       assert closed.state == :closed
@@ -213,8 +197,8 @@ defmodule Apiary.WorkItems.WorkListTest do
       item!(scope, title: "The basket loses an item")
       item!(scope) |> set!(state: :closed, closed_at: DateTime.utc_now())
 
-      assert list(scope, search: "basket").counts == %{open: 1, you: 0, declined: 0, closed: 0}
-      assert list(scope).counts == %{open: 1, you: 0, declined: 0, closed: 1}
+      assert list(scope, search: "basket").counts == %{open: 1, you: 0, closed: 0}
+      assert list(scope).counts == %{open: 1, you: 0, closed: 1}
     end
   end
 
@@ -480,9 +464,8 @@ defmodule Apiary.WorkItems.WorkListTest do
 
     test "an ended row keeps the status of its last take in, and an instance's close its reason",
          %{scope: scope} do
-      declined =
-        at!(scope, :confirm)
-        |> set!(state: :declined, declined_at: DateTime.utc_now(), declined_by_id: scope.user.id)
+      closed_by_person = at!(scope, :confirm)
+      {:ok, _closed} = WorkItems.close(scope, closed_by_person)
 
       removed = at!(scope, :questions)
 
@@ -491,13 +474,13 @@ defmodule Apiary.WorkItems.WorkListTest do
           WorkItems.close_locked([removed], {:instance, "adapter_removed"}, DateTime.utc_now())
         end)
 
-      assert [%{status: :confirm, ended_reason: nil}] = list(scope, view: :declined).rows
-      [closed] = list(scope, view: :closed).rows
-      assert closed.id == removed.public_id
+      rows = Map.new(list(scope, view: :closed).rows, &{&1.id, &1})
+      assert %{status: :confirm, ended_reason: nil} = rows[closed_by_person.public_id]
+
+      closed = rows[removed.public_id]
       assert closed.status == :questions
       assert closed.ended_by_id == nil
       assert closed.ended_reason == "adapter_removed"
-      assert declined.state == :declined
     end
   end
 
@@ -517,9 +500,9 @@ defmodule Apiary.WorkItems.WorkListTest do
       for status <- [:queued, :running, :questions, :used_up, :no_result, :shape],
           do: at!(scope, status)
 
-      _declined =
+      _closed =
         at!(scope, :confirm)
-        |> set!(state: :declined, declined_at: base, declined_by_id: scope.user.id)
+        |> set!(state: :closed, closed_at: base, closed_by_id: scope.user.id)
 
       %{member: member, membership: membership, older: older, newer: newer, theirs: theirs}
     end
@@ -656,7 +639,7 @@ defmodule Apiary.WorkItems.WorkListTest do
 
       assert WorkItems.list_bands(foreign) == %{
                bands: %{explore: [], confirm: [], shape: []},
-               counts: %{open: 0, you: 0, declined: 0, closed: 0},
+               counts: %{open: 0, you: 0, closed: 0},
                stages: @no_stages
              }
     end

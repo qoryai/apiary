@@ -3,7 +3,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   #
   # **The list.** The page's head; the stages strip, Explore, Confirm and Shape, each with
   # its count and what in it needs a look, and a link to that stage alone; the views as
-  # tabs, each with its count (Open, Waiting on you, Declined, Closed); Search; one Filter
+  # tabs, each with its count (Open, Waiting on you, Closed); Search; one Filter
   # menu (Owner, the collections in their sources' words, Updated); Sort (Recently
   # updated, Newest), on every view but Waiting on you; the filters in force as tokens
   # under the bar with Clear and how many work items match; the line of a view that needs
@@ -61,7 +61,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   alias ApiaryWeb.{People, SourceComponents, UserAuth}
   alias ApiaryWeb.WorkItemLive.{StageComponents, Workflow}
 
-  @views [:open, :you, :declined, :closed]
+  @views [:open, :you, :closed]
   @stages [:explore, :confirm, :shape]
   @filters [:owner, :collection, :updated]
   @sorts [:updated, :created]

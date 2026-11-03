@@ -103,16 +103,6 @@ defmodule Apiary.Sources.BacklogTest do
 
   defp set_state(work_item, :exploring, _user), do: work_item
 
-  defp set_state(work_item, :declined, user) do
-    work_item
-    |> Ecto.Changeset.change(
-      state: :declined,
-      declined_at: DateTime.utc_now(),
-      declined_by_id: user.id
-    )
-    |> Repo.update!()
-  end
-
   defp set_state(work_item, :closed, _user) do
     work_item
     |> Ecto.Changeset.change(state: :closed, closed_at: DateTime.utc_now())
@@ -191,14 +181,12 @@ defmodule Apiary.Sources.BacklogTest do
       undone = ticket(collection, minutes: 6)
       open = ticket(collection, minutes: 5)
       taken = ticket(collection, minutes: 4)
-      declined = ticket(collection, minutes: 3)
       ended = ticket(collection, minutes: 2)
       closed = ticket(collection, minutes: 1, state: :closed, state_reason: "Not planned")
       closed_taken = ticket(collection, minutes: 0, state: :closed)
 
       work_item(scope, undone, :undone)
       work_item(scope, taken)
-      work_item(scope, declined, :declined)
       work_item(scope, ended, :closed)
       work_item(scope, closed_taken)
 
@@ -206,7 +194,6 @@ defmodule Apiary.Sources.BacklogTest do
         undone: undone,
         open: open,
         taken: taken,
-        declined: declined,
         ended: ended,
         closed: closed,
         closed_taken: closed_taken
@@ -215,7 +202,7 @@ defmodule Apiary.Sources.BacklogTest do
 
     test "each view holds its tickets, newest change first; the counts come with every page",
          ctx do
-      counts = %{open: 3, taken: 1, declined: 1, closed: 2, total: 7}
+      counts = %{open: 3, taken: 1, closed: 2, total: 6}
       page = list(ctx.scope)
 
       # Open: open at the source with no work item, or one undone or closed.
@@ -224,14 +211,13 @@ defmodule Apiary.Sources.BacklogTest do
       assert page.next == nil
 
       assert ids(list(ctx.scope, view: :taken)) == [ctx.taken.public_id]
-      assert ids(list(ctx.scope, %{"view" => "declined"})) == [ctx.declined.public_id]
 
       assert ids(list(ctx.scope, view: :closed)) ==
                [ctx.closed.public_id, ctx.closed_taken.public_id]
 
-      assert length(list(ctx.scope, view: :all).rows) == 7
+      assert length(list(ctx.scope, view: :all).rows) == 6
 
-      for view <- [:taken, :declined, :closed, :all] do
+      for view <- [:taken, :closed, :all] do
         assert list(ctx.scope, view: view).counts == counts, inspect(view)
       end
 
@@ -239,10 +225,9 @@ defmodule Apiary.Sources.BacklogTest do
       assert ids(list(ctx.scope, view: "elsewhere")) == ids(page)
     end
 
-    test "an open ticket is in one view of Open, Taken in and Declined, by its work item",
-         ctx do
+    test "an open ticket is in one view of Open and Taken in, by its work item", ctx do
       views = fn item ->
-        for view <- [:open, :taken, :declined, :closed],
+        for view <- [:open, :taken, :closed],
             item.public_id in ids(list(ctx.scope, view: view)),
             do: view
       end
@@ -251,17 +236,16 @@ defmodule Apiary.Sources.BacklogTest do
       assert views.(ctx.undone) == [:open]
       assert views.(ctx.ended) == [:open]
       assert views.(ctx.taken) == [:taken]
-      assert views.(ctx.declined) == [:declined]
       assert views.(ctx.closed) == [:closed]
       assert views.(ctx.closed_taken) == [:closed]
 
       # The facts say how many are open at their source, whatever their work item.
-      assert Backlog.backlog_facts(ctx.scope).open_tickets == 5
+      assert Backlog.backlog_facts(ctx.scope).open_tickets == 4
     end
 
     test "a row carries the ticket and its work item as the components draw them", ctx do
       %{scope: scope} = ctx
-      declined_item = Repo.get_by!(WorkItem, item_id: ctx.declined.id)
+      ended_item = Repo.get_by!(WorkItem, item_id: ctx.ended.id)
       taken_item = Repo.get_by!(WorkItem, item_id: ctx.taken.id)
       rows = Map.new(list(scope, view: :all).rows, &{&1.id, &1})
       path = "/#{scope.organisation.slug}/#{scope.workspace.slug}/work/"
@@ -278,91 +262,26 @@ defmodule Apiary.Sources.BacklogTest do
                comment_count: 0,
                state: :open,
                state_reason: nil,
-               work_item: %{state: :declined, number: number, path: declined_path}
-             } = row = rows[ctx.declined.public_id]
+               work_item: %{state: :closed, number: number, path: ended_path}
+             } = row = rows[ctx.ended.public_id]
 
-      assert {id, key, repository_id} ==
-               {ctx.declined.public_id, ctx.declined.key, ctx.collection.id}
+      assert {id, key, repository_id} == {ctx.ended.public_id, ctx.ended.key, ctx.collection.id}
 
-      assert row.filed_at == ctx.declined.source_created_at
-      assert row.updated_at == ctx.declined.source_updated_at
-      assert number == declined_item.number
-      assert declined_path == path <> Integer.to_string(number)
-      # Who declined it by their address, which the page draws as its first letter.
-      assert row.work_item.declined_by == scope.user.email
+      assert row.filed_at == ctx.ended.source_created_at
+      assert row.updated_at == ctx.ended.source_updated_at
+      assert number == ended_item.number
+      assert ended_path == path <> Integer.to_string(number)
       refute Map.has_key?(row, :body)
 
       assert rows[ctx.taken.public_id].work_item == %{
                number: taken_item.number,
                state: :exploring,
-               path: path <> Integer.to_string(taken_item.number),
-               declined_by: nil
+               path: path <> Integer.to_string(taken_item.number)
              }
 
       assert rows[ctx.open.public_id].work_item == nil
       assert rows[ctx.closed.public_id].state_reason == "Not planned"
-      # Who declined it, only on a declined one.
-      assert %{state: :closed, declined_by: nil} = rows[ctx.ended.public_id].work_item
-      assert %{state: :exploring, declined_by: nil} = rows[ctx.closed_taken.public_id].work_item
-    end
-
-    test "a declined work item has its decliner's address, Former member, or nil",
-         ctx do
-      %{user: decliner} = member_fixture(ctx.scope, :member)
-      by_person = ticket(ctx.collection)
-      by_nobody = ticket(ctx.collection)
-
-      work_item(ctx.scope, by_person)
-      |> Ecto.Changeset.change(
-        state: :declined,
-        declined_at: DateTime.utc_now(),
-        declined_by_id: decliner.id
-      )
-      |> Repo.update!()
-
-      work_item(ctx.scope, by_nobody)
-      |> Ecto.Changeset.change(state: :declined, declined_at: DateTime.utc_now())
-      |> Repo.update!()
-
-      declined_by = fn item ->
-        Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
-      end
-
-      assert declined_by.(by_person) == decliner.email
-      assert declined_by.(by_nobody) == nil
-
-      decliner
-      |> Ecto.Changeset.change(deleted_at: DateTime.utc_now(:second))
-      |> Repo.update!()
-
-      assert declined_by.(by_person) == People.former_member()
-      assert declined_by.(by_nobody) == nil
-    end
-
-    # Who declined the work item of a new ticket, `user`, once `change` ran.
-    defp declined_by(ctx, user, change) do
-      item = ticket(ctx.collection)
-
-      work_item(ctx.scope, item, :declined)
-      |> Ecto.Changeset.change(declined_by_id: user.id)
-      |> Repo.update!()
-
-      change.()
-      Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
-    end
-
-    test "a declined work item has the address of a person removed from the organisation",
-         ctx do
-      member = member_fixture(ctx.scope, :member)
-
-      assert declined_by(ctx, member.user, fn -> Repo.delete!(member.membership) end) ==
-               member.user.email
-    end
-
-    test "a declined work item has the address of someone outside the organisation",
-         ctx do
-      user = Apiary.AccountsFixtures.user_fixture()
-      assert declined_by(ctx, user, fn -> :ok end) == user.email
+      assert %{state: :exploring} = rows[ctx.closed_taken.public_id].work_item
     end
 
     test "a filer the source says is no person is a bot", ctx do
@@ -461,19 +380,6 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert one > 0
       assert many == one
-
-      # Who declined a work item is read with the rows too, whoever declined it.
-      declined = fn -> list(ctx.scope, view: :declined).rows end
-      work_item(ctx.scope, ticket(ctx.collection), :declined)
-      one_declined = queries(fn -> assert length(declined.()) == 1 end)
-
-      for _ <- 1..9 do
-        %{user: user} = member_fixture(ctx.scope, :member)
-        ctx.scope |> work_item(ticket(ctx.collection)) |> set_state(:declined, user)
-      end
-
-      many_declined = queries(fn -> assert length(declined.()) == 10 end)
-      assert many_declined == one_declined
     end
   end
 
@@ -506,7 +412,6 @@ defmodule Apiary.Sources.BacklogTest do
       assert list(ctx.scope, search: "%").counts == %{
                open: 1,
                taken: 0,
-               declined: 0,
                closed: 0,
                total: 1
              }
@@ -609,7 +514,7 @@ defmodule Apiary.Sources.BacklogTest do
 
       page = list(ctx.scope, view: :all, filed_by: "Lea", collection: ctx.other.id)
       assert ids(page) == [ctx.closed.public_id]
-      assert page.counts == %{open: 0, taken: 0, declined: 0, closed: 1, total: 1}
+      assert page.counts == %{open: 0, taken: 0, closed: 1, total: 1}
 
       # An empty filter is none.
       assert length(list(ctx.scope, collection: [], filed_by: "").rows) == 2
@@ -629,7 +534,7 @@ defmodule Apiary.Sources.BacklogTest do
             [filed_by: "a" <> <<0>>],
             [filed_by: ["Lea", "Le" <> <<0>> <> "a"]],
             [filed_by: 7],
-            [state: :declined],
+            [state: :undone],
             [state: "shut"]
           ] do
         page = list(ctx.scope, [view: :all] ++ params)
@@ -935,7 +840,7 @@ defmodule Apiary.Sources.BacklogTest do
       end
 
       page = list(ctx.scope, label: ["ui", "Bug"])
-      assert page.counts == %{open: 2, taken: 0, declined: 0, closed: 1, total: 3}
+      assert page.counts == %{open: 2, taken: 0, closed: 1, total: 3}
 
       # With the other filters, all of them hold.
       assert ids(list(ctx.scope, label: "ui", state: :closed, view: :all)) == [closed.public_id]
@@ -1036,14 +941,14 @@ defmodule Apiary.Sources.BacklogTest do
     test "the counts and first are of the window, page by page", ctx do
       %{scope: scope, collection: collection} = ctx
 
-      # 55 open tickets in the last day, a closed one, a taken one and a declined one;
+      # 55 open tickets in the last day, a closed one and two taken ones;
       # 10 more open ones, and a closed one, changed before it.
       inside = for n <- 1..55, do: changed(collection, n * 60)
       closed = changed(collection, 3600, %{state: :closed})
       taken = changed(collection, 7200)
-      declined = changed(collection, 7300)
+      taken_too = changed(collection, 7300)
       work_item(scope, taken)
-      work_item(scope, declined, :declined)
+      work_item(scope, taken_too)
       for n <- 1..10, do: changed(collection, 86_400 + n)
       changed(collection, 90_000, %{state: :closed})
 
@@ -1051,7 +956,7 @@ defmodule Apiary.Sources.BacklogTest do
       first = list_at(scope, params, @at)
       second = list_at(scope, Keyword.put(params, :after, first.next), @at)
 
-      assert first.counts == %{open: 55, taken: 1, declined: 1, closed: 1, total: 58}
+      assert first.counts == %{open: 55, taken: 2, closed: 1, total: 58}
       assert second.counts == first.counts
       assert {first.first, length(first.rows)} == {1, 50}
       assert {second.first, length(second.rows), second.next} == {51, 5, nil}
@@ -1101,7 +1006,7 @@ defmodule Apiary.Sources.BacklogTest do
 
       page = list_at(scope, [updated: "24h", label: "ui", filed_by: "Lea", view: :all], @at)
       assert ids(page) == [closed_ui.public_id]
-      assert page.counts == %{open: 0, taken: 0, declined: 0, closed: 1, total: 1}
+      assert page.counts == %{open: 0, taken: 0, closed: 1, total: 1}
 
       assert ids(list_at(scope, [updated: "1h", search: "#", label: "bug"], @at)) ==
                [day_bug.public_id, day_ui.public_id]
@@ -1293,7 +1198,7 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert list(ctx.scope, view: :all) == %{
                rows: [],
-               counts: %{open: 0, taken: 0, declined: 0, closed: 0, total: 0},
+               counts: %{open: 0, taken: 0, closed: 0, total: 0},
                next: nil,
                prev: nil,
                first: 0
@@ -1391,7 +1296,7 @@ defmodule Apiary.Sources.BacklogTest do
 
       nothing = %{
         rows: [],
-        counts: %{open: 0, taken: 0, declined: 0, closed: 0, total: 0},
+        counts: %{open: 0, taken: 0, closed: 0, total: 0},
         next: nil,
         prev: nil,
         first: 0
@@ -1452,22 +1357,19 @@ defmodule Apiary.Sources.BacklogTest do
 
     test "of another workspace shows its state alone, and puts its ticket in a view by it",
          ctx do
-      declined = ticket(ctx.collection, minutes: 2)
+      ended = ticket(ctx.collection, minutes: 2)
       taken = ticket(ctx.collection, minutes: 1)
       workspace = workspace_fixture(ctx.scope.organisation, "Second")
       there = workspace_scope(ctx.scope.user, workspace)
-      work_item(there, declined, :declined)
+      work_item(there, ended, :closed)
       work_item(there, taken)
-
-      assert [%{work_item: %{number: nil, state: :declined, path: nil, declined_by: nil}}] =
-               list(ctx.scope, view: :declined).rows
 
       assert [%{work_item: %{number: nil, state: :exploring, path: nil}}] =
                list(ctx.scope, view: :taken).rows
 
       page = list(ctx.scope)
-      assert page.rows == []
-      assert page.counts == %{open: 0, taken: 1, declined: 1, closed: 0, total: 2}
+      assert [%{work_item: %{number: nil, state: :closed, path: nil}}] = page.rows
+      assert page.counts == %{open: 1, taken: 1, closed: 0, total: 2}
     end
 
     test "of another organisation, on the same adapter with the same ref, is not the ticket's",

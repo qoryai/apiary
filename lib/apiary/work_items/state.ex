@@ -3,9 +3,9 @@ defmodule Apiary.WorkItems.State do
   # table of moves.
   #
   # A work item is `:exploring` once it is taken in (`:take_in`, from no state), and
-  # `:exploring` is its one live state. From there it is declined (`:decline`), closed
-  # (`:close`) or undone (`:undo`). `:declined`, `:closed` and `:undone` are how a work
-  # item ended: from each, its ticket may be taken in again (`:take_in_again`), which
+  # `:exploring` is its one live state. From there it is closed (`:close`) or undone
+  # (`:undo`). `:closed` and `:undone` are how a work item ended: from each, its ticket
+  # may be taken in again (`:take_in_again`), which
   # makes the same work item `:exploring` again. An undo puts the work item back where
   # the take in found it: undone after its first take in, and after a take in again, the
   # state it had ended in, which the caller keeps and names (`next/3`). Every other move
@@ -15,23 +15,22 @@ defmodule Apiary.WorkItems.State do
   # |---|---|---|
   # | none | `:take_in` | `:exploring` |
   # | `:exploring` | `:undo` | `:undone`, or the state before the take in again |
-  # | `:exploring` | `:decline` | `:declined` |
   # | `:exploring` | `:close` | `:closed` |
-  # | `:declined`, `:closed`, `:undone` | `:take_in_again` | `:exploring` |
+  # | `:closed`, `:undone` | `:take_in_again` | `:exploring` |
   @moduledoc false
 
   @typedoc "Where a work item stands."
-  @type state :: :exploring | :declined | :closed | :undone
+  @type state :: :exploring | :closed | :undone
 
   @typedoc "How a work item ended: a state it may be taken in again from."
-  @type ended :: :declined | :closed | :undone
+  @type ended :: :closed | :undone
 
   @typedoc "What moves a work item on."
-  @type event :: :take_in | :undo | :decline | :close | :take_in_again
+  @type event :: :take_in | :undo | :close | :take_in_again
 
-  @states [:exploring, :declined, :closed, :undone]
-  @ended [:declined, :closed, :undone]
-  @events [:take_in, :undo, :decline, :close, :take_in_again]
+  @states [:exploring, :closed, :undone]
+  @ended [:closed, :undone]
+  @events [:take_in, :undo, :close, :take_in_again]
 
   # states/0 is every state a work item may be in, as the database holds them.
   @doc false
@@ -62,7 +61,6 @@ defmodule Apiary.WorkItems.State do
   @spec next(state | nil, event) :: {:ok, state} | :error
   def next(nil, :take_in), do: {:ok, :exploring}
   def next(:exploring, :undo), do: {:ok, :undone}
-  def next(:exploring, :decline), do: {:ok, :declined}
   def next(:exploring, :close), do: {:ok, :closed}
   def next(state, :take_in_again) when state in @ended, do: {:ok, :exploring}
   def next(_state, _event), do: :error

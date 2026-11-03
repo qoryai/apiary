@@ -44,7 +44,6 @@ defmodule Apiary.DispatchesTest do
 
   # A work item's columns as it stands in an ended `state`, with the time it ended.
   defp ended_state(:closed), do: [state: :closed, closed_at: Dispatches.now()]
-  defp ended_state(:declined), do: [state: :declined, declined_at: Dispatches.now()]
   defp ended_state(:undone), do: [state: :undone]
 
   defp undo(work_item), do: Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
@@ -736,10 +735,9 @@ defmodule Apiary.DispatchesTest do
       assert Repo.aggregate(Dispatch, :count) == 0
     end
 
-    test "ends the waiting runs of work items closed, declined or undone, each with its cause",
-         ctx do
+    test "ends the waiting runs of work items closed or undone, each with its cause", ctx do
       ended =
-        for {state, cause} <- [closed: :closed, declined: :closed, undone: :undone] do
+        for {state, cause} <- [closed: :closed, undone: :undone] do
           work_item = work_item_fixture(ctx.scope)
           run = queue!(work_item)
 

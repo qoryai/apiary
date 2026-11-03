@@ -1,7 +1,7 @@
 defmodule Apiary.WorkItems.Moves do
   # Moves holds what a person does to a workspace's work items, each in one transaction
   # with its event, its run of the queue, its feed entry and its entry in the audit trail:
-  # taking a ticket in, taking it in again, undoing a take in, declining and closing; what
+  # taking a ticket in, taking it in again, undoing a take in and closing; what
   # a member gives Explore: answering a run's questions, confirming a run's proposal,
   # changed or not, and running Explore again; and people's comments on the Thread,
   # writing one and deleting one.
@@ -11,8 +11,8 @@ defmodule Apiary.WorkItems.Moves do
   #
   # Each asks `Apiary.Access.authorize/3` first, inside its transaction: a take in and a
   # take in again `work_item.take_in` of the scope's workspace, where the work item will
-  # be; an undo, a decline and a close `work_item.undo`, `work_item.decline` and
-  # `work_item.close` of the work item, which must be in the scope's workspace; an answer,
+  # be; an undo and a close `work_item.undo` and `work_item.close` of the work item, which
+  # must be in the scope's workspace; an answer,
   # a confirmation and a run of Explore again `work_item.answer`, `work_item.confirm` and
   # `work_item.explore_again` of the work item, likewise; a comment `work_item.comment` of
   # the work item, and a comment's deletion `work_item.comment_delete` of the comment, which
@@ -48,7 +48,7 @@ defmodule Apiary.WorkItems.Moves do
   # then, only right after the work item, the workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
   # the queue (`Apiary.Dispatches`); then the adapter's feed counter, last
-  # (`Apiary.Adapters.Feed`). An undo, a decline and a close take no connection or
+  # (`Apiary.Adapters.Feed`). An undo and a close take no connection or
   # collection: the work item, then its runs. An answer, a confirmation and a run of
   # Explore again take the work item alone, then queue through
   # `Apiary.Dispatches.queue_next/2`, which takes the work item again, in the same
@@ -93,14 +93,14 @@ defmodule Apiary.WorkItems.Moves do
   # then makes the new one: a test whose run no machine took is tried again at once. A
   # take in of a test that commits meanwhile is refused by the index on live test work
   # items, `:test_running` too. It locks the workspace's counter of numbers right after
-  # the new work item, then the runs of the queue. An undo, a decline and a close work on
+  # the new work item, then the runs of the queue. An undo and a close work on
   # a test work item as on any other, and tell no adapter and no Backlog, as it has no
   # ticket.
   #
   # ## Take in again
   #
   # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
-  # a live one `{:error, {:taken, work_item}}`. An ended one, declined, closed or undone,
+  # a live one `{:error, {:taken, work_item}}`. An ended one, closed or undone,
   # becomes `:exploring` again, its take in counted one more, pointed at the ticket's
   # current record and its connection, with the ticket's title and address and its
   # collection's title as they are now, and the target, the owner, the first instruction,
@@ -110,31 +110,26 @@ defmodule Apiary.WorkItems.Moves do
   # `before` (its state, when and by whom it ended, who had taken it in and when, its
   # owner and its target), for an undo. Its first run is queued, run 1 of the new count.
   # The adapter is told `taken_in` only for one that had ended undone, whose label came
-  # off; a declined or closed one kept its label, and nothing is sent.
+  # off; a closed one kept its label, and nothing is sent.
   #
   # ## Undo
   #
   # An undo works on a live work item while no claim holds a run of its take in
   # (`Apiary.Dispatches.cancel_for_undo/1`, `{:error, :claimed}` otherwise), and ends its
   # waiting runs. A first take in becomes `:undone`, and the adapter is told `undone`. A
-  # take in again goes back to how it had ended, from its event's `before`: declined or
-  # closed with when and by whom, and its owner, its target and who had taken it in, and
+  # take in again goes back to how it had ended, from its event's `before`: closed with
+  # when and by whom, and its owner, its target and who had taken it in, and
   # nothing is sent, as the label stayed; one that had ended undone becomes `:undone`
   # again, and the adapter is told `undone`, as its take in again put the label back on.
   # A work item moved by its take in again stays in the workspace it moved to, with its
   # new number. The first instruction stays the one of the take in undone: it is given to
   # no run until a take in again gives a new one.
   #
-  # ## Decline and close
+  # ## Close
   #
-  # A decline works on a live work item none of whose runs of its take in waits, is
-  # claimed or is handed over, else `:running`, and whose take in is not confirmed, else
-  # `:confirmed`: a decline is offered where Explore waits for a member, and a confirmed
-  # work item waits for Shape. It becomes `:declined`, by the person, now, with its
-  # event, which records the stage Explore was at (`"stage"`, `"explore"` or `"confirm"`,
-  # `Apiary.WorkItems.Explore.stage/1`), and nothing is sent, as the label stays. A close
-  # works on a live work item, whatever its runs (`Apiary.WorkItems.close_locked/3`),
-  # and its event records the stage too, `"shape"` once confirmed.
+  # A close works on a live work item, whatever its runs (`Apiary.WorkItems.close_locked/3`).
+  # Its event records the stage Explore was at (`"stage"`, `"explore"`, `"confirm"` or
+  # `"shape"`, `Apiary.WorkItems.Explore.stage/1`), and nothing is sent, as the label stays.
   #
   # ## What a member gives Explore
   #
@@ -524,8 +519,6 @@ defmodule Apiary.WorkItems.Moves do
       })
       |> Ecto.Changeset.change(
         state: :exploring,
-        declined_at: nil,
-        declined_by_id: nil,
         closed_at: nil,
         closed_by_id: nil,
         taken_in_by_id: scope.user.id,
@@ -584,7 +577,6 @@ defmodule Apiary.WorkItems.Moves do
   defp before(%WorkItem{} = work_item) do
     {at, by_id} =
       case work_item.state do
-        :declined -> {work_item.declined_at, work_item.declined_by_id}
         :closed -> {work_item.closed_at, work_item.closed_by_id}
         :undone -> {nil, nil}
       end
@@ -626,8 +618,9 @@ defmodule Apiary.WorkItems.Moves do
 
     changes =
       case before do
-        %{state: ended} when ended in [:declined, :closed] ->
-          [state: state] ++ ended_fields(ended, before) ++ taken_in_fields(before)
+        %{state: :closed} ->
+          [state: state, closed_at: before.at, closed_by_id: before.by_id] ++
+            taken_in_fields(before)
 
         %{state: :undone} ->
           [state: state] ++ taken_in_fields(before)
@@ -667,7 +660,7 @@ defmodule Apiary.WorkItems.Moves do
 
     case data do
       %{"before" => %{"state" => state} = before}
-      when state in ["declined", "closed", "undone"] ->
+      when state in ["closed", "undone"] ->
         %{
           state: String.to_existing_atom(state),
           at: time(before["at"]),
@@ -691,9 +684,6 @@ defmodule Apiary.WorkItems.Moves do
     at
   end
 
-  defp ended_fields(:declined, before), do: [declined_at: before.at, declined_by_id: before.by_id]
-  defp ended_fields(:closed, before), do: [closed_at: before.at, closed_by_id: before.by_id]
-
   defp taken_in_fields(before) do
     [
       taken_in_by_id: before.taken_in_by_id,
@@ -702,69 +692,6 @@ defmodule Apiary.WorkItems.Moves do
       target_system: before.target_system,
       target_path: before.target_path
     ]
-  end
-
-  ## Decline
-
-  @doc false
-  @spec decline(Scope.t(), WorkItem.t()) ::
-          {:ok, WorkItem.t()}
-          | {:error, :not_found | :forbidden | :not_live | :running | :confirmed}
-  def decline(%Scope{} = scope, %WorkItem{} = work_item) do
-    result =
-      Repo.transact(fn ->
-        with {:ok, held} <- hold(scope, :"work_item.decline", work_item),
-             :ok <- live(held),
-             :ok <- no_run(held),
-             {:ok, stage} <- not_confirmed(held) do
-          declined(scope, held, stage)
-        end
-      end)
-
-    finish(result)
-  end
-
-  # No run of the work item's take in waits, is claimed or is handed over: those there
-  # are held `FOR UPDATE`, by id, as a close holds them, so a claim that took one first is
-  # seen claimed.
-  defp no_run(%WorkItem{id: id, take_in: take_in}) do
-    running =
-      Repo.all(
-        from r in DispatchRun,
-          where: r.work_item_id == ^id and r.take_in == ^take_in,
-          where: fragment("? IN ('waiting', 'claimed', 'handed_over')", r.state),
-          order_by: r.id,
-          lock: "FOR UPDATE",
-          select: r.id
-      )
-
-    if running == [], do: :ok, else: {:error, :running}
-  end
-
-  # The stage Explore is at, unless the take in is confirmed.
-  defp not_confirmed(held) do
-    case Explore.current(held, DateTime.utc_now()).status do
-      :shape -> {:error, :confirmed}
-      status -> {:ok, Explore.stage(status)}
-    end
-  end
-
-  defp declined(scope, held, stage) do
-    now = DateTime.utc_now()
-    {:ok, state} = State.next(held.state, :decline)
-
-    with {:ok, work_item} <-
-           held
-           |> Ecto.Changeset.change(state: state, declined_at: now, declined_by_id: scope.user.id)
-           |> Repo.update(),
-         :ok <- event(work_item, :declined, scope, now, %{"stage" => Atom.to_string(stage)}),
-         {:ok, _entry} <-
-           Audit.record(Repo, scope, :"work_item.decline", work_item, %{
-             before: %{state: :exploring},
-             after: %{state: state}
-           }) do
-      {:ok, {work_item, told(work_item)}}
-    end
   end
 
   ## Close

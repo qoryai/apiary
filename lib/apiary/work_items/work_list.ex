@@ -17,8 +17,8 @@ defmodule Apiary.WorkItems.WorkList do
   #
   # **Views:** `:open`, the live work items, of one stage with `stage:`; `:you`, those that
   # wait for the reader: the live work items the reader owns whose proposal waits at
-  # Confirm, as the sidebar counts them (`waiting_on/1`); `:declined`; `:closed`, those
-  # closed or undone. The counts of each view and each stage come from one grouped query,
+  # Confirm, as the sidebar counts them (`waiting_on/1`); `:closed`, those closed or
+  # undone. The counts of each view and each stage come from one grouped query,
   # under the same search and filters as the page, without its view and stage.
   #
   # **A row** is a plain map: the work item's public id (`id`), its number in the
@@ -69,11 +69,11 @@ defmodule Apiary.WorkItems.WorkList do
   @max_search 1024
   @max_filter_values 100
   @max_title 1024
-  @views [:open, :you, :declined, :closed]
+  @views [:open, :you, :closed]
   @sorts [:updated, :created]
   @stages [:explore, :confirm, :shape]
   @explore_statuses [:queued, :running, :questions, :no_result, :lost, :cancelled, :used_up]
-  @no_counts %{open: 0, you: 0, declined: 0, closed: 0}
+  @no_counts %{open: 0, you: 0, closed: 0}
   @no_stages %{
     explore: 0,
     confirm: 0,
@@ -102,7 +102,7 @@ defmodule Apiary.WorkItems.WorkList do
   @cursor_microseconds -62_135_596_800_000_000..253_402_300_799_999_999
 
   @typedoc "A view of the Work items list."
-  @type view :: :open | :you | :declined | :closed
+  @type view :: :open | :you | :closed
 
   @typedoc "An order of the list: by the last change, or by when the work item was created."
   @type sort :: :updated | :created
@@ -137,7 +137,6 @@ defmodule Apiary.WorkItems.WorkList do
   @type counts :: %{
           open: non_neg_integer,
           you: non_neg_integer,
-          declined: non_neg_integer,
           closed: non_neg_integer
         }
 
@@ -425,8 +424,6 @@ defmodule Apiary.WorkItems.WorkList do
           s.status == ^Explore.status_name(:confirm)
       )
 
-  defp view(query, :declined, _reader), do: where(query, [work_item: w], w.state == :declined)
-
   defp view(query, :closed, _reader),
     do: where(query, [work_item: w], w.state in [:closed, :undone])
 
@@ -677,18 +674,16 @@ defmodule Apiary.WorkItems.WorkList do
         updated_at: w.updated_at,
         ended_at:
           fragment(
-            "CASE ? WHEN 'declined' THEN ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
+            "CASE ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
             w.state,
-            w.declined_at,
             w.closed_at,
             e.kind,
             e.at
           ),
         ended_by_id:
           fragment(
-            "CASE ? WHEN 'declined' THEN ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
+            "CASE ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
             w.state,
-            w.declined_by_id,
             w.closed_by_id,
             e.kind,
             e.actor_id
@@ -816,8 +811,6 @@ defmodule Apiary.WorkItems.WorkList do
     |> bump(:stages, Explore.stage(status), n)
     |> attention(status, n, mine)
   end
-
-  defp add(acc, :declined, _status, n, _mine), do: bump(acc, :counts, :declined, n)
 
   defp add(acc, state, _status, n, _mine) when state in [:closed, :undone],
     do: bump(acc, :counts, :closed, n)

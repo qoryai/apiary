@@ -12,10 +12,10 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # The second sentence is said only while Take in may take a ticket of the Open view
   # (`take_in?`): one with a target, where the workspace's domain needs one.
   #
-  # **The list.** The views as tabs, each with its count (Open, Taken in, Declined,
-  # Closed), with a line under them on Closed and on Declined, where one integration that
-  # brings items connects the organisation, that says which tickets the view holds and
-  # names that integration (on Closed, the tickets closed on it), Search, one Filter menu
+  # **The list.** The views as tabs, each with its count (Open, Taken in, Closed), with a
+  # line under them on Closed, where one integration that brings items connects the
+  # organisation, that names that integration and the tickets closed on it, Search, one
+  # Filter menu
   # (the collections, in their sources' words, Filed by, its bots each with a neutral
   # tile, Label, Updated), Sort (Recently updated, Newest, Most comments), the filters in
   # force as tokens under the bar, each with its ×, then Clear and how many tickets
@@ -75,7 +75,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
 
-  @views [:open, :taken, :declined, :closed]
+  @views [:open, :taken, :closed]
   @most_values 100
   @sorts [:updated, :created, :comments]
   @lists [:collection, :filed_by, :label]
@@ -242,18 +242,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
             )}
           </p>
 
-          <p
-            :if={@params.view == :declined and @integration}
-            id="backlog-view-line"
-            class="text-[0.8125rem] text-muted"
-          >
-            {gettext(
-              "%{items} whose work item a member declined after Explore. They stay open on %{integration}, and Open leaves them out. Take in again brings back the same work item.",
-              items: SourceComponents.items_label(@item_noun),
-              integration: @integration.name
-            )}
-          </p>
-
           <section :if={@row_count > 0} id="backlog-list" class="q-blk">
             <ul id="backlog-rows" class="q-rows" phx-update="stream">
               <BacklogComponents.ticket_row
@@ -264,7 +252,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 patch={list_path(@current_scope, @params, ticket: ticket.id, page: :kept)}
                 selected={@ticket != nil and @ticket.id == ticket.id}
                 now={@now}
-                reader={@current_scope.user.email}
                 take_in="take_in"
               />
             </ul>
@@ -603,7 +590,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   defp view_label(:open), do: pgettext("backlog view", "Open")
   defp view_label(:taken), do: gettext("Taken in")
-  defp view_label(:declined), do: gettext("Declined")
   defp view_label(:closed), do: gettext("Closed")
 
   defp sort_label(:updated), do: gettext("Recently updated")

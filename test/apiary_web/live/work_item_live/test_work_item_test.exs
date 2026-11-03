@@ -173,10 +173,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       refute has_element?(view, "#work-item-ended-again")
     end
 
-    test "Decline asks with no ticket in its words, then declines", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "the questions' line has no ticket in its words", %{conn: conn, scope: scope} do
       {test_item, _run} = ran!(scope, result: questions_result())
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
@@ -187,21 +184,6 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
              )
 
       refute has_element?(view, "#work-item-explore-questions", "its comments")
-
-      view |> element("#work-item-step-decline") |> render_click()
-
-      assert has_element?(
-               view,
-               "#work-item-step-decline",
-               "The work item stays in Qory Apiary, declined."
-             )
-
-      refute has_element?(view, "#work-item-step-decline", "label")
-
-      view |> element("#work-item-step-decline-go") |> render_click()
-
-      assert state(test_item) == :declined
-      refute has_element?(view, "#work-item-ended-again")
     end
   end
 

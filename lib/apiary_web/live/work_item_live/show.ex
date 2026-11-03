@@ -28,7 +28,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`Apiary.WorkItems.subscribe/1`) and reads everything again when a message names its
   # work item; a work item that moved to another workspace is then not found here.
   #
-  # **What a reader does.** Undo, Decline, Close, Confirm, Run Explore again, the answers
+  # **What a reader does.** Undo, Close, Confirm, Run Explore again, the answers
   # and the edit page's changes, each sent with the work item the page last read and the
   # attempt of its latest run, so a page that read an earlier state is refused
   # (`Apiary.WorkItems.Moves`). A refused action shows no words: the page reads the work
@@ -70,7 +70,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
   @edit_keys ["understanding", "scope_in", "scope_out", "approach"]
   @comment_events Comments.events() -- ["cancel_question"]
-  @actions ~w(undo ask_decline decline ask_close close confirm explore_again answer change_proposal confirm_changes)
+  @actions ~w(undo ask_close close confirm explore_again answer change_proposal confirm_changes)
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
   @explore_statuses [
@@ -88,8 +88,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @resolutions %{
     "accept" => :accept,
     "another_round" => :another_round,
-    "close" => :close,
-    "decline" => :decline
+    "close" => :close
   }
 
   @impl true
@@ -176,7 +175,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             previous={@previous}
             explore_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore)}
             edit_path={tab_path(@current_scope, @number, :edit)}
-            asking={if @asking == :decline, do: :decline}
             item_noun={@source.item_noun}
             now={@now}
             queued_of={queued_of(@flow, @item)}
@@ -401,14 +399,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  defp act("ask_decline", _params, socket), do: {:noreply, assign(socket, :asking, :decline)}
   defp act("ask_close", _params, socket), do: {:noreply, assign(socket, :asking, :close)}
 
   defp act("undo", _params, socket),
     do: done(socket, WorkItems.undo(scope(socket), socket.assigns.row))
-
-  defp act("decline", _params, socket),
-    do: done(socket, WorkItems.decline(scope(socket), socket.assigns.row))
 
   defp act("close", _params, socket),
     do: done(socket, WorkItems.close(scope(socket), socket.assigns.row))
@@ -697,10 +691,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # Why Check again did not start the stage, each with its fix first: the work item is not
   # live or not in a stage, or the harness was not read (`Apiary.Stacks.Sources.read/2`).
   defp check_words(_socket, :not_live),
-    do:
-      gettext(
-        "Reload the page. The work item is closed or declined, so it has no stage to check."
-      )
+    do: gettext("Reload the page. The work item is closed, so it has no stage to check.")
 
   defp check_words(_socket, :not_placed),
     do: gettext("Reload the page. The work item is not in a stage, so there is nothing to check.")
@@ -828,8 +819,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       names = Map.get(WorkItems.ticket_names(scope, [row]), row.id, %{})
       thread = if socket.assigns.tab == :thread, do: thread_entries(scope, row, now), else: []
       # Explore runs as before the workflow model: while the work item is at Explore,
-      # the step card stays beside the stage card, with Undo, the answers, Decline and
-      # Confirm. Its Confirm approves Explore's gate (`Apiary.WorkItems.confirm/4`), so
+      # the step card stays beside the stage card, with Undo, the answers and Confirm. Its Confirm approves Explore's gate (`Apiary.WorkItems.confirm/4`), so
       # the stage card offers no second Approve there. A proposal can still wait after the
       # work item left Explore (a gate `none` passes on), so the Confirm gate and the step
       # card are Explore's.
@@ -841,7 +831,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             flow
             | confirm_gate: flow.at_explore and explore.status == :confirm,
               explore: flow.at_explore and explore.status in @explore_statuses,
-              ended: explore.status in [:declined, :closed, :undone]
+              ended: explore.status in [:closed, :undone]
           }
 
       page = View.page(scope, row, explore, thread, names)
@@ -909,8 +899,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp thread_entries(scope, row, now), do: WorkItems.thread(scope, row, now)
 
   # What the reader may do here: undo, close, and act at the step it stands at. While the
-  # stage runner holds an escalation, its card offers Run another round and Decline in
-  # place of the step card's Run Explore again and Decline.
+  # stage runner holds an escalation, its card offers Run another round and Close in
+  # place of the step card's Run Explore again and Close work item…
   # The head's status under the workflow model: nil keeps the words of the work item's
   # status, for one that ended, and at Explore while a run, its questions or its gate
   # are what the stage is at; anywhere else, the stage and its state.
@@ -924,14 +914,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp head_status(flow, _item), do: StageComponents.head_status(flow)
 
   defp can(scope, row, status, flow) do
-    live? = status not in [:declined, :closed, :undone]
+    live? = status not in [:closed, :undone]
 
     action =
       case status do
         :questions -> :"work_item.answer"
         :confirm -> :"work_item.confirm"
         status when status in [:no_result, :lost, :cancelled] -> :"work_item.explore_again"
-        :used_up -> :"work_item.decline"
+        :used_up -> :"work_item.close"
         _other -> nil
       end
 

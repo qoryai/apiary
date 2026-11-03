@@ -661,7 +661,6 @@ defmodule Apiary.ArtifactsTest do
       for state <- WorkItems.State.ended_states() do
         keep!(ctx.work_item, version,
           state: state,
-          declined_at: if(state == :declined, do: now),
           closed_at: if(state == :closed, do: now)
         )
 

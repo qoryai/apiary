@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.WorkItemLive.ShowTest do
   # A work item's page (`ApiaryWeb.WorkItemLive.Show`): its tabs and the edit page, not
   # found for a number no work item of the workspace has; what a reader does there (the
-  # answers, Confirm as it stands and with changes, Decline, Close, Run Explore again),
+  # answers, Confirm as it stands and with changes, Close, Run Explore again),
   # each refused without words where the page read an earlier state, and the form's
   # errors under its fields; the page read again on a message of its work item, with the
   # scope first, as after a refused action; people by the short name of their account,
@@ -290,19 +290,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     end
   end
 
-  describe "Decline, Close and Run Explore again" do
-    test "Decline asks in place, then declines", %{conn: conn, scope: scope} do
-      {work_item, _run} = proposed(scope)
-      {:ok, view, _html} = live(conn, page(scope, work_item.number))
-
-      view |> element("#work-item-step-decline") |> render_click()
-      assert has_element?(view, "#work-item-step-decline-question")
-      view |> element("#work-item-step-decline-go") |> render_click()
-
-      assert state(work_item) == :declined
-      assert has_element?(view, "#work-item-ended")
-    end
-
+  describe "Close and Run Explore again" do
     test "Close asks under the header, then closes", %{conn: conn, scope: scope} do
       work_item = queued(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -321,6 +309,20 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       view |> element("#work-item-step-again") |> render_click()
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
+    end
+
+    test "the run-limit card shows Close work item… to a person who may close",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+
+      for _attempt <- 1..3 do
+        explore_run_fixture(work_item, result: questions_result())
+      end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-step .q-wi-badge", "3 of 3 attempts used")
+      assert has_element?(view, "#work-item-step-close", "Close work item…")
     end
 
     test "an event for another number does nothing", %{conn: conn, scope: scope} do

@@ -11,7 +11,7 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
   # counter, then the runs of the queue, then the adapter's feed counter, so that every
   # race ends with each side answered and no deadlock; two take ins of one ticket, of
   # which one makes the work item; a take in beside an assign that moves the collection,
-  # or a Backlog switch, each waiting for the other; an undo or a decline beside a claim;
+  # or a Backlog switch, each waiting for the other; an undo beside a claim;
   # and a take in again beside an undo.
   use ExUnit.Case, async: false
 
@@ -73,7 +73,6 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
   defp take_in(ctx), do: fn -> WorkItems.take_in(ctx.scope, ctx.ticket.public_id) end
   defp take_in_again(ctx), do: fn -> WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) end
   defp undo(ctx, work_item), do: fn -> WorkItems.undo(ctx.scope, work_item) end
-  defp decline(ctx, work_item), do: fn -> WorkItems.decline(ctx.scope, work_item) end
 
   defp claim(ctx),
     do: fn -> Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) end
@@ -236,20 +235,6 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
       assert await(second) == {:ok, :none}
       assert %WorkItem{state: :undone} = Repo.get!(WorkItem, work_item.id)
     end
-  end
-
-  test "a decline waits for a claim, then is refused", ctx do
-    work_item = taken_in!(ctx)
-
-    {first, first_pid} = hold(claim(ctx))
-    assert {:ok, %{dispatch: _dispatch}} = first.result
-
-    second = start(decline(ctx, work_item))
-    await_blocked(second.backend, first_pid)
-    commit(first)
-
-    assert await(second) == {:error, :running}
-    assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, work_item.id)
   end
 
   describe "a take in again and an undo" do

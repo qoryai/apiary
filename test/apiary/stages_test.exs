@@ -1114,20 +1114,13 @@ defmodule Apiary.StagesTest do
       assert [%{check: :missing}] = Stages.status(work_item).outputs
     end
 
-    test "close and decline end the work item", %{scope: scope, work_item: work_item} do
+    test "close ends the work item", %{scope: scope, work_item: work_item} do
       assert {:ok, %WorkItem{state: :closed}} =
                Stages.resolve_escalation(scope, work_item, :close, nil,
                  expect_stage: reload(work_item).stage_id
                )
 
       assert %Escalation{resolution: :close} = Repo.get_by(Escalation, work_item_id: work_item.id)
-
-      other = take_in!(scope) |> end_run!(nil)
-
-      assert {:ok, %WorkItem{state: :declined}} =
-               Stages.resolve_escalation(scope, other, :decline, nil,
-                 expect_stage: reload(other).stage_id
-               )
     end
 
     test "move back goes to an earlier stage only", %{scope: scope, work_item: work_item} do

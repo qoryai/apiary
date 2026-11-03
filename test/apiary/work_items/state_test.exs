@@ -7,9 +7,7 @@ defmodule Apiary.WorkItems.StateTest do
   @moves %{
     {nil, :take_in} => :exploring,
     {:exploring, :undo} => :undone,
-    {:exploring, :decline} => :declined,
     {:exploring, :close} => :closed,
-    {:declined, :take_in_again} => :exploring,
     {:closed, :take_in_again} => :exploring,
     {:undone, :take_in_again} => :exploring
   }
@@ -26,9 +24,9 @@ defmodule Apiary.WorkItems.StateTest do
     end
   end
 
-  test "the states are exploring, the one live state, and the three a work item ends in" do
-    assert State.states() == [:exploring, :declined, :closed, :undone]
-    assert State.ended_states() == [:declined, :closed, :undone]
+  test "the states are exploring, the one live state, and the two a work item ends in" do
+    assert State.states() == [:exploring, :closed, :undone]
+    assert State.ended_states() == [:closed, :undone]
     assert State.live?(:exploring)
     for state <- [nil | State.ended_states()], do: refute(State.live?(state))
   end
@@ -70,9 +68,8 @@ defmodule Apiary.WorkItems.StateTest do
     assert State.next(:exploring, :close, nil) == :error
   end
 
-  test "a work item not taken in is neither undone, declined nor closed" do
+  test "a work item not taken in is neither undone nor closed" do
     assert State.next(nil, :undo) == :error
-    assert State.next(nil, :decline) == :error
     assert State.next(nil, :close) == :error
   end
 

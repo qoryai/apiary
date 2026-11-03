@@ -11,7 +11,6 @@ defmodule Apiary.WorkItems.CommentsTest do
 
   alias Apiary.{Organisations, Repo, WorkItems}
   alias Apiary.Audit.Entry
-  alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.{Comment, WorkItem}
 
   @moduletag needs: :factory
@@ -31,12 +30,6 @@ defmodule Apiary.WorkItems.CommentsTest do
 
   defp comments(work_item),
     do: Repo.all(from c in Comment, where: c.work_item_id == ^work_item.id)
-
-  defp end_runs!(work_item) do
-    Repo.update_all(from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
-      set: [state: :ended, end_cause: :run_ended]
-    )
-  end
 
   defp other_workspace_scope(scope),
     do: workspace_scope(scope.user, workspace_fixture(scope.organisation))
@@ -92,18 +85,14 @@ defmodule Apiary.WorkItems.CommentsTest do
       assert_receive {:work_items_changed, [^public_id]}
     end
 
-    test "on a work item in any state: declined, closed or undone", ctx do
-      declined = work_item_fixture(ctx.scope, external_ref: "acme/shop#21")
-      end_runs!(declined)
-      {:ok, declined} = WorkItems.decline(ctx.scope, declined)
-
+    test "on a work item in any state: closed or undone", ctx do
       closed = work_item_fixture(ctx.scope, external_ref: "acme/shop#22")
       {:ok, closed} = WorkItems.close(ctx.scope, closed)
 
       undone = work_item_fixture(ctx.scope, external_ref: "acme/shop#23")
       {:ok, undone} = WorkItems.undo(ctx.scope, undone)
 
-      for work_item <- [declined, closed, undone] do
+      for work_item <- [closed, undone] do
         assert {:ok, %Comment{}} = WorkItems.comment(ctx.scope, work_item, "After the end")
       end
     end

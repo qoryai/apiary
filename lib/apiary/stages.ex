@@ -80,7 +80,7 @@ defmodule Apiary.Stages do
   @max_note 4000
 
   @typedoc "A resolution of an escalation."
-  @type resolution :: :accept | :another_round | {:move_back, String.t()} | :close | :decline
+  @type resolution :: :accept | :another_round | {:move_back, String.t()} | :close
 
   @typedoc "Why a person's action is refused."
   @type refusal ::
@@ -725,7 +725,7 @@ defmodule Apiary.Stages do
 
   # resolve_escalation/4 acts on the work item's open escalation: accept it as it is, run
   # another round with the person's note, move the work item back to an earlier stage,
-  # close it or decline it.
+  # or close it.
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -762,16 +762,10 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp resolve(scope, work_item, _version, _stage, escalation, resolution, note)
-       when resolution in [:close, :decline] do
-    :ok = resolve!(escalation, resolution, scope, note)
+  defp resolve(scope, work_item, _version, _stage, escalation, :close, note) do
+    :ok = resolve!(escalation, :close, scope, note)
 
-    result =
-      if resolution == :close,
-        do: Moves.close(scope, work_item),
-        else: Moves.decline(scope, work_item)
-
-    with {:ok, _ended} <- result, do: {:ok, lock!(work_item.id)}
+    with {:ok, _ended} <- Moves.close(scope, work_item), do: {:ok, lock!(work_item.id)}
   end
 
   defp resolve(_scope, _work_item, _version, _stage, _escalation, _resolution, _note),

@@ -1291,7 +1291,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-check-result",
-               "Reload the page. The work item is closed or declined, so it has no stage to check."
+               "Reload the page. The work item is closed, so it has no stage to check."
              )
     end
 
@@ -1376,7 +1376,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     for level <- [:owner, :admin, :member] do
-      test "#{level}: Move back, Close and Decline", %{conn: conn, scope: scope} do
+      test "#{level}: Move back and Close", %{conn: conn, scope: scope} do
         conn = as(conn, scope, unquote(level))
 
         moved = at_build(scope, :escalated, round: 3)
@@ -1391,17 +1391,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert %Escalation{resolution: :move_back, note: "Plan again"} = escalation(moved)
         assert Repo.get!(WorkItem, moved.id).stage_id == @shape
 
-        for {how, state} <- [{"close", :closed}, {"decline", :declined}] do
-          work_item = at_build(scope, :escalated, round: 3)
-          escalate!(work_item, :escalate, "Blocked")
-          {:ok, view, _html} = live(conn, page(scope, work_item.number))
+        work_item = at_build(scope, :escalated, round: 3)
+        escalate!(work_item, :escalate, "Blocked")
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-          view
-          |> form("#work-item-stage-escalation-form", %{"note" => ""})
-          |> render_submit(%{"how" => how})
+        view
+        |> form("#work-item-stage-escalation-form", %{"note" => ""})
+        |> render_submit(%{"how" => "close"})
 
-          assert Repo.get!(WorkItem, work_item.id).state == state
-        end
+        assert Repo.get!(WorkItem, work_item.id).state == :closed
       end
     end
 
@@ -1512,30 +1510,28 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "a work item that ended" do
-    for {how, words} <- [{"close", "Closed by you"}, {"decline", "Declined by you"}] do
-      test "#{how}: no stage card, and the track and the head's words stay", %{
-        conn: conn,
-        scope: scope
-      } do
-        work_item = at_build(scope, :escalated, round: 3)
-        escalate!(work_item, :escalate, "Blocked")
-        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+    test "close: no stage card, and the track and the head's words stay", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_build(scope, :escalated, round: 3)
+      escalate!(work_item, :escalate, "Blocked")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-        view
-        |> form("#work-item-stage-escalation-form", %{"note" => ""})
-        |> render_submit(%{"how" => unquote(how)})
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "close"})
 
-        for view <- [view, elem(live(conn, page(scope, work_item.number)), 1)] do
-          html = render(view)
-          refute has_element?(view, "#work-item-stage")
-          refute has_element?(view, "#work-item-stage-escalation-note")
-          refute html =~ "Waits for a person"
-          refute html =~ "Accept as it is"
-          assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
-          refute has_element?(view, "#work-item-head-stages-#{@build}.q-wi-stage-wait")
-          assert has_element?(view, "#work-item-head-meta", unquote(words))
-          refute has_element?(view, "#work-item-head-stage-status")
-        end
+      for view <- [view, elem(live(conn, page(scope, work_item.number)), 1)] do
+        html = render(view)
+        refute has_element?(view, "#work-item-stage")
+        refute has_element?(view, "#work-item-stage-escalation-note")
+        refute html =~ "Waits for a person"
+        refute html =~ "Accept as it is"
+        assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+        refute has_element?(view, "#work-item-head-stages-#{@build}.q-wi-stage-wait")
+        assert has_element?(view, "#work-item-head-meta", "Closed by you")
+        refute has_element?(view, "#work-item-head-stage-status")
       end
     end
   end

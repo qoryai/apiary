@@ -207,11 +207,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   ## The bar
 
   @doc """
-  The list's views: Open, Waiting on you, Declined and Closed, each with its count
+  The list's views: Open, Waiting on you and Closed, each with its count
   (`counts`, by view) and its path (`paths`), the current one marked.
   """
   attr :id, :string, default: "work-items-views"
-  attr :current, :atom, required: true, values: [:open, :you, :declined, :closed]
+  attr :current, :atom, required: true, values: [:open, :you, :closed]
   attr :counts, :map, default: %{}, doc: "each view's count, by view"
   attr :paths, :map, required: true, doc: "each view's path, by view"
 
@@ -233,14 +233,6 @@ defmodule ApiaryWeb.WorkItemListComponents do
         current={@current == :you}
       >
         {gettext("Waiting on you")}
-      </:view>
-      <:view
-        id={"#{@id}-declined"}
-        patch={@paths[:declined]}
-        count={view_count(@counts[:declined])}
-        current={@current == :declined}
-      >
-        {gettext("Declined")}
       </:view>
       <:view
         id={"#{@id}-closed"}
@@ -381,10 +373,10 @@ defmodule ApiaryWeb.WorkItemListComponents do
   defp filter_name(:updated, _collection_label), do: gettext("Updated")
 
   @doc """
-  The line under the bar of a view whose list is not plain: Waiting on you, and Declined.
-  Nothing for the other views.
+  The line under the bar of a view whose list is not plain: Waiting on you. Nothing for
+  the other views.
   """
-  attr :view, :atom, required: true, values: [:open, :you, :declined, :closed]
+  attr :view, :atom, required: true, values: [:open, :you, :closed]
 
   attr :item_noun, :map,
     default: nil,
@@ -395,17 +387,6 @@ defmodule ApiaryWeb.WorkItemListComponents do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
       {gettext("Work items that wait for you to confirm what Qory proposes. Oldest first.")}
-    </p>
-    """
-  end
-
-  def view_note(%{view: :declined} = assigns) do
-    ~H"""
-    <p id="work-items-note" class="q-views-note q-wl-note">
-      {gettext(
-        "Work items a member declined. Their %{items} stay in the Backlog, where Take in again brings one back.",
-        items: SourceComponents.items(@item_noun)
-      )}
     </p>
     """
   end
@@ -509,7 +490,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline"
+    doc: "whether the reader may answer or confirm"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 

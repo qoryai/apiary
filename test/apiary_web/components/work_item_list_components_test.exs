@@ -155,17 +155,16 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       html =
         render_component(&L.work_item_views/1,
           current: :you,
-          counts: %{open: 57, you: 3, declined: 4, closed: 262},
+          counts: %{open: 57, you: 3, closed: 262},
           paths: %{
             open: "/8wonders/main/work",
             you: "/8wonders/main/work?view=you",
-            declined: "/8wonders/main/work?view=declined",
             closed: "/8wonders/main/work?view=closed"
           }
         )
 
       assert attr(html, "nav", "aria-label") == ["Views"]
-      assert texts(html, "a") == ["Open 57", "Waiting on you 3", "Declined 4", "Closed 262"]
+      assert texts(html, "a") == ["Open 57", "Waiting on you 3", "Closed 262"]
       assert attr(html, "a[aria-current]", "id") == ["work-items-views-you"]
       assert attr(html, "#work-items-views-closed", "href") == ["/8wonders/main/work?view=closed"]
     end
@@ -241,9 +240,6 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     test "the views' notes" do
       assert render_component(&L.view_note/1, view: :you) =~
                "Work items that wait for you to confirm what Qory proposes. Oldest first."
-
-      assert render_component(&L.view_note/1, view: :declined) =~
-               "Work items a member declined. Their tickets stay in the Backlog, where Take in again brings one back."
 
       for view <- [:open, :closed],
           do: assert(render_component(&L.view_note/1, view: view) |> String.trim() == "")
@@ -329,8 +325,6 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
             {%{status: :confirm}, "You confirm next"},
             {%{status: :confirm, owner: @priya}, "Priya confirms next"},
             {%{status: :shape}, "Ready for Shape"},
-            {%{status: :declined, ended_by: @priya}, "Declined by Priya"},
-            {%{status: :declined, ended_by: @dana}, "Declined by you"},
             {%{status: :closed, ended_by: @priya}, "Closed by Priya"},
             {%{status: :closed, ended_by: @dana}, "Closed by you"}
           ] do
@@ -530,9 +524,6 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
       search = render_component(&L.work_item_search/1, item_noun: @bug)
       assert attr(search, "input", "placeholder") == ["Search by title, number or bug"]
-
-      assert render_component(&L.view_note/1, view: :declined, item_noun: @bug) =~
-               "Work items a member declined. Their bugs stay in the Backlog, where Take in again brings one back."
 
       empty =
         render_component(&L.work_items_empty/1,
