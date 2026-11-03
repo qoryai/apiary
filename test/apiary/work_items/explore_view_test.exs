@@ -44,11 +44,13 @@ defmodule Apiary.WorkItems.ExploreViewTest do
     test "a run that asked: its questions by position, then answered, its answers and who gave them",
          ctx do
       asked =
-        Map.put(
-          questions_result(),
-          "understanding",
-          "The basket keeps the price from before the sale."
-        )
+        questions_result([
+          %{
+            "question" => "Which basket?",
+            "options" => [%{"title" => "At checkout", "explanation" => "The page reads it."}]
+          },
+          "Which sale?"
+        ])
 
       %{run: run} = explore_run_fixture(ctx.work_item, result: asked)
 
@@ -64,10 +66,16 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                  place: :questions,
                  outcome: :questions,
                  proposal: nil,
-                 understanding: "The basket keeps the price from before the sale.",
+                 version: nil,
                  questions: [
-                   %{public_id: "1", text: "Which basket?", answer: nil},
-                   %{public_id: "2", text: "Which sale?", answer: nil}
+                   %{
+                     public_id: "1",
+                     text: "Which basket?",
+                     options: [%{title: "At checkout", explanation: "The page reads it."}],
+                     answer: nil,
+                     custom: nil
+                   },
+                   %{public_id: "2", text: "Which sale?", options: [], answer: nil, custom: nil}
                  ],
                  answered_by_id: nil
                },
@@ -75,11 +83,14 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                earlier_take_ins: [],
                answers_by_ids: [],
                confirmed_by_id: nil,
-               changes: %{}
+               comments: []
              } = WorkItems.explore(ctx.scope, ctx.work_item)
 
       {:ok, answered} =
-        WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "At checkout.", "2" => "Spring."})
+        WorkItems.answer(ctx.scope, ctx.work_item, 1, %{
+          "1" => %{"option" => "At checkout"},
+          "2" => "Spring."
+        })
 
       user_id = ctx.scope.user.id
       run_id = run.public_id
@@ -90,7 +101,10 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                earlier_runs: [
                  %{
                    id: ^run_id,
-                   questions: [%{answer: "At checkout."}, %{answer: "Spring."}],
+                   questions: [
+                     %{answer: "At checkout", custom: false},
+                     %{answer: "Spring.", custom: true}
+                   ],
                    answered_by_id: ^user_id,
                    answered_at: %DateTime{}
                  }
@@ -99,24 +113,16 @@ defmodule Apiary.WorkItems.ExploreViewTest do
              } = WorkItems.explore(ctx.scope, answered)
     end
 
-    test "a confirmed proposal waits for Shape, read from its confirmation with the changes",
-         ctx do
+    test "a confirmed proposal waits for Shape, read from its confirmation", ctx do
       %{run: run} = explore_run_fixture(ctx.work_item, result: understood_result())
+      message = understood_result()["message"]
 
-      assert %{status: :confirm, run: %{place: :proposal, proposal: %{approach: approach}}} =
-               WorkItems.explore(ctx.scope, ctx.work_item)
+      assert %{
+               status: :confirm,
+               run: %{place: :proposal, proposal: %{message: ^message}, version: 1}
+             } = WorkItems.explore(ctx.scope, ctx.work_item)
 
-      assert approach == "Read the price from the catalogue each time."
-
-      form = %{
-        "complexity" => %{"level" => "standard", "reason" => "Two screens read the price."},
-        "understanding" => "The basket keeps the price from before the sale.",
-        "scope_in" => "Read the sale price in the basket",
-        "scope_out" => "The invoice",
-        "approach" => "Keep the price on the line."
-      }
-
-      {:ok, confirmed} = WorkItems.confirm(ctx.scope, ctx.work_item, 1, form)
+      {:ok, confirmed} = WorkItems.confirm(ctx.scope, ctx.work_item, 1)
 
       # The run's events pruned, its proposal is still the one confirmed.
       Repo.delete_all(from e in Apiary.Runs.Event, where: e.run_id == ^run.id)
@@ -124,17 +130,17 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       assert %{
                status: :shape,
-               run: %{place: :proposal, outcome: :proposal, proposal: %{approach: ^approach}},
+               run: %{place: :proposal, outcome: :proposal, proposal: %{message: ^message}},
                confirmed_by_id: ^user_id,
                confirmed_at: %DateTime{},
-               changes: %{approach: %{value: "Keep the price on the line.", by_id: ^user_id}}
+               comments: []
              } = WorkItems.explore(ctx.scope, confirmed)
     end
 
     test "an ended work item: its state, and the stage its end recorded", ctx do
       explore_run_fixture(ctx.work_item, result: understood_result())
-      {:ok, declined} = WorkItems.decline(ctx.scope, ctx.work_item)
-      assert %{status: :declined, stage: :confirm} = WorkItems.explore(ctx.scope, declined)
+      {:ok, at_confirm} = WorkItems.close(ctx.scope, ctx.work_item)
+      assert %{status: :closed, stage: :confirm} = WorkItems.explore(ctx.scope, at_confirm)
 
       other = work_item_fixture(ctx.scope, external_ref: "acme/shop#14")
       explore_run_fixture(other, result: understood_result())
@@ -152,7 +158,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         set: [state: :ended, end_cause: :run_ended]
       )
 
-      {:ok, _declined} = WorkItems.decline(scope, work_item)
+      {:ok, _closed} = WorkItems.close(scope, work_item)
 
       {:ok, again} =
         WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
@@ -168,7 +174,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                  %{
                    take_in: 1,
                    taken_in_by_id: ^user_id,
-                   ended: :declined,
+                   ended: :closed,
                    ended_by_id: ^user_id,
                    ended_at: %DateTime{},
                    runs: [%{id: nil, attempt: 1, of: 3, state: :failed}]
@@ -415,7 +421,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert taken_in.first_instruction == first_instruction
     end
 
-    test "a run asked to run again, one without a result, and the stage a decline recorded",
+    test "a run asked to run again, one without a result, and the stage a close recorded",
          ctx do
       now = DateTime.utc_now()
       item = ctx.work_item
@@ -427,11 +433,11 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         set: [state: :ended, end_cause: :run_ended]
       )
 
-      {:ok, declined} = WorkItems.decline(ctx.scope, item)
+      {:ok, closed} = WorkItems.close(ctx.scope, item)
 
       at!(item, :taken_in, ago(now, 10))
       at!(item, :explore_again, ago(now, 7))
-      at!(item, :declined, ago(now, 1))
+      at!(item, :closed, ago(now, 1))
 
       Repo.update_all(from(r in DispatchRun, where: r.id == ^second.id),
         set: [updated_at: ago(now, 2)]
@@ -451,8 +457,8 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                %{kind: :no_result, run: ^first_ref, outcome: :none},
                %{kind: :explore_again, run: %{id: nil, attempt: 2, of: 3}},
                %{kind: :no_result, run: %{id: nil, attempt: 2}},
-               %{kind: :declined, stage: :explore}
-             ] = WorkItems.explore_thread(ctx.scope, declined, now)
+               %{kind: :closed, stage: :explore}
+             ] = WorkItems.explore_thread(ctx.scope, closed, now)
     end
 
     test "a run that has not ended has no entry at its end", ctx do
@@ -530,8 +536,8 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         set: [state: :ended, end_cause: :run_ended]
       )
 
-      {:ok, declined} = WorkItems.decline(scope, answered)
-      assert %{previous: nil} = WorkItems.explore(scope, declined)
+      {:ok, closed} = WorkItems.close(scope, answered)
+      assert %{previous: nil} = WorkItems.explore(scope, closed)
 
       {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: member.id})
       user_id = scope.user.id
@@ -539,11 +545,11 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       asked_id = asked.public_id
 
       assert %{
-               previous: :declined,
+               previous: :closed,
                earlier_take_ins: [
                  %{
                    take_in: 1,
-                   ended: :declined,
+                   ended: :closed,
                    ended_reason: nil,
                    runs: [
                      %{
@@ -578,12 +584,12 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         set: [state: :ended, end_cause: :run_ended]
       )
 
-      {:ok, _declined} = WorkItems.decline(scope, work_item)
+      {:ok, _closed} = WorkItems.close(scope, work_item)
       {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: member.id})
       {:ok, undone} = WorkItems.undo(scope, again)
       user_id = scope.user.id
 
-      assert %{status: :declined} = WorkItems.explore(scope, undone)
+      assert %{status: :closed} = WorkItems.explore(scope, undone)
 
       assert [%{take_in: 1, owner_id: ^user_id}, %{take_in: 2, owner_id: nil}] =
                for(
@@ -606,6 +612,14 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       assert %{kind: :closed, actor_id: nil, reason: "adapter_removed"} =
                List.last(WorkItems.explore_thread(ctx.scope, closed))
+
+      for reason <- ["last_stage_done", "ticket_closed"] do
+        other = work_item_fixture(ctx.scope, external_ref: "acme/shop#" <> reason)
+        closed = instance_close!(other, reason)
+
+        assert %{status: :closed, ended_reason: ^reason, ended_by_id: nil} =
+                 WorkItems.explore(ctx.scope, closed)
+      end
 
       other = work_item_fixture(ctx.scope, external_ref: "acme/shop#14")
       {:ok, by_person} = WorkItems.close(ctx.scope, other)

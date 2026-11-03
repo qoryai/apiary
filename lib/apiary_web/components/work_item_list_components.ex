@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.WorkItemListComponents do
   # The parts of the Work items list (`/:org/:workspace/work`): its head, the stages strip,
   # the views, the search, the Filter menu and its tokens, a view's note, a stage's band,
-  # a work item's row, the pager of Closed, and the empty list.
+  # a stage's group, a work item's row, the pager of Closed, and the empty list.
   #
   # Every component takes plain assigns, as `ApiaryWeb.WorkItemComponents` describes: a
   # work item is a map with `:number`, `:title`, `:key` (the ticket's key at the source,
@@ -207,11 +207,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   ## The bar
 
   @doc """
-  The list's views: Open, Waiting on you, Declined and Closed, each with its count
+  The list's views: Open, Waiting on you and Closed, each with its count
   (`counts`, by view) and its path (`paths`), the current one marked.
   """
   attr :id, :string, default: "work-items-views"
-  attr :current, :atom, required: true, values: [:open, :you, :declined, :closed]
+  attr :current, :atom, required: true, values: [:open, :you, :closed]
   attr :counts, :map, default: %{}, doc: "each view's count, by view"
   attr :paths, :map, required: true, doc: "each view's path, by view"
 
@@ -233,14 +233,6 @@ defmodule ApiaryWeb.WorkItemListComponents do
         current={@current == :you}
       >
         {gettext("Waiting on you")}
-      </:view>
-      <:view
-        id={"#{@id}-declined"}
-        patch={@paths[:declined]}
-        count={view_count(@counts[:declined])}
-        current={@current == :declined}
-      >
-        {gettext("Declined")}
       </:view>
       <:view
         id={"#{@id}-closed"}
@@ -381,10 +373,14 @@ defmodule ApiaryWeb.WorkItemListComponents do
   defp filter_name(:updated, _collection_label), do: gettext("Updated")
 
   @doc """
-  The line under the bar of a view whose list is not plain: Waiting on you, and Declined.
-  Nothing for the other views.
+  The line under the bar of a view: Waiting on you, and with `stages` Open and Closed.
+  Nothing for those without.
   """
-  attr :view, :atom, required: true, values: [:open, :you, :declined, :closed]
+  attr :view, :atom, required: true, values: [:open, :you, :closed]
+
+  attr :stages, :boolean,
+    default: false,
+    doc: "whether the list shows the stages of the workspace's process"
 
   attr :item_noun, :map,
     default: nil,
@@ -399,12 +395,20 @@ defmodule ApiaryWeb.WorkItemListComponents do
     """
   end
 
-  def view_note(%{view: :declined} = assigns) do
+  def view_note(%{view: :open, stages: true} = assigns) do
+    ~H"""
+    <p id="work-items-note" class="q-views-note q-wl-note">
+      {gettext("Work items at a stage of the process. A finished one moves to Closed.")}
+    </p>
+    """
+  end
+
+  def view_note(%{view: :closed, stages: true} = assigns) do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
       {gettext(
-        "Work items a member declined. Their %{items} stay in the Backlog, where Take in again brings one back.",
-        items: SourceComponents.items(@item_noun)
+        "Finished work items, and work items that stopped: a member closed one or undid its take in, its %{item} closed, or its integration was removed. Where the %{item} of a stopped one is still in the Backlog, Take in again brings it back.",
+        item: SourceComponents.item(@item_noun)
       )}
     </p>
     """
@@ -489,6 +493,27 @@ defmodule ApiaryWeb.WorkItemListComponents do
   end
 
   @doc """
+  A stage's group and its rows (`inner_block`, `work_item_row/1`s): the stage's name and
+  its count over the rows, as the Work items list shows them under the workflow model.
+  """
+  attr :id, :string, required: true, doc: "the group's DOM id"
+  attr :name, :string, required: true, doc: "the stage's name"
+  attr :count, :integer, required: true, doc: "the work items in the stage"
+  slot :inner_block, required: true
+
+  def stage_group(assigns) do
+    ~H"""
+    <section id={@id} class="q-wl-grp" aria-labelledby={"#{@id}-h"}>
+      <div class="q-band q-wl-band">
+        <h2 id={"#{@id}-h"}>{@name}</h2>
+        <span class="q-band-n">{Format.number(@count)}</span>
+      </div>
+      <ul class="q-rows">{render_slot(@inner_block)}</ul>
+    </section>
+    """
+  end
+
+  @doc """
   A work item's row: its mark, its number, its title (the only strong text; its number
   again where the title has nothing left to show, as a text from an external system is
   shown), the mark Test for a test work item (`:test`), its ticket's key with the
@@ -509,13 +534,14 @@ defmodule ApiaryWeb.WorkItemListComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline"
+    doc: "whether the reader may answer or confirm"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   attr :stage_status, :map,
     default: nil,
-    doc: "`:words` and `:mark` in place of the status, under the feature `workflow_model`"
+    doc:
+      "`:mark`, with `:words` for a live work item, in place of the status, under the feature `workflow_model`"
 
   def work_item_row(assigns) do
     work_item = assigns.work_item
@@ -528,16 +554,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
         owner: owner,
         title: shown_title(work_item),
         hot: ApiaryWeb.WorkItemComponents.hot?(work_item),
-        words:
-          if(stage_status,
-            do: stage_status.words,
-            else: ApiaryWeb.WorkItemComponents.status_words(work_item)
-          ),
-        mark:
-          if(stage_status,
-            do: stage_status.mark,
-            else: ApiaryWeb.WorkItemComponents.mark(work_item, assigns.can_act)
-          )
+        words: stage_status[:words] || ApiaryWeb.WorkItemComponents.status_words(work_item),
+        mark: stage_status[:mark] || ApiaryWeb.WorkItemComponents.mark(work_item, assigns.can_act)
       )
 
     ~H"""

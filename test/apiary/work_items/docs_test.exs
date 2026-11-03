@@ -51,6 +51,7 @@ defmodule Apiary.WorkItems.DocsTest do
                Apiary.WorkItems.Confirmation,
                Apiary.WorkItems.Explore,
                Apiary.WorkItems.ExploreView,
+               Apiary.WorkItems.Finished,
                Apiary.WorkItems.Moves,
                Apiary.WorkItems.Number,
                Apiary.WorkItems.Proposal,

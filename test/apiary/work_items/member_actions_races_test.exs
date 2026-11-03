@@ -1,5 +1,5 @@
 defmodule Apiary.WorkItems.MemberActionsRacesTest do
-  # What a member gives Explore, racing the same action or a decline of the same work
+  # What a member gives Explore, racing the same action or a close of the same work
   # item. Each side runs on a separate connection, outside the SQL sandbox, so each
   # commits and each waits on the other's locks as it would in production. Not async:
   # what these tests commit is visible to every other test while they run, and they
@@ -57,7 +57,7 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
 
   defp confirm(ctx), do: fn -> WorkItems.confirm(ctx.scope, ctx.work_item, 1) end
   defp explore_again(ctx), do: fn -> WorkItems.explore_again(ctx.scope, ctx.work_item, 1) end
-  defp decline(ctx), do: fn -> WorkItems.decline(ctx.scope, ctx.work_item) end
+  defp close(ctx), do: fn -> WorkItems.close(ctx.scope, ctx.work_item) end
 
   defp await(%{task: task}), do: Task.await(task, @await)
 
@@ -125,43 +125,17 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
     assert kinds(ctx) == [:taken_in, :confirmed]
   end
 
-  test "an answer beside a decline: it waits, then finds the work item declined", ctx do
+  test "an answer beside a close: it waits, then finds the work item closed", ctx do
     asked!(ctx)
 
-    {declined, declined_pid} = hold(decline(ctx))
-    assert {:ok, %WorkItem{state: :declined}} = declined.result
+    {closed, closed_pid} = hold(close(ctx))
+    assert {:ok, %WorkItem{state: :closed}} = closed.result
     answering = start(answer(ctx))
-    await_blocked(answering.backend, declined_pid)
-    commit(declined)
+    await_blocked(answering.backend, closed_pid)
+    commit(closed)
 
     assert {:error, :not_live} = await(answering)
     assert count(Answer, ctx) == 0
-    assert kinds(ctx) == [:taken_in, :declined]
-  end
-
-  test "a decline beside an answer: it waits, then finds the run the answer queued", ctx do
-    asked!(ctx)
-
-    {answered, answered_pid} = hold(answer(ctx))
-    assert {:ok, %WorkItem{}} = answered.result
-    declining = start(decline(ctx))
-    await_blocked(declining.backend, answered_pid)
-    commit(answered)
-
-    assert {:error, :running} = await(declining)
-    assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
-  end
-
-  test "a decline beside a confirmation: it waits, then finds the take in confirmed", ctx do
-    proposed!(ctx)
-
-    {confirmed, confirmed_pid} = hold(confirm(ctx))
-    assert {:ok, %WorkItem{}} = confirmed.result
-    declining = start(decline(ctx))
-    await_blocked(declining.backend, confirmed_pid)
-    commit(confirmed)
-
-    assert {:error, :confirmed} = await(declining)
-    assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
+    assert kinds(ctx) == [:taken_in, :closed]
   end
 end

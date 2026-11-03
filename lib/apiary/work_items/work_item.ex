@@ -23,11 +23,9 @@ defmodule Apiary.WorkItems.WorkItem do
   # first at its latest take in, 0 to 4,000 characters, none of them one a run's input
   # refuses.
   #
-  # `state` is where it stands (`Apiary.WorkItems.State`): `:exploring`, `:declined`,
-  # `:closed` or `:undone`. A declined one has the time it was declined, `declined_at`,
-  # and the person who declined it, `declined_by_id`, where a person did; a closed one has
-  # the time it closed, `closed_at`, and the person who closed it, `closed_by_id`, where a
-  # person did; no other has them.
+  # `state` is where it stands (`Apiary.WorkItems.State`): `:exploring`, `:closed` or
+  # `:undone`. A closed one has the time it closed, `closed_at`, and the person who closed
+  # it, `closed_by_id`, where a person did; no other has them.
   #
   # A test work item (`test` true, `test_changeset/2`) is one Qory Apiary makes from a line
   # a person types, with no ticket and no work source behind it: no `connection_id`,
@@ -87,7 +85,6 @@ defmodule Apiary.WorkItems.WorkItem do
     field :test, :boolean, default: false
     field :state, Ecto.Enum, values: State.states()
     field :taken_in_at, :utc_datetime_usec
-    field :declined_at, :utc_datetime_usec
     field :closed_at, :utc_datetime_usec
     # Where the work item is in its workspace's process (`Apiary.Processes`): the version
     # it runs under, its stage, the stage's state, the round, the entry of the stage's
@@ -107,7 +104,6 @@ defmodule Apiary.WorkItems.WorkItem do
     belongs_to :item, Item
     belongs_to :owner, Apiary.Accounts.User
     belongs_to :taken_in_by, Apiary.Accounts.User
-    belongs_to :declined_by, Apiary.Accounts.User
     belongs_to :closed_by, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)

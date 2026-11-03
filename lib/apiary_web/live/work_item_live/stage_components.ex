@@ -15,7 +15,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   #   * `"stage_ask_changes"`, `"stage_request_changes"` - Request changes opens its form,
   #     which sends `note` and `version`, the artifact version it is about or `""`;
   #   * `"stage_resolve"` - an escalation action: `how` (`accept`, `another_round`,
-  #     `move_back`, `close` or `decline`), `note`, and `stage` for `move_back`;
+  #     `move_back` or `close`), `note`, and `stage` for `move_back`;
   #   * `"stage_move"` - Move back while the stage waits for inputs: `stage` and `note`.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -178,6 +178,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       mark: head_mark(page)
     }
   end
+
+  @doc """
+  A row's status under its stage's group: `head_status/1` without the stage, which the
+  group shows.
+  """
+  def group_status(page), do: %{words: state_words(shown_state(page)), mark: head_mark(page)}
 
   defp head_mark(%{state: :running, queued: true}), do: :todo
   defp head_mark(%{state: :running}), do: :run
@@ -529,9 +535,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <.button id={"#{@id}-close"} type="submit" name="how" value="close">
             {gettext("Close")}
           </.button>
-          <.button id={"#{@id}-decline"} type="submit" name="how" value="decline">
-            {gettext("Decline")}
-          </.button>
         </div>
       </form>
     </div>
@@ -657,7 +660,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <ol class="flex flex-col gap-2">
         <li :for={{note, i} <- Enum.with_index(@notes)} id={"#{@id}-#{i}"}>
           <p class="text-xs opacity-70">
-            {note_words(note.kind)}{if note.stage, do: " · #{note.stage}"}
+            {note_words(note)}{if note.stage, do: " · #{note.stage}"}
           </p>
           <p :if={note.text not in [nil, ""]} class="whitespace-pre-line">{note.text}</p>
         </li>
@@ -666,12 +669,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
-  defp note_words(:request_changes), do: gettext("Changes requested")
-  defp note_words(:move), do: gettext("Moved")
-  defp note_words(:escalation), do: gettext("Escalation resolved")
-  defp note_words(:answer), do: gettext("Answer")
-  defp note_words(:check), do: gettext("Failed check")
-  defp note_words(_kind), do: gettext("Note")
+  # A comment on Explore's proposal is an answer to the run API, and a comment here.
+  defp note_words(%{comment: true}), do: gettext("Comment")
+  defp note_words(%{kind: :request_changes}), do: gettext("Changes requested")
+  defp note_words(%{kind: :move}), do: gettext("Moved")
+  defp note_words(%{kind: :escalation}), do: gettext("Escalation resolved")
+  defp note_words(%{kind: :answer}), do: gettext("Answer")
+  defp note_words(%{kind: :check}), do: gettext("Failed check")
+  defp note_words(_note), do: gettext("Note")
 
   ## Approval marks
 
@@ -722,28 +727,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   ## The board
 
   @doc """
-  The board under the workflow model: a column for each stage of the workspace's
-  current process version, then one for each stage that version removed while work
-  items remain in it, marked with the version that has it. Each column lists its work
-  items, each a link to its page.
+  The board under the workflow model: a box for each stage of the workspace's current
+  process version, then one for each stage that version removed while work items remain
+  in it, marked with the version that has it. Each box has its name and its count.
   """
   attr :id, :string, default: "work-items-board"
-  attr :columns, :list, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.board/1`"
-  attr :path, :any, required: true, doc: "a function of a work item's number: its page"
+  attr :columns, :list, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.board/3`"
 
   def board_columns(assigns) do
     ~H"""
-    <nav id={@id} class="q-wl-flow" aria-label={gettext("Stages")}>
-      <section
+    <div id={@id} class="q-wl-flow q-wl-flow-stages" role="group" aria-label={gettext("Stages")}>
+      <div
         :for={{column, i} <- Enum.with_index(@columns)}
         id={"#{@id}-#{i}"}
         class="q-wl-st content-start"
-        aria-labelledby={"#{@id}-#{i}-h"}
       >
-        <h2 id={"#{@id}-#{i}-h"} class="q-wl-st-name">
+        <span id={"#{@id}-#{i}-h"} class="q-wl-st-name">
           {column.name || gettext("Removed stage")}
-        </h2>
-        <span class="q-wl-st-n">{Format.number(length(column.items))}</span>
+        </span>
+        <span class="q-wl-st-n">{Format.number(column.count)}</span>
         <span :if={column.removed} id={"#{@id}-#{i}-removed"} class="q-wl-st-what">
           <%= if column.version do %>
             {gettext("From version %{number}. This stage is not in the current version.",
@@ -753,20 +755,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("This stage is not in the current version.")}
           <% end %>
         </span>
-        <ul :if={column.items != []} class="flex flex-col gap-1">
-          <li :for={item <- column.items} id={"#{@id}-item-#{item.id}"}>
-            <.link navigate={@path.(item.number)} class="q-link">
-              #{item.number}
-              <.external_text
-                :if={Apiary.ExternalText.present(item.title)}
-                text={Apiary.ExternalText.present(item.title)}
-              />
-            </.link>
-            <.badge :if={item[:test]} class="q-wl-test">{gettext("Test")}</.badge>
-          </li>
-        </ul>
-      </section>
-    </nav>
+      </div>
+    </div>
     """
   end
 

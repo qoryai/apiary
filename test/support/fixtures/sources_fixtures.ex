@@ -7,7 +7,7 @@ defmodule Apiary.SourcesFixtures do
 
   import ExUnit.Assertions
 
-  alias Apiary.AccessKeys
+  alias Apiary.{AccessKeys, NodesFixtures, WorkItemsFixtures}
   alias Apiary.Accounts.Scope
   alias Apiary.Sources.Wire
 
@@ -108,6 +108,34 @@ defmodule Apiary.SourcesFixtures do
 
     assert {:ok, decoded} = Wire.comments(body)
     decoded
+  end
+
+  @doc """
+  An adapter connected to the scope's organisation, with the collection `TRK` assigned to
+  the scope's workspace, a target on it: `%{key_scope:, connection:, collection:}`, for a
+  test that posts tickets and takes them in.
+  """
+  def tracker_fixture(%Scope{} = scope) do
+    connectable =
+      NodesFixtures.connectable_adapter_fixture(%{
+        name: NodesFixtures.unique_adapter_name("Acme tracker")
+      })
+
+    {connection, _nonce} =
+      NodesFixtures.connection_fixture(scope, connectable.adapter, :connected)
+
+    collection =
+      WorkItemsFixtures.source_collection_fixture(scope, connection, %{
+        external_ref: "TRK",
+        target_system: "forge.example.com",
+        target_path: "acme/shop"
+      })
+
+    %{
+      key_scope: key_scope(connectable.access_key),
+      connection: connection,
+      collection: collection
+    }
   end
 
   @doc "The verified scope of the adapter's key `key`, as a signed request carries it."

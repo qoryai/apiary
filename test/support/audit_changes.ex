@@ -63,7 +63,6 @@ defmodule Apiary.AuditChanges do
   @work_item_moves [
     :"work_item.take_in",
     :"work_item.undo",
-    :"work_item.decline",
     :"work_item.close",
     :"work_item.answer",
     :"work_item.confirm",
@@ -874,7 +873,7 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(work_item), before: before}
   end
 
-  # A member undoes, declines or closes a work item of the workspace, answers the questions
+  # A member undoes or closes a work item of the workspace, answers the questions
   # of its run, confirms its run's proposal or asks for another run, about it.
   def make(action, %{scope: scope} = ctx) when action in @work_item_moves do
     work_item = prepare(action, ctx)
@@ -1734,9 +1733,6 @@ defmodule Apiary.AuditChanges do
     do: Apiary.WorkItems.take_in(scope, ticket.public_id)
 
   defp attempt(:"work_item.undo", scope, work_item), do: Apiary.WorkItems.undo(scope, work_item)
-
-  defp attempt(:"work_item.decline", scope, work_item),
-    do: Apiary.WorkItems.decline(scope, work_item)
 
   defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
 

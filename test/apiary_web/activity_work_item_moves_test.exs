@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.ActivityWorkItemMovesTest do
   # The Activity lines of what a person does to the work items: a take in, a take in
-  # again, an undo, a decline and a close, by their labels in the filter and their
+  # again, an undo and a close, by their labels in the filter and their
   # sentences. A take in names the items of the work item's source, else tickets; a take
   # in of a test is a test run. None has a subject yet: the page a work item's stable
   # address opens is not there.
@@ -16,7 +16,7 @@ defmodule ApiaryWeb.ActivityWorkItemMovesTest do
 
   @moduletag needs: :factory
 
-  @moves [:"work_item.take_in", :"work_item.undo", :"work_item.decline", :"work_item.close"]
+  @moves [:"work_item.take_in", :"work_item.undo", :"work_item.close"]
 
   defp entry(action, details, subject_id),
     do: %Entry{
@@ -33,7 +33,6 @@ defmodule ApiaryWeb.ActivityWorkItemMovesTest do
     assert Enum.map(@moves, &Core.label/1) == [
              "Work item taken in",
              "Take in undone",
-             "Work item declined",
              "Work item closed"
            ]
 
@@ -60,15 +59,22 @@ defmodule ApiaryWeb.ActivityWorkItemMovesTest do
     assert Core.sentence(:"work_item.undo", entry(:"work_item.undo", %{"take_in" => 1}, id), %{}) ==
              "Undid a take in, before a run started"
 
-    assert Core.sentence(:"work_item.decline", entry(:"work_item.decline", %{}, id), %{}) ==
-             "Declined a work item"
-
     assert Core.sentence(:"work_item.close", entry(:"work_item.close", %{}, id), %{}) ==
              "Closed a work item"
 
     for action <- @moves do
       assert Core.subject(entry(action, %{}, id), action, %{}, scope, scope.workspace) == nil
     end
+  end
+
+  test "an entry from before the action went keeps its sentence, and no filter offers it" do
+    %{scope: scope} = sign_up_fixture()
+    entry = entry(:"work_item.decline", %{}, Ecto.UUID.generate())
+
+    assert Apiary.Audit.action(entry) == nil
+    assert Core.sentence(Apiary.Audit.action(entry), entry, %{}) == "Declined a work item"
+    assert Core.subject(entry, nil, %{}, scope, scope.workspace) == nil
+    refute "work_item.decline" in Enum.map(Apiary.Access.actions(), &Atom.to_string/1)
   end
 
   test "a take in names the items of the work item's source, from the names the page reads" do

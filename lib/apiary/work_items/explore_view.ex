@@ -9,17 +9,18 @@ defmodule Apiary.WorkItems.ExploreView do
   # Where Explore stands, at `now`:
   #
   #   * `status`: for a live work item, `Apiary.WorkItems.Explore.status/2` of its current
-  #     take in; for an ended one, its state (`:declined`, `:closed` or `:undone`);
-  #   * `stage`: nil for a live work item; for an ended one, the stage its decline or close
+  #     take in; for an ended one, its state (`:closed` or `:undone`);
+  #   * `stage`: nil for a live work item; for an ended one, the stage its close
   #     recorded (`:explore`, `:confirm` or `:shape`), `:explore` for an undo, and for an
   #     end that recorded none, the stage its current take in was at;
   #   * `ended_reason`: for a work item the instance closed, the reason its `:closed` event
-  #     gives (`"adapter_removed"`); nil otherwise;
+  #     gives (`"adapter_removed"`, `"last_stage_done"` or `"ticket_closed"`); nil
+  #     otherwise;
   #   * `ended_by_id` and `ended_at`: for an ended work item, who ended it, nil where the
   #     instance closed it, and when, by its latest event of the kind of its state; nil for
   #     a live one;
   #   * `take_in`: the current take in, and `previous`, how the work item had ended before
-  #     it (`:declined`, `:closed` or `:undone`), nil for a first take in;
+  #     it (`:closed` or `:undone`), nil for a first take in;
   #   * `run`: the latest run of the current take in, nil for none, and `earlier_runs` the
   #     runs before it, oldest first, each a run map (below);
   #   * `earlier_take_ins`: the take ins before the current one, oldest first, each with who
@@ -30,7 +31,12 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `answers_by_ids`: who answered within the current take in, in the order they first
   #     answered, nil for an account whose row is gone;
   #   * `confirmed_by_id` and `confirmed_at`, the current take in's confirmation, nil for
-  #     none, and `changes`, the fields it changed, each `%{value: value, by_id: id}`.
+  #     none;
+  #   * `comments`: the comments on the current take in's proposals, oldest first, each
+  #     `%{text: text, by_id: id, at: at, attempt: attempt, version: version,
+  #     done_version: version or nil, done_at: at or nil}`: `attempt` the run whose
+  #     proposal it is on, `version` that proposal's version, and once a saved update read
+  #     it, `done_version` and `done_at` (`Apiary.WorkItems.Answer`).
   #
   # A run map: `id` and `number` (its registered run's public id and number, both nil for
   # a run with none: one waiting, or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
@@ -51,11 +57,13 @@ defmodule Apiary.WorkItems.ExploreView do
   # closed with a `read_needs_*` reason, the reason and whether the run's pool is the
   # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run,
   # and by what it gave: `proposal`
-  # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none; `understanding` and
-  # `questions`, each `%{public_id: position, text: question, answer: answer or nil}`, for
-  # a run that asked; and `answered_by_id` and `answered_at` once its questions were
-  # answered. A confirmed run's proposal is read from its confirmation,
-  # which keeps the result, so it outlives the run's events.
+  # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none, with `version`, the
+  # proposal's version (`Apiary.WorkItems.Explore.proposal_version/3`), nil for none;
+  # `questions`, each `%{public_id: position, text: question, options: [%{title:,
+  # explanation:}], answer: answer or nil, custom: true, false or nil}`, for a run that
+  # asked; and `answered_by_id` and `answered_at` once its questions were answered. A
+  # confirmed run's proposal is read from its confirmation, which keeps the result, so it
+  # outlives the run's events.
   #
   # ## `thread/2`
   #
@@ -65,10 +73,11 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * the events of the work item: `:taken_in` (`actor_id`, `take_in`, `again`,
   #     `owner_id`, who owned the work item in that take in, and `first_instruction` for
   #     the current take in, nil for an earlier one),
-  #     `:answered` (`actor_id`, `run`, `questions` with their answers), `:explore_again`
+  #     `:answered` (`actor_id`, `run`, `questions` with their answers, and `comment`, the
+  #     text of a comment on the run's proposal, nil for answers), `:explore_again`
   #     (`actor_id`, `run`, the run it started), `:confirmed` (`actor_id`, `changed`),
-  #     `:declined` and `:closed` (`actor_id`, nil for the instance, `stage`, nil where
-  #     none was recorded, and for `:closed` the instance's `reason`, nil for a person),
+  #     `:closed` (`actor_id`, nil for the instance, `stage`, nil where none was recorded,
+  #     and the instance's `reason`, nil for a person),
   #     `:undone` (`actor_id`);
   #   * the runs: `:started` (`run`, `start`: nil for a take in's first run, `:answers` for
   #     a run after answers, `:again` for any other), at its start, for a run handed over;
@@ -93,7 +102,7 @@ defmodule Apiary.WorkItems.ExploreView do
   alias Apiary.Runs.ReadNeeds
   alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
-  @ends [:declined, :closed, :undone]
+  @ends [:closed, :undone]
 
   # explore/2 is where Explore stands for `work_item` at `now` (the moduledoc).
   @doc false
@@ -129,7 +138,18 @@ defmodule Apiary.WorkItems.ExploreView do
         |> Enum.uniq(),
       confirmed_by_id: confirmation && confirmation.confirmed_by_id,
       confirmed_at: confirmation && confirmation.confirmed_at,
-      changes: changes(confirmation)
+      comments:
+        for comment <- Explore.comments(id), comment.take_in == take_in do
+          %{
+            text: comment.answer,
+            by_id: comment.answered_by_id,
+            at: comment.answered_at,
+            attempt: comment.attempt,
+            version: comment.proposal_version,
+            done_version: comment.done_version,
+            done_at: comment.done_at
+          }
+        end
     }
   end
 
@@ -205,7 +225,7 @@ defmodule Apiary.WorkItems.ExploreView do
       workflow_gap: workflow_gap(step, work_item),
       read_needs: ReadNeeds.of_run(step.run),
       proposal: nil,
-      understanding: nil,
+      version: nil,
       questions: [],
       answered_by_id: nil,
       answered_at: nil
@@ -214,17 +234,19 @@ defmodule Apiary.WorkItems.ExploreView do
     view =
       case {step.outcome, confirmed_result(step, confirmation)} do
         {_outcome, %{} = result} ->
-          %{view | outcome: :proposal, place: :proposal, proposal: Proposal.from_result(result)}
-
-        {:proposal, nil} ->
-          %{view | proposal: Proposal.from_result(step.result)}
-
-        {:questions, nil} ->
           %{
             view
-            | understanding: step.result["understanding"],
-              questions: questions(Proposal.questions(step.result), rows)
+            | outcome: :proposal,
+              place: :proposal,
+              proposal: Proposal.from_result(result),
+              version: version(step)
           }
+
+        {:proposal, nil} ->
+          %{view | proposal: Proposal.from_result(step.result), version: version(step)}
+
+        {:questions, nil} ->
+          %{view | questions: questions(Proposal.questions(step.result), rows)}
 
         _other ->
           view
@@ -247,24 +269,27 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp confirmed_result(_step, _confirmation), do: nil
 
+  defp version(step),
+    do: Explore.proposal_version(step.dispatch_run.work_item_id, step.take_in, step.attempt)
+
   defp questions(questions, rows) do
-    answers = Map.new(rows, &{&1.position, &1.answer})
+    answers = Map.new(rows, &{&1.position, &1})
 
     questions
     |> Enum.with_index(1)
-    |> Enum.map(fn {text, position} ->
-      %{public_id: Integer.to_string(position), text: text, answer: Map.get(answers, position)}
+    |> Enum.map(fn {question, position} ->
+      question_view(question, position, Map.get(answers, position))
     end)
   end
 
-  defp changes(nil), do: %{}
-
-  defp changes(confirmation) do
-    confirmation.changes
-    |> Proposal.decode()
-    |> Map.new(fn {field, value} ->
-      {field, %{value: value, by_id: confirmation.confirmed_by_id}}
-    end)
+  defp question_view(question, position, row) do
+    %{
+      public_id: Integer.to_string(position),
+      text: question.question,
+      options: question.options,
+      answer: row && row.answer,
+      custom: row && row.custom
+    }
   end
 
   # The stage the end of an ended work item recorded: of its latest event of the kind of
@@ -299,14 +324,14 @@ defmodule Apiary.WorkItems.ExploreView do
   defp ended_by_id(work_item, events) do
     case ended_event(work_item, events) do
       %{actor_id: actor_id} -> actor_id
-      nil -> work_item.declined_by_id || work_item.closed_by_id
+      nil -> work_item.closed_by_id
     end
   end
 
   defp ended_at(work_item, events) do
     case ended_event(work_item, events) do
       %{at: at} -> at
-      nil -> work_item.declined_at || work_item.closed_at || work_item.updated_at
+      nil -> work_item.closed_at || work_item.updated_at
     end
   end
 
@@ -318,7 +343,7 @@ defmodule Apiary.WorkItems.ExploreView do
   defp previous(taken, take_in) do
     case List.keyfind(taken, take_in, 0) do
       {_take_in, %{data: %{"before" => %{"state" => state}}}, _end}
-      when state in ["declined", "closed", "undone"] ->
+      when state in ["closed", "undone"] ->
         String.to_existing_atom(state)
 
       _first ->
@@ -412,7 +437,9 @@ defmodule Apiary.WorkItems.ExploreView do
   def thread(%WorkItem{id: id} = work_item, %DateTime{} = now) do
     steps = Explore.steps(id, :all, now)
     by_run = Map.new(steps, &{{&1.take_in, &1.attempt}, &1})
-    answers = Enum.group_by(Explore.answers(id), &{&1.take_in, &1.attempt})
+    # The answers, and the comments, which are on runs that wrote a proposal.
+    given = Explore.answers(id) ++ Explore.comments(id)
+    answers = Enum.group_by(given, &{&1.take_in, &1.attempt})
     events = Explore.events(id)
     owners = owners(work_item, events)
 
@@ -454,15 +481,23 @@ defmodule Apiary.WorkItems.ExploreView do
   defp event_entry(:answered, event, by_run, answers) do
     key = {event.data["take_in"], event.data["attempt"]}
 
+    rows = Map.get(answers, key, [])
+
     %{
       kind: :answered,
       at: event.at,
       actor_id: event.actor_id,
       run: run_ref(Map.get(by_run, key), key),
       questions:
-        for row <- Map.get(answers, key, []) do
-          %{public_id: Integer.to_string(row.position), text: row.question, answer: row.answer}
-        end
+        for row <- rows, is_binary(row.question) do
+          %{
+            public_id: Integer.to_string(row.position),
+            text: row.question,
+            answer: row.answer,
+            custom: row.custom
+          }
+        end,
+      comment: Enum.find_value(rows, &if(is_nil(&1.question), do: &1.answer))
     }
   end
 
@@ -485,20 +520,16 @@ defmodule Apiary.WorkItems.ExploreView do
       changed: (event.data["changed"] || []) != []
     }
 
-  defp event_entry(kind, event, _by_run, _answers) when kind in [:declined, :closed] do
+  defp event_entry(:closed, event, _by_run, _answers) do
     stage =
       case event.data["stage"] do
         stage when stage in ["explore", "confirm", "shape"] -> String.to_existing_atom(stage)
         _none -> nil
       end
 
-    entry = %{kind: kind, at: event.at, actor_id: event.actor_id, stage: stage}
+    reason = if is_binary(event.data["reason"]), do: event.data["reason"]
 
-    case {kind, event.data["reason"]} do
-      {:closed, reason} when is_binary(reason) -> Map.put(entry, :reason, reason)
-      {:closed, _none} -> Map.put(entry, :reason, nil)
-      {:declined, _reason} -> entry
-    end
+    %{kind: :closed, at: event.at, actor_id: event.actor_id, stage: stage, reason: reason}
   end
 
   defp event_entry(:undone, event, _by_run, _answers),
@@ -540,21 +571,14 @@ defmodule Apiary.WorkItems.ExploreView do
         case step.place do
           :questions ->
             rows =
-              Map.new(
-                Map.get(answers, {step.take_in, step.attempt}, []),
-                &{&1.position, &1.answer}
-              )
+              Map.new(Map.get(answers, {step.take_in, step.attempt}, []), &{&1.position, &1})
 
             questions =
               step.result
               |> Proposal.questions()
               |> Enum.with_index(1)
-              |> Enum.map(fn {text, position} ->
-                %{
-                  public_id: Integer.to_string(position),
-                  text: text,
-                  answer: Map.get(rows, position)
-                }
+              |> Enum.map(fn {question, position} ->
+                question_view(question, position, Map.get(rows, position))
               end)
 
             [%{kind: :asked, at: at, run: run, questions: questions, duration_ms: duration}]

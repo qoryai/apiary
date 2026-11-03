@@ -32,7 +32,7 @@ defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
     assert WorkItems.comment(scope, work_item, "Seen on staging") == {:error, :not_found}
     assert WorkItems.delete_comment(scope, "cm_0123456789abcdef") == {:error, :not_found}
 
-    counts = %{open: 0, you: 0, declined: 0, closed: 0}
+    counts = %{open: 0, you: 0, closed: 0}
 
     stages = %{
       explore: 0,

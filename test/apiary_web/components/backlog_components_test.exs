@@ -109,7 +109,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, "a.q-bl-t") == "Discount codes are case-sensitive at checkout"
       assert attr(html, "a.q-bl-t", "href") == ["/acme/shop/backlog?ticket=tk_01"]
       assert attr(html, "a.q-bl-t", "data-phx-link") == ["patch"]
-      assert count(html, ".q-bl-w") == 0
 
       assert text(html, ".q-bl-rp") == "acme/shop"
       assert attr(html, ".q-bl-rp", "title") == ["acme/shop"]
@@ -150,7 +149,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, "a.q-bl-wi", "title") == ["Taken in: work item #341"]
       assert attr(html, "a.q-bl-wi", "class") == ["q-bl-wi"]
       assert count(html, ".q-bl-act button") == 0
-      assert count(html, ".q-bl-w") == 0
     end
 
     test "taken in, without a page to link: the number, with its title" do
@@ -160,109 +158,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert count(html, "a.q-bl-wi") == 0
       assert text(html, "span.q-bl-wi") == "#341"
       assert attr(html, "span.q-bl-wi", "title") == ["Taken in: work item #341"]
-    end
-
-    defp declined(declined_by, extra \\ []) do
-      work_item = %{
-        number: 79,
-        state: :declined,
-        path: "/acme/shop/work/79",
-        declined_by: declined_by
-      }
-
-      row(ticket(%{work_item: work_item}), extra)
-    end
-
-    test "declined: who declined it, its work item, and Take in again" do
-      html = declined("dana@example.com")
-
-      # Who declined it is their first letter, with the address as its tooltip and its
-      # name, beside the title, and on a separate line under it where the row is narrow.
-      for place <- [".q-bl-w", ".q-bl-sub-declined"] do
-        assert attr(html, "#{place} abbr", "data-tip") == ["dana@example.com"]
-        assert attr(html, "#{place} abbr", "aria-label") == ["dana@example.com"]
-        assert attr(html, "#{place} abbr", "tabindex") == ["0"]
-        assert text(html, "#{place} abbr [aria-hidden=true]") == "D"
-        assert text(html, "#{place} abbr .sr-only") == "dana@example.com"
-      end
-
-      # Beside the title the tip opens to the right, inside the list's box on any row.
-      assert [class] = attr(html, ".q-bl-w abbr", "class")
-      assert "tooltip-right" in String.split(class)
-      assert [class] = attr(html, ".q-bl-sub-declined abbr", "class")
-      refute "tooltip-right" in String.split(class)
-
-      # The letter is hidden from screen readers, so the text read aloud is the address.
-      assert text(html, ".q-bl-w") == "Declined by Ddana@example.com"
-
-      assert text(html, ".q-bl-sub-declined") == "Declined by Ddana@example.com"
-
-      assert text(html, "a.q-bl-wi") == "#79"
-      assert attr(html, "a.q-bl-wi", "class") == ["q-bl-wi q-bl-wi-declined"]
-
-      assert attr(html, "a.q-bl-wi", "title") ==
-               ["Work item #79, declined by dana@example.com"]
-
-      [again] = html |> query(".q-bl-act button") |> Enum.to_list()
-      assert LazyHTML.text(again) =~ "Take in again"
-      assert [class] = LazyHTML.attribute(again, "class")
-      assert "q-bl-again" in String.split(class)
-      assert LazyHTML.attribute(again, "title") == ["Brings back work item #79"]
-      assert LazyHTML.attribute(again, "phx-click") == ["take_in_again"]
-      assert LazyHTML.attribute(again, "phx-value-id") == ["tk_01"]
-      assert LazyHTML.attribute(again, "phx-value-ref") == []
-    end
-
-    test "declined by the reader: the letter says it is them" do
-      html = declined("dana@example.com", reader: "dana@example.com")
-
-      assert attr(html, ".q-bl-w abbr", "data-tip") == ["dana@example.com (you)"]
-      assert text(html, ".q-bl-w abbr .sr-only") == "dana@example.com (you)"
-      assert [class] = attr(html, ".q-bl-w abbr [aria-hidden=true]", "class")
-      assert "bg-primary-soft" in String.split(class)
-
-      # Another reader sees the letter on the neutral circle.
-      html = declined("dana@example.com", reader: "priya@example.com")
-      assert attr(html, ".q-bl-w abbr", "data-tip") == ["dana@example.com"]
-      assert [class] = attr(html, ".q-bl-w abbr [aria-hidden=true]", "class")
-      assert "bg-base-300" in String.split(class)
-    end
-
-    test "declined by a deleted account: the words Former member, with no letter" do
-      html = declined(ApiaryWeb.People.former_member())
-
-      assert text(html, ".q-bl-w") == "Declined by Former member"
-      assert count(html, "abbr") == 0
-
-      assert attr(html, "a.q-bl-wi", "title") ==
-               ["Work item #79, declined by Former member"]
-    end
-
-    test "declined by no person: no letter, and the line as it was" do
-      html = declined(nil)
-
-      assert text(html, ".q-bl-w") == "Declined by"
-      assert text(html, ".q-bl-sub-declined") == "Declined by"
-      assert count(html, "abbr") == 0
-    end
-
-    test "declined, where the row is narrow: the title is on the line that can be cut" do
-      html = declined("dana@example.com")
-      sub = "acme/shop#1231 · by Lea · 3 min"
-
-      # The line under the title is cut with an ellipsis, so its title has its whole
-      # text; who declined it is on the next line, which no ellipsis cuts, with no title,
-      # so a hover on the letter shows its tip alone.
-      assert text(html, ".q-bl-sub:not(.q-bl-sub-declined)") == sub
-      assert attr(html, ".q-bl-sub:not(.q-bl-sub-declined)", "title") == [sub]
-      assert attr(html, ".q-bl-sub-declined", "title") == []
-      assert count(html, ".q-bl-sub-declined [title]") == 0
-      assert count(html, ".q-bl-sub-declined abbr") == 1
-
-      # Any other word ends the line that can be cut, and its title.
-      html = row(ticket(%{state: :closed, state_reason: "Not planned"}))
-      assert attr(html, ".q-bl-sub", "title") == [sub <> " · Not planned"]
-      assert count(html, ".q-bl-sub-declined") == 0
     end
 
     for state <- [:undone, :closed] do
@@ -276,30 +171,14 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         assert [class] = LazyHTML.attribute(again, "class")
         refute "q-bl-again" in String.split(class)
         assert count(html, ".q-bl-wi") == 0
-        assert count(html, ".q-bl-w") == 0
       end
     end
 
-    test "closed at the source: the integration's word, and no action" do
-      html = row(ticket(%{state: :closed, state_reason: "Not planned"}))
+    test "finished: the work item's number links its page, and no action" do
+      work_item = %{number: 69, state: :closed, path: "/acme/shop/work/69", finished: true}
+      html = row(ticket(%{work_item: work_item}))
 
-      assert text(html, ".q-bl-w") == "Not planned"
-      assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min · Not planned"
-      assert count(html, ".q-bl-act button") == 0
-      assert count(html, ".q-bl-wi") == 0
-    end
-
-    test "closed at the source with a work item: its link, and no action" do
-      work_item = %{number: 69, state: :closed, path: "/acme/shop/work/69"}
-      html = row(ticket(%{state: :closed, work_item: work_item}))
-
-      assert count(html, ".q-bl-w") == 0
       assert attr(html, "a.q-bl-wi", "title") == ["Taken in: work item #69"]
-      assert count(html, ".q-bl-act button") == 0
-
-      undone = %{work_item | state: :undone}
-      html = row(ticket(%{state: :closed, work_item: undone}))
-      assert count(html, ".q-bl-wi") == 0
       assert count(html, ".q-bl-act button") == 0
     end
 
@@ -385,7 +264,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
     test "markup in what the source sent prints as text" do
       markup = "<b onmouseover=\"alert(1)\">x</b>"
-      work_item = %{number: 79, state: :declined, path: nil, declined_by: markup}
+      work_item = %{number: 79, state: :exploring, path: nil}
 
       html =
         row(
@@ -402,10 +281,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert html =~ "&lt;b onmouseover=&quot;alert(1)&quot;&gt;x&lt;/b&gt;"
       assert text(html, "a.q-bl-t") == markup
       assert attr(html, ".q-bl-rp", "title") == [markup]
-
-      html = row(ticket(%{state: :closed, state_reason: markup}))
-      assert count(html, "b") == 0
-      assert text(html, ".q-bl-w") == markup
     end
   end
 
@@ -438,15 +313,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, ".q-bl-by", "title") == ["Filed by " <> shown("deps-bot")]
       assert texts(html, ".q-bl-filer bdi") == [shown("deps-bot")]
       assert text(html, ".q-bl-bot-av") == "d"
-    end
-
-    test "a closed row: the state word cleaned; one with nothing left to show is none" do
-      html = row(ticket(%{state: :closed, state_reason: sent("Not planned")}))
-      assert text(html, ".q-bl-w") == shown("Not planned")
-
-      html = row(ticket(%{state: :closed, state_reason: "\u202E\u200B"}))
-      assert count(html, ".q-bl-w") == 0
-      assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min"
     end
 
     test "the ticket, over the list and as a page: isolated in <bdi>, cleaned in its titles" do

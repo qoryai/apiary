@@ -46,8 +46,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #
   # Left out: a claim of a run (`Apiary.Dispatches.claim/3`) needs a gateway with a key,
   # which the demo has none of, so no run is claimed, ends or gives a result, and no work item
-  # waits for an answer, waits at Confirm, is confirmed, is declined or is sent to Explore
-  # again: each of those needs a run that ended.
+  # waits for an answer, waits at Confirm, is confirmed or is sent to Explore again: each
+  # of those needs a run that ended.
 
   import Ecto.Query
 

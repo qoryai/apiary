@@ -2,8 +2,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
   @moduledoc """
   The Work items list's parts (`ApiaryWeb.WorkItemListComponents`): the head, the stages
   strip in each of its attention lines and their plurals, the views, the search, the
-  Filter and its tokens, the views' notes, a stage's band, a row in each status and its
-  "you" form, the pager and the empty list. A row's ids and its link are Qory Apiary's,
+  Filter and its tokens, the views' notes, a stage's band and group, a row in each status
+  and its "you" form, the pager and the empty list. A row's ids and its link are Qory Apiary's,
   never the ticket's ref.
   """
   use ExUnit.Case, async: true
@@ -155,17 +155,16 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       html =
         render_component(&L.work_item_views/1,
           current: :you,
-          counts: %{open: 57, you: 3, declined: 4, closed: 262},
+          counts: %{open: 57, you: 3, closed: 262},
           paths: %{
             open: "/8wonders/main/work",
             you: "/8wonders/main/work?view=you",
-            declined: "/8wonders/main/work?view=declined",
             closed: "/8wonders/main/work?view=closed"
           }
         )
 
       assert attr(html, "nav", "aria-label") == ["Views"]
-      assert texts(html, "a") == ["Open 57", "Waiting on you 3", "Declined 4", "Closed 262"]
+      assert texts(html, "a") == ["Open 57", "Waiting on you 3", "Closed 262"]
       assert attr(html, "a[aria-current]", "id") == ["work-items-views-you"]
       assert attr(html, "#work-items-views-closed", "href") == ["/8wonders/main/work?view=closed"]
     end
@@ -242,11 +241,14 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert render_component(&L.view_note/1, view: :you) =~
                "Work items that wait for you to confirm what Qory proposes. Oldest first."
 
-      assert render_component(&L.view_note/1, view: :declined) =~
-               "Work items a member declined. Their tickets stay in the Backlog, where Take in again brings one back."
-
       for view <- [:open, :closed],
           do: assert(render_component(&L.view_note/1, view: view) |> String.trim() == "")
+
+      assert render_component(&L.view_note/1, view: :open, stages: true) =~
+               "Work items at a stage of the process. A finished one moves to Closed."
+
+      assert text(render_component(&L.view_note/1, view: :closed, stages: true), "p") ==
+               "Finished work items, and work items that stopped: a member closed one or undid its take in, its ticket closed, or its integration was removed. Where the ticket of a stopped one is still in the Backlog, Take in again brings it back."
     end
   end
 
@@ -329,8 +331,6 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
             {%{status: :confirm}, "You confirm next"},
             {%{status: :confirm, owner: @priya}, "Priya confirms next"},
             {%{status: :shape}, "Ready for Shape"},
-            {%{status: :declined, ended_by: @priya}, "Declined by Priya"},
-            {%{status: :declined, ended_by: @dana}, "Declined by you"},
             {%{status: :closed, ended_by: @priya}, "Closed by Priya"},
             {%{status: :closed, ended_by: @dana}, "Closed by you"}
           ] do
@@ -467,6 +467,23 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     end
   end
 
+  test "a stage's group: its name and its count over the rows, and no control" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <L.stage_group id="work-items-group-0" name="Build" count={1234}>
+        <li>row</li>
+      </L.stage_group>
+      """)
+
+    assert text(html, "h2") == "Build"
+    assert text(html, ".q-band-n") == "1,234"
+    assert text(html, "ul") == "row"
+    assert count(html, "button") == 0
+    assert count(html, "a") == 0
+  end
+
   test "the pager of Closed" do
     html =
       render_component(&L.work_items_pager/1,
@@ -528,11 +545,11 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert text(band(stage: :explore, count: 2, shown: 2, item_noun: @bug), ".q-wl-what") ==
                "Qory reads the bug"
 
+      assert render_component(&L.view_note/1, view: :closed, stages: true, item_noun: @bug) =~
+               "its bug closed, or its integration was removed. Where the bug of a stopped one"
+
       search = render_component(&L.work_item_search/1, item_noun: @bug)
       assert attr(search, "input", "placeholder") == ["Search by title, number or bug"]
-
-      assert render_component(&L.view_note/1, view: :declined, item_noun: @bug) =~
-               "Work items a member declined. Their bugs stay in the Backlog, where Take in again brings one back."
 
       empty =
         render_component(&L.work_items_empty/1,

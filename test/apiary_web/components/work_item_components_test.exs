@@ -96,8 +96,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           {:confirm, :dana, nil, "You confirm next", "wait"},
           {:confirm, :priya, nil, "Priya confirms next", "wait_other"},
           {:shape, :priya, nil, "Ready for Shape", "ready"},
-          {:declined, :lea, :priya, "Declined by Priya", "declined"},
-          {:declined, :lea, :dana, "Declined by you", "declined"},
           {:closed, :lea, :priya, "Closed by Priya", "closed"},
           {:closed, :lea, :dana, "Closed by you", "closed"},
           {:undone, :lea, :priya, "Undone by Priya", "closed"},
@@ -188,7 +186,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
 
     test "an ended work item has no More" do
-      for status <- [:closed, :declined, :undone] do
+      for status <- [:closed, :undone] do
         html = header(work_item(%{status: status, ended_by: @priya, ended_at: ago(60)}))
         assert count(html, "#work-item-head-more") == 0
       end
@@ -241,13 +239,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, "[aria-current]") == 0
       assert states(html) == ["q-wi-stage-done", "q-wi-stage-todo", "q-wi-stage-todo"]
       assert text(html, ".q-wi-end") == "Closed"
-    end
-
-    test "declined at Confirm: Confirm stopped, no current step; the end mark Declined" do
-      html = track(work_item(%{status: :declined, stage: :confirm, ended_by: @priya}))
-      assert count(html, "[aria-current]") == 0
-      assert states(html) == ["q-wi-stage-done", "q-wi-stage-stop", "q-wi-stage-todo"]
-      assert text(html, ".q-wi-end") == "Declined"
     end
 
     test "undone: nothing done, no current step; the end mark Undone" do
@@ -339,7 +330,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       end
     end
 
-    test "Undo follows the right to undo, apart from the right to confirm or decline" do
+    test "Undo follows the right to undo, apart from the right to confirm" do
       html = card(queued(@dana, ago(5)), can_act: false)
       assert text(html, "#work-item-step-undo button") == "Undo"
     end
@@ -396,76 +387,60 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   end
 
   describe "step_card/1, Confirm" do
-    test "the reader's: Your turn, the line, Confirm and Decline" do
-      html = card(work_item())
+    test "the reader's: Your turn, the line, and Read Qory's proposal, no buttons" do
+      html = card(work_item(), explore_path: "/acme/main/work/88/explore")
 
       assert text(html, "h2") == "Confirm"
       assert text(html, ".q-wi-badge") == "Your turn"
       assert count(html, ".q-wi-step-ask") == 1
 
       assert text(html, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, change it first, or decline the work item."
+               "Confirm Qory's proposal, or write what to change."
 
       refute html =~ "Mock-up"
-      assert text(html, "#work-item-step-confirm") == "Confirm"
-      assert attr(html, "#work-item-step-confirm", "phx-click") == ["confirm"]
-      assert attr(html, "#work-item-step-confirm", "phx-value-number") == ["88"]
-      assert text(html, "#work-item-step-decline") == "Decline"
-      assert attr(html, "#work-item-step-decline", "phx-click") == ["ask_decline"]
-      assert attr(html, "#work-item-step-decline", "phx-value-number") == ["88"]
+      assert text(html, "#work-item-step-explore") == "Read Qory's proposal"
+      assert attr(html, "#work-item-step-explore", "href") == ["/acme/main/work/88/explore"]
+      assert count(html, "button") == 0
+      assert count(html, "#work-item-step-confirm") == 0
+      assert count(html, "#work-item-step-change") == 0
+      refute html =~ "Decline"
     end
 
-    test "another member's: no badge, Confirm and Decline stay" do
-      html = card(work_item(%{owner: @priya}))
+    test "another member's: no badge, the link stays" do
+      html = card(work_item(%{owner: @priya}), explore_path: "/acme/main/work/88/explore")
       assert count(html, ".q-wi-badge") == 0
       assert count(html, ".q-wi-step-ask") == 0
-      assert count(html, "#work-item-step-confirm") == 1
+      assert count(html, "#work-item-step-explore") == 1
     end
 
-    test "the Decline question, in place of the buttons" do
-      html = card(work_item(), asking: :decline, cancel: "/8wonders/main/work/88")
+    test "without the right to act: whose turn it is, no link" do
+      html = card(work_item(%{owner: @priya}), can_act: false)
 
-      assert attr(html, "#work-item-step-decline", "role") == ["group"]
-      assert text(html, "#work-item-step-decline-question") == "Decline work item #88?"
+      assert text(html, ".q-wi-bee-line") == "Priya confirms next"
 
-      assert text(html, "#work-item-step-decline-sub") ==
-               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog."
-
-      assert text(html, "#work-item-step-decline-go") == "Decline"
-      assert attr(html, "#work-item-step-decline-go", "phx-click") == ["decline"]
-      assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["88"]
-      assert text(html, "#work-item-step-decline-cancel") == "Cancel"
-      assert count(html, "#work-item-step-confirm") == 0
+      assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
       refute html =~ "Confirm Qory&#39;s proposal"
-    end
+      assert count(html, "button") == 0
+      assert count(html, "[role=group]") == 0
 
-    test "without the right to act: whose turn it is, no Confirm, no Decline, no question" do
-      for asking <- [nil, :decline] do
-        html = card(work_item(%{owner: @priya}), can_act: false, asking: asking)
+      assert count(html, "#work-item-step-explore") == 0
 
-        assert text(html, ".q-wi-bee-line") ==
-                 "Next, Priya confirms Qory's proposal or declines the work item."
-
-        assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
-        refute html =~ "Confirm Qory&#39;s proposal"
-        assert count(html, "button") == 0
-        assert count(html, "[role=group]") == 0
-        refute html =~ "Decline work item"
-      end
-
-      acts = card(work_item(%{owner: @priya}), can_act: true)
+      acts =
+        card(work_item(%{owner: @priya}),
+          can_act: true,
+          explore_path: "/acme/main/work/88/explore"
+        )
 
       assert text(acts, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, change it first, or decline the work item."
+               "Confirm Qory's proposal, or write what to change."
 
-      assert count(acts, "#work-item-step-confirm") == 1
+      assert count(acts, "#work-item-step-explore") == 1
     end
 
     test "without the right to act: the reader as you, another owner by name, escaped" do
       mine = card(work_item(), can_act: false)
 
-      assert text(mine, ".q-wi-bee-line") ==
-               "Next, you confirm Qory's proposal or decline the work item."
+      assert text(mine, ".q-wi-bee-line") == "You confirm next"
 
       html =
         card(
@@ -475,7 +450,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           can_act: false
         )
 
-      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms Qory&#39;s proposal"
+      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms next"
       assert count(html, ".q-wi-bee-line b") == 0
     end
 
@@ -484,25 +459,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "h2") == "Confirm"
       assert count(html, ".q-wi-bee-line") == 0
       assert count(html, "button") == 0
-    end
-
-    test "the Decline question while the repository keeps its tickets out of the Backlog" do
-      html = card(work_item(), asking: :decline, backlog_off: true)
-
-      assert text(html, "#work-item-step-decline-sub") ==
-               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there."
-
-      refute html =~ "Take in again"
-    end
-
-    test "the Decline question after the uninstall" do
-      html = card(work_item(), asking: :decline, uninstalled: true)
-
-      assert text(html, "#work-item-step-decline-sub") ==
-               "GitHub is no longer connected, so nothing changes on the ticket. The work item stays in Qory Apiary, declined."
-
-      assert attr(html, "#work-item-step-decline-cancel", "phx-click") |> hd() =~
-               "cancel_question"
     end
   end
 
@@ -530,7 +486,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
 
     test "an ended work item has no card" do
-      for status <- [:closed, :declined, :undone] do
+      for status <- [:closed, :undone] do
         html = card(work_item(%{status: status, ended_by: @priya, ended_at: ago(60)}))
         assert String.trim(html) == ""
       end
@@ -638,21 +594,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(mine, "#work-item-ended-line") == "You closed this work item on 12 Oct."
     end
 
-    test "declined" do
-      html = ended(:declined, @priya, ago(3 * 3600))
-
-      assert text(html, "#work-item-ended-line") ==
-               "Priya declined this work item 3 hours ago, at Confirm."
-
-      assert words(html) =~ "The ticket is still open on GitHub with Qory's label."
-      assert count(html, "#work-item-ended-again") == 1
-
-      mine = ended(:declined, @dana, ago(3 * 3600))
-
-      assert text(mine, "#work-item-ended-line") ==
-               "You declined this work item 3 hours ago, at Confirm."
-    end
-
     test "undone by the reader" do
       html = ended(:undone, @dana, ago(5))
 
@@ -681,7 +622,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       for {status, by, line} <- [
             {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
              "Mirek closed this work item on 12 Oct."},
-            {:declined, @priya, "Priya declined this work item"},
             {:undone, @dana, "You undid the take in 5 days ago, before a run started."},
             {:undone, @priya, "Priya undid the take in"}
           ] do
@@ -697,7 +637,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       for {status, by, line} <- [
             {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
              "Mirek closed this work item on 12 Oct."},
-            {:declined, @priya, "Priya declined this work item"},
             {:undone, @dana, "You undid the take in 5 days ago, before a run started."}
           ] do
         html =
@@ -794,7 +733,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
 
     test "Taken in and the end row are one line: the time and the words after it in one element" do
-      w = work_item(%{status: :declined, ended_by: @dana, ended_at: ~U[2026-10-12 10:07:00Z]})
+      w = work_item(%{status: :closed, ended_by: @dana, ended_at: ~U[2026-10-12 10:07:00Z]})
       html = details(w, work_item: %{w | taken_in_by: @dana})
 
       for {id, line} <- [
@@ -832,7 +771,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       for {status, by, row} <- [
             {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
              "Closed 12 Oct, by Mirek"},
-            {:declined, @priya, "Declined 12 Oct, by Priya"},
             {:undone, @dana, "Undone 12 Oct, by you"}
           ] do
         html =
@@ -1058,15 +996,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       end
     end
 
-    test "closed, declined and undone" do
+    test "closed and undone" do
       assert text(event(kind: :closed, actor: @priya), "p") =~ "Priya closed this work item"
       assert text(event(kind: :closed, actor: @dana), "p") =~ "You closed this work item"
-
-      assert text(event(kind: :declined, actor: @priya), "p") =~
-               "Priya declined this work item at Confirm"
-
-      assert text(event(kind: :declined, actor: @dana), "p") =~
-               "You declined this work item at Confirm"
 
       assert text(event(kind: :undone, actor: @dana), "p") =~
                "You undid the take in, before a run started"
@@ -1327,7 +1259,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           header(w),
           track(w),
           card(w),
-          card(w, asking: :decline),
           card(queued),
           render_component(&WorkItemComponents.close_question/1,
             number: 88,
@@ -1381,7 +1312,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     # A page about one item names it by its source's word; "ticket" where it names none.
     @bug %{one: "bug", other: "bugs"}
 
-    test "the step card, its Undo line and the Decline question" do
+    test "the step card and its Undo line" do
       html = card(queued(@dana, ago(5)), item_noun: @bug)
 
       assert text(html, ".q-wi-bee-line") ==
@@ -1389,11 +1320,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "#work-item-step-undo-line") ==
                "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the bug and leaves its comment."
-
-      asking = card(work_item(), item_noun: @bug, asking: :decline, backlog_off: true)
-
-      assert words(asking) =~
-               "The bug stays open on GitHub with Qory's label, and Qory posts nothing more there."
     end
 
     test "the notices, the close question and the end notice" do
@@ -1523,6 +1449,35 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       thread = event(kind: :closed, actor: nil, reason: :adapter_removed)
       assert line(thread) == "Closed when its integration was removed 14 Oct, 11:24"
+    end
+
+    for {reason, words} <- [
+          last_stage_done: "Every stage done",
+          ticket_closed: "Closed when its ticket closed"
+        ] do
+      test "for #{reason}: the status, the end line, Details and the Thread say so" do
+        w = by_instance(unquote(reason))
+        words = unquote(words)
+
+        status = render_component(&WorkItemComponents.work_item_status/1, work_item: w)
+        assert text(status, ".q-wi-st") == words
+
+        notice =
+          render_component(&WorkItemComponents.end_notice/1,
+            work_item: w,
+            integration: "GitHub",
+            backlog_off: true,
+            now: @now
+          )
+
+        assert text(notice, "#work-item-ended-line") == words
+        assert count(notice, "#work-item-ended-again") == 0
+
+        assert text(details(w), "#work-item-details-ended") == words
+
+        thread = event(kind: :closed, actor: nil, reason: unquote(reason))
+        assert line(thread) == words <> " 14 Oct, 11:24"
+      end
     end
 
     test "for a reason without words, or none: those parts draw nothing, and nothing fails" do

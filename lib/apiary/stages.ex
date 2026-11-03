@@ -19,23 +19,31 @@ defmodule Apiary.Stages do
   #
   #   * `take_in/2`, from `Apiary.Dispatches.queue/2`: a take in enters the first stage of
   #     the workspace's current version.
-  #   * `next_run/2`, from `Apiary.Dispatches.queue_next/2`: answers to a run's questions,
-  #     or Explore again after a run that stopped, run the stage's next round.
+  #   * `next_run/2`, from `Apiary.Dispatches.queue_next/3`: answers to a run's questions,
+  #     Explore again after a run that stopped, or a comment on Explore's proposal at its
+  #     gate, run the stage's next round.
   #   * `run_ended/1`, from the end of a run (`Apiary.Dispatches.RunEnd.finish/5`) and from
   #     its settle (`Apiary.Dispatches.Settle.settle/1`), in their transaction: the runner
   #     reads what the run gave and acts. A run ended `run_ended` is read once what it gave
   #     is stored.
-  #   * `confirmed/2`, from `Apiary.WorkItems.confirm/4`: a confirmation of Explore's
+  #   * `confirmed/2`, from `Apiary.WorkItems.confirm/3`: a confirmation of Explore's
   #     proposal approves Explore's gate.
+  #
+  # ## After the last stage
+  #
+  # A work item closes when its last stage finishes, in the same transaction, as the
+  # instance with the reason `last_stage_done`: `closed_by_id` stays empty and
+  # `stage_state` stays `:done` (`Apiary.WorkItems.Finished`).
   #
   # ## Explore (decision D1, a transition until the harness change)
   #
   # A run of explore-a-ticket returns today's explore v1 result. The runner keeps a
-  # proposal as a `proposal` version written by the run plus a `verdict` version
-  # `passed`; questions as a `questions` version, and the stage waits for answers. A run
-  # with no result, an invalid result, or one that stopped escalates, `run_stopped`, with
-  # the cause. Any other workflow reports with artifacts: its newest `verdict` and its
-  # `questions`.
+  # proposal as a `proposal` version written by the run, its `message` as `proposal.md`,
+  # plus a `verdict` version `passed`, and marks done the comments on the proposal the run
+  # read (`Apiary.WorkItems.mark_read/5`); questions as a `questions` version, and the
+  # stage waits for answers. A run with no result, an invalid result, or one that stopped
+  # escalates, `run_stopped`, with the cause. Any other workflow reports with artifacts:
+  # its newest `verdict` and its `questions`.
   #
   # ## What a person does
   #
@@ -71,7 +79,8 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
-  alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
+  alias Apiary.WorkItems
+  alias Apiary.WorkItems.{Explore, Moves, WorkItem}
 
   # The runs a workflow outside a loop may have in one round of its entry: its first,
   # and one after each set of answers, as today's Explore has in one take in.
@@ -80,7 +89,7 @@ defmodule Apiary.Stages do
   @max_note 4000
 
   @typedoc "A resolution of an escalation."
-  @type resolution :: :accept | :another_round | {:move_back, String.t()} | :close | :decline
+  @type resolution :: :accept | :another_round | {:move_back, String.t()} | :close
 
   @typedoc "Why a person's action is refused."
   @type refusal ::
@@ -142,7 +151,9 @@ defmodule Apiary.Stages do
 
   # next_run/2 runs the next round of the stage of the work item `id`, locked by the
   # caller's transaction: after answers, the same workflow; after an escalation or a run
-  # that stopped, another round. `{:ok, run}`; `{:error, :not_waiting}` when the stage
+  # that stopped, another round; at the gate, after a comment on the proposal, another
+  # round from where the stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
+  # `{:ok, run}`; `{:error, :not_waiting}` when the stage
   # waits for a workflow; `:not_placed` for a work item the runner did not place.
   @doc false
   @spec next_run(Ecto.UUID.t(), pos_integer) ::
@@ -166,6 +177,11 @@ defmodule Apiary.Stages do
               nil ->
                 {:another_round, :run_stopped}
             end
+
+          # A comment on the proposal: at the end of the sequence, another round runs
+          # it again, its last loop for a stage with one, else from its start.
+          :at_gate ->
+            {:another_round, :run_stopped}
 
           _stopped ->
             {:another_round, :run_stopped}
@@ -296,9 +312,8 @@ defmodule Apiary.Stages do
   end
 
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
-  # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`), which passes
-  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`). A confirmation
-  # with changes first stores the person's `proposal` version.
+  # person confirmed in this transaction (`Apiary.WorkItems.confirm/3`), which passes
+  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`).
   @doc false
   @spec confirmed(Scope.t(), WorkItem.t(), expect) :: {:ok, WorkItem.t()} | {:error, term}
   def confirmed(%Scope{} = scope, %WorkItem{id: id}, opts \\ []) do
@@ -308,10 +323,7 @@ defmodule Apiary.Stages do
     with {:ok, version, stage} <- placed(work_item),
          :ok <- expected(work_item, opts),
          :at_gate <- work_item.stage_state do
-      confirmation = Explore.confirmation(work_item.id, work_item.take_in)
-
       with :ok <- if(may_approve?(scope, stage), do: :ok, else: {:error, :not_approver}),
-           :ok <- person_proposal(scope, work_item, stage, confirmation),
            {:ok, work_item} <- approve_locked(scope, work_item, version, stage, nil, false) do
         tell_now(work_item)
         {:ok, work_item}
@@ -389,7 +401,7 @@ defmodule Apiary.Stages do
            {:ok, version, stage} <- placed(work_item),
            :waiting_answers <- work_item.stage_state do
         run = newest_of_take_in(work_item)
-        questions = Enum.join(List.wrap(((run && run.result) || %{})["questions"]), "\n")
+        questions = question_texts(((run && run.result) || %{})["questions"])
 
         position =
           position(work_item) ||
@@ -448,19 +460,20 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp person_proposal(_scope, _work_item, _stage, nil), do: :ok
-
-  defp person_proposal(_scope, _work_item, _stage, %{changes: changes}) when changes == %{},
-    do: :ok
-
-  defp person_proposal(scope, work_item, stage, %{result: result, changes: changes}) do
-    document = result |> proposal_document() |> with_changes(changes)
-
-    case Artifacts.push_json({:person, scope}, work_item, "proposal", document,
-           stage_id: stage["id"]
-         ) do
-      {:ok, _version} -> :ok
-      {:error, _reason} = refused -> refused
+  # approver/2 says whether the scope's person may comment on the proposal of the work
+  # item `work_item`, which the caller holds: `:ok` with the workflow model off, for a
+  # work item the runner did not place, and for a person among the approvers of its
+  # stage, or a stage that lists none; `{:error, :not_approver}` otherwise, as for a
+  # confirmation (`confirmed/3`).
+  @doc false
+  @spec approver(Scope.t(), WorkItem.t()) :: :ok | {:error, :not_approver}
+  def approver(%Scope{} = scope, %WorkItem{} = work_item) do
+    with true <- on?(),
+         {:ok, _version, stage} <- placed(work_item),
+         false <- may_approve?(scope, stage) do
+      {:error, :not_approver}
+    else
+      _may -> :ok
     end
   end
 
@@ -658,7 +671,7 @@ defmodule Apiary.Stages do
   defp confirm_today(scope, work_item) do
     case Explore.current(work_item, DateTime.utc_now()) do
       %{status: :confirm, step: %{attempt: attempt}} ->
-        case Moves.confirm(scope, work_item, attempt, nil) do
+        case Moves.confirm(scope, work_item, attempt) do
           {:ok, _work_item} -> {:ok, true}
           {:error, _refusal} = refused -> refused
         end
@@ -725,7 +738,7 @@ defmodule Apiary.Stages do
 
   # resolve_escalation/4 acts on the work item's open escalation: accept it as it is, run
   # another round with the person's note, move the work item back to an earlier stage,
-  # close it or decline it.
+  # or close it.
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -762,16 +775,10 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp resolve(scope, work_item, _version, _stage, escalation, resolution, note)
-       when resolution in [:close, :decline] do
-    :ok = resolve!(escalation, resolution, scope, note)
+  defp resolve(scope, work_item, _version, _stage, escalation, :close, note) do
+    :ok = resolve!(escalation, :close, scope, note)
 
-    result =
-      if resolution == :close,
-        do: Moves.close(scope, work_item),
-        else: Moves.decline(scope, work_item)
-
-    with {:ok, _ended} <- result, do: {:ok, lock!(work_item.id)}
+    with {:ok, _ended} <- Moves.close(scope, work_item), do: {:ok, lock!(work_item.id)}
   end
 
   defp resolve(_scope, _work_item, _version, _stage, _escalation, _resolution, _note),
@@ -968,7 +975,8 @@ defmodule Apiary.Stages do
   # notes/1 is what the work item's next run reads as work item data, oldest first: what
   # people wrote (requests for changes, escalations resolved with a note, moves and the
   # answers to a run's questions) and the gaps of failed checks that started a round
-  # (`:check`, with no person).
+  # (`:check`, with no person). An answer that is a comment on Explore's proposal has
+  # `comment` true; its kind stays `:answer`, as the run API sends it.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id}) do
@@ -1025,6 +1033,7 @@ defmodule Apiary.Stages do
           order_by: [a.take_in, a.attempt, a.position],
           select: %{
             kind: :answer,
+            comment: is_nil(a.question),
             stage_id: r.stage_id,
             user_id: a.answered_by_id,
             note: a.answer,
@@ -1116,15 +1125,28 @@ defmodule Apiary.Stages do
   end
 
   # The next stage of the version after `stage`, entered; after the last, the stage is
-  # done.
+  # done and the work item closes.
   defp advance(work_item, version, stage) do
     stages = version.document["stages"]
     index = Enum.find_index(stages, &(&1["id"] == stage["id"]))
 
     case Enum.at(stages, index + 1) do
-      nil -> {place!(work_item, version, stage["id"], :done, position(work_item)), nil}
+      nil -> {finish(work_item, version, stage), nil}
       next -> enter_locked(work_item, version, next)
     end
+  end
+
+  # The last stage is done: in the same transaction the instance closes the work item,
+  # which the caller holds, and `stage_state` stays `:done` (`Apiary.WorkItems.Finished`).
+  # The stage's runs have ended, so the close changes no queue.
+  defp finish(work_item, version, stage) do
+    work_item = place!(work_item, version, stage["id"], :done, position(work_item))
+    now = DateTime.utc_now()
+
+    {:ok, _workspace_ids} =
+      WorkItems.close_locked([work_item], {:instance, "last_stage_done"}, now)
+
+    %{work_item | state: :closed, closed_at: now}
   end
 
   defp facts(work_item, version, stage) do
@@ -1290,17 +1312,26 @@ defmodule Apiary.Stages do
          _context
        )
        when is_map(run.result) do
-    with {:ok, _proposal} <-
-           Artifacts.push_json({:run, run}, work_item, "proposal", proposal_document(run.result),
+    with {:ok, file} <- proposal_file(run.result),
+         {:ok, proposal} <-
+           Artifacts.push({:run, run}, work_item, "proposal", [file],
              stage_id: work_item.stage_id
            ),
          {:ok, _verdict} <-
            Artifacts.push_json({:run, run}, work_item, "verdict", %{"verdict" => "passed"},
              stage_id: work_item.stage_id
            ) do
+      Apiary.WorkItems.mark_read(
+        work_item.id,
+        run.take_in,
+        run.attempt,
+        proposal.number,
+        DateTime.utc_now()
+      )
+
       {:verdict, :passed, nil}
     else
-      {:error, _reason} -> {:stopped, "The run's proposal could not be stored."}
+      _refused -> {:stopped, "The run's proposal could not be stored."}
     end
   end
 
@@ -1310,12 +1341,12 @@ defmodule Apiary.Stages do
          _context
        )
        when is_map(run.result) do
-    document = Map.take(run.result, ["questions", "understanding", "knowledge"])
+    document = Map.take(run.result, ["questions"])
 
     case Artifacts.push_json({:run, run}, work_item, "questions", document,
            stage_id: work_item.stage_id
          ) do
-      {:ok, _questions} -> {:questions, Enum.join(Map.get(run.result, "questions", []), "\n")}
+      {:ok, _questions} -> {:questions, question_texts(run.result["questions"])}
       {:error, _reason} -> {:stopped, "The run's questions could not be stored."}
     end
   end
@@ -1340,7 +1371,7 @@ defmodule Apiary.Stages do
     cond do
       questions ->
         document = Artifacts.read_json(elem(questions, 1)) || %{}
-        {:questions, Enum.join(List.wrap(document["questions"]), "\n")}
+        {:questions, question_texts(document["questions"])}
 
       verdict ->
         document = Artifacts.read_json(elem(verdict, 1)) || %{}
@@ -1366,25 +1397,27 @@ defmodule Apiary.Stages do
   @spec stop_cause(DispatchRun.t(), WorkItem.t(), StopCause.context()) :: String.t()
   def stop_cause(run, work_item, context \\ %{}), do: StopCause.text(run, work_item, context)
 
-  # proposal_document/1 is the `proposal` artifact of an explore v1 result.
+  # proposal_file/1 is the one file of the `proposal` version of an explore v1 result:
+  # its `message`, the proposal as Markdown, as `proposal.md`. `:error` for a result with
+  # no `message`, stored before the proposal was Markdown.
   @doc false
-  @spec proposal_document(map) :: map
-  def proposal_document(result),
-    do: Map.take(result, ["complexity", "understanding", "scope", "approach", "knowledge"])
+  @spec proposal_file(map) :: {:ok, map} | :error
+  def proposal_file(%{"message" => message}) when is_binary(message),
+    do: {:ok, %{filename: "proposal.md", content_type: "text/markdown", binary: message}}
 
-  # The proposal with a confirmation's changes (`Apiary.WorkItems.Proposal`).
-  defp with_changes(document, changes) do
-    Enum.reduce(Proposal.encode(Proposal.decode(changes)), document, fn
-      {"complexity", complexity}, acc -> Map.put(acc, "complexity", complexity)
-      {"understanding", text}, acc -> Map.put(acc, "understanding", text)
-      {"scope_in", entries}, acc -> put_into(acc, "scope", "in", entries)
-      {"scope_out", entries}, acc -> put_into(acc, "scope", "out", entries)
-      {"approach", text}, acc -> put_into(acc, "approach", "summary", text)
+  def proposal_file(_result), do: :error
+
+  # The questions of a result or of a `questions` version, as the gaps of an escalation
+  # and the questions a stage waits on show them: the text of each, one after the other.
+  defp question_texts(questions) do
+    questions
+    |> List.wrap()
+    |> Enum.flat_map(fn
+      %{"question" => text} when is_binary(text) -> [text]
+      text when is_binary(text) -> [text]
+      _other -> []
     end)
-  end
-
-  defp put_into(document, key, field, value) do
-    Map.update(document, key, %{field => value}, &Map.put(&1, field, value))
+    |> Enum.join("\n")
   end
 
   ## Gates

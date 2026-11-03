@@ -13,8 +13,7 @@ defmodule ApiaryWeb.BacklogComponents do
   # It is shown as an external system's text is: the ticket's key, title, repository,
   # filer, labels and comments' authors in markup isolated in `<bdi>`
   # (`ApiaryWeb.ExternalText.external_text/1`), and `Apiary.ExternalText.line/1` in an
-  # attribute or a sentence, and for a closed row's state word. What the page is given
-  # stays as it was sent.
+  # attribute or a sentence. What the page is given stays as it was sent.
   # A ticket's text and its comments' are the page's to render, into the `rendered_body`
   # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
@@ -46,25 +45,13 @@ defmodule ApiaryWeb.BacklogComponents do
       `kind`;
     * `:comment_count` - a whole number;
     * `:updated_at` - a `DateTime`, when it last changed at the source;
-    * `:state` - `:open` or `:closed`, its state at the source;
-    * `:state_reason` - the integration's word for a closed ticket ("Not planned",
-      "Duplicate"), or `nil`; shown on a closed row only;
     * `:work_item` - `nil`, or the ticket's work item, a map with `:number`, `:state` (an
-      atom: `:declined`, `:undone`, `:closed`, or a state in which it is live, such as
-      `:exploring`), `:path` (its page, or `nil`) and, when declined, `:declined_by` (the
-      email address of who declined it, "Former member" for a deleted account, or `nil`
-      where no person declined it).
+      atom: `:undone`, `:closed`, or a state in which it is live, such as `:exploring`),
+      `:path` (its page, or `nil`) and `:finished`, true for a finished one whose ticket
+      has not reopened (`Apiary.WorkItems.Finished`).
 
-  The action follows the ticket: an open ticket with no work item has Take in; a live
-  work item is its number, a link; a declined one says who declined it, links its work
-  item, and offers Take in again on hover or focus; an undone or closed one offers Take in
-  again. A closed ticket has no action, and shows its state word and the link to its work
-  item, if any.
-
-  Who declined a work item is their first letter, with the address as its tooltip
-  (`CoreComponents.avatar/1`, in the account menu's colour where the address is
-  `reader`), and the address in the title of the work item's link. Where the row is
-  narrow, it is on a separate line under the title, which no ellipsis cuts.
+  The action follows the ticket: an open ticket with no work item has Take in; a live or
+  finished work item is its number, a link; an undone or closed one offers Take in again.
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
   `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
@@ -79,7 +66,6 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :patch, :string, required: true, doc: "the list with this ticket open"
   attr :now, :any, default: nil, doc: "the time the row is drawn at; now by default"
   attr :selected, :boolean, default: false, doc: "whether the ticket is the one open"
-  attr :reader, :string, default: nil, doc: "the reader's address"
   attr :take_in, :any, default: nil, doc: "Take in's `phx-click`"
   attr :take_in_again, :any, default: nil, doc: "Take in again's `phx-click`"
 
@@ -87,14 +73,6 @@ defmodule ApiaryWeb.BacklogComponents do
     ticket = assigns.ticket
     now = assigns.now || DateTime.utc_now()
     view = row_view(ticket)
-    # Beside the title, the letter's tip opens to its right, as the row is one line high
-    # and the list's box cuts what overflows it above the first row.
-    {word, shown_word} = word(view.word, assigns.reader, "tooltip-right")
-    {_word, narrow_word} = word(view.word, assigns.reader, nil)
-    # Under the title, where the row is narrow, who declined it is on a separate line,
-    # which no ellipsis cuts; any other word ends the line that can be cut.
-    declined = match?({:declined_by, _email}, view.word)
-    line_word = if(!declined, do: word)
 
     sub =
       gettext("%{ref} · by %{who} · %{ago}",
@@ -107,10 +85,7 @@ defmodule ApiaryWeb.BacklogComponents do
       assigns
       |> assign(:now, now)
       |> assign(view)
-      |> assign(word: word, shown_word: shown_word, narrow_word: narrow_word)
-      |> assign(:declined, declined)
-      |> assign(sub: sub, line_word: line_word)
-      |> assign(:sub_title, if(line_word, do: sub <> " · " <> line_word, else: sub))
+      |> assign(:sub, sub)
       |> assign(
         shown_key: Apiary.ExternalText.line(ticket.key),
         shown_repository: Apiary.ExternalText.line(ticket.repository)
@@ -126,13 +101,7 @@ defmodule ApiaryWeb.BacklogComponents do
           class="q-bl-t"
           aria-current={@selected && "true"}
         ><.external_text text={@ticket.title} /></.link>
-        <span :if={@word} class="q-bl-w"><.rich text={@shown_word} /></span>
-        <span class="q-bl-sub" title={@sub_title}>
-          {@sub}<span :if={@line_word}> · {@line_word}</span>
-        </span>
-        <span :if={@declined} class="q-bl-sub q-bl-sub-declined">
-          <.rich text={@narrow_word} />
-        </span>
+        <span class="q-bl-sub" title={@sub}>{@sub}</span>
       </span>
       <span
         class="q-bl-rp q-mono"
@@ -152,7 +121,7 @@ defmodule ApiaryWeb.BacklogComponents do
       </span>
       <span class="q-bl-upd"><.compact_time at={@ticket.updated_at} now={@now} /></span>
       <span class="q-bl-act">
-        <.work_item_link :if={@link} kind={@link} work_item={@ticket.work_item} />
+        <.work_item_link :if={@link} work_item={@ticket.work_item} />
         <.button
           :if={@action == :take_in}
           type="button"
@@ -167,7 +136,7 @@ defmodule ApiaryWeb.BacklogComponents do
           :if={@action == :again}
           type="button"
           variant="link"
-          class={["q-bl-take", @link == :declined && "q-bl-again"]}
+          class="q-bl-take"
           title={gettext("Brings back work item #%{number}", number: @ticket.work_item.number)}
           phx-click={@take_in_again}
           phx-value-id={@ticket.id}
@@ -179,89 +148,32 @@ defmodule ApiaryWeb.BacklogComponents do
     """
   end
 
-  # What a row shows beside its title (`word`), which work item link (`link`: `:taken`,
-  # `:declined` or none) and which action (`:take_in`, `:again` or none). A ticket closed
-  # at the source has no action, whatever its work item.
-  defp row_view(%{state: :closed} = ticket) do
-    link =
-      case ticket.work_item do
-        nil -> nil
-        %{state: :declined} -> :declined
-        %{state: :undone} -> nil
-        _taken -> :taken
-      end
-
-    # The state word with nothing left to show is none.
-    %{word: shown(ticket.state_reason), link: link, action: nil}
-  end
-
-  defp row_view(%{work_item: nil}), do: %{word: nil, link: nil, action: :take_in}
-
-  defp row_view(%{work_item: %{state: :declined} = work_item}),
-    do: %{
-      word: {:declined_by, work_item.declined_by},
-      link: :declined,
-      action: :again
-    }
+  # Whether a row links its work item (`link`) and which action (`:take_in`, `:again` or
+  # none).
+  defp row_view(%{work_item: nil}), do: %{link: false, action: :take_in}
+  defp row_view(%{work_item: %{finished: true}}), do: %{link: true, action: nil}
 
   defp row_view(%{work_item: %{state: state}}) when state in [:undone, :closed],
-    do: %{word: nil, link: nil, action: :again}
+    do: %{link: false, action: :again}
 
-  defp row_view(%{work_item: _live}), do: %{word: nil, link: :taken, action: nil}
+  defp row_view(%{work_item: _live}), do: %{link: true, action: nil}
 
-  # The word beside the title, as text for a title and as it is drawn: who declined a
-  # work item is their first letter, with the address as its tooltip, placed by `tip`.
-  defp word({:declined_by, email}, reader, tip) do
-    {gettext("Declined by %{name}", name: email),
-     rich_gettext("Declined by %{name}", name: letter(email, reader, tip))}
-  end
-
-  defp word(word, _reader, _tip), do: {word, word}
-
-  defp letter(email, reader, tip) do
-    assigns = %{email: email, reader: reader, tip: tip}
-    ~H|<.avatar email={@email} reader={@reader} size="xs" class={@tip} />|
-  end
-
-  attr :kind, :atom, required: true, values: [:taken, :declined]
   attr :work_item, :map, required: true
 
   defp work_item_link(assigns) do
     assigns =
-      assign(assigns,
-        title:
-          case assigns.kind do
-            :taken ->
-              gettext("Taken in: work item #%{number}", number: assigns.work_item.number)
-
-            :declined ->
-              gettext("Work item #%{number}, declined by %{name}",
-                number: assigns.work_item.number,
-                name: assigns.work_item.declined_by
-              )
-          end,
-        icon:
-          if(assigns.kind == :declined,
-            do: "hero-minus-circle-micro",
-            else: "hero-rectangle-stack-micro"
-          )
+      assign(
+        assigns,
+        :title,
+        gettext("Taken in: work item #%{number}", number: assigns.work_item.number)
       )
 
     ~H"""
-    <.link
-      :if={@work_item.path}
-      navigate={@work_item.path}
-      class={["q-bl-wi", @kind == :declined && "q-bl-wi-declined"]}
-      title={@title}
-    >
-      <.icon name={@icon} class="size-3" />#{@work_item.number}
+    <.link :if={@work_item.path} navigate={@work_item.path} class="q-bl-wi" title={@title}>
+      <.icon name="hero-rectangle-stack-micro" class="size-3" />#{@work_item.number}
     </.link>
-    <span
-      :if={!@work_item.path}
-      class={["q-bl-wi", @kind == :declined && "q-bl-wi-declined"]}
-      title={@title}
-    >
-      <.icon name={@icon} class="size-3" />#{@work_item.number}
+    <span :if={!@work_item.path} class="q-bl-wi" title={@title}>
+      <.icon name="hero-rectangle-stack-micro" class="size-3" />#{@work_item.number}
     </span>
     """
   end
@@ -281,10 +193,6 @@ defmodule ApiaryWeb.BacklogComponents do
   # The full form as the Backlog shows it, a text the integration sent
   # (`Apiary.ExternalText.line/1`).
   defp shown_full_form(ticket), do: ticket |> full_form() |> Apiary.ExternalText.line()
-
-  # A text the integration sent, as a page shows it; nil where there is none, or where
-  # nothing is left to show.
-  defp shown(text), do: Apiary.ExternalText.present(text)
 
   @doc """
   Who filed a ticket: their mark and their name. A person (`kind` `:person`) has the

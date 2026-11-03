@@ -61,31 +61,16 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
     )
   end
 
-  # The work item of `item` in the scope's workspace, in `state`.
-  defp work_item(scope, %Item{} = item, state) do
+  # The live work item of `item` in the scope's workspace.
+  defp work_item(scope, %Item{} = item) do
     connection_id =
       Repo.one!(from c in Collection, where: c.id == ^item.collection_id, select: c.connection_id)
 
-    work_item =
-      work_item_fixture(scope, %{
-        connection_id: connection_id,
-        item_id: item.id,
-        external_ref: item.external_ref
-      })
-
-    case state do
-      :exploring ->
-        work_item
-
-      :declined ->
-        work_item
-        |> Ecto.Changeset.change(
-          state: :declined,
-          declined_at: DateTime.utc_now(),
-          declined_by_id: scope.user.id
-        )
-        |> Repo.update!()
-    end
+    work_item_fixture(scope, %{
+      connection_id: connection_id,
+      item_id: item.id,
+      external_ref: item.external_ref
+    })
   end
 
   defp row(item), do: "#ticket-#{item.public_id}"
@@ -293,52 +278,30 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
     setup %{scope: scope, shop: shop} do
       open = ticket(shop, minutes: 1)
       taken = ticket(shop, minutes: 2)
-      declined = ticket(shop, minutes: 3)
-      closed = ticket(shop, minutes: 4, state: :closed, state_reason: "Not planned")
-      work_item(scope, taken, :exploring)
-      work_item(scope, declined, :declined)
-      %{open: open, taken: taken, declined: declined, closed: closed}
+      ticket(shop, minutes: 4, state: :closed, state_reason: "Not planned")
+      work_item(scope, taken)
+      %{open: open, taken: taken}
     end
 
     test "each view holds its tickets and says its count, Open first", ctx do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
-      # Open leaves out the tickets Taken in and Declined hold.
-      assert words(view, "#backlog-views") == "Open 1 Taken in 1 Declined 1 Closed 1"
+      # Open leaves out the tickets Taken in holds.
+      assert words(view, "#backlog-views") == "Open 1 Taken in 1"
       assert has_element?(view, ~s(#backlog-view-open[aria-current="page"]))
       assert rows(view) == ids([ctx.open])
 
-      for {key, items} <- [taken: [ctx.taken], declined: [ctx.declined], closed: [ctx.closed]] do
-        view |> element("#backlog-view-#{key}") |> render_click()
-        assert_patch(view, page(ctx.scope, "?view=#{key}"))
-        assert rows(view) == ids(items)
-        assert has_element?(view, ~s(#backlog-view-#{key}[aria-current="page"]))
-        refute has_element?(view, ~s(#backlog-view-open[aria-current="page"]))
-      end
+      view |> element("#backlog-view-taken") |> render_click()
+      assert_patch(view, page(ctx.scope, "?view=taken"))
+      assert rows(view) == ids([ctx.taken])
+      assert has_element?(view, ~s(#backlog-view-taken[aria-current="page"]))
+      refute has_element?(view, ~s(#backlog-view-open[aria-current="page"]))
 
       # The counts stay those of every view.
-      assert words(view, "#backlog-views") == "Open 1 Taken in 1 Declined 1 Closed 1"
+      assert words(view, "#backlog-views") == "Open 1 Taken in 1"
     end
 
-    test "a row is drawn by its ticket's record id, with its work item and its state word",
-         ctx do
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=closed"))
-      assert has_element?(view, row(ctx.closed), "Not planned")
-      refute has_element?(view, "#ticket-#{ctx.closed.key}")
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
-      assert has_element?(view, "#{row(ctx.declined)} .q-bl-wi-declined")
-
-      # Who declined it, the reader here, by their first letter, with their address as its
-      # tooltip.
-      email = ctx.scope.user.email
-      letter = email |> String.first() |> String.upcase()
-      in_row = &"#{row(ctx.declined)} .q-bl-w #{&1}"
-      assert has_element?(view, in_row.(""), "Declined by")
-      assert has_element?(view, in_row.(~s|abbr[data-tip="#{email} (you)"]|))
-      only_letter = ~r/\A#{Regex.escape(letter)}\z/
-      assert has_element?(view, in_row.("abbr [aria-hidden]"), only_letter)
-
+    test "a row is drawn by its ticket's record id, with its work item", ctx do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=taken"))
       assert has_element?(view, "#{row(ctx.taken)} a.q-bl-wi")
 
@@ -408,8 +371,8 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert has_element?(view, ~s(#backlog-search-input[value="basket"]))
       assert rows(view) == ids([ctx.basket])
 
-      view |> element("#backlog-view-closed") |> render_click()
-      assert patched(view) == %{"view" => "closed", "q" => "basket"}
+      view |> element("#backlog-view-taken") |> render_click()
+      assert patched(view) == %{"view" => "taken", "q" => "basket"}
     end
   end
 
@@ -779,114 +742,6 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
     end
   end
 
-  describe "the Closed view's line" do
-    setup %{connection: connection} do
-      %{adapter: Repo.get!(Node, connection.adapter_id)}
-    end
-
-    test "says which tickets Closed holds and where they are closed, on Closed alone", ctx do
-      ticket(ctx.shop, state: :closed)
-      ticket(ctx.shop)
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      refute has_element?(view, "#backlog-view-line")
-
-      view |> element("#backlog-view-closed") |> render_click()
-
-      assert words(view, "#backlog-view-line") ==
-               "Tickets that are closed on #{ctx.adapter.name}."
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=taken"))
-      refute has_element?(view, "#backlog-view-line")
-    end
-
-    test "in the source's words for its items", %{connection: connection} = ctx do
-      {1, _} =
-        Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
-          set: [item_noun_one: "bug", item_noun_other: "bugs"]
-        )
-
-      ticket(ctx.shop, state: :closed)
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=closed"))
-
-      assert words(view, "#backlog-view-line") ==
-               "Bugs that are closed on #{ctx.adapter.name}."
-    end
-
-    test "is left out where several integrations connect the organisation, none named", ctx do
-      ticket(ctx.shop, state: :closed)
-      other = ticket_connection_fixture(ctx.scope)
-      ticket(source_collection_fixture(ctx.scope, other, %{title: "acme/web"}))
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=closed"))
-      assert rows(view) |> length() == 1
-      refute has_element?(view, "#backlog-view-line")
-    end
-  end
-
-  describe "the Declined view's line" do
-    setup %{connection: connection} do
-      %{adapter: Repo.get!(Node, connection.adapter_id)}
-    end
-
-    test "says which tickets Declined holds and where they stay open, on Declined alone",
-         ctx do
-      work_item(ctx.scope, ticket(ctx.shop), :declined)
-
-      for view <- ["open", "taken", "closed"] do
-        {:ok, view_page, _html} = live(ctx.conn, page(ctx.scope, "?view=#{view}"))
-        refute has_element?(view_page, "#backlog-view-line", "declined"), view
-      end
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      view |> element("#backlog-view-declined") |> render_click()
-
-      assert words(view, "#backlog-view-line") ==
-               "Tickets whose work item a member declined after Explore. They stay open on " <>
-                 "#{ctx.adapter.name}, and Open leaves them out. Take in again brings back " <>
-                 "the same work item."
-    end
-
-    test "in the source's words for its items", %{connection: connection} = ctx do
-      {1, _} =
-        Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
-          set: [item_noun_one: "bug", item_noun_other: "bugs"]
-        )
-
-      work_item(ctx.scope, ticket(ctx.shop), :declined)
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
-
-      assert words(view, "#backlog-view-line") =~
-               ~r/^Bugs whose work item a member declined after Explore\. They stay open on /
-    end
-
-    test "is left out where several integrations connect the organisation, none named", ctx do
-      work_item(ctx.scope, ticket(ctx.shop), :declined)
-      other = ticket_connection_fixture(ctx.scope)
-      ticket(source_collection_fixture(ctx.scope, other, %{title: "acme/web"}))
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
-      assert rows(view) |> length() == 1
-      refute has_element?(view, "#backlog-view-line")
-    end
-
-    test "is said beside an integration without items, naming the one with items", ctx do
-      work_item(ctx.scope, ticket(ctx.shop), :declined)
-      plain = ticket_connection_fixture(ctx.scope)
-
-      {1, _} =
-        Repo.update_all(from(n in Node, where: n.id == ^plain.adapter_id), set: [items: false])
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      view |> element("#backlog-view-declined") |> render_click()
-
-      assert words(view, "#backlog-view-line") ==
-               "Tickets whose work item a member declined after Explore. They stay open on " <>
-                 "#{ctx.adapter.name}, and Open leaves them out. Take in again brings back " <>
-                 "the same work item."
-    end
-  end
-
   describe "the source's words" do
     test "a source that names its items is read in its words", %{
       conn: conn,
@@ -926,7 +781,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       )
 
       assert rows(view) == ids([added, first])
-      assert words(view, "#backlog-views") == "Open 2 Taken in 0 Declined 0 Closed 0"
+      assert words(view, "#backlog-views") == "Open 2 Taken in 0"
     end
 
     test "a message of another workspace's Backlog changes nothing", %{
@@ -947,7 +802,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       )
 
       assert rows(view) == ids([first])
-      assert words(view, "#backlog-views") == "Open 1 Taken in 0 Declined 0 Closed 0"
+      assert words(view, "#backlog-views") == "Open 1 Taken in 0"
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule Apiary.WorkItems.Moves do
   # Moves holds what a person does to a workspace's work items, each in one transaction
   # with its event, its run of the queue, its feed entry and its entry in the audit trail:
-  # taking a ticket in, taking it in again, undoing a take in, declining and closing; what
+  # taking a ticket in, taking it in again, undoing a take in and closing; what
   # a member gives Explore: answering a run's questions, confirming a run's proposal,
   # changed or not, and running Explore again; and people's comments on the Thread,
   # writing one and deleting one.
@@ -11,8 +11,8 @@ defmodule Apiary.WorkItems.Moves do
   #
   # Each asks `Apiary.Access.authorize/3` first, inside its transaction: a take in and a
   # take in again `work_item.take_in` of the scope's workspace, where the work item will
-  # be; an undo, a decline and a close `work_item.undo`, `work_item.decline` and
-  # `work_item.close` of the work item, which must be in the scope's workspace; an answer,
+  # be; an undo and a close `work_item.undo` and `work_item.close` of the work item, which
+  # must be in the scope's workspace; an answer,
   # a confirmation and a run of Explore again `work_item.answer`, `work_item.confirm` and
   # `work_item.explore_again` of the work item, likewise; a comment `work_item.comment` of
   # the work item, and a comment's deletion `work_item.comment_delete` of the comment, which
@@ -48,10 +48,10 @@ defmodule Apiary.WorkItems.Moves do
   # then, only right after the work item, the workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
   # the queue (`Apiary.Dispatches`); then the adapter's feed counter, last
-  # (`Apiary.Adapters.Feed`). An undo, a decline and a close take no connection or
+  # (`Apiary.Adapters.Feed`). An undo and a close take no connection or
   # collection: the work item, then its runs. An answer, a confirmation and a run of
   # Explore again take the work item alone, then queue through
-  # `Apiary.Dispatches.queue_next/2`, which takes the work item again, in the same
+  # `Apiary.Dispatches.queue_next/3`, which takes the work item again, in the same
   # transaction, before it reads the runs; they lock no run, as a run that ended stays
   # ended and a new run is only written under the work item's lock. A comment takes the
   # work item alone; a comment's deletion the work item, then the comment, `FOR UPDATE`,
@@ -93,15 +93,17 @@ defmodule Apiary.WorkItems.Moves do
   # then makes the new one: a test whose run no machine took is tried again at once. A
   # take in of a test that commits meanwhile is refused by the index on live test work
   # items, `:test_running` too. It locks the workspace's counter of numbers right after
-  # the new work item, then the runs of the queue. An undo, a decline and a close work on
+  # the new work item, then the runs of the queue. An undo and a close work on
   # a test work item as on any other, and tell no adapter and no Backlog, as it has no
   # ticket.
   #
   # ## Take in again
   #
   # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
-  # a live one `{:error, {:taken, work_item}}`. An ended one, declined, closed or undone,
-  # becomes `:exploring` again, its take in counted one more, pointed at the ticket's
+  # a live one `{:error, {:taken, work_item}}`, and so is a finished one whose ticket has
+  # not reopened (`Apiary.WorkItems.Finished`), which stays taken in. Any other ended one,
+  # closed or undone, becomes `:exploring` again, its take in counted one more, pointed at
+  # the ticket's
   # current record and its connection, with the ticket's title and address and its
   # collection's title as they are now, and the target, the owner, the first instruction,
   # who took it in and when of this take in. A work item of another workspace moves to the
@@ -110,31 +112,28 @@ defmodule Apiary.WorkItems.Moves do
   # `before` (its state, when and by whom it ended, who had taken it in and when, its
   # owner and its target), for an undo. Its first run is queued, run 1 of the new count.
   # The adapter is told `taken_in` only for one that had ended undone, whose label came
-  # off; a declined or closed one kept its label, and nothing is sent.
+  # off; a closed one kept its label, and nothing is sent.
   #
   # ## Undo
   #
   # An undo works on a live work item while no claim holds a run of its take in
   # (`Apiary.Dispatches.cancel_for_undo/1`, `{:error, :claimed}` otherwise), and ends its
   # waiting runs. A first take in becomes `:undone`, and the adapter is told `undone`. A
-  # take in again goes back to how it had ended, from its event's `before`: declined or
-  # closed with when and by whom, and its owner, its target and who had taken it in, and
+  # take in again goes back to how it had ended, from its event's `before`: closed with
+  # when and by whom, and its owner, its target, who had taken it in and its place in
+  # its process (version, stage, state, round and entries), and
   # nothing is sent, as the label stayed; one that had ended undone becomes `:undone`
   # again, and the adapter is told `undone`, as its take in again put the label back on.
   # A work item moved by its take in again stays in the workspace it moved to, with its
-  # new number. The first instruction stays the one of the take in undone: it is given to
+  # new number, and gets no place in a process: the place it had is of the old one. An
+  # event written before the place was kept leaves the place as it is. The first instruction stays the one of the take in undone: it is given to
   # no run until a take in again gives a new one.
   #
-  # ## Decline and close
+  # ## Close
   #
-  # A decline works on a live work item none of whose runs of its take in waits, is
-  # claimed or is handed over, else `:running`, and whose take in is not confirmed, else
-  # `:confirmed`: a decline is offered where Explore waits for a member, and a confirmed
-  # work item waits for Shape. It becomes `:declined`, by the person, now, with its
-  # event, which records the stage Explore was at (`"stage"`, `"explore"` or `"confirm"`,
-  # `Apiary.WorkItems.Explore.stage/1`), and nothing is sent, as the label stays. A close
-  # works on a live work item, whatever its runs (`Apiary.WorkItems.close_locked/3`),
-  # and its event records the stage too, `"shape"` once confirmed.
+  # A close works on a live work item, whatever its runs (`Apiary.WorkItems.close_locked/3`).
+  # Its event records the stage Explore was at (`"stage"`, `"explore"`, `"confirm"` or
+  # `"shape"`, `Apiary.WorkItems.Explore.stage/1`), and nothing is sent, as the label stays.
   #
   # ## What a member gives Explore
   #
@@ -150,16 +149,25 @@ defmodule Apiary.WorkItems.Moves do
   #   * An answer (`answer/4`) works where the latest run asked its questions: every
   #     question answered (`Apiary.WorkItems.Proposal.check_answers/2`, else
   #     `{:invalid, errors}`, by position, or `{:invalid, :form}`). It keeps each answer
-  #     with its question (`Apiary.WorkItems.Answer`), and queues the take in's next run
-  #     (`Apiary.Dispatches.queue_next/2`), which reads them
+  #     with its question and whether it is the member's text (`custom`,
+  #     `Apiary.WorkItems.Answer`), and queues the take in's next run
+  #     (`Apiary.Dispatches.queue_next/3`), which reads them
   #     (`Apiary.WorkItems.take_in_answers/2`). Its event, `:answered`, has the take in,
   #     the attempt answered and the count.
-  #   * A confirmation (`confirm/4`) works where the latest run's proposal waits: as it
-  #     stands, or with the changes the edit page gives
-  #     (`Apiary.WorkItems.Proposal.changes/2`, else `{:invalid, errors}` by field, or
-  #     `{:invalid, :form}`). It keeps the run's result and the changes
-  #     (`Apiary.WorkItems.Confirmation`); the work item is then ready for Shape. Its
-  #     event, `:confirmed`, has the take in, the attempt and the fields changed.
+  #   * A comment on the proposal (`answer/4` too, with the comment's text) works where
+  #     the latest run's proposal waits, for a member among the approvers of the stage the
+  #     work item is in, where the stage lists them (`Apiary.Stages.approver/2`, else
+  #     `:not_approver`): its text checked (`Apiary.WorkItems.Proposal.check_comment/1`,
+  #     else `{:invalid, %{comment: error}}`, or `{:invalid, :form}`). It keeps the
+  #     comment as an answer with no question, on the proposal's version
+  #     (`Apiary.WorkItems.Explore.proposal_version/3`), and queues the take in's next
+  #     run, which reads it (`Apiary.WorkItems.take_in_changes/3`). At the run limit the
+  #     comment adds one run: the next run's `attempt` and `of` are one more each
+  #     (`Apiary.Dispatches.queue_next/3`). Its event, `:answered`, has the take in, the
+  #     attempt commented on, the count, 1, and `"comment"` true.
+  #   * A confirmation (`confirm/3`) works where the latest run's proposal waits. It keeps
+  #     the run's result (`Apiary.WorkItems.Confirmation`); the work item is then ready
+  #     for Shape. Its event, `:confirmed`, has the take in and the attempt.
   #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
   #     was lost or was cancelled, while a run is left: it queues the take in's next run.
   #     Its event, `:explore_again`, has the take in and the attempt of the new run.
@@ -202,8 +210,8 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.{Item, Topic}
-  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Number, Proposal, State}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Finished, Number, Proposal}
+  alias Apiary.WorkItems.{State, WorkItem}
   alias Apiary.WorkItems.WorkItemEvent
 
   @typedoc "Why a take in, or a take in again, is refused."
@@ -474,6 +482,7 @@ defmodule Apiary.WorkItems.Moves do
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),
+             :ok <- not_finished(scope, ended, ticket),
              {:ok, target} <- target(workspace, ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
           again(scope, workspace, ended, ticket, target, owner_id, attrs)
@@ -504,6 +513,14 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
+  # A finished work item stays taken in until its ticket reopens, as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`).
+  defp not_finished(scope, ended, %{item: item}) do
+    if Finished.finished?(ended, item),
+      do: {:error, {:taken, WorkItems.as_seen(scope, ended)}},
+      else: :ok
+  end
+
   defp again(scope, workspace, ended, ticket, target, owner_id, attrs) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
@@ -524,8 +541,6 @@ defmodule Apiary.WorkItems.Moves do
       })
       |> Ecto.Changeset.change(
         state: :exploring,
-        declined_at: nil,
-        declined_by_id: nil,
         closed_at: nil,
         closed_by_id: nil,
         taken_in_by_id: scope.user.id,
@@ -580,11 +595,11 @@ defmodule Apiary.WorkItems.Moves do
         loop_entry: nil
       )
 
-  # How `work_item` had ended, for the undo of the take in again that leaves it.
+  # How `work_item` had ended, for the undo of the take in again that leaves it: its
+  # place in its workspace's process among the rest.
   defp before(%WorkItem{} = work_item) do
     {at, by_id} =
       case work_item.state do
-        :declined -> {work_item.declined_at, work_item.declined_by_id}
         :closed -> {work_item.closed_at, work_item.closed_by_id}
         :undone -> {nil, nil}
       end
@@ -597,7 +612,14 @@ defmodule Apiary.WorkItems.Moves do
       "taken_in_at" => DateTime.to_iso8601(work_item.taken_in_at),
       "owner_id" => work_item.owner_id,
       "target_system" => work_item.target_system,
-      "target_path" => work_item.target_path
+      "target_path" => work_item.target_path,
+      "workspace_id" => work_item.workspace_id,
+      "process_version_id" => work_item.process_version_id,
+      "stage_id" => work_item.stage_id,
+      "stage_state" => work_item.stage_state && Atom.to_string(work_item.stage_state),
+      "stage_round" => work_item.stage_round,
+      "stage_entry" => work_item.stage_entry,
+      "loop_entry" => work_item.loop_entry
     }
   end
 
@@ -626,11 +648,12 @@ defmodule Apiary.WorkItems.Moves do
 
     changes =
       case before do
-        %{state: ended} when ended in [:declined, :closed] ->
-          [state: state] ++ ended_fields(ended, before) ++ taken_in_fields(before)
+        %{state: :closed} ->
+          [state: state, closed_at: before.at, closed_by_id: before.by_id] ++
+            taken_in_fields(before) ++ stage_fields(before, held)
 
         %{state: :undone} ->
-          [state: state] ++ taken_in_fields(before)
+          [state: state] ++ taken_in_fields(before) ++ stage_fields(before, held)
 
         nil ->
           [state: state]
@@ -667,7 +690,7 @@ defmodule Apiary.WorkItems.Moves do
 
     case data do
       %{"before" => %{"state" => state} = before}
-      when state in ["declined", "closed", "undone"] ->
+      when state in ["closed", "undone"] ->
         %{
           state: String.to_existing_atom(state),
           at: time(before["at"]),
@@ -676,7 +699,8 @@ defmodule Apiary.WorkItems.Moves do
           taken_in_at: time(before["taken_in_at"]),
           owner_id: before["owner_id"],
           target_system: before["target_system"],
-          target_path: before["target_path"]
+          target_path: before["target_path"],
+          stage: stage_before(before)
         }
 
       _first ->
@@ -684,15 +708,40 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
+  # The work item's place in its process as its take in again found it, and the
+  # workspace it was in; nil for an event written before the place was kept.
+  defp stage_before(%{"stage_id" => _id, "workspace_id" => workspace_id} = before) do
+    %{
+      workspace_id: workspace_id,
+      process_version_id: before["process_version_id"],
+      stage_id: before["stage_id"],
+      stage_state: before["stage_state"] && String.to_existing_atom(before["stage_state"]),
+      stage_round: before["stage_round"],
+      stage_entry: before["stage_entry"],
+      loop_entry: before["loop_entry"]
+    }
+  end
+
+  defp stage_before(_before), do: nil
+
+  # The place an undo puts back. An event without it changes nothing. A work item its take
+  # in again moved to another workspace gets no place, as the place is of the old process.
+  defp stage_fields(%{stage: %{workspace_id: workspace_id} = stage}, %WorkItem{
+         workspace_id: workspace_id
+       }),
+       do: stage |> Map.delete(:workspace_id) |> Map.to_list()
+
+  defp stage_fields(%{stage: %{} = stage}, _held),
+    do: for({field, _value} <- Map.delete(stage, :workspace_id), do: {field, nil})
+
+  defp stage_fields(_before, _held), do: []
+
   defp time(nil), do: nil
 
   defp time(text) when is_binary(text) do
     {:ok, at} = Ecto.Type.cast(:utc_datetime_usec, text)
     at
   end
-
-  defp ended_fields(:declined, before), do: [declined_at: before.at, declined_by_id: before.by_id]
-  defp ended_fields(:closed, before), do: [closed_at: before.at, closed_by_id: before.by_id]
 
   defp taken_in_fields(before) do
     [
@@ -702,69 +751,6 @@ defmodule Apiary.WorkItems.Moves do
       target_system: before.target_system,
       target_path: before.target_path
     ]
-  end
-
-  ## Decline
-
-  @doc false
-  @spec decline(Scope.t(), WorkItem.t()) ::
-          {:ok, WorkItem.t()}
-          | {:error, :not_found | :forbidden | :not_live | :running | :confirmed}
-  def decline(%Scope{} = scope, %WorkItem{} = work_item) do
-    result =
-      Repo.transact(fn ->
-        with {:ok, held} <- hold(scope, :"work_item.decline", work_item),
-             :ok <- live(held),
-             :ok <- no_run(held),
-             {:ok, stage} <- not_confirmed(held) do
-          declined(scope, held, stage)
-        end
-      end)
-
-    finish(result)
-  end
-
-  # No run of the work item's take in waits, is claimed or is handed over: those there
-  # are held `FOR UPDATE`, by id, as a close holds them, so a claim that took one first is
-  # seen claimed.
-  defp no_run(%WorkItem{id: id, take_in: take_in}) do
-    running =
-      Repo.all(
-        from r in DispatchRun,
-          where: r.work_item_id == ^id and r.take_in == ^take_in,
-          where: fragment("? IN ('waiting', 'claimed', 'handed_over')", r.state),
-          order_by: r.id,
-          lock: "FOR UPDATE",
-          select: r.id
-      )
-
-    if running == [], do: :ok, else: {:error, :running}
-  end
-
-  # The stage Explore is at, unless the take in is confirmed.
-  defp not_confirmed(held) do
-    case Explore.current(held, DateTime.utc_now()).status do
-      :shape -> {:error, :confirmed}
-      status -> {:ok, Explore.stage(status)}
-    end
-  end
-
-  defp declined(scope, held, stage) do
-    now = DateTime.utc_now()
-    {:ok, state} = State.next(held.state, :decline)
-
-    with {:ok, work_item} <-
-           held
-           |> Ecto.Changeset.change(state: state, declined_at: now, declined_by_id: scope.user.id)
-           |> Repo.update(),
-         :ok <- event(work_item, :declined, scope, now, %{"stage" => Atom.to_string(stage)}),
-         {:ok, _entry} <-
-           Audit.record(Repo, scope, :"work_item.decline", work_item, %{
-             before: %{state: :exploring},
-             after: %{state: state}
-           }) do
-      {:ok, {work_item, told(work_item)}}
-    end
   end
 
   ## Close
@@ -793,7 +779,7 @@ defmodule Apiary.WorkItems.Moves do
 
   ## What a member gives Explore
 
-  @typedoc "Why an answer, a confirmation or a run of Explore again is refused."
+  @typedoc "Why an answer, a comment, a confirmation or a run of Explore again is refused."
   @type step_refusal ::
           :not_found
           | :forbidden
@@ -802,11 +788,12 @@ defmodule Apiary.WorkItems.Moves do
           | :running
           | :used_up
           | :not_waiting
+          | :not_approver
           | {:invalid, map | :form}
           | Ecto.Changeset.t()
 
   @doc false
-  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map) ::
+  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t()) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
     result =
@@ -814,13 +801,11 @@ defmodule Apiary.WorkItems.Moves do
         now = DateTime.utc_now()
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.answer", work_item, now),
-             :ok <- waiting(current, [:questions], attempt),
-             {:ok, checked} <-
-               invalid(Proposal.check_answers(Proposal.questions(current.step.result), answers)),
-             :ok <- keep_answers(held, scope, attempt, checked, now),
-             data = %{"take_in" => held.take_in, "attempt" => attempt, "count" => length(checked)},
+             :ok <- waiting(current, [:questions, :confirm], attempt),
+             {:ok, count, comment?} <- keep_given(held, scope, current, attempt, answers, now),
+             data = answered(held, attempt, count, comment?),
              :ok <- event(held, :answered, scope, now, data),
-             {:ok, _run} <- next_run(held),
+             {:ok, _run} <- next_run(held, comment?),
              {:ok, work_item} <- touch(held, now),
              {:ok, _entry} <-
                Audit.record(Repo, scope, :"work_item.answer", work_item, %{details: data}) do
@@ -831,20 +816,52 @@ defmodule Apiary.WorkItems.Moves do
     finish(result)
   end
 
+  # The data of an `:answered` event, and of its entry in the trail: a comment has
+  # `"comment"` true.
+  defp answered(held, attempt, count, comment?) do
+    data = %{"take_in" => held.take_in, "attempt" => attempt, "count" => count}
+    if comment?, do: Map.put(data, "comment", true), else: data
+  end
+
+  # What the member gave, kept: the answers to the latest run's questions, or a comment
+  # on its proposal. `{:ok, count, comment?}`, `comment?` true for a comment, which adds
+  # a run at the run limit.
+  defp keep_given(held, scope, %{status: :questions} = current, attempt, answers, now) do
+    questions = Proposal.questions(current.step.result)
+
+    with {:ok, checked} <- invalid(Proposal.check_answers(questions, answers)),
+         :ok <- keep_answers(held, scope, attempt, checked, now),
+         do: {:ok, length(checked), false}
+  end
+
+  defp keep_given(held, scope, %{status: :confirm} = current, attempt, text, now) do
+    with :ok <- Apiary.Stages.approver(scope, held),
+         {:ok, text} <- comment_text(text),
+         version = Explore.proposal_version(held.id, held.take_in, current.step.attempt),
+         :ok <- keep_comment(held, scope, attempt, text, version, now),
+         do: {:ok, 1, true}
+  end
+
+  defp comment_text(text) do
+    case Proposal.check_comment(text) do
+      {:ok, text} -> {:ok, text}
+      {:error, :invalid} -> {:error, {:invalid, :form}}
+      {:error, error} -> {:error, {:invalid, %{comment: error}}}
+    end
+  end
+
   @doc false
-  @spec confirm(Scope.t(), WorkItem.t(), pos_integer, map | nil) ::
+  @spec confirm(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
-  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params) do
+  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
     result =
       Repo.transact(fn ->
         now = DateTime.utc_now()
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.confirm", work_item, now),
              :ok <- waiting(current, [:confirm], attempt),
-             {:ok, changes} <- proposal_changes(current.step, params),
-             :ok <- keep_confirmation(held, scope, current.step, changes, now),
-             changed = changes |> Proposal.encode() |> Map.keys() |> Enum.sort(),
-             data = %{"take_in" => held.take_in, "attempt" => attempt, "changed" => changed},
+             :ok <- keep_confirmation(held, scope, current.step, now),
+             data = %{"take_in" => held.take_in, "attempt" => attempt},
              :ok <- event(held, :confirmed, scope, now, data),
              {:ok, work_item} <- touch(held, now),
              {:ok, _entry} <-
@@ -866,7 +883,7 @@ defmodule Apiary.WorkItems.Moves do
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.explore_again", work_item, now),
              :ok <- waiting(current, [:no_result, :lost, :cancelled], attempt),
-             {:ok, run} <- next_run(held),
+             {:ok, run} <- next_run(held, false),
              data = %{"take_in" => held.take_in, "attempt" => run.attempt},
              :ok <- event(held, :explore_again, scope, now, data),
              {:ok, work_item} <- touch(held, now),
@@ -1008,15 +1025,10 @@ defmodule Apiary.WorkItems.Moves do
   defp invalid({:error, :invalid}), do: {:error, {:invalid, :form}}
   defp invalid({:error, errors}) when is_map(errors), do: {:error, {:invalid, errors}}
 
-  defp proposal_changes(_step, nil), do: {:ok, %{}}
-
-  defp proposal_changes(step, params),
-    do: invalid(Proposal.changes(Proposal.from_result(step.result), params))
-
-  # The take in's next run (`Apiary.Dispatches.queue_next/2`): a take in with no run yet
-  # does not wait for a member.
-  defp next_run(held) do
-    case Dispatches.queue_next(held, held.take_in) do
+  # The take in's next run (`Apiary.Dispatches.queue_next/3`), one run more at the run
+  # limit when `extend?`: a take in with no run yet does not wait for a member.
+  defp next_run(held, extend?) do
+    case Dispatches.queue_next(held, held.take_in, extend: extend?) do
       {:ok, run} -> {:ok, run}
       {:error, :no_run} -> {:error, :not_waiting}
       {:error, _refusal} = refused -> refused
@@ -1025,7 +1037,7 @@ defmodule Apiary.WorkItems.Moves do
 
   defp keep_answers(held, scope, attempt, checked, now) do
     rows =
-      for {position, question, answer} <- checked do
+      for {position, question, answer, custom} <- checked do
         %{
           id: Ecto.UUID.generate(),
           organisation_id: held.organisation_id,
@@ -1036,6 +1048,7 @@ defmodule Apiary.WorkItems.Moves do
           position: position,
           question: question,
           answer: answer,
+          custom: custom,
           answered_by_id: scope.user.id,
           answered_at: now
         }
@@ -1045,7 +1058,29 @@ defmodule Apiary.WorkItems.Moves do
     if count == length(rows), do: :ok, else: {:error, :not_waiting}
   end
 
-  defp keep_confirmation(held, scope, step, changes, now) do
+  # A comment: an answer with no question, at position 1, on the proposal's `version`.
+  defp keep_comment(held, scope, attempt, text, version, now) do
+    row = %{
+      id: Ecto.UUID.generate(),
+      organisation_id: held.organisation_id,
+      workspace_id: held.workspace_id,
+      work_item_id: held.id,
+      take_in: held.take_in,
+      attempt: attempt,
+      position: 1,
+      answer: text,
+      proposal_version: version,
+      answered_by_id: scope.user.id,
+      answered_at: now
+    }
+
+    case Repo.insert_all(Answer, [row]) do
+      {1, _rows} -> :ok
+      _none -> {:error, :not_waiting}
+    end
+  end
+
+  defp keep_confirmation(held, scope, step, now) do
     %Confirmation{
       id: Ecto.UUID.generate(),
       organisation_id: held.organisation_id,
@@ -1054,7 +1089,6 @@ defmodule Apiary.WorkItems.Moves do
       take_in: held.take_in,
       attempt: step.attempt,
       result: step.result,
-      changes: Proposal.encode(changes),
       confirmed_by_id: scope.user.id,
       confirmed_at: now
     }

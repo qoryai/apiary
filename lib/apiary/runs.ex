@@ -229,8 +229,9 @@ defmodule Apiary.Runs do
   target_system:, target_path:}`, where the work item moved to another workspace `here`
   false and the number and the target nil, else nil; `started_by` how it started: `:direct` (a run of no queue),
   `:image_requeue`, `:process` (any other run the stage runner placed), `{:test_run, person}`,
-  `{:taken_in, person}`, `{:taken_in_again, person}`, `{:explore_again, person}` or
-  `{:answers, attempt, of, person}`, `person` an account id; nil where no record says. A
+  `{:taken_in, person}`, `{:taken_in_again, person}`, `{:explore_again, person}`,
+  `{:answers, attempt, of, person}` or `{:comment, attempt, of, person}`, `person` an
+  account id; nil where no record says. A
   run of another workspace has none. Four reads, whatever the number of runs.
   """
   @spec list_facts(Scope.t(), [Run.t()]) :: %{Ecto.UUID.t() => map}

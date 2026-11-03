@@ -80,7 +80,20 @@ defmodule Apiary.StagesTest do
     )
   end
 
-  defp a_proposal, do: Stages.proposal_document(understood_result())
+  # The one file of a `proposal` version, as a run's end stores it: the proposal as
+  # Markdown.
+  defp a_proposal do
+    {:ok, file} = Stages.proposal_file(understood_result())
+    [file]
+  end
+
+  # The text of a version's first file.
+  defp read_text(%{files: [file | _rest]}) do
+    case Artifacts.open_file(file) do
+      {:ok, path} when is_binary(path) -> File.read!(path)
+      {:ok, stream} -> stream |> Enum.to_list() |> IO.iodata_to_binary()
+    end
+  end
 
   defp explore_stage(extra \\ %{}) do
     stage(
@@ -311,8 +324,10 @@ defmodule Apiary.StagesTest do
       assert [%{writer: :run} = verdict] = versions(work_item, "verdict")
       assert Stages.Artifacts.read_json(verdict) == %{"verdict" => "passed"}
 
-      assert Stages.Artifacts.read_json(proposal) ==
-               Map.drop(understood_result(), ["version", "verdict"])
+      assert [%{filename: "proposal.md", content_type: "text/markdown; charset=utf-8"}] =
+               proposal.files
+
+      assert read_text(proposal) == understood_result()["message"]
 
       status = Stages.status(work_item, scope)
 
@@ -357,10 +372,12 @@ defmodule Apiary.StagesTest do
       assert work_item.stage_state == :waiting_answers
       assert [questions] = versions(work_item, "questions")
 
-      assert Stages.Artifacts.read_json(questions)["questions"] == [
-               "Which basket?",
-               "Which sale?"
-             ]
+      assert Stages.Artifacts.read_json(questions) == %{
+               "questions" => [
+                 %{"question" => "Which basket?", "options" => []},
+                 %{"question" => "Which sale?", "options" => []}
+               ]
+             }
 
       {:ok, _work_item} =
         WorkItems.answer(scope, work_item, 1, %{"1" => "The main one", "2" => "Spring"})
@@ -610,30 +627,6 @@ defmodule Apiary.StagesTest do
              ) == %{"change" => "approve", "stage_id" => @shape, "versions" => []}
     end
 
-    test "a confirmation with edits stores the person's proposal version, which it approves",
-         %{scope: scope} do
-      work_item = take_in!(scope) |> end_run!(understood_result())
-
-      params = %{
-        "complexity" => %{"level" => "complex", "reason" => "Two screens read the price."},
-        "understanding" => "The basket keeps an old price.",
-        "scope_in" => "Read the sale price in the basket",
-        "scope_out" => "The invoice",
-        "approach" => "Read the price from the catalogue each time."
-      }
-
-      assert {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1, params)
-
-      assert [%{number: 2, writer: :person} = edited, %{number: 1}] =
-               Enum.sort_by(versions(work_item, "proposal"), & &1.number, :desc)
-
-      document = Stages.Artifacts.read_json(edited)
-      assert document["understanding"] == "The basket keeps an old price."
-      assert document["complexity"]["level"] == "complex"
-      assert [%GateDecision{versions: [covered]}] = decisions(work_item)
-      assert covered == edited.public_id
-    end
-
     test "approve confirms today's proposal too", %{scope: scope} do
       work_item = take_in!(scope) |> end_run!(understood_result())
 
@@ -642,10 +635,7 @@ defmodule Apiary.StagesTest do
                  expect_stage: reload(work_item).stage_id
                )
 
-      assert %Confirmation{changes: changes} =
-               Repo.get_by(Confirmation, work_item_id: work_item.id)
-
-      assert changes == %{}
+      assert %Confirmation{} = Repo.get_by(Confirmation, work_item_id: work_item.id)
       assert [%GateDecision{note: "Looks right"}] = decisions(work_item)
     end
 
@@ -716,7 +706,7 @@ defmodule Apiary.StagesTest do
       assert Stages.status(work_item).state == :done
 
       {:ok, _version} =
-        Stages.Artifacts.push_json({:person, scope}, work_item, "proposal", a_proposal(),
+        Stages.Artifacts.push({:person, scope}, work_item, "proposal", a_proposal(),
           stage_id: @explore
         )
 
@@ -962,7 +952,7 @@ defmodule Apiary.StagesTest do
       assert id == proposal.public_id
 
       {:ok, _version} =
-        Stages.Artifacts.push_json(
+        Stages.Artifacts.push(
           {:run, newest_run(work_item)},
           work_item,
           "proposal",
@@ -1114,20 +1104,13 @@ defmodule Apiary.StagesTest do
       assert [%{check: :missing}] = Stages.status(work_item).outputs
     end
 
-    test "close and decline end the work item", %{scope: scope, work_item: work_item} do
+    test "close ends the work item", %{scope: scope, work_item: work_item} do
       assert {:ok, %WorkItem{state: :closed}} =
                Stages.resolve_escalation(scope, work_item, :close, nil,
                  expect_stage: reload(work_item).stage_id
                )
 
       assert %Escalation{resolution: :close} = Repo.get_by(Escalation, work_item_id: work_item.id)
-
-      other = take_in!(scope) |> end_run!(nil)
-
-      assert {:ok, %WorkItem{state: :declined}} =
-               Stages.resolve_escalation(scope, other, :decline, nil,
-                 expect_stage: reload(other).stage_id
-               )
     end
 
     test "move back goes to an earlier stage only", %{scope: scope, work_item: work_item} do
@@ -1226,7 +1209,7 @@ defmodule Apiary.StagesTest do
         take_in!(scope)
         |> end_run!(understood_result())
 
-      {:ok, _work_item} = Moves.confirm(scope, work_item, 1, nil)
+      {:ok, _work_item} = Moves.confirm(scope, work_item, 1)
 
       work_item =
         as_placed!(work_item,

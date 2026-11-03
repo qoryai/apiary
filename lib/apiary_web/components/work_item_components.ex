@@ -1,8 +1,7 @@
 defmodule ApiaryWeb.WorkItemComponents do
   # The parts of a work item's page (`/:org/:workspace/work/:number`, its Ticket tab,
-  # `…/explore`, its Explore tab, `…/explore/edit`, the page that changes Qory's proposal,
-  # and `…/thread`, its Thread), and the status words and marks the Work items list shares
-  # (`ApiaryWeb.WorkItemListComponents`).
+  # `…/explore`, its Explore tab, and `…/thread`, its Thread), and the status words and
+  # marks the Work items list shares (`ApiaryWeb.WorkItemListComponents`).
   #
   # Every component takes plain assigns: strings, numbers, times and maps with the keys
   # each one's attributes name, never a context's struct, so the page fills them from
@@ -22,7 +21,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     the title alone without a key (`BacklogComponents.full_form/1`);
   #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory wrote some), `:used_up`
   #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
-  #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
+  #     nothing to show); then `:confirm`, `:shape`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
   #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
   #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause`,
@@ -30,11 +29,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
   #   * `:owner` - a person, or `nil`;
-  #   * `:ended_by`, `:ended_at` - who declined, closed or undid it, and when; `nil` for
+  #   * `:ended_by`, `:ended_at` - who closed or undid it, and when; `nil` for
   #     `:ended_by` where the instance closed it, with `:ended_reason` saying why:
-  #     `:adapter_removed`, when its integration was removed. A close by the instance for
-  #     any other reason, or none, has no words yet: the parts that name who closed it
-  #     draw nothing there;
+  #     `:adapter_removed`, when its integration was removed, `:last_stage_done`, when its
+  #     last stage finished, or `:ticket_closed`, when its ticket closed at the source. A
+  #     close by the instance for any other reason, or none, has no words yet: the parts
+  #     that name who closed it draw nothing there;
   #   * `:updated_at` - when it last changed.
   #
   # A part that names the ticket takes the words its source has for its items,
@@ -56,19 +56,19 @@ defmodule ApiaryWeb.WorkItemComponents do
   #
   # The events a component sends, for the page to handle:
   #
-  #   * `"undo"`, `"confirm"`, `"ask_decline"`, `"decline"`, `"ask_close"`, `"close"`,
-  #     `"explore_again"` - with `phx-value-number`, the work item's number;
-  #   * `"answer"` - the questions form: `number`, and `answers`, a map of each question's
-  #     `public_id` to its answer;
-  #   * `"change_proposal"`, `"confirm_changes"` - the edit page's form, on change and on
-  #     submit: `number`, `complexity` (`level`, `reason`), `understanding`, `scope_in`,
-  #     `scope_out` (one entry for each line) and `approach`;
+  #   * `"undo"`, `"ask_close"`, `"close"`, `"explore_again"` - with
+  #     `phx-value-number`, the work item's number;
+  #   * `"answer_draft"`, `"answer"` - the questions form, on change and on submit:
+  #     `number`, and `answers`, a map of each question's `public_id` to its answer,
+  #     `%{"option" => title, "custom" => text}`, the option selected and the text written;
+  #   * `"change_draft"`, `"send_change"` - the form under Qory's proposal, on change and
+  #     on submit: `number`, and `change`, the text written, empty to confirm;
   #   * `"ask_delete_comment"`, `"delete_comment"` - with `phx-value-comment`, the
   #     comment's `public_id`;
   #   * `"comment"` - the composer's form, its text as `body`;
   #   * `"show_earlier_comments"` - the Ticket tab's earlier comments.
   #
-  # A question (decline, close, delete a comment) shows in place while the page says so
+  # A question (close, delete a comment) shows in place while the page says so
   # (`asking`, a comment's `state`); its Cancel and Escape do `cancel`, a path to patch to
   # or a JS command, `JS.push("cancel_question")` unless given.
   #
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.SourceComponents
 
   @stages [:explore, :confirm, :shape]
-  @ended [:declined, :closed, :undone]
+  @ended [:closed, :undone]
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
   # The end causes of a run that ended before it started: at its claim, because the claim
@@ -127,17 +127,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     "limit" => :limit,
     "ref" => :ref
   }
-  @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
-  @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
 
-  # The most UTF-16 units a field takes, the unit a browser's `maxlength` counts: twice
-  # the most code points the server takes (`Apiary.WorkItems.Proposal`), so no valid text
-  # is refused there, and a paste stays well within the socket's frame. A scope's field
-  # takes 50 lines of 2,000 code points, each with its line break.
+  # The most UTF-16 units an answer's or a comment's field takes, the unit a browser's
+  # `maxlength` counts: twice the most code points the server takes
+  # (`Apiary.WorkItems.Proposal`), so no valid text is refused there, and a paste stays
+  # well within the socket's frame.
   @answer_units 2 * 2_000
-  @short_units 2 * 2_000
-  @long_units 2 * 20_000
-  @scope_units 2 * 50 * (2_000 + 1)
 
   ## The status and its mark
 
@@ -154,7 +149,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline"
+    doc: "whether the reader may answer or confirm"
 
   attr :class, :any, default: nil
 
@@ -173,12 +168,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Explore
   is running), `:wait` (waits for the reader), `:wait_other` (waits for another member),
   `:err` (Explore's run gave no result: a red ring), `:ready` (Ready for Shape),
-  `:declined` and `:closed` (closed or undone). Decorative: its words are always beside
-  it.
+  `:closed` (closed or undone), and on a row of the Closed view under the feature
+  `workflow_model`, `:done` (every stage done: an amber ring) and `:stopped` (any other
+  end: a grey ring). Decorative: its words are always beside it.
   """
   attr :kind, :atom,
     required: true,
-    values: [:todo, :run, :wait, :wait_other, :err, :ready, :declined, :closed]
+    values: [:todo, :run, :wait, :wait_other, :err, :ready, :closed, :done, :stopped]
 
   attr :class, :any, default: nil
 
@@ -213,15 +209,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp words_of(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
   defp words_of(%{status: :shape}), do: gettext("Ready for Shape")
 
-  defp words_of(%{status: :declined, ended_by: by}) do
-    if you?(by),
-      do: gettext("Declined by you"),
-      else: gettext("Declined by %{name}", name: by.name)
-  end
-
-  defp words_of(%{status: :closed, ended_by: nil} = work_item) do
-    if instance_removed?(work_item), do: gettext("Closed when its integration was removed")
-  end
+  defp words_of(%{status: :closed, ended_by: nil} = work_item),
+    do: closed_words(work_item[:ended_reason])
 
   defp words_of(%{status: :closed, ended_by: by}) do
     if you?(by), do: gettext("Closed by you"), else: gettext("Closed by %{name}", name: by.name)
@@ -248,7 +237,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: :err
 
   defp mark_of(%{status: :shape}, _can_act), do: :ready
-  defp mark_of(%{status: :declined}, _can_act), do: :declined
   defp mark_of(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
 
   @doc false
@@ -263,9 +251,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   # with nothing left to show, or only whitespace, as for none.
   defp shown_title(title), do: ExternalText.present(title)
 
-  # Whether the instance closed it when its integration was removed: the one close without
-  # a person that has words.
+  # Whether the instance closed it when its integration was removed.
   defp instance_removed?(work_item), do: work_item[:ended_reason] == :adapter_removed
+
+  # Why the instance closed it, for a close without a person; nil for a reason with no
+  # words.
+  defp closed_words(:adapter_removed), do: gettext("Closed when its integration was removed")
+  defp closed_words(:last_stage_done), do: gettext("Every stage done")
+  defp closed_words(:ticket_closed), do: gettext("Closed when its ticket closed")
+  defp closed_words(_none), do: nil
 
   @doc false
   def stage_name(:explore), do: gettext("Explore")
@@ -365,7 +359,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline"
+    doc: "whether the reader may answer or confirm"
 
   attr :stage_status, :map,
     default: nil,
@@ -450,9 +444,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   The stages, Explore, Confirm and Shape, in order: those before the work item's stage
   done, its stage the current step (`aria-current="step"`), amber while it waits for a
-  member: at Confirm, for answers, or at the run limit. An ended work item has no current step: a declined one's stage is marked with
-  a cross, and the end mark beside the stages says how it ended: Closed, Declined or
-  Undone.
+  member: at Confirm, for answers, or at the run limit. An ended work item has no current
+  step, and the end mark beside the stages says how it ended: Closed or Undone.
   """
   attr :id, :string, default: "work-item-stages"
   attr :work_item, :map, required: true, doc: "the work item: `:status`, and `:stage` if ended"
@@ -468,7 +461,6 @@ defmodule ApiaryWeb.WorkItemComponents do
           cond do
             i < at -> :done
             i == at and not ended -> :now
-            i == at and work_item.status == :declined -> :stop
             true -> :todo
           end
 
@@ -500,8 +492,6 @@ defmodule ApiaryWeb.WorkItemComponents do
             <%= case stage.state do %>
               <% :done -> %>
                 <.icon name="hero-check-micro" class="size-3" />
-              <% :stop -> %>
-                <.icon name="hero-x-mark-micro" class="size-3" />
               <% _ -> %>
                 {stage.n}
             <% end %>
@@ -517,11 +507,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp end_icon(:undone), do: "hero-arrow-uturn-left-micro"
-  defp end_icon(:declined), do: "hero-minus-circle-micro"
   defp end_icon(:closed), do: "hero-x-circle-micro"
 
   defp end_word(:undone), do: gettext("Undone")
-  defp end_word(:declined), do: gettext("Declined")
   defp end_word(:closed), do: gettext("Closed")
 
   ## The step card
@@ -534,8 +522,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       with Qory's bee; who took it in and when (the work item's `:taken_in_by` and
       `:taken_in_at`). With `can_undo`, that the reader can undo this until a run starts,
       Undo (`"undo"`), and what undoing does: a first take in's, or an undone work item's
-      taken in again, takes Qory's label off the ticket; a declined or closed one's taken
-      in again (`previous`) goes back to declined or closed, and nothing is sent to the
+      taken in again, takes Qory's label off the ticket; a closed one's taken
+      in again (`previous`) goes back to closed, and nothing is sent to the
       ticket. After the integration's uninstall (`uninstalled`), that nothing changes on
       the ticket, which keeps Qory's label and comment.
     * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Qory
@@ -544,37 +532,32 @@ defmodule ApiaryWeb.WorkItemComponents do
       `%{attempt:, path:, started_at:, answers_by:}`), and when the run started; the attempt
       number links the run's page where `path` is given.
     * Explore, questions (`:questions`): how many questions Qory wrote; with `can_act`,
-      that answering them explores again, Answer the questions (a link to Explore's tab,
-      `explore_path`, where it is given) and Decline (`"ask_decline"`); without, that it
-      waits for a member to answer.
+      that answering them explores again, and Answer the questions (a link to Explore's
+      tab, `explore_path`, where it is given); without, that it waits for a member to
+      answer.
     * Explore, no result (`:no_result`, `:lost`, `:cancelled`): what happened to the run;
       with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
-      the take in, and Decline.
+      the take in.
     * Explore, the run limit (`:used_up`, and questions or no result at the take in's
-      last run): that the take in used its runs, and why Qory cannot explore again; with `can_act`, the two ways on, Decline and, with
-      `can_close`, Close work item… (`"ask_close"`).
-    * Confirm: Qory's proposal waits; Read Qory's proposal (`explore_path`), Confirm
-      (`"confirm"`), Change (the edit page, `edit_path`) and Decline (`"ask_decline"`).
+      last run): that the take in used its runs, and why Qory cannot explore again; with
+      `can_act`, the way on and, with `can_close`, Close work item… (`"ask_close"`).
+    * Confirm: Qory's proposal waits; with `can_act`, what to do and Read Qory's proposal
+      (`explore_path`), where the field and the button under the proposal are (`explore_tab/1`).
       Without `can_act`, whose turn it is: the work item's `:owner`, by name, or "you"
       where the owner is the reader.
     * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
 
-  With `asking: :decline`, the Decline question takes the place of the card's words and
-  buttons, wherever Decline is offered: its line, Decline (`"decline"`) and Cancel.
-
   While its ticket's repository keeps its tickets out of the Backlog (`backlog_off`),
   Take in again cannot be reached there, so no line says it can.
 
-  A test work item (`:test`) has no ticket: its lines say nothing of one, and its
-  Decline question says only that it stays in Qory Apiary, declined.
+  A test work item (`:test`) has no ticket: its lines say nothing of one.
 
   `:run` is the latest run of the take in: `:attempt` (its place, from 1) and `:of` (the
   most a take in has), `:id` and `:path`, `:started_at`, `:answers_by` (the members whose
   answers it reads, people), `:questions` (what it asked, a list) and `:outcome` (`:error`,
   `:none` or `:refused` for a run without a result; `:questions` for one that asked).
 
-  Undo is there only with `can_undo`; Confirm, Change, Decline, Run Explore again and the
-  Decline question only with `can_act`.
+  Undo is there only with `can_undo`; Run Explore again only with `can_act`.
   """
   attr :id, :string, default: "work-item-step"
   attr :work_item, :map, required: true, doc: "the work item"
@@ -590,22 +573,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline, or run Explore again"
+    doc: "whether the reader may answer, confirm, close at the run limit, or run Explore again"
 
   attr :can_close, :boolean, default: false, doc: "whether the reader may close it"
 
   attr :previous, :atom,
     default: nil,
-    values: [nil, :declined, :closed, :undone],
+    values: [nil, :closed, :undone],
     doc: "how the work item ended before it was taken in again; nil for a first take in"
 
   attr :explore_path, :string,
     default: nil,
     doc: "Explore's tab, linked from the Ticket and Thread tabs; nil on Explore's tab"
-
-  attr :edit_path, :string, default: nil, doc: "the edit page, `/work/:number/explore/edit`"
-  attr :asking, :atom, default: nil, values: [nil, :decline], doc: "the question showing"
-  attr :cancel, :any, default: nil, doc: "what the question's Cancel does"
 
   attr :item_noun, :map,
     default: nil,
@@ -635,8 +614,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         mine: hot?(work_item),
         ask: hot?(work_item) or (status in [:questions, :used_up] and assigns.can_act),
         run: work_item[:run],
-        item: SourceComponents.item(assigns.item_noun),
-        cancel: assigns.cancel || JS.push("cancel_question")
+        item: SourceComponents.item(assigns.item_noun)
       )
 
     ~H"""
@@ -664,9 +642,6 @@ defmodule ApiaryWeb.WorkItemComponents do
         can_close={@can_close}
         previous={@previous}
         explore_path={@explore_path}
-        edit_path={@edit_path}
-        asking={@asking}
-        cancel={@cancel}
         item={@item}
         now={@now}
         queued_of={@queued_of}
@@ -729,59 +704,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :can_close, :boolean, required: true
   attr :previous, :atom, required: true
   attr :explore_path, :string, required: true
-  attr :edit_path, :string, required: true
-  attr :asking, :atom, required: true
-  attr :cancel, :any, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
   attr :queued_of, :integer, default: nil
-
-  defp step_body(%{status: status, asking: :decline, can_act: true} = assigns)
-       when status in @declinable do
-    ~H"""
-    <.inline_confirm
-      id={"#{@id}-decline"}
-      class="q-wi-ask"
-      question={gettext("Decline work item #%{number}?", number: @number)}
-      cancel={@cancel}
-    >
-      <%= cond do %>
-        <% @work_item[:test] -> %>
-          {gettext("The work item stays in Qory Apiary, declined.")}
-        <% @uninstalled -> %>
-          {gettext(
-            "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined.",
-            integration: @integration,
-            item: @item
-          )}
-        <% @backlog_off -> %>
-          {gettext(
-            "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there.",
-            integration: @integration,
-            item: @item
-          )}
-        <% true -> %>
-          {gettext(
-            "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog.",
-            integration: @integration,
-            item: @item
-          )}
-      <% end %>
-      <:action>
-        <.button
-          id={"#{@id}-decline-go"}
-          type="button"
-          variant="danger"
-          size="xs"
-          phx-click="decline"
-          phx-value-number={@number}
-        >
-          {gettext("Decline")}
-        </.button>
-      </:action>
-    </.inline_confirm>
-    """
-  end
 
   # A later run of the take in: what it reads, with whose answers, and which run is
   # queued. Undo is only until the first run of a take in starts.
@@ -916,8 +841,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(assigns.can_act,
             do:
               ngettext(
-                "Answer Qory's question, and Explore runs again with your answer. Or decline the work item.",
-                "Answer Qory's %{number} questions, and Explore runs again with your answers. Or decline the work item.",
+                "Answer Qory's question, and Explore runs again with your answer.",
+                "Answer Qory's %{number} questions, and Explore runs again with your answers.",
                 n,
                 number: number
               ),
@@ -942,9 +867,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
     <p :if={!@can_act} id={"#{@id}-waits"} class="q-wi-reader">{@waits}</p>
     <.go_link :if={@can_act} id={"#{@id}-explore"} path={@explore_path} words={@go} />
-    <div :if={@can_act} class="q-wi-acts">
-      <.decline_button id={@id} number={@number} />
-    </div>
     """
   end
 
@@ -971,22 +893,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <p :if={@line} id={"#{@id}-line"}><.rich text={@line} /></p>
     <p :if={@can_act && @backlog_off} id={"#{@id}-ways"}>
-      {gettext("If the work item is not wanted, decline it. Otherwise, close it.")}
+      {gettext("Close the work item if it is not wanted.")}
     </p>
     <p :if={@can_act && !@backlog_off} id={"#{@id}-ways"}>
       {gettext(
-        "If the work item is not wanted, decline it. To explore again, close it and use Take in again in the Backlog: the run count starts again, without this take in's answers."
+        "To explore again, close the work item and use Take in again in the Backlog: the run count starts again, without this take in's answers."
       )}
     </p>
     <div :if={@can_act} class="q-wi-acts">
-      <.button
-        id={"#{@id}-decline"}
-        type="button"
-        phx-click="ask_decline"
-        phx-value-number={@number}
-      >
-        {gettext("Decline")}
-      </.button>
       <.button
         :if={@can_close}
         id={"#{@id}-close"}
@@ -1027,7 +941,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       >
         <.icon name="hero-arrow-path-micro" class="size-3.5" />{gettext("Run Explore again")}
       </.button>
-      <.decline_button id={@id} number={@number} />
     </div>
     <p :if={@can_act && @next} id={"#{@id}-next"} class="q-wi-hint">{@next}</p>
     """
@@ -1043,15 +956,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         line:
           cond do
             assigns.can_act ->
-              gettext("Confirm Qory's proposal, change it first, or decline the work item.")
+              gettext("Confirm Qory's proposal, or write what to change.")
 
             you?(owner) ->
-              gettext("Next, you confirm Qory's proposal or decline the work item.")
+              gettext("You confirm next")
 
             owner ->
-              gettext("Next, %{name} confirms Qory's proposal or declines the work item.",
-                name: owner.name
-              )
+              gettext("%{name} confirms next", name: owner.name)
 
             true ->
               nil
@@ -1066,21 +977,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       path={@explore_path}
       words={gettext("Read Qory's proposal")}
     />
-    <div :if={@can_act} class="q-wi-acts">
-      <.button
-        id={"#{@id}-confirm"}
-        type="button"
-        variant="primary"
-        phx-click="confirm"
-        phx-value-number={@number}
-      >
-        <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm")}
-      </.button>
-      <.button :if={@edit_path} id={"#{@id}-change"} navigate={@edit_path}>
-        <.icon name="hero-pencil-square-micro" class="size-3.5" />{pgettext("action", "Change")}
-      </.button>
-      <.decline_button id={@id} number={@number} />
-    </div>
     """
   end
 
@@ -1111,23 +1007,6 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p><.rich text={@line} /></p>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :number, :integer, required: true
-
-  defp decline_button(assigns) do
-    ~H"""
-    <.button
-      id={"#{@id}-decline"}
-      type="button"
-      variant="ghost"
-      phx-click="ask_decline"
-      phx-value-number={@number}
-    >
-      {gettext("Decline")}
-    </.button>
     """
   end
 
@@ -1220,7 +1099,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # Who took the work item in and when; for a reader who may undo it, that they can until
   # a run starts and what undoing does to the ticket. After an uninstall, that nothing
-  # changes on the ticket. A declined or closed work item taken in again goes back to how
+  # changes on the ticket. A closed work item taken in again goes back to how
   # it ended, and nothing is sent to the ticket; an undone one taken in again reads as a
   # first take in, since undoing it takes the label off again. A test work item has no
   # ticket, so its line says nothing of one. Each line is one whole sentence for each
@@ -1250,35 +1129,19 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  defp undo_line(%{work_item: work_item, previous: previous, uninstalled: false} = assigns)
-       when previous in [:declined, :closed] do
+  defp undo_line(%{work_item: work_item, previous: :closed, uninstalled: false} = assigns) do
     by = work_item.taken_in_by
     at = inline_ago(work_item.taken_in_at, assigns.now)
 
-    case {previous, you?(by), assigns.can_undo} do
-      {:declined, true, true} ->
-        rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}.",
-          when: at,
-          item: assigns.item
-        )
-
-      {:declined, false, true} ->
-        rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}.",
-          name: by.name,
-          when: at,
-          item: assigns.item
-        )
-
-      {:closed, true, true} ->
+    case {you?(by), assigns.can_undo} do
+      {true, true} ->
         rich_gettext(
           "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
           when: at,
           item: assigns.item
         )
 
-      {:closed, false, true} ->
+      {false, true} ->
         rich_gettext(
           "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
           name: by.name,
@@ -1286,10 +1149,10 @@ defmodule ApiaryWeb.WorkItemComponents do
           item: assigns.item
         )
 
-      {_previous, true, false} ->
+      {true, false} ->
         rich_gettext("You took this in again %{when}.", when: at)
 
-      {_previous, false, false} ->
+      {false, false} ->
         rich_gettext("%{name} took this in again %{when}.", name: by.name, when: at)
     end
   end
@@ -1517,8 +1380,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc """
-  The notice of an ended work item: who closed, declined or undid it and when (and where
-  it was declined, its `:stage`, at Explore or at Confirm), what that left on the ticket, and Take in again, a link to the ticket's panel in the Backlog
+  The notice of an ended work item: who closed or undid it and when, what that left on the
+  ticket, and Take in again, a link to the ticket's panel in the Backlog
   (`again_path`). After the integration's uninstall (`uninstalled`) the ticket is in no
   Backlog, nor while its repository keeps its tickets out of it (`backlog_off`), and a
   test work item has no ticket: the first line alone. Nothing for a live work item.
@@ -1588,7 +1451,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         rich_gettext(
           "Qory Apiary closed this work item on %{date}, when its integration was removed.",
           date: day(work_item.ended_at, now)
-        )
+        ),
+      else: closed_words(work_item[:ended_reason])
   end
 
   defp end_line(%{status: :closed, ended_by: by} = work_item, now) do
@@ -1597,30 +1461,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     if you?(by),
       do: rich_gettext("You closed this work item on %{date}.", date: date),
       else: rich_gettext("%{name} closed this work item on %{date}.", name: by.name, date: date)
-  end
-
-  defp end_line(%{status: :declined, stage: :explore, ended_by: by} = work_item, now) do
-    at = inline_ago(work_item.ended_at, now)
-
-    if you?(by),
-      do: rich_gettext("You declined this work item %{when}, at Explore.", when: at),
-      else:
-        rich_gettext("%{name} declined this work item %{when}, at Explore.",
-          name: by.name,
-          when: at
-        )
-  end
-
-  defp end_line(%{status: :declined, ended_by: by} = work_item, now) do
-    at = inline_ago(work_item.ended_at, now)
-
-    if you?(by),
-      do: rich_gettext("You declined this work item %{when}, at Confirm.", when: at),
-      else:
-        rich_gettext("%{name} declined this work item %{when}, at Confirm.",
-          name: by.name,
-          when: at
-        )
   end
 
   defp end_line(%{status: :undone, ended_by: by} = work_item, now) do
@@ -1642,7 +1482,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         item: item
       )
 
-  defp end_second(_closed_or_declined, integration, item),
+  defp end_second(:closed, integration, item),
     do:
       gettext(
         "The %{item} is still open on %{integration} with Qory's label. To bring the work item back, use Take in again.",
@@ -1816,12 +1656,19 @@ defmodule ApiaryWeb.WorkItemComponents do
   # How it ended, for Details: its word and when and by whom; a close by the instance
   # with words says why, and one without has no row.
   defp ended_row(%{status: :closed, ended_by: nil} = work_item, now) do
-    if instance_removed?(work_item),
-      do:
+    cond do
+      instance_removed?(work_item) ->
         {end_word(:closed),
          rich_gettext("Closed %{when}, when its integration was removed",
            when: day(work_item.ended_at, now)
          )}
+
+      words = closed_words(work_item[:ended_reason]) ->
+        {end_word(:closed), words}
+
+      true ->
+        nil
+    end
   end
 
   defp ended_row(work_item, now),
@@ -1907,9 +1754,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   item's status says:
 
     * queued or running: what Qory does next, with whose answers from a second run, and
-      the answers that run reads, grouped by the run that asked them;
+      the answers that run reads, grouped by the run that asked them. A run that a comment
+      started, after a run that wrote a proposal, shows that proposal instead, with its
+      comments, the open ones marked as being read, and no field and no button;
     * questions: Qory's questions, with the form for a reader who may act (`can_act`):
-      one answer for each, Send answers (`"answer"`);
+      for each question its options to select, and a field for the reader's option;
+      Send answers (`"answer"`);
     * the run limit, and questions or a run without a result at the last run of the take
       in: the note that the take in used its runs over the last questions, read-only, and
       that Take in again from the Backlog starts the count again, unless its ticket's
@@ -1922,12 +1772,14 @@ defmodule ApiaryWeb.WorkItemComponents do
       (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why; for
       a run whose harness had no skill for its workflow (`:workflow_gap`), that workflow
       and where the harness came from;
-    * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
-      (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
-      with Qory's words under Show Qory's words;
+    * Confirm: Qory's proposal, its comments (`comments`), and for a reader who may act
+      one field and one button: Confirm while the field is empty, Send change once it
+      has text (`"send_change"`); Shape: the proposal confirmed, who confirmed it and
+      when (`:confirmed_by`, `:confirmed_at`), and its comments;
     * an ended work item: what its last run gave, read-only.
 
-  Then the earlier runs of this take in (`earlier_runs`, oldest first), each folded, and
+  Then the earlier runs of this take in (`earlier_runs`, oldest first), each folded: a
+  run that wrote a proposal shows only that it did, as the page shows one proposal. Then
   the earlier take ins (`earlier_take_ins`), each folded with its runs, which counted
   apart.
 
@@ -1937,46 +1789,60 @@ defmodule ApiaryWeb.WorkItemComponents do
   (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause` (why its
   run of the queue ended, nil while it has not), `:end_detail` (the code that end kept,
   such as the gateway's refusal `"model_key_missing"` for `:run_refused`), and what it gave:
-  `:proposal`, or `:understanding` and `:questions` (each `%{public_id:, text:, answer:}`)
-  with `:answered_by` (a person) and `:answered_at` once a member answered them.
+  `:proposal` with its `:version`, or `:questions` (each `%{public_id:, text:, options:,
+  answer:, custom:}`, each option `%{title:, explanation:}`) with `:answered_by` (a
+  person) and `:answered_at` once a member answered them.
 
-  A proposal is a map: `:complexity` (`%{level: :simple | :standard | :complex, reason:}`),
-  `:understanding`, `:scope_in` and `:scope_out` (lists), `:approach`, `:alternatives`
-  (each `%{text:, reason:}`) and `:knowledge` (each `%{text:, sources:}`, the sources
-  urls). A change is `%{value:, by:}` under the field's key (`:complexity`,
-  `:understanding`, `:scope_in`, `:scope_out` or `:approach`), the value as the proposal
-  has it. A take in is `%{taken_in_by:, taken_in_at:, ended:, ended_by:, ended_at:, runs:}`,
-  `ended` being `:declined`, `:closed` or `:undone`, its runs as above; a close by the
-  instance has `ended_by` nil and `ended_reason`, as the work item's.
+  A proposal is `%{message: text}`, its text Markdown, nil for a result stored before the
+  proposal was Markdown, which shows nothing. A comment is `%{text:, by:, version:,
+  done_version:}`, `by` a person, `version` the proposal's version it is on, and
+  `done_version` the version that read it, nil while it is open. A take in is
+  `%{taken_in_by:, taken_in_at:, ended:, ended_by:, ended_at:, runs:}`, `ended` being
+  `:closed` or `:undone`, its runs as above; a close by the instance has `ended_by` nil
+  and `ended_reason`, as the work item's.
 
-  Every word a run wrote is plain text in a frame that names the run: escaped, its line
-  breaks kept, isolated from the text around it. A source is a link only where it is an
-  https url core allows as a link out; else its address is text, every character outside
-  printable ASCII percent-encoded.
+  A run's proposal and its questions are untrusted Markdown, shown as
+  `ApiaryWeb.ArtifactLive.Markdown.render/1` gives them: raw HTML dropped, no image
+  loaded, http, https and mailto links only, headings two levels down. Each map may carry
+  that render as `:rendered` (`markdown/1`), so the page renders once for what it read;
+  without it, the component renders. An option's title and explanation, an answer and a
+  comment are plain text: escaped, their line breaks kept, isolated from the text around
+  them.
 
-  The form's draft is `answers` (by question `public_id`), and `errors` its errors, by
-  question `public_id`: `:blank`, `{:too_long, limit}` or `:characters`, for a control
-  or invisible character a run's input refuses. The focus goes to the first question at
-  fault, again after each send (`submits`, counted by the page).
+  The questions form's draft is `answers` (by question `public_id`, each
+  `%{"option" => title, "custom" => text}`), and `errors` its errors, by question
+  `public_id`: `:blank`, `{:too_long, limit}` or `:characters`, for a control or
+  invisible character a run's input refuses. The focus goes to the first question at
+  fault, again after each send (`submits`, counted by the page). The draft of the field
+  under the proposal is `change`, and `change_error` what was wrong with it: `:blank`,
+  `{:too_long, limit}`, `:characters` or `:not_approver`; the focus goes to the field
+  after each refusal (`change_submits`).
   """
   attr :id, :string, default: "work-item-explore"
   attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
   attr :earlier_runs, :list, default: [], doc: "the take in's earlier runs, oldest first"
   attr :earlier_take_ins, :list, default: [], doc: "the earlier take ins, oldest first"
-  attr :changes, :map, default: %{}, doc: "what a member changed before confirming, by field"
-  attr :can_act, :boolean, default: false, doc: "whether the reader may answer"
+  attr :comments, :list, default: [], doc: "the comments on this take in's proposals"
+  attr :can_act, :boolean, default: false, doc: "whether the reader may answer or confirm"
 
   attr :backlog_off, :boolean,
     default: false,
     doc:
       "whether the Backlog leaves its ticket out while its repository is assigned there: its switch is off, or it has no items (`Apiary.WorkItems.backlog_off/2`)"
 
-  attr :answers, :map, default: %{}, doc: "the form's draft, by question `public_id`"
-  attr :errors, :map, default: %{}, doc: "the form's errors, by question `public_id`"
+  attr :answers, :map, default: %{}, doc: "the questions form's draft, by question `public_id`"
+  attr :errors, :map, default: %{}, doc: "the questions form's errors, by question `public_id`"
 
   attr :submits, :integer,
     default: 0,
     doc: "how many times the form was sent; the focus goes to the first error after each"
+
+  attr :change, :string, default: "", doc: "the draft of the field under the proposal"
+  attr :change_error, :any, default: nil, doc: "what was wrong with that draft"
+
+  attr :change_submits, :integer,
+    default: 0,
+    doc: "how many times that draft was refused; the focus goes to the field after each"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
@@ -1990,6 +1856,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     status = work_item.status
     run = work_item[:run]
     groups = Enum.filter(assigns.earlier_runs, &answered?/1)
+    view = explore_view(status, run)
+    updating = view == :wait && updating(assigns.earlier_runs, assigns.comments)
 
     assigns =
       assign(assigns,
@@ -1997,11 +1865,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         status: status,
         run: run,
         groups: groups,
-        view: explore_view(status, run),
+        view: if(updating, do: :updating, else: view),
+        shown: updating || run,
         confirmed:
           status == :shape &&
             %{by: work_item.confirmed_by, at: work_item.confirmed_at},
         mode: if(status == :questions and assigns.can_act, do: :form, else: :read),
+        reply: status == :confirm and assigns.can_act and view == :proposal,
         item: SourceComponents.item(assigns.item_noun)
       )
 
@@ -2040,8 +1910,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         </p>
         <p :if={!@backlog_off}>
           {ngettext(
-            "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog.",
-            "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog.",
+            "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog.",
+            "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog.",
             @run.of,
             of: Format.number(@run.of)
           )}
@@ -2060,12 +1930,25 @@ defmodule ApiaryWeb.WorkItemComponents do
         test={@work_item[:test] == true}
       />
       <.proposal_frame
-        :if={@view == :proposal}
+        :if={@view in [:proposal, :updating]}
         id={"#{@id}-proposal"}
-        run={@run}
-        changes={@changes}
+        run={@shown}
         confirmed={@confirmed}
         now={@now}
+      />
+      <.proposal_comments
+        :if={@view in [:proposal, :updating] && @comments != []}
+        id={"#{@id}-comments"}
+        comments={@comments}
+        updating={@view == :updating}
+      />
+      <.proposal_reply
+        :if={@reply}
+        id={"#{@id}-reply"}
+        number={@work_item.number}
+        value={@change}
+        error={@change_error}
+        submits={@change_submits}
       />
       <.no_result :if={@view == :no_result} id={"#{@id}-none"} run={@run} />
       <.earlier_runs
@@ -2085,6 +1968,18 @@ defmodule ApiaryWeb.WorkItemComponents do
       />
     </div>
     """
+  end
+
+  # While a run that a comment started is queued or running: the run before it, whose
+  # proposal the comment is on, where it wrote one and a comment is open; else false.
+  defp updating(earlier_runs, comments) do
+    case List.last(earlier_runs) do
+      %{outcome: :proposal} = run ->
+        Enum.any?(comments, &is_nil(&1.done_version)) && run
+
+      _other ->
+        false
+    end
   end
 
   # What the tab shows for the latest run: what comes next while it is queued or running,
@@ -2288,8 +2183,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           gettext("Answers for attempt %{attempt}", attempt: Format.number(assigns.run.attempt)),
         caption:
           ngettext(
-            "These questions come from %{number} earlier run of this take in. Qory shows them as plain text.",
-            "These questions come from %{number} earlier runs of this take in. Qory shows them as plain text.",
+            "These questions come from %{number} earlier run of this take in.",
+            "These questions come from %{number} earlier runs of this take in.",
             n,
             number: Format.number(n)
           )
@@ -2347,13 +2242,56 @@ defmodule ApiaryWeb.WorkItemComponents do
       <li :for={question <- @run.questions} id={"#{@id}-#{question.public_id}"}>
         <span class="q-xp-n" aria-hidden="true"></span>
         <div>
-          <div class="q-xp-val" phx-no-format>{question.text}</div>
+          <.run_text value={question} key={:text} />
           <div class="q-xp-ans" phx-no-format>{question.answer}</div>
         </div>
       </li>
     </ol>
     """
   end
+
+  attr :id, :string, default: nil
+  attr :value, :map, required: true, doc: "a map with `:rendered`, or with the text under `key`"
+  attr :key, :atom, required: true, doc: "where `value` has the text without `:rendered`"
+
+  # A run's Markdown text: formatted, or as written where the renderer does not format it;
+  # nothing for none.
+  defp run_text(assigns) do
+    assigns = assign(assigns, :rendered, rendered(assigns.value, assigns.key))
+
+    ~H"""
+    <%= case @rendered do %>
+      <% {:html, html} -> %>
+        <div id={@id} class="q-ticket-formatted q-xp-md">{html}</div>
+      <% {:as_written, written} -> %>
+        <div id={@id} class="q-xp-md grid gap-2">
+          <p class="q-xp-md-note">{gettext("Shown as written.")}</p>
+          <div class="q-ticket-written" phx-no-format>{written}</div>
+        </div>
+      <% _none -> %>
+    <% end %>
+    """
+  end
+
+  defp rendered(%{rendered: rendered}, _key), do: rendered
+  defp rendered(%{} = value, key), do: markdown(Map.get(value, key))
+  defp rendered(_value, _key), do: nil
+
+  @doc false
+  # markdown/1 is a run's Markdown text, a proposal's or a question's, as the work item
+  # pages show it (`ApiaryWeb.ArtifactLive.Markdown.render/1`): `{:html, safe}`, or
+  # `{:as_written, text}` for a text the renderer does not format, or one past its bounds,
+  # which a page interpolates; nil for no text. A contract's text is at most 128 KiB,
+  # within the renderer's bounds.
+  @spec markdown(term) :: {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | nil
+  def markdown(text) when is_binary(text) do
+    case ApiaryWeb.ArtifactLive.Markdown.render(text) do
+      :too_large -> {:as_written, text}
+      rendered -> rendered
+    end
+  end
+
+  def markdown(_text), do: nil
 
   attr :id, :string, required: true
   attr :number, :integer, required: true
@@ -2408,15 +2346,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       </div>
       <.wrote_caption run={@run} />
       <div class="q-xp-body">
-        <div :if={present?(@run[:understanding])} class="q-xp-sec">
-          <h3>{gettext("Understanding so far")}</h3>
-          <div class="q-xp-val" phx-no-format>{@run.understanding}</div>
-        </div>
         <div class="q-xp-sec">
           <h3>{gettext("Questions")}</h3>
           <%= if @mode == :form do %>
             <form
               id={"#{@id}-form"}
+              phx-change="answer_draft"
               phx-submit="answer"
               novalidate
               aria-labelledby={"#{@id}-h"}
@@ -2450,7 +2385,12 @@ defmodule ApiaryWeb.WorkItemComponents do
               <li :for={question <- @run.questions} id={"#{@id}-q-#{question.public_id}"}>
                 <span class="q-xp-n" aria-hidden="true"></span>
                 <div>
-                  <div class="q-xp-val" phx-no-format>{question.text}</div>
+                  <.run_text value={question} key={:text} />
+                  <ul :if={(question[:options] || []) != []} class="q-xp-opts">
+                    <li :for={option <- question.options} class="q-xp-opt">
+                      <.option_words option={option} />
+                    </li>
+                  </ul>
                 </div>
               </li>
             </ol>
@@ -2464,22 +2404,30 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :question, :map, required: true
   attr :i, :integer, required: true
-  attr :value, :string, default: nil
+  attr :value, :any, default: nil, doc: "the draft: `%{\"option\" => title, \"custom\" => text}`"
   attr :error, :any, default: nil
 
-  # A question and its answer's field, labelled for a screen reader and described by the
-  # question, and by its error where it has one.
+  # A question, its options as radio inputs, one card each, and the field for the
+  # reader's option, labelled for a screen reader and described by the question, and by
+  # its error where it has one.
   defp question_field(assigns) do
     pid = assigns.question.public_id
     field = "#{assigns.id}-answer-#{pid}"
+    value = if is_map(assigns.value), do: assigns.value, else: %{}
+    message = answer_error(assigns.error)
+    q_id = "#{assigns.id}-q-#{pid}"
 
     assigns =
       assign(assigns,
-        q_id: "#{assigns.id}-q-#{pid}",
+        q_id: q_id,
         field: field,
         error_id: "#{field}-error",
         name: "answers[#{pid}]",
-        message: answer_error(assigns.error),
+        message: message,
+        described: if(message, do: "#{q_id} #{field}-error", else: q_id),
+        option: value["option"],
+        custom: value["custom"],
+        options: assigns.question[:options] || [],
         answer_units: @answer_units
       )
 
@@ -2487,19 +2435,42 @@ defmodule ApiaryWeb.WorkItemComponents do
     <li id={"#{@id}-item-#{@question.public_id}"}>
       <span class="q-xp-n" aria-hidden="true"></span>
       <div>
-        <div id={@q_id} class="q-xp-val" phx-no-format>{@question.text}</div>
+        <.run_text id={@q_id} value={@question} key={:text} />
+        <div
+          :if={@options != []}
+          id={"#{@field}-options"}
+          class="q-xp-opts"
+          role="radiogroup"
+          aria-labelledby={@q_id}
+          aria-describedby={@message && @error_id}
+        >
+          <label
+            :for={{option, j} <- Enum.with_index(@options, 1)}
+            for={"#{@field}-#{j}"}
+            class="q-xp-opt q-xp-opt-pick"
+          >
+            <input
+              type="radio"
+              id={"#{@field}-#{j}"}
+              name={"#{@name}[option]"}
+              value={option.title}
+              checked={@option == option.title}
+            />
+            <.option_words option={option} />
+          </label>
+        </div>
         <label for={@field} class="sr-only">
           {gettext("Answer to question %{number}", number: Format.number(@i))}
         </label>
         <textarea
           id={@field}
-          name={@name}
+          name={"#{@name}[custom]"}
           rows="2"
           maxlength={@answer_units}
-          placeholder={gettext("Your answer")}
-          aria-describedby={if @message, do: "#{@q_id} #{@error_id}", else: @q_id}
+          placeholder={gettext("Give your own option")}
+          aria-describedby={@described}
           aria-invalid={@message && "true"}
-        >{["\n", @value || ""]}</textarea>
+        >{["\n", @custom || ""]}</textarea>
         <p :if={@message} id={@error_id} class="q-xp-err">
           <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@message}
         </p>
@@ -2508,10 +2479,25 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  attr :option, :map, required: true
+
+  # An option the run wrote: its title, and its explanation under it, both plain text.
+  defp option_words(assigns) do
+    ~H"""
+    <span class="q-xp-opt-w">
+      <b class="q-xp-opt-t" phx-no-format>{@option.title}</b>
+      <span class="q-xp-opt-e" phx-no-format>{@option.explanation}</span>
+    </span>
+    """
+  end
+
   defp answer_error(nil), do: nil
 
   defp answer_error(:blank),
-    do: gettext("Answer this question. If nobody knows, say so: Qory reads that too.")
+    do:
+      gettext(
+        "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
+      )
 
   defp answer_error({:too_long, limit}),
     do: gettext("Write at most %{number} characters.", number: Format.number(limit))
@@ -2522,18 +2508,26 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp answer_error(_error), do: nil
 
   attr :run, :map, required: true
+  attr :version, :integer, default: nil, doc: "the proposal's version; nil for questions"
 
   defp wrote_caption(assigns) do
     ~H"""
     <p class="q-xp-cap">
       <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
       <span>
-        <.rich text={
-          rich_gettext(
-            "Attempt %{attempt} wrote this. Qory shows it as plain text.",
-            attempt: attempt_ref(@run)
-          )
-        } />
+        <.rich
+          :if={@version}
+          text={
+            rich_gettext("Version %{version}. Attempt %{attempt} wrote this.",
+              version: Format.number(@version),
+              attempt: attempt_ref(@run)
+            )
+          }
+        />
+        <.rich
+          :if={!@version}
+          text={rich_gettext("Attempt %{attempt} wrote this.", attempt: attempt_ref(@run))}
+        />
       </span>
     </p>
     """
@@ -2541,21 +2535,20 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :run, :map, required: true
-  attr :changes, :map, default: %{}
   attr :confirmed, :any, default: nil
   attr :now, :any, required: true
 
-  # Qory's proposal, in a frame that names the run. Confirmed, who confirmed it; each
-  # section a member changed shows their words, marked, and Qory's under a toggle.
+  # Qory's proposal, in a frame that names the run and the proposal's version; confirmed,
+  # who confirmed it. A result stored before the proposal was Markdown has no text: the
+  # frame shows none.
   defp proposal_frame(assigns) do
-    proposal = assigns.run.proposal
-    changes = assigns.changes || %{}
+    proposal = assigns.run[:proposal] || %{}
 
     assigns =
       assign(assigns,
         proposal: proposal,
-        changes: changes,
-        caption: proposal_caption(assigns.run, assigns.confirmed, changes != %{}, assigns.now)
+        text?: proposal[:rendered] != nil or is_binary(proposal[:message]),
+        caption: proposal_caption(assigns.run, assigns.confirmed, assigns.now)
       )
 
     ~H"""
@@ -2569,230 +2562,153 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-check-micro" class="q-xp-cap-i size-3.5" />
         <span><.rich text={@caption} /></span>
       </p>
-      <.wrote_caption :if={!@caption} run={@run} />
-      <div class="q-xp-body">
-        <.proposal_section
-          id={"#{@id}-complexity"}
-          label={gettext("Complexity")}
-          value={@proposal.complexity}
-          change={@changes[:complexity]}
-        >
-          <:draw :let={complexity}>
-            <div class="q-xp-cx">
-              <.badge :if={level_word(complexity[:level])}>{level_word(complexity[:level])}</.badge>
-              <div class="q-xp-val" phx-no-format>{complexity.reason}</div>
-            </div>
-          </:draw>
-        </.proposal_section>
-        <.proposal_section
-          id={"#{@id}-understanding"}
-          label={gettext("Understanding")}
-          value={@proposal.understanding}
-          change={@changes[:understanding]}
-        >
-          <:draw :let={text}>
-            <div class="q-xp-val" phx-no-format>{text}</div>
-          </:draw>
-        </.proposal_section>
-        <.proposal_section
-          id={"#{@id}-scope-in"}
-          label={gettext("In scope")}
-          value={@proposal.scope_in}
-          change={@changes[:scope_in]}
-        >
-          <:draw :let={items}><.text_list items={items} /></:draw>
-        </.proposal_section>
-        <.proposal_section
-          id={"#{@id}-scope-out"}
-          label={gettext("Out of scope")}
-          value={@proposal.scope_out}
-          change={@changes[:scope_out]}
-        >
-          <:draw :let={items}><.text_list items={items} /></:draw>
-        </.proposal_section>
-        <.proposal_section
-          id={"#{@id}-approach"}
-          label={gettext("Approach")}
-          value={@proposal.approach}
-          change={@changes[:approach]}
-        >
-          <:draw :let={text}>
-            <div class="q-xp-val" phx-no-format>{text}</div>
-          </:draw>
-        </.proposal_section>
-        <div id={"#{@id}-alternatives"} class="q-xp-sec">
-          <h3>{gettext("Not chosen")}</h3>
-          <ul class="q-xp-list">
-            <li :for={alternative <- @proposal[:alternatives] || []} phx-no-format>{alternative.text}<span class="q-xp-why"><.rich text={rich_gettext("Why not: %{reason}", reason: {:bdi, alternative.reason})} /></span></li>
-            <li :if={(@proposal[:alternatives] || []) == []} class="q-xp-none">{gettext("None")}</li>
-          </ul>
-        </div>
-        <div id={"#{@id}-knowledge"} class="q-xp-sec">
-          <h3>{gettext("Facts and sources")}</h3>
-          <ul :if={(@proposal[:knowledge] || []) != []} class="q-xp-know">
-            <li :for={item <- @proposal[:knowledge] || []}>
-              <div class="q-xp-val" phx-no-format>{item.text}</div>
-              <ul :if={(item[:sources] || []) != []} class="q-xp-src" aria-label={gettext("Sources")}>
-                <li :for={url <- item[:sources] || []}><.source url={url} /></li>
-              </ul>
-            </li>
-          </ul>
-          <ul :if={(@proposal[:knowledge] || []) == []} class="q-xp-list">
-            <li class="q-xp-none">{gettext("None")}</li>
-          </ul>
-        </div>
+      <.wrote_caption :if={!@caption} run={@run} version={@run[:version]} />
+      <div :if={@text?} class="q-xp-body q-xp-prop">
+        <.run_text id={"#{@id}-text"} value={@proposal} key={:message} />
       </div>
     </section>
     """
   end
 
-  # Who confirmed the proposal and when, with or without their changes; nil before.
-  defp proposal_caption(_run, falsy, _changed, _now) when falsy in [nil, false], do: nil
+  # Who confirmed the proposal and when; nil before.
+  defp proposal_caption(_run, falsy, _now) when falsy in [nil, false], do: nil
 
-  defp proposal_caption(run, %{by: by, at: at}, changed, now) do
+  defp proposal_caption(run, %{by: by, at: at}, now) do
     at = inline_ago(at, now)
     attempt = attempt_ref(run)
 
-    case {you?(by), changed} do
-      {true, true} ->
-        rich_gettext(
-          "You confirmed this proposal %{when}, with your changes. Attempt %{attempt} wrote the rest, and Qory shows it as plain text.",
+    if you?(by),
+      do:
+        rich_gettext("You confirmed this proposal %{when}. Attempt %{attempt} wrote it.",
           when: at,
           attempt: attempt
-        )
-
-      {false, true} ->
-        rich_gettext(
-          "%{name} confirmed this proposal %{when}, with their changes. Attempt %{attempt} wrote the rest, and Qory shows it as plain text.",
+        ),
+      else:
+        rich_gettext("%{name} confirmed this proposal %{when}. Attempt %{attempt} wrote it.",
           name: by.name,
           when: at,
           attempt: attempt
         )
-
-      {true, false} ->
-        rich_gettext(
-          "You confirmed this proposal %{when}. Attempt %{attempt} wrote it, and Qory shows it as plain text.",
-          when: at,
-          attempt: attempt
-        )
-
-      {false, false} ->
-        rich_gettext(
-          "%{name} confirmed this proposal %{when}. Attempt %{attempt} wrote it, and Qory shows it as plain text.",
-          name: by.name,
-          when: at,
-          attempt: attempt
-        )
-    end
   end
 
   attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :value, :any, required: true, doc: "the run's words"
-  attr :change, :map, default: nil
-  slot :draw, required: true
+  attr :comments, :list, required: true
+  attr :updating, :boolean, default: false, doc: "whether a run reads the open comments now"
 
-  # A section of the proposal: its label, and the run's words; where a member changed it,
-  # their words, marked, with Qory's words under Show Qory's words.
-  defp proposal_section(%{change: nil} = assigns) do
+  # The comments on this take in's proposals, oldest first: each its text, who wrote it on
+  # which version; a done one muted with a tick, and the version that read it; an open
+  # one, while a run reads it, that Qory is updating the proposal. No control.
+  defp proposal_comments(assigns) do
     ~H"""
-    <div id={@id} class="q-xp-sec">
-      <h3>{@label}</h3>
-      {render_slot(@draw, @value)}
-    </div>
+    <section id={@id} class="q-xp-cms" aria-labelledby={"#{@id}-h"}>
+      <h3 id={"#{@id}-h"}>{gettext("Comments")}</h3>
+      <ol>
+        <li
+          :for={{comment, i} <- Enum.with_index(@comments, 1)}
+          id={"#{@id}-#{i}"}
+          class={if(comment.done_version, do: "q-xp-cm q-xp-cm-done", else: "q-xp-cm")}
+        >
+          <p class="q-xp-cm-t">
+            <.icon
+              :if={comment.done_version}
+              name="hero-check-micro"
+              class="q-xp-cm-i size-3.5"
+            />
+            <span phx-no-format>{comment.text}</span>
+          </p>
+          <p id={"#{@id}-#{i}-m"} class="q-xp-cm-m">
+            <span class="q-xp-it">{comment_by(comment)}</span>
+            <span :if={comment.done_version} class="q-xp-it">
+              {gettext("Done in version %{version}", version: Format.number(comment.done_version))}
+            </span>
+            <span :if={!comment.done_version && @updating} class="q-xp-it">
+              {gettext("Qory is updating the proposal")}
+            </span>
+          </p>
+        </li>
+      </ol>
+    </section>
     """
   end
 
-  defp proposal_section(assigns) do
-    by = assigns.change.by
+  defp comment_by(%{by: by, version: version}) do
+    if you?(by),
+      do: gettext("You, on version %{version}", version: Format.number(version)),
+      else:
+        gettext("%{name}, on version %{version}",
+          name: by.name,
+          version: Format.number(version)
+        )
+  end
+
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+  attr :value, :string, default: ""
+  attr :error, :any, default: nil
+  attr :submits, :integer, default: 0
+
+  # The field and the one button under Qory's proposal: Confirm while the field is empty,
+  # Send change once it has text. Enter writes a line break; only the button sends.
+  defp proposal_reply(assigns) do
+    message = change_error(assigns.error)
 
     assigns =
-      assign(
-        assigns,
-        :by_words,
-        if(you?(by),
-          do: gettext("Changed by you"),
-          else: gettext("Changed by %{name}", name: by.name)
-        )
+      assign(assigns,
+        value: assigns.value || "",
+        message: message,
+        placeholder: gettext("What should change?"),
+        answer_units: @answer_units
       )
 
     ~H"""
-    <div id={@id} class="q-xp-sec q-xp-changed">
-      <h3>
-        {@label}
-        <span id={"#{@id}-by"}><.badge color="info">{@by_words}</.badge></span>
-        <button
-          id={"#{@id}-toggle"}
-          type="button"
-          class="q-xp-toggle"
-          aria-expanded="false"
-          aria-controls={"#{@id}-was"}
-          phx-click={
-            JS.toggle_attribute({"aria-expanded", "true", "false"})
-            |> JS.toggle_attribute({"hidden", "hidden"}, to: "##{@id}-was")
-          }
-          phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-        >
-          <span class="q-xp-show">{gettext("Show Qory's words")}</span>
-          <span class="q-xp-hide">{gettext("Hide Qory's words")}</span>
-        </button>
-      </h3>
-      <div class="q-xp-mine">{render_slot(@draw, @change.value)}</div>
-      <div
-        id={"#{@id}-was"}
-        class="q-xp-was"
+    <form id={@id} class="q-xp-reply" phx-change="change_draft" phx-submit="send_change" novalidate>
+      <input type="hidden" name="number" value={@number} />
+      <textarea
+        id={"#{@id}-text"}
+        name="change"
+        rows="3"
+        maxlength={@answer_units}
+        placeholder={@placeholder}
+        aria-label={@placeholder}
+        aria-describedby={@message && "#{@id}-error"}
+        aria-invalid={@message && "true"}
+      >{["\n", @value]}</textarea>
+      <p :if={@message} id={"#{@id}-error"} class="q-xp-err">
+        <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@message}
+      </p>
+      <span
+        :if={@message}
+        id={"#{@id}-focus-#{@submits}"}
         hidden
-        phx-mounted={JS.ignore_attributes(["hidden"])}
-      >
-        <p class="q-xp-was-l">{gettext("Qory's words")}</p>
-        {render_slot(@draw, @value)}
+        phx-mounted={JS.focus(to: "##{@id}-text")}
+      ></span>
+      <div>
+        <.button :if={@value == ""} id={"#{@id}-go"} type="submit" variant="primary">
+          <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm")}
+        </.button>
+        <.button :if={@value != ""} id={"#{@id}-go"} type="submit" variant="primary">
+          <.icon name="hero-paper-airplane-micro" class="size-3.5" />{gettext("Send change")}
+        </.button>
       </div>
-    </div>
+    </form>
     """
   end
 
-  attr :items, :list, required: true
+  defp change_error(:blank), do: gettext("Write what to change.")
 
-  defp text_list(assigns) do
-    ~H"""
-    <ul class="q-xp-list">
-      <li :for={item <- @items} phx-no-format>{item}</li>
-      <li :if={@items == []} class="q-xp-none">{gettext("None")}</li>
-    </ul>
-    """
-  end
+  defp change_error({:too_long, _limit}),
+    do: gettext("Shorten the comment to 2,000 characters or fewer.")
 
-  defp level_word(:simple), do: pgettext("complexity", "Simple")
-  defp level_word(:standard), do: pgettext("complexity", "Standard")
-  defp level_word(:complex), do: pgettext("complexity", "Complex")
-  defp level_word(_level), do: nil
+  defp change_error(:characters),
+    do: gettext("Remove the invisible or control characters from the comment.")
 
-  attr :url, :string, required: true
+  defp change_error(:not_approver),
+    do:
+      gettext(
+        "Ask one of this stage's approvers to comment. Only they can comment on its proposal."
+      )
 
-  # A source the run gave: a link only where it is an https url core allows as a link
-  # out, its host in full and the rest cut where room ends, each isolated, the whole
-  # address in its title; else the address as text, every character outside printable
-  # ASCII percent-encoded, so no look-alike passes for another.
-  defp source(assigns) do
-    url = assigns.url
-
-    assigns =
-      case out?(url) && Regex.run(~r{\Ahttps://([^/?#]+)(.*)\z}is, url) do
-        [_all, host, rest] -> assign(assigns, link: true, host: host, rest: rest)
-        _none -> assign(assigns, link: false, text: ascii(url))
-      end
-
-    ~H"""
-    <.external_link :if={@link} href={@url} class="q-xp-src-a" title={@url}>
-      <.icon name="hero-globe-alt-micro" class="q-xp-src-i size-3.5" />
-      <bdi class="q-xp-host">{@host}</bdi><bdi class="q-xp-path">{@rest}</bdi>
-    </.external_link>
-    <span :if={!@link} class="q-xp-src-t"><bdi>{@text}</bdi></span>
-    """
-  end
-
-  defp ascii(url) when is_binary(url), do: URI.encode(url, &(&1 in 33..126))
-  defp ascii(_url), do: ""
+  defp change_error(_error), do: nil
 
   attr :id, :string, required: true
   attr :run, :map, required: true
@@ -3215,7 +3131,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :test, :boolean, default: false, doc: "whether it is a test work item"
   attr :now, :any, required: true
 
-  # The take in's earlier runs, each folded: its place, what it gave, when.
+  # The take in's earlier runs, each folded: its place, what it gave, when. A run that
+  # wrote a proposal has nothing inside: the tab shows one proposal, the newest.
   defp earlier_runs(assigns) do
     ~H"""
     <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
@@ -3229,7 +3146,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             {time_tag(run.ended_at, Format.relative(run.ended_at, @now))}
           </span>
         </summary>
-        <div class="q-xp-inner">
+        <div :if={run[:outcome] != :proposal} class="q-xp-inner">
           <.run_body
             id={"#{@id}-#{run_dom(run)}-body"}
             run={run}
@@ -3284,7 +3201,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
         <span>
           <.rich text={
-            rich_gettext("Attempt %{attempt} wrote these questions. Qory shows them as plain text.",
+            rich_gettext("Attempt %{attempt} wrote these questions.",
               attempt: attempt_ref(@run)
             )
           } />
@@ -3368,16 +3285,15 @@ defmodule ApiaryWeb.WorkItemComponents do
       do:
         rich_gettext("Closed %{when}, when its integration was removed",
           when: inline_ago(take_in.ended_at, now)
-        )
+        ),
+      else: closed_words(take_in[:ended_reason])
   end
 
   defp ended_words(%{ended: ended, ended_by: by, ended_at: at}, now)
-       when ended in [:declined, :closed, :undone] do
+       when ended in [:closed, :undone] do
     at = inline_ago(at, now)
 
     case {ended, you?(by)} do
-      {:declined, true} -> rich_gettext("Declined by you %{when}", when: at)
-      {:declined, false} -> rich_gettext("Declined by %{name} %{when}", name: by.name, when: at)
       {:closed, true} -> rich_gettext("Closed by you %{when}", when: at)
       {:closed, false} -> rich_gettext("Closed by %{name} %{when}", name: by.name, when: at)
       {:undone, true} -> rich_gettext("Undone by you %{when}", when: at)
@@ -3386,334 +3302,6 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp ended_words(_take_in, _now), do: nil
-
-  defp present?(text) when is_binary(text), do: String.trim(text) != ""
-  defp present?(_text), do: false
-
-  ## The edit page
-
-  @doc false
-  def edit_title(number), do: gettext("Change Qory's proposal · #%{number}", number: number)
-
-  @doc """
-  The edit page (`/work/:number/explore/edit`), a page at an address apart from the tab: Explore, the
-  way back (`explore_path`); what it is for; the fields a member may change, each starting
-  from the run's words (`proposal`, as `explore_tab/1` describes it): Complexity (its
-  level and why), Understanding, In scope and Out of scope (one line for each entry; a
-  line break inside an entry shows as a space), and Approach. A field whose value differs
-  from the run's words says Changed, in its description. Then that what Qory did not
-  choose and what it learned stay as Qory wrote them, and Confirm changes
-  (`"confirm_changes"`) and Cancel, back to Explore's tab.
-
-  The form sends `"change_proposal"` as a member types and `"confirm_changes"` to
-  confirm, with the work item's `number`, `complexity[level]` (`simple`, `standard` or
-  `complex`), `complexity[reason]`, `understanding`, `scope_in`, `scope_out` and
-  `approach`. `values` is what the fields hold, by those names (`:level`, `:reason`,
-  `:understanding`, `:scope_in`, `:scope_out`, `:approach`), each a string; the run's
-  words where it is not given. `errors`, by the same names, says what is wrong with a
-  field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}`,
-  `{:too_many_lines, limit}` or `:characters`, for a control or invisible character a
-  run's input refuses; an error a field has no words for marks nothing. The focus
-  goes to the first field at fault, again after each send (`submits`, counted by the page).
-  """
-  attr :id, :string, default: "work-item-edit"
-  attr :number, :integer, required: true, doc: "the work item's number"
-  attr :proposal, :map, required: true, doc: "the run's proposal"
-  attr :values, :map, default: %{}, doc: "what the fields hold, by name"
-  attr :errors, :map, default: %{}, doc: "what is wrong, by field"
-  attr :explore_path, :string, required: true, doc: "Explore's tab"
-
-  attr :submits, :integer,
-    default: 0,
-    doc: "how many times the form was sent; the focus goes to the first error after each"
-
-  def proposal_edit(assigns) do
-    initial = edit_values(assigns.proposal)
-    values = Map.merge(initial, assigns.values || %{})
-
-    changed =
-      for field <- @edit_fields,
-          changed?(field, values[field], initial[field]),
-          into: MapSet.new(),
-          do: field
-
-    errors =
-      for {field, error} <- assigns.errors,
-          edit_error(field, error),
-          into: %{},
-          do: {field, error}
-
-    first_error = Enum.find(@edit_fields, &Map.has_key?(errors, &1))
-
-    assigns =
-      assign(assigns,
-        values: values,
-        errors: errors,
-        changed: changed,
-        first_error: first_error,
-        complexity_changed: MapSet.member?(changed, :level) or MapSet.member?(changed, :reason)
-      )
-
-    ~H"""
-    <div id={@id} class="q-xp-edit">
-      <.link id={"#{@id}-back"} navigate={@explore_path} class="q-xp-back">
-        <.icon name="hero-arrow-left-micro" class="size-3.5" />{stage_name(:explore)}
-      </.link>
-      <h2 id={"#{@id}-h"}>{gettext("Change Qory's proposal")}</h2>
-      <p class="q-xp-lead">
-        {gettext(
-          "Change what Qory got wrong, then confirm. Qory's words stay in the Explore tab beside yours."
-        )}
-      </p>
-      <form
-        id={"#{@id}-form"}
-        phx-change="change_proposal"
-        phx-submit="confirm_changes"
-        novalidate
-        aria-labelledby={"#{@id}-h"}
-      >
-        <input type="hidden" name="number" value={@number} />
-        <div
-          id={"#{@id}-complexity"}
-          class="q-xp-field"
-          role="group"
-          aria-labelledby={"#{@id}-complexity-l"}
-        >
-          <div class="q-xp-lbl-row">
-            <span id={"#{@id}-complexity-l"} class="q-xp-lbl">{gettext("Complexity")}</span>
-            <span :if={@complexity_changed} id={"#{@id}-complexity-ch"}>
-              <.badge color="info">{pgettext("field edited", "Changed")}</.badge>
-            </span>
-          </div>
-          <div class="q-xp-cx-row">
-            <span class="q-xp-sub">
-              <label for={"#{@id}-level"}>{pgettext("complexity", "Level")}</label>
-              <select
-                id={"#{@id}-level"}
-                name="complexity[level]"
-                aria-describedby={described([@complexity_changed && "#{@id}-complexity-ch"])}
-              >
-                <option
-                  :for={level <- [:simple, :standard, :complex]}
-                  value={level}
-                  selected={to_string(level) == @values.level}
-                >
-                  {level_word(level)}
-                </option>
-              </select>
-            </span>
-            <span class="q-xp-sub">
-              <label for={"#{@id}-reason"}>{gettext("Why")}</label>
-              <.edit_area
-                id={"#{@id}-reason"}
-                name="complexity[reason]"
-                value={@values.reason}
-                rows="2"
-                described={[@complexity_changed && "#{@id}-complexity-ch"]}
-                error={edit_error(:reason, @errors[:reason])}
-              />
-            </span>
-          </div>
-        </div>
-        <.edit_field
-          id={"#{@id}-understanding"}
-          name="understanding"
-          label={gettext("Understanding")}
-          value={@values.understanding}
-          rows="6"
-          changed={MapSet.member?(@changed, :understanding)}
-          error={edit_error(:understanding, @errors[:understanding])}
-        />
-        <.edit_field
-          id={"#{@id}-scope-in"}
-          name="scope_in"
-          label={gettext("In scope")}
-          hint={gettext("One entry per line.")}
-          value={@values.scope_in}
-          rows="4"
-          changed={MapSet.member?(@changed, :scope_in)}
-          error={edit_error(:scope_in, @errors[:scope_in])}
-        />
-        <.edit_field
-          id={"#{@id}-scope-out"}
-          name="scope_out"
-          label={gettext("Out of scope")}
-          hint={gettext("One entry per line. Leave it empty if nothing is out of scope.")}
-          value={@values.scope_out}
-          rows="4"
-          changed={MapSet.member?(@changed, :scope_out)}
-          error={edit_error(:scope_out, @errors[:scope_out])}
-        />
-        <.edit_field
-          id={"#{@id}-approach"}
-          name="approach"
-          label={gettext("Approach")}
-          value={@values.approach}
-          rows="3"
-          changed={MapSet.member?(@changed, :approach)}
-          error={edit_error(:approach, @errors[:approach])}
-        />
-        <span
-          :if={@first_error}
-          id={"#{@id}-focus-#{@submits}-#{@first_error}"}
-          hidden
-          phx-mounted={JS.focus(to: "##{@id}-#{edit_dom(@first_error)}")}
-        ></span>
-        <p class="q-xp-kept">
-          <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-          <span>
-            {gettext("Not chosen, and Facts and sources, stay as Qory wrote them.")}
-          </span>
-        </p>
-        <div class="q-xp-foot">
-          <p>
-            {gettext("Confirming makes work item #%{number} ready for Shape.", number: @number)}
-          </p>
-          <div class="q-wi-acts">
-            <.button id={"#{@id}-go"} type="submit" variant="primary">
-              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm changes")}
-            </.button>
-            <.button id={"#{@id}-cancel"} variant="ghost" navigate={@explore_path}>
-              {gettext("Cancel")}
-            </.button>
-          </div>
-        </div>
-      </form>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :name, :string, required: true
-  attr :label, :string, required: true
-  attr :hint, :string, default: nil
-  attr :value, :string, default: nil
-  attr :rows, :string, required: true
-  attr :changed, :boolean, default: false
-  attr :error, :string, default: nil
-
-  # A field of the edit page: its label, Changed where the member changed it, its hint,
-  # the field, and its error; the hint, Changed and the error describe it.
-  defp edit_field(assigns) do
-    ~H"""
-    <div class={["q-xp-field", @error && "q-xp-field-bad"]}>
-      <div class="q-xp-lbl-row">
-        <label for={@id} class="q-xp-lbl">{@label}</label>
-        <span :if={@changed} id={"#{@id}-ch"}>
-          <.badge color="info">{pgettext("field edited", "Changed")}</.badge>
-        </span>
-      </div>
-      <span :if={@hint} id={"#{@id}-hint"} class="q-xp-hint">{@hint}</span>
-      <.edit_area
-        id={@id}
-        name={@name}
-        value={@value}
-        rows={@rows}
-        described={[@hint && "#{@id}-hint", @changed && "#{@id}-ch"]}
-        error={@error}
-      />
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :name, :string, required: true
-  attr :value, :string, default: nil
-  attr :rows, :string, required: true
-  attr :described, :list, default: []
-  attr :error, :string, default: nil
-
-  defp edit_area(assigns) do
-    assigns = assign(assigns, :units, edit_units(assigns.name))
-
-    ~H"""
-    <textarea
-      id={@id}
-      name={@name}
-      rows={@rows}
-      maxlength={@units}
-      aria-describedby={described(@described ++ [@error && "#{@id}-err"])}
-      aria-invalid={@error && "true"}
-    >{["\n", @value || ""]}</textarea>
-    <p :if={@error} id={"#{@id}-err"} class="q-xp-err">
-      <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@error}
-    </p>
-    """
-  end
-
-  defp edit_units("understanding"), do: @long_units
-  defp edit_units(scope) when scope in ["scope_in", "scope_out"], do: @scope_units
-  defp edit_units(_short), do: @short_units
-
-  defp described(ids) do
-    case Enum.filter(ids, &is_binary/1) do
-      [] -> nil
-      ids -> Enum.join(ids, " ")
-    end
-  end
-
-  # The fields as the edit page shows the run's words: a scope entry one line, its line
-  # breaks as spaces.
-  defp edit_values(proposal) do
-    %{
-      level: to_string(proposal.complexity.level),
-      reason: proposal.complexity.reason,
-      understanding: proposal.understanding,
-      scope_in: lines(proposal.scope_in),
-      scope_out: lines(proposal.scope_out),
-      approach: proposal.approach
-    }
-  end
-
-  defp lines(entries),
-    do: Enum.map_join(entries || [], "\n", &String.replace(&1, ~r/\s*[\r\n]+\s*/, " "))
-
-  # A field differs from the run's words; a scope by its non-empty lines, trimmed, as a
-  # save reads them.
-  defp changed?(field, value, initial) when field in [:scope_in, :scope_out],
-    do: scope_lines(value) != scope_lines(initial)
-
-  defp changed?(_field, value, initial), do: (value || "") != (initial || "")
-
-  defp scope_lines(text) do
-    (text || "")
-    |> String.split(~r/\r\n|\r|\n/)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
-
-  defp edit_dom(:level), do: "level"
-  defp edit_dom(:reason), do: "reason"
-  defp edit_dom(:understanding), do: "understanding"
-  defp edit_dom(:scope_in), do: "scope-in"
-  defp edit_dom(:scope_out), do: "scope-out"
-  defp edit_dom(:approach), do: "approach"
-
-  defp edit_error(_field, nil), do: nil
-  defp edit_error(:reason, :blank), do: gettext("Write why the work is at this level.")
-  defp edit_error(:understanding, :blank), do: gettext("Write the understanding.")
-  defp edit_error(:scope_in, :blank), do: gettext("Write at least one line in scope.")
-  defp edit_error(:approach, :blank), do: gettext("Write the approach.")
-
-  defp edit_error(:understanding, {:too_long, limit}),
-    do:
-      gettext("Write the understanding in at most %{number} characters.",
-        number: Format.number(limit)
-      )
-
-  defp edit_error(_field, {:too_long, limit}),
-    do: gettext("Write at most %{number} characters.", number: Format.number(limit))
-
-  defp edit_error(_field, {:line_too_long, limit}),
-    do: gettext("Write each line in at most %{number} characters.", number: Format.number(limit))
-
-  defp edit_error(_field, {:too_many_lines, limit}),
-    do: ngettext("Write at most %{count} line.", "Write at most %{count} lines.", limit)
-
-  defp edit_error(_field, :characters), do: gettext("Remove the control or invisible characters.")
-
-  # An error without words for its field (Out of scope may be empty) marks nothing.
-  defp edit_error(_field, _error), do: nil
 
   ## The Ticket tab
 
@@ -3884,6 +3472,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:asked` - how many questions Qory wrote and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
+      or who commented on Qory's proposal (`comment`), the comment quoted;
     * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
@@ -3892,16 +3481,16 @@ defmodule ApiaryWeb.WorkItemComponents do
       what a member fixes;
     * `:explore_again` - who ran Explore again;
     * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
-    * `:closed`, `:declined` - who closed or declined it, and where it was declined
-      (`stage`); a close by the instance has no `actor`, and says why (`reason`), where
-      it has words for the reason, else draws nothing;
+    * `:closed` - who closed it; a close by the instance has no `actor`, and says why
+      (`reason`), where it has words for the reason, else draws nothing;
     * `:undone` - who undid it, before a run started.
 
   A run is `%{id:, number:, path:, attempt:, of:}`, its attempt shown and linked to the
   run's page where `path` is given. A run that ended before its handover has no id: a line that would name
-  it draws nothing. A question is `%{public_id:, text:, answer:}`. Every kind takes
-  `integration`, so no page draws the key without its mark. What a run wrote, and a
-  member's answers, are quoted as plain text, never inside a sentence.
+  it draws nothing. A question is `%{public_id:, text:, answer:}`, its text Markdown, as
+  `explore_tab/1` shows it, with its render as `:rendered` where the page has one. Every
+  kind takes `integration`, so no page draws the key without its mark. A member's answers
+  and comments are quoted as plain text, never inside a sentence.
   """
   attr :id, :string, required: true, doc: "the DOM id: the event's `public_id` under the Thread's"
 
@@ -3919,7 +3508,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       :explore_again,
       :confirmed,
       :closed,
-      :declined,
       :undone
     ]
 
@@ -3939,6 +3527,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :start, :atom, default: nil, values: [nil, :answers, :again], doc: "`:started`: how"
   attr :run, :map, default: nil, doc: "the run, as above"
   attr :questions, :list, default: [], doc: "`:asked`, `:answered`: the questions, as above"
+  attr :comment, :string, default: nil, doc: "`:answered`: a comment on Qory's proposal"
   attr :duration, :string, default: nil, doc: "`:asked`, `:proposed`: how long the run took"
 
   attr :outcome, :atom,
@@ -3956,13 +3545,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :reason, :atom,
     default: nil,
-    values: [nil, :adapter_removed],
+    values: [nil, :adapter_removed, :last_stage_done, :ticket_closed],
     doc: "`:closed` by the instance (no `actor`): why"
-
-  attr :stage, :atom,
-    default: :confirm,
-    values: [:explore, :confirm],
-    doc: "`:declined`: where"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
@@ -3970,9 +3554,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       when kind in [:started, :no_result, :lost, :cancelled],
       do: ~H""
 
-  def thread_event(%{kind: :closed, actor: nil, reason: reason} = assigns)
-      when reason != :adapter_removed,
-      do: ~H""
+  def thread_event(%{kind: :closed, actor: nil, reason: nil} = assigns), do: ~H""
 
   def thread_event(assigns) do
     now = now(assigns)
@@ -4018,13 +3600,14 @@ defmodule ApiaryWeb.WorkItemComponents do
           {gettext("First instruction: %{text}", text: @instruction)}
         </p>
         <ol :if={@kind == :asked} id={"#{@id}-questions"} class="q-wi-qs">
-          <li :for={question <- @questions} phx-no-format>{question.text}</li>
+          <li :for={question <- @questions}><.run_text value={question} key={:text} /></li>
         </ol>
         <div :if={@kind == :answered} id={"#{@id}-answers"} class="q-wi-qa">
           <div :for={question <- @questions}>
-            <div class="q-wi-qa-q" phx-no-format>{question.text}</div>
+            <div class="q-wi-qa-q"><.run_text value={question} key={:text} /></div>
             <div class="q-wi-qa-a" phx-no-format>{question.answer}</div>
           </div>
+          <div :if={@comment} class="q-wi-qa-a" phx-no-format>{@comment}</div>
         </div>
       </div>
     </li>
@@ -4039,7 +3622,6 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp event_icon(:explore_again), do: "hero-arrow-path-micro"
   defp event_icon(:confirmed), do: "hero-check-micro"
   defp event_icon(:closed), do: "hero-x-circle-micro"
-  defp event_icon(:declined), do: "hero-minus-circle-micro"
   defp event_icon(:undone), do: "hero-arrow-uturn-left-micro"
 
   defp event_line(%{kind: :taken_in, test: true, actor: actor}) do
@@ -4133,6 +3715,13 @@ defmodule ApiaryWeb.WorkItemComponents do
     )
   end
 
+  defp event_line(%{kind: :answered, actor: actor, comment: comment})
+       when is_binary(comment) do
+    if you?(actor),
+      do: gettext("You commented on Qory's proposal"),
+      else: rich_gettext("%{name} commented on Qory's proposal", name: {:b, actor.name})
+  end
+
   defp event_line(%{kind: :answered, actor: actor, questions: questions}) do
     n = length(questions)
 
@@ -4223,25 +3812,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         rich_gettext("%{name} confirmed Qory's proposal. Ready for Shape", name: {:b, actor.name})
   end
 
-  defp event_line(%{kind: :closed, actor: nil, reason: reason}),
-    do: if(reason == :adapter_removed, do: gettext("Closed when its integration was removed"))
+  defp event_line(%{kind: :closed, actor: nil, reason: reason}), do: closed_words(reason)
 
   defp event_line(%{kind: :closed, actor: actor}) do
     if you?(actor),
       do: gettext("You closed this work item"),
       else: rich_gettext("%{name} closed this work item", name: {:b, actor.name})
-  end
-
-  defp event_line(%{kind: :declined, stage: :explore, actor: actor}) do
-    if you?(actor),
-      do: gettext("You declined this work item at Explore"),
-      else: rich_gettext("%{name} declined this work item at Explore", name: {:b, actor.name})
-  end
-
-  defp event_line(%{kind: :declined, actor: actor}) do
-    if you?(actor),
-      do: gettext("You declined this work item at Confirm"),
-      else: rich_gettext("%{name} declined this work item at Confirm", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :undone, actor: actor}) do

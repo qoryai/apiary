@@ -282,6 +282,24 @@ defmodule Apiary.Runs.ListFactsTest do
       assert number == work_item.number
     end
 
+    test "a comment on Qory's proposal", %{scope: scope, user: user} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+      first = started_run(scope)
+      queue_run!(scope, first, work_item: work_item)
+
+      work_item_event!(work_item, :answered, user, %{
+        "take_in" => 1,
+        "attempt" => 1,
+        "comment" => true
+      })
+
+      commented = started_run(scope)
+      queue_run!(scope, commented, work_item: work_item, attempt: 2)
+
+      assert facts(scope, commented).started_by == {:comment, 2, 3, user.id}
+    end
+
     test "a test work item's run, a direct run, and a later run no event explains", %{
       scope: scope,
       user: user

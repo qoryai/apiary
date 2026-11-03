@@ -4,10 +4,7 @@ defmodule Apiary.WorkItems.Confirmation do
   # ready for Shape.
   #
   # `take_in` and `attempt` name the run. `result` is the run's result as Qory read it
-  # (`Apiary.Explore.Result`), kept so the proposal outlives the run's events. `changes`
-  # holds the fields the member changed before confirming, by name, empty for none:
-  # `"complexity"` (`{"level", "reason"}`), `"understanding"`, `"scope_in"` and
-  # `"scope_out"` (lists of entries) and `"approach"` (`Apiary.WorkItems.Proposal`).
+  # (`Apiary.Explore.Result`), kept so the proposal outlives the run's events.
   # `confirmed_by_id` is the member, nil once their account's row is gone, and
   # `confirmed_at` when. A confirmation is of its work item's workspace, held to it by the
   # composite key, and follows it, as its events do.
@@ -23,7 +20,6 @@ defmodule Apiary.WorkItems.Confirmation do
     field :take_in, :integer
     field :attempt, :integer
     field :result, :map
-    field :changes, :map, default: %{}
     field :confirmed_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
