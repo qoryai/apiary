@@ -285,8 +285,8 @@ defmodule ApiaryWeb.BacklogComponents do
   ## The ticket
 
   @doc """
-  One ticket, with its head, its meta line, its facts, Take in, its text and its
-  comments.
+  One ticket, with its head, its meta line, its facts, its text, its comments and
+  Take in, where each frame below puts it.
 
   `frame` is `:list` or `:full`:
 

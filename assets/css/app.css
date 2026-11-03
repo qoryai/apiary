@@ -11881,7 +11881,7 @@
   .q-bl-wi > span {
     color: var(--q-faint);
   }
-  /* With the ticket open beside the list, its Take in is the panel's block. */
+  /* With the ticket open beside the list, its Take in is the one at the panel's top. */
   @media (min-width: 1280px) {
     .q-bl:has(> .q-bl-prev) .q-bl-row:has([aria-current="true"]):not(:hover, :focus-within) .q-bl-take {
       opacity: 0;
@@ -12327,8 +12327,9 @@
     line-height: 1.375rem;
   }
 
-  /* ---- Take in: under the facts in the panel, the dialog and the sheet, and in the full
-     ticket's side column; Take in and its hint, or why the reader may not take it in ---- */
+  /* ---- Take in: at the top of the panel and the dialog, under the facts on the sheet, and
+     in the full ticket's side column; Take in and its hint, or why the reader may not take
+     it in ---- */
   .q-bl-ti-act {
     display: flex;
     flex-wrap: wrap;
