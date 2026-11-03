@@ -79,6 +79,10 @@ defmodule Apiary.WorkItems do
   # it is. It answers the workspaces whose queue changed, for the caller to tell once its
   # transaction commits (`Apiary.Dispatches.broadcast/1`).
   #
+  # The instance closes a work item with one of three reasons: `last_stage_done`, when its
+  # last stage finishes (`Apiary.Stages`), `ticket_closed`, when its ticket closes at the
+  # source (`Apiary.Sources.Ingest`), and `adapter_removed`, below.
+  #
   # `close_for_adapter(adapter, now)` closes, as the instance (`adapter_removed`), every
   # live work item of every organisation whose ticket came through a connection to
   # `adapter`, inside the caller's transaction: the removal of the adapter
@@ -107,6 +111,7 @@ defmodule Apiary.WorkItems do
   @moduledoc false
 
   import Ecto.Query, warn: false
+  import Apiary.WorkItems.Finished, only: [finished: 2]
 
   alias Apiary.{Access, Dispatches, Repo}
   alias Apiary.Accounts.Scope
@@ -538,6 +543,23 @@ defmodule Apiary.WorkItems do
     else
       _none -> nil
     end
+  end
+
+  @doc false
+  # take_in_again?/1 is whether Take in again can bring the ended `work_item` back: its
+  # ticket's record (`ticket_query/0`) is open at its source, and the work item is not
+  # finished with its ticket not reopened (`Apiary.WorkItems.Finished`).
+  @spec take_in_again?(WorkItem.t()) :: boolean
+  def take_in_again?(%WorkItem{id: id}) do
+    Repo.exists?(
+      from w in WorkItem,
+        as: :work_item,
+        left_lateral_join: t in subquery(ticket_query()),
+        on: true,
+        join: i in Item,
+        on: i.id == t.item_id and i.organisation_id == w.organisation_id,
+        where: w.id == ^id and i.state == :open and not finished(w, i)
+    )
   end
 
   @doc false

@@ -184,7 +184,9 @@ defmodule Apiary.Adapters.Collections do
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
   #      a work item; a work item's comment is held `FOR UPDATE` only right after its
-  #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`);
+  #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`); a post of
+  #      items that closes tickets holds its connection, its collection, the refs and the
+  #      items first, then their work items (`Apiary.Sources.Ingest`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
   #   7. the adapter's feed counter, last.

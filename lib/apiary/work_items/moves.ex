@@ -100,8 +100,10 @@ defmodule Apiary.WorkItems.Moves do
   # ## Take in again
   #
   # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
-  # a live one `{:error, {:taken, work_item}}`. An ended one, closed or undone,
-  # becomes `:exploring` again, its take in counted one more, pointed at the ticket's
+  # a live one `{:error, {:taken, work_item}}`, and so is a finished one whose ticket has
+  # not reopened (`Apiary.WorkItems.Finished`), which stays taken in. Any other ended one,
+  # closed or undone, becomes `:exploring` again, its take in counted one more, pointed at
+  # the ticket's
   # current record and its connection, with the ticket's title and address and its
   # collection's title as they are now, and the target, the owner, the first instruction,
   # who took it in and when of this take in. A work item of another workspace moves to the
@@ -197,8 +199,8 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.{Item, Topic}
-  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Number, Proposal, State}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Finished, Number, Proposal}
+  alias Apiary.WorkItems.{State, WorkItem}
   alias Apiary.WorkItems.WorkItemEvent
 
   @typedoc "Why a take in, or a take in again, is refused."
@@ -469,6 +471,7 @@ defmodule Apiary.WorkItems.Moves do
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),
+             :ok <- not_finished(scope, ended, ticket),
              {:ok, target} <- target(workspace, ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
           again(scope, workspace, ended, ticket, target, owner_id, attrs)
@@ -497,6 +500,14 @@ defmodule Apiary.WorkItems.Moves do
           do: {:ok, work_item},
           else: {:error, {:taken, WorkItems.as_seen(scope, work_item)}}
     end
+  end
+
+  # A finished work item stays taken in until its ticket reopens, as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`).
+  defp not_finished(scope, ended, %{item: item}) do
+    if Finished.finished?(ended, item),
+      do: {:error, {:taken, WorkItems.as_seen(scope, ended)}},
+      else: :ok
   end
 
   defp again(scope, workspace, ended, ticket, target, owner_id, attrs) do

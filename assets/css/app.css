@@ -11721,11 +11721,6 @@
     text-decoration-color: var(--q-border-field);
     text-underline-offset: 3px;
   }
-  .q-bl-w {
-    flex: none;
-    color: var(--q-faint);
-    white-space: nowrap;
-  }
   /* The ref, the filer and the time under the title, where the row is too narrow for
      their columns. */
   .q-bl-sub {
@@ -11917,8 +11912,7 @@
       margin-top: 2px;
     }
     .q-bl-no,
-    .q-bl-upd,
-    .q-bl-w {
+    .q-bl-upd {
       display: none;
     }
     .q-bl-row > .q-bl-ttl {
@@ -12634,13 +12628,15 @@
     background-color: var(--color-success);
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-success) 22%, transparent);
   }
-  .q-wi-mk-todo::before {
+  .q-wi-mk-todo::before,
+  .q-wi-mk-stopped::before {
     width: 10px;
     height: 10px;
     border: 1.5px solid var(--q-border-field);
     border-radius: 9999px;
   }
-  .q-wi-mk-ready::before {
+  .q-wi-mk-ready::before,
+  .q-wi-mk-done::before {
     width: 10px;
     height: 10px;
     border: 1.5px solid var(--color-accent);

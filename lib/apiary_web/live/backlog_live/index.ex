@@ -12,9 +12,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # The second sentence is said only while Take in may take a ticket of the Open view
   # (`take_in?`): one with a target, where the workspace's domain needs one.
   #
-  # **The list.** The views as tabs, each with its count (Open, Taken in, Closed), with a
-  # line under them on Closed, where one integration that brings items connects the
-  # organisation, that names that integration and the tickets closed on it, Search, one
+  # **The list.** The views as tabs, each with its count (Open, Taken in), Search, one
   # Filter menu
   # (the collections, in their sources' words, Filed by, its bots each with a neutral
   # tile, Label, Updated), Sort (Recently updated, Newest, Most comments), the filters in
@@ -60,7 +58,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # **Take in.** The block's Take in, and a row's, take the ticket in
   # (`Apiary.WorkItems.take_in/3`) and lead to the new work item's page. A refusal is a
   # flash in the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), and the
-  # page reads what it shows again. Take in again, on a row, does nothing yet.
+  # page reads what it shows again. A row's Take in again brings its ended work item back
+  # (`Apiary.WorkItems.take_in_again/3`) and leads to its page, with a refusal the same way.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -75,7 +74,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
 
-  @views [:open, :taken, :closed]
+  @views [:open, :taken]
   @most_values 100
   @sorts [:updated, :created, :comments]
   @lists [:collection, :filed_by, :label]
@@ -231,17 +230,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
             </p>
           </div>
 
-          <p
-            :if={@params.view == :closed and @integration}
-            id="backlog-view-line"
-            class="text-[0.8125rem] text-muted"
-          >
-            {gettext("%{items} that are closed on %{integration}.",
-              items: SourceComponents.items_label(@item_noun),
-              integration: @integration.name
-            )}
-          </p>
-
           <section :if={@row_count > 0} id="backlog-list" class="q-blk">
             <ul id="backlog-rows" class="q-rows" phx-update="stream">
               <BacklogComponents.ticket_row
@@ -253,6 +241,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 selected={@ticket != nil and @ticket.id == ticket.id}
                 now={@now}
                 take_in="take_in"
+                take_in_again="take_in_again"
               />
             </ul>
           </section>
@@ -417,6 +406,30 @@ defmodule ApiaryWeb.BacklogLive.Index do
   end
 
   def handle_event("take_in", _params, socket), do: {:noreply, socket}
+
+  # A row's Take in again: the work item's page, or why not.
+  def handle_event("take_in_again", %{"id" => id}, socket) when is_binary(id) do
+    scope = socket.assigns.current_scope
+
+    case WorkItems.take_in_again(scope, id) do
+      {:ok, work_item} ->
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}"
+         )}
+
+      {:error, refusal} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, refused_words(socket, refusal, id))
+         |> load_options()
+         |> load_facts()
+         |> load()
+         |> load_ticket()}
+    end
+  end
+
+  def handle_event("take_in_again", _params, socket), do: {:noreply, socket}
 
   # A ticket of the workspace's Backlog was written, ended, closed or taken in: the page
   # reads what it shows again, with its scope, whatever the message names.
@@ -590,7 +603,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   defp view_label(:open), do: pgettext("backlog view", "Open")
   defp view_label(:taken), do: gettext("Taken in")
-  defp view_label(:closed), do: gettext("Closed")
 
   defp sort_label(:updated), do: gettext("Recently updated")
   defp sort_label(:created), do: gettext("Newest")

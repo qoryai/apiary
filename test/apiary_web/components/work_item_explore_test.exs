@@ -2317,7 +2317,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       }
     end
 
-    test "says its integration was removed, or nothing for a reason without words" do
+    test "says why it closed, or nothing for a reason without words" do
       w = work_item(%{status: :queued, run: %{attempt: 1, of: 3}})
 
       html = tab(w, earlier_take_ins: [closed_take_in(:adapter_removed)])
@@ -2328,6 +2328,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "Closed 4 minutes ago, when its integration was removed",
                  "1 run"
                ]
+
+      for {reason, words} <- [
+            last_stage_done: "Every stage done",
+            ticket_closed: "Closed when its ticket closed"
+          ] do
+        html = tab(w, earlier_take_ins: [closed_take_in(reason)])
+
+        assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
+                 ["Taken in 13 Oct by Lea", words, "1 run"]
+      end
 
       for reason <- [nil, :unknown] do
         html = tab(w, earlier_take_ins: [closed_take_in(reason)])

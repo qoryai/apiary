@@ -32,9 +32,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:owner` - a person, or `nil`;
   #   * `:ended_by`, `:ended_at` - who closed or undid it, and when; `nil` for
   #     `:ended_by` where the instance closed it, with `:ended_reason` saying why:
-  #     `:adapter_removed`, when its integration was removed. A close by the instance for
-  #     any other reason, or none, has no words yet: the parts that name who closed it
-  #     draw nothing there;
+  #     `:adapter_removed`, when its integration was removed, `:last_stage_done`, when its
+  #     last stage finished, or `:ticket_closed`, when its ticket closed at the source. A
+  #     close by the instance for any other reason, or none, has no words yet: the parts
+  #     that name who closed it draw nothing there;
   #   * `:updated_at` - when it last changed.
   #
   # A part that names the ticket takes the words its source has for its items,
@@ -172,11 +173,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Explore
   is running), `:wait` (waits for the reader), `:wait_other` (waits for another member),
   `:err` (Explore's run gave no result: a red ring), `:ready` (Ready for Shape),
-  `:closed` (closed or undone). Decorative: its words are always beside it.
+  `:closed` (closed or undone), and on a row of the Closed view under the feature
+  `workflow_model`, `:done` (every stage done: an amber ring) and `:stopped` (any other
+  end: a grey ring). Decorative: its words are always beside it.
   """
   attr :kind, :atom,
     required: true,
-    values: [:todo, :run, :wait, :wait_other, :err, :ready, :closed]
+    values: [:todo, :run, :wait, :wait_other, :err, :ready, :closed, :done, :stopped]
 
   attr :class, :any, default: nil
 
@@ -211,9 +214,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp words_of(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
   defp words_of(%{status: :shape}), do: gettext("Ready for Shape")
 
-  defp words_of(%{status: :closed, ended_by: nil} = work_item) do
-    if instance_removed?(work_item), do: gettext("Closed when its integration was removed")
-  end
+  defp words_of(%{status: :closed, ended_by: nil} = work_item),
+    do: closed_words(work_item[:ended_reason])
 
   defp words_of(%{status: :closed, ended_by: by}) do
     if you?(by), do: gettext("Closed by you"), else: gettext("Closed by %{name}", name: by.name)
@@ -254,9 +256,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   # with nothing left to show, or only whitespace, as for none.
   defp shown_title(title), do: ExternalText.present(title)
 
-  # Whether the instance closed it when its integration was removed: the one close without
-  # a person that has words.
+  # Whether the instance closed it when its integration was removed.
   defp instance_removed?(work_item), do: work_item[:ended_reason] == :adapter_removed
+
+  # Why the instance closed it, for a close without a person; nil for a reason with no
+  # words.
+  defp closed_words(:adapter_removed), do: gettext("Closed when its integration was removed")
+  defp closed_words(:last_stage_done), do: gettext("Every stage done")
+  defp closed_words(:ticket_closed), do: gettext("Closed when its ticket closed")
+  defp closed_words(_none), do: nil
 
   @doc false
   def stage_name(:explore), do: gettext("Explore")
@@ -1469,7 +1477,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         rich_gettext(
           "Qory Apiary closed this work item on %{date}, when its integration was removed.",
           date: day(work_item.ended_at, now)
-        )
+        ),
+      else: closed_words(work_item[:ended_reason])
   end
 
   defp end_line(%{status: :closed, ended_by: by} = work_item, now) do
@@ -1673,12 +1682,19 @@ defmodule ApiaryWeb.WorkItemComponents do
   # How it ended, for Details: its word and when and by whom; a close by the instance
   # with words says why, and one without has no row.
   defp ended_row(%{status: :closed, ended_by: nil} = work_item, now) do
-    if instance_removed?(work_item),
-      do:
+    cond do
+      instance_removed?(work_item) ->
         {end_word(:closed),
          rich_gettext("Closed %{when}, when its integration was removed",
            when: day(work_item.ended_at, now)
          )}
+
+      words = closed_words(work_item[:ended_reason]) ->
+        {end_word(:closed), words}
+
+      true ->
+        nil
+    end
   end
 
   defp ended_row(work_item, now),
@@ -3225,7 +3241,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       do:
         rich_gettext("Closed %{when}, when its integration was removed",
           when: inline_ago(take_in.ended_at, now)
-        )
+        ),
+      else: closed_words(take_in[:ended_reason])
   end
 
   defp ended_words(%{ended: ended, ended_by: by, ended_at: at}, now)
@@ -3809,7 +3826,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :reason, :atom,
     default: nil,
-    values: [nil, :adapter_removed],
+    values: [nil, :adapter_removed, :last_stage_done, :ticket_closed],
     doc: "`:closed` by the instance (no `actor`): why"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -3818,9 +3835,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       when kind in [:started, :no_result, :lost, :cancelled],
       do: ~H""
 
-  def thread_event(%{kind: :closed, actor: nil, reason: reason} = assigns)
-      when reason != :adapter_removed,
-      do: ~H""
+  def thread_event(%{kind: :closed, actor: nil, reason: nil} = assigns), do: ~H""
 
   def thread_event(assigns) do
     now = now(assigns)
@@ -4070,8 +4085,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         rich_gettext("%{name} confirmed Qory's proposal. Ready for Shape", name: {:b, actor.name})
   end
 
-  defp event_line(%{kind: :closed, actor: nil, reason: reason}),
-    do: if(reason == :adapter_removed, do: gettext("Closed when its integration was removed"))
+  defp event_line(%{kind: :closed, actor: nil, reason: reason}), do: closed_words(reason)
 
   defp event_line(%{kind: :closed, actor: actor}) do
     if you?(actor),

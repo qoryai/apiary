@@ -939,11 +939,6 @@ msgstr ""
 msgid "%{items} from the %{assigned}. Take one in to make it a work item."
 msgstr ""
 
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{items} that are closed on %{integration}."
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -6538,7 +6533,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
-#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Closed"
 msgstr ""
@@ -6586,6 +6580,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when its integration was removed"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Closed when its ticket closed"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -8452,6 +8451,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Every session leaves a full record: what it ran, what it printed and where it reached out to. Open source, so you can check all of that."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Every stage done"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

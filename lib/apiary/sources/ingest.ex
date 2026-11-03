@@ -24,7 +24,9 @@ defmodule Apiary.Sources.Ingest do
   # (`closed_by_listing_at`). The close counts as a write at `started_at`, so an event
   # sent again, or one updated before the listing began, leaves the item closed. Of two
   # with the same time the later post wins, as the decoder keeps the last named of two in
-  # one body. A written item is no longer one a listing closed.
+  # one body. A written item is no longer one a listing closed. A write that moves an item
+  # from open to closed, or inserts it closed, keeps `now` (`last_closed_at`); a write that
+  # reopens it leaves that time.
   #
   # **A ref held in another collection.** An item's ref is unique among the items of the
   # adapter's live collections, which no index holds: it is held here. Where an item
@@ -49,8 +51,16 @@ defmodule Apiary.Sources.Ingest do
   # last has arrived, and only then, the listing is complete: every open item of the
   # collection that it left out, whose `last_listed_at` and `source_updated_at` are before
   # its `started_at`, and that has not ended, is closed, and keeps that `started_at`
-  # (`closed_by_listing_at`). A partial listing only upserts. The bookkeeping goes a day
-  # after its first part (`purge_listings/1`).
+  # (`closed_by_listing_at`), and `now` (`last_closed_at`). A partial listing only upserts.
+  # The bookkeeping goes a day after its first part (`purge_listings/1`).
+  #
+  # **A ticket that closes.** A post closes the live work item of each ticket it closed,
+  # in the same transaction, as the instance, with the reason `ticket_closed`
+  # (`Apiary.WorkItems.close_locked/3`): the items written closed and not ended, and those
+  # a listing's end closed. A ref that an open item of a live collection of the adapter
+  # has is left out, as the contract sends a ticket moved out of a collection as closed,
+  # and an item that only ended closes nothing. The post tells the work items and the
+  # queues that changed once it commits (`Apiary.Dispatches.broadcast/1`).
   #
   # **Comments** go to the item that holds the body's `item_ref`, of a live collection
   # and not ended, decided under the locks below; never to an item that ended. Each is
@@ -70,7 +80,13 @@ defmodule Apiary.Sources.Ingest do
   # the body names, in the adapter (`pg_advisory_xact_lock`), by key, so that two
   # connections never hold one ref at once; then the items of the adapter's live
   # collections with those refs, and those a completing listing may close, `FOR UPDATE`,
-  # by ref, then id. For comments, in this order: the lock on the `item_ref` in the
+  # by ref, then id; then the live work items of the tickets that closed, `FOR UPDATE`, by
+  # id, and what a close holds after them (`Apiary.WorkItems`). So an item is held before
+  # a work item. The one path that waits on an item while it holds a work item is a take
+  # in again, whose write of `item_id` checks the item's key: it holds the item's
+  # connection `FOR SHARE` first, so a post of that connection waits for it, and a post of
+  # another connection that holds the item finds it open, leaves its ref out and holds no
+  # work item of it. For comments, in this order: the lock on the `item_ref` in the
   # adapter, so that no write takes the ref meanwhile, under which the item that holds it
   # is looked up; its collection, `FOR SHARE`, so that it does not end meanwhile, and the
   # answer is decided again on it as it is held, or, should it have ended, decided again
@@ -84,10 +100,12 @@ defmodule Apiary.Sources.Ingest do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{PublicId, Repo}
+  alias Apiary.{Dispatches, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connection, Connections}
   alias Apiary.Sources.{Comment, Item, Listing, Wire}
+  alias Apiary.WorkItems
+  alias Apiary.WorkItems.WorkItem
 
   @action :"source_item.post"
   @max_ref 200
@@ -107,14 +125,17 @@ defmodule Apiary.Sources.Ingest do
   # `{:ok, changed}` once it commits, or `{:error, refusal}`.
   @spec items(Scope.t() | nil, Wire.items()) :: {:ok, changed} | {:error, refusal}
   def items(key_scope, %{collection_ref: ref, items: items, listing: part}) do
-    with {:ok, rows} <- item_rows(items) do
-      Repo.transact(fn ->
-        with {:ok, found, _scope} <- Collections.resolve(key_scope, bounded(ref), @action),
-             {:ok, collection} <- hold(key_scope, found),
-             {:ok, listing} <- record_part(collection, part) do
-          {:ok, put_items(collection, rows, listing)}
-        end
-      end)
+    with {:ok, rows} <- item_rows(items),
+         {:ok, {changed, told}} <-
+           Repo.transact(fn ->
+             with {:ok, found, _scope} <- Collections.resolve(key_scope, bounded(ref), @action),
+                  {:ok, collection} <- hold(key_scope, found),
+                  {:ok, listing} <- record_part(collection, part) do
+               {:ok, put_items(collection, rows, listing)}
+             end
+           end) do
+      Dispatches.broadcast(told)
+      {:ok, changed}
     end
   end
 
@@ -278,10 +299,58 @@ defmodule Apiary.Sources.Ingest do
     ended_changed = end_items(ended, now)
     written = upsert_items(Enum.reverse(put))
     if listing, do: mark_listed(collection, refs, listing.started_at)
-    closed = if closing_from, do: close_left_out(collection, listing, now), else: []
+    left_out = if closing_from, do: close_left_out(collection, listing, now), else: []
+    written_and_left_out = written ++ left_out
 
-    ended_changed
-    |> add(collection.workspace_id, written ++ closed)
+    changed =
+      add(ended_changed, collection.workspace_id, Enum.map(written_and_left_out, & &1.public_id))
+
+    closed_refs = for %{closed?: true} = item <- written_and_left_out, do: item.external_ref
+
+    {changed, close_work_items(collection, closed_refs, now)}
+  end
+
+  # Closes the live work items of the tickets `refs`, which this post closed, as the module
+  # says: what to tell once the transaction commits (`Apiary.Dispatches.broadcast/1`).
+  defp close_work_items(_collection, [], _now), do: []
+
+  defp close_work_items(%Collection{} = collection, refs, now) do
+    work_items =
+      Repo.all(
+        from w in WorkItem,
+          where:
+            w.organisation_id == ^collection.organisation_id and
+              w.adapter_id == ^collection.adapter_id and
+              w.external_ref in ^(refs -- open_refs(collection, refs)),
+          where: w.state == :exploring,
+          order_by: w.id,
+          lock: "FOR UPDATE"
+      )
+
+    case work_items do
+      [] ->
+        []
+
+      _some ->
+        {:ok, workspace_ids} =
+          WorkItems.close_locked(work_items, {:instance, "ticket_closed"}, now)
+
+        workspace_ids ++ Enum.map(work_items, &{:work_item, &1.workspace_id, &1.public_id})
+    end
+  end
+
+  # Those of `refs` that an open item of a live collection of the adapter has: a ticket
+  # that moved between collections.
+  defp open_refs(%Collection{adapter_id: adapter_id}, refs) do
+    Repo.all(
+      from i in Item,
+        join: c in Collection,
+        on: c.id == i.collection_id,
+        where: c.adapter_id == ^adapter_id and is_nil(c.ended_at),
+        where: i.adapter_id == ^adapter_id and i.external_ref in ^refs,
+        where: i.state == :open and is_nil(i.disconnected_at),
+        select: i.external_ref
+    )
   end
 
   # A transaction lock on each of `refs` in the adapter, by key, each once: held until the
@@ -395,6 +464,7 @@ defmodule Apiary.Sources.Ingest do
       comment_count: row.comment_count,
       source_created_at: row.source_created_at,
       source_updated_at: row.source_updated_at,
+      last_closed_at: if(row.state == :closed, do: now),
       disconnected_at: ended_at,
       inserted_at: now,
       updated_at: now
@@ -419,7 +489,8 @@ defmodule Apiary.Sources.Ingest do
   end
 
   # One statement for the body's items: each made, or written over the one kept when it
-  # is at or after the time kept (`kept_at/1`). The public ids of those written.
+  # is at or after the time kept (`kept_at/1`). Those written, each with its public id, its
+  # ref and whether it closes a ticket (`closed?`): written closed, and not ended.
   defp upsert_items([]), do: []
 
   defp upsert_items(rows) do
@@ -452,6 +523,12 @@ defmodule Apiary.Sources.Ingest do
             source_updated_at: fragment("EXCLUDED.source_updated_at"),
             disconnected_at: fragment("EXCLUDED.disconnected_at"),
             closed_by_listing_at: nil,
+            last_closed_at:
+              fragment(
+                "CASE WHEN ? = 'open' AND EXCLUDED.state = 'closed' THEN EXCLUDED.last_closed_at ELSE ? END",
+                i.state,
+                i.last_closed_at
+              ),
             updated_at: fragment("EXCLUDED.updated_at")
           ]
         ]
@@ -460,10 +537,16 @@ defmodule Apiary.Sources.Ingest do
       PublicId.Insert.insert_all(Item, rows,
         on_conflict: newer,
         conflict_target: [:collection_id, :external_ref],
-        returning: [:public_id]
+        returning: [:public_id, :external_ref, :state, :disconnected_at]
       )
 
-    Enum.map(written, & &1.public_id)
+    Enum.map(written, fn item ->
+      %{
+        public_id: item.public_id,
+        external_ref: item.external_ref,
+        closed?: item.state == :closed and is_nil(item.disconnected_at)
+      }
+    end)
   end
 
   # Each item of `collection` with one of `refs` keeps `started_at` as the newest listing
@@ -484,14 +567,19 @@ defmodule Apiary.Sources.Ingest do
   end
 
   # Closes what the complete `listing` left out (`closable/2`), each keeping the listing's
-  # `started_at`, and marks the listing complete: the public ids of those closed.
+  # `started_at` and `now`, and marks the listing complete: those closed, each with its
+  # public id, its ref and `closed?`, as `upsert_items/1` gives them.
   defp close_left_out(%Collection{} = collection, %Listing{} = listing, now) do
     {_count, closed} =
       Repo.update_all(
-        from(i in Item, where: ^closable(collection, listing.started_at), select: i.public_id),
+        from(i in Item,
+          where: ^closable(collection, listing.started_at),
+          select: %{public_id: i.public_id, external_ref: i.external_ref, closed?: true}
+        ),
         set: [
           state: :closed,
           closed_by_listing_at: %{listing.started_at | microsecond: {0, 6}},
+          last_closed_at: now,
           updated_at: now
         ]
       )

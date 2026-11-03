@@ -367,8 +367,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # status each live work item the stage runner placed shows in place of Explore's words,
   # by the row's id: the stage and its state, with its mark, as the work item page's head
   # shows them (`ApiaryWeb.WorkItemLive.StageComponents.head_status/1`). A row is left
-  # out, and keeps Explore's words, where it ended, is not placed, or is at Explore while a
-  # run, its questions or its gate are what the stage is at.
+  # out, and keeps Explore's words, where it is not placed, or is at Explore while a run,
+  # its questions or its gate are what the stage is at. A row that ended keeps its words,
+  # and has a mark alone: `:done` where every stage is done, else `:stopped`.
   @spec row_statuses(Scope.t(), [map]) :: %{String.t() => map}
   def row_statuses(_scope, []), do: %{}
 
@@ -397,6 +398,13 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
     |> Enum.reject(fn {_id, status} -> is_nil(status) end)
     |> Map.new()
+    |> Map.merge(ended_marks(rows))
+  end
+
+  defp ended_marks(rows) do
+    for %{id: id, state: state} = row <- rows, state in [:closed, :undone], into: %{} do
+      {id, %{mark: if(row[:ended_reason] == "last_stage_done", do: :done, else: :stopped)}}
+    end
   end
 
   defp row_status(scope, row, place, version, gate?) do

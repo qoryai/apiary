@@ -28,6 +28,12 @@ defmodule Apiary.Stages do
   #   * `confirmed/2`, from `Apiary.WorkItems.confirm/4`: a confirmation of Explore's
   #     proposal approves Explore's gate.
   #
+  # ## After the last stage
+  #
+  # A work item closes when its last stage finishes, in the same transaction, as the
+  # instance with the reason `last_stage_done`: `closed_by_id` stays empty and
+  # `stage_state` stays `:done` (`Apiary.WorkItems.Finished`).
+  #
   # ## Explore (decision D1, a transition until the harness change)
   #
   # A run of explore-a-ticket returns today's explore v1 result. The runner keeps a
@@ -71,6 +77,7 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
+  alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, Proposal, WorkItem}
 
   # The runs a workflow outside a loop may have in one round of its entry: its first,
@@ -1110,15 +1117,28 @@ defmodule Apiary.Stages do
   end
 
   # The next stage of the version after `stage`, entered; after the last, the stage is
-  # done.
+  # done and the work item closes.
   defp advance(work_item, version, stage) do
     stages = version.document["stages"]
     index = Enum.find_index(stages, &(&1["id"] == stage["id"]))
 
     case Enum.at(stages, index + 1) do
-      nil -> {place!(work_item, version, stage["id"], :done, position(work_item)), nil}
+      nil -> {finish(work_item, version, stage), nil}
       next -> enter_locked(work_item, version, next)
     end
+  end
+
+  # The last stage is done: in the same transaction the instance closes the work item,
+  # which the caller holds, and `stage_state` stays `:done` (`Apiary.WorkItems.Finished`).
+  # The stage's runs have ended, so the close changes no queue.
+  defp finish(work_item, version, stage) do
+    work_item = place!(work_item, version, stage["id"], :done, position(work_item))
+    now = DateTime.utc_now()
+
+    {:ok, _workspace_ids} =
+      WorkItems.close_locked([work_item], {:instance, "last_stage_done"}, now)
+
+    %{work_item | state: :closed, closed_at: now}
   end
 
   defp facts(work_item, version, stage) do
