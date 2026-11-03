@@ -2855,6 +2855,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        ApiaryWeb.HarnessComponents.workflow_gap_words(gap)}
 
+  defp no_result_words(%{read_needs: %{} = facts}),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
+       read_needs_words(facts)}
+
   defp no_result_words(%{outcome: :none}),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
@@ -2871,6 +2876,48 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended with an error."),
        gettext("The run's last result was an error. There is nothing to show or confirm.")}
+
+  # What a person does about a read-only run that qory closed (`Apiary.Runs.ReadNeeds`), the
+  # fix first. A person in an organisation cannot edit the forager.yaml of the instance's
+  # pool, so that pool's run has "Contact support." in place of the fix.
+  # `Apiary.Stages.StopCause` stores the same words in English.
+  defp read_needs_words(%{code: "read_needs_wall", installed: true}),
+    do:
+      rich_gettext(
+        "%{contact_support}. A read-only run needs a wall, and this machine has none.",
+        contact_support: ApiaryWeb.Support.rich()
+      )
+
+  defp read_needs_words(%{code: "read_needs_wall"}),
+    do:
+      gettext(
+        "Set a wall in the machine's forager.yaml, then start the run again. A read-only run needs a wall, and this machine has none."
+      )
+
+  defp read_needs_words(%{code: "read_needs_setup_outside", installed: true}),
+    do:
+      rich_gettext(
+        "%{contact_support}. A read-only run cannot run its setup inside the agent's container.",
+        contact_support: ApiaryWeb.Support.rich()
+      )
+
+  defp read_needs_words(%{code: "read_needs_setup_outside"}),
+    do:
+      gettext(
+        "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
+      )
+
+  defp read_needs_words(%{code: "read_needs_no_nested_docker"}),
+    do:
+      gettext(
+        "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+      )
+
+  defp read_needs_words(%{code: "read_needs_setup_removed"}),
+    do:
+      gettext(
+        "Start the run again. The setup container was not removed, so a process in it could still write the files."
+      )
 
   # What a member does about a run that stopped at a call to an adapter
   # (`Apiary.Adapters.Calls`), and what happened to the call, by its cause.

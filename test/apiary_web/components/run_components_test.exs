@@ -138,6 +138,25 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(%{reason: nil}) == nil
     end
 
+    test "reason_words says qory's four reasons for a read-only run, each in the catalogue" do
+      pot = File.read!(Path.expand("../../../priv/gettext/default.pot", __DIR__))
+
+      for {reason, words} <- [
+            {"read_needs_wall", "read-only run with no wall"},
+            {"read_needs_setup_outside", "setup runs inside the agent's container"},
+            {"read_needs_no_nested_docker", "image has nested Docker"},
+            {"read_needs_setup_removed", "setup container not removed"}
+          ] do
+        # As the run page's header, rail and timeline read it, and as the list's preview does.
+        ended = %Apiary.Runs.Run{state: "failed", reason: reason, exited_at: DateTime.utc_now()}
+
+        assert RunComponents.reason_words(%{reason: reason, state: "failed"}) == words
+        assert RunComponents.reason_words(ended) == words
+        assert RunComponents.exit_note(ended) == words
+        assert pot =~ ~s(\nmsgid "#{words}"\n), reason
+      end
+    end
+
     test "workflow_not_in_harness names the workflow and where the run's harness comes from" do
       alias Apiary.Dispatches.DispatchRun
       alias Apiary.Harnesses.RunHarness

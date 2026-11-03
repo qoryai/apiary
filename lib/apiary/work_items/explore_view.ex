@@ -47,7 +47,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # name}`, `Apiary.Harnesses.RunHarness`, the names of the run's organisation and
   # workspace), `workflow_gap`, for a run that ended `workflow_not_in_harness`, the
   # workflow its harness had no skill for and where that harness came from
-  # (`Apiary.Harnesses.WorkflowGap`), nil for any other run,
+  # (`Apiary.Harnesses.WorkflowGap`), nil for any other run, `read_needs`, for a run qory
+  # closed with a `read_needs_*` reason, the reason and whether the run's pool is the
+  # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run,
   # and by what it gave: `proposal`
   # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none; `understanding` and
   # `questions`, each `%{public_id: position, text: question, answer: answer or nil}`, for
@@ -88,6 +90,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.ReadNeeds
   alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
   @ends [:declined, :closed, :undone]
@@ -200,6 +203,7 @@ defmodule Apiary.WorkItems.ExploreView do
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
+      read_needs: ReadNeeds.of_run(step.run),
       proposal: nil,
       understanding: nil,
       questions: [],

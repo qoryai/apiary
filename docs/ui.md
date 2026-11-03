@@ -1902,8 +1902,22 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   address alone), "The harness is the workspace's harness." for a harness section that
   lists modules alone, or "The harness is the Qory harness."; a hidden harness has the
   first sentence alone. The work item shows the same under "The run did not
-  start.". Any other code is the run's starter's,
-  shown as given with spaces for underscores: "no longer needed".
+  start.". qory gives four codes for a read-only run it closes before a session joins
+  it: `read_needs_wall` reads "read-only run with no wall",
+  `read_needs_setup_outside` "setup runs inside the agent's container",
+  `read_needs_no_nested_docker` "image has nested Docker" and
+  `read_needs_setup_removed` "setup container not removed". The work item shows the
+  fix, then the cause, under "The run ended without a result.": "Set a wall in the
+  machine's forager.yaml, then start the run again. A read-only run needs a wall, and
+  this machine has none."; "Set wall.setup to outside in the machine's forager.yaml, or
+  remove it, then start the run again. A read-only run cannot run its setup inside the
+  agent's container."; "Choose an image without nested Docker in the workspace's policy
+  or the target's environment, then start the run again. A read-only run cannot use an
+  image with nested Docker." ("repository's" in a software workspace); and "Start the
+  run again. The setup container was not removed, so a process in it could still write
+  the files.". On the Qory Pool, whose forager.yaml a person in an organisation cannot
+  edit, "Contact support." replaces the fix of the first two. Any other code is the
+  run's starter's, shown as given with spaces for underscores: "no longer needed".
   A run a pool's claim registered whose machine never started it reads its cause in
   the meta line, the rail and the preview: "No machine was made: <the starter's reason>."
   when the starter released its dispatch, "The pool did not start a machine within 10
