@@ -14,7 +14,7 @@ defmodule Apiary.WorkItems.UndoCloseTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo, WorkItems}
-  alias Apiary.Adapters.Feed
+  alias Apiary.Adapters.{Collection, Feed}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
@@ -137,11 +137,19 @@ defmodule Apiary.WorkItems.UndoCloseTest do
     test "of a take in again of a closed work item: closed again, as it was", ctx do
       {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
       %{user: member} = member_fixture(ctx.scope)
+      member_scope = workspace_scope(member, ctx.scope.workspace)
+
+      Repo.get!(Collection, ctx.ticket.collection_id)
+      |> Ecto.Changeset.change(target_system: "moved.example.com", target_path: "acme/moved")
+      |> Repo.update!()
 
       {:ok, again} =
-        WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{owner_id: member.id})
+        WorkItems.take_in_again(member_scope, ctx.ticket.public_id, %{owner_id: member.id})
 
       assert again.owner_id == member.id
+      assert again.taken_in_by_id == member.id
+      assert again.taken_in_at != ctx.work_item.taken_in_at
+      assert {again.target_system, again.target_path} == {"moved.example.com", "acme/moved"}
 
       assert {:ok, back} = WorkItems.undo(ctx.scope, again)
       assert back.state == :closed
