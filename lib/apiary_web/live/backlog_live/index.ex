@@ -52,10 +52,10 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # and the ticket opens over the list (`ApiaryWeb.BacklogComponents.ticket/1`, frame
   # `:list`), read with the page's scope (`Apiary.Sources.Backlog.get_ticket/2`): an id of
   # no ticket of this Backlog opens nothing. Its Close, and the scrim, take the id away;
-  # the list keeps its page. An open ticket with no work item has the Take in block
+  # the list keeps its page. An open ticket with no work item has Take in
   # (`ApiaryWeb.BacklogComponents.take_in_block/1`).
   #
-  # **Take in.** The block's Take in, and a row's, take the ticket in
+  # **Take in.** The ticket's Take in, and a row's, take the ticket in
   # (`Apiary.WorkItems.take_in/3`) and lead to the new work item's page. A refusal is a
   # flash in the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), and the
   # page reads what it shows again. A row's Take in again brings its ended work item back
@@ -69,7 +69,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
   alias Apiary.{Access, Adapters, WorkItems}
-  alias Apiary.Lingo.Domain
   alias Apiary.Runs.Filters
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
@@ -278,9 +277,6 @@ defmodule ApiaryWeb.BacklogLive.Index do
             <BacklogComponents.take_in_block
               id="backlog-ticket-take-in"
               ticket_id={@ticket.id}
-              workspace={@current_scope.workspace.name}
-              harness_file={Domain.harness_file?(@current_scope.workspace)}
-              target_required={Domain.target_required?(@current_scope.workspace)}
               refused={@refused}
             />
           </:take_in>
@@ -816,7 +812,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
     end
   end
 
-  # An open ticket with no work item has the Take in block.
+  # An open ticket with no work item has Take in.
   defp take_in?(ticket), do: ticket.state == :open and is_nil(ticket.work_item)
 
   # The collections' word the ticket's facts take: the sources' one word, else none.

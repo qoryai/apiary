@@ -9867,11 +9867,6 @@ msgstr ""
 msgid "In %{workspace}: %{reason}"
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "In a software workspace, the ticket must be in a target assigned to %{workspace}."
-msgstr "In a software workspace, the ticket must be in a repository assigned to %{workspace}."
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "In attempt %{attempt} of %{of}, the agent writes a reply to the line."
@@ -13789,11 +13784,6 @@ msgid "Open"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "Open %{backlog}."
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Open %{integration}"
@@ -14455,11 +14445,6 @@ msgstr ""
 msgid "Prepare machine"
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "Press %{take_in}."
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Press Enter to open the stage beside the canvas."
@@ -14468,11 +14453,6 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Press Enter to open the stage beside the canvas. Move it with the up and down arrow keys."
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "Press a ticket's title. Its panel opens."
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -17753,12 +17733,7 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
-msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's target has a %{harness} or %{qory}."
-msgstr "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's repository has a %{harness} or %{qory}."
-
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow."
+msgid "Take in starts exploring this ticket."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

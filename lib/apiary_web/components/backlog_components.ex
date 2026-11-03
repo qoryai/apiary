@@ -285,7 +285,7 @@ defmodule ApiaryWeb.BacklogComponents do
   ## The ticket
 
   @doc """
-  One ticket, with its head, its meta line, its facts, the Take in block, its text and its
+  One ticket, with its head, its meta line, its facts, Take in, its text and its
   comments.
 
   `frame` is `:list` or `:full`:
@@ -300,7 +300,7 @@ defmodule ApiaryWeb.BacklogComponents do
       `close_patch`. Whether the dialog is modal, and its focus, are the page's, by width.
     * `:full` - the full ticket, a page: Backlog back (`back_path`), the head, the text
       and the comments, and beside them the facts, Filed by among them, the link out and
-      the Take in block.
+      Take in.
 
   The first fact is the collection the ticket is listed from, labelled with its source's
   word for one of its collections (`collection_noun`, `SourceComponents.collection/1`),
@@ -543,73 +543,37 @@ defmodule ApiaryWeb.BacklogComponents do
   ## Take in
 
   @doc """
-  The Take in block of a ticket, over the list and as a page (`ticket/1`'s `take_in`):
-  what Take in does and how, then Take in, a press of which sends `take_in` (`phx-click`,
-  an event name or a `Phoenix.LiveView.JS`) with the ticket's id as `phx-value-id`. To
-  whoever may not take a ticket in, `refused` says why in place of Take in.
-
-  The help names the workspace. Where the workspace's domain reads a target's harness file
-  (`Apiary.Lingo.Domain.harness_file?/1`), it says that one there stands in for the
-  workflow; where the domain needs a target (`Apiary.Lingo.Domain.target_required?/1`),
-  that the ticket must be in a repository assigned to the workspace.
+  Take in for a ticket, over the list and as a page (`ticket/1`'s `take_in`): Take in, a
+  press of which sends `take_in` (`phx-click`, an event name or a `Phoenix.LiveView.JS`)
+  with the ticket's id as `phx-value-id`, and beside it a hint that Take in starts
+  exploring the ticket. To whoever may not take a ticket in, `refused` says why in place
+  of both.
   """
-  attr :id, :string, required: true, doc: "the block's DOM id"
+  attr :id, :string, required: true, doc: "the row's DOM id"
   attr :ticket_id, :string, required: true, doc: "the ticket's public id, `\"tk_…\"`"
-  attr :workspace, :string, required: true, doc: "the workspace's name"
-  attr :harness_file, :boolean, default: false, doc: "whether the domain reads a harness file"
-  attr :target_required, :boolean, default: false, doc: "whether the domain needs a target"
   attr :take_in, :any, default: "take_in", doc: "Take in's `phx-click`"
   attr :refused, :string, default: nil, doc: "why the reader may not take it in; nil if they may"
 
   def take_in_block(assigns) do
     ~H"""
-    <div id={@id} class="q-bl-ti">
-      <div id={"#{@id}-help"} class="grid gap-1.5 text-[0.78125rem]/[1.1875rem] text-muted">
-        <p :if={@harness_file}>
-          <.rich text={
-            rich_gettext(
-              "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's target has a %{harness} or %{qory}.",
-              workspace: @workspace,
-              harness: {:code, "harness.yaml"},
-              qory: {:code, "qory.yaml"}
-            )
-          } />
-        </p>
-        <p :if={!@harness_file}>
-          {gettext(
-            "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow.",
-            workspace: @workspace
-          )}
-        </p>
-        <ol class="grid list-decimal gap-0.5 pl-5">
-          <li>
-            <.rich text={rich_gettext("Open %{backlog}.", backlog: {:b, gettext("Backlog")})} />
-          </li>
-          <li>{gettext("Press a ticket's title. Its panel opens.")}</li>
-          <li>
-            <.rich text={rich_gettext("Press %{take_in}.", take_in: {:b, gettext("Take in")})} />
-          </li>
-        </ol>
-        <p :if={@target_required}>
-          {gettext(
-            "In a software workspace, the ticket must be in a target assigned to %{workspace}.",
-            workspace: @workspace
-          )}
-        </p>
-      </div>
-      <div class="q-bl-ti-act">
+    <div id={@id} class="q-bl-ti-act">
+      <%= if @refused do %>
+        <p id={"#{@id}-refused"} class="text-[0.8125rem] text-muted">{@refused}</p>
+      <% else %>
         <.button
-          :if={!@refused}
           id={"#{@id}-button"}
           type="button"
           variant="primary"
           phx-click={@take_in}
           phx-value-id={@ticket_id}
+          aria-describedby={"#{@id}-hint"}
         >
           {gettext("Take in")}
         </.button>
-        <p :if={@refused} id={"#{@id}-refused"} class="text-[0.8125rem] text-muted">{@refused}</p>
-      </div>
+        <p id={"#{@id}-hint"} class="text-[0.8125rem] text-muted">
+          {gettext("Take in starts exploring this ticket.")}
+        </p>
+      <% end %>
     </div>
     """
   end
