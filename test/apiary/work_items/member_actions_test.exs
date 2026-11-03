@@ -3,7 +3,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   # `explore_again/3`): each where Explore waits for it, with its records, its event, its
   # next run where it queues one, its entry in the trail, and each refusal; the answers a
   # take in's next run reads (`take_in_answers/2`, through `Apiary.Dispatches.Inputs`);
-  # and the stage a decline and a close record, a decline refused once confirmed.
+  # and the stage a close records.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -512,27 +512,24 @@ defmodule Apiary.WorkItems.MemberActionsTest do
     end
   end
 
-  describe "the stage a decline and a close record" do
-    test "a decline at Explore, and at Confirm", ctx do
+  describe "the stage a close records" do
+    test "a close at Explore, and at Confirm", ctx do
       explore_run_fixture(ctx.work_item, end_cause: :lost)
-      {:ok, _} = WorkItems.decline(ctx.scope, ctx.work_item)
-      assert {:declined, %{"stage" => "explore"}} = List.last(kinds(ctx.work_item))
+      {:ok, _} = WorkItems.close(ctx.scope, ctx.work_item)
+      assert {:closed, %{"stage" => "explore"}} = List.last(kinds(ctx.work_item))
 
       proposed = work_item_fixture(ctx.scope, external_ref: "acme/shop#13")
       proposed!(proposed)
-      {:ok, declined} = WorkItems.decline(ctx.scope, proposed)
-      assert {:declined, %{"stage" => "confirm"}} = List.last(kinds(proposed))
+      {:ok, closed} = WorkItems.close(ctx.scope, proposed)
+      assert {:closed, %{"stage" => "confirm"}} = List.last(kinds(proposed))
 
-      assert WorkItems.explore(ctx.scope, declined) |> Map.take([:status, :stage]) ==
-               %{status: :declined, stage: :confirm}
+      assert WorkItems.explore(ctx.scope, closed) |> Map.take([:status, :stage]) ==
+               %{status: :closed, stage: :confirm}
     end
 
-    test "once confirmed, a decline is refused, and a close records Shape", ctx do
+    test "once confirmed, a close records Shape", ctx do
       proposed!(ctx.work_item)
       {:ok, _} = WorkItems.confirm(ctx.scope, ctx.work_item, 1)
-
-      assert WorkItems.decline(ctx.scope, ctx.work_item) == {:error, :confirmed}
-      assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
 
       {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
       assert {:closed, %{"stage" => "shape"}} = List.last(kinds(ctx.work_item))

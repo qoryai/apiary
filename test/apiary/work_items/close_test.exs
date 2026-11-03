@@ -139,15 +139,14 @@ defmodule Apiary.WorkItems.CloseTest do
       end
     end
 
-    test "leaves closed, declined and undone work items as they are", ctx do
+    test "leaves closed and undone work items as they are", ctx do
       at = ~U[2026-10-16 12:00:00.000000Z]
       user_id = ctx.first.user.id
 
       ended =
         for {ref, changes} <- [
               {"acme/shop#1", [state: :closed, closed_at: at, closed_by_id: user_id]},
-              {"acme/shop#2", [state: :declined, declined_at: at, declined_by_id: user_id]},
-              {"acme/shop#3", [state: :undone]}
+              {"acme/shop#2", [state: :undone]}
             ] do
           work_item = taken!(ctx.first, ctx.first_connection, external_ref: ref)
           Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: changes)

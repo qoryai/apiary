@@ -555,7 +555,7 @@ defmodule Apiary.Retention do
   # member. The job clears it, `result` set to NULL and nothing else, its outcome kept,
   # where the run registered for it is past the events cut-off, as `due/6` reads it
   # whether or not its events are pruned yet, and its take in no longer waits: the take in
-  # was answered, for this run, or confirmed; the work item was declined, closed or undone
+  # was answered, for this run, or confirmed; the work item was closed or undone
   # (no longer `:exploring`), or taken in again (its take in is later); or a later run of
   # the take in was queued. Each is kept for good once written, so a result cleared is
   # never waited for again. One statement over at most `:batch` rows at a time, a short

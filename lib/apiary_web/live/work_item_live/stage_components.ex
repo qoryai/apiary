@@ -15,7 +15,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   #   * `"stage_ask_changes"`, `"stage_request_changes"` - Request changes opens its form,
   #     which sends `note` and `version`, the artifact version it is about or `""`;
   #   * `"stage_resolve"` - an escalation action: `how` (`accept`, `another_round`,
-  #     `move_back`, `close` or `decline`), `note`, and `stage` for `move_back`;
+  #     `move_back` or `close`), `note`, and `stage` for `move_back`;
   #   * `"stage_move"` - Move back while the stage waits for inputs: `stage` and `note`.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -528,9 +528,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <div class="q-wi-acts flex-wrap">
           <.button id={"#{@id}-close"} type="submit" name="how" value="close">
             {gettext("Close")}
-          </.button>
-          <.button id={"#{@id}-decline"} type="submit" name="how" value="decline">
-            {gettext("Decline")}
           </.button>
         </div>
       </form>

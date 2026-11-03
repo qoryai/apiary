@@ -872,11 +872,6 @@ msgstr ""
 msgid "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, closed."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined."
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{integration} is still sending its %{collections}…"
@@ -947,11 +942,6 @@ msgstr ""
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{items} that are closed on %{integration}."
-msgstr ""
-
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{items} whose work item a member declined after Explore. They stay open on %{integration}, and Open leaves them out. Take in again brings back the same work item."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -1135,26 +1125,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} connects to Qory Apiary with a key; its machines share one. Choose one of two ways to give it one."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} declined this work item %{when}, at Confirm."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} declined this work item %{when}, at Explore."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} declined this work item at Confirm"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} declined this work item at Explore"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -1406,11 +1376,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5015,8 +4980,8 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Answer Qory's question, and Explore runs again with your answer. Or decline the work item."
-msgid_plural "Answer Qory's %{number} questions, and Explore runs again with your answers. Or decline the work item."
+msgid "Answer Qory's question, and Explore runs again with your answer."
+msgid_plural "Answer Qory's %{number} questions, and Explore runs again with your answers."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -6553,6 +6518,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Close the work item if it is not wanted."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Close work item"
 msgstr ""
 
@@ -6732,7 +6702,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Confirm Qory's proposal, change it first, or decline the work item."
+msgid "Confirm Qory's proposal, or write what to change."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7328,24 +7298,6 @@ msgstr ""
 msgid "Declared by the harness"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "Decline"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Decline work item #%{number}?"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#: lib/apiary_web/components/work_item_list_components.ex
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Declined"
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Declined a work item"
@@ -7354,27 +7306,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Declined a work item to resolve an escalation"
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Declined by %{name}"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Declined by %{name} %{when}"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Declined by you"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Declined by you %{when}"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -9899,16 +9830,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "If the work item is not wanted, decline it. Otherwise, close it."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "If the work item is not wanted, decline it. To explore again, close it and use Take in again in the Backlog: the run count starts again, without this take in's answers."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -19744,11 +19665,6 @@ msgstr ""
 msgid "The work item stays in Qory Apiary, closed."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "The work item stays in Qory Apiary, declined."
-msgstr ""
-
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace %{name} is deleted and is purged on %{date}, with its runs and access keys. Until then an owner or an admin can cancel the deletion."
@@ -20237,8 +20153,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog."
-msgid_plural "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog."
+msgid "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog."
+msgid_plural "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -20372,6 +20288,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "To change a value without a field, whoever runs Qory Apiary changes the setting named beside it and starts it again."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "To explore again, close the work item and use Take in again in the Backlog: the run count starts again, without this take in's answers."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail_form.ex
@@ -21500,11 +21421,6 @@ msgstr ""
 msgid "Work item #%{number} is no longer in this workspace, so it takes no new versions."
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "Work item #%{number}, declined by %{name}"
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Work item %{number}, %{title}, stays on its version: its stage %{stage} is not in version %{version}."
@@ -21528,11 +21444,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Work item comment deleted"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Work item declined"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -21568,11 +21479,6 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Work items"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_list_components.ex
-#, elixir-autogen, elixir-format
-msgid "Work items a member declined. Their %{items} stay in the Backlog, where Take in again brings one back."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
@@ -22160,26 +22066,6 @@ msgctxt "plain"
 msgid "You create the first account of %{name} and its organisation. As the instance admin, you connect %{name} to mail and to the systems that bring in work, then set up the organisation's first workspace."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "You declined this work item %{when}, at Confirm."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "You declined this work item %{when}, at Explore."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "You declined this work item at Confirm"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "You declined this work item at Explore"
-msgstr ""
-
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards."
@@ -22307,11 +22193,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

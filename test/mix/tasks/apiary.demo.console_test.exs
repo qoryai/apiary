@@ -347,7 +347,6 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert counts == %{
              open: open - 7,
              taken: 7,
-             declined: 0,
              closed: closed,
              total: open + closed
            }

@@ -78,7 +78,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"target.set_further_repositories"), do: gettext("Also read")
   def label(:"work_item.take_in"), do: gettext("Work item taken in")
   def label(:"work_item.undo"), do: gettext("Take in undone")
-  def label(:"work_item.decline"), do: gettext("Work item declined")
   def label(:"work_item.close"), do: gettext("Work item closed")
   def label(:"work_item.answer"), do: gettext("Work item questions answered")
   def label(:"work_item.confirm"), do: gettext("Work item proposal confirmed")
@@ -133,7 +132,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
-  # work items (a take in, its undo, a decline, a close, an answer to Qory's questions, a
+  # work items (a take in, its undo, a close, an answer to Qory's questions, a
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the release of a claimed
   # run, the choosing of what a target's runs also read, the setting of a model choice or
@@ -157,7 +156,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         action in [
           :"work_item.take_in",
           :"work_item.undo",
-          :"work_item.decline",
           :"work_item.close",
           :"work_item.answer",
           :"work_item.confirm",
@@ -359,6 +357,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # whichever action its writer checked.
   def sentence(_action, %{subject_kind: "time_limit", details: %{"change" => change}}, _names),
     do: said_time_limit(change)
+
+  # An entry from before this action went: nothing writes it any more, and `Apiary.Access`
+  # has no such action, so `Apiary.Audit.action/1` reads nil for it.
+  def sentence(nil, %{action: "work_item.decline"}, _names), do: gettext("Declined a work item")
 
   def sentence(action, entry, names) do
     details = entry.details || %{}
@@ -612,7 +614,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"work_item.undo", _details, _actor),
     do: gettext("Undid a take in, before a run started")
 
-  defp said(:"work_item.decline", _details, _actor), do: gettext("Declined a work item")
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
 
   # The count of questions answered, one where the entry says none.

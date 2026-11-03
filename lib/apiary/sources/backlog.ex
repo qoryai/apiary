@@ -30,10 +30,9 @@ defmodule Apiary.Sources.Backlog do
   #
   # **Views** (`list_tickets/2`): `:open`, the tickets open at their source with no work
   # item, or one undone or closed; `:taken`, the open ones whose work item is live;
-  # `:declined`, the open ones whose work item was declined; `:closed`, every ticket
-  # closed at its source; `:all`, every one. An open ticket is in one of Open, Taken in
-  # and Declined. The counts of each view, and the total, come from one grouped query,
-  # under the same search and filters as the page, without its view.
+  # `:closed`, every ticket closed at its source; `:all`, every one. An open ticket is in
+  # one of Open and Taken in. The counts of each view, and the total, come from one
+  # grouped query, under the same search and filters as the page, without its view.
   #
   # **The facts** (`backlog_facts/1`) are what an empty Backlog says why it is empty
   # from: the integrations that bring items the organisation is connected through, each
@@ -71,7 +70,7 @@ defmodule Apiary.Sources.Backlog do
   @max_offered 100
   @max_name 100
 
-  @views [:open, :taken, :declined, :closed, :all]
+  @views [:open, :taken, :closed, :all]
   @sorts [:updated, :created, :comments]
   @orders [:desc, :asc]
   @params [
@@ -94,7 +93,7 @@ defmodule Apiary.Sources.Backlog do
   @cursor_seconds -62_135_596_800..253_402_300_799
 
   @typedoc "A view of the Backlog."
-  @type view :: :open | :taken | :declined | :closed | :all
+  @type view :: :open | :taken | :closed | :all
 
   @typedoc "Who filed a ticket, or wrote a comment, as the components draw them."
   @type filer :: %{name: String.t(), kind: :person | :bot}
@@ -107,18 +106,13 @@ defmodule Apiary.Sources.Backlog do
   @type integration :: %{name: String.t(), id: String.t()}
 
   @typedoc """
-  A ticket's work item, as a row shows it: its number in the workspace, its state, its
-  page in the workspace, and, when declined, who declined it, as
-  `ApiaryWeb.People.email/1` gives an account: the email address of an account in use,
-  priya@example.com, "Former member" for a deleted one, nil where no person declined it.
-  `declined_by` is nil for a work item that is not declined. One of another workspace has
-  its state alone.
+  A ticket's work item, as a row shows it: its number in the workspace, its state and its
+  page in the workspace. One of another workspace has its state alone.
   """
   @type work_item :: %{
           number: pos_integer | nil,
           state: Apiary.WorkItems.State.state(),
-          path: String.t() | nil,
-          declined_by: String.t() | nil
+          path: String.t() | nil
         }
 
   @typedoc "A ticket as the Backlog's list draws it."
@@ -179,7 +173,6 @@ defmodule Apiary.Sources.Backlog do
   @type counts :: %{
           open: non_neg_integer,
           taken: non_neg_integer,
-          declined: non_neg_integer,
           closed: non_neg_integer,
           total: non_neg_integer
         }
@@ -274,7 +267,7 @@ defmodule Apiary.Sources.Backlog do
           ask: %{install: [String.t()], assign: [String.t()], switch: [String.t()]}
         }
 
-  @no_counts %{open: 0, taken: 0, declined: 0, closed: 0, total: 0}
+  @no_counts %{open: 0, taken: 0, closed: 0, total: 0}
   @no_rows %{rows: [], next: nil, prev: nil, first: 0}
   @no_page Map.put(@no_rows, :counts, @no_counts)
 
@@ -516,9 +509,6 @@ defmodule Apiary.Sources.Backlog do
 
   defp view(query, :taken),
     do: where(query, [item: i, work_item: w], i.state == :open and w.state == :exploring)
-
-  defp view(query, :declined),
-    do: where(query, [item: i, work_item: w], i.state == :open and w.state == :declined)
 
   defp view(query, :closed), do: where(query, [item: i], i.state == :closed)
   defp view(query, :all), do: query
@@ -780,21 +770,19 @@ defmodule Apiary.Sources.Backlog do
     end)
   end
 
-  # The view a ticket's state and its work item's put it in: an open one in one of Open,
-  # Taken in and Declined, a closed one in Closed.
+  # The view a ticket's state and its work item's put it in: an open one in one of Open
+  # and Taken in, a closed one in Closed.
   defp held(counts, :open, work_item_state, n) when work_item_state in [nil, :undone, :closed],
     do: Map.update!(counts, :open, &(&1 + n))
 
   defp held(counts, :open, :exploring, n), do: Map.update!(counts, :taken, &(&1 + n))
-  defp held(counts, :open, :declined, n), do: Map.update!(counts, :declined, &(&1 + n))
   defp held(counts, :closed, _work_item_state, n), do: Map.update!(counts, :closed, &(&1 + n))
 
   defp select_row(query, %Scope{organisation: organisation, workspace: workspace}) do
     path = "/" <> organisation.slug <> "/" <> workspace.slug <> "/work/"
 
     query
-    |> join(:left, [work_item: w], u in User, as: :declined_by, on: u.id == w.declined_by_id)
-    |> select([item: i, collection: c, adapter: n, work_item: w, declined_by: u], %{
+    |> select([item: i, collection: c, adapter: n, work_item: w], %{
       id: i.public_id,
       key: i.key,
       title: i.title,
@@ -815,7 +803,6 @@ defmodule Apiary.Sources.Backlog do
       work_item_here: w.workspace_id == ^workspace.id,
       work_item_number: w.number,
       work_item_state: w.state,
-      declined_by: u,
       path: ^path
     })
   end
@@ -846,16 +833,12 @@ defmodule Apiary.Sources.Backlog do
     %{
       number: selected.work_item_number,
       state: selected.work_item_state,
-      path: selected.path <> Integer.to_string(selected.work_item_number),
-      declined_by:
-        if(selected.work_item_state == :declined,
-          do: People.email(selected.declined_by)
-        )
+      path: selected.path <> Integer.to_string(selected.work_item_number)
     }
   end
 
   defp work_item(selected),
-    do: %{number: nil, state: selected.work_item_state, path: nil, declined_by: nil}
+    do: %{number: nil, state: selected.work_item_state, path: nil}
 
   # The components' word for who wrote it: a person, or a bot for anything else.
   defp kind(:person), do: :person

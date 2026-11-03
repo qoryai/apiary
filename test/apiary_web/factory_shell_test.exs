@@ -413,7 +413,6 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"work_item.take_in", "Work item taken in"} in options
       assert {"work_item.undo", "Take in undone"} in options
-      assert {"work_item.decline", "Work item declined"} in options
       assert {"work_item.close", "Work item closed"} in options
       assert {"work_item.answer", "Work item questions answered"} in options
       assert {"work_item.confirm", "Work item proposal confirmed"} in options
@@ -445,7 +444,6 @@ defmodule ApiaryWeb.FactoryShellTest do
           action not in [
             :"work_item.take_in",
             :"work_item.undo",
-            :"work_item.decline",
             :"work_item.close",
             :"work_item.answer",
             :"work_item.confirm",

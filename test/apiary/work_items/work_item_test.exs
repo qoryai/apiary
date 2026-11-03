@@ -115,14 +115,15 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert %WorkItem{number: 1} = work_item_fixture(elsewhere)
     end
 
-    test "the state is exploring, declined, closed or undone; only a closed one has its closing",
-         ctx do
+    test "the state is exploring, closed or undone; only a closed one has its closing", ctx do
       %{scope: scope, work_item: item} = ctx
       closer = Ecto.UUID.dump!(scope.user.id)
 
-      refused("work_items_state_check", fn ->
-        update!("work_items", item.id, "state = 'shipped'")
-      end)
+      for state <- ~w(shipped declined) do
+        refused("work_items_state_check", fn ->
+          update!("work_items", item.id, "state = '#{state}'")
+        end)
+      end
 
       for assignments <- [
             "state = 'closed'",
@@ -137,14 +138,6 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end)
 
       assert %{num_rows: 1} = update!("work_items", item.id, "state = 'undone'")
-
-      refused("work_items_closed_check", fn ->
-        update!(
-          "work_items",
-          item.id,
-          "state = 'declined', declined_at = now(), closed_at = now()"
-        )
-      end)
 
       assert %{num_rows: 1} =
                update!(
@@ -289,46 +282,6 @@ defmodule Apiary.WorkItems.WorkItemTest do
 
       refused("take_in", fn -> update!("work_items", item.id, "take_in = NULL") end)
       assert %{num_rows: 1} = update!("work_items", item.id, "take_in = 2")
-    end
-
-    test "only a declined one has its declining, and the person only with the time", ctx do
-      %{scope: scope, work_item: item} = ctx
-      decliner = Ecto.UUID.dump!(scope.user.id)
-
-      for {assignments, params} <- [
-            {"state = 'declined'", []},
-            {"declined_at = now()", []},
-            {"declined_by_id = $2", [decliner]},
-            {"state = 'declined', declined_by_id = $2", [decliner]}
-          ] do
-        refused("work_items_declined_check", fn ->
-          update!("work_items", item.id, assignments, params)
-        end)
-      end
-
-      assert %{num_rows: 1} =
-               update!(
-                 "work_items",
-                 item.id,
-                 "state = 'declined', declined_at = now(), declined_by_id = $2",
-                 [decliner]
-               )
-
-      # Declined by no person: the time alone.
-      assert %{num_rows: 1} = update!("work_items", item.id, "declined_by_id = NULL")
-
-      assert %WorkItem{state: :declined, declined_at: %DateTime{}} =
-               Repo.get!(WorkItem, item.id)
-
-      refused("work_items_declined_check", fn ->
-        update!("work_items", item.id, "state = 'exploring'")
-      end)
-
-      refused("work_items_declined_by_id_fkey", fn ->
-        update!("work_items", item.id, "declined_by_id = $2", [
-          Ecto.UUID.dump!(Ecto.UUID.generate())
-        ])
-      end)
     end
 
     test "a work item's workspace is of its organisation", %{work_item: item} do
@@ -562,15 +515,17 @@ defmodule Apiary.WorkItems.WorkItemTest do
   end
 
   describe "work_item_events" do
-    test "the kind is taken_in, declined, closed, undone, answered, confirmed or explore_again",
+    test "the kind is taken_in, closed, undone, answered, confirmed or explore_again",
          %{work_item: item} do
       event = event_of(item)
 
-      refused("work_item_events_kind_check", fn ->
-        update!("work_item_events", event.id, "kind = 'shaped'")
-      end)
+      for kind <- ~w(shaped declined) do
+        refused("work_item_events_kind_check", fn ->
+          update!("work_item_events", event.id, "kind = '#{kind}'")
+        end)
+      end
 
-      for kind <- ~w(declined closed undone answered confirmed explore_again) do
+      for kind <- ~w(closed undone answered confirmed explore_again) do
         assert %{num_rows: 1} = update!("work_item_events", event.id, "kind = $2", [kind])
       end
     end

@@ -22,7 +22,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     the title alone without a key (`BacklogComponents.full_form/1`);
   #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory wrote some), `:used_up`
   #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
-  #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
+  #     nothing to show); then `:confirm`, `:shape`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
   #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
   #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause`,
@@ -30,7 +30,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
   #   * `:owner` - a person, or `nil`;
-  #   * `:ended_by`, `:ended_at` - who declined, closed or undid it, and when; `nil` for
+  #   * `:ended_by`, `:ended_at` - who closed or undid it, and when; `nil` for
   #     `:ended_by` where the instance closed it, with `:ended_reason` saying why:
   #     `:adapter_removed`, when its integration was removed. A close by the instance for
   #     any other reason, or none, has no words yet: the parts that name who closed it
@@ -56,8 +56,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   #
   # The events a component sends, for the page to handle:
   #
-  #   * `"undo"`, `"confirm"`, `"ask_decline"`, `"decline"`, `"ask_close"`, `"close"`,
-  #     `"explore_again"` - with `phx-value-number`, the work item's number;
+  #   * `"undo"`, `"confirm"`, `"ask_close"`, `"close"`, `"explore_again"` - with
+  #     `phx-value-number`, the work item's number;
   #   * `"answer"` - the questions form: `number`, and `answers`, a map of each question's
   #     `public_id` to its answer;
   #   * `"change_proposal"`, `"confirm_changes"` - the edit page's form, on change and on
@@ -68,7 +68,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `"comment"` - the composer's form, its text as `body`;
   #   * `"show_earlier_comments"` - the Ticket tab's earlier comments.
   #
-  # A question (decline, close, delete a comment) shows in place while the page says so
+  # A question (close, delete a comment) shows in place while the page says so
   # (`asking`, a comment's `state`); its Cancel and Escape do `cancel`, a path to patch to
   # or a JS command, `JS.push("cancel_question")` unless given.
   #
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.SourceComponents
 
   @stages [:explore, :confirm, :shape]
-  @ended [:declined, :closed, :undone]
+  @ended [:closed, :undone]
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
   # The end causes of a run that ended before it started: at its claim, because the claim
@@ -127,7 +127,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     "limit" => :limit,
     "ref" => :ref
   }
-  @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
 
   # The most UTF-16 units a field takes, the unit a browser's `maxlength` counts: twice
@@ -154,7 +153,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline"
+    doc: "whether the reader may answer or confirm"
 
   attr :class, :any, default: nil
 
@@ -173,12 +172,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Explore
   is running), `:wait` (waits for the reader), `:wait_other` (waits for another member),
   `:err` (Explore's run gave no result: a red ring), `:ready` (Ready for Shape),
-  `:declined` and `:closed` (closed or undone). Decorative: its words are always beside
-  it.
+  `:closed` (closed or undone). Decorative: its words are always beside it.
   """
   attr :kind, :atom,
     required: true,
-    values: [:todo, :run, :wait, :wait_other, :err, :ready, :declined, :closed]
+    values: [:todo, :run, :wait, :wait_other, :err, :ready, :closed]
 
   attr :class, :any, default: nil
 
@@ -213,12 +211,6 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp words_of(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
   defp words_of(%{status: :shape}), do: gettext("Ready for Shape")
 
-  defp words_of(%{status: :declined, ended_by: by}) do
-    if you?(by),
-      do: gettext("Declined by you"),
-      else: gettext("Declined by %{name}", name: by.name)
-  end
-
   defp words_of(%{status: :closed, ended_by: nil} = work_item) do
     if instance_removed?(work_item), do: gettext("Closed when its integration was removed")
   end
@@ -248,7 +240,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: :err
 
   defp mark_of(%{status: :shape}, _can_act), do: :ready
-  defp mark_of(%{status: :declined}, _can_act), do: :declined
   defp mark_of(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
 
   @doc false
@@ -365,7 +356,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline"
+    doc: "whether the reader may answer or confirm"
 
   attr :stage_status, :map,
     default: nil,
@@ -450,9 +441,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   The stages, Explore, Confirm and Shape, in order: those before the work item's stage
   done, its stage the current step (`aria-current="step"`), amber while it waits for a
-  member: at Confirm, for answers, or at the run limit. An ended work item has no current step: a declined one's stage is marked with
-  a cross, and the end mark beside the stages says how it ended: Closed, Declined or
-  Undone.
+  member: at Confirm, for answers, or at the run limit. An ended work item has no current
+  step, and the end mark beside the stages says how it ended: Closed or Undone.
   """
   attr :id, :string, default: "work-item-stages"
   attr :work_item, :map, required: true, doc: "the work item: `:status`, and `:stage` if ended"
@@ -468,7 +458,6 @@ defmodule ApiaryWeb.WorkItemComponents do
           cond do
             i < at -> :done
             i == at and not ended -> :now
-            i == at and work_item.status == :declined -> :stop
             true -> :todo
           end
 
@@ -500,8 +489,6 @@ defmodule ApiaryWeb.WorkItemComponents do
             <%= case stage.state do %>
               <% :done -> %>
                 <.icon name="hero-check-micro" class="size-3" />
-              <% :stop -> %>
-                <.icon name="hero-x-mark-micro" class="size-3" />
               <% _ -> %>
                 {stage.n}
             <% end %>
@@ -517,11 +504,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp end_icon(:undone), do: "hero-arrow-uturn-left-micro"
-  defp end_icon(:declined), do: "hero-minus-circle-micro"
   defp end_icon(:closed), do: "hero-x-circle-micro"
 
   defp end_word(:undone), do: gettext("Undone")
-  defp end_word(:declined), do: gettext("Declined")
   defp end_word(:closed), do: gettext("Closed")
 
   ## The step card
@@ -534,8 +519,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       with Qory's bee; who took it in and when (the work item's `:taken_in_by` and
       `:taken_in_at`). With `can_undo`, that the reader can undo this until a run starts,
       Undo (`"undo"`), and what undoing does: a first take in's, or an undone work item's
-      taken in again, takes Qory's label off the ticket; a declined or closed one's taken
-      in again (`previous`) goes back to declined or closed, and nothing is sent to the
+      taken in again, takes Qory's label off the ticket; a closed one's taken
+      in again (`previous`) goes back to closed, and nothing is sent to the
       ticket. After the integration's uninstall (`uninstalled`), that nothing changes on
       the ticket, which keeps Qory's label and comment.
     * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Qory
@@ -544,37 +529,33 @@ defmodule ApiaryWeb.WorkItemComponents do
       `%{attempt:, path:, started_at:, answers_by:}`), and when the run started; the attempt
       number links the run's page where `path` is given.
     * Explore, questions (`:questions`): how many questions Qory wrote; with `can_act`,
-      that answering them explores again, Answer the questions (a link to Explore's tab,
-      `explore_path`, where it is given) and Decline (`"ask_decline"`); without, that it
-      waits for a member to answer.
+      that answering them explores again, and Answer the questions (a link to Explore's
+      tab, `explore_path`, where it is given); without, that it waits for a member to
+      answer.
     * Explore, no result (`:no_result`, `:lost`, `:cancelled`): what happened to the run;
       with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
-      the take in, and Decline.
+      the take in.
     * Explore, the run limit (`:used_up`, and questions or no result at the take in's
-      last run): that the take in used its runs, and why Qory cannot explore again; with `can_act`, the two ways on, Decline and, with
-      `can_close`, Close work item… (`"ask_close"`).
+      last run): that the take in used its runs, and why Qory cannot explore again; with
+      `can_act`, the way on and, with `can_close`, Close work item… (`"ask_close"`).
     * Confirm: Qory's proposal waits; Read Qory's proposal (`explore_path`), Confirm
-      (`"confirm"`), Change (the edit page, `edit_path`) and Decline (`"ask_decline"`).
+      (`"confirm"`) and Change (the edit page, `edit_path`).
       Without `can_act`, whose turn it is: the work item's `:owner`, by name, or "you"
       where the owner is the reader.
     * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
 
-  With `asking: :decline`, the Decline question takes the place of the card's words and
-  buttons, wherever Decline is offered: its line, Decline (`"decline"`) and Cancel.
-
   While its ticket's repository keeps its tickets out of the Backlog (`backlog_off`),
   Take in again cannot be reached there, so no line says it can.
 
-  A test work item (`:test`) has no ticket: its lines say nothing of one, and its
-  Decline question says only that it stays in Qory Apiary, declined.
+  A test work item (`:test`) has no ticket: its lines say nothing of one.
 
   `:run` is the latest run of the take in: `:attempt` (its place, from 1) and `:of` (the
   most a take in has), `:id` and `:path`, `:started_at`, `:answers_by` (the members whose
   answers it reads, people), `:questions` (what it asked, a list) and `:outcome` (`:error`,
   `:none` or `:refused` for a run without a result; `:questions` for one that asked).
 
-  Undo is there only with `can_undo`; Confirm, Change, Decline, Run Explore again and the
-  Decline question only with `can_act`.
+  Undo is there only with `can_undo`; Confirm, Change and Run Explore again only with
+  `can_act`.
   """
   attr :id, :string, default: "work-item-step"
   attr :work_item, :map, required: true, doc: "the work item"
@@ -590,13 +571,13 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :can_act, :boolean,
     default: false,
-    doc: "whether the reader may answer, confirm or decline, or run Explore again"
+    doc: "whether the reader may answer, confirm, close at the run limit, or run Explore again"
 
   attr :can_close, :boolean, default: false, doc: "whether the reader may close it"
 
   attr :previous, :atom,
     default: nil,
-    values: [nil, :declined, :closed, :undone],
+    values: [nil, :closed, :undone],
     doc: "how the work item ended before it was taken in again; nil for a first take in"
 
   attr :explore_path, :string,
@@ -604,8 +585,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc: "Explore's tab, linked from the Ticket and Thread tabs; nil on Explore's tab"
 
   attr :edit_path, :string, default: nil, doc: "the edit page, `/work/:number/explore/edit`"
-  attr :asking, :atom, default: nil, values: [nil, :decline], doc: "the question showing"
-  attr :cancel, :any, default: nil, doc: "what the question's Cancel does"
 
   attr :item_noun, :map,
     default: nil,
@@ -635,8 +614,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         mine: hot?(work_item),
         ask: hot?(work_item) or (status in [:questions, :used_up] and assigns.can_act),
         run: work_item[:run],
-        item: SourceComponents.item(assigns.item_noun),
-        cancel: assigns.cancel || JS.push("cancel_question")
+        item: SourceComponents.item(assigns.item_noun)
       )
 
     ~H"""
@@ -665,8 +643,6 @@ defmodule ApiaryWeb.WorkItemComponents do
         previous={@previous}
         explore_path={@explore_path}
         edit_path={@edit_path}
-        asking={@asking}
-        cancel={@cancel}
         item={@item}
         now={@now}
         queued_of={@queued_of}
@@ -730,58 +706,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :previous, :atom, required: true
   attr :explore_path, :string, required: true
   attr :edit_path, :string, required: true
-  attr :asking, :atom, required: true
-  attr :cancel, :any, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
   attr :queued_of, :integer, default: nil
-
-  defp step_body(%{status: status, asking: :decline, can_act: true} = assigns)
-       when status in @declinable do
-    ~H"""
-    <.inline_confirm
-      id={"#{@id}-decline"}
-      class="q-wi-ask"
-      question={gettext("Decline work item #%{number}?", number: @number)}
-      cancel={@cancel}
-    >
-      <%= cond do %>
-        <% @work_item[:test] -> %>
-          {gettext("The work item stays in Qory Apiary, declined.")}
-        <% @uninstalled -> %>
-          {gettext(
-            "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined.",
-            integration: @integration,
-            item: @item
-          )}
-        <% @backlog_off -> %>
-          {gettext(
-            "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there.",
-            integration: @integration,
-            item: @item
-          )}
-        <% true -> %>
-          {gettext(
-            "The %{item} stays open on %{integration} with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog.",
-            integration: @integration,
-            item: @item
-          )}
-      <% end %>
-      <:action>
-        <.button
-          id={"#{@id}-decline-go"}
-          type="button"
-          variant="danger"
-          size="xs"
-          phx-click="decline"
-          phx-value-number={@number}
-        >
-          {gettext("Decline")}
-        </.button>
-      </:action>
-    </.inline_confirm>
-    """
-  end
 
   # A later run of the take in: what it reads, with whose answers, and which run is
   # queued. Undo is only until the first run of a take in starts.
@@ -916,8 +843,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(assigns.can_act,
             do:
               ngettext(
-                "Answer Qory's question, and Explore runs again with your answer. Or decline the work item.",
-                "Answer Qory's %{number} questions, and Explore runs again with your answers. Or decline the work item.",
+                "Answer Qory's question, and Explore runs again with your answer.",
+                "Answer Qory's %{number} questions, and Explore runs again with your answers.",
                 n,
                 number: number
               ),
@@ -942,9 +869,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
     <p :if={!@can_act} id={"#{@id}-waits"} class="q-wi-reader">{@waits}</p>
     <.go_link :if={@can_act} id={"#{@id}-explore"} path={@explore_path} words={@go} />
-    <div :if={@can_act} class="q-wi-acts">
-      <.decline_button id={@id} number={@number} />
-    </div>
     """
   end
 
@@ -971,22 +895,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <p :if={@line} id={"#{@id}-line"}><.rich text={@line} /></p>
     <p :if={@can_act && @backlog_off} id={"#{@id}-ways"}>
-      {gettext("If the work item is not wanted, decline it. Otherwise, close it.")}
+      {gettext("Close the work item if it is not wanted.")}
     </p>
     <p :if={@can_act && !@backlog_off} id={"#{@id}-ways"}>
       {gettext(
-        "If the work item is not wanted, decline it. To explore again, close it and use Take in again in the Backlog: the run count starts again, without this take in's answers."
+        "To explore again, close the work item and use Take in again in the Backlog: the run count starts again, without this take in's answers."
       )}
     </p>
     <div :if={@can_act} class="q-wi-acts">
-      <.button
-        id={"#{@id}-decline"}
-        type="button"
-        phx-click="ask_decline"
-        phx-value-number={@number}
-      >
-        {gettext("Decline")}
-      </.button>
       <.button
         :if={@can_close}
         id={"#{@id}-close"}
@@ -1027,7 +943,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       >
         <.icon name="hero-arrow-path-micro" class="size-3.5" />{gettext("Run Explore again")}
       </.button>
-      <.decline_button id={@id} number={@number} />
     </div>
     <p :if={@can_act && @next} id={"#{@id}-next"} class="q-wi-hint">{@next}</p>
     """
@@ -1043,7 +958,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         line:
           cond do
             assigns.can_act ->
-              gettext("Confirm Qory's proposal, change it first, or decline the work item.")
+              gettext("Confirm Qory's proposal, or write what to change.")
 
             you?(owner) ->
               gettext("Next, you confirm Qory's proposal or decline the work item.")
@@ -1079,7 +994,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.button :if={@edit_path} id={"#{@id}-change"} navigate={@edit_path}>
         <.icon name="hero-pencil-square-micro" class="size-3.5" />{pgettext("action", "Change")}
       </.button>
-      <.decline_button id={@id} number={@number} />
     </div>
     """
   end
@@ -1111,23 +1025,6 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p><.rich text={@line} /></p>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :number, :integer, required: true
-
-  defp decline_button(assigns) do
-    ~H"""
-    <.button
-      id={"#{@id}-decline"}
-      type="button"
-      variant="ghost"
-      phx-click="ask_decline"
-      phx-value-number={@number}
-    >
-      {gettext("Decline")}
-    </.button>
     """
   end
 
@@ -1220,7 +1117,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # Who took the work item in and when; for a reader who may undo it, that they can until
   # a run starts and what undoing does to the ticket. After an uninstall, that nothing
-  # changes on the ticket. A declined or closed work item taken in again goes back to how
+  # changes on the ticket. A closed work item taken in again goes back to how
   # it ended, and nothing is sent to the ticket; an undone one taken in again reads as a
   # first take in, since undoing it takes the label off again. A test work item has no
   # ticket, so its line says nothing of one. Each line is one whole sentence for each
@@ -1250,35 +1147,19 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  defp undo_line(%{work_item: work_item, previous: previous, uninstalled: false} = assigns)
-       when previous in [:declined, :closed] do
+  defp undo_line(%{work_item: work_item, previous: :closed, uninstalled: false} = assigns) do
     by = work_item.taken_in_by
     at = inline_ago(work_item.taken_in_at, assigns.now)
 
-    case {previous, you?(by), assigns.can_undo} do
-      {:declined, true, true} ->
-        rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}.",
-          when: at,
-          item: assigns.item
-        )
-
-      {:declined, false, true} ->
-        rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the %{item}.",
-          name: by.name,
-          when: at,
-          item: assigns.item
-        )
-
-      {:closed, true, true} ->
+    case {you?(by), assigns.can_undo} do
+      {true, true} ->
         rich_gettext(
           "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
           when: at,
           item: assigns.item
         )
 
-      {:closed, false, true} ->
+      {false, true} ->
         rich_gettext(
           "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
           name: by.name,
@@ -1286,10 +1167,10 @@ defmodule ApiaryWeb.WorkItemComponents do
           item: assigns.item
         )
 
-      {_previous, true, false} ->
+      {true, false} ->
         rich_gettext("You took this in again %{when}.", when: at)
 
-      {_previous, false, false} ->
+      {false, false} ->
         rich_gettext("%{name} took this in again %{when}.", name: by.name, when: at)
     end
   end
@@ -1517,8 +1398,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc """
-  The notice of an ended work item: who closed, declined or undid it and when (and where
-  it was declined, its `:stage`, at Explore or at Confirm), what that left on the ticket, and Take in again, a link to the ticket's panel in the Backlog
+  The notice of an ended work item: who closed or undid it and when, what that left on the
+  ticket, and Take in again, a link to the ticket's panel in the Backlog
   (`again_path`). After the integration's uninstall (`uninstalled`) the ticket is in no
   Backlog, nor while its repository keeps its tickets out of it (`backlog_off`), and a
   test work item has no ticket: the first line alone. Nothing for a live work item.
@@ -1599,30 +1480,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: rich_gettext("%{name} closed this work item on %{date}.", name: by.name, date: date)
   end
 
-  defp end_line(%{status: :declined, stage: :explore, ended_by: by} = work_item, now) do
-    at = inline_ago(work_item.ended_at, now)
-
-    if you?(by),
-      do: rich_gettext("You declined this work item %{when}, at Explore.", when: at),
-      else:
-        rich_gettext("%{name} declined this work item %{when}, at Explore.",
-          name: by.name,
-          when: at
-        )
-  end
-
-  defp end_line(%{status: :declined, ended_by: by} = work_item, now) do
-    at = inline_ago(work_item.ended_at, now)
-
-    if you?(by),
-      do: rich_gettext("You declined this work item %{when}, at Confirm.", when: at),
-      else:
-        rich_gettext("%{name} declined this work item %{when}, at Confirm.",
-          name: by.name,
-          when: at
-        )
-  end
-
   defp end_line(%{status: :undone, ended_by: by} = work_item, now) do
     at = inline_ago(work_item.ended_at, now)
 
@@ -1642,7 +1499,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         item: item
       )
 
-  defp end_second(_closed_or_declined, integration, item),
+  defp end_second(:closed, integration, item),
     do:
       gettext(
         "The %{item} is still open on %{integration} with Qory's label. To bring the work item back, use Take in again.",
@@ -1946,7 +1803,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   urls). A change is `%{value:, by:}` under the field's key (`:complexity`,
   `:understanding`, `:scope_in`, `:scope_out` or `:approach`), the value as the proposal
   has it. A take in is `%{taken_in_by:, taken_in_at:, ended:, ended_by:, ended_at:, runs:}`,
-  `ended` being `:declined`, `:closed` or `:undone`, its runs as above; a close by the
+  `ended` being `:closed` or `:undone`, its runs as above; a close by the
   instance has `ended_by` nil and `ended_reason`, as the work item's.
 
   Every word a run wrote is plain text in a frame that names the run: escaped, its line
@@ -2040,8 +1897,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         </p>
         <p :if={!@backlog_off}>
           {ngettext(
-            "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog.",
-            "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog.",
+            "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog.",
+            "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog.",
             @run.of,
             of: Format.number(@run.of)
           )}
@@ -3372,12 +3229,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp ended_words(%{ended: ended, ended_by: by, ended_at: at}, now)
-       when ended in [:declined, :closed, :undone] do
+       when ended in [:closed, :undone] do
     at = inline_ago(at, now)
 
     case {ended, you?(by)} do
-      {:declined, true} -> rich_gettext("Declined by you %{when}", when: at)
-      {:declined, false} -> rich_gettext("Declined by %{name} %{when}", name: by.name, when: at)
       {:closed, true} -> rich_gettext("Closed by you %{when}", when: at)
       {:closed, false} -> rich_gettext("Closed by %{name} %{when}", name: by.name, when: at)
       {:undone, true} -> rich_gettext("Undone by you %{when}", when: at)
@@ -3892,9 +3747,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       what a member fixes;
     * `:explore_again` - who ran Explore again;
     * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
-    * `:closed`, `:declined` - who closed or declined it, and where it was declined
-      (`stage`); a close by the instance has no `actor`, and says why (`reason`), where
-      it has words for the reason, else draws nothing;
+    * `:closed` - who closed it; a close by the instance has no `actor`, and says why
+      (`reason`), where it has words for the reason, else draws nothing;
     * `:undone` - who undid it, before a run started.
 
   A run is `%{id:, number:, path:, attempt:, of:}`, its attempt shown and linked to the
@@ -3919,7 +3773,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       :explore_again,
       :confirmed,
       :closed,
-      :declined,
       :undone
     ]
 
@@ -3958,11 +3811,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     values: [nil, :adapter_removed],
     doc: "`:closed` by the instance (no `actor`): why"
-
-  attr :stage, :atom,
-    default: :confirm,
-    values: [:explore, :confirm],
-    doc: "`:declined`: where"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
@@ -4039,7 +3887,6 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp event_icon(:explore_again), do: "hero-arrow-path-micro"
   defp event_icon(:confirmed), do: "hero-check-micro"
   defp event_icon(:closed), do: "hero-x-circle-micro"
-  defp event_icon(:declined), do: "hero-minus-circle-micro"
   defp event_icon(:undone), do: "hero-arrow-uturn-left-micro"
 
   defp event_line(%{kind: :taken_in, test: true, actor: actor}) do
@@ -4230,18 +4077,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     if you?(actor),
       do: gettext("You closed this work item"),
       else: rich_gettext("%{name} closed this work item", name: {:b, actor.name})
-  end
-
-  defp event_line(%{kind: :declined, stage: :explore, actor: actor}) do
-    if you?(actor),
-      do: gettext("You declined this work item at Explore"),
-      else: rich_gettext("%{name} declined this work item at Explore", name: {:b, actor.name})
-  end
-
-  defp event_line(%{kind: :declined, actor: actor}) do
-    if you?(actor),
-      do: gettext("You declined this work item at Confirm"),
-      else: rich_gettext("%{name} declined this work item at Confirm", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :undone, actor: actor}) do

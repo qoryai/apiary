@@ -57,7 +57,7 @@ defmodule Apiary.WorkItems.Explore do
   # the runs of the queue keep: a run whose outcome is not stored yet reads as running
   # there until it is.
   #
-  # `stage/1` is the stage a status is at, as a decline or a close records it: `:shape`
+  # `stage/1` is the stage a status is at, as a close records it: `:shape`
   # once confirmed, `:confirm` while the proposal waits, `:explore` otherwise.
   #
   # The module reference leaves out this module of the `factory` feature.

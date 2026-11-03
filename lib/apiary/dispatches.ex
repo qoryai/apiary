@@ -125,7 +125,7 @@ defmodule Apiary.Dispatches do
   #      waits, and so does a run whose harness walk is pending
   #      (`Apiary.Harnesses.WalkJob`). An explore run is given the image its target's build made for the pool,
   #      nil for the pool's default. A run whose work item has no target is taken as any
-  #      other. A run whose work item is no longer live (closed, declined, undone, its
+  #      other. A run whose work item is no longer live (closed, undone, its
   #      connection ended, or gone) or no longer in the run's workspace is not handed
   #      out: it ends, `undone` for a work item undone and `closed` otherwise; nor is a
   #      prebuild whose collection ended, is assigned to no workspace or another one, has
@@ -1059,7 +1059,7 @@ defmodule Apiary.Dispatches do
 
   # The run's work item when it is live, in the run's workspace, and its connection has
   # not ended; else the cause the run ends for: `undone` for a work item undone, `closed`
-  # for any other (closed, declined, its connection ended, moved to another workspace,
+  # for any other (closed, its connection ended, moved to another workspace,
   # or gone). Read without a lock: the run is locked, so an undo waits for the claim and
   # is then refused; a close that commits meanwhile finds the run claimed.
   #

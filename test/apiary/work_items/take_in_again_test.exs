@@ -32,17 +32,9 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
   defp adapter(ticket), do: Repo.get!(Node, ticket.adapter_id)
   defp statuses(ticket), do: Enum.map(Feed.entries(adapter(ticket)), & &1.data["status"])
 
-  # The runs of the work item end, as their run would end them.
-  defp end_runs!(work_item) do
-    Repo.update_all(from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
-      set: [state: :ended, end_cause: :run_ended]
-    )
-  end
-
-  defp declined!(ctx) do
-    end_runs!(ctx.work_item)
-    {:ok, declined} = WorkItems.decline(ctx.scope, ctx.work_item)
-    declined
+  defp closed!(ctx) do
+    {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
+    closed
   end
 
   defp latest_taken_in(work_item),
@@ -54,9 +46,9 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
           limit: 1
       )
 
-  test "brings a declined work item back, as the person, now, with its run of the new count",
+  test "brings a closed work item back, as the person, now, with its run of the new count",
        ctx do
-    declined = declined!(ctx)
+    closed = closed!(ctx)
     %{user: member} = member_fixture(ctx.scope)
 
     assert {:ok, %WorkItem{} = again} =
@@ -73,7 +65,6 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     assert again.first_instruction == "Only the basket, this time."
     assert again.taken_in_by_id == ctx.scope.user.id
     assert DateTime.compare(again.taken_in_at, ctx.work_item.taken_in_at) == :gt
-    assert {again.declined_at, again.declined_by_id} == {nil, nil}
     assert {again.closed_at, again.closed_by_id} == {nil, nil}
 
     assert [%DispatchRun{state: :waiting, take_in: 2, attempt: 1}] =
@@ -86,8 +77,8 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     assert event.data["take_in"] == 2
 
     assert event.data["before"] == %{
-             "state" => "declined",
-             "at" => DateTime.to_iso8601(declined.declined_at),
+             "state" => "closed",
+             "at" => DateTime.to_iso8601(closed.closed_at),
              "by_id" => ctx.scope.user.id,
              "taken_in_by_id" => ctx.scope.user.id,
              "taken_in_at" => DateTime.to_iso8601(ctx.work_item.taken_in_at),
@@ -103,7 +94,7 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
                  where: fragment("?->>'again' = 'true'", e.details)
              )
 
-    assert entry.before == %{"state" => "declined"}
+    assert entry.before == %{"state" => "closed"}
     assert entry.after == %{"state" => "exploring"}
     assert entry.details == %{"again" => true, "take_in" => 2}
   end
@@ -205,16 +196,11 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     {:ok, _closed} = WorkItems.close(ctx.scope, again)
     {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
     assert statuses(ctx.ticket) == ["taken_in", "undone", "taken_in"]
-
-    end_runs!(again)
-    {:ok, _declined} = WorkItems.decline(ctx.scope, again)
-    {:ok, again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
-    assert statuses(ctx.ticket) == ["taken_in", "undone", "taken_in"]
-    assert again.take_in == 4
+    assert again.take_in == 3
   end
 
   test "in a domain that needs no target, takes in again a ticket that lost its target", ctx do
-    declined!(ctx)
+    closed!(ctx)
     scope = with_domain(ctx.scope, "example")
 
     Repo.get!(Collection, ctx.ticket.collection_id)
@@ -243,7 +229,7 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
 
     test "for a ticket closed at its source, with no target or one a run's variables refuse, or an owner not in the workspace",
          ctx do
-      declined!(ctx)
+      closed!(ctx)
       %{user: stranger} = sign_up_fixture()
 
       assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{owner_id: stranger.id}) ==
@@ -273,11 +259,11 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
       ctx.ticket |> Ecto.Changeset.change(state: :closed) |> Repo.update!()
       assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) == {:error, :ticket_closed}
 
-      assert %WorkItem{state: :declined, take_in: 1} = Repo.get!(WorkItem, ctx.work_item.id)
+      assert %WorkItem{state: :closed, take_in: 1} = Repo.get!(WorkItem, ctx.work_item.id)
     end
 
     test "for a first instruction a run's input refuses, which changes nothing", ctx do
-      declined!(ctx)
+      closed!(ctx)
 
       assert {:error, %Ecto.Changeset{} = changeset} =
                WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{
@@ -285,7 +271,7 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
                })
 
       assert {"must not contain control characters", _} = changeset.errors[:first_instruction]
-      assert %WorkItem{state: :declined, take_in: 1} = Repo.get!(WorkItem, ctx.work_item.id)
+      assert %WorkItem{state: :closed, take_in: 1} = Repo.get!(WorkItem, ctx.work_item.id)
     end
   end
 end

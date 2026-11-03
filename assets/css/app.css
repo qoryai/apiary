@@ -11861,35 +11861,10 @@
   .q-bl-take:hover {
     background-color: var(--color-base-300);
   }
-  .q-bl-row:is(:hover, :focus-within, :has([aria-current="true"])) .q-bl-take:not(.q-bl-again) {
+  .q-bl-row:is(:hover, :focus-within, :has([aria-current="true"])) .q-bl-take {
     opacity: 1;
   }
-  /* A declined ticket: Take in again takes the place of its work item's number on hover
-     or focus. Hidden, it lies over the number's place, unseen and out of the pointer's way,
-     and stays in the tab order: a Tab onto it shows it. The number, hidden in its turn,
-     stays focusable as well, and shows again while it has the keyboard's focus. */
-  .q-bl-take.q-bl-again {
-    position: absolute;
-    top: 50%;
-    right: 0;
-    translate: 0 -50%;
-    pointer-events: none;
-  }
-  .q-bl-row:is(:hover, :focus-within):not(:has(.q-bl-wi-declined:focus-visible)) .q-bl-take.q-bl-again {
-    position: static;
-    translate: none;
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .q-bl-row:is(:hover, :focus-within):not(:has(.q-bl-wi-declined:focus-visible)) .q-bl-wi-declined {
-    position: absolute;
-    top: 50%;
-    right: 0;
-    translate: 0 -50%;
-    opacity: 0;
-    pointer-events: none;
-  }
-  /* The work item a ticket became: its number, always there; declined, the number faint. */
+  /* The work item a ticket became: its number, always there. */
   .q-bl-wi {
     display: inline-flex;
     align-items: center;
@@ -11905,9 +11880,6 @@
     text-underline-offset: 3px;
   }
   .q-bl-wi > span {
-    color: var(--q-faint);
-  }
-  .q-bl-wi.q-bl-wi-declined {
     color: var(--q-faint);
   }
   /* With the ticket open beside the list, its Take in is the panel's block. */
@@ -11960,11 +11932,6 @@
       font-size: 0.75rem;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-    /* Who declined it: a separate line, which no ellipsis cuts, so the letter shows
-       whole. */
-    .q-bl-sub.q-bl-sub-declined {
-      overflow: visible;
     }
     .q-bl-act {
       width: auto;
@@ -12686,19 +12653,6 @@
     border-radius: 1px;
     background-color: var(--q-faint);
   }
-  .q-wi-mk-declined::before {
-    width: 10px;
-    height: 10px;
-    border: 1.5px solid var(--q-faint);
-    border-radius: 9999px;
-    background: linear-gradient(
-      135deg,
-      transparent 44%,
-      var(--q-faint) 44%,
-      var(--q-faint) 56%,
-      transparent 56%
-    );
-  }
   .q-wi-st {
     display: inline-flex;
     min-width: 0;
@@ -13154,13 +13108,6 @@
   .q-wi-stage-wait .q-wi-stage-n {
     border-color: var(--color-warning);
     color: var(--q-primary-soft-content);
-  }
-  .q-wi-stage-stop {
-    color: var(--color-base-content);
-  }
-  .q-wi-stage-stop .q-wi-stage-n {
-    border-color: var(--q-faint);
-    color: var(--q-muted);
   }
   .q-wi-track-ended .q-wi-stage {
     color: var(--q-faint);

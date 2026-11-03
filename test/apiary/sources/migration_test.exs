@@ -1,8 +1,8 @@
 defmodule Apiary.Sources.MigrationTest do
   # The migrations that keep the tickets, take work items in again, keep when a ticket was
   # last listed and keep when a complete set left a comment out, with the later ones that
-  # queue prebuilds and hold runs for their build down first and up last, run down and up
-  # again
+  # queue prebuilds, hold runs for their build and close every declined work item down
+  # first and up last, run down and up again
   # inside the test's transaction, which rolls it all back. They change `work_items`,
   # `work_item_events` and `dispatch_runs` under every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -25,13 +25,16 @@ defmodule Apiary.Sources.MigrationTest do
   @prebuilds {20_261_017_160_000, Apiary.Repo.Migrations.QueuePrebuilds, "queue_prebuilds"}
   @hold {20_261_023_090_000, Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild,
          "hold_runs_for_their_environment_build"}
+  @declined {20_261_103_090_000, Apiary.Repo.Migrations.CloseEveryDeclinedWorkItem,
+             "close_every_declined_work_item"}
 
   @tables ~w(source_items source_item_comments source_item_listings)
   @functions ~w(source_item_public_id source_parts_valid source_texts_valid)
   @columns ~w(adapter_id item_id target_system target_path take_in declined_at declined_by_id)
 
   setup_all do
-    for {version, migration, name} <- [@items, @again, @listed, @left_out, @prebuilds, @hold],
+    for {version, migration, name} <-
+          [@items, @again, @listed, @left_out, @prebuilds, @hold, @declined],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
@@ -82,6 +85,8 @@ defmodule Apiary.Sources.MigrationTest do
   defp check(name), do: key(name)
 
   test "down removes the tickets and the work item's new columns and keys; up brings them back" do
+    down!(@declined)
+
     assert tables() == Enum.sort(@tables)
     assert functions() == Enum.sort(@functions)
     assert columns() == Enum.sort(@columns)
@@ -129,6 +134,7 @@ defmodule Apiary.Sources.MigrationTest do
                "REFERENCES adapter_connections(id, organisation_id, adapter_id) MATCH FULL"
 
     # The tables work as before.
+    up!(@declined)
     %{scope: scope} = sign_up_fixture()
     assert %{take_in: 1, item_id: item_id} = work_item_fixture(scope)
     assert item_id
@@ -138,6 +144,7 @@ defmodule Apiary.Sources.MigrationTest do
     %{scope: scope} = sign_up_fixture()
     work_item_fixture(scope)
 
+    down!(@declined)
     down!(@hold)
     down!(@prebuilds)
     down!(@again)
@@ -153,5 +160,6 @@ defmodule Apiary.Sources.MigrationTest do
     up!(@prebuilds)
     up!(@hold)
     assert columns() == Enum.sort(@columns)
+    up!(@declined)
   end
 end

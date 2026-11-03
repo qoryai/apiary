@@ -9,8 +9,8 @@ defmodule Apiary.WorkItems.ExploreView do
   # Where Explore stands, at `now`:
   #
   #   * `status`: for a live work item, `Apiary.WorkItems.Explore.status/2` of its current
-  #     take in; for an ended one, its state (`:declined`, `:closed` or `:undone`);
-  #   * `stage`: nil for a live work item; for an ended one, the stage its decline or close
+  #     take in; for an ended one, its state (`:closed` or `:undone`);
+  #   * `stage`: nil for a live work item; for an ended one, the stage its close
   #     recorded (`:explore`, `:confirm` or `:shape`), `:explore` for an undo, and for an
   #     end that recorded none, the stage its current take in was at;
   #   * `ended_reason`: for a work item the instance closed, the reason its `:closed` event
@@ -19,7 +19,7 @@ defmodule Apiary.WorkItems.ExploreView do
   #     instance closed it, and when, by its latest event of the kind of its state; nil for
   #     a live one;
   #   * `take_in`: the current take in, and `previous`, how the work item had ended before
-  #     it (`:declined`, `:closed` or `:undone`), nil for a first take in;
+  #     it (`:closed` or `:undone`), nil for a first take in;
   #   * `run`: the latest run of the current take in, nil for none, and `earlier_runs` the
   #     runs before it, oldest first, each a run map (below);
   #   * `earlier_take_ins`: the take ins before the current one, oldest first, each with who
@@ -67,8 +67,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     the current take in, nil for an earlier one),
   #     `:answered` (`actor_id`, `run`, `questions` with their answers), `:explore_again`
   #     (`actor_id`, `run`, the run it started), `:confirmed` (`actor_id`, `changed`),
-  #     `:declined` and `:closed` (`actor_id`, nil for the instance, `stage`, nil where
-  #     none was recorded, and for `:closed` the instance's `reason`, nil for a person),
+  #     `:closed` (`actor_id`, nil for the instance, `stage`, nil where none was recorded,
+  #     and the instance's `reason`, nil for a person),
   #     `:undone` (`actor_id`);
   #   * the runs: `:started` (`run`, `start`: nil for a take in's first run, `:answers` for
   #     a run after answers, `:again` for any other), at its start, for a run handed over;
@@ -93,7 +93,7 @@ defmodule Apiary.WorkItems.ExploreView do
   alias Apiary.Runs.ReadNeeds
   alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
-  @ends [:declined, :closed, :undone]
+  @ends [:closed, :undone]
 
   # explore/2 is where Explore stands for `work_item` at `now` (the moduledoc).
   @doc false
@@ -299,14 +299,14 @@ defmodule Apiary.WorkItems.ExploreView do
   defp ended_by_id(work_item, events) do
     case ended_event(work_item, events) do
       %{actor_id: actor_id} -> actor_id
-      nil -> work_item.declined_by_id || work_item.closed_by_id
+      nil -> work_item.closed_by_id
     end
   end
 
   defp ended_at(work_item, events) do
     case ended_event(work_item, events) do
       %{at: at} -> at
-      nil -> work_item.declined_at || work_item.closed_at || work_item.updated_at
+      nil -> work_item.closed_at || work_item.updated_at
     end
   end
 
@@ -318,7 +318,7 @@ defmodule Apiary.WorkItems.ExploreView do
   defp previous(taken, take_in) do
     case List.keyfind(taken, take_in, 0) do
       {_take_in, %{data: %{"before" => %{"state" => state}}}, _end}
-      when state in ["declined", "closed", "undone"] ->
+      when state in ["closed", "undone"] ->
         String.to_existing_atom(state)
 
       _first ->
@@ -485,20 +485,16 @@ defmodule Apiary.WorkItems.ExploreView do
       changed: (event.data["changed"] || []) != []
     }
 
-  defp event_entry(kind, event, _by_run, _answers) when kind in [:declined, :closed] do
+  defp event_entry(:closed, event, _by_run, _answers) do
     stage =
       case event.data["stage"] do
         stage when stage in ["explore", "confirm", "shape"] -> String.to_existing_atom(stage)
         _none -> nil
       end
 
-    entry = %{kind: kind, at: event.at, actor_id: event.actor_id, stage: stage}
+    reason = if is_binary(event.data["reason"]), do: event.data["reason"]
 
-    case {kind, event.data["reason"]} do
-      {:closed, reason} when is_binary(reason) -> Map.put(entry, :reason, reason)
-      {:closed, _none} -> Map.put(entry, :reason, nil)
-      {:declined, _reason} -> entry
-    end
+    %{kind: :closed, at: event.at, actor_id: event.actor_id, stage: stage, reason: reason}
   end
 
   defp event_entry(:undone, event, _by_run, _answers),

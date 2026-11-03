@@ -3,7 +3,7 @@ defmodule Apiary.WorkItems do
   # sidebar counts, how the pages name a work item's ticket, the work items a page reads,
   # and what a person does to them.
   #
-  # ## What a person does: take in, take in again, undo, decline, close
+  # ## What a person does: take in, take in again, undo, close
   #
   # `take_in(scope, item_id, attrs)` takes the ticket `item_id` (`tk_…`) of the Backlog of
   # the scope's workspace in as a new work item, with its first run queued;
@@ -11,9 +11,8 @@ defmodule Apiary.WorkItems do
   # in the organisation, live again in the scope's workspace, with a new count of runs;
   # `take_in_test(scope, line)` makes a test work item from a line the person typed, with
   # no ticket, and queues its first run; `undo(scope, work_item)` undoes the latest take
-  # in while no claim holds its run; `decline(scope, work_item)` declines a live work item
-  # while none of its runs is live and its take in is not confirmed; `close(scope,
-  # work_item)` closes a live one. `attrs` holds the owner (`owner_id`) and the first
+  # in while no claim holds its run; `close(scope, work_item)` closes a live one. `attrs`
+  # holds the owner (`owner_id`) and the first
   # instruction (`first_instruction`) the page gives. Each runs in one transaction with
   # its event, its run, its feed entry and its entry in the trail, asks its action of
   # `Apiary.Access`, and tells the pages once it commits. `Apiary.WorkItems.Moves` says
@@ -83,7 +82,7 @@ defmodule Apiary.WorkItems do
   # `close_for_adapter(adapter, now)` closes, as the instance (`adapter_removed`), every
   # live work item of every organisation whose ticket came through a connection to
   # `adapter`, inside the caller's transaction: the removal of the adapter
-  # (`Apiary.Adapters.delete_adapter/2`). Closed, declined and undone work items are left
+  # (`Apiary.Adapters.delete_adapter/2`). Closed and undone work items are left
   # as they are.
   #
   # **The lock order.** The core takes its locks in one order, which
@@ -173,13 +172,6 @@ defmodule Apiary.WorkItems do
   @spec undo(Scope.t(), WorkItem.t()) ::
           {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live | :claimed}
   defdelegate undo(scope, work_item), to: Moves
-
-  @doc false
-  # decline/2 declines `work_item` while none of its runs is live (`Apiary.WorkItems.Moves`).
-  @spec decline(Scope.t(), WorkItem.t()) ::
-          {:ok, WorkItem.t()}
-          | {:error, :not_found | :forbidden | :not_live | :running | :confirmed}
-  defdelegate decline(scope, work_item), to: Moves
 
   @doc false
   # close/2 closes `work_item`, as the scope's person (`close_locked/3`,

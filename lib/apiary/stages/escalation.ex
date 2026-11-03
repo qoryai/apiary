@@ -7,7 +7,7 @@ defmodule Apiary.Stages.Escalation do
   use Ecto.Schema
 
   @causes [:round_limit, :escalate, :check_failed, :run_stopped]
-  @resolutions [:accept, :another_round, :move_back, :close, :decline]
+  @resolutions [:accept, :another_round, :move_back, :close]
 
   @typedoc "An escalation of a work item's stage."
   @type t :: %__MODULE__{}

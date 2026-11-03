@@ -223,7 +223,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       end
 
       assert words(view, "#work-items-views") ==
-               "Open 7 Waiting on you 1 Declined 0 Closed 0"
+               "Open 7 Waiting on you 1 Closed 0"
 
       assert Enum.sort(rows(view, "#work-items-explore")) ==
                Enum.sort(ids([ctx.queued, ctx.running, ctx.questions, ctx.used_up]))
@@ -331,22 +331,13 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   end
 
   describe "the ended views" do
-    test "Declined and Closed say who ended each one", %{conn: conn, scope: scope} do
+    test "Closed says who ended each one", %{conn: conn, scope: scope} do
       %{user: member} = member_fixture(scope, :member)
       now = DateTime.utc_now()
-
-      declined =
-        at!(scope, :confirm)
-        |> set!(state: :declined, declined_at: now, declined_by_id: scope.user.id)
 
       closed = item!(scope) |> set!(state: :closed, closed_at: now, closed_by_id: member.id)
       undone = item!(scope)
       {:ok, _undone} = WorkItems.undo(scope, undone)
-
-      {:ok, view, _html} = live(conn, page(scope, "?view=declined"))
-      assert rows(view) == ids([declined])
-      assert words(view, row(declined) <> " .q-wl-nx") == "Declined by you"
-      assert has_element?(view, "#work-items-note")
 
       {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
       assert Enum.sort(rows(view)) == Enum.sort(ids([closed, undone]))
@@ -623,9 +614,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       %{base: base, older: older, newer: newer}
     end
 
-    test "offers Recently updated and Newest on Open, Declined, Closed and a stage alone",
-         ctx do
-      for query <- ["", "?view=declined", "?view=closed", "?stage=explore"] do
+    test "offers Recently updated and Newest on Open, Closed and a stage alone", ctx do
+      for query <- ["", "?view=closed", "?stage=explore"] do
         {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
 
         assert has_element?(
@@ -864,7 +854,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
       assert words(view, row(work_item) <> " .q-wl-nx") == "You confirm next"
       assert words(view, "#nav-work_items .q-nav-count") == "1"
-      assert words(view, "#work-items-views") == "Open 1 Waiting on you 1 Declined 0 Closed 0"
+      assert words(view, "#work-items-views") == "Open 1 Waiting on you 1 Closed 0"
     end
 
     test "a message of another workspace's work items changes nothing", %{

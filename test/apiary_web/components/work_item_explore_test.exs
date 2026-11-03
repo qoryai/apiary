@@ -2,7 +2,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   @moduledoc """
   Explore's parts of a work item's page (`ApiaryWeb.WorkItemComponents`): the statuses and
   marks Explore adds, the step card in each Explore state, a take in again's undo, the
-  declined at Explore notice, the tabs, Explore's tab in each state, the questions form,
+  tabs, Explore's tab in each state, the questions form,
   the proposal and its sources, the edit page, and Explore's lines in the Thread. Every
   DOM id, `phx-value-*` and path is Qory Apiary's: runs by their number, questions by
   their public id, never the ticket's ref or a source's.
@@ -246,12 +246,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
-    test "declined at Explore: Explore crossed, nothing done" do
-      w = work_item(%{status: :declined, stage: :explore, ended_by: @dana})
+    test "closed at Explore: no current step, nothing done" do
+      w = work_item(%{status: :closed, stage: :explore, ended_by: @dana})
       html = render_component(&C.stage_track/1, work_item: w)
       assert count(html, "[aria-current]") == 0
-      assert count(html, "#work-item-stages-explore.q-wi-stage-stop") == 1
-      assert text(html, ".q-wi-end") == "Declined"
+      assert count(html, ".q-wi-stage-done") == 0
+      assert text(html, ".q-wi-end") == "Closed"
     end
   end
 
@@ -271,12 +271,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(w, Keyword.merge([can_undo: true], extra))
     end
 
-    test "after a decline or a close: it goes back to how it ended, and nothing is sent" do
+    test "after a close: it goes back to how it ended, and nothing is sent" do
       for {previous, by, line} <- [
-            {:declined, @dana,
-             "You took this in again just now. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the ticket."},
-            {:declined, @priya,
-             "Priya took this in again just now. Until a run starts, you can undo the take in: the work item goes back to declined, and Qory changes nothing on the ticket."},
             {:closed, @dana,
              "You took this in again just now. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the ticket."},
             {:closed, @priya,
@@ -323,7 +319,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "without the right to undo: who took it in again and when, and no Undo" do
       for {previous, by, line} <- [
-            {:declined, @dana, "You took this in again just now."},
+            {:closed, @dana, "You took this in again just now."},
             {:closed, @priya, "Priya took this in again just now."}
           ] do
         html = again(by, previous: previous, can_undo: false)
@@ -333,7 +329,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "after the uninstall, a take in again reads the built uninstall line" do
-      html = again(@dana, previous: :declined, uninstalled: true)
+      html = again(@dana, previous: :closed, uninstalled: true)
 
       assert text(html, "#work-item-step-undo-line") ==
                "You took this in just now. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
@@ -405,7 +401,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(w, extra)
     end
 
-    test "a member who may act: the badge, the line, the link to Explore, and Decline" do
+    test "a member who may act: the badge, the line, and the link to Explore" do
       html = asked(3, explore_path: "/8wonders/main/work/94/explore")
 
       assert text(html, "h2") == "Explore"
@@ -414,20 +410,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait"]
 
       assert text(html, ".q-wi-bee-line") ==
-               "Answer Qory's 3 questions, and Explore runs again with your answers. Or decline the work item."
+               "Answer Qory's 3 questions, and Explore runs again with your answers."
 
       assert text(html, "#work-item-step-explore") == "Answer the questions"
       assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/94/explore"]
-      assert text(html, "#work-item-step-decline") == "Decline"
-      assert attr(html, "#work-item-step-decline", "phx-click") == ["ask_decline"]
-      assert attr(html, "#work-item-step-decline", "phx-value-number") == ["94"]
+      assert count(html, "button") == 0
     end
 
     test "one question; on Explore's tab, no link" do
       html = asked(1)
 
       assert text(html, ".q-wi-bee-line") ==
-               "Answer Qory's question, and Explore runs again with your answer. Or decline the work item."
+               "Answer Qory's question, and Explore runs again with your answer."
 
       assert count(html, "#work-item-step-explore") == 0
 
@@ -452,22 +446,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert count(html, "a") == 0
       end
     end
-
-    test "Decline asks in place, as at Confirm" do
-      html = asked(3, asking: :decline)
-      assert text(html, "#work-item-step-decline-question") == "Decline work item #94?"
-
-      assert text(html, "#work-item-step-decline-sub") ==
-               "The ticket stays open on GitHub with Qory's label, and Qory posts nothing more there. To bring the work item back, use Take in again in the Backlog."
-
-      assert attr(html, "#work-item-step-decline-go", "phx-click") == ["decline"]
-      assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["94"]
-      refute html =~ "Answer Qory&#39;s"
-    end
   end
 
   describe "step_card/1, a run without a result" do
-    test "no result, lost, cancelled: the badge, what happened, Run Explore again and Decline" do
+    test "no result, lost, cancelled: the badge, what happened, Run Explore again" do
       for {status, overrides, badge, line} <- [
             {:no_result, %{state: :failed, outcome: :error}, "No result",
              "Attempt 1 ended with an error, so Explore has no result."},
@@ -500,7 +482,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert text(html, "#work-item-step-again") == "Run Explore again"
         assert attr(html, "#work-item-step-again", "phx-click") == ["explore_again"]
         assert attr(html, "#work-item-step-again", "phx-value-number") == ["97"]
-        assert text(html, "#work-item-step-decline") == "Decline"
         assert text(html, "#work-item-step-next") == "Run Explore again starts attempt 2 of 3."
 
         reader = card(work_item(%{number: 97, status: status, run: r}), can_act: false)
@@ -531,7 +512,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(work_item(%{number: 94, status: :used_up, run: r}), extra)
     end
 
-    test "3 of 3 attempts used: why Qory cannot explore again, the two ways on, Decline and Close" do
+    test "3 of 3 attempts used: why Qory cannot explore again, the way on, and Close" do
       html = used(%{}, can_close: true)
 
       assert text(html, ".q-wi-badge") == "3 of 3 attempts used"
@@ -541,10 +522,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Qory still has 1 question after attempt 3 of 3, the last attempt of this take in."
 
       assert text(html, "#work-item-step-ways") ==
-               "If the work item is not wanted, decline it. To explore again, close it and use Take in again in the Backlog: the run count starts again, without this take in's answers."
+               "To explore again, close the work item and use Take in again in the Backlog: the run count starts again, without this take in's answers."
 
-      assert text(html, "#work-item-step-decline") == "Decline"
-      assert attr(html, "#work-item-step-decline", "phx-click") == ["ask_decline"]
       assert text(html, "#work-item-step-close") == "Close work item…"
       assert attr(html, "#work-item-step-close", "phx-click") == ["ask_close"]
       assert attr(html, "#work-item-step-close", "phx-value-number") == ["94"]
@@ -556,9 +535,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = used(%{}, can_close: true, backlog_off: true)
 
       assert text(html, "#work-item-step-ways") ==
-               "If the work item is not wanted, decline it. Otherwise, close it."
+               "Close the work item if it is not wanted."
 
-      assert count(html, "#work-item-step-decline") == 1
       assert count(html, "#work-item-step-close") == 1
       refute html =~ "Take in again"
     end
@@ -584,16 +562,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(reader, "button") == 0
       assert attr(reader, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait_other"]
     end
-
-    test "Decline asks in place" do
-      html = used(%{}, asking: :decline)
-      assert text(html, "#work-item-step-decline-question") == "Decline work item #94?"
-      assert text(html, ".q-wi-badge") == "3 of 3 attempts used"
-    end
   end
 
   describe "step_card/1, Confirm" do
-    test "the line, Read Qory's proposal, Confirm, Change and Decline" do
+    test "the line, Read Qory's proposal, Confirm and Change" do
       html =
         card(work_item(%{}),
           explore_path: "/8wonders/main/work/88/explore",
@@ -601,12 +573,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert text(html, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, change it first, or decline the work item."
+               "Confirm Qory's proposal, or write what to change."
 
       assert text(html, "#work-item-step-explore") == "Read Qory's proposal"
       assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/88/explore"]
 
-      assert texts(html, ".q-wi-acts > *") == ["Confirm", "Change", "Decline"]
+      assert texts(html, ".q-wi-acts > *") == ["Confirm", "Change"]
 
       assert attr(html, "#work-item-step-change", "href") == [
                "/8wonders/main/work/88/explore/edit"
@@ -632,22 +604,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   ## The notice, the tabs
-
-  describe "end_notice/1, declined at Explore" do
-    test "who declined it and when, at Explore" do
-      for {by, line} <- [
-            {@dana, "You declined this work item just now, at Explore."},
-            {@priya, "Priya declined this work item just now, at Explore."}
-          ] do
-        w = work_item(%{status: :declined, stage: :explore, ended_by: by, ended_at: ago(5)})
-
-        html =
-          render_component(&C.end_notice/1, work_item: w, integration: "GitHub", now: @now)
-
-        assert text(html, "#work-item-ended-line") == line
-      end
-    end
-  end
 
   test "work_item_tabs/1: Ticket, Explore and Thread, Explore current" do
     html =
@@ -689,13 +645,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         end
 
         assert text(asked(3), ".q-wi-bee-line") ==
-                 "Answer Qory's 3 questions, and Explore runs again with your answers. Or decline the work item."
+                 "Answer Qory's 3 questions, and Explore runs again with your answers."
 
         assert text(asked(1, can_act: false), ".q-wi-bee-line") ==
                  "Qory returned 1 question instead of a proposal."
 
         assert text(card(work_item(%{})), ".q-wi-bee-line") ==
-                 "Confirm Qory's proposal, change it first, or decline the work item."
+                 "Confirm Qory's proposal, or write what to change."
       end)
     end
   end
@@ -937,9 +893,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "You confirmed this proposal 3 hours ago. Attempt 1 wrote it, and Qory shows it as plain text."
     end
 
-    test "declined at Confirm: the proposal, read" do
+    test "closed at Confirm: the proposal, read" do
       w =
-        work_item(%{status: :declined, stage: :confirm, ended_by: @priya, ended_at: ago(86_400)})
+        work_item(%{status: :closed, stage: :confirm, ended_by: @priya, ended_at: ago(86_400)})
 
       html = tab(w)
       assert text(html, "#work-item-explore-proposal-h") == "Qory's proposal"
@@ -1137,7 +1093,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                ["Attempt 3 of 3", "Completed", "ended 8 minutes ago, after 9 minutes"]
 
       assert text(html, "#work-item-explore-limit") ==
-               "This take in used all 3 runs, so Explore cannot run again for these questions. To start a new count, decline or close the work item, then use Take in again in the Backlog."
+               "This take in used all 3 runs, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog."
 
       assert count(html, "textarea") == 0
       assert text(html, "#work-item-explore-questions-h") == "Qory's question"
@@ -1167,8 +1123,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "This take in used its 1 run, so Explore cannot run again for these questions."
     end
 
-    test "declined at Explore: the last questions read-only, no note" do
-      w = used_item(:declined, %{stage: :explore, ended_by: @dana, ended_at: ago(5)})
+    test "closed at Explore: the last questions read-only, no note" do
+      w = used_item(:closed, %{stage: :explore, ended_by: @dana, ended_at: ago(5)})
       html = tab(w, can_act: true)
       assert count(html, "#work-item-explore-limit") == 0
       assert count(html, "textarea") == 0
@@ -1333,7 +1289,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         take_in = %{
           taken_in_by: @dana,
           taken_in_at: ~U[2026-10-16 15:20:00Z],
-          ended: :declined,
+          ended: :closed,
           ended_by: @dana,
           ended_at: ago(4 * 60),
           runs: [r]
@@ -1659,7 +1615,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       take_in = %{
         taken_in_by: @dana,
         taken_in_at: ~U[2026-10-16 15:20:00Z],
-        ended: :declined,
+        ended: :closed,
         ended_by: @dana,
         ended_at: ago(4 * 60),
         runs: [
@@ -1675,7 +1631,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-take-ins-h") == "Earlier take ins"
 
       assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
-               ["Taken in 16 Oct by you", "Declined by you 4 minutes ago", "3 runs"]
+               ["Taken in 16 Oct by you", "Closed by you 4 minutes ago", "3 runs"]
 
       assert text(html, "#work-item-explore-take-ins-1 .q-xp-inner > p:first-child") ==
                "These runs do not count toward the run limit of this take in."
@@ -1686,7 +1642,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "every end, in both forms, and one run" do
       for {ended, by, words} <- [
-            {:declined, @priya, "Declined by Priya 4 minutes ago"},
             {:closed, @dana, "Closed by you 4 minutes ago"},
             {:closed, @priya, "Closed by Priya 4 minutes ago"},
             {:undone, @dana, "Undone by you 4 minutes ago"},
@@ -1969,14 +1924,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert attr(html, ".q-wi-ev-ref .q-bl-tile", "aria-label") == ["GitHub"]
       end
     end
-
-    test "declined at Explore" do
-      assert line(event(kind: :declined, stage: :explore, actor: @dana)) ==
-               "You declined this work item at Explore 14 Oct, 11:25"
-
-      assert line(event(kind: :declined, stage: :explore, actor: @priya)) ==
-               "Priya declined this work item at Explore 14 Oct, 11:25"
-    end
   end
 
   ## Ids
@@ -2017,7 +1964,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             %{
               taken_in_by: @dana,
               taken_in_at: ago(86_400),
-              ended: :declined,
+              ended: :closed,
               ended_by: @dana,
               ended_at: ago(60),
               runs: [run(%{})]
@@ -2048,7 +1995,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     refute html =~ "123456"
 
     assert Enum.any?(values, &match?({"phx-value-number", "88"}, &1))
-    assert Enum.any?(values, &match?({"phx-value-number", "94"}, &1))
+    assert Enum.any?(values, &match?({"phx-value-number", "88"}, &1))
     assert Enum.any?(values, &match?({"name", "answers[qq_01]"}, &1))
     assert Enum.any?(values, &match?({"id", "work-item-explore-earlier-13"}, &1))
 

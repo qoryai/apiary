@@ -167,7 +167,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # Who ended it: none for a live work item, and none where the instance closed it.
   defp ended_by(status, by_id, ctx) do
     cond do
-      status not in [:declined, :closed, :undone] -> nil
+      status not in [:closed, :undone] -> nil
       status == :closed and is_nil(by_id) -> nil
       true -> person(ctx.people, by_id)
     end
@@ -260,12 +260,10 @@ defmodule ApiaryWeb.WorkItemLive.View do
   ## The Thread
 
   # The Thread's events as `ApiaryWeb.WorkItemComponents.thread_event/1` takes them, each
-  # a map of its attributes. A decline that recorded no stage it has words for has no
-  # line. A comment stays as it is, for `ApiaryWeb.WorkItemLive.Comments.comment_line/1`.
+  # a map of its attributes. A comment stays as it is, for
+  # `ApiaryWeb.WorkItemLive.Comments.comment_line/1`.
   defp thread(entries, row, names, ctx) do
-    entries
-    |> Enum.reject(&(&1.kind == :declined and &1.stage not in [:explore, :confirm]))
-    |> Enum.map(fn
+    Enum.map(entries, fn
       %{kind: :comment} = comment -> comment
       entry -> event(entry, row, names, ctx)
     end)
@@ -330,8 +328,6 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   defp event_fields(%{kind: :confirmed} = entry, _row, _names, _ctx),
     do: %{changed: entry.changed}
-
-  defp event_fields(%{kind: :declined} = entry, _row, _names, _ctx), do: %{stage: entry.stage}
 
   defp event_fields(%{kind: :closed} = entry, _row, _names, _ctx),
     do: %{reason: reason(entry.reason)}
