@@ -508,14 +508,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Workspace types**, is a text field: it suggests the workflows the harness lists and
   takes any name of lower-case letters, digits and hyphens that starts with a letter.
   Each workflow on the canvas and in the stage's panel shows a check, “A stage can run
-  it”, when it is `explore-a-ticket`, a workflow the harness listed at its last read, or
-  a workflow saved on the **Workflow** page; else a cross, “Not in the harness”, with
+  it”, when it is a workflow the harness listed at its last read, or a workflow saved
+  on the **Workflow** page; else a cross, “Not in the harness”, with
   what to do and when the stage waits. Before the first read of the harness, **Stages**
   shows “The harness has not been read yet.” and no marks.
   **Stages**, **Workflow** and **Check again** read the same harness: the workspace's
   choice, else the harness the organisation shares, else the Qory harness. The Qory
-  harness is not read: its workflow is `explore-a-ticket`, and **Stages** shows “The Qory
-  harness's workflows: explore-a-ticket.” A run that qory ends with
+  harness is not read: its workflows are those its stack lists. On the `software` stack
+  **Stages** shows “The Qory harness's workflows: explore-a-ticket.” A run that qory ends with
   `workflow_not_in_harness`, because the harness it composed has no skill for the run's
   workflow, shows that workflow and where the harness comes from on the run's page and
   on the work item.
@@ -569,7 +569,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   version number rises by 1. New workspaces copy that version.
 - A workspace on a harness repository no longer has `explore-a-ticket` added to the
   workflows it lists: a stack that does not list it gets a cross on Stages, and Explore
-  waits. A workspace on the Qory harness is unchanged.
+  waits. A workspace on the Qory harness gets the same cross when its stack does not
+  list it: `core` lists no workflows, so Explore waits there.
 <!-- /feature -->
 - A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
