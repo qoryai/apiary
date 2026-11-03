@@ -1443,6 +1443,35 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert line(thread) == "Closed when its integration was removed 14 Oct, 11:24"
     end
 
+    for {reason, words} <- [
+          last_stage_done: "Every stage done",
+          ticket_closed: "Closed when its ticket closed"
+        ] do
+      test "for #{reason}: the status, the end line, Details and the Thread say so" do
+        w = by_instance(unquote(reason))
+        words = unquote(words)
+
+        status = render_component(&WorkItemComponents.work_item_status/1, work_item: w)
+        assert text(status, ".q-wi-st") == words
+
+        notice =
+          render_component(&WorkItemComponents.end_notice/1,
+            work_item: w,
+            integration: "GitHub",
+            backlog_off: true,
+            now: @now
+          )
+
+        assert text(notice, "#work-item-ended-line") == words
+        assert count(notice, "#work-item-ended-again") == 0
+
+        assert text(details(w), "#work-item-details-ended") == words
+
+        thread = event(kind: :closed, actor: nil, reason: unquote(reason))
+        assert line(thread) == words <> " 14 Oct, 11:24"
+      end
+    end
+
     test "for a reason without words, or none: those parts draw nothing, and nothing fails" do
       for reason <- [nil, :unknown] do
         w = by_instance(reason)

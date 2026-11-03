@@ -607,6 +607,14 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{kind: :closed, actor_id: nil, reason: "adapter_removed"} =
                List.last(WorkItems.explore_thread(ctx.scope, closed))
 
+      for reason <- ["last_stage_done", "ticket_closed"] do
+        other = work_item_fixture(ctx.scope, external_ref: "acme/shop#" <> reason)
+        closed = instance_close!(other, reason)
+
+        assert %{status: :closed, ended_reason: ^reason, ended_by_id: nil} =
+                 WorkItems.explore(ctx.scope, closed)
+      end
+
       other = work_item_fixture(ctx.scope, external_ref: "acme/shop#14")
       {:ok, by_person} = WorkItems.close(ctx.scope, other)
       user_id = ctx.scope.user.id

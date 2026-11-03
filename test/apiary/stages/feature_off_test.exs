@@ -72,7 +72,10 @@ defmodule Apiary.Stages.FeatureOffTest do
 
     assert {:ok, %WorkItem{}} = WorkItems.confirm(scope, work_item, 3)
     assert Repo.get_by(Confirmation, work_item_id: work_item.id)
-    assert %WorkItem{stage_id: nil, stage_state: nil} = Repo.get!(WorkItem, work_item.id)
+
+    assert %WorkItem{state: :exploring, stage_id: nil, stage_state: nil} =
+             Repo.get!(WorkItem, work_item.id)
+
     assert Artifacts.list(work_item) == []
     assert Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id) == []
     assert Repo.all(from d in GateDecision, where: d.work_item_id == ^work_item.id) == []

@@ -100,8 +100,10 @@ defmodule Apiary.WorkItems.Moves do
   # ## Take in again
   #
   # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
-  # a live one `{:error, {:taken, work_item}}`. An ended one, closed or undone,
-  # becomes `:exploring` again, its take in counted one more, pointed at the ticket's
+  # a live one `{:error, {:taken, work_item}}`, and so is a finished one whose ticket has
+  # not reopened (`Apiary.WorkItems.Finished`), which stays taken in. Any other ended one,
+  # closed or undone, becomes `:exploring` again, its take in counted one more, pointed at
+  # the ticket's
   # current record and its connection, with the ticket's title and address and its
   # collection's title as they are now, and the target, the owner, the first instruction,
   # who took it in and when of this take in. A work item of another workspace moves to the
@@ -118,11 +120,13 @@ defmodule Apiary.WorkItems.Moves do
   # (`Apiary.Dispatches.cancel_for_undo/1`, `{:error, :claimed}` otherwise), and ends its
   # waiting runs. A first take in becomes `:undone`, and the adapter is told `undone`. A
   # take in again goes back to how it had ended, from its event's `before`: closed with
-  # when and by whom, and its owner, its target and who had taken it in, and
+  # when and by whom, and its owner, its target, who had taken it in and its place in
+  # its process (version, stage, state, round and entries), and
   # nothing is sent, as the label stayed; one that had ended undone becomes `:undone`
   # again, and the adapter is told `undone`, as its take in again put the label back on.
   # A work item moved by its take in again stays in the workspace it moved to, with its
-  # new number. The first instruction stays the one of the take in undone: it is given to
+  # new number, and gets no place in a process: the place it had is of the old one. An
+  # event written before the place was kept leaves the place as it is. The first instruction stays the one of the take in undone: it is given to
   # no run until a take in again gives a new one.
   #
   # ## Close
@@ -197,8 +201,8 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.{Item, Topic}
-  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Number, Proposal, State}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Finished, Number, Proposal}
+  alias Apiary.WorkItems.{State, WorkItem}
   alias Apiary.WorkItems.WorkItemEvent
 
   @typedoc "Why a take in, or a take in again, is refused."
@@ -469,6 +473,7 @@ defmodule Apiary.WorkItems.Moves do
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),
+             :ok <- not_finished(scope, ended, ticket),
              {:ok, target} <- target(workspace, ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
           again(scope, workspace, ended, ticket, target, owner_id, attrs)
@@ -497,6 +502,14 @@ defmodule Apiary.WorkItems.Moves do
           do: {:ok, work_item},
           else: {:error, {:taken, WorkItems.as_seen(scope, work_item)}}
     end
+  end
+
+  # A finished work item stays taken in until its ticket reopens, as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`).
+  defp not_finished(scope, ended, %{item: item}) do
+    if Finished.finished?(ended, item),
+      do: {:error, {:taken, WorkItems.as_seen(scope, ended)}},
+      else: :ok
   end
 
   defp again(scope, workspace, ended, ticket, target, owner_id, attrs) do
@@ -573,7 +586,8 @@ defmodule Apiary.WorkItems.Moves do
         loop_entry: nil
       )
 
-  # How `work_item` had ended, for the undo of the take in again that leaves it.
+  # How `work_item` had ended, for the undo of the take in again that leaves it: its
+  # place in its workspace's process among the rest.
   defp before(%WorkItem{} = work_item) do
     {at, by_id} =
       case work_item.state do
@@ -589,7 +603,14 @@ defmodule Apiary.WorkItems.Moves do
       "taken_in_at" => DateTime.to_iso8601(work_item.taken_in_at),
       "owner_id" => work_item.owner_id,
       "target_system" => work_item.target_system,
-      "target_path" => work_item.target_path
+      "target_path" => work_item.target_path,
+      "workspace_id" => work_item.workspace_id,
+      "process_version_id" => work_item.process_version_id,
+      "stage_id" => work_item.stage_id,
+      "stage_state" => work_item.stage_state && Atom.to_string(work_item.stage_state),
+      "stage_round" => work_item.stage_round,
+      "stage_entry" => work_item.stage_entry,
+      "loop_entry" => work_item.loop_entry
     }
   end
 
@@ -620,10 +641,10 @@ defmodule Apiary.WorkItems.Moves do
       case before do
         %{state: :closed} ->
           [state: state, closed_at: before.at, closed_by_id: before.by_id] ++
-            taken_in_fields(before)
+            taken_in_fields(before) ++ stage_fields(before, held)
 
         %{state: :undone} ->
-          [state: state] ++ taken_in_fields(before)
+          [state: state] ++ taken_in_fields(before) ++ stage_fields(before, held)
 
         nil ->
           [state: state]
@@ -669,13 +690,42 @@ defmodule Apiary.WorkItems.Moves do
           taken_in_at: time(before["taken_in_at"]),
           owner_id: before["owner_id"],
           target_system: before["target_system"],
-          target_path: before["target_path"]
+          target_path: before["target_path"],
+          stage: stage_before(before)
         }
 
       _first ->
         nil
     end
   end
+
+  # The work item's place in its process as its take in again found it, and the
+  # workspace it was in; nil for an event written before the place was kept.
+  defp stage_before(%{"stage_id" => _id, "workspace_id" => workspace_id} = before) do
+    %{
+      workspace_id: workspace_id,
+      process_version_id: before["process_version_id"],
+      stage_id: before["stage_id"],
+      stage_state: before["stage_state"] && String.to_existing_atom(before["stage_state"]),
+      stage_round: before["stage_round"],
+      stage_entry: before["stage_entry"],
+      loop_entry: before["loop_entry"]
+    }
+  end
+
+  defp stage_before(_before), do: nil
+
+  # The place an undo puts back. An event without it changes nothing. A work item its take
+  # in again moved to another workspace gets no place, as the place is of the old process.
+  defp stage_fields(%{stage: %{workspace_id: workspace_id} = stage}, %WorkItem{
+         workspace_id: workspace_id
+       }),
+       do: stage |> Map.delete(:workspace_id) |> Map.to_list()
+
+  defp stage_fields(%{stage: %{} = stage}, _held),
+    do: for({field, _value} <- Map.delete(stage, :workspace_id), do: {field, nil})
+
+  defp stage_fields(_before, _held), do: []
 
   defp time(nil), do: nil
 

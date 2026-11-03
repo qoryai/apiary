@@ -14,10 +14,12 @@ defmodule Apiary.Sources.IngestTest do
   import Apiary.SourcesFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Edition, EditionStubs, Sources}
+  alias Apiary.{Dispatches, Edition, EditionStubs, Sources}
   alias Apiary.Adapters.{Collection, Collections, Connections}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Sources.{Comment, Item, Listing, Topic}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems
+  alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   @moduletag needs: :factory
 
@@ -775,6 +777,197 @@ defmodule Apiary.Sources.IngestTest do
 
       assert Enum.sort(messages) == Enum.sort([[old], [new]])
       refute_receive {:tickets_changed, _}
+    end
+  end
+
+  describe "when an item last closed" do
+    test "a write that closes it keeps the time, and one that leaves it closed does not", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+      assert %Item{last_closed_at: nil} = ticket(ctx.trk, "R")
+
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))])
+      assert %Item{last_closed_at: %DateTime{} = closed_at} = ticket(ctx.trk, "R")
+
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(120))])
+      assert ticket(ctx.trk, "R").last_closed_at == closed_at
+    end
+
+    test "an item inserted closed keeps the time", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed")])
+      assert %Item{last_closed_at: %DateTime{}} = ticket(ctx.trk, "R")
+    end
+
+    test "a reopening write leaves the time, and a later close moves it", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed")])
+      closed_at = ticket(ctx.trk, "R").last_closed_at
+
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", updated_at: later(60))])
+      assert %Item{state: :open, last_closed_at: ^closed_at} = ticket(ctx.trk, "R")
+
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(120))])
+      assert DateTime.after?(ticket(ctx.trk, "R").last_closed_at, closed_at)
+    end
+
+    test "a write older than the time kept leaves it", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", updated_at: later(60))])
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(30))])
+
+      assert %Item{state: :open, last_closed_at: nil} = ticket(ctx.trk, "R")
+    end
+
+    test "a complete listing that closes it keeps the time", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+
+      {:ok, :accepted} =
+        post(ctx, "TRK", [item("S", updated_at: later(60))],
+          listing: %{id: "L", started_at: later(60)}
+        )
+
+      assert %Item{state: :closed, last_closed_at: %DateTime{}} = ticket(ctx.trk, "R")
+      assert %Item{state: :open, last_closed_at: nil} = ticket(ctx.trk, "S")
+    end
+  end
+
+  describe "a ticket that closes" do
+    setup ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+      ticket = ticket(ctx.trk, "R")
+
+      work_item =
+        work_item_fixture(ctx.scope, %{
+          connection_id: ctx.connection.id,
+          item_id: ticket.id,
+          external_ref: "R"
+        })
+
+      %{ticket: ticket, work_item: work_item}
+    end
+
+    defp reloaded(work_item), do: Repo.get!(WorkItem, work_item.id)
+
+    defp closed_event(work_item),
+      do:
+        Repo.one!(
+          from e in WorkItemEvent, where: e.work_item_id == ^work_item.id and e.kind == :closed
+        )
+
+    test "closes its live work item in the same post, by the instance", ctx do
+      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))]) ==
+               {:ok, :accepted}
+
+      assert %WorkItem{state: :closed, closed_at: at, closed_by_id: nil} =
+               reloaded(ctx.work_item)
+
+      assert at == ticket(ctx.trk, "R").last_closed_at
+
+      assert %WorkItemEvent{actor_kind: :instance, data: %{"reason" => "ticket_closed"}} =
+               closed_event(ctx.work_item)
+    end
+
+    test "ends a run not handed over, and leaves a run handed over to its end", ctx do
+      %{dispatch_run: waiting} = explore_run_fixture(ctx.work_item, state: :waiting)
+      %{dispatch_run: handed} = explore_run_fixture(ctx.work_item, state: :handed_over)
+
+      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))]) ==
+               {:ok, :accepted}
+
+      assert %DispatchRun{state: :ended, end_cause: :closed} = Repo.get!(DispatchRun, waiting.id)
+      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, handed.id)
+    end
+
+    test "a complete listing that leaves it out closes it too", ctx do
+      assert {:ok, :accepted} =
+               post(ctx, "TRK", [item("S", updated_at: later(60))],
+                 listing: %{id: "L", started_at: later(60)}
+               )
+
+      assert %WorkItem{state: :closed} = reloaded(ctx.work_item)
+      assert closed_event(ctx.work_item).data["reason"] == "ticket_closed"
+    end
+
+    test "a partial listing closes nothing", ctx do
+      assert {:ok, :accepted} =
+               post(ctx, "TRK", [item("S", updated_at: later(60))],
+                 listing: %{id: "L", part: 1, started_at: later(60), complete: false}
+               )
+
+      assert %WorkItem{state: :exploring} = reloaded(ctx.work_item)
+    end
+
+    test "an open write, or a closed one older than the time kept, closes nothing", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", updated_at: later(60))])
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(30))])
+
+      assert %WorkItem{state: :exploring} = reloaded(ctx.work_item)
+    end
+
+    test "leaves a work item that already ended as it is", ctx do
+      {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
+
+      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))]) ==
+               {:ok, :accepted}
+
+      assert reloaded(ctx.work_item) == closed
+    end
+
+    test "a test work item, with no ticket, has nothing to close", ctx do
+      {:ok, test_item} = WorkItems.take_in_test(ctx.scope, "Try a line")
+
+      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))]) ==
+               {:ok, :accepted}
+
+      assert %WorkItem{state: :exploring} = reloaded(test_item)
+    end
+
+    test "tells the work items, the queue and the Backlog once it commits", ctx do
+      explore_run_fixture(ctx.work_item, state: :waiting)
+      workspace_id = ctx.scope.workspace.id
+      public_id = ctx.work_item.public_id
+      ticket_id = ctx.ticket.public_id
+
+      :ok = WorkItems.subscribe(ctx.scope)
+      :ok = Dispatches.subscribe(workspace_id)
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Topic.topic(workspace_id))
+
+      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))]) ==
+               {:ok, :accepted}
+
+      assert_received {:work_items_changed, [^public_id]}
+      assert_received {Apiary.Dispatches, :changed}
+      assert_received {:tickets_changed, [^ticket_id]}
+    end
+
+    test "a moved ticket closes nothing: an open item of a live collection has the ref", ctx do
+      ops =
+        source_collection_fixture(ctx.scope, ctx.connection, %{
+          external_ref: "OPS",
+          workspace_id: ctx.other_workspace.id
+        })
+
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(60))])
+      assert %Item{state: :open, disconnected_at: nil} = ticket(ops, "R")
+
+      # The "closed" the source sends to the collection the ticket moved out of.
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(120))])
+
+      assert %Item{state: :closed, disconnected_at: %DateTime{}} = ticket(ctx.trk, "R")
+      assert %WorkItem{state: :exploring} = reloaded(ctx.work_item)
+    end
+
+    test "a ticket closed in its old collection before it opens in a new one closes the work item",
+         ctx do
+      ops =
+        source_collection_fixture(ctx.scope, ctx.connection, %{
+          external_ref: "OPS",
+          workspace_id: ctx.scope.workspace.id
+        })
+
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))])
+      assert %WorkItem{state: :closed} = reloaded(ctx.work_item)
+
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(120))])
+      assert %Item{state: :open, disconnected_at: nil} = ticket(ops, "R")
+      assert %WorkItem{state: :closed} = reloaded(ctx.work_item)
     end
   end
 end

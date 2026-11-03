@@ -84,7 +84,14 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
              "taken_in_at" => DateTime.to_iso8601(ctx.work_item.taken_in_at),
              "owner_id" => ctx.scope.user.id,
              "target_system" => ctx.work_item.target_system,
-             "target_path" => ctx.work_item.target_path
+             "target_path" => ctx.work_item.target_path,
+             "workspace_id" => closed.workspace_id,
+             "process_version_id" => closed.process_version_id,
+             "stage_id" => closed.stage_id,
+             "stage_state" => closed.stage_state && Atom.to_string(closed.stage_state),
+             "stage_round" => closed.stage_round,
+             "stage_entry" => closed.stage_entry,
+             "loop_entry" => closed.loop_entry
            }
 
     assert [entry] =
