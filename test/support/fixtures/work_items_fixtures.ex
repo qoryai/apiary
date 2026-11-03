@@ -383,30 +383,35 @@ defmodule Apiary.WorkItemsFixtures do
       %{
         "version" => 1,
         "verdict" => "understood",
-        "complexity" => %{"level" => "standard", "reason" => "Two screens read the price."},
-        "understanding" => "The basket keeps the price from before the sale.",
-        "scope" => %{"in" => ["Read the sale price in the basket"], "out" => ["The invoice"]},
-        "approach" => %{
-          "summary" => "Read the price from the catalogue each time.",
-          "alternatives" => [
-            %{
-              "summary" => "Clear the basket at a sale.",
-              "reason" => "It loses what people chose."
-            }
-          ]
-        },
-        "knowledge" => [
-          %{
-            "text" => "The catalogue holds the sale price.",
-            "sources" => ["https://docs.example.com/catalogue"]
-          }
-        ]
+        "message" => """
+        ## What this is
+
+        The basket keeps the price from before the sale.
+
+        ## How Qory would do it
+
+        Read the price from the catalogue each time.
+
+        ## Alternatives
+
+        - Clear the basket at a sale. Why not: it loses what people chose.
+        """
       },
       Map.new(attrs)
     )
   end
 
-  @doc "An explore result whose verdict is `not_understood`, asking `questions`."
-  def questions_result(questions \\ ["Which basket?", "Which sale?"]),
-    do: %{"version" => 1, "verdict" => "not_understood", "questions" => questions}
+  @doc """
+  An explore result whose verdict is `not_understood`, asking `questions`: each a question
+  with its options, or a text, a question that offers none.
+  """
+  def questions_result(questions \\ ["Which basket?", "Which sale?"]) do
+    questions =
+      Enum.map(questions, fn
+        text when is_binary(text) -> %{"question" => text, "options" => []}
+        %{} = question -> question
+      end)
+
+    %{"version" => 1, "verdict" => "not_understood", "questions" => questions}
+  end
 end

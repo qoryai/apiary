@@ -722,6 +722,7 @@ defmodule Apiary.Dispatches.HandoverTest do
         position: 1,
         question: "Which basket?",
         answer: "The one at checkout.",
+        custom: true,
         answered_by_id: member.id,
         answered_at: DateTime.utc_now()
       })

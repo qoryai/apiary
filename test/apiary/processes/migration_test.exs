@@ -64,6 +64,7 @@ defmodule Apiary.Processes.MigrationTest do
       position: 1,
       question: "Which checkout?",
       answer: "The one at the shop.",
+      custom: true,
       answered_by_id: user.id,
       answered_at: DateTime.utc_now()
     })

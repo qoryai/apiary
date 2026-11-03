@@ -35,10 +35,20 @@ defmodule Apiary.Dispatches.Settle do
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
   # stores it again once the run is settled.
   #
+  # **Comments on a proposal.** With the workflow model off, or for a work item in no
+  # stage, a write that stores a proposal marks done the comments of the run's take in
+  # that the run read, those still open from a run before it
+  # (`Apiary.WorkItems.mark_read/5`), in the same transaction: the proposal is then saved.
+  # A run that gives questions, no result or an error marks none. For a work item in a
+  # stage, with the workflow model on, the stage runner marks them once the run's
+  # `proposal` version is stored (`Apiary.Stages`).
+  #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the registered
   # run and its result event with no lock. Nothing else is locked: no counter,
-  # environment record or feed counter, and no work item with the workflow model off.
+  # environment record or feed counter, and no work item with the workflow model off;
+  # the comments a proposal marks done are updated by their rows alone, which no other
+  # path updates.
   # With it on, the work item is locked `FOR UPDATE` before the run of the queue, since
   # the stage runner writes it (`Apiary.Stages.hold_work_item/1`, `run_ended/2`).
   #
@@ -55,7 +65,7 @@ defmodule Apiary.Dispatches.Settle do
   alias Apiary.Explore.Result
   alias Apiary.Repo
   alias Apiary.Runs.{Event, Run}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{Explore, WorkItem}
 
   @prebuild DispatchRun.prebuild()
   # The runs of the queue one sweep settles at most; the rest wait for the next.
@@ -186,16 +196,34 @@ defmodule Apiary.Dispatches.Settle do
     )
   end
 
-  # The two columns, and nothing else, when they differ from what the row holds.
+  # The two columns, and nothing else, when they differ from what the row holds; for a
+  # proposal with the workflow model off, the comments the run read marked done.
   defp write(%DispatchRun{result_outcome: outcome, result: result}, outcome, result), do: []
 
-  defp write(%DispatchRun{id: id, work_item_id: work_item_id}, outcome, result) do
+  defp write(%DispatchRun{id: id, work_item_id: work_item_id} = dispatch_run, outcome, result) do
     {1, _rows} =
       Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
         set: [result_outcome: outcome, result: result]
       )
 
+    if outcome == :proposal and is_binary(work_item_id) and not staged?(work_item_id),
+      do: mark_read(dispatch_run)
+
     told(work_item_id)
+  end
+
+  # The stage runner stores the proposal of a work item in a stage, and marks the comments
+  # then; a work item in none, or any with the workflow model off, has them marked here.
+  defp staged?(work_item_id),
+    do:
+      Apiary.Stages.on?() and
+        Repo.exists?(from w in WorkItem, where: w.id == ^work_item_id and not is_nil(w.stage_id))
+
+  # The run's proposal is kept: the comments on the take in's proposals it read are done,
+  # in the version its proposal is (`Apiary.WorkItems.Explore.proposal_version/3`).
+  defp mark_read(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
+    version = Explore.proposal_version(id, take_in, attempt)
+    Apiary.WorkItems.mark_read(id, take_in, attempt, version, DateTime.utc_now())
   end
 
   # told/1 is the work item `work_item_id` to tell once a transaction commits: its

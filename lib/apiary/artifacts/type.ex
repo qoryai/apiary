@@ -4,8 +4,10 @@ defmodule Apiary.Artifacts.Type do
   # A type is standard, one of the ten Qory Apiary ships (`standard/0`), or custom, a row
   # of a workspace's `artifact_types`. Both are this struct; `standard` is true for the
   # first, and a standard type has no row, so no id, public id, organisation or
-  # workspace. `view` is the dedicated view of a standard structured type (`:proposal`,
-  # `:questions`, `:verdict` or `:change`), nil for every other type. A workspace can hide
+  # workspace. `view` is the dedicated view of a standard structured type (`:questions`,
+  # `:verdict` or `:change`), nil for every other type. A `proposal` is a document, its one
+  # file Markdown, and a `questions` document holds the questions of an explore result,
+  # each up to 20,000 characters, so both take up to 256 KiB. A workspace can hide
   # a standard type unless it is always on (`always_on/0`); `shown` is whether the
   # workspace shows the type, as `Apiary.Artifacts.all_types/1` sets it.
   #
@@ -62,8 +64,8 @@ defmodule Apiary.Artifacts.Type do
     {"screenshot", :image, 10 * @mib, 10, nil},
     {"demo-video", :video, 200 * @mib, 5, nil},
     {"change", :structured, 64 * 1024, 1, :change},
-    {"proposal", :structured, 256 * 1024, 1, :proposal},
-    {"questions", :structured, 64 * 1024, 1, :questions},
+    {"proposal", :document, 256 * 1024, 1, nil},
+    {"questions", :structured, 256 * 1024, 1, :questions},
     {"verdict", :structured, 64 * 1024, 1, :verdict}
   ]
 

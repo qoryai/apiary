@@ -2438,6 +2438,14 @@ defmodule ApiaryWeb.RunComponents do
         name: person(people, id)
       )
 
+  def started_by_words({:comment, attempt, of, id}, people),
+    do:
+      gettext("Attempt %{attempt} of %{of}, after a comment from %{name}",
+        attempt: attempt,
+        of: of,
+        name: person(people, id)
+      )
+
   def started_by_words(_none, _people), do: nil
 
   defp person(people, id), do: people |> ApiaryWeb.People.account(id) |> ApiaryWeb.People.short()

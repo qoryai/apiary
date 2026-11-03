@@ -108,7 +108,7 @@ defmodule Apiary.Dispatches.Slots do
   #
   # A release (`Apiary.Dispatches.Release`) keeps it as well, and holds one row before
   # the free of its run: for an explore run, its work item `FOR UPDATE`, as a close
-  # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/2` hold a work
+  # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/3` hold a work
   # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
   # has it. Then the free of its run, which locks that record again where its lease
   # lapsed, its run of the queue, and its dispatch. A prebuild given back locks the one
@@ -145,7 +145,7 @@ defmodule Apiary.Dispatches.Slots do
   # as 1. has a Rebuild hold them, then its work item `FOR UPDATE`, then those records
   # `FOR UPDATE`, as 3. has them, then the same, then the prebuilds it queues, as 5., and
   # the next run of its take in, inserted under its work item's lock, as
-  # `Apiary.Dispatches.queue_next/2` inserts one.
+  # `Apiary.Dispatches.queue_next/3` inserts one.
   #
   # So a prebuild comes to wait under the lock of its record, or, for a claim, under the
   # pool's row, and whoever comes second sees what the first wrote, or, at the index of

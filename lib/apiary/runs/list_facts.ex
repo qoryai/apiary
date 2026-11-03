@@ -55,6 +55,8 @@ defmodule Apiary.Runs.ListFacts do
       item's first take in or of a later one, by who took it in;
     * `{:answers, attempt, of, person}`, a run queued by answers to the questions of the
       run before it, by who answered;
+    * `{:comment, attempt, of, person}`, a run queued by a comment on the proposal of the
+      run before it, by who commented;
     * `{:explore_again, person}`, a run queued by Explore again, by who asked;
     * `:process`, any other run the stage runner placed.
 
@@ -66,7 +68,7 @@ defmodule Apiary.Runs.ListFacts do
           | :image_requeue
           | :process
           | {:test_run | :taken_in | :taken_in_again | :explore_again, Ecto.UUID.t()}
-          | {:answers, pos_integer, pos_integer, Ecto.UUID.t()}
+          | {:answers | :comment, pos_integer, pos_integer, Ecto.UUID.t()}
 
   @doc false
   @spec of(Scope.t(), [Run.t()]) :: %{Ecto.UUID.t() => map}
@@ -269,7 +271,7 @@ defmodule Apiary.Runs.ListFacts do
       queued_by_take_in?(row, stages) ->
         taken_in(row, find(events, :taken_in, row.take_in))
 
-      answered = find(events, :answered, row.take_in, row.attempt - 1) ->
+      answered = answers_event(events, row) ->
         answers(row, answered)
 
       again = find(events, :explore_again, row.take_in, row.attempt) ->
@@ -296,6 +298,14 @@ defmodule Apiary.Runs.ListFacts do
 
   defp taken_in(%{take_in: 1}, event), do: person(:taken_in, event)
   defp taken_in(_row, event), do: person(:taken_in_again, event)
+
+  # The answers to the questions of the run before `row`, or a comment on that run's
+  # proposal.
+  defp answers_event(events, row), do: find(events, :answered, row.take_in, row.attempt - 1)
+
+  defp answers(row, %{actor_kind: :person, actor_id: id, data: %{"comment" => true}})
+       when is_binary(id),
+       do: {:comment, row.attempt, row.of, id}
 
   defp answers(row, %{actor_kind: :person, actor_id: id}) when is_binary(id),
     do: {:answers, row.attempt, row.of, id}

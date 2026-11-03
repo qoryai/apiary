@@ -111,7 +111,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # `Apiary.Dispatches.Slots`: the connections of the collections whose records keep that
   # image, `FOR SHARE`, by id, then those collections `FOR SHARE`, by id
   # (`Apiary.Environments.hold_missing/3`), as a Rebuild holds them; then its work item
-  # `FOR UPDATE`, as `Apiary.Dispatches.queue_next/2` holds it before it reads the take
+  # `FOR UPDATE`, as `Apiary.Dispatches.queue_next/3` holds it before it reads the take
   # in's runs, since the end inserts the next run of the take in; then those records
   # `FOR UPDATE` (`Apiary.Environments.lock_missing/3`). The prebuild it queues inserts a
   # run of the queue whose foreign key takes `FOR KEY SHARE` on its collection, which the
@@ -274,7 +274,7 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # The work item of a run whose image was missing, `FOR UPDATE`, as
-  # `Apiary.Dispatches.queue_next/2` holds it: its end may queue the next run of the take
+  # `Apiary.Dispatches.queue_next/3` holds it: its end may queue the next run of the take
   # in (`Apiary.Dispatches.requeue_for_image/1`).
   defp lock_work_item(work_item_id) do
     _id =

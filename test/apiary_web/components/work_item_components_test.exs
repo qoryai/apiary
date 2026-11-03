@@ -387,8 +387,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   end
 
   describe "step_card/1, Confirm" do
-    test "the reader's: Your turn, the line, Confirm" do
-      html = card(work_item())
+    test "the reader's: Your turn, the line, and Read Qory's proposal, no buttons" do
+      html = card(work_item(), explore_path: "/acme/main/work/88/explore")
 
       assert text(html, "h2") == "Confirm"
       assert text(html, ".q-wi-badge") == "Your turn"
@@ -398,20 +398,22 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "Confirm Qory's proposal, or write what to change."
 
       refute html =~ "Mock-up"
-      assert text(html, "#work-item-step-confirm") == "Confirm"
-      assert attr(html, "#work-item-step-confirm", "phx-click") == ["confirm"]
-      assert attr(html, "#work-item-step-confirm", "phx-value-number") == ["88"]
+      assert text(html, "#work-item-step-explore") == "Read Qory's proposal"
+      assert attr(html, "#work-item-step-explore", "href") == ["/acme/main/work/88/explore"]
+      assert count(html, "button") == 0
+      assert count(html, "#work-item-step-confirm") == 0
+      assert count(html, "#work-item-step-change") == 0
       refute html =~ "Decline"
     end
 
-    test "another member's: no badge, Confirm stays" do
-      html = card(work_item(%{owner: @priya}))
+    test "another member's: no badge, the link stays" do
+      html = card(work_item(%{owner: @priya}), explore_path: "/acme/main/work/88/explore")
       assert count(html, ".q-wi-badge") == 0
       assert count(html, ".q-wi-step-ask") == 0
-      assert count(html, "#work-item-step-confirm") == 1
+      assert count(html, "#work-item-step-explore") == 1
     end
 
-    test "without the right to act: whose turn it is, no Confirm" do
+    test "without the right to act: whose turn it is, no link" do
       html = card(work_item(%{owner: @priya}), can_act: false)
 
       assert text(html, ".q-wi-bee-line") == "Priya confirms next"
@@ -421,12 +423,18 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, "button") == 0
       assert count(html, "[role=group]") == 0
 
-      acts = card(work_item(%{owner: @priya}), can_act: true)
+      assert count(html, "#work-item-step-explore") == 0
+
+      acts =
+        card(work_item(%{owner: @priya}),
+          can_act: true,
+          explore_path: "/acme/main/work/88/explore"
+        )
 
       assert text(acts, ".q-wi-bee-line") ==
                "Confirm Qory's proposal, or write what to change."
 
-      assert count(acts, "#work-item-step-confirm") == 1
+      assert count(acts, "#work-item-step-explore") == 1
     end
 
     test "without the right to act: the reader as you, another owner by name, escaped" do

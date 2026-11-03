@@ -44,11 +44,13 @@ defmodule Apiary.WorkItems.ExploreViewTest do
     test "a run that asked: its questions by position, then answered, its answers and who gave them",
          ctx do
       asked =
-        Map.put(
-          questions_result(),
-          "understanding",
-          "The basket keeps the price from before the sale."
-        )
+        questions_result([
+          %{
+            "question" => "Which basket?",
+            "options" => [%{"title" => "At checkout", "explanation" => "The page reads it."}]
+          },
+          "Which sale?"
+        ])
 
       %{run: run} = explore_run_fixture(ctx.work_item, result: asked)
 
@@ -64,10 +66,16 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                  place: :questions,
                  outcome: :questions,
                  proposal: nil,
-                 understanding: "The basket keeps the price from before the sale.",
+                 version: nil,
                  questions: [
-                   %{public_id: "1", text: "Which basket?", answer: nil},
-                   %{public_id: "2", text: "Which sale?", answer: nil}
+                   %{
+                     public_id: "1",
+                     text: "Which basket?",
+                     options: [%{title: "At checkout", explanation: "The page reads it."}],
+                     answer: nil,
+                     custom: nil
+                   },
+                   %{public_id: "2", text: "Which sale?", options: [], answer: nil, custom: nil}
                  ],
                  answered_by_id: nil
                },
@@ -75,11 +83,14 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                earlier_take_ins: [],
                answers_by_ids: [],
                confirmed_by_id: nil,
-               changes: %{}
+               comments: []
              } = WorkItems.explore(ctx.scope, ctx.work_item)
 
       {:ok, answered} =
-        WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "At checkout.", "2" => "Spring."})
+        WorkItems.answer(ctx.scope, ctx.work_item, 1, %{
+          "1" => %{"option" => "At checkout"},
+          "2" => "Spring."
+        })
 
       user_id = ctx.scope.user.id
       run_id = run.public_id
@@ -90,7 +101,10 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                earlier_runs: [
                  %{
                    id: ^run_id,
-                   questions: [%{answer: "At checkout."}, %{answer: "Spring."}],
+                   questions: [
+                     %{answer: "At checkout", custom: false},
+                     %{answer: "Spring.", custom: true}
+                   ],
                    answered_by_id: ^user_id,
                    answered_at: %DateTime{}
                  }
@@ -99,24 +113,16 @@ defmodule Apiary.WorkItems.ExploreViewTest do
              } = WorkItems.explore(ctx.scope, answered)
     end
 
-    test "a confirmed proposal waits for Shape, read from its confirmation with the changes",
-         ctx do
+    test "a confirmed proposal waits for Shape, read from its confirmation", ctx do
       %{run: run} = explore_run_fixture(ctx.work_item, result: understood_result())
+      message = understood_result()["message"]
 
-      assert %{status: :confirm, run: %{place: :proposal, proposal: %{approach: approach}}} =
-               WorkItems.explore(ctx.scope, ctx.work_item)
+      assert %{
+               status: :confirm,
+               run: %{place: :proposal, proposal: %{message: ^message}, version: 1}
+             } = WorkItems.explore(ctx.scope, ctx.work_item)
 
-      assert approach == "Read the price from the catalogue each time."
-
-      form = %{
-        "complexity" => %{"level" => "standard", "reason" => "Two screens read the price."},
-        "understanding" => "The basket keeps the price from before the sale.",
-        "scope_in" => "Read the sale price in the basket",
-        "scope_out" => "The invoice",
-        "approach" => "Keep the price on the line."
-      }
-
-      {:ok, confirmed} = WorkItems.confirm(ctx.scope, ctx.work_item, 1, form)
+      {:ok, confirmed} = WorkItems.confirm(ctx.scope, ctx.work_item, 1)
 
       # The run's events pruned, its proposal is still the one confirmed.
       Repo.delete_all(from e in Apiary.Runs.Event, where: e.run_id == ^run.id)
@@ -124,10 +130,10 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       assert %{
                status: :shape,
-               run: %{place: :proposal, outcome: :proposal, proposal: %{approach: ^approach}},
+               run: %{place: :proposal, outcome: :proposal, proposal: %{message: ^message}},
                confirmed_by_id: ^user_id,
                confirmed_at: %DateTime{},
-               changes: %{approach: %{value: "Keep the price on the line.", by_id: ^user_id}}
+               comments: []
              } = WorkItems.explore(ctx.scope, confirmed)
     end
 

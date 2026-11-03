@@ -380,7 +380,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       assert TypeTemplates.workflows() == ["explore-a-ticket"]
       assert TypeTemplates.workflows() == QoryCopy.workflows("software")
       assert length(TypeTemplates.artifact_types()) == 10
-      assert %{name: "proposal", base_view: :structured} in TypeTemplates.artifact_types()
+      assert %{name: "proposal", base_view: :document} in TypeTemplates.artifact_types()
     end
   end
 

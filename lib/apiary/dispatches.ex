@@ -8,7 +8,7 @@ defmodule Apiary.Dispatches do
   # with no organisation and no workspace, claims from the queue of every workspace with
   # no pool in use.
   #
-  # ## Queueing: `queue/2`, `queue_next/2`, `cancel_for_undo/1` and `cancel_for_close/2`
+  # ## Queueing: `queue/2`, `queue_next/3`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
   # `queue(work_item, take_in)` writes, inside the caller's transaction, the first run of a
   # take in of `work_item`: waiting, `attempt` 1 of `of/0`, for the step `step/0`, in the
@@ -18,14 +18,17 @@ defmodule Apiary.Dispatches do
   # organisation alone; this is what holds a queued run to its work item's workspace. The
   # run waits for no pool in particular: any pool of that workspace may claim it.
   #
-  # `queue_next(work_item, take_in)` writes, inside the caller's transaction, the next run
+  # `queue_next(work_item, take_in, opts)` writes, inside the caller's transaction, the next run
   # of a take in that has one: waiting, `attempt` one past the highest of the take in's
   # runs, of the same `of`, for the step `step/0`, in the work item's workspace, its row
   # locked `FOR UPDATE` first as `queue/2` locks it, and only then the take in's runs read.
   # Every new run counts toward `of`; a run back in the queue after a lapsed lease or a
   # release before its handover is the same run, not a new one. While a run of
   # the take in has not ended, waiting, claimed or handed over, it is `{:error, :running}`;
-  # once the highest attempt is its `of`, `{:error, :used_up}`; a take in with no run is
+  # once the highest attempt is its `of`, `{:error, :used_up}`, unless the caller asks
+  # `extend: true`, for a person's comment on a proposal: that run then has its `attempt`
+  # and its `of` one more each, as an image requeue has, so run 3 of 3 is followed by run
+  # 4 of 4 (`queue_next/3`). A take in with no run is
   # `{:error, :no_run}`, as its first run is `queue/2`'s to write. Two at once for one take
   # in take turns on the work item: the second reads the runs only once the first
   # committed, so the two never write the same attempt.
@@ -347,16 +350,19 @@ defmodule Apiary.Dispatches do
     insert_run(work_item, take_in, attempt, attempt + max(rounds_left, 0), false, stage)
   end
 
-  # queue_next/2 writes the next run of take in `take_in` of `work_item`, once every run
-  # of the take in ended and while one is left of its `of`, waiting in the work item's
-  # workspace, inside the caller's transaction (the moduledoc).
+  # queue_next/3 writes the next run of take in `take_in` of `work_item`, once every run
+  # of the take in ended and while one is left of its `of`, or one more with `opts`
+  # `extend: true`, waiting in the work item's workspace, inside the caller's transaction
+  # (the moduledoc).
   @doc false
-  @spec queue_next(WorkItem.t(), pos_integer) ::
+  @spec queue_next(WorkItem.t(), pos_integer, keyword) ::
           {:ok, DispatchRun.t()}
           | {:error, :no_run | :running | :used_up | Ecto.Changeset.t()}
-  def queue_next(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
-    in_transaction!("queue_next/2")
+  def queue_next(%WorkItem{id: id}, take_in, opts \\ [])
+      when is_binary(id) and is_integer(take_in) do
+    in_transaction!("queue_next/3")
     work_item = lock_work_item!(id)
+    extend? = Keyword.get(opts, :extend, false)
 
     runs =
       Repo.all(
@@ -374,6 +380,7 @@ defmodule Apiary.Dispatches do
 
         cond do
           Enum.any?(runs, &(&1.state != :ended)) -> {:error, :running}
+          attempt >= of and extend? -> next_run(work_item, take_in, attempt, of + 1)
           attempt >= of -> {:error, :used_up}
           true -> next_run(work_item, take_in, attempt, of)
         end
@@ -381,8 +388,8 @@ defmodule Apiary.Dispatches do
   end
 
   # Hand-over: with the workflow model, the stage runner queues the next run of a work
-  # item it placed in a stage (`Apiary.Stages.next_run/2`); one it did not place gets the
-  # next run as before.
+  # item it placed in a stage (`Apiary.Stages.next_run/2`), and counts its `of`; one it
+  # did not place gets the next run as before.
   defp next_run(work_item, take_in, attempt, of) do
     case Apiary.Stages.on?() && Apiary.Stages.next_run(work_item.id, take_in) do
       {:ok, _run} = queued -> queued

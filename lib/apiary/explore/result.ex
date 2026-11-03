@@ -24,11 +24,10 @@ defmodule Apiary.Explore.Result do
   #     checked in one walk of the decoded document before the schema, so a document of
   #     tens of thousands of entries costs its reading, not a check of each entry;
   #   * valid against `result.schema.json`: every object refuses a member the schema does
-  #     not define, the verdict decides which members are required or absent, every text
-  #     refuses the control, bidirectional, separator and format characters the schema's
-  #     `$defs/text` lists, and every source is an https URL whose authority is not empty
-  #     and holds no `@` and no backslash, with no space or refused character anywhere.
-  #     A refusal is `:none` as soon as JSV gives it; its errors are not read.
+  #     not define, the verdict decides which members are required or absent (`message`
+  #     for `understood`, `questions` for `not_understood`), and every text refuses the
+  #     control, bidirectional, separator and format characters the schema's `$defs/text`
+  #     lists. A refusal is `:none` as soon as JSV gives it; its errors are not read.
   #
   # Two changes to how the schema is built make it read as the contract means it:
   #
@@ -42,8 +41,10 @@ defmodule Apiary.Explore.Result do
   #     contract reads it.
   #
   # A result is the decoded document: a map with string keys, as the schema has them,
-  # such as `%{"version" => 1, "verdict" => "not_understood", "questions" => [...]}`;
-  # `version` is the integer 1 however the text wrote it.
+  # such as `%{"version" => 1, "verdict" => "understood", "message" => "## What this
+  # is…"}`, the proposal as Markdown, or `%{"version" => 1, "verdict" =>
+  # "not_understood", "questions" => [%{"question" => …, "options" => […]}]}`; `version`
+  # is the integer 1 however the text wrote it.
   #
   # `outcome/1` says what one result event gave, and `given/3` what a run ended by its
   # exit, or by an outcome stored before a run of the queue was refused one, gave once it

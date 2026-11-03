@@ -1154,7 +1154,7 @@ defmodule ApiaryWeb.RunLive.Index do
     facts
     |> Map.values()
     |> Enum.flat_map(fn
-      %{started_by: {:answers, _attempt, _of, id}} -> [id]
+      %{started_by: {kind, _attempt, _of, id}} when kind in [:answers, :comment] -> [id]
       %{started_by: {_kind, id}} -> [id]
       _other -> []
     end)
