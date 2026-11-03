@@ -231,6 +231,16 @@ msgstr ""
 msgid "%{contact_support} with work item #%{number}. No machine has taken the test run yet."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. A read-only run cannot run its setup inside the agent's container."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. A read-only run needs a wall, and this machine has none."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}. Machines can't reach %{url}, the address in this command."
@@ -3835,7 +3845,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do."
-msgstr "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes how to build it."
+msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
@@ -5370,17 +5380,17 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions."
-msgstr "Attempt %{attempt} of %{of} reads the %{item}, the code and these answers from the start, then returns a proposal for how to build it, or more questions."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions."
-msgstr "Attempt %{attempt} of %{of} reads the %{item} and the code, then returns a proposal for how to build it, or questions."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start."
-msgstr "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item}, the code and these answers, from the start."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -6378,6 +6388,11 @@ msgstr ""
 msgid "Choose a workflow"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+msgstr "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose an outside API: a built-in one, or a custom API of this organisation."
@@ -6653,6 +6668,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "Commit this file to a harness repository. Only new workspaces made from it use it."
 msgstr ""
 
@@ -15008,27 +15024,27 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item}"
-msgstr "Qory reads the %{item} and the code"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and the answers of %{name}, and writes a proposal."
-msgstr "Qory reads the %{item}, the code and the answers of %{name}, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and the answers of this take in, and writes a proposal."
-msgstr "Qory reads the %{item}, the code and the answers of this take in, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and writes a proposal."
-msgstr "Qory reads the %{item} and the code, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the %{item} and your answers, and writes a proposal."
-msgstr "Qory reads the %{item}, the code and your answers, and writes a proposal for how to build it."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -15060,7 +15076,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know."
-msgstr "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and the code, and proposes how to build it, or asks what it needs to know."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -15079,17 +15095,17 @@ msgstr[1] ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory wrote a proposal, after %{duration}."
-msgstr "Qory wrote a proposal for how to build it, after %{duration}."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory wrote a proposal, after %{duration}. %{name} confirms next"
-msgstr "Qory wrote a proposal for how to build it, after %{duration}. %{name} confirms next"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory wrote a proposal, after %{duration}. You confirm next"
-msgstr "Qory wrote a proposal for how to build it, after %{duration}. You confirm next"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -16904,6 +16920,11 @@ msgstr ""
 msgid "Set a variable"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set a wall in the machine's forager.yaml, then start the run again. A read-only run needs a wall, and this machine has none."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set aside: locked above the workspace"
@@ -17065,6 +17086,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Set up · %{done} of %{total}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/password.ex
@@ -17547,6 +17573,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Start an organisation. You set up its first workspace next."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start the run again. The setup container was not removed, so a process in it could still write the files."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -21266,23 +21297,23 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "When the run starts, Qory reads the %{item} and the answers of %{name}, and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item}, the code and the answers of %{name}, and writes a proposal for how to build it."
+msgid "When the run starts, Qory explores the %{item} and the answers of %{name}, and writes a proposal for the work."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "When the run starts, Qory reads the %{item} and the answers of this take in, and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item}, the code and the answers of this take in, and writes a proposal for how to build it."
+msgid "When the run starts, Qory explores the %{item} and the answers of this take in, and writes a proposal for the work."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "When the run starts, Qory reads the %{item} and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item} and the code, and writes a proposal for how to build it."
+msgid "When the run starts, Qory explores the %{item} and writes a proposal for the work."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "When the run starts, Qory reads the %{item} and your answers, and writes a proposal."
-msgstr "When the run starts, Qory reads the %{item}, the code and your answers, and writes a proposal for how to build it."
+msgid "When the run starts, Qory explores the %{item} and your answers, and writes a proposal for the work."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -22935,6 +22966,11 @@ msgstr ""
 msgid "harness"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "image has nested Docker"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "in %{agent} %{id}:"
@@ -23176,6 +23212,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "the line a test work item was made from"
 msgid "lines"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "list %{type} once in artifact_types"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -23536,6 +23577,11 @@ msgstr ""
 msgid "read"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "read-only run with no wall"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "reading it takes more than %{n} calls"
@@ -23597,6 +23643,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "setup container not removed"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "setup runs inside the agent's container"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -23763,6 +23819,11 @@ msgstr ""
 #: lib/apiary/artifacts/template_types.ex
 #, elixir-autogen, elixir-format
 msgid "the custom type %{type} is not valid: %{error}"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "the entry %{type} in artifact_types does not match process.schema.json"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

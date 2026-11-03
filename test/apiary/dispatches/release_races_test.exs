@@ -92,7 +92,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     {:ok, %{dispatch: dispatch, registered: run, run_code: code}} =
-      Dispatches.claim(ctx.key, Dispatches.now())
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
     assert dispatch.dispatch_run_id == queued.id
 
@@ -116,7 +116,9 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     {:ok, queued} =
       Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
     assert dispatch.dispatch_run_id == queued.id
     %{collection: collection, record: record, dispatch_run: queued, dispatch: dispatch}
   end

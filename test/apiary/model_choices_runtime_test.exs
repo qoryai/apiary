@@ -182,7 +182,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     {:ok, %{documents: documents}} =
-      Dispatches.claim(
+      Apiary.DispatchedRunsFixtures.walked_claim(
         place.key,
         Dispatches.now(),
         ~s({"version":1,"time":"2026-10-26T12:00:00Z"})

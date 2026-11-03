@@ -66,11 +66,11 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     |> Map.put(:scope, scope)
   end
 
-  # Stores the workspace's stack row for the workflow `hello`, with `harness`: the run's
-  # one row with a workflow, so the run's walk is queued.
+  # Stores the workspace's stack row for the workflow `explore-a-ticket`, with `harness`:
+  # the workflow of the run's stage entry.
   defp workflow!(ctx, harness \\ @document) do
     {:ok, _stack} =
-      Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "hello"}, harness)
+      Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "explore-a-ticket"}, harness)
   end
 
   # A request's time, one second earlier for each request the test sends, so no two
@@ -106,6 +106,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   # The claim answer of the oldest run the pool may take: 200, signed, valid under the
   # vendored schema.
   defp claim(ctx) do
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
     claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
     assert claim.status == 200
     assert signed_answer?(claim)
@@ -174,7 +175,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
       assert Map.take(documents, @harness) == %{
                "target_version" => @version,
-               "workflow" => "hello",
+               "workflow" => "explore-a-ticket",
                "harness_hidden" => false
              }
 
@@ -191,7 +192,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
       assert Map.take(documents, @harness) == %{
                "target_version" => @version,
-               "workflow" => "hello",
+               "workflow" => "explore-a-ticket",
                "harness_hidden" => false,
                "harness" => %{"harness" => section()}
              }
@@ -213,7 +214,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       documents = documents(claim(ctx))
 
       assert Map.take(documents, @harness) == %{
-               "workflow" => "hello",
+               "workflow" => "explore-a-ticket",
                "harness_hidden" => false,
                "harness" => %{"harness" => section()}
              }
@@ -225,11 +226,11 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       %{scope: other} = sign_up_fixture()
 
       {:ok, _stack} =
-        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "hello"}, @document)
+        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "explore-a-ticket"}, @document)
 
       explore!(ctx, origin: :setting, document: section(), harness_hidden: true)
       documents = documents(claim(ctx))
-      assert %{"workflow" => "hello", "harness_hidden" => true} = documents
+      assert %{"workflow" => "explore-a-ticket", "harness_hidden" => true} = documents
       valid!(documents)
     end
 
@@ -258,7 +259,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       )
 
       documents = documents(claim(ctx))
-      assert %{"access" => "write", "workflow" => "hello"} = documents
+      assert %{"access" => "write", "workflow" => "explore-a-ticket"} = documents
       valid!(documents)
     end
 
@@ -266,7 +267,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       workflow!(ctx)
       explore!(ctx, origin: :setting, document: section(), target_version: @version)
       documents = documents(claim(ctx))
-      assert %{"access" => "read", "workflow" => "hello"} = documents
+      assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
       valid!(documents)
     end
   end

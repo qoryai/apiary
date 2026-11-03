@@ -373,7 +373,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
                Processes.placement_check(
                  document,
                  TypeTemplates.workflows(),
-                 TypeTemplates.offered_types()
+                 TypeTemplates.offered_types(@type_key)
                ),
                &match?({:missing_type, _id, _type}, &1)
              )
@@ -383,6 +383,13 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       {:ok, view, _html} = live(conn, @edit)
 
       assert new_output_options(view) == standard_names() ++ ["branch"]
+    end
+
+    test "another type's page offers the standard types, and no custom type of the template",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, @index <> "/qory.example")
+
+      assert new_output_options(view) == standard_names()
     end
 
     test "a key no type has is a path that does not exist", %{conn: conn} do

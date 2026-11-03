@@ -457,7 +457,9 @@ defmodule Apiary.Harnesses.ReaderTest do
                  entry |> with_types() |> read()
 
         entry = "{name: draft, base_view: #{view}, size_limit: #{most + 1}, max_files: 20}"
-        assert entry |> with_types() |> read() == {:error, :invalid_template}, view
+
+        assert entry |> with_types() |> read() == {:error, {:invalid_artifact_type, "draft"}},
+               view
       end
 
       entry =
@@ -468,22 +470,59 @@ defmodule Apiary.Harnesses.ReaderTest do
       entry =
         "{name: facts, base_view: structured, size_limit: 1048577, max_files: 1, json_schema: {}}"
 
-      assert entry |> with_types() |> read() == {:error, :invalid_template}
+      assert entry |> with_types() |> read() == {:error, {:invalid_artifact_type, "facts"}}
     end
 
-    test "refuses an entry that is neither a name alone nor a full definition" do
+    test "refuses an entry with no name as text, and the refusal has no name" do
       for entry <- [
             "screenshot",
             "1",
             "{}",
             "{base_view: document, size_limit: 1, max_files: 1}",
-            "{name: Screenshot}",
-            "{name: a--b}",
-            "{name: -a}",
-            ~s({name: "a\\nb"}),
-            ~s({name: "a\\n"}),
-            "{name: #{String.duplicate("a", 65)}}",
-            "{name: 1}",
+            "{name: 1}"
+          ] do
+        assert entry |> with_types() |> read() == {:error, :invalid_template}, entry
+      end
+    end
+
+    test "refuses a name of no type's form, and the refusal has the name" do
+      for name <- ["Screenshot", "a--b", "-a", "a\nb", "a\n", String.duplicate("a", 63) <> "-"] do
+        assert ("{name: " <> Jason.encode!(name) <> "}") |> with_types() |> read() ==
+                 {:error, {:invalid_artifact_type, name}}
+      end
+    end
+
+    test "a refused name is cut to the 64 characters a name may have" do
+      assert ("{name: " <> String.duplicate("é", 70) <> "}") |> with_types() |> read() ==
+               {:error, {:invalid_artifact_type, String.duplicate("é", 64)}}
+    end
+
+    test "the refusal has the name of the first refused entry that has one" do
+      good = "{name: mockup}"
+      draft = "{name: draft, base_view: document}"
+      facts = "{name: facts, size_limit: 1}"
+
+      assert [good, "1", draft, facts] |> Enum.join(", ") |> with_types() |> read() ==
+               {:error, {:invalid_artifact_type, "draft"}}
+    end
+
+    test "an entry the schema refuses comes before any other key it refuses" do
+      text =
+        String.replace(
+          with_types("{name: draft, base_view: document}"),
+          "stack: ",
+          "stacks: "
+        )
+
+      assert read(text) == {:error, {:invalid_artifact_type, "draft"}}
+    end
+
+    test "a good list beside another key the schema refuses is no type's refusal" do
+      assert read(with_types("{name: mockup}") <> "version: 2\n") == {:error, :invalid_template}
+    end
+
+    test "refuses an entry that is neither a name alone nor a full definition" do
+      for entry <- [
             "{name: draft, base_view: document}",
             "{name: draft, size_limit: 1}",
             "{name: draft, base_view: document, size_limit: 1}",
@@ -499,7 +538,8 @@ defmodule Apiary.Harnesses.ReaderTest do
             "{name: facts, base_view: structured, size_limit: 1, max_files: 2, json_schema: {}}",
             "{name: facts, base_view: structured, size_limit: 1, max_files: 1, json_schema: []}"
           ] do
-        assert entry |> with_types() |> read() == {:error, :invalid_template}, entry
+        name = ~r/name: (\w+)/ |> Regex.run(entry) |> List.last()
+        assert entry |> with_types() |> read() == {:error, {:invalid_artifact_type, name}}, entry
       end
     end
 

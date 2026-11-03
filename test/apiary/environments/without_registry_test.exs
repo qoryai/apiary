@@ -58,7 +58,7 @@ defmodule Apiary.Environments.WithoutRegistryTest do
     assert Environments.claim_image(ctx.place.pool, work_item) == {:ok, nil}
 
     assert {:ok, %{run: taken, registered: registered}} =
-             Dispatches.claim(ctx.place.key, Dispatches.now())
+             Apiary.DispatchedRunsFixtures.walked_claim(ctx.place.key, Dispatches.now())
 
     assert taken.id == run.id
     assert registered.configured_image == nil
@@ -69,12 +69,17 @@ defmodule Apiary.Environments.WithoutRegistryTest do
     {:ok, prebuild} =
       Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, ctx.place.pool, "env-1") end)
 
-    assert Dispatches.claim(ctx.place.key, Dispatches.now()) == {:ok, :none}
+    assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.place.key, Dispatches.now()) ==
+             {:ok, :none}
+
     assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, prebuild.id)
 
     # A run of the target behind it is taken, and the prebuild still waits.
     {_work_item, run} = explore!(ctx)
-    assert {:ok, %{run: taken}} = Dispatches.claim(ctx.place.key, Dispatches.now())
+
+    assert {:ok, %{run: taken}} =
+             Apiary.DispatchedRunsFixtures.walked_claim(ctx.place.key, Dispatches.now())
+
     assert taken.id == run.id
     assert prebuilds(ctx) == [{:waiting, "env-1"}]
   end

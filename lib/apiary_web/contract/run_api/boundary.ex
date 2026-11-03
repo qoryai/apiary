@@ -2,13 +2,12 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   @moduledoc false
 
   # The one place the run API calls the workflow model's modules: `Apiary.Artifacts`,
-  # `Apiary.Processes`, `Apiary.Stages` and the feature `workflow_model` of
-  # `Apiary.Features`. `Apiary.Artifacts`, `Apiary.Processes` and `Apiary.Features` are
-  # read from the application's configuration at the call, so a test sets stubs:
+  # `Apiary.Stages` and the feature `workflow_model` of `Apiary.Features`.
+  # `Apiary.Artifacts` and `Apiary.Features` are read from the application's configuration
+  # at the call, so a test sets stubs:
   #
   #     config :apiary, ApiaryWeb.Contract.RunApi.Boundary,
   #       artifacts: Apiary.Artifacts,
-  #       processes: Apiary.Processes,
   #       features: Apiary.Features
   #
   # `Apiary.Stages` is called directly, and it calls `Apiary.Artifacts` with no stub.
@@ -23,9 +22,6 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   @feature :workflow_model
 
-  # The types every workflow may write, whatever its `writes` list.
-  @always_writable ["verdict", "questions"]
-
   defp module(name, default) do
     :apiary
     |> Application.get_env(__MODULE__, [])
@@ -33,7 +29,6 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   end
 
   defp artifacts, do: module(:artifacts, Apiary.Artifacts)
-  defp processes, do: module(:processes, Apiary.Processes)
   defp features, do: module(:features, Apiary.Features)
 
   ## The feature
@@ -61,36 +56,6 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   @spec round(DispatchRun.t()) :: pos_integer | nil
   def round(%DispatchRun{round: round}), do: round
-
-  ## Processes
-
-  # writable?/3 is whether a run of `workflow` in `workspace` may write the artifact type
-  # `type`: verdict and questions always; any type when the workflow has no name, when the
-  # harness does not declare it, or when its declaration has no `writes` list; else a
-  # type of that list.
-  @spec writable?(struct, String.t() | nil, String.t()) :: boolean
-  def writable?(_workspace, _workflow, type) when type in @always_writable, do: true
-  def writable?(_workspace, nil, _type), do: true
-
-  def writable?(workspace, workflow, type) do
-    case writes(workspace, workflow) do
-      :any -> true
-      writes -> type in writes
-    end
-  end
-
-  # writes/2 is the `writes` option of `Apiary.Artifacts.push/5` for a run of `workflow`:
-  # the declaration's list, or `:any` for a workflow with no name, one the harness does
-  # not declare, or a declaration whose list is nil.
-  @spec writes(struct, String.t() | nil) :: [String.t()] | :any
-  def writes(_workspace, nil), do: :any
-
-  def writes(workspace, workflow) do
-    case processes().workflow_declaration(workspace, workflow) do
-      %{writes: writes} when is_list(writes) -> writes
-      _any_type -> :any
-    end
-  end
 
   ## Artifacts
 

@@ -88,14 +88,23 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
   end
 
   # Waits for the reads: each result starts the next read, so one wait is not enough. It
-  # ends once no group is reading, or the limit line shows.
+  # ends once no group is reading, or once the limit line shows and the reads under way
+  # have ended. The limit starts no read, but the reads started before it still finish,
+  # and each of them adds its card.
   defp settle(lv, rounds \\ 20) do
     render_async(lv, 2_000)
 
-    if rounds > 0 and has_element?(lv, ~s([id^="set-up-group-"][id$="-reading"])) and
-         not has_element?(lv, "#set-up-templates-limited"),
-       do: settle(lv, rounds - 1),
-       else: lv
+    cond do
+      has_element?(lv, "#set-up-templates-limited") ->
+        render_async(lv, 2_000)
+        lv
+
+      rounds > 0 and has_element?(lv, ~s([id^="set-up-group-"][id$="-reading"])) ->
+        settle(lv, rounds - 1)
+
+      true ->
+        lv
+    end
   end
 
   defp words(lv, selector) do
@@ -387,6 +396,25 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
       assert texts(lv, "#set-up-group-connected p") == [
                "a in acme/harness is not a template: reply-draft is not a standard type, so it needs a definition.",
                "a in acme/harness is not a template: tone-note is not a standard type, so it needs a definition."
+             ]
+    end
+
+    test "a type listed twice and an entry the schema refuses each have a line with the name",
+         ctx do
+      twice = "artifact_types:\n  - name: mockup\n  - name: mockup\n"
+      refused = "artifact_types:\n  - {name: reply-draft, base_view: document}\n"
+
+      serve(
+        ctx,
+        harness_files(%{
+          "a" => support_desk_file() <> twice,
+          "b" => support_desk_file() <> refused
+        })
+      )
+
+      assert texts(open(ctx), "#set-up-group-connected p") == [
+               "a in acme/harness is not a template: list mockup once in artifact_types.",
+               "b in acme/harness is not a template: the entry reply-draft in artifact_types does not match process.schema.json."
              ]
     end
 

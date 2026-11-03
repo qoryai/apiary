@@ -48,7 +48,9 @@ defmodule Apiary.Stacks.Sources do
   # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
   # does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module whose file is not
   # read, is in `not_readable` with the reason (`t:not_readable/0`), and the other modules
-  # are read. The file's checks run in that order, the costly check of the types last.
+  # are read. The file's checks run in that order, the costly check of the types last. The
+  # schema of the file comes before them, so an entry of `artifact_types` it refuses is
+  # reported first.
   # A failed read of one file fails the source only where the failure is about the
   # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
   # listed twice counts once.
@@ -244,9 +246,11 @@ defmodule Apiary.Stacks.Sources do
       (`Apiary.Lingo.Domain.known_type?/1`), so a workspace cannot be made from it;
     * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
     * `{:types, refusals}`: its `artifact_types` do not pass the check of a template's
-      types; `TemplateTypes.message/1` returns each refusal's text;
+      types, or the schema refuses an entry with a name (`{:schema, type}`);
+      `TemplateTypes.message/1` returns each refusal's text;
     * `:unreadable`: the module's folder is at no path a read takes, a read of the file
-      failed, or the file does not pass `Apiary.Harnesses.Reader.template/1`;
+      failed, or the file does not pass `Apiary.Harnesses.Reader.template/1` for a reason
+      that is about no entry of `artifact_types` with a name;
     * `:modules_invalid`: the `modules` of `exports` are not a list of text.
   """
   @type not_readable :: %{
@@ -971,6 +975,7 @@ defmodule Apiary.Stacks.Sources do
       {:unknown_type, _type} = reason -> {:not_readable, reason}
       {:types, {:error, refusals}} -> types_refused(refusals, location, deadline, clock)
       {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
+      {:error, {:invalid_artifact_type, type}} -> {:not_readable, {:types, [{:schema, type}]}}
       {:error, _file_reason} -> {:not_readable, :unreadable}
     end
   end
@@ -1505,16 +1510,16 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice names none. The Qory harness is not read: its names are
-  # `Apiary.Processes.qory_workflows/0`, as its `core` stack lists no `workflows`. The
+  # where the choice names none. The Qory harness is not read: its names are the copy's
+  # (`Apiary.Processes.qory_workflows/1`). The
   # Stages page, the Workflow page and Check again on a work item read the snapshot
   # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
   # `{:error, reason}`.
   @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
   def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
     case chosen(workspace) do
-      %{choice: :qory} ->
-        {:ok, Apiary.Processes.qory_workflows()}
+      %{choice: :qory} = qory ->
+        {:ok, Apiary.Processes.qory_workflows(qory)}
 
       _repository ->
         with {:ok, source, stack} <- chosen_source(workspace),
@@ -2174,7 +2179,7 @@ defmodule Apiary.Stacks.Sources do
          "commit" => commit,
          "module" => template.module,
          "stack" => template.stack,
-         "type" => template_key(source, template.module),
+         "type" => template.type,
          "version" => nil
        }}
     end

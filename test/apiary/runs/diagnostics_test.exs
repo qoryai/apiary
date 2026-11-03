@@ -514,7 +514,9 @@ defmodule Apiary.Runs.DiagnosticsTest do
          %{schema: schema, scope: scope} = ctx do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      {:ok, %{dispatch: dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
       assert :ok =
                Dispatches.release(ctx.key, dispatch.public_id, %{

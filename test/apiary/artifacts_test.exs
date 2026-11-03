@@ -904,23 +904,20 @@ defmodule Apiary.ArtifactsTest do
       assert count(Artifact) == 0
     end
 
-    test "writes only the types the workflow may write, and verdict and questions", context do
+    test "stores every type the workspace shows, for a run", context do
       %{run: run, work_item: work_item} = context
-      writes = [writes: ["explainer"]]
+
+      assert {:ok, _version} = Artifacts.push({:run, run}, work_item, "explainer", [doc()])
 
       assert {:ok, _version} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()], writes)
-
-      assert {:error, {:not_writable, "mockup"}} =
-               Artifacts.push({:run, run}, work_item, "mockup", [file("a.png", @png)], writes)
+               Artifacts.push({:run, run}, work_item, "mockup", [file("a.png", @png)])
 
       assert {:ok, _version} =
                Artifacts.push(
                  {:run, run},
                  work_item,
                  "verdict",
-                 [json("v.json", %{"verdict" => "escalate", "gaps" => "No demo."})],
-                 writes
+                 [json("v.json", %{"verdict" => "escalate", "gaps" => "No demo."})]
                )
 
       assert {:ok, _version} =
@@ -928,12 +925,8 @@ defmodule Apiary.ArtifactsTest do
                  {:run, run},
                  work_item,
                  "questions",
-                 [json("q.json", %{"questions" => ["Which basket?"]})],
-                 writes
+                 [json("q.json", %{"questions" => ["Which basket?"]})]
                )
-
-      assert {:error, {:not_writable, "explainer"}} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()], writes: [])
     end
 
     test "refuses an unknown type and a type name of the wrong form", %{run: run} = context do
@@ -1264,17 +1257,6 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
 
       assert Artifacts.list(context.work_item) == []
-    end
-
-    test "is not bound by a workflow's writes", %{scope: scope} = context do
-      assert {:ok, _version} =
-               Artifacts.push(
-                 {:person, scope},
-                 context.work_item,
-                 "mockup",
-                 [file("a.png", @png)],
-                 writes: []
-               )
     end
   end
 

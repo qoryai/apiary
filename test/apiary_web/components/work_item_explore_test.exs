@@ -344,15 +344,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "queued with answers: whose answers it reads, which run, and no Undo" do
       for {people, line} <- [
             {[@dana],
-             "When the run starts, Qory reads the ticket, the code and your answers, and writes a proposal for how to build it."},
+             "When the run starts, Qory explores the ticket and your answers, and writes a proposal for the work."},
             {[@priya],
-             "When the run starts, Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."},
+             "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
             {[@dana, @priya],
-             "When the run starts, Qory reads the ticket, the code and the answers of this take in, and writes a proposal for how to build it."},
+             "When the run starts, Qory explores the ticket and the answers of this take in, and writes a proposal for the work."},
             {[@priya, %{@priya | name: "Priya"}],
-             "When the run starts, Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."},
+             "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
             {[],
-             "When the run starts, Qory reads the ticket and the code, and writes a proposal for how to build it."}
+             "When the run starts, Qory explores the ticket and writes a proposal for the work."}
           ] do
         w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
         html = card(w, can_undo: true)
@@ -367,10 +367,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "running n of 3: whose answers it reads, and its run by its number" do
       for {people, line} <- [
-            {[@dana],
-             "Qory reads the ticket, the code and your answers, and writes a proposal for how to build it."},
+            {[@dana], "Qory reads the ticket and your answers, and writes a proposal."},
             {[@dana, @priya],
-             "Qory reads the ticket, the code and the answers of this take in, and writes a proposal for how to build it."}
+             "Qory reads the ticket and the answers of this take in, and writes a proposal."}
           ] do
         r =
           run(%{
@@ -671,18 +670,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   defp items(html, id), do: texts(html, "##{id} > span")
 
   describe "step_card/1, in an example workspace" do
-    # An example workspace reads the source texts, which name no code; the tests above read
-    # the software catalogue's, the default locale's.
+    # An example workspace reads the source texts, as a software workspace does on these
+    # lines.
     test "Explore reads the ticket and the answers, and proposes what to do" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
         for {people, line} <- [
-              {[], "When the run starts, Qory reads the ticket and writes a proposal."},
+              {[],
+               "When the run starts, Qory explores the ticket and writes a proposal for the work."},
               {[@dana],
-               "When the run starts, Qory reads the ticket and your answers, and writes a proposal."},
+               "When the run starts, Qory explores the ticket and your answers, and writes a proposal for the work."},
               {[@priya],
-               "When the run starts, Qory reads the ticket and the answers of Priya, and writes a proposal."},
+               "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
               {[@dana, @priya],
-               "When the run starts, Qory reads the ticket and the answers of this take in, and writes a proposal."}
+               "When the run starts, Qory explores the ticket and the answers of this take in, and writes a proposal for the work."}
             ] do
           w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
           assert text(card(w), ".q-wi-bee-line") == line
@@ -708,7 +708,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-wait-h") == "Explore is queued."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Qory starts attempt 1 of 3 when the workspace's pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts attempt 1 of 3 when the workspace's pool takes it. It reads the ticket and proposes what to do, or asks what it needs to know."
 
       assert count(html, ".q-xp-frame") == 0
     end
@@ -729,7 +729,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Explore is queued again, with your answers."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Attempt 2 of 3 starts when the workspace's pool takes it. It reads the ticket, the code and these answers, from the start."
+               "Attempt 2 of 3 starts when the workspace's pool takes it. It reads the ticket and these answers, from the start."
 
       assert text(html, "#work-item-explore-read-h") == "Answers for attempt 2"
 
@@ -769,7 +769,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Explore is running again, with the answers of this take in."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Attempt 3 of 3 reads the ticket, the code and these answers from the start, then returns a proposal for how to build it, or more questions."
+               "Attempt 3 of 3 reads the ticket and these answers from the start, then returns a proposal or more questions."
 
       assert text(html, "#work-item-explore-read-h") == "Answers for attempt 3"
 
@@ -792,7 +792,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-wait-h") == "Explore is running."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Attempt 1 of 3 reads the ticket and the code, then returns a proposal for how to build it, or questions."
+               "Attempt 1 of 3 reads the ticket, then returns a proposal or questions."
 
       assert count(html, "#work-item-explore-read") == 0
     end
@@ -1203,6 +1203,56 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   describe "explore_tab/1, a run without a result" do
     # Contact support reads the support address.
     setup do: Ecto.Adapters.SQL.Sandbox.checkout(Apiary.Repo)
+
+    # The Explore tab of a run qory closed with `code`, on the instance's pool or another.
+    defp read_needs_body(code, installed) do
+      r =
+        run(%{
+          proposal: nil,
+          ended_at: ago(3600),
+          duration: "4 minutes",
+          outcome: :none,
+          read_needs: %{code: code, installed: installed}
+        })
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+      assert text(html, "#work-item-explore-none-h") == "The run ended without a result."
+      Enum.at(texts(html, "#work-item-explore-none p"), 1)
+    end
+
+    test "a read-only run qory closed: the fix, then the cause" do
+      wall = "A read-only run needs a wall, and this machine has none."
+      inside = "A read-only run cannot run its setup inside the agent's container."
+
+      docker =
+        "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+
+      removed =
+        "Start the run again. The setup container was not removed, so a process in it could still write the files."
+
+      assert read_needs_body("read_needs_wall", false) ==
+               "Set a wall in the machine's forager.yaml, then start the run again. " <> wall
+
+      assert read_needs_body("read_needs_setup_outside", false) ==
+               "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. " <>
+                 inside
+
+      assert read_needs_body("read_needs_wall", true) == "Contact support. " <> wall
+      assert read_needs_body("read_needs_setup_outside", true) == "Contact support. " <> inside
+
+      for installed <- [false, true] do
+        assert read_needs_body("read_needs_no_nested_docker", installed) == docker
+        assert read_needs_body("read_needs_setup_removed", installed) == removed
+      end
+    end
+
+    test "a read-only run's target is a repository only in a software workspace" do
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
+        assert read_needs_body("read_needs_no_nested_docker", false) ==
+                 "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+      end)
+    end
 
     test "what happened, and the run's page" do
       for {status, overrides, run_state, heading, body} <- [
@@ -1856,13 +1906,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "proposed: after how long, and whose turn; only how long without an owner" do
       assert line(event(kind: :proposed, owner: @dana, duration: "11 minutes")) ==
-               "Qory wrote a proposal for how to build it, after 11 minutes. You confirm next 14 Oct, 11:25"
+               "Qory wrote a proposal, after 11 minutes. You confirm next 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: @lea, duration: "7 minutes")) ==
-               "Qory wrote a proposal for how to build it, after 7 minutes. Lea confirms next 14 Oct, 11:25"
+               "Qory wrote a proposal, after 7 minutes. Lea confirms next 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: nil, duration: "7 minutes")) ==
-               "Qory wrote a proposal for how to build it, after 7 minutes. 14 Oct, 11:25"
+               "Qory wrote a proposal, after 7 minutes. 14 Oct, 11:25"
     end
 
     test "a run without a result, lost or cancelled, with its mark" do
@@ -2228,7 +2278,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       queued = work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}})
 
       assert text(tab(queued, item_noun: @bug), "#work-item-explore-wait p:last-child") ==
-               "Qory starts attempt 1 of 3 when the workspace's pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts attempt 1 of 3 when the workspace's pool takes it. It reads the bug and proposes what to do, or asks what it needs to know."
 
       asked =
         work_item(%{
@@ -2249,7 +2299,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                card(work_item(%{status: :running, run: running}), item_noun: @bug),
                ".q-wi-bee-line"
              ) ==
-               "Qory reads the bug and the code, and writes a proposal for how to build it."
+               "Qory reads the bug and writes a proposal."
     end
   end
 

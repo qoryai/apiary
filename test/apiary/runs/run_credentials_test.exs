@@ -114,7 +114,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
           where: i.id == ^item_id
       )
 
-  defp claim(ctx), do: Dispatches.claim(ctx.key, Dispatches.now())
+  defp claim(ctx), do: Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
   defp entries, do: Repo.all(from c in RunCredential, order_by: c.name)
 
@@ -335,10 +335,35 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     @tag needs: [:factory, :workflow_model]
-    test "an explore-a-ticket run moved onto an entry of another workflow stays as it is", ctx do
+    test "an explore-a-ticket run moved onto an entry of another workflow reads", ctx do
       queued = moved!(ctx, [%{"workflow" => "explore-a-ticket"}], [%{"workflow" => "lint"}])
 
-      assert claimed_levels(ctx, queued) == {:write, :write}
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket run moved to a version with no entry at its place reads", ctx do
+      queued = moved!(ctx, [%{"workflow" => "explore-a-ticket"}], [])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket run whose stage its version does not have reads", ctx do
+      process!(ctx, [%{"workflow" => "explore-a-ticket"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket entry with read access reads, in its documents and its token",
+         ctx do
+      process!(ctx, [%{"workflow" => "explore-a-ticket", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
     end
 
     test "fills the target path exactly as the adapter wrote it", ctx do

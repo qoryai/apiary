@@ -12,8 +12,8 @@ defmodule Apiary.Processes do
   `repository`), `git`, `commit`, `module`, `stack`, `type` and `version`. The Qory
   template's process is the newest version of the type's default process
   (`Apiary.Processes.TypeTemplates.newest/1`, `copy_qory_template/1`). A template of a
-  harness source is copied as it was read (`copy_template/4`); `type` is its page key
-  (Apiary.Stacks.Sources.template_key/2), and `version` is nil.
+  harness source is copied as it was read (`copy_template/4`), and `version` is nil. In
+  both, `type` is the template file's `type`, the same value as `workspaces.type`.
 
   A workspace made with no template gets a copy of that newest version with its `{type,
   number}` as its `template` (`copy_default/1`). One made another way, before the process
@@ -114,20 +114,18 @@ defmodule Apiary.Processes do
   @type finding ::
           {:missing_workflow, String.t(), String.t()}
           | {:missing_type, String.t(), String.t()}
-          | {:output_not_written, String.t(), String.t()}
           | {:input_not_output, String.t(), String.t()}
 
   @typedoc """
   What the harness declares of a workflow: its name, its access level and time limit
-  (nil where Qory Apiary does not keep them), and the artifact types it reads and writes
-  (nil for any type).
+  (nil where Qory Apiary does not keep them), and the artifact types it reads (nil for
+  any type).
   """
   @type declaration :: %{
           name: String.t(),
           access: :read | :write | nil,
           time_limit: String.t() | nil,
-          reads: [String.t()] | nil,
-          writes: [String.t()] | nil
+          reads: [String.t()] | nil
         }
 
   ## The document
@@ -197,12 +195,29 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  qory_workflows/0 is the workflows the Qory harness declares: the names of the copied
-  `software` stack (Apiary.Harnesses.QoryCopy.workflows/1). It does not follow
-  `Apiary.Lingo.Domain.Definition.qory_harness/0`, whose stack `core` lists no workflows.
+  qory_workflows/0 is the workflows of the copied `software` stack of the Qory harness
+  (Apiary.Harnesses.QoryCopy.workflows/1), the stack of the type's template: for what
+  has no workspace, and for the name that makes a run Explore
+  (Apiary.Stages.explore_workflow/0). A workspace's marks read `qory_workflows/1`.
   """
   @spec qory_workflows() :: [String.t()]
   def qory_workflows, do: QoryCopy.workflows("software")
+
+  @doc """
+  qory_workflows/1 is the workflows the stack of a workspace on the Qory harness lists,
+  given the harness as Apiary.Stacks.Sources.chosen/1 returns it: the stack its runs
+  compose. With no row that is `Workspace.qory_stack/1`, and `core` lists none. With a
+  row, it is the stack of the row's document, which a harness the organisation shares
+  sets for every workspace. A stack the copy does not have lists none.
+  """
+  @spec qory_workflows(%{choice: :qory, stack: String.t() | nil}) :: [String.t()]
+  def qory_workflows(%{choice: :qory, stack: stack}) when is_binary(stack) do
+    if QoryCopy.file("stacks/#{stack}/qory-stack.yaml"),
+      do: QoryCopy.workflows(stack),
+      else: []
+  end
+
+  def qory_workflows(%{choice: :qory}), do: []
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
@@ -363,7 +378,7 @@ defmodule Apiary.Processes do
         "commit" => harness.latest,
         "module" => QoryCopy.template_module(),
         "stack" => Workspace.qory_stack(workspace),
-        "type" => key,
+        "type" => QoryCopy.template().type,
         "version" => newest.number
       },
       []
@@ -841,7 +856,7 @@ defmodule Apiary.Processes do
   (`declared_snapshot/1`). Call it with the names that
   Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
   choice, else the harness the organisation shares, else the Qory harness, whose names
-  are `qory_workflows/0`, with no read. The Stages page calls it on open, Workspace
+  are `qory_workflows/1`, with no read. The Stages page calls it on open, Workspace
   settings > Workflow on open and after a harness choice is saved, and Check again on a
   work item; a saved workflow does not change it. Each name is kept once, sorted, at
   most 1,000. `:ok`.
@@ -885,7 +900,7 @@ defmodule Apiary.Processes do
 
   @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
-  sorted: for a workspace on the Qory harness, `qory_workflows/0`; the names of the
+  sorted: for a workspace on the Qory harness, `qory_workflows/1`; the names of the
   workspace's snapshot (`declared_snapshot/1`), which covers only the workspace's harness,
   as Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
   workspace's Workflow page, at the workspace or a target of it. Before the first
@@ -905,7 +920,7 @@ defmodule Apiary.Processes do
   defp declared_names(workspace, saved) do
     harness =
       case Sources.chosen(workspace) do
-        %{choice: :qory} -> qory_workflows()
+        %{choice: :qory} = qory -> qory_workflows(qory)
         _repository -> []
       end
 
@@ -922,8 +937,8 @@ defmodule Apiary.Processes do
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
   the level recorded with the saved workflow where one is, else nil: the level the
-  workflow declares in its stack. `time_limit`, `reads` and `writes` are nil, since Qory
-  Apiary keeps none of them: nil `reads` and `writes` mean any type.
+  workflow declares in its stack. `time_limit` and `reads` are nil, since Qory Apiary
+  keeps neither of them: nil `reads` means any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
@@ -936,7 +951,7 @@ defmodule Apiary.Processes do
         |> Enum.sort_by(&(not is_nil(&1.target_id)))
         |> Enum.find_value(& &1.access)
 
-      %{name: name, access: access, time_limit: nil, reads: nil, writes: nil}
+      %{name: name, access: access, time_limit: nil, reads: nil}
     end
   end
 
@@ -958,8 +973,6 @@ defmodule Apiary.Processes do
       again or replaced;
     * `{:missing_type, stage_id, type}`: an input's or an output's type that
       `artifact_types` does not have;
-    * `{:output_not_written, stage_id, type}`: a required output that no workflow of the
-      stage writes, where every workflow of the stage declares what it writes;
     * `{:input_not_output, stage_id, type}`: an input that no earlier stage lists as an
       output.
 
@@ -992,26 +1005,18 @@ defmodule Apiary.Processes do
             type not in types,
             do: {:missing_type, id, type}
 
-      writes = Enum.map(workflows, &(declared[&1] && declared[&1].writes))
-
-      not_written =
-        for %{"type" => type, "required" => true} <- outputs,
-            workflows != [] and Enum.all?(writes, &is_list/1),
-            not Enum.any?(writes, &(type in &1)),
-            do: {:output_not_written, id, type}
-
       not_output =
         for type <- Enum.uniq(Enum.map(inputs, & &1["type"])),
             type not in earlier,
             do: {:input_not_output, id, type}
 
       earlier = Enum.reduce(outputs, earlier, &MapSet.put(&2, &1["type"]))
-      {findings ++ missing_workflows ++ missing_types ++ not_written ++ not_output, earlier}
+      {findings ++ missing_workflows ++ missing_types ++ not_output, earlier}
     end)
     |> elem(0)
   end
 
-  defp declared_entry(name) when is_binary(name), do: {name, %{name: name, writes: nil}}
+  defp declared_entry(name) when is_binary(name), do: {name, %{name: name}}
   defp declared_entry(%{name: name} = declaration), do: {name, declaration}
 
   defp type_name(name) when is_binary(name), do: name

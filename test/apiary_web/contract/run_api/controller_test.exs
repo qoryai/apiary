@@ -283,9 +283,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       # The take in placed the work item in Explore and started its first round.
       assert body["run"] == %{
                "id" => ctx.run.node_run_id,
+               "number" => ctx.run.number,
                "workflow" => "explore-a-ticket",
                "round" => 1
              }
+
+      assert is_integer(ctx.run.number)
+
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      assert Enum.map(ordered["run"].values, &elem(&1, 0)) == ~w(id number workflow round)
 
       assert body["ticket"]["title"] == ctx.work_item.title
       assert is_list(body["comments"])
@@ -747,7 +753,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert {:run, %DispatchRun{id: id}} = version.opts[:actor]
       assert id == ctx.dispatch_run.id
       assert version.note == "After the fix."
-      assert version.opts[:writes] == :any
       assert version.opts[:stage_id] == ctx.dispatch_run.stage_id
       assert [%{filename: "one.png", content_type: "image/png", content: @png}] = version.files
     end
@@ -955,15 +960,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     test "what the push returns is answered with the type, its limit and the member",
          ctx do
       cases = [
-        {{:not_writable, "explainer"}, 403,
-         %{
-           "error" => "type_not_writable",
-           "type" => "explainer",
-           "message" =>
-             "Add the artifact type explainer to the writes list of the workflow " <>
-               "explore-a-ticket, " <>
-               "or push a type that the workflow writes."
-         }},
         {{:too_large, 900}, 422,
          %{
            "error" => "too_large",
@@ -1073,7 +1069,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
-  describe "the workflow's writes list" do
+  describe "the types a run pushes" do
     defp set_workflow!(ctx, workflow) do
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
@@ -1081,56 +1077,28 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         )
     end
 
-    test "a type outside it is 403 type_not_writable, with the workflow's name", ctx do
-      set_workflow!(ctx, "capture-demo")
-      RunApiStubs.put(:declaration, %{name: "capture-demo", writes: ["screenshot"]})
+    defp stored?(ctx, type, version),
+      do: Apiary.Artifacts.newest(ctx.work_item, type, "main").public_id == version
 
-      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
-      assert signed_answer?(conn)
-
-      assert json_response(conn, 403) == %{
-               "error" => "type_not_writable",
-               "type" => "explainer",
-               "message" =>
-                 "Add the artifact type explainer to the writes list of the workflow " <>
-                   "capture-demo, or push a type that the workflow writes."
-             }
-
-      assert RunApiStubs.get(:declared) == "capture-demo"
-      assert RunApiStubs.pushed() == []
-
-      conn = write(ctx, "/artifacts", push_body("screenshot", [{"a.png", "image/png", @png}]))
-      assert conn.status == 201
-      assert [%{opts: opts}] = RunApiStubs.pushed()
-      assert opts[:writes] == ["screenshot"]
-
-      assert write(
-               ctx,
-               "/artifacts",
-               push_body("questions", [
-                 {"q.json", "application/json", ~s({"questions":["Which basket?"]})}
-               ])
-             ).status == 201
-    end
-
-    test "Apiary.Processes's declaration, whose writes list is nil: any type", ctx do
-      RunApiStubs.install([:processes])
+    test "a run with a declared workflow pushes a type that no list names, and it is stored",
+         ctx do
       set_workflow!(ctx, "explore-a-ticket")
 
-      assert %{name: "explore-a-ticket", writes: nil} =
+      assert %{name: "explore-a-ticket"} =
                Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "explore-a-ticket")
 
       conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
-      assert conn.status == 201
+      version = json_response(conn, 201)["artifact"]["version"]["id"]
+      assert stored?(ctx, "explainer", version)
+    end
 
-      # A workflow the harness does not declare: any type too.
+    test "a run of a workflow the harness does not declare stores the type too", ctx do
       set_workflow!(ctx, "capture-demo")
       assert Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "capture-demo") == nil
-      conn = write(ctx, "/artifacts", push_body("explainer", [{"b.md", "text/markdown", "x"}]))
-      assert conn.status == 201
-      assert [%{opts: first}, %{opts: second}] = RunApiStubs.pushed()
-      assert first[:writes] == :any
-      assert second[:writes] == :any
+
+      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      version = json_response(conn, 201)["artifact"]["version"]["id"]
+      assert stored?(ctx, "explainer", version)
     end
   end
 
@@ -1226,21 +1194,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       gaps = String.duplicate("x", Body.max_bytes(:verdict))
       conn = write(ctx, "/verdict", %{"verdict" => "passed", "gaps" => gaps})
       assert json_response(conn, 413) == %{"error" => "payload_too_large"}
-    end
-
-    test "is written whatever the workflow's writes list", ctx do
-      set_workflow!(ctx, "review")
-      RunApiStubs.put(:declaration, %{name: "review", writes: ["explainer"]})
-
-      conn = write(ctx, "/verdict", %{"verdict" => "passed"})
-      assert json_response(conn, 201)["artifact"]["type"] == "verdict"
-      assert [%{opts: opts}] = RunApiStubs.pushed()
-      assert opts[:writes] == :any
-
-      # The same declaration keeps a push of another type out.
-      conn = write(ctx, "/artifacts", push_body("screenshot", [{"a.png", "image/png", "x"}]))
-      assert json_response(conn, 403)["error"] == "type_not_writable"
-      assert RunApiStubs.get(:declared) == "review"
     end
   end
 

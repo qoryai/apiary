@@ -39,6 +39,8 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
 
   # The claim through the endpoint: its answer, decoded.
   defp claim(ctx) do
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+
     conn =
       signed_post(
         build_conn(),

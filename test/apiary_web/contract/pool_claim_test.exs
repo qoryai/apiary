@@ -84,6 +84,8 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
     do: Map.merge(%{"version" => 1, "time" => now_time(offset), "wait_seconds" => 0}, attrs)
 
   defp claim(ctx, body, opts \\ []) do
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+
     signed_post(
       build_conn(),
       Keyword.get(opts, :key_id, ctx.key.key_id),
@@ -111,6 +113,12 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   end
 
   defp queued!(scope), do: scope |> work_item_fixture() |> queue!()
+
+  # A walk that resolves wakes a claim that waits, as `Apiary.Harnesses.WalkJob` does.
+  defp walks_resolved_and_told!(run) do
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+    Dispatches.broadcast([run.workspace_id])
+  end
 
   defp dispatches, do: Repo.aggregate(Dispatch, :count)
 
@@ -397,7 +405,9 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       writer =
         Task.async(fn ->
           Process.sleep(200)
-          queue!(work_item)
+          run = queue!(work_item)
+          :ok = walks_resolved_and_told!(run)
+          run
         end)
 
       {took, conn} = timed(fn -> claim(ctx, body(%{"wait_seconds" => 25})) end)

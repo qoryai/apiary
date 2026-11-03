@@ -87,14 +87,20 @@ defmodule Apiary.Dispatches.MachineEndsTest do
       assert %Dispatch{machine_end_state: :gone} = reload(handed_over)
 
       {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
-      {:ok, %{dispatch: released}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      {:ok, %{dispatch: released}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       :ok = Dispatches.release(ctx.key, released.public_id, %{reason: "stopped"})
       assert %Dispatch{ended_at: %DateTime{}} = reload(released)
       assert report(ctx, released, :deleting) == :ok
       assert %Dispatch{machine_end_state: :deleting} = reload(released)
 
       {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
-      {:ok, %{dispatch: lapsed}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      {:ok, %{dispatch: lapsed}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       now = DateTime.utc_now()
 
       {1, _rows} =

@@ -66,6 +66,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         harness: harness_name(Sources.chosen(workspace)),
         cross: cross(Sources.chosen(workspace)),
+        qory_workflows: qory_workflows(Sources.chosen(workspace)),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
         snapshot: Processes.declared_snapshot(workspace),
@@ -200,13 +201,11 @@ defmodule ApiaryWeb.StagesLive.Index do
   # The check and the canvas follow every change of the draft.
   defp refresh(socket) do
     %{draft: draft, declared: declared, types: types, snapshot: snapshot} = socket.assigns
-    # Every workflow writes any type until the harness declares `writes` (spec addition 9),
-    # so an output that nothing writes is not listed. Before the first read of the harness
-    # no stage waits for a workflow, so none is listed as missing.
+    # Before the first read of the harness no stage waits for a workflow, so none is listed
+    # as missing.
     problems =
       draft
       |> Processes.placement_check(declared, types)
-      |> Enum.reject(&match?({:output_not_written, _id, _type}, &1))
       |> Enum.reject(&(is_nil(snapshot) and match?({:missing_workflow, _id, _name}, &1)))
 
     socket = assign(socket, problems: problems)
@@ -593,7 +592,8 @@ defmodule ApiaryWeb.StagesLive.Index do
               {gettext("Export process.yaml")}
             </.button>
             <p id="stages-export-line" class="min-w-0 flex-1 text-[13px]/5 text-muted">
-              {gettext(
+              {pgettext(
+                "plain",
                 "Commit this file to a harness repository. Only new workspaces made from it use it."
               )}
               <span :if={exports_people?(@versions)} id="stages-export-people">
@@ -678,7 +678,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               </.link>
             </p>
             <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
-              <p id="stages-workflows-list">{Words.workflows_line(@declared, @snapshot, @cross)}</p>
+              <p id="stages-workflows-list">{Words.workflows_line(@snapshot, @qory_workflows)}</p>
               <p :if={@declared_error} id="stages-workflows-error" class="text-error">
                 <.rich text={Words.read_failed(@declared_error, @snapshot)} />
               </p>
@@ -898,6 +898,10 @@ defmodule ApiaryWeb.StagesLive.Index do
   # workspace cannot add to, or a harness repository (`Words.undeclared/3`).
   defp cross(%{choice: :qory}), do: :qory_workspace
   defp cross(_chosen), do: :workspace
+
+  # The workflows of the workspace's Qory harness, none for a harness repository.
+  defp qory_workflows(%{choice: :qory} = chosen), do: Processes.qory_workflows(chosen)
+  defp qory_workflows(_chosen), do: []
 
   defp problem_words({:missing_workflow, id, name}, doc, cross),
     do: Words.undeclared(stage_name(doc, id), name, cross)

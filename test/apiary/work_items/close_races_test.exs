@@ -105,7 +105,9 @@ defmodule Apiary.WorkItems.CloseRacesTest do
   end
 
   defp remove(ctx), do: fn -> Adapters.delete_adapter(ctx.admin, ctx.adapter) end
-  defp claim(ctx), do: fn -> Dispatches.claim(ctx.key, Dispatches.now()) end
+
+  defp claim(ctx),
+    do: fn -> Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) end
 
   defp closes(ctx),
     do:

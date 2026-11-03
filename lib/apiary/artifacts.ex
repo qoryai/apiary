@@ -58,8 +58,7 @@ defmodule Apiary.Artifacts do
   # is the stage the caller read, nil for no stage. `actor` is `{:run, run}`, a run of
   # the queue (`Apiary.Dispatches.DispatchRun`) of that work item, or `{:person, scope}`,
   # a person who may `artifact.write` the work item (`Apiary.Access`), whose push writes
-  # its entry in the audit trail. A run writes only the types in `opts[:writes]`, any type
-  # when it is `:any`, the default, and always `verdict` and `questions`.
+  # its entry in the audit trail.
   #
   # `files` is a list of `%{filename: name, content_type: text, path: path}` or
   # `%{filename: name, content_type: text, binary: bytes}`; `content_type` is read by
@@ -71,24 +70,23 @@ defmodule Apiary.Artifacts do
   #      item, `{:error, :not_found}`;
   #   2. the type: a name of no type, or of a standard type the workspace hides,
   #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`;
-  #   3. a run's writes: `{:not_writable, type}`;
-  #   4. the options: `{:invalid, :name | :stage_id | :note}`;
-  #   5. the files: none, `{:invalid, :no_files}`; more than the type's most,
+  #   3. the options: `{:invalid, :name | :stage_id | :note}`;
+  #   4. the files: none, `{:invalid, :no_files}`; more than the type's most,
   #      `{:too_many_files, max_files}`; an entry of the wrong shape, a filename
   #      `Apiary.Artifacts.Filename` refuses, or a filename twice,
   #      `{:invalid, {:file | :filename | :duplicate_filename, index}}`, `index` the
   #      entry's position from 0;
-  #   6. each file is staged within what is left of the type's size limit, which bounds
+  #   5. each file is staged within what is left of the type's size limit, which bounds
   #      all files of a version together: past it, `{:too_large, size_limit}`, the
   #      source read at most 64 KiB past the limit; a path that cannot be read,
   #      `{:invalid, {:unreadable, index}}`;
-  #   7. each staged file passes its base view's format check, else
+  #   6. each staged file passes its base view's format check, else
   #      `{:invalid, {:format | :extension | :unreadable, index}}`, or, for a structured
   #      file its JSON Schema refuses, `{:invalid, {:schema, index, %{path: path,
   #      error: error}}}`: the JSON pointer of the first failing value, at most 256
   #      bytes, and the validator's message for it, at most 300 characters, both with
   #      their control characters replaced (`Apiary.Artifacts.SchemaError`);
-  #   8. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
+  #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`.
   #
   # Then every file is kept in the store, and only then are the rows written, in one
@@ -158,9 +156,6 @@ defmodule Apiary.Artifacts do
   @write :"artifact.write"
   @edit_types :"artifact_type.edit"
 
-  # What a run writes whatever its workflow's writes list.
-  @always_writable ~w(verdict questions)
-
   @stage_id ~r/\A[A-Za-z0-9_-]{1,64}\z/
   @max_note 4000
   @refused_in_note ~r/(?![\x{9}\x{A}\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
@@ -182,8 +177,7 @@ defmodule Apiary.Artifacts do
           :always_on | :has_artifacts | :current_process | :version_in_use
 
   @typedoc "Why a push is refused."
-  @type refusal ::
-          {:unknown_type | :too_many_files | :too_large | :not_writable | :invalid, term}
+  @type refusal :: {:unknown_type | :too_many_files | :too_large | :invalid, term}
 
   ## Types
 
@@ -501,7 +495,6 @@ defmodule Apiary.Artifacts do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item),
          {:ok, type} <- push_type(work_item, type_name),
-         :ok <- writable(writer, type, Keyword.get(opts, :writes, :any)),
          {:ok, fields} <- fields(opts),
          {:ok, files} <- files(type, files),
          {:ok, staged} <- stage_all(type, files),
@@ -621,18 +614,6 @@ defmodule Apiary.Artifacts do
       true -> {:error, {:unknown_type, name}}
     end
   end
-
-  defp writable(%{writer: :person}, _type, _writes), do: :ok
-  defp writable(%{writer: :run}, _type, :any), do: :ok
-
-  defp writable(%{writer: :run}, %Type{name: name}, writes) when is_list(writes) do
-    if name in @always_writable or name in writes,
-      do: :ok,
-      else: {:error, {:not_writable, name}}
-  end
-
-  defp writable(%{writer: :run}, %Type{name: name}, _writes),
-    do: {:error, {:not_writable, name}}
 
   defp fields(opts) do
     name = Keyword.get(opts, :name, "main")

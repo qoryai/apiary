@@ -54,7 +54,7 @@ defmodule Apiary.SealedRunsFixtures do
     adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
     if opts[:work], do: Apiary.WorkItemsFixtures.target_candidate!(work_item)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, claimed} = Dispatches.claim(place.key, Dispatches.now())
+    {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(place.key, Dispatches.now())
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)
 
     {:ok, attach} = Attach.parse(Apiary.ContractFixtures.attach_body(run_key))

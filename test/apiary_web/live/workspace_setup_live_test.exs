@@ -3919,12 +3919,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, _stack} =
         Stacks.put_stack(
           scope,
-          {:workspace, scope.workspace, "hello"},
+          {:workspace, scope.workspace, "explore-a-ticket"},
           "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
         )
 
       assert no_run_line(conn, scope, item, :key_gone) == fixes.key_gone
-      choose.({:workspace, "hello"}, %{model: "claude-sonnet-5-5"})
+      choose.({:workspace, "explore-a-ticket"}, %{model: "claude-sonnet-5-5"})
 
       for cause <- Map.keys(fixes) do
         assert no_run_line(conn, scope, item, cause) == @no_run_unknown, "level 4 #{cause}"

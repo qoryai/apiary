@@ -274,6 +274,38 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert adapter_shown.() == adapter.name
     end
 
+    test "a read-only run qory closed: the reason, on a pool that is not the instance's", ctx do
+      node_run = fn node ->
+        %{
+          state: "failed",
+          exit_state: "failed",
+          reason: "read_needs_wall",
+          node_id: node && node.id,
+          outcome_state: nil,
+          outcome_time: nil,
+          outcome_received_at: nil,
+          outcome_digest: nil
+        }
+      end
+
+      %{run: run} = explore_run_fixture(ctx.work_item, run: node_run.(nil))
+
+      assert %{run: %{read_needs: facts}} = WorkItems.explore(ctx.scope, ctx.work_item)
+      assert facts == %{code: "read_needs_wall", installed: false}
+
+      pool = Apiary.NodesFixtures.pool_fixture(ctx.scope)
+      run |> Ecto.Changeset.change(node_id: pool.id) |> Repo.update!()
+
+      assert %{run: %{read_needs: %{code: "read_needs_wall", installed: false}}} =
+               WorkItems.explore(ctx.scope, ctx.work_item)
+    end
+
+    test "any other run has no read_needs", ctx do
+      explore_run_fixture(ctx.work_item, run: %{state: "failed", reason: "no_longer_needed"})
+
+      assert %{run: %{read_needs: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
+    end
+
     test "a run whose harness has no skill for its workflow: the workflow and the harness file of the target",
          ctx do
       failed = %{

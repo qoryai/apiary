@@ -96,7 +96,9 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
 
   # A run claimed: its dispatch, before `dispatched`.
   defp claimed!(ctx) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
     dispatch
   end
 

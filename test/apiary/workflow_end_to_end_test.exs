@@ -150,6 +150,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert snapshot["run"] == %{
              "id" => run.run_id,
+             "number" => run.number,
              "workflow" => "explore-a-ticket",
              "round" => 1
            }
@@ -299,7 +300,13 @@ defmodule Apiary.WorkflowEndToEndTest do
   defp step_4(ctx) do
     run = claim!(ctx)
     snapshot = json_response(read!(ctx, run, "/work-item"), 200)
-    assert snapshot["run"] == %{"id" => run.run_id, "workflow" => "capture-demo", "round" => 1}
+
+    assert snapshot["run"] == %{
+             "id" => run.run_id,
+             "number" => run.number,
+             "workflow" => "capture-demo",
+             "round" => 1
+           }
 
     assert snapshot["stage"] == %{
              "id" => @build,
@@ -336,6 +343,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert snapshot["run"] == %{
              "id" => second.run_id,
+             "number" => second.number,
              "workflow" => "capture-demo",
              "round" => 2
            }
@@ -458,7 +466,14 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     next = claim!(ctx)
     snapshot = json_response(read!(ctx, next, "/work-item"), 200)
-    assert snapshot["run"] == %{"id" => next.run_id, "workflow" => "capture-demo", "round" => 2}
+
+    assert snapshot["run"] == %{
+             "id" => next.run_id,
+             "number" => next.number,
+             "workflow" => "capture-demo",
+             "round" => 2
+           }
+
     assert %{"round" => 2, "state" => "running"} = snapshot["stage"]
 
     assert [
@@ -531,7 +546,7 @@ defmodule Apiary.WorkflowEndToEndTest do
         do: Apiary.DispatchedRunsFixtures.walk_resolved!(run)
 
     assert {:ok, %{run_code: _code} = claimed} =
-             Dispatches.claim(ctx.place.key, Dispatches.now())
+             Apiary.DispatchedRunsFixtures.walked_claim(ctx.place.key, Dispatches.now())
 
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)
     run_id = claimed.registered.node_run_id
@@ -547,6 +562,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     %{
       run_id: run_id,
       id: claimed.registered.id,
+      number: Repo.get!(Run, claimed.registered.id).number,
       dispatch_run_id: claimed.registered.dispatch_run_id
     }
   end

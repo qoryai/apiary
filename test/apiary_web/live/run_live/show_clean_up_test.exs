@@ -173,7 +173,9 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
         Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
       end)
 
-    {:ok, %{dispatch: dispatch, registered: registered}} = Dispatches.claim(key, Dispatches.now())
+    {:ok, %{dispatch: dispatch, registered: registered}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
     :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
 
     lv = open(ctx.conn, ctx.scope, Repo.get!(Run, registered.id))

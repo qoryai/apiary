@@ -287,7 +287,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
 
       assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory reads the ticket and the code, and writes a proposal for how to build it."
+               "When the run starts, Qory explores the ticket and writes a proposal for the work."
 
       assert text(html, "#work-item-step-undo-line") ==
                "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
@@ -308,7 +308,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@dana, ago(20 * 60)), uninstalled: true)
 
       assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory reads the ticket and the code, and writes a proposal for how to build it."
+               "When the run starts, Qory explores the ticket and writes a proposal for the work."
 
       assert text(html, "#work-item-step-undo-line") ==
                "You took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
@@ -361,7 +361,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-badge") == "Running"
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and the code, and writes a proposal for how to build it."
+               "Qory reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-run") == "Attempt 1 started 6 minutes ago."
       assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/15"]
@@ -381,7 +381,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket, the code and the answers of Priya, and writes a proposal for how to build it."
+               "Qory reads the ticket and the answers of Priya, and writes a proposal."
 
       assert count(html, "#work-item-step-run a") == 0
       assert text(html, "#work-item-step-run") == "Attempt 2 started 6 minutes ago."
@@ -1385,7 +1385,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@dana, ago(5)), item_noun: @bug)
 
       assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory reads the bug and the code, and writes a proposal for how to build it."
+               "When the run starts, Qory explores the bug and writes a proposal for the work."
 
       assert text(html, "#work-item-step-undo-line") ==
                "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the bug and leaves its comment."
