@@ -772,7 +772,6 @@ defmodule ApiaryWeb.Routes do
               live "/work", WorkItemLive.Index, :index
               live "/work/:number", WorkItemLive.Show, :ticket
               live "/work/:number/explore", WorkItemLive.Show, :explore
-              live "/work/:number/explore/edit", WorkItemLive.Show, :edit
               live "/work/:number/thread", WorkItemLive.Show, :thread
               # A work item's artifacts, with the `workflow_model` feature: Add a version by
               # hand, and one version's page, by the version's public id (`av_…`).

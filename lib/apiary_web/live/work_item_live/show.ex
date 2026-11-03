@@ -1,15 +1,11 @@
 defmodule ApiaryWeb.WorkItemLive.Show do
   # One work item, by its number in the workspace: its Ticket tab (`:ticket`), Explore's
-  # tab (`:explore`), the page that changes Qory's proposal (`:edit`) and its Thread
-  # (`:thread`). The tabs are live actions of this one LiveView, so a tab is a patch and
-  # the header stays.
+  # tab (`:explore`) and its Thread (`:thread`). The tabs are live actions of this one
+  # LiveView, so a tab is a patch and the header stays.
   #
   # **The frame.** The header (`ApiaryWeb.WorkItemComponents.work_item_header/1`, with
   # its stages), the notices under it (the integration's uninstall, the Close question,
-  # how it ended), the rail (the step card and Details) and the tabs. The edit page keeps
-  # the header and draws the form in place of the rail and the tabs; it is there only
-  # while Qory's proposal waits for a reader who may confirm it, and patches to Explore's
-  # tab otherwise.
+  # how it ended), the rail (the step card and Details) and the tabs.
   #
   # **What it reads.** The work item by its number (`Apiary.WorkItems.get_by_number/2`),
   # where Explore stands (`explore/3`), its ticket (`ticket/3`), the names of its ticket
@@ -28,12 +24,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`Apiary.WorkItems.subscribe/1`) and reads everything again when a message names its
   # work item; a work item that moved to another workspace is then not found here.
   #
-  # **What a reader does.** Undo, Close, Confirm, Run Explore again, the answers
-  # and the edit page's changes, each sent with the work item the page last read and the
-  # attempt of its latest run, so a page that read an earlier state is refused
+  # **What a reader does.** Undo, Close, Run Explore again, the answers, and under Qory's
+  # proposal Confirm or a comment, each sent with the work item the page last read and
+  # the attempt of its latest run, so a page that read an earlier state is refused
   # (`Apiary.WorkItems.Moves`). A refused action shows no words: the page reads the work
   # item again and draws where it stands now. Only a form whose fields are wrong says so,
-  # under its fields. An event that names another number than the page's does nothing.
+  # under its fields, and a comment by a reader who is not an approver of the stage. The
+  # forms' drafts are kept as the reader writes (`"answer_draft"`, `"change_draft"`): a
+  # selected option clears its question's text, and a text clears the selected option.
+  # A comment's field is empty to confirm. An event that names another number than the
+  # page's does nothing.
   #
   # **People's comments** (`ApiaryWeb.WorkItemLive.Comments`) are in the Thread, in the
   # order they were written among its events, with the composer under it for a reader
@@ -68,9 +68,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
-  @edit_keys ["understanding", "scope_in", "scope_out", "approach"]
   @comment_events Comments.events() -- ["cancel_question"]
-  @actions ~w(undo ask_close close confirm explore_again answer change_proposal confirm_changes)
+  @actions ~w(undo ask_close close explore_again answer_draft answer change_draft send_change)
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
   @explore_statuses [
@@ -151,7 +150,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             now={@now}
           />
         </:header>
-        <:rail :if={@tab != :edit}>
+        <:rail>
           <StageComponents.stage_card
             :if={@flow && !@flow.ended}
             page={@flow}
@@ -174,7 +173,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             can_close={@can.close}
             previous={@previous}
             explore_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore)}
-            edit_path={tab_path(@current_scope, @number, :edit)}
             item_noun={@source.item_noun}
             now={@now}
             queued_of={queued_of(@flow, @item)}
@@ -191,99 +189,92 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           />
         </:rail>
         <:body>
-          <%= if @tab == :edit do %>
-            <.proposal_edit
-              number={@number}
-              proposal={@item.run.proposal}
-              values={@edit_values}
-              errors={@edit_errors}
-              explore_path={tab_path(@current_scope, @number, :explore)}
-              submits={@edit_submits}
-            />
-          <% else %>
-            <div :if={@flow} id="work-item-flow" class="flex flex-col gap-3">
-              <StageComponents.stage_runs runs={@flow.runs} />
-              <StageComponents.stage_notes notes={@flow.notes} />
-              <section
-                id="work-item-artifacts"
-                class="q-xp-sec"
-                aria-labelledby="work-item-artifacts-h"
-              >
-                <h3 id="work-item-artifacts-h">{gettext("Artifacts")}</h3>
-                <StageComponents.approval_marks index={@flow.index} />
-                <ArtifactComponents.list
-                  id="work-item-artifact-list"
-                  artifacts={@artifacts}
-                  scope={@current_scope}
-                  number={@number}
-                  add={@flow.can_add}
-                />
-              </section>
-            </div>
-            <.work_item_tabs
-              number={@number}
-              current={@tab}
-              ticket_path={tab_path(@current_scope, @number, :ticket)}
-              explore_path={tab_path(@current_scope, @number, :explore)}
-              thread_path={tab_path(@current_scope, @number, :thread)}
-              comment_count={@comment_count}
-              item_noun={@source.item_noun}
-              ticket={!@item.test}
-            />
-            <.ticket_tab
-              :if={@tab == :ticket and @source.ticket != nil}
-              work_item={@item}
-              ticket={@source.ticket}
-              comments={@source.comments}
-              integration={@source.integration}
-              uninstalled={@source.uninstalled}
-              item_noun={@source.item_noun}
-              now={@now}
-            />
-            <.explore_tab
-              :if={@tab == :explore}
-              work_item={@item}
-              earlier_runs={@earlier_runs}
-              earlier_take_ins={@earlier_take_ins}
-              can_act={@can.act}
-              backlog_off={@backlog_off}
-              answers={@answers}
-              errors={@errors}
-              submits={@submits}
-              item_noun={@source.item_noun}
-              now={@now}
-            />
-            <.thread :if={@tab == :thread}>
-              <%= for {event, i} <- Enum.with_index(@thread, 1) do %>
-                <Comments.comment_line
-                  :if={event.kind == :comment}
-                  entry={event}
-                  scope={@current_scope}
-                  person={&View.person(@people, &1)}
-                  deleting={@deleting_comment}
-                  now={@now}
-                />
-                <.thread_event
-                  :if={event.kind != :comment}
-                  id={"work-item-thread-ev-#{i}"}
-                  integration={@source.integration}
-                  now={@now}
-                  {event}
-                />
-              <% end %>
-            </.thread>
-            <Comments.composer
-              :if={@tab == :thread}
-              can_comment={@can_comment}
-              key={@composer_key}
-              value={@composer_value}
-              error={@composer_error}
-              number={@number}
-              workspace={@current_scope.workspace.name}
-              reader={View.person(@people, @current_scope.user.id).name}
-              item_noun={@source.item_noun}
-            />
-          <% end %>
+          <div :if={@flow} id="work-item-flow" class="flex flex-col gap-3">
+            <StageComponents.stage_runs runs={@flow.runs} />
+            <StageComponents.stage_notes notes={@flow.notes} />
+            <section
+              id="work-item-artifacts"
+              class="q-xp-sec"
+              aria-labelledby="work-item-artifacts-h"
+            >
+              <h3 id="work-item-artifacts-h">{gettext("Artifacts")}</h3>
+              <StageComponents.approval_marks index={@flow.index} />
+              <ArtifactComponents.list
+                id="work-item-artifact-list"
+                artifacts={@artifacts}
+                scope={@current_scope}
+                number={@number}
+                add={@flow.can_add}
+              />
+            </section>
+          </div>
+          <.work_item_tabs
+            number={@number}
+            current={@tab}
+            ticket_path={tab_path(@current_scope, @number, :ticket)}
+            explore_path={tab_path(@current_scope, @number, :explore)}
+            thread_path={tab_path(@current_scope, @number, :thread)}
+            comment_count={@comment_count}
+            item_noun={@source.item_noun}
+            ticket={!@item.test}
+          />
+          <.ticket_tab
+            :if={@tab == :ticket and @source.ticket != nil}
+            work_item={@item}
+            ticket={@source.ticket}
+            comments={@source.comments}
+            integration={@source.integration}
+            uninstalled={@source.uninstalled}
+            item_noun={@source.item_noun}
+            now={@now}
+          />
+          <.explore_tab
+            :if={@tab == :explore}
+            work_item={@item}
+            earlier_runs={@earlier_runs}
+            earlier_take_ins={@earlier_take_ins}
+            comments={@comments}
+            can_act={@can.act}
+            backlog_off={@backlog_off}
+            answers={@answers}
+            errors={@errors}
+            submits={@submits}
+            change={@change}
+            change_error={@change_error}
+            change_submits={@change_submits}
+            item_noun={@source.item_noun}
+            now={@now}
+          />
+          <.thread :if={@tab == :thread}>
+            <%= for {event, i} <- Enum.with_index(@thread, 1) do %>
+              <Comments.comment_line
+                :if={event.kind == :comment}
+                entry={event}
+                scope={@current_scope}
+                person={&View.person(@people, &1)}
+                deleting={@deleting_comment}
+                now={@now}
+              />
+              <.thread_event
+                :if={event.kind != :comment}
+                id={"work-item-thread-ev-#{i}"}
+                integration={@source.integration}
+                now={@now}
+                {event}
+              />
+            <% end %>
+          </.thread>
+          <Comments.composer
+            :if={@tab == :thread}
+            can_comment={@can_comment}
+            key={@composer_key}
+            value={@composer_value}
+            error={@composer_error}
+            number={@number}
+            workspace={@current_scope.workspace.name}
+            reader={View.person(@people, @current_scope.user.id).name}
+            item_noun={@source.item_noun}
+          />
         </:body>
       </.work_item_frame>
     </Layouts.app>
@@ -320,9 +311,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            answers: %{},
            errors: %{},
            submits: 0,
-           edit_values: %{},
-           edit_errors: %{},
-           edit_submits: 0,
+           change: "",
+           change_error: nil,
+           change_submits: 0,
            flow: nil,
            artifacts: [],
            stage_asking: nil,
@@ -335,8 +326,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   @impl true
   def handle_params(_params, _uri, socket) do
-    {:noreply,
-     socket |> assign(:tab, socket.assigns.live_action) |> load() |> ticketed() |> editable()}
+    {:noreply, socket |> assign(:tab, socket.assigns.live_action) |> load() |> ticketed()}
   end
 
   # A test work item has no Ticket tab: its address is Explore's tab.
@@ -349,20 +339,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # ticket.
   defp home(%{test: true}), do: :explore
   defp home(_row), do: :ticket
-
-  # The edit page is there while Qory's proposal waits for a reader who may confirm it;
-  # anywhere else it is Explore's tab.
-  defp editable(%{assigns: %{row: nil}} = socket), do: socket
-
-  defp editable(%{assigns: %{tab: :edit}} = socket) do
-    %{item: item, can: can, number: number} = socket.assigns
-
-    if item.status == :confirm and can.act,
-      do: assign(socket, :page_title, edit_title(number)),
-      else: push_patch(socket, to: tab_path(scope(socket), number, :explore))
-  end
-
-  defp editable(socket), do: socket
 
   ## What a reader does
 
@@ -406,31 +382,34 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp act("close", _params, socket),
     do: done(socket, WorkItems.close(scope(socket), socket.assigns.row))
 
-  defp act("confirm", _params, socket) do
-    with_attempt(socket, fn attempt ->
-      done(socket, WorkItems.confirm(scope(socket), socket.assigns.row, attempt))
-    end)
-  end
-
   defp act("explore_again", _params, socket) do
     with_attempt(socket, fn attempt ->
       done(socket, WorkItems.explore_again(scope(socket), socket.assigns.row, attempt))
     end)
   end
 
-  defp act("answer", params, socket) do
-    # Only the questions' answers, and only text: anything else is no answer.
-    answers =
-      case params["answers"] do
-        %{} = given ->
-          for {key, value} <- Map.take(given, @answer_keys),
-              is_binary(value),
-              into: %{},
-              do: {key, value}
+  # The questions form as the reader changes it: the question changed (`_target`) keeps
+  # its option or its text, whichever was changed, and clears the other.
+  defp act("answer_draft", params, socket) do
+    answers = given_answers(params)
 
-        _none ->
-          %{}
+    answers =
+      case params["_target"] do
+        ["answers", key, "option"] when is_map_key(answers, key) ->
+          Map.update!(answers, key, &Map.put(&1, "custom", ""))
+
+        ["answers", key, "custom"] when is_map_key(answers, key) ->
+          Map.update!(answers, key, &Map.delete(&1, "option"))
+
+        _other ->
+          answers
       end
+
+    {:noreply, assign(socket, :answers, answers)}
+  end
+
+  defp act("answer", params, socket) do
+    answers = params |> given_answers() |> one_each(socket.assigns.answers)
 
     with_attempt(socket, fn attempt ->
       case WorkItems.answer(scope(socket), socket.assigns.row, attempt, answers) do
@@ -451,13 +430,22 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end)
   end
 
-  defp act("change_proposal", params, socket),
-    do: {:noreply, assign(socket, :edit_values, edit_values(params))}
+  defp act("change_draft", params, socket),
+    do: {:noreply, assign(socket, :change, change_text(params))}
 
-  # A confirmation keeps no changes since a person changes a proposal with a comment: the
-  # edit page's send changes nothing, until the page goes.
-  defp act("confirm_changes", _params, socket),
-    do: {:noreply, socket |> assign(:edit_errors, %{}) |> refresh(&editable/1)}
+  # An empty field confirms the proposal; a text is a comment on it, which starts a run.
+  defp act("send_change", params, socket) do
+    case change_text(params) do
+      "" ->
+        with_attempt(socket, fn attempt ->
+          result = WorkItems.confirm(scope(socket), socket.assigns.row, attempt)
+          done(assign(socket, change_error: nil), result)
+        end)
+
+      text ->
+        with_attempt(socket, &send_change(socket, text, &1))
+    end
+  end
 
   # The workflow model's actions. Each form sends the stage the reader saw (`seen`); the
   # page reads the work item again and acts only while it is still in that stage, asked
@@ -713,23 +701,81 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # A form that names another question or gives no text: each question of the latest run
-  # without a text is to be answered.
-  defp form_errors(socket, answers) do
-    for question <- socket.assigns.item.run[:questions] || [],
-        not is_binary(answers[question.public_id]),
-        into: %{},
-        do: {question.public_id, :blank}
+  # A comment sent: the field empties; a text the check refuses, or a reader who is not
+  # an approver of the stage, keeps the draft and says why under the field.
+  defp send_change(socket, text, attempt) do
+    case WorkItems.answer(scope(socket), socket.assigns.row, attempt, text) do
+      {:ok, _work_item} ->
+        {:noreply, socket |> assign(change: "", change_error: nil) |> load()}
+
+      {:error, {:invalid, %{comment: error}}} ->
+        {:noreply, change_refused(socket, text, error)}
+
+      {:error, :not_approver} ->
+        {:noreply, change_refused(socket, text, :not_approver)}
+
+      {:error, _refused} ->
+        {:noreply, socket |> assign(change: text, change_error: nil) |> refresh()}
+    end
   end
 
-  # What the edit page's fields hold, by the names `proposal_edit/1` takes.
-  defp edit_values(params) do
-    complexity = if is_map(params["complexity"]), do: params["complexity"], else: %{}
+  defp change_refused(socket, text, error) do
+    socket
+    |> assign(change: text, change_error: error)
+    |> update(:change_submits, &(&1 + 1))
+  end
 
-    [level: complexity["level"], reason: complexity["reason"]]
-    |> Enum.concat(for key <- @edit_keys, do: {String.to_existing_atom(key), params[key]})
-    |> Enum.filter(fn {_field, value} -> is_binary(value) end)
-    |> Map.new()
+  defp change_text(%{"change" => text}) when is_binary(text), do: text
+  defp change_text(_params), do: ""
+
+  # The questions' answers the form gives, each `%{"option" => title, "custom" => text}`
+  # with only text in it: anything else is no answer.
+  defp given_answers(params) do
+    case params["answers"] do
+      %{} = given ->
+        for {key, %{} = value} <- Map.take(given, @answer_keys), into: %{} do
+          {key,
+           for(
+             {field, text} <- value,
+             field in ["option", "custom"],
+             is_binary(text),
+             into: %{},
+             do: {field, text}
+           )}
+        end
+
+      _none ->
+        %{}
+    end
+  end
+
+  # One answer for each question: where the form gives both an option and a text, as a
+  # change that has not reached the page yet can, the one the draft kept.
+  defp one_each(answers, draft) do
+    Map.new(answers, fn {key, value} ->
+      case {blank?(value["option"]), blank?(value["custom"])} do
+        {false, false} ->
+          if blank?(get_in(draft, [key, "custom"])),
+            do: {key, Map.put(value, "custom", "")},
+            else: {key, Map.delete(value, "option")}
+
+        _one ->
+          {key, value}
+      end
+    end)
+  end
+
+  defp blank?(text) when is_binary(text), do: String.trim(text) == ""
+  defp blank?(_text), do: true
+
+  # A form that names another question or gives no answer: each question of the latest
+  # run with neither an option nor a text is to be answered.
+  defp form_errors(socket, answers) do
+    for question <- socket.assigns.item.run[:questions] || [],
+        blank?(answers[question.public_id]["option"]) and
+          blank?(answers[question.public_id]["custom"]),
+        into: %{},
+        do: {question.public_id, :blank}
   end
 
   ## Live
@@ -737,19 +783,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @impl true
   def handle_info({:work_items_changed, ids}, %{assigns: %{row: %{public_id: id}}} = socket) do
     if is_list(ids) and id in ids,
-      do: {:noreply, refresh(socket, &editable/1)},
+      do: {:noreply, refresh(socket)},
       else: {:noreply, socket}
   end
 
   def handle_info({:stage_changed, id}, %{assigns: %{row: %{} = row}} = socket) do
     if socket.assigns.flow && id in [row.id, row.public_id],
-      do: {:noreply, refresh(socket, &editable/1)},
+      do: {:noreply, refresh(socket)},
       else: {:noreply, socket}
   end
 
   def handle_info({:artifact_pushed, _work_item_id, _version_id}, socket) do
     if socket.assigns.flow,
-      do: {:noreply, refresh(socket, &editable/1)},
+      do: {:noreply, refresh(socket)},
       else: {:noreply, socket}
   end
 
@@ -824,6 +870,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         work_item: row,
         earlier_runs: page.earlier_runs,
         earlier_take_ins: page.earlier_take_ins,
+        comments: page.comments,
         thread: page.thread,
         people: page.people,
         comment_count: WorkItems.count_comments(scope, row),
@@ -952,9 +999,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp tab_path(scope, number, :explore),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/explore"
-
-  defp tab_path(scope, number, :edit),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/explore/edit"
 
   defp tab_path(scope, number, :thread),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/thread"

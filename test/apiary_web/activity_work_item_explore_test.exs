@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.ActivityWorkItemExploreTest do
   # The Activity lines of what a member gives Explore: an answer to Qory's questions, a
-  # confirmation of its proposal, changed or not, and a run of Explore again, by their
+  # comment on its proposal, a confirmation of its proposal, changed or not, and a run of Explore again, by their
   # labels in the filter and their sentences. None has a subject yet: the page a work
   # item's stable address opens is not there.
   use Apiary.DataCase, async: true
@@ -48,6 +48,11 @@ defmodule ApiaryWeb.ActivityWorkItemExploreTest do
 
     assert Core.sentence(:"work_item.answer", entry(:"work_item.answer", %{}, id), %{}) ==
              "Answered Qory's question on a work item"
+
+    comment = entry(:"work_item.answer", %{"take_in" => 1, "attempt" => 1, "comment" => true}, id)
+
+    assert Core.sentence(:"work_item.answer", comment, %{}) ==
+             "Commented on Qory's proposal for a work item"
 
     confirmed =
       entry(:"work_item.confirm", %{"take_in" => 1, "attempt" => 1, "changed" => []}, id)

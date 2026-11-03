@@ -564,14 +564,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              )
     end
 
-    test "at its gate: today's Confirm, and no second Approve", %{conn: conn, scope: scope} do
+    test "at its gate: Confirm on Explore's tab, and no second Approve", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = explore_gate_fixture(scope)
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-state", "At the gate")
       assert has_element?(view, "#work-item-stage-gate-output-proposal", "proposal v1")
       assert has_element?(view, "#work-item-stage-gate-check-proposal", "Passed")
-      assert has_element?(view, "#work-item-step-confirm")
+      assert has_element?(view, "#work-item-step-explore", "Read Qory's proposal")
       refute has_element?(view, "#work-item-stage-gate-approve")
       refute has_element?(view, "#work-item-stage-gate-ask-changes")
       # The decision is Confirm's: the gate card says nothing of who approves.
@@ -602,7 +605,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert decisions(work_item, :approve) == []
 
-      view |> element("#work-item-step-confirm") |> render_click()
+      view |> element("#work-item-step-explore") |> render_click()
+      view |> element("#work-item-explore-reply") |> render_submit(%{"change" => ""})
       assert [%GateDecision{stage_id: @explore}] = decisions(work_item, :approve)
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
     end
@@ -970,7 +974,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-step-confirm")
+      assert has_element?(view, "#work-item-step-explore", "Read Qory's proposal")
       refute has_element?(view, "#work-item-stage-gate-line")
       refute has_element?(view, "#work-item-stage-gate-add-proposal")
       refute has_element?(view, "#work-item-stage-gate-output-proposal")
@@ -1004,7 +1008,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                Repo.get!(WorkItem, work_item.id)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      refute has_element?(view, "#work-item-step-confirm")
+      refute has_element?(view, "#work-item-step-explore", "Read Qory's proposal")
       assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
       assert has_element?(view, "#work-item-stage-gate-output-acceptance-criteria")
       assert has_element?(view, "#work-item-stage-gate-ask-changes")

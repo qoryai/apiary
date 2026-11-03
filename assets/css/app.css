@@ -13678,8 +13678,7 @@
     color: var(--color-error);
   }
 
-  /* The run's words: a frame that names the run, apart from Qory Apiary's words. Plain
-     text, its line breaks kept, behind a rule, isolated. */
+  /* The run's words: a frame that names the run, apart from Qory Apiary's words. */
   .q-xp-frame {
     border: 1px solid var(--q-border-subtle);
     border-radius: var(--radius-box);
@@ -13737,153 +13736,154 @@
     line-height: 1.125rem;
     font-weight: 500;
   }
-  .q-xp-val {
-    padding-left: 12px;
-    border-left: 2px solid var(--q-border-strong);
-    color: var(--color-base-content);
-    font-size: 0.875rem;
-    line-height: 1.375rem;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-  .q-xp-list {
-    display: grid;
-    gap: 6px;
-    margin: 0;
-    padding: 0 0 0 12px;
-    border-left: 2px solid var(--q-border-strong);
-    list-style: none;
-  }
-  .q-xp-list > li {
-    position: relative;
-    padding-left: 14px;
-    font-size: 0.875rem;
-    line-height: 1.3125rem;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-  .q-xp-list > li::before {
-    content: "";
-    position: absolute;
-    top: 9px;
-    left: 1px;
-    width: 4px;
-    height: 4px;
-    border-radius: 9999px;
-    background-color: var(--q-faint);
-  }
-  .q-xp-list > .q-xp-none {
-    color: var(--q-faint);
-  }
-  .q-xp-list > .q-xp-none::before {
-    display: none;
-  }
-  .q-xp-why {
-    display: block;
-    margin-top: 2px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    line-height: 1.1875rem;
-  }
-  .q-xp-val,
-  .q-xp-list > li,
   .q-xp-ans,
-  .q-xp-why bdi,
   .q-wi-qs > li,
   .q-wi-qa-q,
   .q-wi-qa-a {
     unicode-bidi: isolate;
   }
-  .q-xp-cx {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    align-items: start;
-    gap: 8px 12px;
+
+  /* A run's Markdown, a proposal's or a question's: formatted, its white space that of
+     its HTML, not of the frame's plain text around it. */
+  .q-xp-md {
+    min-width: 0;
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
-  /* A member's words behind the accent rule; Qory's under them, dashed, behind the toggle. */
-  .q-xp-mine :is(.q-xp-val, .q-xp-list) {
-    border-left-color: var(--color-accent);
-  }
-  .q-xp-was :is(.q-xp-val, .q-xp-list) {
-    border-left-style: dashed;
-    color: var(--q-muted);
-  }
-  .q-xp-was-l {
-    margin: 10px 0 4px;
+  .q-xp-md-note {
     color: var(--q-faint);
     font-size: 0.75rem;
   }
-  .q-xp-toggle {
-    color: var(--color-accent);
-    font-weight: 500;
-    cursor: pointer;
+  .q-xp-prop {
+    padding-top: 14px;
   }
-  .q-xp-toggle:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  .q-xp-toggle[aria-expanded="true"] .q-xp-show,
-  .q-xp-toggle[aria-expanded="false"] .q-xp-hide {
-    display: none;
+  .q-wi-qa-q .q-xp-md,
+  .q-wi-qs .q-xp-md {
+    font-size: inherit;
+    line-height: inherit;
   }
 
-  /* What Qory learned, and its sources: the host in full, the rest cut where room ends. */
-  .q-xp-know {
+  /* The options a run offers for a question, each a card: a radio input, the title and
+     the explanation. The selected card has the accent. */
+  .q-xp-opts {
     display: grid;
-    gap: 12px;
+    gap: 8px;
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .q-xp-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+  }
+  .q-xp-opt-pick {
+    cursor: pointer;
+  }
+  .q-xp-opt-pick:has(input:checked) {
+    border-color: var(--color-primary);
+    background-color: var(--q-primary-soft);
+  }
+  .q-xp-opt-pick:has(input:focus-visible) {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 1px;
+  }
+  .q-xp-opt input {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    accent-color: var(--color-primary);
+  }
+  .q-xp-opt-w {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+  .q-xp-opt-t {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+  }
+  .q-xp-opt-e {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.1875rem;
+  }
+  .q-xp-opt-t,
+  .q-xp-opt-e {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    unicode-bidi: isolate;
+  }
+
+  /* The comments on the proposal: an open one on a soft ground, a done one muted with a
+     tick. */
+  .q-xp-cms > h3 {
+    margin: 0 0 8px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    font-weight: 500;
+  }
+  .q-xp-cms > ol {
+    display: grid;
+    gap: 10px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .q-xp-know .q-xp-val {
-    font-size: 0.84375rem;
-    line-height: 1.25rem;
-  }
-  .q-xp-src {
+  .q-xp-cm {
     display: grid;
     gap: 4px;
-    margin: 6px 0 0 14px;
-    padding: 0;
-    list-style: none;
+    padding: 10px 12px;
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-200);
   }
-  .q-xp-src > li {
-    min-width: 0;
+  .q-xp-cm-done {
+    background-color: transparent;
+    padding-block: 2px;
   }
-  .q-xp-src-a,
-  .q-xp-src-t {
+  .q-xp-cm-t {
     display: flex;
-    min-width: 0;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
-    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    line-height: 1.3125rem;
+  }
+  .q-xp-cm-t > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    unicode-bidi: isolate;
+  }
+  .q-xp-cm-done .q-xp-cm-t {
+    color: var(--q-muted);
+  }
+  .q-xp-cm-i {
+    flex: none;
+    margin-top: 3px;
+  }
+  .q-xp-cm-m {
+    color: var(--q-faint);
     font-size: 0.75rem;
     line-height: 1.125rem;
   }
-  .q-xp-src-t {
-    color: var(--q-muted);
-    overflow-wrap: anywhere;
+
+  /* The field under the proposal and its one button. */
+  .q-xp-reply {
+    display: grid;
+    gap: 8px;
   }
-  .q-xp-src-i {
-    flex: none;
-    color: var(--q-faint);
+  .q-xp-reply > div {
+    display: flex;
   }
-  .q-xp-host {
-    flex: none;
-    color: var(--color-base-content);
-    font-weight: 600;
-  }
-  .q-xp-path {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--q-muted);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .q-xp-host,
-  .q-xp-path,
-  .q-xp-src-t > bdi {
-    unicode-bidi: isolate;
-  }
+
 
   /* The questions, numbered, and their answers or the fields for them. */
   .q-xp-qs {
@@ -13915,8 +13915,7 @@
     content: counter(q-xp-q) ".";
   }
   .q-xp-qs textarea,
-  .q-xp-field textarea,
-  .q-xp-field select {
+  .q-xp-reply textarea {
     display: block;
     width: 100%;
     padding: 8px 10px;
@@ -13929,21 +13928,16 @@
     line-height: 1.25rem;
   }
   .q-xp-qs textarea,
-  .q-xp-field textarea {
+  .q-xp-reply textarea {
     min-height: 64px;
     field-sizing: content;
     resize: vertical;
   }
-  .q-xp-field select {
-    height: 32px;
-    padding-block: 0;
-    font-size: 0.8125rem;
-  }
-  :is(.q-xp-qs, .q-xp-field) :is(textarea, select):focus {
+  :is(.q-xp-qs, .q-xp-reply) textarea:focus {
     outline: 2px solid var(--q-ring);
     outline-offset: -1px;
   }
-  :is(.q-xp-qs, .q-xp-field) textarea[aria-invalid="true"] {
+  :is(.q-xp-qs, .q-xp-reply) textarea[aria-invalid="true"] {
     border-color: var(--color-error);
   }
   .q-xp-err {
@@ -13983,8 +13977,7 @@
     line-height: 1.125rem;
     font-weight: 600;
   }
-  .q-xp-form-foot,
-  .q-xp-foot {
+  .q-xp-form-foot {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -13993,8 +13986,7 @@
     padding-top: 14px;
     border-top: 1px solid var(--q-border-subtle);
   }
-  .q-xp-form-foot > p,
-  .q-xp-foot > p {
+  .q-xp-form-foot > p {
     flex: 1 1 260px;
     color: var(--q-muted);
     font-size: 0.78125rem;
@@ -14078,79 +14070,6 @@
     margin-top: 1px;
   }
 
-  /* The edit page: a page, not a dialog. */
-  .q-xp-edit {
-    max-width: 760px;
-    padding-top: 4px;
-  }
-  .q-xp-back {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-  }
-  .q-xp-back:hover {
-    color: var(--color-base-content);
-  }
-  .q-xp-edit > h2 {
-    margin-top: 6px;
-    font-size: 1.0625rem;
-    line-height: 1.5rem;
-    font-weight: 600;
-  }
-  .q-xp-lead {
-    max-width: 72ch;
-    margin-top: 4px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    line-height: 1.1875rem;
-  }
-  .q-xp-edit > form {
-    display: grid;
-    gap: 20px;
-    margin-top: 18px;
-  }
-  .q-xp-field {
-    display: grid;
-    gap: 6px;
-  }
-  .q-xp-lbl-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-  }
-  .q-xp-lbl {
-    font-size: 0.8125rem;
-    font-weight: 500;
-  }
-  .q-xp-hint {
-    color: var(--q-faint);
-    font-size: 0.78125rem;
-  }
-  .q-xp-cx-row {
-    display: grid;
-    grid-template-columns: 180px minmax(0, 1fr);
-    align-items: start;
-    gap: 8px 12px;
-  }
-  .q-xp-sub {
-    display: grid;
-    gap: 4px;
-  }
-  .q-xp-sub > label {
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-  }
-  .q-xp-kept {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-    line-height: 1.125rem;
-  }
-
   /* The Thread's Explore lines: the run's place, the questions and answers quoted. */
   .q-wi-tag {
     display: inline-flex;
@@ -14231,14 +14150,8 @@
     .q-xp-inner {
       padding: 0 12px 14px;
     }
-    .q-xp-src {
-      margin-left: 0;
-    }
-    .q-xp-cx-row {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    :is(.q-xp-form-foot, .q-xp-foot) > .btn,
-    :is(.q-xp-form-foot, .q-xp-foot) > .q-wi-acts {
+    .q-xp-form-foot > .btn,
+    .q-xp-form-foot > .q-wi-acts {
       width: 100%;
     }
   }

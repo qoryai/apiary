@@ -616,6 +616,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
 
+  # A comment on Qory's proposal is kept as an answer with no question.
+  defp said(:"work_item.answer", %{"comment" => true}, _actor),
+    do: gettext("Commented on Qory's proposal for a work item")
+
   # The count of questions answered, one where the entry says none.
   defp said(:"work_item.answer", details, _actor) do
     count =

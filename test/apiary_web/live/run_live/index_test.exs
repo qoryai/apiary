@@ -886,6 +886,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert RunComponents.started_by_words({:taken_in, Ecto.UUID.generate()}, %{}) ==
                "Taken in by Former member"
 
+      assert RunComponents.started_by_words({:comment, 2, 3, Ecto.UUID.generate()}, %{}) ==
+               "Run 2 of 3, after a comment from Former member"
+
       unexplained = started_run(scope, %{})
       queue_run!(scope, unexplained, attempt: 2)
       view = open(conn, scope)
